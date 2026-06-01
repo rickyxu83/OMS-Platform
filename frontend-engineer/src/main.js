@@ -1,0 +1,36 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import App from './App.vue'
+import router from './router'
+import './assets/main.css'
+import './services/network'
+
+createApp(App).use(createPinia()).use(router).mount('#app')
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const base = import.meta.env.BASE_URL || '/'
+    const scopePrefix = new URL(base, window.location.origin).toString()
+
+    navigator.serviceWorker
+      .getRegistrations()
+      .then(async (registrations) => {
+        await Promise.all(
+          registrations
+            .filter((registration) => registration.scope.startsWith(scopePrefix))
+            .map((registration) => registration.unregister()),
+        )
+
+        if ('caches' in window) {
+          const keys = await caches.keys()
+          await Promise.all(keys.filter((key) => key.startsWith('rc-engineer-shell-')).map((key) => caches.delete(key)))
+        }
+
+        if (navigator.serviceWorker.controller && !window.__rcSwCleanupReloaded) {
+          window.__rcSwCleanupReloaded = true
+          window.location.reload()
+        }
+      })
+      .catch(() => {})
+  })
+}
