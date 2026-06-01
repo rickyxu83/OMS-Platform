@@ -1,0 +1,20 @@
+{
+  "name": "service-sheet-rc-admin",
+  "version": "26.524.1018",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@hugeicons/core-free-icons": "^4.2.0",
+    "@hugeicons/vue": "^1.0.5",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "pinia": "^3.0.4",
+    "vite": "^8.0.8",
+    "vue": "^3.5.32",
+    "vue-router": "^4.6.4"
+  }
+}
