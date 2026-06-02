@@ -6,7 +6,6 @@
 - `frontend-admin`：管理端 Vue 前端
 - `frontend-engineer`：工程师端 Vue 前端
 
-这份副本已经去掉 `figma-mcp-preview` 外层结构，目录按正常独立项目整理，适合后续单独维护、打包和部署。
 
 ## 目录结构
 
