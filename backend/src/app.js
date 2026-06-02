@@ -16,6 +16,7 @@ const maintenancePartyRoutes = require('./modules/maintenance-parties/routes')
 const fileRoutes = require('./modules/files/routes')
 const geoRoutes = require('./modules/geo/routes')
 const inspectionScheduleRoutes = require('./modules/inspection-schedules/routes')
+const { initializeDeviceModelCatalog } = require('./modules/device-model-catalog')
 const serviceOrderRoutes = require('./modules/service-orders/routes')
 const userRoutes = require('./modules/users/routes')
 
@@ -49,6 +50,13 @@ app.get('/api/v1/health', async (_req, res) => {
   await pool.query('SELECT 1')
   res.json({ ok: true })
 })
+
+pool
+  .query('SELECT 1')
+  .then(() => initializeDeviceModelCatalog())
+  .catch((error) => {
+    console.error('[device-model-catalog] Initialization failed', error)
+  })
 
 app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/users', authenticate, auditLogger, userRoutes)
