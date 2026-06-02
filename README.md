@@ -1,10 +1,11 @@
 # 技服表电子化项目 RC版
 
-这是从现有主仓库中拆出的独立 RC 项目，只保留最终版本所需的三部分：
+这是从现有主仓库中拆出的独立 RC 项目，包含以下模块：
 
 - `backend`：Node.js + MySQL 后端
 - `frontend-admin`：管理端 Vue 前端
 - `frontend-engineer`：工程师端 Vue 前端
+- `scripts`：部署与维护脚本
 
 
 ## 目录结构
@@ -12,11 +13,36 @@
 ```text
 .
 ├── backend
+│   └── src/modules/device-models/    ← 设备型号库（autocomplete + 自动发现）
 ├── frontend-admin
 ├── frontend-engineer
 ├── scripts
+│   ├── deploy.sh                     ← 全量部署
+│   └── deploy-seed.sh                ← 设备型号 seed 一键部署
 └── README.md
 ```
+
+## ✨ 新增功能
+
+### 设备型号自动补全（Autocomplete）
+工程师创建安装单时，在「设备型号」输入框打字即可自动弹出建议：
+- 支持多词搜索：`hp dl380` → 匹配所有 HP ProLiant DL380 型号
+- 内置 267 条常见设备型号（服务器/网络/存储/防火墙）
+- 品牌搜索：`dell r740`、`huawei 5280`、`brocade` 等
+- 型号归一化：`g10` → `Gen10`、`v5` → `V5`
+
+### 设备型号自动发现（Beta）
+```bash
+LLM_API_KEY=sk-xxx node backend/src/modules/device-models/auto-discover.js
+```
+通过 LLM API 每日自动查询各品牌最新型号，与数据库对比后自动追加。支持 HPE、Dell、Cisco、Lenovo、Huawei、NetApp 等 20+ 品牌。
+
+### 一键部署 seed
+```bash
+bash scripts/deploy-seed.sh
+```
+在本地 `seed.js` 追加新设备后，一行命令推送到服务器并重新入库（INSERT IGNORE，不会重复）。
+
 
 ## 本地启动
 
@@ -87,25 +113,33 @@ cd backend && npm test
 
 ## 部署
 
-根目录提供了独立部署脚本：
-
-- [scripts/deploy.sh](scripts/deploy.sh)
-
-默认远端根目录：
-
-- `/root/service-sheet-rc`
-
-可通过环境变量覆盖：
-
+### 设备型号 seed 快速部署
 ```bash
-export DEPLOY_SSH_TARGET=root@your-server
-export DEPLOY_REMOTE_ROOT=/root/service-sheet-rc
+bash scripts/deploy-seed.sh
 ```
+在 `backend/src/modules/device-models/seed.js` 追加新设备型号后，一键部署到服务器。
 
-示例：
-
+### 全量部署
 ```bash
 bash scripts/deploy.sh all
+```
+
+服务器连接配置（通过环境变量）：
+```bash
+export DEPLOY_SSH_TARGET=aliyun                 # SSH 主机
+export DEPLOY_REMOTE_ROOT=/root/service-sheet-aliyun  # 远程目录
+```
+
+> 当前服务器为阿里云单节点部署，Caddy 反向代理 + Docker Compose 运行。
+> 访问地址：
+> - 工程师端：`https://eng-aliyun.tinypanel.de`
+> - 管理端：`https://admin-aliyun.tinypanel.de`
+
+### 每日自动发现（可选）
+如需每日自动检查各品牌新设备型号，设置 cron：
+```bash
+# 每天早上 8 点运行
+0 8 * * * cd /path/to/project && LLM_API_KEY=sk-xxx node backend/src/modules/device-models/auto-discover.js >> /var/log/device-discover.log 2>&1
 ```
 
 ## 当前约定
