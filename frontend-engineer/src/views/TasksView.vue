@@ -46,6 +46,10 @@ const serviceModeMap = {
   office: { label: '内勤工作', icon: 'office-service' },
 }
 
+function isInspectionTask(task) {
+  return normalizePreviewServiceMode(task) === 'onsite' && String(task?.serviceType || '').trim() === 'inspect'
+}
+
 function compactSummaryText(value) {
   const text = String(value || '').trim().replace(/\s+/g, ' ')
   if (!text) return ''
@@ -304,6 +308,18 @@ function serviceDate(task) {
   return String(task.report?.actualStartAt || task.serviceAt || task.submittedAt || task.createdAt || '').replace('T', ' ').slice(5, 16) || '-'
 }
 
+function taskDeviceContext(task) {
+  return compactSummaryText(task.deviceName || task.productName || '')
+}
+
+function taskStatusLabel(task) {
+  if (isInspectionTask(task)) {
+    const inspectionStatusMap = { draft: '待巡检', in_progress: '巡检中', submitted: '巡检已提交', cancelled: '已作废' }
+    return inspectionStatusMap[task.status] || statusMap[task.status] || task.status || '待巡检'
+  }
+  return statusMap[task.status] || task.status || '待处理'
+}
+
 function serviceModeBadge(task) {
   return serviceModeMap[normalizePreviewServiceMode(task)] || serviceModeMap.onsite
 }
@@ -311,11 +327,17 @@ function serviceModeBadge(task) {
 function serviceSummary(task) {
   const normalizedMode = normalizePreviewServiceMode(task)
   const category = taskCategoryLabel(task)
-  const detail = compactSummaryText(task.deviceName || task.issueDescription || task.report?.faultSummary || '')
+  const detail = compactSummaryText(task.deviceName || task.productName || task.issueDescription || task.report?.faultSummary || '')
   if (normalizedMode === 'office') {
     return detail ? `${category} · ${detail}` : category
   }
   return detail ? `${category} · ${detail}` : category
+}
+
+function inspectionContext(task) {
+  if (!isInspectionTask(task)) return ''
+  const parts = [taskDeviceContext(task), compactSummaryText(task.issueDescription || task.report?.faultSummary || '')].filter(Boolean)
+  return parts.length ? `巡检对象：${parts.join(' · ')}` : '巡检对象：待补充设备信息'
 }
 
 function taskCustomerTitle(task) {
@@ -523,7 +545,7 @@ onBeforeUnmount(() => {
         v-for="(task, index) in displayTasks"
         :key="task.id"
         class="form-section task-card"
-        :class="{ 'task-card-local-draft': ['draft_local', 'draft_sync'].includes(task.status) }"
+        :class="{ 'task-card-local-draft': ['draft_local', 'draft_sync'].includes(task.status), 'task-card-inspection': isInspectionTask(task) }"
         :style="{ '--stagger': `${Math.min(index, 12) * 64}ms` }"
         role="link"
         tabindex="0"
@@ -534,9 +556,10 @@ onBeforeUnmount(() => {
           <span class="service-mode-badge" :class="normalizePreviewServiceMode(task)">
             <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
           </span>
+          <span v-if="isInspectionTask(task)" class="inspection-badge">{{ zh('巡检任务') }}</span>
           <strong :class="{ 'new-work-badge': needsMyWorkEntry(task) }">
             <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
-            <template v-else>{{ zh(statusMap[task.status] || task.status || '待处理') }}</template>
+            <template v-else>{{ zh(taskStatusLabel(task)) }}</template>
           </strong>
         </div>
         <div class="task-content">
@@ -546,6 +569,7 @@ onBeforeUnmount(() => {
           <div class="task-card-main">
             <h2 :title="zh(task.customerName || taskCustomerTitle(task))">{{ zh(taskCustomerTitle(task)) }}</h2>
             <p>{{ zh(serviceSummary(task)) }}</p>
+            <p v-if="isInspectionTask(task)" class="task-inspection-context">{{ zh(inspectionContext(task)) }}</p>
           </div>
         </div>
         <div class="task-actions" @click.stop>

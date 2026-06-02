@@ -16,6 +16,7 @@ const task = ref(null)
 const statusMap = { draft: '草稿', in_progress: '填写中', submitted: '已提交', cancelled: '已作废' }
 const canEdit = computed(() => ['draft', 'in_progress', 'submitted'].includes(task.value?.status || ''))
 const normalizedServiceMode = computed(() => normalizePreviewServiceMode(task.value || {}))
+const isInspectionTask = computed(() => normalizedServiceMode.value === 'onsite' && String(task.value?.serviceType || '').trim() === 'inspect')
 const canShare = computed(() => Boolean(task.value?.report) && normalizedServiceMode.value !== 'office')
 const serviceModeLabel = computed(() => {
   if (normalizedServiceMode.value === 'office') return '内勤工作'
@@ -33,6 +34,20 @@ const resultLabel = computed(() => {
   if (['unresolved', 'not_resolved', 'incomplete', 'failed'].includes(raw)) return '未完成'
   if (['follow_up_required', 'pending', 'processing', 'in_progress', 'follow_up'].includes(raw)) return '待跟进'
   return '-'
+})
+const detailStatusLabel = computed(() => {
+  if (isInspectionTask.value) {
+    const inspectionStatusMap = { draft: '待巡检', in_progress: '巡检中', submitted: '巡检已提交', cancelled: '已作废' }
+    return inspectionStatusMap[task.value?.status] || statusMap[task.value?.status] || task.value?.status || '-'
+  }
+  return statusMap[task.value?.status] || task.value?.status || '-'
+})
+const deviceContext = computed(() => task.value?.deviceName || task.value?.productName || '-')
+const detailServiceTime = computed(() => task.value?.report?.actualStartAt || task.value?.serviceAt || task.value?.plannedAt || task.value?.scheduledAt || task.value?.submittedAt || task.value?.createdAt)
+const inspectionLead = computed(() => {
+  if (!isInspectionTask.value) return task.value?.issueDescription || '暂无服务需求'
+  const device = deviceContext.value === '-' ? '待补充设备信息' : deviceContext.value
+  return task.value?.issueDescription || `请按计划完成 ${device} 的例行巡检。`
 })
 
 const engineers = computed(() => {
@@ -79,25 +94,29 @@ onMounted(load)
             <h2>{{ zh(task.customerName || '未命名客户') }}</h2>
             <p>{{ zh(task.customerAddress || '未填写地址') }}</p>
           </div>
-          <span class="service-mode-badge" :class="normalizedServiceMode">
-            <i aria-hidden="true"></i>{{ zh(serviceModeLabel) }}
-          </span>
+          <div class="detail-hero-badges">
+            <span class="service-mode-badge" :class="normalizedServiceMode">
+              <i aria-hidden="true"></i>{{ zh(serviceModeLabel) }}
+            </span>
+            <span v-if="isInspectionTask" class="inspection-badge detail-inspection-badge">{{ zh('巡检任务') }}</span>
+          </div>
         </article>
 
         <article class="form-section detail-card">
           <h2>{{ zh('服务信息') }}</h2>
           <dl class="detail-list">
-            <div><dt>{{ zh('状态') }}</dt><dd>{{ zh(statusMap[task.status] || task.status || '-') }}</dd></div>
+            <div><dt>{{ zh('状态') }}</dt><dd>{{ zh(detailStatusLabel) }}</dd></div>
             <div><dt>{{ zh('类别') }}</dt><dd>{{ zh(categoryLabel) }}</dd></div>
-            <div><dt>{{ zh('设备/系统') }}</dt><dd>{{ zh(task.deviceName || task.productName || '-') }}</dd></div>
+            <div><dt>{{ zh(isInspectionTask ? '巡检设备' : '设备/系统') }}</dt><dd>{{ zh(deviceContext) }}</dd></div>
+            <div v-if="task.productName && task.productName !== task.deviceName"><dt>{{ zh('产品型号') }}</dt><dd>{{ zh(task.productName) }}</dd></div>
             <div><dt>{{ zh('工程师') }}</dt><dd>{{ zh(engineers) }}</dd></div>
-            <div><dt>{{ zh('服务时间') }}</dt><dd>{{ formatTime(task.report?.actualStartAt || task.submittedAt || task.createdAt) }}</dd></div>
+            <div><dt>{{ zh(isInspectionTask ? '巡检时间' : '服务时间') }}</dt><dd>{{ formatTime(detailServiceTime) }}</dd></div>
           </dl>
         </article>
 
         <article class="form-section detail-card">
-          <h2>{{ zh('服务需求') }}</h2>
-          <p>{{ zh(task.issueDescription || '暂无服务需求') }}</p>
+          <h2>{{ zh(isInspectionTask ? '巡检说明' : '服务需求') }}</h2>
+          <p>{{ zh(inspectionLead) }}</p>
         </article>
 
         <article class="form-section detail-card">

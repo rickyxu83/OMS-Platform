@@ -49,6 +49,7 @@ const recentOrders = ref([])
 const editingTask = ref(null)
 const selectedHistoryId = ref('')
 const selectedCustomer = ref(null)
+const installDeviceDraft = ref(createInstallDeviceDraft())
 const selectedCoEngineerIds = ref([])
 const showCoEngineerOptions = ref(false)
 const showContactOptions = ref(false)
@@ -125,6 +126,22 @@ function fillDefaultTimesForNewSheet() {
 
 function cloneWorkEntries(entries = []) {
   return (entries || []).map((entry) => ({ ...entry }))
+}
+
+function createInstallDeviceDraft() {
+  return {
+    model: '',
+    pn: '',
+    serialNo: '',
+    remark: '',
+  }
+}
+
+function cloneInstallDeviceDraft(draft = {}) {
+  return {
+    ...createInstallDeviceDraft(),
+    ...(draft || {}),
+  }
 }
 
 function normalizedModeValue(mode) {
@@ -250,6 +267,12 @@ function currentModeServiceDraftView() {
   }
 }
 
+function currentInstallDeviceView() {
+  return {
+    installDeviceDraft: cloneInstallDeviceDraft(installDeviceDraft.value),
+  }
+}
+
 function updateActiveDraftField(field, value) {
   if (field === 'serviceMode') {
     formMode.value = serviceModeOptions.some((option) => option.value === value) ? value : 'onsite'
@@ -336,6 +359,7 @@ function pageDraftStateSnapshot() {
     officeDraft: {
       ...officeDraft.value,
     },
+    installDeviceState: currentInstallDeviceView(),
     customerSignature: customerSignature.value,
     __draftClientUpdatedAt: lastDraftClientUpdatedAt.value || new Date().toISOString(),
   }
@@ -364,6 +388,7 @@ function applyDraftState(state = {}, { fallbackMode = 'onsite' } = {}) {
   formMode.value = nextMode
   selectedCustomer.value = state.selectedCustomer || null
   selectedHistoryId.value = state.selectedHistoryId || ''
+  installDeviceDraft.value = cloneInstallDeviceDraft(state.installDeviceState?.installDeviceDraft)
   selectedCoEngineerIds.value = Array.isArray(state.selectedCoEngineerIds)
     ? state.selectedCoEngineerIds.map(Number)
     : []
@@ -666,6 +691,7 @@ function draftSnapshot() {
     officeDraft: {
       ...officeDraft.value,
     },
+    installDeviceState: currentInstallDeviceView(),
     customerSignature: customerSignature.value,
     __draftId: isNewDraft ? createDraftId.value : '',
     __draftCreatedAt: isNewDraft ? undefined : '',
@@ -744,6 +770,7 @@ async function restoreDraftIfPresent() {
   draftHydrating.value = true
   selectedCustomer.value = preferredDraft.payload.selectedCustomer || null
   selectedHistoryId.value = preferredDraft.payload.selectedHistoryId || ''
+  installDeviceDraft.value = cloneInstallDeviceDraft(preferredDraft.payload.installDeviceState?.installDeviceDraft)
   selectedCoEngineerIds.value = Array.isArray(preferredDraft.payload.selectedCoEngineerIds)
     ? preferredDraft.payload.selectedCoEngineerIds.map(Number)
     : []
@@ -925,6 +952,9 @@ function onServiceModeChange() {
   }
 }
 
+function resetInstallDeviceSelection() {
+  installDeviceDraft.value = createInstallDeviceDraft()
+}
 function applyRouteServiceMode() {
   if (route.params.id || !routeMode.value) return
   formMode.value = routeMode.value
@@ -1481,6 +1511,9 @@ function applyCustomer(customer, sourceId = '') {
   }
   showContactOptions.value = false
   showNearbyCompanies.value = false
+  if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
+    resetInstallDeviceSelection()
+  }
 }
 
 function clearFieldError(field) {
@@ -1508,6 +1541,11 @@ function updateCustomerField(field, value) {
     selectedCustomer.value.contacts = []
     clearSignature()
     scheduleCustomerLookup(value)
+  }
+  if (field === 'name' || field === 'address') {
+    if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
+      resetInstallDeviceSelection()
+    }
   }
 }
 
@@ -1809,6 +1847,11 @@ async function load() {
           resultDescription: report.resultDescription || '',
         }
       }
+      if (normalizedMode === 'onsite' && detailData.item.serviceType === 'install') {
+        installDeviceDraft.value = createInstallDeviceDraft()
+      } else {
+        resetInstallDeviceSelection()
+      }
       syncWorkEntries()
       customerSignature.value = report.customerSignature || ''
       signatureDrawn.value = Boolean(customerSignature.value)
@@ -1840,7 +1883,15 @@ function buildSubmitPayload() {
   const submitDeviceName = showDeviceField.value
     ? String(serviceDraft.value.deviceName || '').trim()
     : (issueSummary || [customerName, serviceModeDocumentLabel(currentServiceMode.value)].filter(Boolean).join(' / '))
-  return {
+  const isInstallOrder = effectiveServiceMode === 'onsite' && serviceDraft.value.serviceType === 'install'
+  const installDevicePayload = {}
+  if (isInstallOrder) {
+    installDevicePayload.deviceModel = String(installDeviceDraft.value.model || '').trim() || null
+    installDevicePayload.devicePn = String(installDeviceDraft.value.pn || '').trim() || null
+    installDevicePayload.deviceSerialNo = String(installDeviceDraft.value.serialNo || '').trim() || null
+    installDevicePayload.deviceRemark = String(installDeviceDraft.value.remark || '').trim() || null
+  }
+  const payload = {
     customerId: Number.isInteger(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null,
     customerName,
     customerAddress,
@@ -1852,7 +1903,7 @@ function buildSubmitPayload() {
     customerMapAddress: customer.mapAddress || null,
     contactName,
     contactPhone,
-    deviceName: submitDeviceName,
+    deviceName: isInstallOrder ? '' : submitDeviceName,
     serviceMode: effectiveServiceMode,
     serviceType: effectiveServiceMode === 'onsite' ? serviceDraft.value.serviceType : 'other',
     timesheetCategory:
@@ -1875,6 +1926,7 @@ function buildSubmitPayload() {
     customerConfirmName: contactName || customerName,
     customerSignature: effectiveServiceMode === 'remote' ? '' : customerSignature.value,
   }
+  return isInstallOrder ? { ...payload, ...installDevicePayload } : payload
 }
 
 function isConnectivityError(err) {
@@ -2461,6 +2513,32 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               </button>
               <em v-if="!coEngineerOptions.length">{{ zh('暂无其他工程师') }}</em>
             </div>
+          </div>
+        </div>
+        <div v-if="currentServiceMode === 'onsite' && serviceDraft.serviceType === 'install'" class="install-device-card">
+          <div class="card-row">
+            <div>
+              <span class="field-label">{{ zh('安装设备') }}</span>
+              <small class="collaboration-hint">{{ zh('仅记录本次现场新增设备信息；如有多个序列号，请在同一个输入框中用逗号分隔。') }}</small>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span>{{ zh('设备型号 / Model') }}</span>
+              <input v-model.trim="installDeviceDraft.model" :placeholder="zh('输入设备型号')" />
+            </label>
+            <label class="field">
+              <span>{{ zh('部件号 / PN') }}</span>
+              <input v-model.trim="installDeviceDraft.pn" :placeholder="zh('输入部件号')" />
+            </label>
+            <label class="field">
+              <span>{{ zh('序列号 / SN') }}</span>
+              <input v-model.trim="installDeviceDraft.serialNo" :placeholder="zh('多个序列号请用逗号分隔')" />
+            </label>
+            <label class="field">
+              <span>{{ zh('备注 / Remark') }}</span>
+              <textarea v-model.trim="installDeviceDraft.remark" rows="2" :placeholder="zh('补充备注')" />
+            </label>
           </div>
         </div>
         <label
