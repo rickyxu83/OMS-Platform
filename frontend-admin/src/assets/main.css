@@ -212,6 +212,8 @@ a {
 .admin-main {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
   padding-left: 320px;
@@ -304,7 +306,7 @@ a {
 }
 
 .figma-workspace {
-  min-height: calc(100vh - 152px);
+  flex: 1;
   padding: 0 40px 40px;
 }
 
@@ -2405,4 +2407,39 @@ a {
   .device-table .table-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* === Sub Navigation === */
+.sub-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 40px 20px;
+}
+
+.sub-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 20px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 14px;
+  line-height: 20px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.sub-nav-link:hover {
+  color: var(--primary-dark);
+  background: var(--lavender);
+}
+
+.sub-nav-link.active,
+.sub-nav-link.router-link-active {
+  color: var(--primary-dark);
+  background: var(--lavender);
+  font-weight: 600;
 }
