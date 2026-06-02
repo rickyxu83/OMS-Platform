@@ -1,16 +1,18 @@
 <script setup>
 import { computed, reactive, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
 import { downloadText, toCsv } from '../utils/download'
 
 const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const message = ref('')
 const customers = ref([])
+const customerDeviceStats = ref({})
 const activeCustomerId = ref('')
 const keyword = ref('')
 const form = reactive({
@@ -102,6 +104,29 @@ async function updateActiveCustomer() {
   }
 }
 
+async function loadActiveCustomerDevices(customerId) {
+  if (!customerId) return
+  try {
+    const data = await api.get(`/customers/${customerId}/devices`)
+    const items = data.items || []
+    customerDeviceStats.value = {
+      ...customerDeviceStats.value,
+      [customerId]: {
+        total: items.length,
+        none: items.filter((device) => (device.maintenanceType || 'none') === 'none').length,
+        original: items.filter((device) => device.maintenanceType === 'original_manufacturer').length,
+        ours: items.filter((device) => device.maintenanceType === 'our_maintenance').length,
+        expiring: items.filter((device) => isMaintenanceAttention(device.maintenanceEnd)).length,
+      },
+    }
+  } catch (err) {
+    customerDeviceStats.value = {
+      ...customerDeviceStats.value,
+      [customerId]: { total: 0, none: 0, original: 0, ours: 0, expiring: 0, error: err.message },
+    }
+  }
+}
+
 function exportCsv() {
   const rows = [
     ['客户名称', '地址', '联系人', '联系电话', '本年度服务次数', '业务员', '最近更新'],
@@ -116,11 +141,23 @@ const filteredCustomers = computed(() => {
   return customers.value.filter((customer) => [customer.name, customer.address, customer.contact, customer.salesperson].some((value) => String(value || '').includes(text)))
 })
 const activeCustomer = computed(() => customers.value.find((item) => item.id === activeCustomerId.value))
+const activeCustomerDeviceStats = computed(() => customerDeviceStats.value[activeCustomer.value?.id] || { total: 0, none: 0, original: 0, ours: 0, expiring: 0 })
 const totalRecords = computed(() => customers.value.reduce((total, customer) => total + customer.count, 0))
 const keyCustomerCount = computed(() => customers.value.filter((customer) => customer.count > 0).length)
 
 function formatDate(value) {
   return String(value || '').replace('T', ' ').slice(0, 10) || '-'
+}
+
+function isMaintenanceAttention(value) {
+  if (!value) return false
+  const end = new Date(`${String(value).slice(0, 10)}T23:59:59`).getTime()
+  return end <= Date.now() + 30 * 24 * 60 * 60 * 1000
+}
+
+function viewCustomerDevices() {
+  if (!activeCustomer.value) return
+  router.push({ name: 'devices', query: { customerId: activeCustomer.value.id } })
 }
 
 watch(activeCustomer, (customer) => {
@@ -131,6 +168,7 @@ watch(activeCustomer, (customer) => {
     address: customer?.address || '',
     salesperson: customer?.salesperson || '',
   })
+  if (customer?.id) loadActiveCustomerDevices(customer.id)
 }, { immediate: true })
 
 onMounted(() => {
@@ -222,6 +260,17 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
           <p>本年度服务次数：{{ activeCustomer.count }}</p>
           <p>最近更新：{{ formatDate(activeCustomer.updatedAt) }}</p>
           <p>联系人：{{ activeCustomer.contact }}</p>
+        </div>
+        <div class="drawer-section">
+          <h3>设备概览</h3>
+          <div class="drawer-stats">
+            <article><span>设备总数</span><strong>{{ activeCustomerDeviceStats.total }}</strong></article>
+            <article><span>需关注维护</span><strong>{{ activeCustomerDeviceStats.expiring }}</strong></article>
+            <article><span>我方维护</span><strong>{{ activeCustomerDeviceStats.ours }}</strong></article>
+            <article><span>原厂维护</span><strong>{{ activeCustomerDeviceStats.original }}</strong></article>
+          </div>
+          <p v-if="activeCustomerDeviceStats.error" class="form-error">设备统计加载失败：{{ activeCustomerDeviceStats.error }}</p>
+          <button class="ghost-button full" type="button" @click="viewCustomerDevices">查看全部设备</button>
         </div>
         <button v-if="canEdit" class="ghost-button full" type="button" :disabled="saving" @click="updateActiveCustomer">保存当前客户</button>
         <p v-else class="form-error">当前账号只可查看，不可编辑客户资料。</p>

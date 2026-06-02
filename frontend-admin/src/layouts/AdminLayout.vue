@@ -18,7 +18,10 @@ const roleAccess = {
 const navItems = [
   { to: '/', label: '工作台', icon: 'dashboard', name: 'dashboard' },
   { to: '/service-orders', label: '工单处理', icon: 'service', name: 'service-orders' },
+  { to: '/inspection-schedules', label: '巡检计划', icon: 'asset', name: 'inspection-schedules' },
+  { to: '/devices', label: '设备管理', icon: 'asset', name: 'devices' },
   { to: '/customers', label: '客户资产', icon: 'customer', name: 'customers' },
+  { to: '/maintenance-parties', label: '维保方管理', icon: 'member', name: 'maintenance-parties' },
   { to: '/users', label: '工程师管理', icon: 'member', name: 'users' },
   { to: '/audit-logs', label: '操作审计', icon: 'audit', name: 'audit-logs' },
   { to: '/timesheets', label: '月报导出', icon: 'report', name: 'timesheets' },

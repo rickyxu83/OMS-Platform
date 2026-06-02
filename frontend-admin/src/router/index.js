@@ -5,7 +5,10 @@ import AdminLayout from '../layouts/AdminLayout.vue'
 import AuditLogsView from '../views/AuditLogsView.vue'
 import CustomersView from '../views/CustomersView.vue'
 import DashboardView from '../views/DashboardView.vue'
+import DeviceManagementView from '../views/DeviceManagementView.vue'
+import InspectionSchedulesView from '../views/InspectionSchedulesView.vue'
 import LoginView from '../views/LoginView.vue'
+import MaintenancePartiesView from '../views/MaintenancePartiesView.vue'
 import ServiceOrdersView from '../views/ServiceOrdersView.vue'
 import TimesheetsView from '../views/TimesheetsView.vue'
 import UsersView from '../views/UsersView.vue'
@@ -26,7 +29,10 @@ const router = createRouter({
       children: [
         { path: '', name: 'dashboard', component: DashboardView },
         { path: 'service-orders', name: 'service-orders', component: ServiceOrdersView },
+        { path: 'inspection-schedules', name: 'inspection-schedules', component: InspectionSchedulesView },
+        { path: 'devices', name: 'devices', component: DeviceManagementView },
         { path: 'customers', name: 'customers', component: CustomersView },
+        { path: 'maintenance-parties', name: 'maintenance-parties', component: MaintenancePartiesView },
         { path: 'timesheets', name: 'timesheets', component: TimesheetsView },
         { path: 'users', name: 'users', component: UsersView },
         { path: 'audit-logs', name: 'audit-logs', component: AuditLogsView },

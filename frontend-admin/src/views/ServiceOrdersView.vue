@@ -13,15 +13,21 @@ const message = ref('')
 const keyword = ref('')
 const recentOnly = ref(false)
 const serviceOrders = ref([])
+const engineerOptions = ref([])
 const detailForm = reactive({
   issueDescription: '',
   internalNote: '',
 })
+const confirmForm = reactive({
+  engineerId: '',
+  plannedStartAt: '',
+  plannedEndAt: '',
+})
 
-const statusOptions = ['全部', '进行中', '已提交', '草稿', '已作废']
-const statusMap = { draft: '草稿', in_progress: '进行中', submitted: '已提交', cancelled: '已作废' }
+const statusOptions = ['全部', '待确认', '进行中', '已提交', '草稿', '已作废']
+const statusMap = { pending_confirmation: '待确认', draft: '草稿', in_progress: '进行中', submitted: '已提交', cancelled: '已作废' }
 const typeMap = { install: '安装', repair: '排障', maintain: '保养', inspect: '巡检', training: '培训', remote: '远程支持', other: '其他' }
-const reverseStatusMap = { 草稿: 'draft', 进行中: 'in_progress', 已提交: 'submitted', 已作废: 'cancelled' }
+const reverseStatusMap = { 待确认: 'pending_confirmation', 草稿: 'draft', 进行中: 'in_progress', 已提交: 'submitted', 已作废: 'cancelled' }
 const currentUser = getCurrentUser()
 const canEdit = computed(() => ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor'].includes(currentUser?.role))
 
@@ -34,6 +40,7 @@ function normalizeOrder(order) {
     contactName: order.contactName || '未维护联系人',
     deviceName: order.deviceName || order.productName || '-',
     engineerText: (order.engineers || []).map((engineer) => engineer.realName).filter(Boolean).join('、') || order.engineerName || '未指定',
+    targetEngineerText: order.targetEngineerName || '未指定',
     serviceTypeText: typeMap[order.serviceType] || order.serviceType || '-',
     statusText: statusMap[order.status] || order.status || '-',
     summary: order.issueDescription || order.report?.resultDescription || '服务记录已同步',
@@ -41,6 +48,21 @@ function normalizeOrder(order) {
     serviceAt: String(order.report?.actualStartAt || order.serviceAt || order.submittedAt || order.createdAt || '').replace('T', ' ').slice(0, 16) || '-',
     mode: order.serviceMode === 'remote' ? '远程服务' : order.serviceMode === 'office' ? '内勤工作' : '现场服务',
   }
+}
+
+function toDatetimeLocal(value) {
+  if (!value) return ''
+  return String(value).replace('T', ' ').slice(0, 16).replace(' ', 'T')
+}
+
+function fromDatetimeLocal(value) {
+  return value ? String(value).replace('T', ' ') : null
+}
+
+async function loadEngineers() {
+  if (engineerOptions.value.length || !canEdit.value) return
+  const data = await api.get('/users/engineers')
+  engineerOptions.value = data.items || []
 }
 
 async function load() {
@@ -92,6 +114,26 @@ async function saveSelectedOrder() {
   }
 }
 
+async function confirmSelectedInspectionOrder() {
+  if (!canEdit.value || !selectedOrder.value?.raw?.pendingConfirmation) return
+  saving.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    await api.post(`/service-orders/${selectedOrder.value.id}/confirm-inspection`, {
+      engineerId: Number(confirmForm.engineerId || 0),
+      plannedStartAt: fromDatetimeLocal(confirmForm.plannedStartAt),
+      plannedEndAt: fromDatetimeLocal(confirmForm.plannedEndAt),
+    })
+    message.value = '巡检工单已确认并派发'
+    await load()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    saving.value = false
+  }
+}
+
 function resetFilters() {
   keyword.value = ''
   activeStatus.value = '全部'
@@ -126,9 +168,14 @@ const selectedOrder = computed(() => filteredOrders.value.find((order) => order.
 watch(selectedOrder, (order) => {
   detailForm.issueDescription = order?.summary || ''
   detailForm.internalNote = order?.internalNote || ''
+  confirmForm.engineerId = order?.raw?.targetEngineerId || ''
+  confirmForm.plannedStartAt = toDatetimeLocal(order?.raw?.plannedStartAt || order?.raw?.serviceAt)
+  confirmForm.plannedEndAt = toDatetimeLocal(order?.raw?.plannedEndAt)
 }, { immediate: true })
 
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([load(), loadEngineers()])
+})
 </script>
 
 <template>
@@ -201,6 +248,31 @@ onMounted(load)
           <article><span>服务方式</span><strong>{{ selectedOrder.mode }}</strong></article>
           <article><span>工程师</span><strong>{{ selectedOrder.engineerText }}</strong></article>
         </div>
+        <section v-if="selectedOrder.raw.pendingConfirmation && canEdit" class="drawer-section confirm-panel">
+          <h3>巡检派发确认</h3>
+          <p class="muted">该巡检单由计划自动生成，确认前不会出现在工程师任务列表。</p>
+          <label class="drawer-field">
+            <span>派发工程师</span>
+            <select v-model="confirmForm.engineerId" class="drawer-input">
+              <option value="">请选择工程师</option>
+              <option v-for="engineer in engineerOptions" :key="engineer.id" :value="engineer.id">
+                {{ engineer.realName || engineer.username }}
+              </option>
+            </select>
+          </label>
+          <label class="drawer-field">
+            <span>计划开始</span>
+            <input v-model="confirmForm.plannedStartAt" class="drawer-input" type="datetime-local" />
+          </label>
+          <label class="drawer-field">
+            <span>计划结束</span>
+            <input v-model="confirmForm.plannedEndAt" class="drawer-input" type="datetime-local" />
+          </label>
+          <button class="primary full" type="button" :disabled="saving || !confirmForm.engineerId" @click="confirmSelectedInspectionOrder">
+            {{ saving ? '确认中...' : '确认并派发巡检工单' }}
+          </button>
+          <p class="muted">原计划目标工程师：{{ selectedOrder.targetEngineerText }}</p>
+        </section>
         <section class="drawer-section">
           <h3>详细描述</h3>
           <textarea v-model.trim="detailForm.issueDescription" class="drawer-textarea" rows="4" />
