@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SSH_TARGET="${JTTI_SSH_TARGET:-jtti}"
-REMOTE_ROOT="${JTTI_REMOTE_ROOT:-/root/service-sheet-rc}"
+SSH_TARGET="${DEPLOY_SSH_TARGET:-aliyun}"
+REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-/root/service-sheet-rc}"
 DEPLOY_TARGET="${1:-all}"
 
 build_admin() {

@@ -89,7 +89,7 @@ cd backend && npm test
 
 根目录提供了独立部署脚本：
 
-- [scripts/deploy-jtti.sh](scripts/deploy-jtti.sh)
+- [scripts/deploy.sh](scripts/deploy.sh)
 
 默认远端根目录：
 
@@ -98,14 +98,14 @@ cd backend && npm test
 可通过环境变量覆盖：
 
 ```bash
-export JTTI_SSH_TARGET=root@your-server
-export JTTI_REMOTE_ROOT=/root/service-sheet-rc
+export DEPLOY_SSH_TARGET=root@your-server
+export DEPLOY_REMOTE_ROOT=/root/service-sheet-rc
 ```
 
 示例：
 
 ```bash
-bash scripts/deploy-jtti.sh all
+bash scripts/deploy.sh all
 ```
 
 ## 当前约定
