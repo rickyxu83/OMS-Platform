@@ -72,19 +72,44 @@ CREATE TABLE customer_contact_usage (
   CONSTRAINT fk_customer_contact_usage_engineer_id FOREIGN KEY (engineer_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE maintenance_parties (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  party_type ENUM('original_manufacturer', 'our_maintenance') NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  phone VARCHAR(32) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_maintenance_parties_name_phone_type (name, phone, party_type),
+  KEY idx_maintenance_parties_party_type (party_type),
+  KEY idx_maintenance_parties_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE devices (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   customer_id BIGINT UNSIGNED NOT NULL,
   name VARCHAR(128) NOT NULL,
   model VARCHAR(128) NULL,
+  pn VARCHAR(128) NULL,
   serial_no VARCHAR(128) NULL,
+  remark TEXT NULL,
   location VARCHAR(255) NULL,
   warranty_until DATE NULL,
+  maintenance_type ENUM('none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'none',
+  maintenance_party_id BIGINT UNSIGNED NULL,
+  maintenance_start DATE NULL,
+  maintenance_end DATE NULL,
+  installation_source_service_order_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_devices_serial_no (serial_no),
+  UNIQUE KEY uk_devices_installation_source_service_order_id (installation_source_service_order_id),
   KEY idx_devices_customer_id (customer_id),
+  KEY idx_devices_maintenance_type (maintenance_type),
+  KEY idx_devices_maintenance_party_id (maintenance_party_id),
+  KEY idx_devices_maintenance_end (maintenance_end),
+  CONSTRAINT fk_devices_maintenance_party_id FOREIGN KEY (maintenance_party_id) REFERENCES maintenance_parties (id),
   CONSTRAINT fk_devices_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -98,12 +123,17 @@ CREATE TABLE service_orders (
   timesheet_category VARCHAR(64) NULL,
   timesheet_salesperson VARCHAR(64) NULL,
   priority ENUM('low', 'normal', 'high', 'urgent') NOT NULL DEFAULT 'normal',
-  status ENUM('draft', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled') NOT NULL DEFAULT 'draft',
+  status ENUM('draft', 'pending_confirmation', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled') NOT NULL DEFAULT 'draft',
   issue_description TEXT NOT NULL,
   assigned_engineer_id BIGINT UNSIGNED NULL,
   planned_start_at DATETIME NULL,
   planned_end_at DATETIME NULL,
   internal_note TEXT NULL,
+  inspection_schedule_id BIGINT UNSIGNED NULL,
+  inspection_occurrence_date DATE NULL,
+  target_engineer_id BIGINT UNSIGNED NULL,
+  confirmed_by BIGINT UNSIGNED NULL,
+  confirmed_at DATETIME NULL,
   created_by BIGINT UNSIGNED NOT NULL,
   submitted_at DATETIME NULL,
   reviewed_by BIGINT UNSIGNED NULL,
@@ -121,12 +151,21 @@ CREATE TABLE service_orders (
   KEY idx_service_orders_submitted_at (submitted_at),
   KEY idx_service_orders_created_at (created_at),
   KEY idx_service_orders_status_created (status, created_at),
+  KEY idx_service_orders_target_engineer (target_engineer_id),
+  KEY idx_service_orders_inspection_schedule (inspection_schedule_id),
+  UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date),
   CONSTRAINT fk_service_orders_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id),
   CONSTRAINT fk_service_orders_device_id FOREIGN KEY (device_id) REFERENCES devices (id),
   CONSTRAINT fk_service_orders_engineer_id FOREIGN KEY (assigned_engineer_id) REFERENCES users (id),
+  CONSTRAINT fk_service_orders_target_engineer_id FOREIGN KEY (target_engineer_id) REFERENCES users (id),
+  CONSTRAINT fk_service_orders_confirmed_by FOREIGN KEY (confirmed_by) REFERENCES users (id),
   CONSTRAINT fk_service_orders_created_by FOREIGN KEY (created_by) REFERENCES users (id),
   CONSTRAINT fk_service_orders_reviewed_by FOREIGN KEY (reviewed_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE devices
+  ADD CONSTRAINT fk_devices_installation_source_service_order_id
+  FOREIGN KEY (installation_source_service_order_id) REFERENCES service_orders (id);
 
 CREATE TABLE service_order_engineers (
   service_order_id BIGINT UNSIGNED NOT NULL,
@@ -138,6 +177,33 @@ CREATE TABLE service_order_engineers (
   CONSTRAINT fk_service_order_engineers_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
   CONSTRAINT fk_service_order_engineers_engineer_id FOREIGN KEY (engineer_id) REFERENCES users (id),
   CONSTRAINT fk_service_order_engineers_joined_by FOREIGN KEY (joined_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspection_schedules (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  customer_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NOT NULL,
+  target_engineer_id BIGINT UNSIGNED NOT NULL,
+  cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,
+  next_run_anchor DATE NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  active_slot TINYINT GENERATED ALWAYS AS (CASE WHEN active = 1 THEN 1 ELSE NULL END) STORED,
+  end_date DATE NULL,
+  next_order_status ENUM('pending_confirmation') NOT NULL DEFAULT 'pending_confirmation',
+  created_by BIGINT UNSIGNED NOT NULL,
+  updated_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inspection_schedules_active_combo (device_id, target_engineer_id, cadence, active_slot),
+  KEY idx_inspection_schedules_customer_id (customer_id),
+  KEY idx_inspection_schedules_engineer_active (target_engineer_id, active),
+  KEY idx_inspection_schedules_next_run (active, next_run_anchor),
+  CONSTRAINT fk_inspection_schedules_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id),
+  CONSTRAINT fk_inspection_schedules_device_id FOREIGN KEY (device_id) REFERENCES devices (id),
+  CONSTRAINT fk_inspection_schedules_target_engineer_id FOREIGN KEY (target_engineer_id) REFERENCES users (id),
+  CONSTRAINT fk_inspection_schedules_created_by FOREIGN KEY (created_by) REFERENCES users (id),
+  CONSTRAINT fk_inspection_schedules_updated_by FOREIGN KEY (updated_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE service_reports (

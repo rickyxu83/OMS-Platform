@@ -17,6 +17,7 @@ router.delete('/draft/self-report', requireRoles('engineer'), controller.deleteS
 router.post('/bulk-delete', requireRoles('admin'), controller.bulkDelete)
 router.get('/', requireRoles('engineer', ...viewRoles), controller.list)
 router.post('/', requireRoles(...opsRoles), controller.create)
+router.post('/:id/confirm-inspection', requireRoles(...opsRoles), controller.confirmInspectionOrder)
 router.post('/self-report', requireRoles('engineer'), controller.createSelfReport)
 router.get('/:id', controller.detail)
 router.post('/:id/cancel', requireRoles('engineer'), controller.cancelByEngineer)

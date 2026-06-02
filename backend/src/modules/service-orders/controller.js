@@ -12,13 +12,17 @@ fs.mkdirSync(signatureRoot, { recursive: true })
 
 let serviceReportTravelColumnsReady = false
 let selfReportDraftsTableReady = false
+let serviceOrderInspectionColumnsReady = false
 
 const orderColumns = `
   so.id, so.order_no, so.customer_id, c.name AS customer_name, c.address AS customer_address,
   c.contact_name, c.contact_phone, so.device_id, d.name AS device_name,
   so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
-  u.real_name AS engineer_name, so.planned_start_at, so.planned_end_at, so.internal_note,
+  u.real_name AS engineer_name, so.inspection_schedule_id, so.inspection_occurrence_date,
+  so.target_engineer_id, target_u.real_name AS target_engineer_name, target_u.username AS target_engineer_username,
+  so.confirmed_by, confirmer.real_name AS confirmed_by_name, so.confirmed_at,
+  so.planned_start_at, so.planned_end_at, so.internal_note,
   so.created_by, so.submitted_at, so.reviewed_by, so.reviewed_at, so.review_comment,
   so.archived_at, so.created_at, so.updated_at
 `
@@ -44,6 +48,14 @@ function orderPayload(row) {
     status: publicStatus(row.status),
     issueDescription: row.issue_description,
     engineerName: row.engineer_name,
+    inspectionScheduleId: row.inspection_schedule_id,
+    inspectionOccurrenceDate: row.inspection_occurrence_date,
+    targetEngineerId: row.target_engineer_id,
+    targetEngineerName: row.target_engineer_name || row.target_engineer_username,
+    pendingConfirmation: row.status === 'pending_confirmation',
+    confirmedBy: row.confirmed_by,
+    confirmedByName: row.confirmed_by_name,
+    confirmedAt: row.confirmed_at,
     serviceAt: row.planned_start_at || row.submitted_at || row.created_at,
     engineers: row.engineers || [],
     plannedStartAt: row.planned_start_at,
@@ -62,9 +74,81 @@ function orderPayload(row) {
 }
 
 function publicStatus(status) {
+  if (status === 'pending_confirmation') return 'pending_confirmation'
   if (status === 'assigned' || status === 'rejected') return 'draft'
   if (status === 'approved' || status === 'archived') return 'submitted'
   return status
+}
+
+async function ensureServiceOrderInspectionColumns(connection = null) {
+  if (!connection && serviceOrderInspectionColumnsReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  const [rows] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_orders'
+       AND column_name IN (
+         'inspection_schedule_id', 'inspection_occurrence_date', 'target_engineer_id', 'confirmed_by', 'confirmed_at'
+       )`,
+  )
+  const existing = new Set(rows.map((row) => row.columnName || row.column_name))
+  if (!existing.has('inspection_schedule_id')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN inspection_schedule_id BIGINT UNSIGNED NULL AFTER internal_note')
+  }
+  if (!existing.has('inspection_occurrence_date')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN inspection_occurrence_date DATE NULL AFTER inspection_schedule_id')
+  }
+  if (!existing.has('target_engineer_id')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN target_engineer_id BIGINT UNSIGNED NULL AFTER inspection_occurrence_date')
+  }
+  if (!existing.has('confirmed_by')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN confirmed_by BIGINT UNSIGNED NULL AFTER target_engineer_id')
+  }
+  if (!existing.has('confirmed_at')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN confirmed_at DATETIME NULL AFTER confirmed_by')
+  }
+
+  const [statusRows] = await execute(
+    `SELECT column_type AS columnType
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_orders'
+       AND column_name = 'status'
+     LIMIT 1`,
+  )
+  const statusType = statusRows[0]?.columnType || statusRows[0]?.column_type || ''
+  if (!String(statusType).includes("'pending_confirmation'")) {
+    await execute(
+      `ALTER TABLE service_orders MODIFY COLUMN status ENUM(
+        'draft', 'pending_confirmation', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
+      ) NOT NULL DEFAULT 'draft'`,
+    )
+  }
+
+  const [indexRows] = await execute(
+    `SELECT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_orders'
+       AND index_name IN (
+         'uk_service_orders_inspection_occurrence', 'idx_service_orders_target_engineer', 'idx_service_orders_inspection_schedule'
+       )`,
+  )
+  const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (!indexes.has('uk_service_orders_inspection_occurrence')) {
+    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date)')
+  }
+  if (!indexes.has('idx_service_orders_target_engineer')) {
+    await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_target_engineer (target_engineer_id)')
+  }
+  if (!indexes.has('idx_service_orders_inspection_schedule')) {
+    await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_inspection_schedule (inspection_schedule_id)')
+  }
+
+  if (!connection) {
+    serviceOrderInspectionColumnsReady = true
+  }
 }
 
 function shanghaiDateKey(offsetDays = 0) {
@@ -487,12 +571,15 @@ async function hydrateReportSignature(report) {
 }
 
 async function getOrder(id) {
+  await ensureServiceOrderInspectionColumns()
   const rows = await query(
     `SELECT ${orderColumns}
      FROM service_orders so
      JOIN customers c ON c.id = so.customer_id
      LEFT JOIN devices d ON d.id = so.device_id
      LEFT JOIN users u ON u.id = so.assigned_engineer_id
+     LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
+     LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
      WHERE so.id = :id
      LIMIT 1`,
     { id },
@@ -728,6 +815,7 @@ async function assertEngineerOwns(order, user) {
 }
 
 async function list(req, res) {
+  await ensureServiceOrderInspectionColumns()
   const {
     status = null,
     customerId = null,
@@ -777,6 +865,8 @@ async function list(req, res) {
      JOIN customers c ON c.id = so.customer_id
      LEFT JOIN devices d ON d.id = so.device_id
      LEFT JOIN users u ON u.id = so.assigned_engineer_id
+      LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
+      LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
      WHERE ${statusWhereSql}
        AND (:customerId IS NULL OR so.customer_id = :customerId)
        AND (:customer = '' OR c.name LIKE :likeCustomer)
@@ -857,6 +947,8 @@ async function statsOverview(req, res) {
        JOIN customers c ON c.id = so.customer_id
        LEFT JOIN devices d ON d.id = so.device_id
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
+       LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
        ORDER BY so.id DESC
        LIMIT 8`,
     ),
@@ -893,6 +985,7 @@ async function statsOverview(req, res) {
 }
 
 async function timesheetMonthly(req, res) {
+  await ensureServiceOrderInspectionColumns()
   await ensureTimesheetManualEntriesTable()
   const { month, startDate, endDate, label } = timesheetDateRange(req.query)
   const requestedEngineerId = req.user.role === 'engineer' ? req.user.id : req.query.engineerId || ''
@@ -1076,7 +1169,19 @@ async function customerSalesperson(connection, customerId) {
   return rows[0]?.salesperson || null
 }
 
+async function assertDeviceBelongsToCustomer(connection, deviceId, customerId) {
+  if (!deviceId) return
+  const [rows] = await connection.execute('SELECT id FROM devices WHERE id = :deviceId AND customer_id = :customerId LIMIT 1', {
+    deviceId,
+    customerId,
+  })
+  if (!rows[0]) {
+    throw badRequest('设备不属于所选客户')
+  }
+}
+
 async function create(req, res) {
+  await ensureServiceOrderInspectionColumns()
   const {
     customerId,
     deviceId,
@@ -1160,7 +1265,9 @@ async function createSelfReport(req, res) {
     deviceId,
     deviceName,
     deviceModel,
+    devicePn,
     deviceSerialNo,
+    deviceRemark,
     serviceMode = 'onsite',
     serviceType = 'repair',
     timesheetCategory,
@@ -1189,7 +1296,9 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
   if (!contactName) missing.push('客户联系人')
   if (!contactPhone) missing.push('联系人电话')
-  if (!deviceName && !deviceId) missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
+  if (effectiveServiceMode === 'onsite' && serviceType !== 'install' && !deviceName && !deviceId) {
+    missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
+  }
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
@@ -1303,15 +1412,24 @@ async function createSelfReport(req, res) {
     await recordCustomerContact(connection, effectiveCustomerId, contactName || customerConfirmName, contactPhone, req.user.id)
 
     let effectiveDeviceId = deviceId || null
-    if (!effectiveDeviceId && deviceName) {
+    if (effectiveDeviceId) {
+      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
+    }
+    const hasInstallDeviceFields = effectiveServiceMode === 'onsite'
+      && serviceType === 'install'
+      && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
+    const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
+    if (!effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
       const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (customer_id, name, model, serial_no)
-         VALUES (:customerId, :deviceName, :deviceModel, :deviceSerialNo)`,
+        `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark)
+         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark)`,
         {
           customerId: effectiveCustomerId,
-          deviceName,
+          deviceName: effectiveDeviceName,
           deviceModel: deviceModel || null,
+          devicePn: devicePn || null,
           deviceSerialNo: deviceSerialNo || null,
+          deviceRemark: deviceRemark || null,
         },
       )
       effectiveDeviceId = deviceResult.insertId
@@ -1355,6 +1473,18 @@ async function createSelfReport(req, res) {
         createdBy: req.user.id,
       },
     )
+
+    if (!deviceId && effectiveDeviceId) {
+      await connection.execute(
+        `UPDATE devices
+         SET installation_source_service_order_id = COALESCE(installation_source_service_order_id, :serviceOrderId)
+         WHERE id = :deviceId`,
+        {
+          deviceId: effectiveDeviceId,
+          serviceOrderId: orderResult.insertId,
+        },
+      )
+    }
 
     await replaceOrderEngineers(connection, orderResult.insertId, normalizeEngineerIds(engineerIds, req.user.id), req.user.id)
     const savedWorkEntries =
@@ -1424,6 +1554,7 @@ async function createSelfReport(req, res) {
 }
 
 async function detail(req, res) {
+  await ensureServiceOrderInspectionColumns()
   let order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
@@ -1652,9 +1783,12 @@ async function updateSelfReport(req, res) {
     customerMapAddress,
     contactName,
     contactPhone,
+    deviceId,
     deviceName,
     deviceModel,
+    devicePn,
     deviceSerialNo,
+    deviceRemark,
     serviceMode = order.service_mode || 'onsite',
     serviceType = order.service_type,
     timesheetCategory,
@@ -1678,6 +1812,7 @@ async function updateSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
   const existingSignature = await query(
     `SELECT customer_signature_file_id, customer_signature
      FROM service_reports
@@ -1692,7 +1827,9 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
   if (!contactName && !customerConfirmName) missing.push('客户联系人')
   if (!contactPhone) missing.push('联系人电话')
-  if (!deviceName && !order.device_id) missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
+  if (effectiveServiceMode === 'onsite' && serviceType !== 'install' && !deviceName && !order.device_id) {
+    missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
+  }
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
@@ -1744,33 +1881,49 @@ async function updateSelfReport(req, res) {
       },
     )
 
-    let effectiveDeviceId = order.device_id || null
-    if (effectiveDeviceId && deviceName) {
+    let effectiveDeviceId = hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null
+    if (effectiveDeviceId) {
+      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, order.customer_id)
+    }
+    const hasInstallDeviceFields = effectiveServiceMode === 'onsite'
+      && serviceType === 'install'
+      && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
+    const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
+    if (effectiveServiceMode === 'onsite' && serviceType === 'install' && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+      const [deviceResult] = await connection.execute(
+        `INSERT INTO devices (
+           customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
+         )
+         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none', :serviceOrderId)`,
+        {
+          customerId: order.customer_id,
+          deviceName: effectiveDeviceName,
+          deviceModel: deviceModel || null,
+          devicePn: devicePn || null,
+          deviceSerialNo: deviceSerialNo || null,
+          deviceRemark: deviceRemark || null,
+          serviceOrderId: req.params.id,
+        },
+      )
+      effectiveDeviceId = deviceResult.insertId
+    } else if (effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
       await connection.execute(
         `UPDATE devices
          SET name = :deviceName,
              model = :deviceModel,
-             serial_no = :deviceSerialNo
+             pn = :devicePn,
+             serial_no = :deviceSerialNo,
+             remark = :deviceRemark
          WHERE id = :deviceId`,
         {
           deviceId: effectiveDeviceId,
-          deviceName,
+          deviceName: effectiveDeviceName,
           deviceModel: deviceModel || null,
+          devicePn: devicePn || null,
           deviceSerialNo: deviceSerialNo || null,
+          deviceRemark: deviceRemark || null,
         },
       )
-    } else if (!effectiveDeviceId && deviceName) {
-      const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (customer_id, name, model, serial_no)
-         VALUES (:customerId, :deviceName, :deviceModel, :deviceSerialNo)`,
-        {
-          customerId: order.customer_id,
-          deviceName,
-          deviceModel: deviceModel || null,
-          deviceSerialNo: deviceSerialNo || null,
-        },
-      )
-      effectiveDeviceId = deviceResult.insertId
     }
 
     await connection.execute(
@@ -1885,6 +2038,7 @@ async function updateSelfReport(req, res) {
 }
 
 async function update(req, res) {
+  await ensureServiceOrderInspectionColumns()
   const order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
@@ -1923,6 +2077,72 @@ async function update(req, res) {
   )
 
   res.status(204).end()
+}
+
+async function confirmInspectionOrder(req, res) {
+  await ensureServiceOrderInspectionColumns()
+  const order = await getOrder(req.params.id)
+  if (!order) {
+    throw notFound('服务单不存在')
+  }
+  if (order.status !== 'pending_confirmation') {
+    throw badRequest('仅待确认巡检工单可以确认派发')
+  }
+  if (!order.inspection_schedule_id || order.service_type !== 'inspect') {
+    throw badRequest('仅巡检计划生成的工单可以走确认派发')
+  }
+
+  const engineerId = Number(req.body?.engineerId || order.target_engineer_id || 0)
+  if (!engineerId) {
+    throw badRequest('请选择派发工程师')
+  }
+  const plannedStartAt = String(req.body?.plannedStartAt || order.planned_start_at || `${order.inspection_occurrence_date} 09:00:00`).trim()
+  const plannedEndAt = String(req.body?.plannedEndAt || order.planned_end_at || '').trim() || null
+
+  await transaction(async (connection) => {
+    await ensureServiceOrderInspectionColumns(connection)
+    const [engineerRows] = await connection.execute(
+      `SELECT id
+       FROM users
+       WHERE id = :engineerId AND role = 'engineer' AND status = 'active'
+       LIMIT 1`,
+      { engineerId },
+    )
+    if (!engineerRows[0]) {
+      throw badRequest('派发工程师不存在或未启用')
+    }
+    const [updateResult] = await connection.execute(
+      `UPDATE service_orders
+       SET status = 'assigned',
+           assigned_engineer_id = :engineerId,
+           target_engineer_id = :engineerId,
+           planned_start_at = :plannedStartAt,
+           planned_end_at = :plannedEndAt,
+           confirmed_by = :confirmedBy,
+           confirmed_at = CURRENT_TIMESTAMP
+       WHERE id = :id
+         AND status = 'pending_confirmation'`,
+      {
+        id: req.params.id,
+        engineerId,
+        plannedStartAt,
+        plannedEndAt,
+        confirmedBy: req.user.id,
+      },
+    )
+    if (!updateResult.affectedRows) {
+      throw badRequest('当前服务单状态已变化，请刷新后重试')
+    }
+    await replaceOrderEngineers(connection, req.params.id, [engineerId], req.user.id)
+    await writeAudit(connection, req.user.id, req.params.id, 'inspection_order_confirm', {
+      inspectionScheduleId: order.inspection_schedule_id,
+      inspectionOccurrenceDate: order.inspection_occurrence_date,
+      engineerId,
+      plannedStartAt,
+    })
+  })
+
+  res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
 }
 
 async function cancelByEngineer(req, res) {
@@ -2008,6 +2228,7 @@ module.exports = {
   saveSelfReportDraft,
   deleteSelfReportDraft,
   cancelByEngineer,
+  confirmInspectionOrder,
   update,
   bulkDelete,
 }
