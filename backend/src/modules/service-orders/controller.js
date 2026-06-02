@@ -1303,13 +1303,20 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
-  if (!result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  // [debug] office mode: log actual values
+  console.log('[office-debug]', JSON.stringify({ serviceMode, effectiveServiceMode, result, missing }))
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature) missing.push('客户手写签名')
 
   if (missing.length) {
-    throw badRequest(`请先补充必填项：${missing.join('、')}`)
+    // Final safety filter: remove '处理进度' / '服务结果' for office mode
+    const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
+    console.log('[office-debug] filtered missing:', JSON.stringify(filtered))
+    if (filtered.length) {
+      throw badRequest(`请先补充必填项：${filtered.join('、')}`)
+    }
   }
 
   if (effectiveServiceMode === 'onsite') {
@@ -1834,13 +1841,19 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
-  if (!result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  // [debug-update] office mode: log actual values
+  console.log('[office-debug-update]', JSON.stringify({ serviceMode, effectiveServiceMode, result, missing }))
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature && !hasExistingSignature) missing.push('客户手写签名')
 
   if (missing.length) {
-    throw badRequest(`请先补充必填项：${missing.join('、')}`)
+    const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
+    console.log('[office-debug-update] filtered missing:', JSON.stringify(filtered))
+    if (filtered.length) {
+      throw badRequest(`请先补充必填项：${filtered.join('、')}`)
+    }
   }
 
   if (effectiveServiceMode === 'onsite') {

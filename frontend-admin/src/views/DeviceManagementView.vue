@@ -231,6 +231,10 @@ function closeDeviceForm() {
   editingDeviceId.value = ''
 }
 
+function toggleSelectedDevice(deviceId) {
+  selectedDeviceId.value = selectedDeviceId.value === deviceId ? '' : deviceId
+}
+
 function nullableText(value) {
   const text = String(value || '').trim()
   return text || null
@@ -295,7 +299,14 @@ const filteredDevices = computed(() => devices.value.filter((device) => {
   return matchesExpiry(device)
 }))
 const selectedDevice = computed(() => filteredDevices.value.find((device) => device.id === selectedDeviceId.value) || filteredDevices.value[0] || null)
-const customerOptions = computed(() => {
+const filterCustomerOptions = computed(() => {
+  const map = new Map()
+  devices.value.forEach((device) => {
+    if (device.customerId) map.set(String(device.customerId), device.customerName)
+  })
+  return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+})
+const formCustomerOptions = computed(() => {
   const map = new Map()
   customerDirectory.value.forEach((customer) => {
     if (customer.id) map.set(String(customer.id), customer.name)
@@ -367,7 +378,7 @@ onMounted(() => {
     </header>
 
     <section class="device-filter-grid">
-      <label class="field"><span>客户</span><select v-model="filters.customerId" @change="load"><option value="">全部客户</option><option v-for="customer in customerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></label>
+      <label class="field"><span>客户</span><select v-model="filters.customerId" @change="load"><option value="">全部客户</option><option v-for="customer in filterCustomerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></label>
       <label class="field"><span>型号</span><input v-model.trim="filters.model" placeholder="输入设备型号" @keyup.enter="load" /></label>
       <label class="field"><span>序列号</span><input v-model.trim="filters.serialNo" placeholder="输入序列号" @keyup.enter="load" /></label>
       <label class="field"><span>维护类型</span><select v-model="filters.maintenanceType"><option v-for="[value, label] in maintenanceTypeOptions" :key="value" :value="value">{{ label }}</option></select></label>
@@ -387,140 +398,142 @@ onMounted(() => {
     <section class="detail-layout">
       <div class="glass-panel table-card device-table">
         <div class="table-head">
-          <span>设备</span>
+          <span>设备型号 / Model</span>
           <span>客户</span>
           <span>PN / 序列号</span>
           <span>维护类型</span>
           <span>维护方</span>
           <span>维护截止</span>
         </div>
-        <button
-          v-for="device in filteredDevices"
-          :key="device.id"
-          class="table-row"
-          :class="{ selected: selectedDevice?.id === device.id }"
-          type="button"
-          @click="selectedDeviceId = device.id"
-        >
-          <span><strong>{{ device.model }}</strong><small>{{ device.name }} / {{ device.location }}</small></span>
-          <span>{{ device.customerName }}</span>
-          <span><strong>{{ device.pn }}</strong><small class="mono muted-text">{{ device.serialNo }}</small></span>
-          <span><em class="status maintenance-status" :class="device.maintenanceClass">{{ device.maintenanceTypeText }}</em></span>
-          <span>{{ device.maintenancePartyName }}</span>
-          <span class="muted-text">{{ device.maintenanceEnd }}</span>
-        </button>
+        <template v-for="device in filteredDevices" :key="device.id">
+          <button
+            class="table-row"
+            :class="{ selected: selectedDevice?.id === device.id }"
+            type="button"
+            @click="toggleSelectedDevice(device.id)"
+          >
+            <span><strong>{{ device.model }}</strong><small>位置：{{ device.location }}</small></span>
+            <span>{{ device.customerName }}</span>
+            <span><strong>{{ device.pn }}</strong><small class="mono muted-text">{{ device.serialNo }}</small></span>
+            <span><em class="status maintenance-status" :class="device.maintenanceClass">{{ device.maintenanceTypeText }}</em></span>
+            <span>{{ device.maintenancePartyName }}</span>
+            <span class="muted-text">{{ device.maintenanceEnd }}</span>
+          </button>
+          <div v-if="selectedDevice?.id === device.id && !formMode" class="drawer-section">
+            <div class="drawer-head">
+              <div>
+                <p>设备详情</p>
+                <h2>{{ device.model || device.name }}</h2>
+              </div>
+              <div class="page-actions">
+                <button class="ghost-button" type="button" @click="openEditForm">编辑设备</button>
+              </div>
+            </div>
+            <div class="drawer-stats">
+              <article><span>客户</span><strong>{{ device.customerName }}</strong></article>
+              <article><span>维护归属</span><strong>{{ device.maintenanceTone }}</strong></article>
+            </div>
+            <section class="drawer-section">
+              <h3>设备标识</h3>
+              <p>名称：{{ device.name }}</p>
+              <p>型号：{{ device.model }}</p>
+              <p>部件号：{{ device.pn }}</p>
+              <p>序列号：{{ device.serialNo }}</p>
+              <p>位置：{{ device.location }}</p>
+            </section>
+            <section class="drawer-section">
+              <h3>维护信息</h3>
+              <p>维护方：{{ device.maintenancePartyName }}<template v-if="device.maintenancePartyPhone"> / {{ device.maintenancePartyPhone }}</template></p>
+              <p>维护周期：{{ device.maintenanceStart }} 至 {{ device.maintenanceEnd }}</p>
+              <p>质保截止：{{ device.warrantyUntil }}</p>
+            </section>
+            <section class="drawer-section">
+              <h3>来源 / 历史上下文</h3>
+              <p v-if="device.installationSourceServiceOrderId">安装来源工单：#{{ device.installationSourceServiceOrderId }}</p>
+              <p v-else>暂无安装来源工单记录</p>
+              <p>最近更新：{{ device.updatedAt }}</p>
+              <p>备注：{{ device.remark || '未填写' }}</p>
+            </section>
+          </div>
+        </template>
         <p v-if="!filteredDevices.length && !loading" class="empty-state">暂无匹配设备</p>
       </div>
 
-      <aside class="glass-panel drawer">
+      <aside v-if="formMode" class="glass-panel drawer">
         <div class="drawer-head">
           <div>
-            <p>{{ formMode ? '设备编辑' : '设备详情' }}</p>
-            <h2>{{ formMode ? formTitle : selectedDevice?.model || '请选择设备' }}</h2>
+            <p>设备编辑</p>
+            <h2>{{ formTitle }}</h2>
           </div>
           <div class="page-actions">
-            <button v-if="formMode" class="ghost-button" type="button" @click="closeDeviceForm">取消</button>
-            <button v-else-if="selectedDevice" class="ghost-button" type="button" @click="openEditForm">编辑设备</button>
+            <button class="ghost-button" type="button" @click="closeDeviceForm">取消</button>
           </div>
         </div>
 
         <p v-if="message" class="form-success">{{ message }}</p>
-
-        <template v-if="formMode">
-          <form class="drawer-form" @submit.prevent="saveDevice">
-            <label class="field wide">
-              <span>客户</span>
-              <select v-model="deviceForm.customerId">
-                <option value="">请选择客户</option>
-                <option v-for="customer in customerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option>
-              </select>
-            </label>
-            <label class="field wide">
-              <span>设备名称</span>
-              <input v-model.trim="deviceForm.name" placeholder="输入设备名称" />
-            </label>
-            <label class="field">
-              <span>型号</span>
-              <input v-model.trim="deviceForm.model" placeholder="输入设备型号" />
-            </label>
-            <label class="field">
-              <span>部件号 / PN</span>
-              <input v-model.trim="deviceForm.pn" placeholder="输入部件号" />
-            </label>
-            <label class="field">
-              <span>序列号</span>
-              <input v-model.trim="deviceForm.serialNo" placeholder="输入序列号" />
-            </label>
-            <label class="field">
-              <span>维护类型</span>
-              <select v-model="deviceForm.maintenanceType">
-                <option v-for="[value, label] in maintenanceTypeOptions.slice(1)" :key="value" :value="value">{{ label }}</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>维护方</span>
-              <select v-model="deviceForm.maintenancePartyId" :disabled="deviceForm.maintenanceType === 'none'">
-                <option value="">{{ deviceForm.maintenanceType === 'none' ? '无维护不需要维护方' : '请选择维护方' }}</option>
-                <option v-for="party in maintenancePartyOptions" :key="party.id" :value="party.id">{{ party.name }}</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>维护开始</span>
-              <input v-model="deviceForm.maintenanceStart" type="date" />
-            </label>
-            <label class="field">
-              <span>维护截止</span>
-              <input v-model="deviceForm.maintenanceEnd" type="date" />
-            </label>
-            <label class="field">
-              <span>位置</span>
-              <input v-model.trim="deviceForm.location" placeholder="输入安装位置" />
-            </label>
-            <label class="field">
-              <span>质保截止</span>
-              <input v-model="deviceForm.warrantyUntil" type="date" />
-            </label>
-            <label class="field wide">
-              <span>备注</span>
-              <textarea v-model.trim="deviceForm.remark" class="drawer-textarea" rows="4" placeholder="补充设备备注"></textarea>
-            </label>
-            <p v-if="error" class="form-error">{{ error }}</p>
-            <div class="page-actions">
-              <button class="ghost-button" type="button" :disabled="saving" @click="closeDeviceForm">取消</button>
-              <button class="primary" type="submit" :disabled="saving">{{ saving ? '保存中...' : '保存设备' }}</button>
-            </div>
-          </form>
-        </template>
-
-        <template v-else-if="selectedDevice">
-          <div class="drawer-stats">
-            <article><span>客户</span><strong>{{ selectedDevice.customerName }}</strong></article>
-            <article><span>维护归属</span><strong>{{ selectedDevice.maintenanceTone }}</strong></article>
+        <form class="drawer-form" @submit.prevent="saveDevice">
+          <label class="field wide">
+            <span>客户</span>
+            <select v-model="deviceForm.customerId">
+              <option value="">请选择客户</option>
+              <option v-for="customer in formCustomerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option>
+            </select>
+          </label>
+          <label class="field wide">
+            <span>设备名称</span>
+            <input v-model.trim="deviceForm.name" placeholder="输入设备名称" />
+          </label>
+          <label class="field">
+            <span>型号</span>
+            <input v-model.trim="deviceForm.model" placeholder="输入设备型号" />
+          </label>
+          <label class="field">
+            <span>部件号 / PN</span>
+            <input v-model.trim="deviceForm.pn" placeholder="输入部件号" />
+          </label>
+          <label class="field">
+            <span>序列号</span>
+            <input v-model.trim="deviceForm.serialNo" placeholder="输入序列号" />
+          </label>
+          <label class="field">
+            <span>维护类型</span>
+            <select v-model="deviceForm.maintenanceType">
+              <option v-for="[value, label] in maintenanceTypeOptions.slice(1)" :key="value" :value="value">{{ label }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>维护方</span>
+            <select v-model="deviceForm.maintenancePartyId" :disabled="deviceForm.maintenanceType === 'none'">
+              <option value="">{{ deviceForm.maintenanceType === 'none' ? '无维护不需要维护方' : '请选择维护方' }}</option>
+              <option v-for="party in maintenancePartyOptions" :key="party.id" :value="party.id">{{ party.name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>维护开始</span>
+            <input v-model="deviceForm.maintenanceStart" type="date" />
+          </label>
+          <label class="field">
+            <span>维护截止</span>
+            <input v-model="deviceForm.maintenanceEnd" type="date" />
+          </label>
+          <label class="field">
+            <span>位置</span>
+            <input v-model.trim="deviceForm.location" placeholder="输入安装位置" />
+          </label>
+          <label class="field">
+            <span>质保截止</span>
+            <input v-model="deviceForm.warrantyUntil" type="date" />
+          </label>
+          <label class="field wide">
+            <span>备注</span>
+            <textarea v-model.trim="deviceForm.remark" class="drawer-textarea" rows="4" placeholder="补充设备备注"></textarea>
+          </label>
+          <p v-if="error" class="form-error">{{ error }}</p>
+          <div class="page-actions">
+            <button class="ghost-button" type="button" :disabled="saving" @click="closeDeviceForm">取消</button>
+            <button class="primary" type="submit" :disabled="saving">{{ saving ? '保存中...' : '保存设备' }}</button>
           </div>
-          <section class="drawer-section">
-            <h3>设备标识</h3>
-            <p>名称：{{ selectedDevice.name }}</p>
-            <p>型号：{{ selectedDevice.model }}</p>
-            <p>部件号：{{ selectedDevice.pn }}</p>
-            <p>序列号：{{ selectedDevice.serialNo }}</p>
-            <p>位置：{{ selectedDevice.location }}</p>
-          </section>
-          <section class="drawer-section">
-            <h3>维护信息</h3>
-            <p>维护方：{{ selectedDevice.maintenancePartyName }}<template v-if="selectedDevice.maintenancePartyPhone"> / {{ selectedDevice.maintenancePartyPhone }}</template></p>
-            <p>维护周期：{{ selectedDevice.maintenanceStart }} 至 {{ selectedDevice.maintenanceEnd }}</p>
-            <p>质保截止：{{ selectedDevice.warrantyUntil }}</p>
-          </section>
-          <section class="drawer-section">
-            <h3>来源 / 历史上下文</h3>
-            <p v-if="selectedDevice.installationSourceServiceOrderId">安装来源工单：#{{ selectedDevice.installationSourceServiceOrderId }}</p>
-            <p v-else>暂无安装来源工单记录</p>
-            <p>最近更新：{{ selectedDevice.updatedAt }}</p>
-            <p>备注：{{ selectedDevice.remark || '未填写' }}</p>
-          </section>
-        </template>
-
-        <p v-else class="empty-state">请选择一台设备查看详情，或点击“新增设备”创建记录。</p>
+        </form>
       </aside>
     </section>
   </section>

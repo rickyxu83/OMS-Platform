@@ -50,9 +50,11 @@ const editingTask = ref(null)
 const selectedHistoryId = ref('')
 const selectedCustomer = ref(null)
 const installDeviceDraft = ref(createInstallDeviceDraft())
+const deviceModelSuggestions = ref([])
 const selectedCoEngineerIds = ref([])
 const showCoEngineerOptions = ref(false)
 const showContactOptions = ref(false)
+const showDeviceModelSuggestions = ref(false)
 const locating = ref(false)
 const locationHint = ref('')
 const nearbyCompanies = ref([])
@@ -88,6 +90,7 @@ const statusNowMs = ref(Date.now())
 const cancelFabPosition = ref({ x: null, y: null })
 const cancelFabDragging = ref(false)
 let customerSearchTimer = null
+let deviceModelSearchTimer = null
 let draftTimer = null
 let draftSyncTimer = null
 let draftCountdownTimer = null
@@ -950,6 +953,7 @@ function onServiceModeChange() {
     signatureDrawn.value = false
     signaturePanelOpen.value = false
   }
+  clearInactiveFieldErrors()
 }
 
 function resetInstallDeviceSelection() {
@@ -1523,6 +1527,42 @@ function clearFieldError(field) {
   }
 }
 
+function activeRequiredTimeFieldKeys() {
+  return [...travelTimeFields.value, ...closeoutTimeFields.value]
+    .filter((field) => field[2])
+    .map((field) => timeFieldKey(field[0]))
+    .filter(Boolean)
+}
+
+function activeFieldErrorKeys() {
+  const keys = ['workContent', 'actualStartAt', 'actualEndAt']
+  if (!isOfficeMode.value) {
+    keys.push('name', 'contactName', 'contactPhone', 'issueDescription', 'result')
+  }
+  if (!isRemoteLikeMode.value) {
+    keys.push('address', 'customerSignature')
+  }
+  if (showDeviceField.value) {
+    keys.push('deviceName')
+  }
+  for (const key of activeRequiredTimeFieldKeys()) {
+    if (!keys.includes(key)) keys.push(key)
+  }
+  return keys
+}
+
+function clearInactiveFieldErrors() {
+  const activeKeys = new Set(activeFieldErrorKeys())
+  const nextErrors = {}
+  for (const [key, value] of Object.entries(fieldErrors.value || {})) {
+    if (activeKeys.has(key)) nextErrors[key] = value
+  }
+  fieldErrors.value = nextErrors
+  if (error.value && !Object.values(nextErrors).includes(error.value)) {
+    error.value = ''
+  }
+}
+
 function updateCustomerField(field, value) {
   const current = normalizeCustomer(activeCustomer.value)
   selectedHistoryId.value = ''
@@ -1681,6 +1721,38 @@ function scheduleCustomerLookup(value) {
       locationHint.value = err.message || '客户搜索失败'
     }
   }, 300)
+}
+
+function onDeviceModelInput() {
+  const q = String(installDeviceDraft.value.model || '').trim()
+  window.clearTimeout(deviceModelSearchTimer)
+  if (q.length < 2) {
+    deviceModelSuggestions.value = []
+    showDeviceModelSuggestions.value = false
+    return
+  }
+  deviceModelSearchTimer = window.setTimeout(async () => {
+    try {
+      const data = await api.get(`/device-models/suggest?q=${encodeURIComponent(q)}`)
+      deviceModelSuggestions.value = data?.items || []
+      showDeviceModelSuggestions.value = deviceModelSuggestions.value.length > 0
+    } catch {
+      deviceModelSuggestions.value = []
+      showDeviceModelSuggestions.value = false
+    }
+  }, 300)
+}
+
+function selectDeviceModel(item) {
+  installDeviceDraft.value.model = item?.officialName || ''
+  showDeviceModelSuggestions.value = false
+  deviceModelSuggestions.value = []
+}
+
+function hideDeviceModelSuggestions() {
+  window.setTimeout(() => {
+    showDeviceModelSuggestions.value = false
+  }, 200)
 }
 
 async function locateNearbyCompanies() {
@@ -2028,8 +2100,13 @@ async function validateRequiredFields() {
   if (!isOfficeMode.value && !String(serviceDraft.value.result || '').trim()) {
     errors.result = currentServiceMode.value === 'remote' ? '请选择处理结果' : '请选择服务结论'
   }
-  if (!String(serviceDraft.value.actualStartAt || '').trim()) errors.actualStartAt = isRemoteLikeMode.value ? '请填写开始时间' : '请填写到达时间'
-  if (!String(serviceDraft.value.actualEndAt || '').trim()) errors.actualEndAt = isRemoteLikeMode.value ? '请填写结束时间' : '请填写完成时间'
+  for (const [label, , required] of [...travelTimeFields.value, ...closeoutTimeFields.value]) {
+    if (!required) continue
+    const key = timeFieldKey(label)
+    if (key && !String(serviceDraft.value[key] || '').trim()) {
+      errors[key] = `请填写${label}`
+    }
+  }
   if (!isRemoteLikeMode.value && !customerSignature.value) errors.customerSignature = '请先完成客户签名'
 
   fieldErrors.value = errors
@@ -2258,6 +2335,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.clearTimeout(customerSearchTimer)
+  window.clearTimeout(deviceModelSearchTimer)
   window.clearTimeout(draftTimer)
   window.clearTimeout(draftSyncTimer)
   window.clearInterval(draftCountdownTimer)
@@ -2408,7 +2486,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </div>
             <small v-if="fieldErrors.name" class="field-error">{{ zh(fieldErrors.name) }}</small>
           </label>
-          <label v-if="!isOfficeMode" class="field" :class="{ 'has-error': fieldErrors.address }">
+          <label class="field" :class="{ 'has-error': fieldErrors.address }">
             <span>{{ zh('客户地址') }}<b v-if="!isRemoteLikeMode">*</b></span>
             <input
               ref="customerAddressInput"
@@ -2419,7 +2497,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             />
             <small v-if="fieldErrors.address" class="field-error">{{ zh(fieldErrors.address) }}</small>
           </label>
-          <label v-if="!isOfficeMode" class="field contact-picker-field" :class="{ 'has-error': fieldErrors.contactName }">
+          <label class="field contact-picker-field" :class="{ 'has-error': fieldErrors.contactName }">
             <span>{{ zh('联系人') }}<b v-if="!isOfficeMode">*</b></span>
             <input
               ref="contactInput"
@@ -2445,7 +2523,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </div>
             <small v-if="fieldErrors.contactName" class="field-error">{{ zh(fieldErrors.contactName) }}</small>
           </label>
-          <label v-if="!isOfficeMode" class="field" :class="{ 'has-error': fieldErrors.contactPhone }">
+          <label class="field" :class="{ 'has-error': fieldErrors.contactPhone }">
             <span>{{ zh('联系电话') }}<b v-if="!isOfficeMode">*</b></span>
             <input
               ref="phoneInput"
@@ -2523,9 +2601,28 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </div>
           </div>
           <div class="field-grid">
-            <label class="field">
+            <label class="field device-model-autocomplete">
               <span>{{ zh('设备型号 / Model') }}</span>
-              <input v-model.trim="installDeviceDraft.model" :placeholder="zh('输入设备型号')" />
+              <div class="autocomplete-wrapper">
+                <input
+                  v-model.trim="installDeviceDraft.model"
+                  :placeholder="zh('输入设备型号，支持自动补全')"
+                  autocomplete="off"
+                  @input="onDeviceModelInput"
+                  @focus="onDeviceModelInput"
+                  @blur="hideDeviceModelSuggestions"
+                />
+                <ul v-if="showDeviceModelSuggestions" class="autocomplete-dropdown">
+                  <li
+                    v-for="item in deviceModelSuggestions"
+                    :key="item.id"
+                    @mousedown.prevent="selectDeviceModel(item)"
+                  >
+                    <strong>{{ item.officialName }}</strong>
+                    <small>{{ item.vendor }} · {{ item.category }}</small>
+                  </li>
+                </ul>
+              </div>
             </label>
             <label class="field">
               <span>{{ zh('部件号 / PN') }}</span>
@@ -2778,3 +2875,48 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
     </footer>
   </main>
 </template>
+
+<style scoped>
+.device-model-autocomplete .autocomplete-wrapper {
+  position: relative;
+}
+
+.device-model-autocomplete .autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 4px 0 0 0;
+  padding: 4px 0;
+}
+
+.device-model-autocomplete .autocomplete-dropdown li {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-model-autocomplete .autocomplete-dropdown li:hover {
+  background: #f5f6fa;
+}
+
+.device-model-autocomplete .autocomplete-dropdown li strong {
+  font-size: 14px;
+  color: #1d2939;
+}
+
+.device-model-autocomplete .autocomplete-dropdown li small {
+  font-size: 12px;
+  color: #667085;
+}
+</style>
