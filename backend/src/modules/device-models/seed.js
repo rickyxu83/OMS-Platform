@@ -160,6 +160,175 @@ const models = [
   { vendor: 'Dell', productLine: 'PowerSwitch S', officialName: 'Dell PowerSwitch S4148', keywords: 'S4148,PowerSwitch', category: 'Network' },
   { vendor: 'Dell', productLine: 'PowerSwitch S', officialName: 'Dell PowerSwitch S5232F', keywords: 'S5232F,PowerSwitch', category: 'Network' },
   { vendor: 'Dell', productLine: 'PowerSwitch Z', officialName: 'Dell PowerSwitch Z9100', keywords: 'Z9100,PowerSwitch', category: 'Network' },
+
+  // ========== Cisco Catalyst Switch (20) ==========
+  { vendor: 'Cisco', productLine: 'Catalyst 1000', officialName: 'Cisco Catalyst 1000-16T', keywords: '1000,16T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 1000', officialName: 'Cisco Catalyst 1000-24T', keywords: '1000,24T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 1000', officialName: 'Cisco Catalyst 1000-48T', keywords: '1000,48T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 2960', officialName: 'Cisco Catalyst 2960X-24TS', keywords: '2960X,24TS,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 2960', officialName: 'Cisco Catalyst 2960X-48TS', keywords: '2960X,48TS,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3560', officialName: 'Cisco Catalyst 3560X-24T', keywords: '3560X,24T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3560', officialName: 'Cisco Catalyst 3560X-48T', keywords: '3560X,48T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3650', officialName: 'Cisco Catalyst 3650-24TS', keywords: '3650,24TS,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3650', officialName: 'Cisco Catalyst 3650-48TS', keywords: '3650,48TS,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3850', officialName: 'Cisco Catalyst 3850-24T', keywords: '3850,24T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 3850', officialName: 'Cisco Catalyst 3850-48T', keywords: '3850,48T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9200-24T', keywords: '9200,24T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9200-48T', keywords: '9200,48T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9300-24T', keywords: '9300,24T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9300-48T', keywords: '9300,48T,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9400', keywords: '9400,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9500-24Y4C', keywords: '9500,24Y4C,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9500-40Q', keywords: '9500,40Q,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 9000', officialName: 'Cisco Catalyst 9600', keywords: '9600,Catalyst', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'Catalyst 6800', officialName: 'Cisco Catalyst 6840', keywords: '6840,Catalyst', category: 'Network' },
+
+  // ========== Cisco MDS FC Switch (6) ==========
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9148S', keywords: '9148S,MDS,FC,光纤', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9148T', keywords: '9148T,MDS,FC,光纤', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9220i', keywords: '9220i,MDS,FC,光纤', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9250i', keywords: '9250i,MDS,FC,光纤', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9396S', keywords: '9396S,MDS,FC,光纤', category: 'Network' },
+  { vendor: 'Cisco', productLine: 'MDS 9000', officialName: 'Cisco MDS 9710', keywords: '9710,MDS,FC,光纤,Director', category: 'Network' },
+
+  // ========== Brocade FC Switch (10) ==========
+  { vendor: 'Brocade', productLine: 'G6', officialName: 'Brocade G610', keywords: 'G610,FC,光纤,Gen6', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'G6', officialName: 'Brocade G620', keywords: 'G620,FC,光纤,Gen6', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'G6', officialName: 'Brocade G630', keywords: 'G630,FC,光纤,Gen6', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'G7', officialName: 'Brocade G710', keywords: 'G710,FC,光纤,Gen7', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'G7', officialName: 'Brocade G720', keywords: 'G720,FC,光纤,Gen7', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'G7', officialName: 'Brocade G730', keywords: 'G730,FC,光纤,Gen7', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'DCX', officialName: 'Brocade DCX 8510', keywords: 'DCX,8510,FC,光纤,Director', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'X6', officialName: 'Brocade X6-4 Director', keywords: 'X6,Director,FC,光纤', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'X6', officialName: 'Brocade X6-8 Director', keywords: 'X6,Director,FC,光纤', category: 'Network' },
+  { vendor: 'Brocade', productLine: 'X7', officialName: 'Brocade X7-4 Director', keywords: 'X7,Director,FC,光纤,Gen7', category: 'Network' },
+
+  // ========== Huawei Switch (12) ==========
+  { vendor: 'Huawei', productLine: 'CloudEngine S', officialName: 'Huawei CloudEngine S5735S-L24T4S', keywords: 'S5735,24T,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine S', officialName: 'Huawei CloudEngine S5735S-L48T4S', keywords: 'S5735,48T,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine S', officialName: 'Huawei CloudEngine S5735S-L24P4S', keywords: 'S5735,24P,POE,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine S', officialName: 'Huawei CloudEngine S6720-24C', keywords: 'S6720,24C,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine S', officialName: 'Huawei CloudEngine S6720-48C', keywords: 'S6720,48C,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine', officialName: 'Huawei CloudEngine 6800-48S', keywords: 'CE6800,48S,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine', officialName: 'Huawei CloudEngine 8800-24C', keywords: 'CE8800,24C,华为', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'CloudEngine', officialName: 'Huawei CloudEngine 12800', keywords: 'CE12800,华为,数据中心', category: 'Network' },
+  { vendor: 'Huawei', productLine: 'FusionServer', officialName: 'Huawei FusionServer 1288H V6', keywords: '1288H,V6,FusionServer,华为', category: 'Server' },
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 5300 V5', keywords: 'OceanStor,5300,V5,华为,存储', category: 'Storage' },
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 5500 V5', keywords: 'OceanStor,5500,V5,华为,存储', category: 'Storage' },
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 6800 V5', keywords: 'OceanStor,6800,V5,华为,存储', category: 'Storage' },
+
+  // ========== H3C Switch (14) ==========
+  { vendor: 'H3C', productLine: 'S5000', officialName: 'H3C S5024E', keywords: 'S5024E,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S5000', officialName: 'H3C S5048E', keywords: 'S5048E,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S5500', officialName: 'H3C S5500V2-28C', keywords: 'S5500,28C,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S5500', officialName: 'H3C S5500V2-52C', keywords: 'S5500,52C,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S5560', officialName: 'H3C S5560-30S', keywords: 'S5560,30S,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S5560', officialName: 'H3C S5560-54S', keywords: 'S5560,54S,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S6800', officialName: 'H3C S6800-54QP', keywords: 'S6800,54QP,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S6800', officialName: 'H3C S6800-32Q', keywords: 'S6800,32Q,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S6900', officialName: 'H3C S6900-48F', keywords: 'S6900,48F,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S7500E', officialName: 'H3C S7503E', keywords: 'S7503E,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S7500E', officialName: 'H3C S7510E', keywords: 'S7510E,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S10500', officialName: 'H3C S10504', keywords: 'S10504,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S10500', officialName: 'H3C S10508', keywords: 'S10508,H3C,华三', category: 'Network' },
+  { vendor: 'H3C', productLine: 'S10500', officialName: 'H3C S10512', keywords: 'S10512,H3C,华三', category: 'Network' },
+
+  // ========== Ruijie Switch (8) ==========
+  { vendor: 'Ruijie', productLine: 'RG-S2900', officialName: 'Ruijie RG-S2928G-E', keywords: 'S2928G,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S2900', officialName: 'Ruijie RG-S2952G-E', keywords: 'S2952G,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S5300', officialName: 'Ruijie RG-S5310-24GT4XS', keywords: 'S5310,24GT,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S5300', officialName: 'Ruijie RG-S5310-48GT4XS', keywords: 'S5310,48GT,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S5700', officialName: 'Ruijie RG-S5750-48GT', keywords: 'S5750,48GT,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S6200', officialName: 'Ruijie RG-S6220-48XS', keywords: 'S6220,48XS,Ruijie,锐捷,数据中心', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S7800', officialName: 'Ruijie RG-S7805C', keywords: 'S7805C,Ruijie,锐捷', category: 'Network' },
+  { vendor: 'Ruijie', productLine: 'RG-S7800', officialName: 'Ruijie RG-S7810C', keywords: 'S7810C,Ruijie,锐捷', category: 'Network' },
+
+  // ========== NetApp Storage (12) ==========
+  { vendor: 'NetApp', productLine: 'AFF A-Series', officialName: 'NetApp AFF A150', keywords: 'AFF,A150,All Flash,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'AFF A-Series', officialName: 'NetApp AFF A250', keywords: 'AFF,A250,All Flash,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'AFF A-Series', officialName: 'NetApp AFF A400', keywords: 'AFF,A400,All Flash,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'AFF A-Series', officialName: 'NetApp AFF A700', keywords: 'AFF,A700,All Flash,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'AFF A-Series', officialName: 'NetApp AFF A90', keywords: 'AFF,A90,All Flash,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'FAS Series', officialName: 'NetApp FAS2750', keywords: 'FAS,2750,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'FAS Series', officialName: 'NetApp FAS5000', keywords: 'FAS,5000,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'FAS Series', officialName: 'NetApp FAS8300', keywords: 'FAS,8300,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'FAS Series', officialName: 'NetApp FAS8700', keywords: 'FAS,8700,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'FAS Series', officialName: 'NetApp FAS9500', keywords: 'FAS,9500,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'E-Series', officialName: 'NetApp E2860', keywords: 'E2860,E-Series,NetApp', category: 'Storage' },
+  { vendor: 'NetApp', productLine: 'E-Series', officialName: 'NetApp E5700', keywords: 'E5700,E-Series,NetApp', category: 'Storage' },
+
+  // ========== QNAP / Synology (6) ==========
+  { vendor: 'QNAP', productLine: 'TS Series', officialName: 'QNAP TS-453D', keywords: 'TS-453D,QNAP,威联通', category: 'Storage' },
+  { vendor: 'QNAP', productLine: 'TS Series', officialName: 'QNAP TS-873A', keywords: 'TS-873A,QNAP,威联通', category: 'Storage' },
+  { vendor: 'QNAP', productLine: 'TS Series', officialName: 'QNAP TS-h1290FX', keywords: 'TS-h1290FX,QNAP,威联通', category: 'Storage' },
+  { vendor: 'Synology', productLine: 'DS Series', officialName: 'Synology DS1821+', keywords: 'DS1821,Synology,群晖', category: 'Storage' },
+  { vendor: 'Synology', productLine: 'DS Series', officialName: 'Synology DS2422+', keywords: 'DS2422,Synology,群晖', category: 'Storage' },
+  { vendor: 'Synology', productLine: 'RS Series', officialName: 'Synology RS3617xs+', keywords: 'RS3617,Synology,群晖', category: 'Storage' },
+
+  // ========== Huawei Storage add (3) ==========
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 2200 V3', keywords: 'OceanStor,2200,V3,华为,存储', category: 'Storage' },
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 2600 V3', keywords: 'OceanStor,2600,V3,华为,存储', category: 'Storage' },
+  { vendor: 'Huawei', productLine: 'OceanStor', officialName: 'Huawei OceanStor 18500 V5', keywords: 'OceanStor,18500,V5,华为,存储', category: 'Storage' },
+
+  // ========== Inspur Storage (4) ==========
+  { vendor: 'Inspur', productLine: 'AS Series', officialName: 'Inspur AS2150G2', keywords: 'AS2150,G2,浪潮,存储', category: 'Storage' },
+  { vendor: 'Inspur', productLine: 'AS Series', officialName: 'Inspur AS2200G2', keywords: 'AS2200,G2,浪潮,存储', category: 'Storage' },
+  { vendor: 'Inspur', productLine: 'AS Series', officialName: 'Inspur AS5300G5', keywords: 'AS5300,G5,浪潮,存储', category: 'Storage' },
+  { vendor: 'Inspur', productLine: 'AS Series', officialName: 'Inspur AS5500G5', keywords: 'AS5500,G5,浪潮,存储', category: 'Storage' },
+
+  // ========== Lenovo Network (4) ==========
+  { vendor: 'Lenovo', productLine: 'ThinkSystem NE', officialName: 'Lenovo ThinkSystem NE1032', keywords: 'NE1032,ThinkSystem', category: 'Network' },
+  { vendor: 'Lenovo', productLine: 'ThinkSystem NE', officialName: 'Lenovo ThinkSystem NE1072', keywords: 'NE1072,ThinkSystem', category: 'Network' },
+  { vendor: 'Lenovo', productLine: 'ThinkSystem NE', officialName: 'Lenovo ThinkSystem NE2580', keywords: 'NE2580,ThinkSystem', category: 'Network' },
+  { vendor: 'Lenovo', productLine: 'RackSwitch', officialName: 'Lenovo RackSwitch G7028', keywords: 'G7028,RackSwitch', category: 'Network' },
+
+  // ========== Juniper Network (5) ========== 
+  { vendor: 'Juniper', productLine: 'EX Series', officialName: 'Juniper EX2300-24P', keywords: 'EX2300,24P,Juniper', category: 'Network' },
+  { vendor: 'Juniper', productLine: 'EX Series', officialName: 'Juniper EX2300-48P', keywords: 'EX2300,48P,Juniper', category: 'Network' },
+  { vendor: 'Juniper', productLine: 'EX Series', officialName: 'Juniper EX3400-24T', keywords: 'EX3400,24T,Juniper', category: 'Network' },
+  { vendor: 'Juniper', productLine: 'EX Series', officialName: 'Juniper EX3400-48T', keywords: 'EX3400,48T,Juniper', category: 'Network' },
+  { vendor: 'Juniper', productLine: 'QFX Series', officialName: 'Juniper QFX5110-48S', keywords: 'QFX5110,48S,Juniper', category: 'Network' },
+
+  // ========== Ubiquiti (3) ==========
+  { vendor: 'Ubiquiti', productLine: 'UniFi', officialName: 'Ubiquiti UniFi Switch 24', keywords: 'UniFi,24口,Ubiquiti', category: 'Network' },
+  { vendor: 'Ubiquiti', productLine: 'UniFi', officialName: 'Ubiquiti UniFi Switch 48', keywords: 'UniFi,48口,Ubiquiti', category: 'Network' },
+  { vendor: 'Ubiquiti', productLine: 'EdgeMax', officialName: 'Ubiquiti EdgeRouter 12', keywords: 'EdgeRouter,12,Ubiquiti', category: 'Network' },
+
+  // ========== TP-Link Enterprise (4) ==========
+  { vendor: 'TP-Link', productLine: 'JetStream', officialName: 'TP-Link JetStream TL-SG3428', keywords: 'TL-SG3428,TP-Link,普联', category: 'Network' },
+  { vendor: 'TP-Link', productLine: 'JetStream', officialName: 'TP-Link JetStream TL-SG3452', keywords: 'TL-SG3452,TP-Link,普联', category: 'Network' },
+  { vendor: 'TP-Link', productLine: 'Omada', officialName: 'TP-Link Omada SG2210P', keywords: 'SG2210P,Omada,TP-Link,普联', category: 'Network' },
+  { vendor: 'TP-Link', productLine: 'Omada', officialName: 'TP-Link Omada SG2428P', keywords: 'SG2428P,Omada,TP-Link,普联', category: 'Network' },
+
+  // ========== Palo Alto Firewall (4) ==========
+  { vendor: 'Palo Alto', productLine: 'PA Series', officialName: 'Palo Alto PA-440', keywords: 'PA-440,PaloAlto,防火墙', category: 'Network' },
+  { vendor: 'Palo Alto', productLine: 'PA Series', officialName: 'Palo Alto PA-460', keywords: 'PA-460,PaloAlto,防火墙', category: 'Network' },
+  { vendor: 'Palo Alto', productLine: 'PA Series', officialName: 'Palo Alto PA-5250', keywords: 'PA-5250,PaloAlto,防火墙', category: 'Network' },
+  { vendor: 'Palo Alto', productLine: 'PA Series', officialName: 'Palo Alto PA-5450', keywords: 'PA-5450,PaloAlto,防火墙', category: 'Network' },
+
+  // ========== Fortinet (4) ==========
+  { vendor: 'Fortinet', productLine: 'FortiGate', officialName: 'Fortinet FortiGate 60F', keywords: '60F,FortiGate,Fortinet,防火墙', category: 'Network' },
+  { vendor: 'Fortinet', productLine: 'FortiGate', officialName: 'Fortinet FortiGate 80F', keywords: '80F,FortiGate,Fortinet,防火墙', category: 'Network' },
+  { vendor: 'Fortinet', productLine: 'FortiGate', officialName: 'Fortinet FortiGate 100F', keywords: '100F,FortiGate,Fortinet,防火墙', category: 'Network' },
+  { vendor: 'Fortinet', productLine: 'FortiGate', officialName: 'Fortinet FortiGate 600E', keywords: '600E,FortiGate,Fortinet,防火墙', category: 'Network' },
+
+  // ========== HPE Server add (6) ==========
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL325 Gen10', keywords: 'DL325,Gen10,325', category: 'Server' },
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL325 Gen11', keywords: 'DL325,Gen11,325', category: 'Server' },
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL385 Gen10', keywords: 'DL385,Gen10,385', category: 'Server' },
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL385 Gen11', keywords: 'DL385,Gen11,385', category: 'Server' },
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL560 Gen10', keywords: 'DL560,Gen10,560', category: 'Server' },
+  { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL580 Gen10', keywords: 'DL580,Gen10,580', category: 'Server' },
+
+  // ========== Dell Server add (8) ==========
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R250', keywords: 'R250,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R350', keywords: 'R350,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R450', keywords: 'R450,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R650', keywords: 'R650,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R660', keywords: 'R660,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge R', officialName: 'Dell PowerEdge R7620', keywords: 'R7620,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge XR', officialName: 'Dell PowerEdge XR11', keywords: 'XR11,PowerEdge', category: 'Server' },
+  { vendor: 'Dell', productLine: 'PowerEdge XR', officialName: 'Dell PowerEdge XR12', keywords: 'XR12,PowerEdge', category: 'Server' },
 ]
 
 async function seed() {
