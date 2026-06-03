@@ -830,8 +830,9 @@ async function list(req, res) {
     pageSize = '20',
   } = req.query
   const mineQuery = req.query.mine === '1'
-  const isEngineer = req.user.role === 'engineer' || req.user.role === 'engineering_supervisor'
-  const canListBroadly = broadListRoles.has(req.user.role) && !mineQuery
+  const isEngineer = req.user.role === 'engineer'
+  const isBroadRole = broadListRoles.has(req.user.role)
+  const canListBroadly = isBroadRole && !mineQuery
   const effectiveEngineerId = (mineQuery || isEngineer) ? req.user.id : canListBroadly ? engineerId || null : null
   const salespersonScope = req.user.role === 'sales' ? String(req.user.real_name || req.user.username || '').trim() : ''
   const salespersonUsernameScope = req.user.role === 'sales' ? String(req.user.username || '').trim() : ''
