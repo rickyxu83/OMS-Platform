@@ -16,13 +16,11 @@ const startDate = ref(`${currentMonth}-01`)
 const endDate = ref(`${currentMonth}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`)
 
 const detailRows = computed(() => preview.value.items || [])
-const totalHours = computed(() => detailRows.value.reduce((sum, row) => sum + Number(row.workHours || 1), 0))
 const onsiteCount = computed(() => detailRows.value.filter((row) => normalizePreviewServiceMode(row) === 'onsite').length)
 const remoteCount = computed(() => detailRows.value.filter((row) => normalizePreviewServiceMode(row) === 'remote').length)
 const officeCount = computed(() => detailRows.value.filter((row) => normalizePreviewServiceMode(row) === 'office').length)
 const stats = computed(() => [
   ['服务总数', String(detailRows.value.length)],
-  ['工作小时', `${totalHours.value}h`],
   ['现场服务', String(onsiteCount.value)],
   ['远程服务', String(remoteCount.value)],
   ['内勤工作', String(officeCount.value)],
