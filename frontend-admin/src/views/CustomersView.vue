@@ -1,5 +1,6 @@
 <script setup>
 import { computed, reactive, onMounted, ref, watch } from 'vue'
+import DetailPanel from '../components/admin/DetailPanel.vue'
 import EmptyState from '../components/admin/EmptyState.vue'
 import FilterBar from '../components/admin/FilterBar.vue'
 import KpiCard from '../components/admin/KpiCard.vue'
@@ -17,7 +18,7 @@ const error = ref('')
 const message = ref('')
 const customers = ref([])
 const customerDeviceStats = ref({})
-const activeCustomerId = ref('')
+const selectedCustomerId = ref('')
 const keyword = ref('')
 const form = reactive({
   name: '',
@@ -28,13 +29,9 @@ const form = reactive({
 const currentUser = getCurrentUser()
 const canEdit = computed(() => ['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales'].includes(currentUser?.role))
 
-function toggleCustomer(id) {
-  if (activeCustomerId.value === id) {
-    activeCustomerId.value = ''
-  } else {
-    activeCustomerId.value = id
-    if (!customerDeviceStats.value[id]) loadActiveCustomerDevices(id)
-  }
+function selectCustomer(id) {
+  if (!id) return
+  selectedCustomerId.value = id
 }
 
 async function load() {
@@ -45,7 +42,7 @@ async function load() {
     if (keyword.value.trim()) params.set('keyword', keyword.value.trim())
     const data = await api.get(`/customers?${params}`)
     customers.value = (data.items || []).map((customer) => ({
-      id: customer.id,
+      id: String(customer.id),
       code: customer.code || '',
       name: customer.name || '-',
       address: customer.address || customer.mapPoiName || '基础设施维护客户',
@@ -56,7 +53,13 @@ async function load() {
       salesperson: customer.salesperson || '',
       updatedAt: customer.updatedAt,
     }))
-    activeCustomerId.value = String(route.query.customerId || '')
+    const routeCustomerId = String(route.query.customerId || '')
+    const nextSelectedId = customers.value.some((customer) => customer.id === selectedCustomerId.value)
+      ? selectedCustomerId.value
+      : customers.value.some((customer) => customer.id === routeCustomerId)
+        ? routeCustomerId
+        : customers.value[0]?.id || ''
+    selectedCustomerId.value = nextSelectedId
   } catch (err) {
     error.value = err.message
   } finally {
@@ -120,6 +123,7 @@ const filteredCustomers = computed(() => {
   const text = keyword.value.trim()
   return customers.value.filter((customer) => [customer.name, customer.address, customer.contact, customer.salesperson].some((value) => String(value || '').includes(text)))
 })
+const selectedCustomer = computed(() => filteredCustomers.value.find((customer) => customer.id === selectedCustomerId.value) || filteredCustomers.value[0] || null)
 const totalRecords = computed(() => customers.value.reduce((total, customer) => total + customer.count, 0))
 const keyCustomerCount = computed(() => customers.value.filter((customer) => customer.count > 0).length)
 
@@ -145,6 +149,18 @@ onMounted(() => {
 watch(() => [route.query.customerId, route.query.keyword], () => {
   if (route.query.keyword) keyword.value = String(route.query.keyword)
   load()
+})
+
+watch(selectedCustomer, (customer) => {
+  if (customer?.id && !customerDeviceStats.value[customer.id]) {
+    loadActiveCustomerDevices(customer.id)
+  }
+}, { immediate: true })
+
+watch(filteredCustomers, (items) => {
+  if (!items.some((customer) => customer.id === selectedCustomerId.value)) {
+    selectedCustomerId.value = items[0]?.id || ''
+  }
 })
 </script>
 
@@ -176,47 +192,76 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
       <label class="field wide"><span>客户地址</span><input v-model.trim="form.address" /></label>
     </form>
 
-    <div class="glass-panel table-card">
-      <div class="table-head">
-        <span>客户名称</span>
-        <span>编码</span>
-        <span>地址</span>
-        <span>业务联系人</span>
-      </div>
-      <template v-for="customer in filteredCustomers" :key="customer.id">
-        <button
-          class="table-row"
-          :class="{ selected: activeCustomerId === customer.id }"
-          type="button"
-          @click="toggleCustomer(customer.id)"
-        >
-          <span><strong>{{ customer.name }}</strong></span>
-          <span class="muted-text mono">{{ customer.code || '-' }}</span>
-          <span class="muted-text">{{ customer.address }}</span>
-          <span>{{ customer.contactName && customer.contactPhone ? `${customer.contactName} / ${customer.contactPhone}` : customer.contactName || customer.contactPhone || '-' }}</span>
-        </button>
-        <div v-if="activeCustomerId === customer.id" class="drawer-section">
-          <div class="drawer-stats">
-            <article><span>联系人</span><strong>{{ customer.contactName || '-' }}</strong></article>
-            <article><span>联系电话</span><strong>{{ customer.contactPhone || '-' }}</strong></article>
-            <article><span>业务员</span><strong>{{ customer.salesperson || '-' }}</strong></article>
-            <article><span>本年度服务</span><strong>{{ customer.count }}</strong></article>
-            <article><span>最近更新</span><strong>{{ formatDate(customer.updatedAt) }}</strong></article>
-          </div>
-          <div class="drawer-section" style="margin-top: 12px;">
-            <h3>设备概览</h3>
-            <div class="drawer-stats">
-              <article><span>设备总数</span><strong>{{ customerDeviceStats[customer.id]?.total ?? '…' }}</strong></article>
-              <article><span>需关注维护</span><strong>{{ customerDeviceStats[customer.id]?.expiring ?? '…' }}</strong></article>
-              <article><span>我方维护</span><strong>{{ customerDeviceStats[customer.id]?.ours ?? '…' }}</strong></article>
-              <article><span>原厂维护</span><strong>{{ customerDeviceStats[customer.id]?.original ?? '…' }}</strong></article>
-            </div>
-            <p v-if="customerDeviceStats[customer.id]?.error" class="form-error">设备统计加载失败：{{ customerDeviceStats[customer.id].error }}</p>
-            <button class="ghost-button full" type="button" @click="viewCustomerDevices(customer.id)">查看全部设备</button>
-          </div>
+    <section class="detail-layout">
+      <div class="glass-panel table-card customer-table">
+        <div class="table-head">
+          <span>客户名称</span>
+          <span>客户编码</span>
+          <span>联系人</span>
+          <span>联系电话</span>
+          <span>服务地址</span>
+          <span>本年服务</span>
+          <span>业务员</span>
+          <span>最近更新</span>
         </div>
-      </template>
-      <EmptyState v-if="!filteredCustomers.length && !loading" title="暂无客户资料" description="请尝试调整搜索条件或新增客户。" />
-    </div>
+        <button
+          v-for="customer in filteredCustomers"
+          :key="customer.id"
+          class="table-row"
+          :class="{ selected: selectedCustomer?.id === customer.id }"
+          type="button"
+          @click="selectCustomer(customer.id)"
+        >
+          <span>
+            <strong>{{ customer.name }}</strong>
+            <small class="muted-text mono">ID {{ customer.id }}</small>
+          </span>
+          <span class="mono muted-text">{{ customer.code || '-' }}</span>
+          <span>{{ customer.contactName || '-' }}</span>
+          <span class="mono">{{ customer.contactPhone || '-' }}</span>
+          <span class="muted-text">{{ customer.address }}</span>
+          <span><strong>{{ customer.count }}</strong></span>
+          <span>{{ customer.salesperson || '-' }}</span>
+          <span class="muted-text">{{ formatDate(customer.updatedAt) }}</span>
+        </button>
+        <EmptyState v-if="!filteredCustomers.length && !loading" title="暂无客户资料" description="请尝试调整搜索条件或新增客户。" />
+      </div>
+
+      <DetailPanel v-if="selectedCustomer" subtitle="客户详情" :title="selectedCustomer.name">
+        <div class="drawer-stats">
+          <article><span>客户编码</span><strong class="mono">{{ selectedCustomer.code || '-' }}</strong></article>
+          <article><span>最近更新</span><strong>{{ formatDate(selectedCustomer.updatedAt) }}</strong></article>
+          <article><span>本年度服务</span><strong>{{ selectedCustomer.count }}</strong></article>
+          <article><span>业务员</span><strong>{{ selectedCustomer.salesperson || '-' }}</strong></article>
+        </div>
+
+        <section class="drawer-section">
+          <h3>客户资料</h3>
+          <p>联系人：{{ selectedCustomer.contactName || '未维护' }}</p>
+          <p>联系电话：{{ selectedCustomer.contactPhone || '未维护' }}</p>
+          <p>客户地址：{{ selectedCustomer.address }}</p>
+        </section>
+
+        <section class="drawer-section">
+          <h3>设备概览</h3>
+          <div class="drawer-stats">
+            <article><span>设备总数</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.total ?? '…' }}</strong></article>
+            <article><span>需关注维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.expiring ?? '…' }}</strong></article>
+            <article><span>我方维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.ours ?? '…' }}</strong></article>
+            <article><span>原厂维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.original ?? '…' }}</strong></article>
+          </div>
+          <p v-if="customerDeviceStats[selectedCustomer.id]?.error" class="form-error">设备统计加载失败：{{ customerDeviceStats[selectedCustomer.id].error }}</p>
+        </section>
+
+        <template #footer>
+          <button class="ghost-button full" type="button" @click="viewCustomerDevices(selectedCustomer.id)">查看该客户全部设备</button>
+        </template>
+      </DetailPanel>
+
+      <aside v-else class="glass-panel drawer">
+        <h2>请选择客户</h2>
+        <p class="empty-state">从左侧表格选择客户后，可在这里查看联系人、服务统计和设备概览。</p>
+      </aside>
+    </section>
   </section>
 </template>
