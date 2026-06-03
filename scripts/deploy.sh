@@ -120,7 +120,7 @@ deploy_frontend() {
     mkdir -p '${remote_dir}'
     find '${remote_dir}' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a '${remote_new}'/. '${remote_dir}'/
-    echo "  ✓ 前端已部署，备份: \$bak"
+    echo '  ✓ 前端已部署，备份: '"\$bak"
   "
 }
 
