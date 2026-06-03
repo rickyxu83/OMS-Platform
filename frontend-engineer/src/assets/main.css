@@ -2008,8 +2008,8 @@ h2 {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgb(15 23 42 / 66%);
-  backdrop-filter: blur(10px);
+  background: rgb(15 23 42 / 28%);
+  backdrop-filter: blur(1px);
   pointer-events: auto;
 }
 
@@ -2020,7 +2020,7 @@ h2 {
   border-radius: 20px;
   pointer-events: none;
   box-shadow:
-    0 0 0 9999px rgb(15 23 42 / 54%),
+    0 0 0 9999px rgb(15 23 42 / 18%),
     0 0 0 8px rgb(94 234 212 / 18%),
     0 18px 44px rgb(0 0 0 / 24%);
   transition:
@@ -4428,6 +4428,27 @@ h2 {
 .signature-head > div:last-child {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.signature-toolbar {
+  display: grid;
+  gap: 10px;
+}
+
+.signature-primary-action {
+  width: 100%;
+  justify-content: center;
+}
+
+.signature-secondary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.signature-secondary-actions .ghost {
+  min-height: 42px;
 }
 
 .signature-state {

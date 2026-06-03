@@ -378,17 +378,23 @@ onMounted(load)
             <h2>{{ zh('个人手写签名') }}</h2>
             <p class="signature-state">{{ zh(hasSavedSignature ? '已保存签名' : '尚未保存签名') }}</p>
           </div>
-          <div class="signature-action-panel">
+        </div>
+        <p v-if="!hasSavedSignature" class="required-hint">{{ zh('请补充手写签名，导出服务表时将使用此签名。') }}</p>
+        <div class="signature-summary-card" :class="{ empty: !hasSavedSignature }">
+          <img v-if="hasSavedSignature" :src="savedSignatureData" :alt="zh('签名缩略图')" />
+          <span v-else><PreviewIcon name="pen" />{{ zh('签名将用于服务表导出') }}</span>
+        </div>
+        <div class="signature-toolbar">
+          <button
+            class="primary signature-primary-action"
+            type="button"
+            :disabled="savingSignature"
+            @click="signatureEditorOpen ? cancelSignatureEditor() : openSignatureEditor()"
+          >
+            <PreviewIcon name="pen" />{{ zh(signatureEditorOpen ? '取消编辑' : hasSavedSignature ? '重新签名' : '创建签名') }}
+          </button>
+          <div v-if="hasSavedSignature" class="signature-secondary-actions">
             <button
-              class="primary signature-primary-action"
-              type="button"
-              :disabled="savingSignature"
-              @click="signatureEditorOpen ? cancelSignatureEditor() : openSignatureEditor()"
-            >
-              <PreviewIcon name="pen" />{{ zh(signatureEditorOpen ? '取消编辑' : hasSavedSignature ? '重新签名' : '创建签名') }}
-            </button>
-            <button
-              v-if="hasSavedSignature"
               class="ghost"
               type="button"
               :disabled="savingSignature"
@@ -397,7 +403,6 @@ onMounted(load)
               <PreviewIcon name="share" />{{ zh('预览签名') }}
             </button>
             <button
-              v-if="hasSavedSignature"
               class="ghost danger-soft"
               type="button"
               :disabled="savingSignature"
@@ -406,11 +411,6 @@ onMounted(load)
               <PreviewIcon name="trash" />{{ zh('清除已存签名') }}
             </button>
           </div>
-        </div>
-        <p v-if="!hasSavedSignature" class="required-hint">{{ zh('请补充手写签名，导出服务表时将使用此签名。') }}</p>
-        <div class="signature-summary-card" :class="{ empty: !hasSavedSignature }">
-          <img v-if="hasSavedSignature" :src="savedSignatureData" :alt="zh('签名缩略图')" />
-          <span v-else><PreviewIcon name="pen" />{{ zh('签名将用于服务表导出') }}</span>
         </div>
         <div v-if="signatureEditorOpen" class="signature-editor-panel">
           <canvas
