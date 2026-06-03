@@ -1,6 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '../services/api'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
+import StatusBadge from '../components/admin/StatusBadge.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -162,35 +167,26 @@ onMounted(load)
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">MAINTENANCE DIRECTORY</p>
-        <h1>维保方管理</h1>
-        <p>原厂联系人与合作维保方共用同一目录，供设备维护归属复用与统一维护。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="MAINTENANCE DIRECTORY" title="维保方管理" description="原厂联系人与合作维保方共用同一目录，供设备维护归属复用与统一维护。">
+      <template #actions>
         <button class="ghost-button" type="button" @click="resetFilters">重置筛选</button>
         <button class="primary" type="button" @click="load">刷新目录</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>维保方总数</span><strong>{{ filteredCount }}</strong><small>共享目录</small></article>
-      <article class="metric-card"><span>原厂联系人</span><strong>{{ manufacturerCount }}</strong><small>原厂服务资源</small></article>
-      <article class="metric-card"><span>合作维保方</span><strong>{{ partnerCount }}</strong><small>共享维保目录</small></article>
+      <KpiCard title="维保方总数" :value="filteredCount" subtitle="共享目录" icon="customer" />
+      <KpiCard title="原厂联系人" :value="manufacturerCount" subtitle="原厂服务资源" icon="ticket" />
+      <KpiCard title="合作维保方" :value="partnerCount" subtitle="共享维保目录" icon="activity" />
     </section>
 
     <section class="page-stack">
-      <div class="filter-bar">
-        <label class="command-input">
-          <span>⌕</span>
-          <input v-model.trim="keyword" placeholder="搜索名称或电话..." @keyup.enter="load" />
-        </label>
+      <FilterBar v-model:query="keyword" search-placeholder="搜索名称或电话..." @submit="load">
         <select v-model="partyTypeFilter" class="select-chip">
           <option v-for="[value, label] in partyTypeOptions" :key="value" :value="value">{{ label }}</option>
         </select>
         <span class="chip">共用目录：原厂联系人 / 合作维保方</span>
-      </div>
+      </FilterBar>
 
       <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
       <p v-if="message" class="form-success">{{ message }}</p>
@@ -223,11 +219,11 @@ onMounted(load)
               <strong>{{ party.name }}</strong>
               <small>{{ party.partyTypeTone }}</small>
             </span>
-            <span><em class="status maintenance-party-status" :class="party.partyType">{{ party.partyTypeLabel }}</em></span>
+            <span><StatusBadge :label="party.partyTypeLabel" :tone="party.partyType === 'original_manufacturer' ? 'info' : 'default'" compact /></span>
             <span>{{ party.phone || '未填写' }}</span>
             <span class="muted-text">{{ party.updatedAt }}</span>
           </button>
-          <p v-if="!parties.length && !loading" class="empty-state">暂无维保方资料</p>
+          <EmptyState v-if="!parties.length && !loading" title="暂无维保方资料" description="当前还没有维保方记录，请新建维保方或调整筛选。" />
         </div>
 
         <aside class="glass-panel drawer" v-if="selectedParty">
@@ -236,7 +232,7 @@ onMounted(load)
               <p>维保方资料</p>
               <h2>{{ selectedParty.name }}</h2>
             </div>
-            <em class="status maintenance-party-status" :class="selectedParty.partyType">{{ selectedParty.partyTypeLabel }}</em>
+            <StatusBadge :label="selectedParty.partyTypeLabel" :tone="selectedParty.partyType === 'original_manufacturer' ? 'info' : 'default'" compact />
           </div>
 
           <div class="drawer-stats">

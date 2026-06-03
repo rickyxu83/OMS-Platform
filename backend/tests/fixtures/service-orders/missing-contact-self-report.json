@@ -1,0 +1,36 @@
+{
+  "customerName": "演示客户 A",
+  "customerAddress": "演示城市演示路 100 号",
+  "customerLatitude": null,
+  "customerLongitude": null,
+  "customerMapProvider": null,
+  "customerMapPoiId": null,
+  "customerMapPoiName": null,
+  "customerMapAddress": null,
+  "contactName": "",
+  "contactPhone": "10000000001",
+  "serviceMode": "onsite",
+  "serviceType": "repair",
+  "timesheetCategory": null,
+  "priority": "normal",
+  "engineerIds": [],
+  "issueDescription": "现场排查核心交换机 uplink 丢包告警。",
+  "faultSummary": "现场排查核心交换机 uplink 丢包告警。",
+  "workContent": "检查光模块、链路错误计数与端口协商状态，现场恢复链路稳定。",
+  "workEntries": [
+    {
+      "engineerId": 8,
+      "engineerName": "张工",
+      "workContent": "检查光模块、链路错误计数与端口协商状态，现场恢复链路稳定。"
+    }
+  ],
+  "result": "resolved",
+  "resultDescription": "链路恢复稳定。",
+  "departureAt": "2026-06-02 08:30:00",
+  "actualStartAt": "2026-06-02 09:00:00",
+  "actualEndAt": "2026-06-02 10:30:00",
+  "returnAt": "2026-06-02 11:00:00",
+  "workHours": 2,
+  "customerConfirmName": "",
+  "customerSignature": "data:image/png;base64,ZmFrZS1zaWduYXR1cmU="
+}

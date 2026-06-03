@@ -3,25 +3,27 @@ import { reactive, ref } from 'vue'
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../services/api'
+import { ADMIN_ACCESS_ROLES } from '../config/navigation'
 import { clearSession, loadRememberedCredentials, saveRememberedCredentials, saveSession } from '../services/auth'
 
 const router = useRouter()
 const loading = ref(false)
 const error = ref('')
-const allowedAdminRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales'])
+const allowedAdminRoles = new Set(ADMIN_ACCESS_ROLES)
 const form = reactive({
   username: '',
   password: '',
   remember: true,
-  rememberPassword: true,
+  rememberUsername: true,
 })
+
+const features = ['服务记录', '客户资料', '设备资产', '月报导出', '操作审计']
 
 onMounted(() => {
   const credentials = loadRememberedCredentials()
-  if (credentials.username || credentials.password) {
+  if (credentials.username) {
     form.username = credentials.username
-    form.password = credentials.password
-    form.rememberPassword = true
+    form.rememberUsername = true
   }
 })
 
@@ -38,9 +40,8 @@ async function submit() {
     saveRememberedCredentials(
       {
         username: form.username,
-        password: form.password,
       },
-      form.rememberPassword,
+      form.rememberUsername,
     )
     router.push('/')
   } catch (err) {
@@ -52,89 +53,78 @@ async function submit() {
 </script>
 
 <template>
-  <main class="auth-shell">
-    <section class="auth-stage">
-      <aside class="auth-hero">
-        <div class="auth-brand">
-          <span class="auth-mark">TS</span>
+  <main class="auth-shell make-login-shell">
+    <aside class="make-login-brand-panel">
+      <div class="make-login-deco make-login-deco-top"></div>
+      <div class="make-login-deco make-login-deco-bottom"></div>
+
+      <div class="make-login-brand-content">
+        <div class="make-login-logo-row">
+          <span class="make-login-logo">技</span>
           <div>
-            <strong>TechService</strong>
-            <small>技服表电子化管理端</small>
+            <strong>技服表管理端</strong>
+            <small>电子化服务管理平台</small>
           </div>
         </div>
 
-        <div class="auth-copy">
-          <p class="auth-kicker">SERVICE SHEET ADMIN</p>
-          <h1>技服表电子化<br /><span>管理端</span></h1>
-          <p>用于管理服务记录、客户资料、成员权限、操作日志与月报导出。</p>
-        </div>
+        <section class="make-login-copy">
+          <h1>专业的技术服务<br />管理解决方案</h1>
+          <p>全方位管理服务记录、客户关系、设备资产、报表导出和操作审计。</p>
+        </section>
 
-        <div class="auth-metrics">
-          <article>
-            <span>数据来源</span>
-            <strong>后端服务</strong>
-            <small>连接已部署系统</small>
-          </article>
-          <article>
-            <span>版本范围</span>
-            <strong>正式管理端</strong>
-            <small>独立交付系统</small>
-          </article>
-          <article>
-            <span>权限校验</span>
-            <strong>JWT</strong>
-            <small>按角色进入后台</small>
+        <div class="make-login-feature-grid">
+          <article v-for="feature in features" :key="feature">
+            <span>{{ feature.slice(0, 1) }}</span>
+            <strong>{{ feature }}</strong>
           </article>
         </div>
-      </aside>
+      </div>
 
-      <section class="auth-card">
-        <div class="auth-card-head">
-          <div>
-            <p class="auth-kicker">ADMIN SIGN IN</p>
-            <h2>管理端登录</h2>
-          </div>
-          <span>正式版</span>
-        </div>
+      <p class="make-login-copyright">© 2026 技服表管理系统</p>
+    </aside>
 
-        <form class="auth-form" @submit.prevent="submit">
+    <section class="make-login-form-panel">
+      <div class="make-login-mobile-brand">
+        <span class="make-login-logo">技</span>
+        <strong>技服表管理端</strong>
+      </div>
+
+      <div class="make-login-card">
+        <header class="make-login-card-head">
+          <h2>登录管理端</h2>
+          <p>请输入您的账号和密码</p>
+        </header>
+
+        <form class="auth-form make-auth-form" @submit.prevent="submit">
           <label>
-            <span>账号 / 邮箱</span>
-            <input v-model.trim="form.username" autocomplete="username" required placeholder="请输入管理端账号" />
+            <span>账号</span>
+            <input v-model.trim="form.username" autocomplete="username" required placeholder="请输入账号" />
           </label>
           <label>
             <span>密码</span>
             <input v-model="form.password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
           </label>
 
-          <div class="auth-options">
-            <label><input v-model="form.remember" type="checkbox" /> 保持登录状态</label>
-            <label><input v-model="form.rememberPassword" type="checkbox" /> 记住密码</label>
-            <span>请联系系统管理员开通账号</span>
+          <div class="auth-options make-auth-options">
+            <label><input v-model="form.rememberUsername" type="checkbox" /> 记住账号</label>
+            <label><input v-model="form.remember" type="checkbox" /> 保持登录</label>
           </div>
 
           <p v-if="error" class="form-error">{{ error }}</p>
 
-          <button class="auth-submit" type="submit" :disabled="loading">
-            {{ loading ? '正在鉴权...' : '授权登录' }}
+          <button class="auth-submit make-login-submit" type="submit" :disabled="loading">
+            {{ loading ? '正在鉴权...' : '登录' }}
           </button>
         </form>
 
-        <div class="auth-system-list">
-          <article>
-            <span>接口模式</span>
-            <strong>后端服务</strong>
-          </article>
-          <article>
-            <span>可访问模块</span>
-            <strong>服务记录 / 客户资料 / 月报 / 审计</strong>
-          </article>
-          <article>
-            <span>登录要求</span>
-            <strong>仅限已开通管理端权限账号</strong>
-          </article>
-        </div>
-      </section>
+        <aside class="make-login-security-notice">
+          <span>安</span>
+          <div>
+            <strong>安全提示</strong>
+            <p>请勿在公共设备上保存登录状态，定期修改密码以确保账户安全。</p>
+          </div>
+        </aside>
+      </div>
     </section>
   </main>
 </template>

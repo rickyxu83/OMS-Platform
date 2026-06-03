@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { api } from '../services/api'
+import { ADMIN_ACCESS_ROLES, ROUTE_ACCESS_ROLES } from '../config/navigation'
 import { clearSession, isLoggedIn, saveUser } from '../services/auth'
 import AdminLayout from '../layouts/AdminLayout.vue'
 import AuditLogsView from '../views/AuditLogsView.vue'
@@ -13,11 +14,7 @@ import ServiceOrdersView from '../views/ServiceOrdersView.vue'
 import TimesheetsView from '../views/TimesheetsView.vue'
 import UsersView from '../views/UsersView.vue'
 
-const adminAccessRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales'])
-const routeAccessRoles = {
-  users: ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'],
-  'audit-logs': ['admin', 'supervisor', 'engineering_supervisor'],
-}
+const adminAccessRoles = new Set(ADMIN_ACCESS_ROLES)
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -56,7 +53,7 @@ router.beforeEach(async (to) => {
       return { name: 'login' }
     }
     saveUser(data.user)
-    const allowedRoles = routeAccessRoles[to.name]
+    const allowedRoles = ROUTE_ACCESS_ROLES[to.name]
     if (allowedRoles && !allowedRoles.includes(data.user?.role)) {
       return { name: 'dashboard' }
     }

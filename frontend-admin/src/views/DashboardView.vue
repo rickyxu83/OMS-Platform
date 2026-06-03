@@ -1,5 +1,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import EmptyState from '../components/admin/EmptyState.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
 import { useRouter } from 'vue-router'
 import AdminIcon from '../components/AdminIcon.vue'
 import { api } from '../services/api'
@@ -210,6 +213,26 @@ function buildMapMarker(point) {
   })
 }
 
+/**
+ * Generate sine-arc intermediate points for a smooth flying line curve.
+ * Uses sin(π·t) envelope for a natural arc shape.
+ */
+function generateArcPoints(p0, p2, segments = 40, bulgeFactor = 0.22) {
+  const dx = p2[0] - p0[0]
+  const dy = p2[1] - p0[1]
+  const dist = Math.sqrt(dx * dx + dy * dy) || 0.01
+  const bulge = dist * bulgeFactor
+  const nx = -dy / dist
+  const ny = dx / dist
+  const pts = []
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments
+    const arc = Math.sin(t * Math.PI) * bulge
+    pts.push([p0[0] + dx * t + nx * arc, p0[1] + dy * t + ny * arc])
+  }
+  return pts
+}
+
 function syncMapMarkers(targetMap = mapInstance.value) {
   const map = targetMap
   if (!map || typeof window === 'undefined' || !window.AMap) {
@@ -230,7 +253,7 @@ function syncMapMarkers(targetMap = mapInstance.value) {
   map.clearMap()
 
   mapError.value = ''
-  map.setZoomAndCenter(10, [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat])
+  map.setZoomAndCenter(8, [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat])
 
   const markers = [officePoint, ...points]
     .map((point) => buildMapMarker(point))
@@ -242,35 +265,55 @@ function syncMapMarkers(targetMap = mapInstance.value) {
       return []
     }
 
-    const path = [
-      [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat],
-      [location.lng, location.lat],
-    ]
+    const center = [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat]
+    const dest = [location.lng, location.lat]
+    const arcPts = generateArcPoints(center, dest, 40, 0.22)
 
-    return [
-      new window.AMap.Polyline({
-        path,
-        strokeColor: '#8b5cf6',
-        strokeOpacity: 0.1,
-        strokeWeight: 5.5,
-        strokeStyle: 'solid',
-        lineJoin: 'round',
-        lineCap: 'round',
-        zIndex: 19,
-        isOutline: false,
-      }),
-      new window.AMap.Polyline({
-        path,
-        strokeColor: '#7c3aed',
-        strokeOpacity: 0.34,
-        strokeWeight: 2.2,
-        strokeStyle: 'dashed',
-        lineJoin: 'round',
-        lineCap: 'round',
-        zIndex: 20,
-        isOutline: false,
-      }),
-    ]
+    // 1. Glow layer – wide faint gold
+    const glowLine = new window.AMap.Polyline({
+      path: arcPts,
+      strokeColor: '#D4A843',
+      strokeOpacity: 0.12,
+      strokeWeight: 6,
+      strokeStyle: 'solid',
+      lineJoin: 'round',
+      lineCap: 'round',
+      zIndex: 18,
+      isOutline: false,
+    })
+    // 2. Main arc – thin bright gold
+    const arcLine = new window.AMap.Polyline({
+      path: arcPts,
+      strokeColor: '#C8962E',
+      strokeOpacity: 0.55,
+      strokeWeight: 1.5,
+      strokeStyle: 'solid',
+      lineJoin: 'round',
+      lineCap: 'round',
+      zIndex: 19,
+      isOutline: false,
+    })
+
+    // 3. Flying dot – animated marker moving along the arc
+    let flyDot = null
+    try {
+      const dotEl = document.createElement('div')
+      dotEl.className = 'amap-fly-dot'
+      flyDot = new window.AMap.Marker({
+        position: arcPts[0],
+        content: dotEl,
+        offset: new window.AMap.Pixel(-4, -4),
+        zIndex: 30,
+      })
+      flyDot.moveAlong(arcPts, {
+        duration: 2000 + Math.random() * 2500,
+        autoRotation: false,
+      })
+    } catch (_) {
+      // moveAlong not available – skip the dot
+    }
+
+    return flyDot ? [glowLine, arcLine, flyDot] : [glowLine, arcLine]
   })
 
   map.add([...coverageLines, ...markers])
@@ -298,7 +341,7 @@ async function ensureMap() {
       mapInstance.value = new AMap.Map(mapContainer.value, {
         viewMode: '2D',
         resizeEnable: true,
-        zoom: 10,
+        zoom: 8,
         center: [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat],
       })
     }
@@ -333,7 +376,7 @@ async function ensureExpandedMap() {
       expandedMapInstance.value = new AMap.Map(expandedMapContainer.value, {
         viewMode: '2D',
         resizeEnable: true,
-        zoom: 10,
+        zoom: 8,
         center: [SUZHOU_OFFICE_CENTER.lng, SUZHOU_OFFICE_CENTER.lat],
       })
     }
@@ -421,7 +464,7 @@ function formatTrendDate(value) {
 }
 const chartRows = computed(() => {
   const source = trend.value.length
-    ? trend.value.slice(-7).map((item) => ({
+    ? trend.value.slice(-14).map((item) => ({
         label: formatTrendDate(item.date),
         fullDate: String(item.date || '-').slice(0, 10) || '-',
         value: Number(item.total || 0),
@@ -447,7 +490,7 @@ const modeDistribution = computed(() => {
 })
 const mapPoints = computed(() => {
   const sorted = [...mapCompanies.value].sort((left, right) => getAnnualServices(right) - getAnnualServices(left))
-  return sorted.slice(0, 14).map((item) => {
+  return sorted.map((item) => {
     const location = parseLocation(item)
     const annualServices = getAnnualServices(item)
     return {
@@ -477,15 +520,27 @@ const mapFallbackPoints = computed(() => {
   return points.map((point) => {
     const lngOffset = point.location.lng - SUZHOU_OFFICE_CENTER.lng
     const latOffset = point.location.lat - SUZHOU_OFFICE_CENTER.lat
-    const left = Math.min(92, Math.max(8, 50 + (lngOffset / lngScale) * 32))
-    const top = Math.min(92, Math.max(8, 50 - (latOffset / latScale) * 32))
+    const leftVal = Math.min(92, Math.max(8, 50 + (lngOffset / lngScale) * 32))
+    const topVal = Math.min(92, Math.max(8, 50 - (latOffset / latScale) * 32))
+    // Cubic bezier for a smooth flying-line arc
+    const dx = leftVal - 50
+    const dy = topVal - 50
+    const d = Math.sqrt(dx * dx + dy * dy) || 0.01
+    const bulge = d * 0.35
+    const nx = -dy / d
+    const ny = dx / d
+    const c1x = 50 + dx * 0.33 + nx * bulge
+    const c1y = 50 + dy * 0.33 + ny * bulge
+    const c2x = 50 + dx * 0.67 + nx * bulge
+    const c2y = 50 + dy * 0.67 + ny * bulge
 
     return {
       ...point,
-      leftValue: left,
-      topValue: top,
-      left: `${left}%`,
-      top: `${top}%`,
+      leftValue: leftVal,
+      topValue: topVal,
+      left: `${leftVal}%`,
+      top: `${topVal}%`,
+      curvePath: `M 50 50 C ${c1x} ${c1y}, ${c2x} ${c2y}, ${leftVal} ${topVal}`,
     }
   })
 })
@@ -575,34 +630,14 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="figma-page">
+    <PageHeader title="运营总览" description="查看整体运营数据、客户地图和近期动态。" />
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-else-if="loading" class="muted">正在加载管理端数据...</p>
 
     <section class="kpi-grid">
-      <article class="metric-card">
-        <div class="metric-top">
-          <AdminIcon name="ticket" class="metric-icon" />
-          <em class="metric-change">今日</em>
-        </div>
-        <span>今日新增工单</span>
-        <strong>{{ summary.todayTotal }}</strong>
-      </article>
-      <article class="metric-card">
-        <div class="metric-top">
-          <AdminIcon name="activity" class="metric-icon" />
-        </div>
-        <span>处理中工单</span>
-        <strong>{{ activeOrders }}</strong>
-        <div class="bar-line"><i style="width: 75%"></i></div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-top">
-          <AdminIcon name="duration" class="metric-icon" />
-        </div>
-        <span>本月工程师参与</span>
-        <strong>{{ summary.monthEngineerVisits }}<small> 次</small></strong>
-        <small>来自月度服务统计</small>
-      </article>
+      <KpiCard title="今日新增工单" :value="summary.todayTotal" subtitle="今日" icon="ticket" trend="今日" />
+      <KpiCard title="处理中工单" :value="activeOrders" subtitle="当前活跃工单" icon="activity" />
+      <KpiCard title="本月工程师参与" :value="`${summary.monthEngineerVisits} 次`" subtitle="来自月度服务统计" icon="duration" />
     </section>
 
     <section class="figma-grid">
@@ -613,7 +648,7 @@ onBeforeUnmount(() => {
               <h2>工单处理趋势</h2>
               <p>按接口返回日期展示近期工单数量</p>
             </div>
-            <span class="chip">最近 7 日趋势</span>
+            <span class="chip">最近 14 日趋势</span>
           </div>
           <div class="bar-chart">
             <div class="bar-grid"><span v-for="n in 5" :key="n"></span></div>
@@ -680,14 +715,40 @@ onBeforeUnmount(() => {
               <div ref="mapContainer" class="map-canvas" :class="{ 'is-hidden': mapMode !== 'amap' }" aria-label="客户地图"></div>
               <div v-if="mapMode !== 'amap'" class="map-fallback-layer" aria-label="客户坐标层">
                 <svg class="map-fallback-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <line
+                  <!-- Glow arc (wide faint) -->
+                  <path
                     v-for="point in mapFallbackPoints"
-                    :key="`${point.id}-line`"
-                    x1="50"
-                    y1="50"
-                    :x2="point.leftValue"
-                    :y2="point.topValue"
+                    :key="`${point.id}-glow`"
+                    :d="point.curvePath"
+                    class="fly-line-glow"
                   />
+                  <!-- Bright arc (thin) -->
+                  <path
+                    v-for="point in mapFallbackPoints"
+                    :key="`${point.id}-arc`"
+                    :d="point.curvePath"
+                    class="fly-line-arc"
+                  />
+                  <!-- Animated flying dash -->
+                  <path
+                    v-for="point in mapFallbackPoints"
+                    :key="`${point.id}-dash`"
+                    :d="point.curvePath"
+                    class="fly-line-dash"
+                  />
+                  <!-- Flying dots -->
+                  <circle
+                    v-for="point in mapFallbackPoints"
+                    :key="`${point.id}-dot`"
+                    r="2.5"
+                    class="fly-line-dot"
+                  >
+                    <animateMotion
+                      :dur="`${2 + Math.random() * 2.5}s`"
+                      repeatCount="indefinite"
+                      :path="point.curvePath"
+                    />
+                  </circle>
                 </svg>
                 <button
                   class="map-marker map-fallback-marker map-marker-office map-marker-tier-peak"
@@ -724,7 +785,7 @@ onBeforeUnmount(() => {
               <small v-if="mapPoints.length">以苏州办事处为中心辐射，点位大小与光晕反映服务次数层级</small>
               <p v-if="mapMode === 'fallback' && mapFallbackMessage" class="map-note">{{ mapFallbackMessage }}</p>
               <p v-if="mapError" class="map-error">{{ mapError }}</p>
-              <p v-else-if="!mapCompanies.length && !mapLoading" class="map-error">暂无客户点位数据</p>
+              <EmptyState v-else-if="!mapCompanies.length && !mapLoading" title="暂无客户点位数据" description="请尝试搜索区域 / 客户，或补充客户坐标信息。" />
             </div>
             <button class="map-button" type="button" @click="openRegionView"><AdminIcon name="map-action" class="map-action-icon" />进入客户资产视图</button>
           </div>
@@ -767,15 +828,12 @@ onBeforeUnmount(() => {
           <div class="map-viewport map-viewport-large">
             <div ref="expandedMapContainer" class="map-canvas" :class="{ 'is-hidden': mapMode !== 'amap' }" aria-label="放大客户地图"></div>
             <div v-if="mapMode !== 'amap'" class="map-fallback-layer" aria-label="放大客户坐标层">
-              <svg class="map-fallback-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <line
-                  v-for="point in mapFallbackPoints"
-                  :key="`overlay-${point.id}-line`"
-                  x1="50"
-                  y1="50"
-                  :x2="point.leftValue"
-                  :y2="point.topValue"
-                />
+                <svg class="map-fallback-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <path
+                    v-for="point in mapFallbackPoints"
+                    :key="`overlay-${point.id}-line`"
+                    :d="point.curvePath"
+                  />
               </svg>
               <button
                 class="map-marker map-fallback-marker map-marker-office map-marker-tier-peak"

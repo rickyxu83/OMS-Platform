@@ -1,5 +1,10 @@
 <script setup>
 import { computed, reactive, onMounted, ref, watch } from 'vue'
+import DetailPanel from '../components/admin/DetailPanel.vue'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
@@ -184,31 +189,23 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">CLIENT VAULT</p>
-        <h1>客户资产</h1>
-        <p>统一管理客户、联系人、地址和历史服务关系。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="CLIENT VAULT" title="客户资产" description="统一管理客户、联系人、地址和历史服务关系。">
+      <template #actions>
         <button class="ghost-button" type="button" @click="exportCsv">导出当前列表明细</button>
         <button v-if="canEdit" class="primary" type="submit" form="customer-create-form" :disabled="saving">新增客户</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
-    <label class="command-input">
-      <span>⌕</span>
-      <input v-model.trim="keyword" placeholder="搜索客户名称、地址或联系人..." @keyup.enter="load" />
-    </label>
+    <FilterBar v-model:query="keyword" search-placeholder="搜索客户名称、地址或联系人..." @submit="load" />
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-if="message" class="form-success">{{ message }}</p>
     <p v-else-if="loading" class="muted">正在加载客户资料...</p>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>客户总数</span><strong>{{ customers.length }}</strong><small>当前列表</small></article>
-      <article class="metric-card"><span>有服务记录客户</span><strong>{{ keyCustomerCount }}</strong><small>本年度</small></article>
-      <article class="metric-card"><span>本年度服务</span><strong>{{ totalRecords }}</strong><small>服务单汇总</small></article>
+      <KpiCard title="客户总数" :value="customers.length" subtitle="当前列表" icon="customer" />
+      <KpiCard title="有服务记录客户" :value="keyCustomerCount" subtitle="本年度" icon="activity" />
+      <KpiCard title="本年度服务" :value="totalRecords" subtitle="服务单汇总" icon="ticket" />
     </section>
 
     <form v-if="canEdit" id="customer-create-form" class="inline-form" @submit.prevent="createCustomer">
@@ -237,17 +234,10 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
             <span><em>本年度服务</em>{{ customer.count }}</span>
           </div>
         </button>
-        <p v-if="!filteredCustomers.length && !loading" class="empty-state">暂无客户资料</p>
+        <EmptyState v-if="!filteredCustomers.length && !loading" title="暂无客户资料" description="请尝试调整搜索条件或新增客户。" />
       </div>
 
-      <aside class="glass-panel drawer" v-if="activeCustomer">
-        <div class="drawer-head">
-          <div>
-            <p>客户资料</p>
-            <h2>{{ activeCustomer.name }}</h2>
-          </div>
-          <em class="status 已提交">已启用</em>
-        </div>
+      <DetailPanel v-if="activeCustomer" subtitle="客户资料" :title="activeCustomer.name" status-label="已启用" status-tone="success">
         <div class="drawer-form">
           <label class="field"><span>客户名称</span><input v-model.trim="detailForm.name" /></label>
           <label class="field"><span>联系人</span><input v-model.trim="detailForm.contactName" /></label>
@@ -272,10 +262,12 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
           <p v-if="activeCustomerDeviceStats.error" class="form-error">设备统计加载失败：{{ activeCustomerDeviceStats.error }}</p>
           <button class="ghost-button full" type="button" @click="viewCustomerDevices">查看全部设备</button>
         </div>
-        <button v-if="canEdit" class="ghost-button full" type="button" :disabled="saving" @click="updateActiveCustomer">保存当前客户</button>
-        <p v-else class="form-error">当前账号只可查看，不可编辑客户资料。</p>
-        <button class="primary full" type="button" @click="exportCsv">导出当前筛选明细</button>
-      </aside>
+        <template #footer>
+          <button v-if="canEdit" class="ghost-button full" type="button" :disabled="saving" @click="updateActiveCustomer">保存当前客户</button>
+          <p v-else class="form-error">当前账号只可查看，不可编辑客户资料。</p>
+          <button class="primary full" type="button" @click="exportCsv">导出当前筛选明细</button>
+        </template>
+      </DetailPanel>
     </section>
   </section>
 </template>

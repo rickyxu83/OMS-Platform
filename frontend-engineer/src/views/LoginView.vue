@@ -33,7 +33,7 @@ async function submit() {
   error.value = ''
   try {
     const data = await api.post('/auth/login', form)
-    if (data.user?.role !== 'engineer') throw new Error('当前账号不是工程师账号')
+    if (data.user?.role !== 'engineer' && data.user?.role !== 'engineering_supervisor') throw new Error('当前账号不是工程师账号')
     saveSession(data)
     saveRememberedCredentials(
       {

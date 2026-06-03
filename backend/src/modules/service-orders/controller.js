@@ -829,9 +829,10 @@ async function list(req, res) {
     page = '1',
     pageSize = '20',
   } = req.query
-  const isEngineer = req.user.role === 'engineer'
-  const canListBroadly = broadListRoles.has(req.user.role)
-  const effectiveEngineerId = isEngineer ? req.user.id : canListBroadly ? engineerId || null : null
+  const mineQuery = req.query.mine === '1'
+  const isEngineer = req.user.role === 'engineer' || req.user.role === 'engineering_supervisor'
+  const canListBroadly = broadListRoles.has(req.user.role) && !mineQuery
+  const effectiveEngineerId = (mineQuery || isEngineer) ? req.user.id : canListBroadly ? engineerId || null : null
   const salespersonScope = req.user.role === 'sales' ? String(req.user.real_name || req.user.username || '').trim() : ''
   const salespersonUsernameScope = req.user.role === 'sales' ? String(req.user.username || '').trim() : ''
   const normalizedPage = Math.max(1, Number(page) || 1)
@@ -1296,9 +1297,6 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
   if (!contactName) missing.push('客户联系人')
   if (!contactPhone) missing.push('联系人电话')
-  if (effectiveServiceMode === 'onsite' && serviceType !== 'install' && !deviceName && !deviceId) {
-    missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
-  }
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
@@ -1834,9 +1832,6 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
   if (!contactName && !customerConfirmName) missing.push('客户联系人')
   if (!contactPhone) missing.push('联系人电话')
-  if (effectiveServiceMode === 'onsite' && serviceType !== 'install' && !deviceName && !order.device_id) {
-    missing.push(effectiveServiceMode === 'remote' ? '专案名称 / 产品名称' : '设备/系统')
-  }
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')

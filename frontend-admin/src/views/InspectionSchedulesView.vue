@@ -2,6 +2,11 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
+import StatusBadge from '../components/admin/StatusBadge.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -310,31 +315,33 @@ onMounted(async () => {
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">INSPECTION CADENCE</p>
-        <h1>巡检计划</h1>
-        <p>按客户与设备配置周期性巡检模板；自动生成的巡检工单仍需主管确认后才会派发给工程师。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="INSPECTION CADENCE" title="巡检计划" description="按客户与设备配置周期性巡检模板；自动生成的巡检工单仍需主管确认后才会派发给工程师。">
+      <template #actions>
         <button class="ghost-button" type="button" @click="resetFilters">重置筛选</button>
         <button v-if="canEdit" class="ghost-button" type="button" @click="openCreateForm">新增计划</button>
         <button class="primary" type="button" :disabled="loading" @click="load">刷新数据</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>计划总数</span><strong>{{ totalCount }}</strong><small>当前筛选</small></article>
-      <article class="metric-card"><span>启用计划</span><strong>{{ activeCount }}</strong><small>可参与后续生成</small></article>
-      <article class="metric-card"><span>14 天内待生成</span><strong>{{ dueSoonCount }}</strong><small>仍需确认派发</small></article>
+      <KpiCard title="计划总数" :value="totalCount" subtitle="当前筛选" icon="ticket" />
+      <KpiCard title="启用计划" :value="activeCount" subtitle="可参与后续生成" icon="activity" />
+      <KpiCard title="14 天内待生成" :value="dueSoonCount" subtitle="仍需确认派发" icon="warn" />
     </section>
 
-    <section class="device-filter-grid">
-      <label class="field"><span>客户</span><select v-model="filters.customerId" @change="load"><option value="">全部客户</option><option v-for="customer in customerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></label>
-      <label class="field"><span>周期</span><select v-model="filters.cadence" @change="load"><option v-for="[value, label] in cadenceOptions" :key="value" :value="value">{{ label }}</option></select></label>
-      <label class="field"><span>启用状态</span><select v-model="filters.active" @change="load"><option v-for="[value, label] in activeOptions" :key="value" :value="value">{{ label }}</option></select></label>
+    <FilterBar v-model:query="filters.customerId" search-placeholder="筛选客户..." @submit="load">
+      <select v-model="filters.customerId" class="select-chip" @change="load">
+        <option value="">全部客户</option>
+        <option v-for="customer in customerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option>
+      </select>
+      <select v-model="filters.cadence" class="select-chip" @change="load">
+        <option v-for="[value, label] in cadenceOptions" :key="value" :value="value">{{ label }}</option>
+      </select>
+      <select v-model="filters.active" class="select-chip" @change="load">
+        <option v-for="[value, label] in activeOptions" :key="value" :value="value">{{ label }}</option>
+      </select>
       <span class="chip">模板保存不会直接生成工程师可见任务</span>
-    </section>
+    </FilterBar>
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-if="message" class="form-success">{{ message }}</p>
@@ -362,10 +369,10 @@ onMounted(async () => {
           <span>{{ schedule.targetEngineerName }}</span>
           <span><em class="type-pill">{{ schedule.cadenceText }}</em></span>
           <span class="muted-text">{{ schedule.nextRunAnchor }}</span>
-          <span><em class="status" :class="schedule.active ? '启用' : '已作废'">{{ schedule.activeText }}</em></span>
+          <span><StatusBadge :label="schedule.activeText" :tone="schedule.active ? 'success' : 'default'" compact /></span>
           <span class="row-actions">查看详情</span>
         </button>
-        <p v-if="!schedules.length && !loading" class="empty-state">暂无巡检计划</p>
+          <EmptyState v-if="!schedules.length && !loading" title="暂无巡检计划" description="当前还没有巡检计划，请新建计划或调整筛选条件。" />
       </div>
 
       <aside class="glass-panel drawer">

@@ -2,6 +2,11 @@
 import { computed, reactive, onMounted, ref } from 'vue'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
+import StatusBadge from '../components/admin/StatusBadge.vue'
 import { downloadText, toCsv } from '../utils/download'
 
 const loading = ref(false)
@@ -121,22 +126,14 @@ onMounted(load)
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">MEMBER CENTER</p>
-        <h1>工程师管理</h1>
-        <p>授权工程师与管理人员目录。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="MEMBER CENTER" title="工程师管理" description="授权工程师与管理人员目录。">
+      <template #actions>
         <button class="ghost-button" type="button" @click="exportCsv">导出 CSV</button>
         <button v-if="canEdit" class="primary" type="submit" form="user-create-form" :disabled="saving">新增成员</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
-    <label class="command-input">
-      <span>⌕</span>
-      <input v-model.trim="keyword" placeholder="搜索姓名、账号、角色或电话..." @keyup.enter="load" />
-    </label>
+    <FilterBar v-model:query="keyword" search-placeholder="搜索姓名、账号、角色或电话..." @submit="load" />
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-if="message" class="form-success">{{ message }}</p>
@@ -167,18 +164,18 @@ onMounted(load)
         </div>
         <span>{{ user.role }}</span>
         <span>基础设施运维</span>
-        <span><em class="status" :class="user.status === '启用' ? '已提交' : '已作废'">{{ user.status }}</em></span>
+        <span><StatusBadge :label="user.status" :tone="user.status === '启用' ? 'success' : 'default'" compact /></span>
         <button v-if="canEdit" class="row-action-button" type="button" :disabled="saving" @click="toggleUser(user)">
           {{ user.status === '启用' ? '停用' : '启用' }}
         </button>
       </article>
-      <p v-if="!filteredUsers.length && !loading" class="empty-state">暂无用户</p>
+      <EmptyState v-if="!filteredUsers.length && !loading" title="暂无用户" description="没有找到匹配的成员，请调整搜索条件或新增成员。" />
     </section>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>总人数</span><strong>{{ users.length }}</strong></article>
-      <article class="metric-card"><span>在岗</span><strong>{{ activeCount }}</strong></article>
-      <article class="metric-card"><span>系统管理员</span><strong>{{ adminCount }}</strong></article>
+      <KpiCard title="总人数" :value="users.length" subtitle="当前列表" icon="customer" />
+      <KpiCard title="在岗" :value="activeCount" subtitle="已启用成员" icon="activity" />
+      <KpiCard title="系统管理员" :value="adminCount" subtitle="管理员角色" icon="ticket" />
     </section>
   </section>
 </template>

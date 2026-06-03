@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../services/api'
+import EmptyState from '../components/admin/EmptyState.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
+import StatusBadge from '../components/admin/StatusBadge.vue'
 import { downloadText, toCsv } from '../utils/download'
 
 const loading = ref(false)
@@ -69,26 +73,21 @@ onMounted(load)
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">SEC_OPS_AUDIT</p>
-        <h1>操作审计</h1>
-        <p>面向当前加载页面的操作审计列表。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="SEC_OPS_AUDIT" title="操作审计" description="面向当前加载页面的操作审计列表。">
+      <template #actions>
         <label class="command-input">
           <span>⌕</span>
           <input v-model.trim="keyword" placeholder="搜索用户或操作..." />
         </label>
         <button class="ghost-button" type="button" @click="actionFilter = actionFilter ? '' : 'delete'; load()">仅看风险操作</button>
         <button class="ghost-button" type="button" @click="exportCsv">导出 CSV</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>日志总数</span><strong>{{ stats.total }}</strong></article>
-      <article class="metric-card"><span>当前页记录</span><strong>{{ stats.loaded }}</strong></article>
-      <article class="metric-card"><span>删除操作</span><strong>{{ stats.warnings }}</strong></article>
+      <KpiCard title="日志总数" :value="stats.total" subtitle="系统层面" icon="ticket" />
+      <KpiCard title="当前页记录" :value="stats.loaded" subtitle="当前加载" icon="customer" />
+      <KpiCard title="风险操作" :value="stats.warnings" subtitle="删除等敏感操作" icon="warn" />
     </section>
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>

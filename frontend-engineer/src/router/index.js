@@ -41,7 +41,7 @@ router.beforeEach(async (to) => {
   if (to.name !== 'login' && isLoggedIn()) {
     try {
       const data = await api.get('/auth/me')
-      if (data.user?.role !== 'engineer') return { name: 'login' }
+      if (data.user?.role !== 'engineer' && data.user?.role !== 'engineering_supervisor') return { name: 'login' }
       saveUser(data.user)
     } catch {
       if (!currentUser.value) return { name: 'login' }

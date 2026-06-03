@@ -3,7 +3,7 @@ import { ref } from 'vue'
 const TOKEN_KEY = 'service-sheet-rc-admin-token'
 const USER_KEY = 'service-sheet-rc-admin-user'
 const REMEMBER_USERNAME_KEY = 'service-sheet-rc-admin-remember-username'
-const REMEMBER_PASSWORD_KEY = 'service-sheet-rc-admin-remember-password'
+const LEGACY_REMEMBER_PASSWORD_KEY = 'service-sheet-rc-admin-remember-password'
 
 function readStoredValue(key) {
   return localStorage.getItem(key) || sessionStorage.getItem(key)
@@ -54,21 +54,21 @@ export function saveSession({ token, user }, remember = true) {
 }
 
 export function loadRememberedCredentials() {
+  localStorage.removeItem(LEGACY_REMEMBER_PASSWORD_KEY)
   return {
     username: localStorage.getItem(REMEMBER_USERNAME_KEY) || '',
-    password: localStorage.getItem(REMEMBER_PASSWORD_KEY) || '',
   }
 }
 
-export function saveRememberedCredentials({ username = '', password = '' }, rememberPassword) {
-  if (rememberPassword) {
+export function saveRememberedCredentials({ username = '' }, rememberUsername) {
+  localStorage.removeItem(LEGACY_REMEMBER_PASSWORD_KEY)
+
+  if (rememberUsername) {
     localStorage.setItem(REMEMBER_USERNAME_KEY, username)
-    localStorage.setItem(REMEMBER_PASSWORD_KEY, password)
     return
   }
 
   localStorage.removeItem(REMEMBER_USERNAME_KEY)
-  localStorage.removeItem(REMEMBER_PASSWORD_KEY)
 }
 
 export function saveUser(user) {

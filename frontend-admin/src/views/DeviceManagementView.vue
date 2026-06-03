@@ -1,5 +1,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import DetailPanel from '../components/admin/DetailPanel.vue'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
 import { useRoute } from 'vue-router'
 import { api } from '../services/api'
 
@@ -364,35 +369,29 @@ onMounted(() => {
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">DEVICE LEDGER</p>
-        <h1>设备管理</h1>
-        <p>按客户、型号、序列号和维护归属集中查看设备资产。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="DEVICE LEDGER" title="设备管理" description="按客户、型号、序列号和维护归属集中查看设备资产。">
+      <template #actions>
         <button class="primary" type="button" @click="openCreateForm">新增设备</button>
         <button class="ghost-button" type="button" @click="resetFilters">重置筛选</button>
         <button class="primary" type="button" :disabled="loading" @click="load">刷新数据</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
-    <section class="device-filter-grid">
+    <FilterBar v-model:query="filters.model" search-placeholder="搜索设备名称、型号、序列号..." @submit="load">
       <label class="field"><span>客户</span><select v-model="filters.customerId" @change="load"><option value="">全部客户</option><option v-for="customer in filterCustomerOptions" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></label>
-      <label class="field"><span>型号</span><input v-model.trim="filters.model" placeholder="输入设备型号" @keyup.enter="load" /></label>
       <label class="field"><span>序列号</span><input v-model.trim="filters.serialNo" placeholder="输入序列号" @keyup.enter="load" /></label>
       <label class="field"><span>维护类型</span><select v-model="filters.maintenanceType"><option v-for="[value, label] in maintenanceTypeOptions" :key="value" :value="value">{{ label }}</option></select></label>
       <label class="field"><span>维护方</span><input v-model.trim="filters.maintenanceParty" placeholder="输入维护方名称" @keyup.enter="load" /></label>
       <label class="field"><span>维护截止</span><select v-model="filters.expiry"><option v-for="[value, label] in expiryOptions" :key="value" :value="value">{{ label }}</option></select></label>
-    </section>
+    </FilterBar>
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-else-if="loading" class="muted">正在加载设备资产...</p>
 
     <section class="kpi-grid">
-      <article class="metric-card"><span>筛选后设备</span><strong>{{ stats.total }}</strong><small>当前视图</small></article>
-      <article class="metric-card"><span>我方维护</span><strong>{{ stats.ours }}</strong><small>维护类型</small></article>
-      <article class="metric-card"><span>需关注到期</span><strong>{{ stats.expiring }}</strong><small>已到期或 30 天内</small></article>
+      <KpiCard title="筛选后设备" :value="stats.total" subtitle="当前视图" icon="asset" />
+      <KpiCard title="我方维护" :value="stats.ours" subtitle="维护类型" icon="activity" />
+      <KpiCard title="需关注到期" :value="stats.expiring" subtitle="已到期或 30 天内" icon="warn" />
     </section>
 
     <section class="detail-layout">
@@ -456,19 +455,10 @@ onMounted(() => {
             </section>
           </div>
         </template>
-        <p v-if="!filteredDevices.length && !loading" class="empty-state">暂无匹配设备</p>
+        <EmptyState v-if="!filteredDevices.length && !loading" title="暂无匹配设备" description="请尝试调整筛选条件或新增设备。" />
       </div>
 
-      <aside v-if="formMode" class="glass-panel drawer">
-        <div class="drawer-head">
-          <div>
-            <p>设备编辑</p>
-            <h2>{{ formTitle }}</h2>
-          </div>
-          <div class="page-actions">
-            <button class="ghost-button" type="button" @click="closeDeviceForm">取消</button>
-          </div>
-        </div>
+      <DetailPanel v-if="formMode" subtitle="设备编辑" :title="formTitle">
 
         <p v-if="message" class="form-success">{{ message }}</p>
         <form class="drawer-form" @submit.prevent="saveDevice">
@@ -529,12 +519,14 @@ onMounted(() => {
             <textarea v-model.trim="deviceForm.remark" class="drawer-textarea" rows="4" placeholder="补充设备备注"></textarea>
           </label>
           <p v-if="error" class="form-error">{{ error }}</p>
+        </form>
+        <template #footer>
           <div class="page-actions">
             <button class="ghost-button" type="button" :disabled="saving" @click="closeDeviceForm">取消</button>
-            <button class="primary" type="submit" :disabled="saving">{{ saving ? '保存中...' : '保存设备' }}</button>
+            <button class="primary" type="button" :disabled="saving" @click="saveDevice">{{ saving ? '保存中...' : '保存设备' }}</button>
           </div>
-        </form>
-      </aside>
+        </template>
+      </DetailPanel>
     </section>
   </section>
 </template>

@@ -1,6 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../services/api'
+import EmptyState from '../components/admin/EmptyState.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
 
 const loading = ref(false)
 const error = ref('')
@@ -62,13 +65,11 @@ onMounted(load)
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">MONTHLY EXPORT</p>
-        <h1>月报导出</h1>
-        <p>按当前月份读取月报数据，并导出 CSV 汇总。</p>
-      </div>
-    </header>
+    <PageHeader kicker="MONTHLY EXPORT" title="月报导出" description="按当前月份读取月报数据，并导出 CSV 汇总。">
+      <template #actions>
+        <button class="primary" type="button" :disabled="loading || !rows.length" @click="exportCsv">导出月报</button>
+      </template>
+    </PageHeader>
 
     <div class="stepper">
       <span class="active"><b>1</b><em>读取本月数据</em></span>
@@ -78,6 +79,12 @@ onMounted(load)
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-else-if="loading" class="muted">正在读取月报数据...</p>
+
+    <section class="kpi-grid">
+      <KpiCard title="已加载记录" :value="totalItems || '—'" subtitle="当前月份" icon="ticket" />
+      <KpiCard title="服务记录" :value="serviceOrderCount || '—'" subtitle="服务记录来源" icon="activity" />
+      <KpiCard title="手工记录" :value="manualCount || '—'" subtitle="手工补录来源" icon="duration" />
+    </section>
 
     <section class="figma-grid">
       <article class="glass-panel panel" style="grid-column: span 8">
@@ -95,7 +102,7 @@ onMounted(load)
             <span>{{ row[2] }}</span>
             <small>{{ row[3] }}</small>
           </div>
-          <p v-if="!rows.length && !loading" class="empty-state">暂无月报数据</p>
+          <EmptyState v-if="!rows.length && !loading" title="暂无月报数据" description="当前月份还没有月报记录，请检查数据范围。" />
         </div>
       </article>
 

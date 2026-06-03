@@ -2,6 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AdminIcon from '../components/AdminIcon.vue'
+import {
+  canAccessRoute,
+  findNavigationGroup,
+  findNavigationItem,
+  getAllNavigationItems,
+  getVisibleNavigation,
+} from '../config/navigation'
 import { clearSession, currentUser } from '../services/auth'
 import {
   BRAND_LOGO,
@@ -10,74 +17,50 @@ import {
 const route = useRoute()
 const router = useRouter()
 const currentTime = ref('')
+const commandOpen = ref(false)
 const searchText = ref('')
-const roleAccess = {
-  users: ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'],
-  'audit-logs': ['admin', 'supervisor', 'engineering_supervisor'],
-}
-const categories = [
-  { label: '工作台', icon: 'dashboard', name: 'dashboard', to: '/', standalone: true },
-  {
-    label: '业务管理', icon: 'service', name: 'business',
-    children: [
-      { to: '/service-orders', label: '工单处理', name: 'service-orders' },
-      { to: '/inspection-schedules', label: '巡检计划', name: 'inspection-schedules' },
-    ]
-  },
-  {
-    label: '资源管理', icon: 'customer', name: 'resources',
-    children: [
-      { to: '/customers', label: '客户资产', name: 'customers' },
-      { to: '/devices', label: '设备管理', name: 'devices' },
-      { to: '/maintenance-parties', label: '维保方管理', name: 'maintenance-parties' },
-    ]
-  },
-  {
-    label: '系统设置', icon: 'member', name: 'system',
-    children: [
-      { to: '/users', label: '工程师管理', name: 'users' },
-      { to: '/audit-logs', label: '操作审计', name: 'audit-logs' },
-      { to: '/timesheets', label: '月报导出', name: 'timesheets' },
-    ]
-  }
-]
+const searchMessage = ref('')
 
-const activeCategory = computed(() => {
-  if (route.name === 'dashboard') return categories[0]
-  return categories.find(c => !c.standalone && c.children?.some(ch => ch.name === route.name)) || null
-})
-
-const activeChildren = computed(() => activeCategory.value?.children || [])
-
-const visibleCategories = computed(() => {
-  return categories.filter(cat => {
-    if (cat.standalone) return true
-    if (!cat.children) return false
-    return cat.children.some(ch => {
-      const allowed = roleAccess[ch.name]
-      return !allowed || allowed.includes(currentUser.value?.role)
-    })
+const visibleGroups = computed(() => getVisibleNavigation(currentUser.value?.role))
+const activeGroup = computed(() => findNavigationGroup(route.name, visibleGroups.value) || visibleGroups.value[0] || null)
+const activeItem = computed(() => findNavigationItem(route.name, visibleGroups.value))
+const activeChildren = computed(() => activeGroup.value?.children || [])
+const canViewAuditLogs = computed(() => canAccessRoute('audit-logs', currentUser.value?.role))
+const navigationItems = computed(() => getAllNavigationItems(visibleGroups.value))
+const commandItems = computed(() => {
+  const text = searchText.value.trim().toLowerCase()
+  if (!text) return navigationItems.value
+  return navigationItems.value.filter(item => {
+    const keywords = [item.label, item.name, item.group?.label, ...(item.aliases || [])]
+    return keywords.some(keyword => String(keyword || '').toLowerCase().includes(text))
   })
 })
+const userName = computed(() => currentUser.value?.realName || currentUser.value?.username || '管理员')
+const userRoleLabel = computed(() => {
+  const roleMap = {
+    admin: '系统管理员',
+    assistant: '助理',
+    dispatcher: '调度',
+    supervisor: '主管',
+    engineering_supervisor: '工程主管',
+    sales_supervisor: '业务主管',
+    sales: '业务',
+  }
+  return roleMap[currentUser.value?.role] || currentUser.value?.role || '管理端用户'
+})
+const userInitial = computed(() => String(userName.value || '管').slice(0, 1).toUpperCase())
 
 const activeTitle = computed(() => {
-  if (!activeCategory.value) return '工作台'
-  if (activeCategory.value.standalone) return '工作台'
-  const child = activeCategory.value.children.find(ch => ch.name === route.name)
-  return `${activeCategory.value.label} / ${child?.label || ''}`
+  if (!activeGroup.value) return '工作台'
+  return `${activeGroup.value.label} / ${activeItem.value?.label || activeGroup.value.children[0]?.label || ''}`
 })
 
-function handleCategoryClick(cat) {
-  if (cat.standalone) {
-    router.push(cat.to)
-    return
+function navigateToGroup(group) {
+  if (!group.children.length) return
+  const firstChild = group.children[0]
+  if (route.name !== firstChild.name) {
+    router.push(firstChild.to)
   }
-  if (activeCategory.value?.name === cat.name) return
-  const firstVisible = cat.children.find(ch => {
-    const allowed = roleAccess[ch.name]
-    return !allowed || allowed.includes(currentUser.value?.role)
-  })
-  if (firstVisible) router.push(firstVisible.to)
 }
 
 function tick() {
@@ -99,12 +82,25 @@ function handleLogout() {
 
 function handleSearch() {
   const text = searchText.value.trim()
+  searchMessage.value = ''
   if (!text) return
-  const allItems = categories.flatMap(cat => cat.standalone ? [cat] : (cat.children || []))
-  const target = allItems.find(item => item.label?.includes(text) || item.name?.includes(text))?.name
-  if (target && route.name !== target) {
-    router.push({ name: target })
+  const target = navigationItems.value.find(item => {
+    const keywords = [item.label, item.name, item.group?.label, ...(item.aliases || [])]
+    return keywords.some(keyword => String(keyword || '').toLowerCase().includes(text.toLowerCase()))
+  })
+  if (!target) {
+    searchMessage.value = '未找到可访问模块'
+    return
   }
+  selectNavigationItem(target)
+}
+
+function selectNavigationItem(item) {
+  if (!item) return
+  if (item.name !== route.name) router.push({ name: item.name })
+  commandOpen.value = false
+  searchText.value = ''
+  searchMessage.value = ''
 }
 
 let timer = 0
@@ -120,32 +116,33 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="admin-shell figma-shell">
+  <main class="admin-shell figma-shell make-admin-shell">
     <aside class="admin-sidebar figma-sidebar">
       <div class="sidebar-brand">
         <img :src="BRAND_LOGO" alt="" class="brand-mark" />
         <div>
-          <strong>技服表电子化</strong>
-          <small>管理端</small>
+          <strong>技服表管理端</strong>
+          <small>电子化服务平台</small>
         </div>
       </div>
 
       <nav class="sidebar-nav">
-        <a
-          v-for="cat in visibleCategories"
-          :key="cat.name"
-          class="sidebar-link"
-          :class="{ active: activeCategory?.name === cat.name }"
-          @click="handleCategoryClick(cat)"
+        <section
+          v-for="group in visibleGroups"
+          :key="group.name"
+          class="sidebar-group"
+          :class="{ active: activeGroup?.name === group.name }"
         >
-          <AdminIcon :name="cat.icon" class="nav-icon-image" />
-          <span>{{ cat.label }}</span>
-        </a>
+          <button type="button" class="sidebar-group-button" @click="navigateToGroup(group)">
+            <AdminIcon :name="group.icon" class="nav-icon-image" />
+            <span>{{ group.label }}</span>
+          </button>
+        </section>
       </nav>
 
       <div class="sidebar-footer">
-        <RouterLink class="sidebar-link subtle-link" :to="{ name: 'audit-logs' }">
-          <AdminIcon name="help" class="nav-icon-image" />
+        <RouterLink v-if="canViewAuditLogs" class="sidebar-link subtle-link" :to="{ name: 'audit-logs' }">
+          <AdminIcon name="audit" class="nav-icon-image" />
           <span>查看操作审计</span>
         </RouterLink>
         <button type="button" class="sidebar-link subtle-link" @click="handleLogout">
@@ -158,14 +155,60 @@ onBeforeUnmount(() => {
     <div class="admin-main">
       <header class="admin-topbar figma-topbar">
         <div class="topbar-title">
-          <h1>{{ activeTitle }}</h1>
-          <p>当前工作台 · {{ currentTime }}</p>
+          <nav class="topbar-breadcrumbs" aria-label="当前位置">
+            <span>{{ activeGroup?.label || '工作台' }}</span>
+            <em>/</em>
+            <strong>{{ activeItem?.label || activeGroup?.children?.[0]?.label || '运营总览' }}</strong>
+          </nav>
+          <p>{{ currentTime }}</p>
         </div>
-        <div class="topbar-search">
-          <input v-model.trim="searchText" placeholder="输入模块名称并回车切换，如客户资产" @keyup.enter="handleSearch" />
-          <AdminIcon name="search" class="search-icon" />
+        <div class="topbar-actions">
+          <button type="button" class="command-trigger" @click="commandOpen = true">
+            <AdminIcon name="search" class="command-trigger-icon" />
+            <span>快速跳转模块...</span>
+            <kbd>⌘K</kbd>
+          </button>
+          <div class="topbar-user">
+            <span class="topbar-avatar">{{ userInitial }}</span>
+            <div>
+              <strong>{{ userName }}</strong>
+              <small>{{ userRoleLabel }}</small>
+            </div>
+          </div>
+          <button type="button" class="topbar-logout" @click="handleLogout">退出</button>
         </div>
       </header>
+
+      <div v-if="commandOpen" class="command-overlay" @click.self="commandOpen = false">
+        <section class="command-dialog" role="dialog" aria-label="快速跳转模块">
+          <div class="command-input-wrap">
+            <AdminIcon name="search" class="command-input-icon" />
+            <input
+              v-model.trim="searchText"
+              autofocus
+              placeholder="输入模块名称快速跳转..."
+              @keyup.enter="handleSearch"
+              @keyup.esc="commandOpen = false"
+            />
+          </div>
+          <p v-if="searchMessage" class="command-message">{{ searchMessage }}</p>
+          <div class="command-list">
+            <p class="command-group-label">常用模块</p>
+            <button
+              v-for="item in commandItems"
+              :key="item.name"
+              type="button"
+              class="command-item"
+              @click="selectNavigationItem(item)"
+            >
+              <AdminIcon :name="item.group.icon" class="command-item-icon" />
+              <span>{{ item.label }}</span>
+              <small>{{ item.group.label }}</small>
+            </button>
+            <p v-if="commandItems.length === 0" class="command-empty">未找到相关模块</p>
+          </div>
+        </section>
+      </div>
 
       <nav v-if="activeChildren.length > 0" class="sub-nav">
         <RouterLink

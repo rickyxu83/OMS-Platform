@@ -49,8 +49,21 @@ const recentOrders = ref([])
 const editingTask = ref(null)
 const selectedHistoryId = ref('')
 const selectedCustomer = ref(null)
-const installDeviceDraft = ref(createInstallDeviceDraft())
+const installDeviceList = ref([createInstallDeviceDraft()])
+const activeInstallDeviceIndex = ref(0)
+function addInstallDevice() {
+  installDeviceList.value.push(createInstallDeviceDraft())
+}
+function removeInstallDevice(index) {
+  if (installDeviceList.value.length > 1) {
+    installDeviceList.value.splice(index, 1)
+  }
+}
+function setActiveDeviceIndex(index) {
+  activeInstallDeviceIndex.value = index
+}
 const deviceModelSuggestions = ref([])
+const selectedSuggestionIndex = ref(-1)
 const selectedCoEngineerIds = ref([])
 const showCoEngineerOptions = ref(false)
 const showContactOptions = ref(false)
@@ -91,6 +104,7 @@ const cancelFabPosition = ref({ x: null, y: null })
 const cancelFabDragging = ref(false)
 let customerSearchTimer = null
 let deviceModelSearchTimer = null
+let deviceModelReqId = 0
 let draftTimer = null
 let draftSyncTimer = null
 let draftCountdownTimer = null
@@ -272,7 +286,7 @@ function currentModeServiceDraftView() {
 
 function currentInstallDeviceView() {
   return {
-    installDeviceDraft: cloneInstallDeviceDraft(installDeviceDraft.value),
+    installDeviceList: installDeviceList.value.map(d => cloneInstallDeviceDraft(d)),
   }
 }
 
@@ -391,7 +405,7 @@ function applyDraftState(state = {}, { fallbackMode = 'onsite' } = {}) {
   formMode.value = nextMode
   selectedCustomer.value = state.selectedCustomer || null
   selectedHistoryId.value = state.selectedHistoryId || ''
-  installDeviceDraft.value = cloneInstallDeviceDraft(state.installDeviceState?.installDeviceDraft)
+  installDeviceList.value = (state.installDeviceState?.installDeviceList || [createInstallDeviceDraft()]).map(d => cloneInstallDeviceDraft(d))
   selectedCoEngineerIds.value = Array.isArray(state.selectedCoEngineerIds)
     ? state.selectedCoEngineerIds.map(Number)
     : []
@@ -526,7 +540,7 @@ const infoSectionTitle = computed(() => (isOfficeMode.value ? '工作信息' : '
 const showDeviceField = computed(() => currentServiceMode.value === 'office')
 const deviceFieldLabel = computed(() => {
   if (currentServiceMode.value === 'office') return '具体事项'
-  return currentServiceMode.value === 'remote' ? '专案名称 / 产品名称' : '设备/系统/项目'
+  return currentServiceMode.value === 'remote' ? '专案名称 / 产品名称' : '设备/项目'
 })
 const deviceFieldPlaceholder = computed(() => {
   if (currentServiceMode.value === 'office') return '例如：京隆 AI 项目方案规划、培训课件整理、内部周会纪要'
@@ -773,7 +787,7 @@ async function restoreDraftIfPresent() {
   draftHydrating.value = true
   selectedCustomer.value = preferredDraft.payload.selectedCustomer || null
   selectedHistoryId.value = preferredDraft.payload.selectedHistoryId || ''
-  installDeviceDraft.value = cloneInstallDeviceDraft(preferredDraft.payload.installDeviceState?.installDeviceDraft)
+  installDeviceList.value = (preferredDraft.payload.installDeviceState?.installDeviceList || [createInstallDeviceDraft()]).map(d => cloneInstallDeviceDraft(d))
   selectedCoEngineerIds.value = Array.isArray(preferredDraft.payload.selectedCoEngineerIds)
     ? preferredDraft.payload.selectedCoEngineerIds.map(Number)
     : []
@@ -957,7 +971,7 @@ function onServiceModeChange() {
 }
 
 function resetInstallDeviceSelection() {
-  installDeviceDraft.value = createInstallDeviceDraft()
+  installDeviceList.value = [createInstallDeviceDraft()]
 }
 function applyRouteServiceMode() {
   if (route.params.id || !routeMode.value) return
@@ -1506,7 +1520,8 @@ function preferredContactForCustomer(customer) {
 function applyCustomer(customer, sourceId = '') {
   const normalized = customerWithProfile(customer)
   const contact = preferredContactForCustomer(normalized)
-  if (!sameCustomer(selectedCustomer.value, normalized)) clearSignature()
+  const customerChanged = !sameCustomer(selectedCustomer.value, normalized)
+  if (customerChanged) clearSignature()
   selectedHistoryId.value = sourceId
   selectedCustomer.value = {
     ...normalized,
@@ -1515,7 +1530,7 @@ function applyCustomer(customer, sourceId = '') {
   }
   showContactOptions.value = false
   showNearbyCompanies.value = false
-  if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
+  if (customerChanged && currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
     resetInstallDeviceSelection()
   }
 }
@@ -1563,6 +1578,14 @@ function clearInactiveFieldErrors() {
   }
 }
 
+function applyContactFields(fields) {
+  const current = normalizeCustomer(activeCustomer.value)
+  selectedCustomer.value = {
+    ...current,
+    ...fields,
+  }
+}
+
 function updateCustomerField(field, value) {
   const current = normalizeCustomer(activeCustomer.value)
   selectedHistoryId.value = ''
@@ -1590,11 +1613,7 @@ function updateCustomerField(field, value) {
 }
 
 function updateContactField(field, value) {
-  const current = normalizeCustomer(activeCustomer.value)
-  selectedCustomer.value = {
-    ...current,
-    [field]: value,
-  }
+  applyContactFields({ [field]: value })
   clearFieldError(field)
 }
 
@@ -1605,14 +1624,10 @@ function applyHistory(order) {
 }
 
 function selectContact(contact) {
-  if (!selectedCustomer.value) {
-    selectedCustomer.value = normalizeCustomer(activeCustomer.value)
-  }
-  selectedCustomer.value = {
-    ...selectedCustomer.value,
+  applyContactFields({
     contactName: contact.name,
     contactPhone: contact.phone || '',
-  }
+  })
   showContactOptions.value = false
   clearFieldError('contactName')
   clearFieldError('contactPhone')
@@ -1621,6 +1636,12 @@ function selectContact(contact) {
 function hideContactOptionsSoon() {
   window.setTimeout(() => {
     showContactOptions.value = false
+  }, 140)
+}
+
+function hideNearbyCompaniesSoon() {
+  window.setTimeout(() => {
+    showNearbyCompanies.value = false
   }, 140)
 }
 
@@ -1724,19 +1745,24 @@ function scheduleCustomerLookup(value) {
 }
 
 function onDeviceModelInput() {
-  const q = String(installDeviceDraft.value.model || '').trim()
+  const active = installDeviceList.value[activeInstallDeviceIndex.value]
+  const q = String(active?.model || '').trim()
   window.clearTimeout(deviceModelSearchTimer)
+  ++deviceModelReqId
   if (q.length < 2) {
     deviceModelSuggestions.value = []
     showDeviceModelSuggestions.value = false
     return
   }
   deviceModelSearchTimer = window.setTimeout(async () => {
+    const reqId = deviceModelReqId
     try {
       const data = await api.get(`/device-models/suggest?q=${encodeURIComponent(q)}`)
+      if (reqId !== deviceModelReqId) return
       deviceModelSuggestions.value = data?.items || []
       showDeviceModelSuggestions.value = deviceModelSuggestions.value.length > 0
     } catch {
+      if (reqId !== deviceModelReqId) return
       deviceModelSuggestions.value = []
       showDeviceModelSuggestions.value = false
     }
@@ -1744,15 +1770,36 @@ function onDeviceModelInput() {
 }
 
 function selectDeviceModel(item) {
-  installDeviceDraft.value.model = item?.officialName || ''
+  const active = installDeviceList.value[activeInstallDeviceIndex.value]
+  if (active) active.model = item?.officialName || ''
   showDeviceModelSuggestions.value = false
   deviceModelSuggestions.value = []
+  selectedSuggestionIndex.value = -1
 }
 
 function hideDeviceModelSuggestions() {
   window.setTimeout(() => {
     showDeviceModelSuggestions.value = false
+    selectedSuggestionIndex.value = -1
   }, 200)
+}
+
+function onDeviceModelKeydown(event) {
+  if (!showDeviceModelSuggestions.value || deviceModelSuggestions.value.length === 0) return
+  const maxIndex = deviceModelSuggestions.value.length - 1
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    selectedSuggestionIndex.value = selectedSuggestionIndex.value < maxIndex ? selectedSuggestionIndex.value + 1 : 0
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    selectedSuggestionIndex.value = selectedSuggestionIndex.value > 0 ? selectedSuggestionIndex.value - 1 : maxIndex
+  } else if (event.key === 'Enter' && selectedSuggestionIndex.value >= 0) {
+    event.preventDefault()
+    selectDeviceModel(deviceModelSuggestions.value[selectedSuggestionIndex.value])
+  } else if (event.key === 'Escape') {
+    showDeviceModelSuggestions.value = false
+    selectedSuggestionIndex.value = -1
+  }
 }
 
 async function locateNearbyCompanies() {
@@ -1920,7 +1967,7 @@ async function load() {
         }
       }
       if (normalizedMode === 'onsite' && detailData.item.serviceType === 'install') {
-        installDeviceDraft.value = createInstallDeviceDraft()
+        installDeviceList.value = [createInstallDeviceDraft()]
       } else {
         resetInstallDeviceSelection()
       }
@@ -1956,13 +2003,18 @@ function buildSubmitPayload() {
     ? String(serviceDraft.value.deviceName || '').trim()
     : (issueSummary || [customerName, serviceModeDocumentLabel(currentServiceMode.value)].filter(Boolean).join(' / '))
   const isInstallOrder = effectiveServiceMode === 'onsite' && serviceDraft.value.serviceType === 'install'
-  const installDevicePayload = {}
-  if (isInstallOrder) {
-    installDevicePayload.deviceModel = String(installDeviceDraft.value.model || '').trim() || null
-    installDevicePayload.devicePn = String(installDeviceDraft.value.pn || '').trim() || null
-    installDevicePayload.deviceSerialNo = String(installDeviceDraft.value.serialNo || '').trim() || null
-    installDevicePayload.deviceRemark = String(installDeviceDraft.value.remark || '').trim() || null
-  }
+  const installDevices = isInstallOrder
+    ? installDeviceList.value
+        .filter(d => d.model || d.pn || d.serialNo || d.remark)
+        .map(d => ({
+          deviceModel: String(d.model || '').trim() || null,
+          devicePn: String(d.pn || '').trim() || null,
+          deviceSerialNo: String(d.serialNo || '').trim() || null,
+          deviceRemark: String(d.remark || '').trim() || null,
+        }))
+    : []
+  // First device is also mapped to legacy single fields for backward compat
+  const firstDevice = installDevices[0] || {}
   const payload = {
     customerId: Number.isInteger(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null,
     customerName,
@@ -1998,7 +2050,14 @@ function buildSubmitPayload() {
     customerConfirmName: contactName || customerName,
     customerSignature: effectiveServiceMode === 'remote' ? '' : customerSignature.value,
   }
-  return isInstallOrder ? { ...payload, ...installDevicePayload } : payload
+  if (isInstallOrder) {
+    payload.deviceModel = firstDevice.deviceModel
+    payload.devicePn = firstDevice.devicePn
+    payload.deviceSerialNo = firstDevice.deviceSerialNo
+    payload.deviceRemark = firstDevice.deviceRemark
+    payload.installDevices = installDevices
+  }
+  return payload
 }
 
 function isConnectivityError(err) {
@@ -2471,6 +2530,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               autocomplete="off"
               @focus="showNearbyCompanies = Boolean(activeCustomer.name && nearbyCompanies.length)"
               @input="updateCustomerField('name', $event.target.value)"
+              @blur="hideNearbyCompaniesSoon"
             />
             <div v-if="showCustomerNameOptions" class="customer-company-options">
               <button
@@ -2593,51 +2653,6 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </div>
           </div>
         </div>
-        <div v-if="currentServiceMode === 'onsite' && serviceDraft.serviceType === 'install'" class="install-device-card">
-          <div class="card-row">
-            <div>
-              <span class="field-label">{{ zh('安装设备') }}</span>
-              <small class="collaboration-hint">{{ zh('仅记录本次现场新增设备信息；如有多个序列号，请在同一个输入框中用逗号分隔。') }}</small>
-            </div>
-          </div>
-          <div class="field-grid">
-            <label class="field device-model-autocomplete">
-              <span>{{ zh('设备型号 / Model') }}</span>
-              <div class="autocomplete-wrapper">
-                <input
-                  v-model.trim="installDeviceDraft.model"
-                  :placeholder="zh('输入设备型号，支持自动补全')"
-                  autocomplete="off"
-                  @input="onDeviceModelInput"
-                  @focus="onDeviceModelInput"
-                  @blur="hideDeviceModelSuggestions"
-                />
-                <ul v-if="showDeviceModelSuggestions" class="autocomplete-dropdown">
-                  <li
-                    v-for="item in deviceModelSuggestions"
-                    :key="item.id"
-                    @mousedown.prevent="selectDeviceModel(item)"
-                  >
-                    <strong>{{ item.officialName }}</strong>
-                    <small>{{ item.vendor }} · {{ item.category }}</small>
-                  </li>
-                </ul>
-              </div>
-            </label>
-            <label class="field">
-              <span>{{ zh('部件号 / PN') }}</span>
-              <input v-model.trim="installDeviceDraft.pn" :placeholder="zh('输入部件号')" />
-            </label>
-            <label class="field">
-              <span>{{ zh('序列号 / SN') }}</span>
-              <input v-model.trim="installDeviceDraft.serialNo" :placeholder="zh('多个序列号请用逗号分隔')" />
-            </label>
-            <label class="field">
-              <span>{{ zh('备注 / Remark') }}</span>
-              <textarea v-model.trim="installDeviceDraft.remark" rows="2" :placeholder="zh('补充备注')" />
-            </label>
-          </div>
-        </div>
         <label
           v-if="!isOfficeMode"
           class="field service-record-field issue-summary-field"
@@ -2756,6 +2771,72 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </select>
             <small v-if="fieldErrors.result" class="field-error">{{ zh(fieldErrors.result) }}</small>
           </label>
+        </div>
+
+        <!-- Install devices: multi-entry card for on-site install orders -->
+        <div v-if="currentServiceMode === 'onsite' && serviceDraft.serviceType === 'install'" class="install-device-card">
+          <div class="card-row">
+            <div>
+              <span class="field-label">{{ zh('安装设备') }}</span>
+              <small class="collaboration-hint">{{ zh('记录本次安装的每台设备信息，可添加多行。') }}</small>
+            </div>
+            <button type="button" class="btn-add-row" @click="addInstallDevice">＋ {{ zh('添加设备') }}</button>
+          </div>
+          <div
+            v-for="(device, dIdx) in installDeviceList"
+            :key="dIdx"
+            class="install-device-row"
+            :class="{ 'is-first': dIdx === 0 }"
+          >
+            <div class="install-device-row-head">
+              <span class="install-device-row-label">{{ zh('设备') }} {{ dIdx + 1 }}</span>
+              <button
+                v-if="installDeviceList.length > 1"
+                type="button"
+                class="btn-remove-row"
+                @click="removeInstallDevice(dIdx)"
+              >✕</button>
+            </div>
+            <div class="field-grid">
+              <label class="field device-model-autocomplete">
+                <span>{{ zh('设备型号 / Model') }}</span>
+                <div class="autocomplete-wrapper">
+                  <input
+                    v-model.trim="device.model"
+                    :placeholder="zh('输入设备型号，支持自动补全')"
+                    autocomplete="off"
+                    @focus="setActiveDeviceIndex(dIdx); onDeviceModelInput()"
+                    @input="setActiveDeviceIndex(dIdx); onDeviceModelInput()"
+                    @keydown="onDeviceModelKeydown"
+                    @blur="hideDeviceModelSuggestions"
+                  />
+                  <ul v-if="showDeviceModelSuggestions && activeInstallDeviceIndex === dIdx" class="autocomplete-dropdown">
+                    <li
+                      v-for="(item, index) in deviceModelSuggestions"
+                      :key="item.id"
+                      :class="{ highlighted: index === selectedSuggestionIndex }"
+                      @mousedown.prevent="selectDeviceModel(item)"
+                    >
+                      <strong>{{ item.officialName }}</strong>
+                      <small>{{ item.vendor }} · {{ item.category }}</small>
+                    </li>
+                  </ul>
+                </div>
+              </label>
+              <label class="field">
+                <span>{{ zh('部件号 / PN') }}</span>
+                <input v-model.trim="device.pn" :placeholder="zh('输入部件号')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('序列号 / SN') }}</span>
+                <input v-model.trim="device.serialNo" :placeholder="zh('多个序列号请用逗号分隔')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('备注 / Remark') }}</span>
+                <input v-model.trim="device.remark" :placeholder="zh('补充备注')" />
+              </label>
+            </div>
+          </div>
         </div>
       </article>
 
@@ -2910,6 +2991,10 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   background: #f5f6fa;
 }
 
+.device-model-autocomplete .autocomplete-dropdown li.highlighted {
+  background: #f5f6fa;
+}
+
 .device-model-autocomplete .autocomplete-dropdown li strong {
   font-size: 14px;
   color: #1d2939;
@@ -2918,5 +3003,81 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 .device-model-autocomplete .autocomplete-dropdown li small {
   font-size: 12px;
   color: #667085;
+}
+
+.install-device-card {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fafbfc;
+  border: 1px solid #e2e6ed;
+  border-radius: 10px;
+}
+
+.install-device-card .card-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.install-device-card .btn-add-row {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3b82f6;
+  background: transparent;
+  border: 1px dashed #3b82f6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.install-device-card .btn-add-row:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.install-device-row {
+  padding: 12px 0;
+  border-top: 1px solid #e2e6ed;
+}
+
+.install-device-row.is-first {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.install-device-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.install-device-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+}
+
+.btn-remove-row {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #98a2b3;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-remove-row:hover {
+  color: #f04438;
+  background: #fef3f2;
 }
 </style>

@@ -1,5 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import DetailPanel from '../components/admin/DetailPanel.vue'
+import EmptyState from '../components/admin/EmptyState.vue'
+import FilterBar from '../components/admin/FilterBar.vue'
+import KpiCard from '../components/admin/KpiCard.vue'
+import PageHeader from '../components/admin/PageHeader.vue'
+import StatusBadge from '../components/admin/StatusBadge.vue'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
 import { downloadText, toCsv } from '../utils/download'
@@ -165,6 +171,17 @@ function exportCsv() {
 const filteredOrders = computed(() => serviceOrders.value)
 const selectedOrder = computed(() => filteredOrders.value.find((order) => order.id === selectedOrderId.value) || filteredOrders.value[0] || null)
 
+function getStatusTone(statusText) {
+  const toneMap = {
+    待确认: 'pending',
+    进行中: 'processing',
+    已提交: 'success',
+    草稿: 'default',
+    已作废: 'danger',
+  }
+  return toneMap[statusText] || 'default'
+}
+
 watch(selectedOrder, (order) => {
   detailForm.issueDescription = order?.summary || ''
   detailForm.internalNote = order?.internalNote || ''
@@ -180,29 +197,26 @@ onMounted(async () => {
 
 <template>
   <section class="figma-page">
-    <header class="page-header">
-      <div>
-        <p class="page-kicker">SERVICE COMMAND</p>
-        <h1>工单处理</h1>
-        <p>集中查看服务记录、工程师、状态和客户确认进度。</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader kicker="SERVICE COMMAND" title="工单处理" description="集中查看服务记录、工程师、状态和客户确认进度。">
+      <template #actions>
         <button class="ghost-button" type="button" @click="resetFilters">重置筛选</button>
         <button class="ghost-button" type="button" :disabled="!filteredOrders.length" @click="exportCsv">导出 CSV</button>
         <button class="primary" type="button" @click="load">刷新数据</button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
-    <div class="filter-bar">
-      <label class="command-input">
-        <span>⌕</span>
-        <input v-model.trim="keyword" placeholder="搜索工单编号、客户或描述..." @keyup.enter="load" />
-      </label>
+    <FilterBar v-model:query="keyword" search-placeholder="搜索工单编号、客户或描述..." @submit="load">
       <button class="filter-chip" :class="{ active: recentOnly }" type="button" @click="toggleRecentOnly">最近 30 天</button>
       <select v-model="activeStatus" class="select-chip" @change="load">
         <option v-for="status in statusOptions" :key="status">{{ status }}</option>
       </select>
-    </div>
+    </FilterBar>
+
+    <section class="kpi-grid">
+      <KpiCard title="全部工单" :value="serviceOrders.length" subtitle="当前视图" icon="ticket" />
+      <KpiCard title="进行中/待确认" :value="serviceOrders.filter(o => o.statusText === '进行中' || o.statusText === '待确认').length" subtitle="需关注" icon="activity" />
+      <KpiCard title="今日提交" :value="serviceOrders.filter(o => o.statusText === '已提交' && o.serviceAt.slice(0,10) === new Date().toISOString().slice(0,10)).length" subtitle="本月截至今日" icon="duration" />
+    </section>
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-if="message" class="form-success">{{ message }}</p>
@@ -231,19 +245,18 @@ onMounted(async () => {
           <span><em class="type-pill">{{ order.serviceTypeText }}</em></span>
           <span>{{ order.engineerText }}</span>
           <span class="muted-text">{{ order.serviceAt }}</span>
-          <span><em class="status" :class="order.statusText">{{ order.statusText }}</em></span>
+          <span><StatusBadge :label="order.statusText" :tone="getStatusTone(order.statusText)" compact /></span>
         </button>
-        <p v-if="!filteredOrders.length && !loading" class="empty-state">暂无服务记录</p>
+        <EmptyState v-if="!filteredOrders.length && !loading" title="暂无服务记录" description="请调整筛选条件或刷新数据。" />
       </div>
 
-      <aside class="glass-panel drawer" v-if="selectedOrder">
-        <div class="drawer-head">
-          <div>
-            <p>服务记录详情</p>
-            <h2>{{ selectedOrder.orderNo }}</h2>
-          </div>
-          <em class="status" :class="selectedOrder.statusText">{{ selectedOrder.statusText }}</em>
-        </div>
+      <DetailPanel
+        v-if="selectedOrder"
+        subtitle="服务记录详情"
+        :title="selectedOrder.orderNo"
+        :status-label="selectedOrder.statusText"
+        :status-tone="getStatusTone(selectedOrder.statusText)"
+      >
         <div class="drawer-stats">
           <article><span>服务方式</span><strong>{{ selectedOrder.mode }}</strong></article>
           <article><span>工程师</span><strong>{{ selectedOrder.engineerText }}</strong></article>
@@ -289,11 +302,13 @@ onMounted(async () => {
             <article class="active"><span></span><div><strong>当前状态</strong><small>{{ selectedOrder.statusText }}</small></div></article>
           </div>
         </section>
-        <button v-if="canEdit" class="primary full" type="button" :disabled="saving" @click="saveSelectedOrder">
-          {{ saving ? '保存中...' : '保存工单信息' }}
-        </button>
-        <p v-else class="form-error">当前账号只可查看，不可修改工单。</p>
-      </aside>
+        <template #footer>
+          <button v-if="canEdit" class="primary full" type="button" :disabled="saving" @click="saveSelectedOrder">
+            {{ saving ? '保存中...' : '保存工单信息' }}
+          </button>
+          <p v-else class="form-error">当前账号只可查看，不可修改工单。</p>
+        </template>
+      </DetailPanel>
     </section>
   </section>
 </template>

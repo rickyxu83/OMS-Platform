@@ -12,6 +12,7 @@ const auditLogRoutes = require('./modules/audit-logs/routes')
 const customerRoutes = require('./modules/customers/routes')
 const deviceRoutes = require('./modules/devices/routes')
 const deviceModelRoutes = require('./modules/device-models/routes')
+const deviceModelCatalogRoutes = require('./modules/device-model-catalog/routes')
 const maintenancePartyRoutes = require('./modules/maintenance-parties/routes')
 const fileRoutes = require('./modules/files/routes')
 const geoRoutes = require('./modules/geo/routes')
@@ -25,6 +26,11 @@ const allowedOrigins = new Set([
   'https://admin.starkgrp.com',
   'https://eng.tinypanel.de',
   'https://admin.tinypanel.de',
+  'https://eng-aliyun.tinypanel.de',
+  'https://admin-aliyun.tinypanel.de',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://192.168.5.60:5173',
 ])
 
 const corsOptions = {
@@ -63,6 +69,7 @@ app.use('/api/v1/users', authenticate, auditLogger, userRoutes)
 app.use('/api/v1/customers', authenticate, auditLogger, customerRoutes)
 app.use('/api/v1/devices', authenticate, auditLogger, deviceRoutes)
 app.use('/api/v1/device-models', authenticate, deviceModelRoutes)
+app.use('/api/v1/device-model-catalog', authenticate, deviceModelCatalogRoutes)
 app.use('/api/v1/maintenance-parties', authenticate, auditLogger, maintenancePartyRoutes)
 app.use('/api/v1/geo', authenticate, auditLogger, geoRoutes)
 app.use('/api/v1/inspection-schedules', authenticate, auditLogger, inspectionScheduleRoutes)
