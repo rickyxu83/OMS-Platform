@@ -4464,12 +4464,14 @@ h2 {
 }
 
 .signature-primary-action {
+  order: 2;
   min-height: 44px;
   width: 100%;
   justify-content: center;
 }
 
 .signature-secondary-actions {
+  order: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
