@@ -17,6 +17,7 @@ const avatarInitial = computed(() => String(displayName.value || '工').trim().s
 const avatarUrl = computed(() => currentUser.value?.avatarUrl || '')
 const accountOpen = ref(false)
 const exitConfirmOpen = ref(false)
+const firstLoginGuideOpen = ref(false)
 const formDraftPending = ref(false)
 const createFabPosition = ref({ x: null, y: null })
 const createFabDragging = ref(false)
@@ -46,6 +47,7 @@ const exitConfirmMeta = computed(() => {
   }
 })
 const sharedFabStorageKey = 'rc:service-sheet:cancel-fab-position'
+const guideStorageVersion = 'v1'
 let createFabMoved = false
 let createFabStartPointer = { x: 0, y: 0 }
 let createFabStartPosition = { x: 0, y: 0 }
@@ -74,6 +76,33 @@ const createModeOptions = [
   { mode: 'remote', label: '远程服务', icon: 'remote-service', className: 'remote' },
   { mode: 'office', label: '内勤工作', icon: 'office-service', className: 'office' },
 ]
+const guideSteps = [
+  {
+    icon: 'user',
+    title: '先完成我的资料',
+    body: '首次使用请到“我的”修改初始密码、设置手写签名。头像可选，但设置后更容易识别账号。',
+  },
+  {
+    icon: 'new',
+    title: '新建服务表',
+    body: '点右下角“+”可以新建现场服务、远程服务或内勤记录。手机上点一下默认新建现场服务，长按可选择类型。',
+  },
+  {
+    icon: 'pin',
+    title: '定位查找客户',
+    body: '填写客户时可以用定位查找，系统会优先搜索苏州、上海及附近客户/地点，再用全国结果兜底。',
+  },
+  {
+    icon: 'refresh',
+    title: '同步资料',
+    body: '在线时会刷新缓存并补传离线记录；如果看到待同步数量，可以手动点同步资料。',
+  },
+  {
+    icon: 'calendar',
+    title: '查看月报',
+    body: '月报会汇总你的现场、远程和内勤服务记录，方便核对当月工作。',
+  },
+]
 const createModePanelStyle = computed(() => {
   if (createFabPosition.value.x !== null && createFabPosition.value.y !== null) {
     return { left: `${createFabPosition.value.x}px`, top: `${createFabPosition.value.y}px`, right: 'auto', bottom: 'auto' }
@@ -90,6 +119,28 @@ function logout() {
   accountOpen.value = false
   clearSession()
   router.push('/login')
+}
+
+function guideStorageKey() {
+  const user = currentUser.value || {}
+  const userKey = user.id || user.username || 'anonymous'
+  return `rc-engineer:first-login-guide:${guideStorageVersion}:${userKey}`
+}
+
+function openFirstLoginGuide() {
+  accountOpen.value = false
+  firstLoginGuideOpen.value = true
+}
+
+function closeFirstLoginGuide() {
+  safeStorageSet(localStorage, guideStorageKey(), '1')
+  firstLoginGuideOpen.value = false
+}
+
+function maybeOpenFirstLoginGuide() {
+  if (!currentUser.value) return
+  if (safeStorageGet(localStorage, guideStorageKey(), '') === '1') return
+  firstLoginGuideOpen.value = true
 }
 
 function draftStorageKey() {
@@ -332,6 +383,7 @@ onMounted(() => {
     syncPendingSelfReports().catch(() => {})
   }
   restoreCreateFabPosition()
+  window.setTimeout(maybeOpenFirstLoginGuide, 360)
   window.addEventListener('rc-open-exit-confirm', handleOpenExitConfirm)
   window.addEventListener('rc-form-dirty-state', handleFormDirtyState)
   window.addEventListener('resize', syncCreateFabPositionToViewport)
@@ -363,6 +415,13 @@ watch(
     createModePickerOpen.value = false
     formDraftPending.value = false
     restoreCreateFabPosition()
+  },
+)
+
+watch(
+  () => currentUser.value?.id || currentUser.value?.username,
+  () => {
+    window.setTimeout(maybeOpenFirstLoginGuide, 240)
   },
 )
 </script>
@@ -412,9 +471,19 @@ watch(
               </RouterLink>
             </template>
             <button
-              class="shell-menu-icon danger"
+              class="shell-menu-icon"
               type="button"
               :style="{ '--menu-index': quickActions.length }"
+              :aria-label="zh('功能指引')"
+              :title="zh('功能指引')"
+              @click="openFirstLoginGuide"
+            >
+              <PreviewIcon name="status" />
+            </button>
+            <button
+              class="shell-menu-icon danger"
+              type="button"
+              :style="{ '--menu-index': quickActions.length + 1 }"
               :aria-label="zh('退出')"
               :title="zh('退出')"
               @click="logout"
@@ -492,6 +561,31 @@ watch(
         <button class="primary danger-action" type="button" @click="discardDraftAndExit">
           <PreviewIcon :name="exitConfirmMeta.actionIcon" />{{ zh(exitConfirmMeta.actionLabel) }}
         </button>
+      </footer>
+    </div>
+  </div>
+  <div v-if="firstLoginGuideOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('工程师端功能指引')">
+    <div class="signature-modal-shell first-login-guide-shell">
+      <header class="signature-modal-head first-login-guide-head">
+        <div>
+          <p>{{ zh('GET STARTED') }}</p>
+          <h2>{{ zh('工程师端功能指引') }}</h2>
+          <span>{{ zh('快速了解常用入口，后续也可以从账号菜单再次打开。') }}</span>
+        </div>
+        <button class="ghost" type="button" @click="closeFirstLoginGuide">{{ zh('跳过') }}</button>
+      </header>
+      <div class="first-login-guide-grid">
+        <article v-for="step in guideSteps" :key="step.title" class="first-login-guide-card">
+          <span class="first-login-guide-icon"><PreviewIcon :name="step.icon" /></span>
+          <div>
+            <h3>{{ zh(step.title) }}</h3>
+            <p>{{ zh(step.body) }}</p>
+          </div>
+        </article>
+      </div>
+      <footer class="signature-modal-actions first-login-guide-actions">
+        <button class="ghost" type="button" @click="router.push('/profile'); closeFirstLoginGuide()"><PreviewIcon name="user" />{{ zh('去完善我的资料') }}</button>
+        <button class="primary" type="button" @click="closeFirstLoginGuide"><PreviewIcon name="check" />{{ zh('我知道了') }}</button>
       </footer>
     </div>
   </div>
