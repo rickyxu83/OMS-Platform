@@ -532,7 +532,7 @@ const customerQuickTitle = computed(() => (isOfficeMode.value ? '关联客户（
 const customerQuickHint = computed(() =>
   isOfficeMode.value
     ? '如本次内勤工作与某客户或项目有关，可选填关联客户；不填则按内勤工作归档。'
-    : '选择常用客户，或输入客户名称后定位查找。空白时可查找附近公司。',
+    : '选择常用客户，或输入客户名称后定位查找。优先搜索苏州、上海及附近客户/地点。',
 )
 const customerSectionTitle = computed(() => (isOfficeMode.value ? '关联信息' : '客户与联系人'))
 const customerNameLabel = computed(() => (isOfficeMode.value ? '关联客户' : '客户名称'))

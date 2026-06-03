@@ -38,6 +38,8 @@ const fallbackPois = [
   },
 ]
 
+const preferredMapCities = ['苏州', '上海']
+
 function toNumber(value) {
   if (value === undefined || value === null || value === '') return null
   const parsed = Number(value)
@@ -65,12 +67,35 @@ function normalizePoi(poi) {
   }
 }
 
+function poiSignature(item) {
+  return `${item.name || ''}|${item.address || ''}|${item.location || ''}`
+}
+
+async function fetchAmapPois(params) {
+  const response = await fetch(`https://restapi.amap.com/v3/place/text?${params.toString()}`)
+  const data = await response.json()
+  if (data.status !== '1') return []
+  return (data.pois || []).map(normalizePoi)
+}
+
+function mergePoiResults(...groups) {
+  const seen = new Set()
+  const items = []
+  groups.flat().forEach((item) => {
+    const key = poiSignature(item)
+    if (seen.has(key)) return
+    seen.add(key)
+    items.push(item)
+  })
+  return items
+}
+
 async function searchMapPois({ keyword, latitude, longitude }) {
   if (!env.amapKey) {
     return fallbackPois.filter((item) => !keyword || `${item.name}${item.address}`.includes(keyword))
   }
 
-  const params = new URLSearchParams({
+  const baseParams = new URLSearchParams({
     key: env.amapKey,
     keywords: keyword || '公司',
     offset: '10',
@@ -79,18 +104,27 @@ async function searchMapPois({ keyword, latitude, longitude }) {
   })
 
   if (latitude && longitude) {
-    params.set('location', `${longitude},${latitude}`)
-    params.set('radius', '3000')
-    params.set('sortrule', 'distance')
+    baseParams.set('location', `${longitude},${latitude}`)
+    baseParams.set('radius', '30000')
+    baseParams.set('sortrule', 'distance')
   }
 
-  const response = await fetch(`https://restapi.amap.com/v3/place/text?${params.toString()}`)
-  const data = await response.json()
-  if (data.status !== '1') {
+  const preferredResults = await Promise.all(
+    preferredMapCities.map((city) => {
+      const params = new URLSearchParams(baseParams)
+      params.set('city', city)
+      params.set('citylimit', 'true')
+      return fetchAmapPois(params)
+    }),
+  )
+  const nationwideResults = await fetchAmapPois(baseParams)
+  const merged = mergePoiResults(...preferredResults, nationwideResults)
+
+  if (!merged.length) {
     return fallbackPois.filter((item) => !keyword || `${item.name}${item.address}`.includes(keyword))
   }
 
-  return (data.pois || []).map(normalizePoi)
+  return merged
 }
 
 async function searchCompanies(req, res) {

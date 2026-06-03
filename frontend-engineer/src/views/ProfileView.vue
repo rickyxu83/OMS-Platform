@@ -327,26 +327,42 @@ onMounted(load)
     <p v-if="message" class="form-success">{{ zh(message) }}</p>
     <p v-else-if="loading" class="muted">{{ zh('正在加载个人资料...') }}</p>
 
-    <section class="profile-card">
-      <div class="avatar profile-avatar-preview">
-        <img v-if="avatarPreviewUrl" :src="avatarPreviewUrl" :alt="zh('头像')" />
-        <span v-else>{{ avatarInitial }}</span>
-      </div>
-      <div>
-        <h2>{{ user?.realName || user?.username || zh('工程师') }}</h2>
-        <p>{{ user?.phone || user?.username || zh('真实 API 个人资料') }}</p>
-        <p>{{ zh(user?.status === 'active' ? '账号启用' : '账号停用') }}</p>
+    <section class="profile-card profile-hero-card">
+      <div class="profile-hero-main">
+        <div class="avatar profile-avatar-preview profile-hero-avatar">
+          <img v-if="avatarPreviewUrl" :src="avatarPreviewUrl" :alt="zh('头像')" />
+          <span v-else>{{ avatarInitial }}</span>
+        </div>
+        <div class="profile-card-info">
+          <p class="profile-kicker">{{ zh('ENGINEER PROFILE') }}</p>
+          <h2>{{ user?.realName || user?.username || zh('工程师') }}</h2>
+          <div class="profile-meta-row">
+            <span>{{ user?.phone || user?.username || zh('真实 API 个人资料') }}</span>
+            <span>{{ zh(user?.status === 'active' ? '账号启用' : '账号停用') }}</span>
+          </div>
+          <div class="profile-status-row">
+            <span :class="{ done: !mustChangePassword }">{{ zh(mustChangePassword ? '待修改密码' : '密码已更新') }}</span>
+            <span :class="{ done: hasSavedSignature }">{{ zh(hasSavedSignature ? '签名已保存' : '待补充签名') }}</span>
+            <span :class="{ done: avatarPreviewUrl }">{{ zh(avatarPreviewUrl ? '头像已设置' : '头像可选') }}</span>
+          </div>
+        </div>
       </div>
       <div class="profile-avatar-actions">
         <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="uploadAvatar" />
         <button class="ghost" type="button" :disabled="savingAvatar" @click="triggerAvatarUpload"><PreviewIcon name="upload" />{{ zh(savingAvatar ? '上传中' : avatarPreviewUrl ? '更换头像' : '上传头像') }}</button>
-        <button v-if="avatarPreviewUrl" class="ghost" type="button" :disabled="savingAvatar" @click="removeAvatar"><PreviewIcon name="trash" />{{ zh('删除头像') }}</button>
+        <button v-if="avatarPreviewUrl" class="ghost danger-soft" type="button" :disabled="savingAvatar" @click="removeAvatar"><PreviewIcon name="trash" />{{ zh('删除头像') }}</button>
       </div>
     </section>
 
-    <section class="profile-grid">
-      <form class="form-section profile-form" :class="{ required: mustChangePassword }" @submit.prevent="changePassword">
-        <h2>{{ zh('修改密码') }}</h2>
+    <section class="profile-grid profile-settings-grid">
+      <form class="form-section profile-form profile-setting-card" :class="{ required: mustChangePassword }" @submit.prevent="changePassword">
+        <div class="profile-section-head">
+          <div>
+            <p>{{ zh('SECURITY') }}</p>
+            <h2>{{ zh('修改密码') }}</h2>
+          </div>
+          <span :class="{ done: !mustChangePassword }">{{ zh(mustChangePassword ? '必做' : '已完成') }}</span>
+        </div>
         <p v-if="mustChangePassword" class="required-hint">{{ zh('请修改初始密码后继续使用系统。') }}</p>
         <label class="field"><span>{{ zh('当前密码') }}</span><input v-model="passwordForm.currentPassword" type="password" required /></label>
         <label class="field"><span>{{ zh('新密码') }}</span><input v-model="passwordForm.newPassword" type="password" required /></label>
@@ -355,9 +371,10 @@ onMounted(load)
         <button class="primary" type="submit" :disabled="savingPassword"><PreviewIcon name="save" />{{ zh(savingPassword ? '保存中' : '更新密码') }}</button>
       </form>
 
-      <article class="form-section signature-card" :class="{ required: !hasSavedSignature }">
+      <article class="form-section signature-card profile-setting-card" :class="{ required: !hasSavedSignature }">
         <div class="signature-head">
           <div>
+            <p>{{ zh('SIGNATURE') }}</p>
             <h2>{{ zh('个人手写签名') }}</h2>
             <p class="signature-state">{{ zh(hasSavedSignature ? '已保存签名' : '尚未保存签名') }}</p>
           </div>
