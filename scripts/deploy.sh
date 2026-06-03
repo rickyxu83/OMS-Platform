@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH_TARGET="${DEPLOY_SSH_TARGET:-aliyun}"
 REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-/root/service-sheet-aliyun}"
+BACKEND_RELATIVE="${DEPLOY_BACKEND_RELATIVE:-app/backend}"
+SITE_RELATIVE="${DEPLOY_SITE_RELATIVE:-app/site}"
 DEPLOY_TARGET="${1:-all}"
 COMMIT_MSG="${2:-}"
 
@@ -46,7 +48,7 @@ git_sync() {
 deploy_backend() {
   info "部署后端"
 
-  local remote_dir="$REMOTE_ROOT/app/backend"
+  local remote_dir="$REMOTE_ROOT/$BACKEND_RELATIVE"
   local archive="/tmp/service-sheet-backend-src.tgz"
   local remote_archive="/tmp/service-sheet-backend-src.tgz"
 
@@ -132,8 +134,8 @@ case "$DEPLOY_TARGET" in
     deploy_backend
     build_admin
     build_engineer
-    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/app/site/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/app/site/engineer"
+    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
+    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "全量部署完成"
     ;;
 
@@ -146,14 +148,14 @@ case "$DEPLOY_TARGET" in
   admin)
     git_sync
     build_admin
-    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/app/site/admin"
+    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
     ok "管理端部署完成"
     ;;
 
   engineer)
     git_sync
     build_engineer
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/app/site/engineer"
+    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "工程师端部署完成"
     ;;
 
@@ -161,9 +163,17 @@ case "$DEPLOY_TARGET" in
     git_sync
     build_admin
     build_engineer
-    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/app/site/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/app/site/engineer"
+    deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
+    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "前端全量部署完成"
+    ;;
+
+  stark)
+    export DEPLOY_SSH_TARGET=tencent
+    export DEPLOY_REMOTE_ROOT=/root/service-sheet-stark
+    export DEPLOY_BACKEND_RELATIVE=backend
+    export DEPLOY_SITE_RELATIVE=site
+    exec "$0" "${2:-all}" "${3:-}"
     ;;
 
   *)
@@ -176,6 +186,8 @@ case "$DEPLOY_TARGET" in
     echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + engineer"
     echo "  admin     仅部署管理端"
     echo "  engineer  仅部署工程师端"
+    echo ""
+    echo "  stark     腾讯云 stark 服务器（用法: $0 stark [all|backend|front|admin|eng]）"
     echo ""
     echo "提交信息: 可选的 git commit message，不传则自动生成"
     echo ""
