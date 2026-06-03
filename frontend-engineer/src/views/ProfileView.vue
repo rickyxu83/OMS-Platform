@@ -302,7 +302,7 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="engineer-shell">
+  <main class="engineer-shell profile-shell">
     <header class="topbar">
       <div>
         <BrandEyebrow text="工程师端 / 我的" title="我的" />
@@ -431,7 +431,6 @@ onMounted(load)
             <button class="primary" type="button" :disabled="savingSignature" @click="saveSignature"><PreviewIcon name="save" />{{ zh(savingSignature ? '保存中' : '保存签名') }}</button>
           </div>
         </div>
-        <p>{{ zh('默认只显示缩略图；需要时再预览或重新签名。') }}</p>
       </article>
     </section>
 

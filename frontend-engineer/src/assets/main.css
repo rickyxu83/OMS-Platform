@@ -4043,6 +4043,14 @@ h2 {
   color: #64748b;
 }
 
+.profile-shell {
+  width: min(1080px, 100%);
+}
+
+.profile-shell .topbar {
+  margin-bottom: 18px;
+}
+
 .profile-card {
   position: relative;
   overflow: hidden;
@@ -4062,12 +4070,14 @@ h2 {
 }
 
 .profile-hero-card {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(178px, auto);
   align-items: center;
+  min-height: 152px;
 }
 
 .profile-hero-main {
-  display: flex;
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
   min-width: 0;
   gap: 18px;
   align-items: center;
@@ -4179,6 +4189,8 @@ h2 {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  justify-self: end;
+  align-self: center;
 }
 
 .profile-avatar-actions .ghost {
@@ -4268,6 +4280,7 @@ h2 {
 
 .profile-settings-grid {
   gap: 18px;
+  align-items: stretch;
 }
 
 @media (max-width: 1024px) {
@@ -4369,6 +4382,7 @@ h2 {
 }
 
 .profile-setting-card {
+  min-height: 458px;
   border: 1px solid rgb(226 232 240 / 88%);
   border-radius: 22px;
   padding: 20px;
@@ -4403,8 +4417,13 @@ h2 {
 
 .profile-form,
 .signature-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
+}
+
+.profile-form .primary {
+  margin-top: auto;
 }
 
 .signature-head,
@@ -4433,9 +4452,11 @@ h2 {
 .signature-toolbar {
   display: grid;
   gap: 10px;
+  margin-top: auto;
 }
 
 .signature-primary-action {
+  min-height: 44px;
   width: 100%;
   justify-content: center;
 }
@@ -4458,7 +4479,8 @@ h2 {
 }
 
 .signature-summary-card {
-  min-height: 120px;
+  flex: 1 1 auto;
+  min-height: 218px;
   display: grid;
   place-items: center;
   border: 1px solid #dbe4ee;
