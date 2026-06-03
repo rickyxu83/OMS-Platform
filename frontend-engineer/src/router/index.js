@@ -34,6 +34,10 @@ const router = createRouter({
 
 export default router
 
+function isEngineerUser(user) {
+  return user?.role === 'engineer' || user?.role === 'engineering_supervisor'
+}
+
 router.beforeEach(async (to) => {
   if (to.name !== 'login' && !isLoggedIn()) return { name: 'login' }
   if (to.name === 'login' && isLoggedIn()) return { name: 'tasks' }
@@ -41,10 +45,12 @@ router.beforeEach(async (to) => {
   if (to.name !== 'login' && isLoggedIn()) {
     try {
       const data = await api.get('/auth/me')
-      if (data.user?.role !== 'engineer' && data.user?.role !== 'engineering_supervisor') return { name: 'login' }
+      if (!isEngineerUser(data.user)) return { name: 'login' }
       saveUser(data.user)
+      if (data.user?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     } catch {
       if (!currentUser.value) return { name: 'login' }
+      if (currentUser.value?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     }
   }
 })

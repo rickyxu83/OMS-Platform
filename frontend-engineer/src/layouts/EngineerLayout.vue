@@ -14,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 const displayName = computed(() => currentUser.value?.realName || currentUser.value?.username || '工程师')
 const avatarInitial = computed(() => String(displayName.value || '工').trim().slice(0, 1).toUpperCase())
+const avatarUrl = computed(() => currentUser.value?.avatarUrl || '')
 const accountOpen = ref(false)
 const exitConfirmOpen = ref(false)
 const formDraftPending = ref(false)
@@ -429,7 +430,10 @@ watch(
               :aria-label="zh('账户菜单')"
               @click="accountOpen = !accountOpen"
             >
-              <span class="shell-avatar">{{ avatarInitial }}</span>
+              <span class="shell-avatar">
+                <img v-if="avatarUrl" :src="avatarUrl" :alt="zh('头像')" />
+                <span v-else>{{ avatarInitial }}</span>
+              </span>
               <span class="shell-user">{{ displayName }}</span>
             </button>
           </div>

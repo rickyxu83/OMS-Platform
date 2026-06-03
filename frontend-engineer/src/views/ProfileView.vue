@@ -10,9 +10,11 @@ const { zh } = usePreviewI18n()
 const loading = ref(false)
 const savingPassword = ref(false)
 const savingSignature = ref(false)
+const savingAvatar = ref(false)
 const error = ref('')
 const message = ref('')
 const user = ref(null)
+const avatarInput = ref(null)
 const signatureCanvas = ref(null)
 const savedSignatureData = ref('')
 const signatureData = ref('')
@@ -24,6 +26,14 @@ let signaturePaintToken = 0
 let signaturePaintPromise = Promise.resolve()
 let signaturePaintPending = false
 const hasSavedSignature = computed(() => Boolean(String(savedSignatureData.value || '').trim()))
+const onboardingRequired = computed(() => Boolean(user.value?.requiresOnboarding))
+const mustChangePassword = computed(() => Boolean(user.value?.mustChangePassword))
+const avatarPreviewUrl = computed(() => user.value?.avatarUrl || '')
+const avatarInitial = computed(() => String(user.value?.realName || user.value?.username || '工').slice(0, 1))
+const onboardingItems = computed(() => [
+  { label: '修改初始密码', done: !mustChangePassword.value },
+  { label: '补充手写签名', done: hasSavedSignature.value },
+])
 
 const passwordForm = reactive({
   currentPassword: '',
@@ -199,6 +209,7 @@ async function changePassword() {
     })
     Object.assign(passwordForm, { currentPassword: '', newPassword: '', confirmPassword: '' })
     message.value = '密码已更新'
+    await load()
   } catch (err) {
     error.value = err.message
   } finally {
@@ -219,10 +230,8 @@ async function saveSignature() {
     savedSignatureData.value = engineerSignature
     signatureData.value = engineerSignature
     signatureEditorOpen.value = false
-    user.value = user.value
-      ? { ...user.value, engineerSignature, hasEngineerSignature: Boolean(engineerSignature) }
-      : user.value
     message.value = '签名已保存'
+    await load()
   } catch (err) {
     error.value = err?.message || '签名保存失败'
   } finally {
@@ -241,14 +250,51 @@ async function removeSignature() {
     signatureData.value = ''
     signaturePreviewOpen.value = false
     signatureEditorOpen.value = false
-    user.value = user.value
-      ? { ...user.value, engineerSignature: '', hasEngineerSignature: false }
-      : user.value
     message.value = '签名已清除'
+    await load()
   } catch (err) {
     error.value = err.message
   } finally {
     savingSignature.value = false
+  }
+}
+
+function triggerAvatarUpload() {
+  avatarInput.value?.click()
+}
+
+async function uploadAvatar(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  error.value = ''
+  message.value = ''
+  savingAvatar.value = true
+  try {
+    const formData = new FormData()
+    formData.append('avatar', file)
+    await api.postForm('/users/me/avatar', formData)
+    message.value = '头像已更新'
+    await load()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    savingAvatar.value = false
+    if (event.target) event.target.value = ''
+  }
+}
+
+async function removeAvatar() {
+  error.value = ''
+  message.value = ''
+  savingAvatar.value = true
+  try {
+    await api.delete('/users/me/avatar')
+    message.value = '头像已删除'
+    await load()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    savingAvatar.value = false
   }
 }
 
@@ -264,22 +310,44 @@ onMounted(load)
       <RouterLink class="ghost profile-login" to="/login"><PreviewIcon name="user" />{{ zh('切换账号') }}</RouterLink>
     </header>
 
+    <section v-if="onboardingRequired" class="onboarding-card">
+      <div>
+        <p>{{ zh('首次登录设置') }}</p>
+        <h2>{{ zh('请先完成账号安全设置') }}</h2>
+        <span>{{ zh('完成前无法使用其他工程师功能。') }}</span>
+      </div>
+      <div class="onboarding-checklist">
+        <span v-for="item in onboardingItems" :key="item.label" :class="{ done: item.done }">
+          {{ zh(item.done ? '已完成' : '待完成') }} · {{ zh(item.label) }}
+        </span>
+      </div>
+    </section>
+
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
     <p v-if="message" class="form-success">{{ zh(message) }}</p>
     <p v-else-if="loading" class="muted">{{ zh('正在加载个人资料...') }}</p>
 
     <section class="profile-card">
-      <div class="avatar">{{ (user?.realName || user?.username || '工').slice(0, 1) }}</div>
+      <div class="avatar profile-avatar-preview">
+        <img v-if="avatarPreviewUrl" :src="avatarPreviewUrl" :alt="zh('头像')" />
+        <span v-else>{{ avatarInitial }}</span>
+      </div>
       <div>
         <h2>{{ user?.realName || user?.username || zh('工程师') }}</h2>
         <p>{{ user?.phone || user?.username || zh('真实 API 个人资料') }}</p>
         <p>{{ zh(user?.status === 'active' ? '账号启用' : '账号停用') }}</p>
       </div>
+      <div class="profile-avatar-actions">
+        <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="uploadAvatar" />
+        <button class="ghost" type="button" :disabled="savingAvatar" @click="triggerAvatarUpload"><PreviewIcon name="upload" />{{ zh(savingAvatar ? '上传中' : avatarPreviewUrl ? '更换头像' : '上传头像') }}</button>
+        <button v-if="avatarPreviewUrl" class="ghost" type="button" :disabled="savingAvatar" @click="removeAvatar"><PreviewIcon name="trash" />{{ zh('删除头像') }}</button>
+      </div>
     </section>
 
     <section class="profile-grid">
-      <form class="form-section profile-form" @submit.prevent="changePassword">
+      <form class="form-section profile-form" :class="{ required: mustChangePassword }" @submit.prevent="changePassword">
         <h2>{{ zh('修改密码') }}</h2>
+        <p v-if="mustChangePassword" class="required-hint">{{ zh('请修改初始密码后继续使用系统。') }}</p>
         <label class="field"><span>{{ zh('当前密码') }}</span><input v-model="passwordForm.currentPassword" type="password" required /></label>
         <label class="field"><span>{{ zh('新密码') }}</span><input v-model="passwordForm.newPassword" type="password" required /></label>
         <label class="field"><span>{{ zh('确认新密码') }}</span><input v-model="passwordForm.confirmPassword" type="password" required /></label>
@@ -287,7 +355,7 @@ onMounted(load)
         <button class="primary" type="submit" :disabled="savingPassword"><PreviewIcon name="save" />{{ zh(savingPassword ? '保存中' : '更新密码') }}</button>
       </form>
 
-      <article class="form-section signature-card">
+      <article class="form-section signature-card" :class="{ required: !hasSavedSignature }">
         <div class="signature-head">
           <div>
             <h2>{{ zh('个人手写签名') }}</h2>
@@ -322,6 +390,7 @@ onMounted(load)
             </button>
           </div>
         </div>
+        <p v-if="!hasSavedSignature" class="required-hint">{{ zh('请补充手写签名，导出服务表时将使用此签名。') }}</p>
         <div class="signature-summary-card" :class="{ empty: !hasSavedSignature }">
           <img v-if="hasSavedSignature" :src="savedSignatureData" :alt="zh('签名缩略图')" />
           <span v-else><PreviewIcon name="pen" />{{ zh('签名将用于服务表导出') }}</span>

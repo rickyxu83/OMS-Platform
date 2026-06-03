@@ -5,6 +5,8 @@ CREATE TABLE users (
   real_name VARCHAR(64) NOT NULL,
   phone VARCHAR(32) NULL,
   engineer_signature LONGTEXT NULL,
+  avatar_path VARCHAR(255) NULL,
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   role ENUM('admin', 'assistant', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher') NOT NULL,
   status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
   failed_login_count INT UNSIGNED NOT NULL DEFAULT 0,

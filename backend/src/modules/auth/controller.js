@@ -6,6 +6,7 @@ const { badRequest, unauthorized } = require('../../utils/http-error')
 
 const MAX_FAILED_LOGINS = 5
 const LOCKOUT_MINUTES = 15
+const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 
 function isLockActive(lockedUntil) {
   return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
@@ -16,6 +17,9 @@ function invalidLoginResult() {
 }
 
 function publicUser(user) {
+  const hasEngineerSignature = Boolean(user.engineer_signature)
+  const mustChangePassword = Boolean(user.must_change_password)
+  const hasAvatar = Boolean(user.avatar_path)
   return {
     id: user.id,
     username: user.username,
@@ -23,6 +27,11 @@ function publicUser(user) {
     phone: user.phone,
     role: user.role,
     status: user.status,
+    hasEngineerSignature,
+    mustChangePassword,
+    requiresOnboarding: engineerRoles.has(user.role) && (mustChangePassword || !hasEngineerSignature),
+    avatarUrl: hasAvatar ? `/api/v1/avatars/${String(user.avatar_path).split(/[\\/]/).pop()}` : '',
+    hasAvatar,
   }
 }
 
@@ -34,7 +43,7 @@ async function login(req, res) {
 
   const loginResult = await transaction(async (connection) => {
     const [rows] = await connection.execute(
-      `SELECT id, username, password_hash, real_name, phone, role, status, failed_login_count, locked_until
+      `SELECT id, username, password_hash, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password, failed_login_count, locked_until
        FROM users
        WHERE username = :username
        LIMIT 1`,
@@ -102,14 +111,7 @@ async function login(req, res) {
 
 function me(req, res) {
   res.json({
-    user: {
-      id: req.user.id,
-      username: req.user.username,
-      realName: req.user.real_name,
-      phone: req.user.phone,
-      role: req.user.role,
-      status: req.user.status,
-    },
+    user: publicUser(req.user),
   })
 }
 

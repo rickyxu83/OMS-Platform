@@ -9,6 +9,7 @@
     "create-admin": "node scripts/create-admin.js",
     "ensure-user-role-enum": "node scripts/ensure-user-role-enum.js",
     "ensure-user-lockout-columns": "node scripts/ensure-user-lockout-columns.js",
+    "ensure-user-onboarding-columns": "node scripts/ensure-user-onboarding-columns.js",
     "sync:device-models": "node src/modules/device-model-catalog/sync-cli.js",
     "test": "npm run check"
   },

@@ -3,6 +3,12 @@ const env = require('../config/env')
 const { query } = require('../config/db')
 const { forbidden, unauthorized } = require('../utils/http-error')
 
+const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
+
+function requiresOnboarding(user) {
+  return engineerRoles.has(user?.role) && (Boolean(user.must_change_password) || !Boolean(user.engineer_signature))
+}
+
 async function authenticate(req, res, next) {
   try {
     const header = req.get('authorization') || ''
@@ -14,7 +20,7 @@ async function authenticate(req, res, next) {
 
     const payload = jwt.verify(token, env.jwtSecret)
     const users = await query(
-      `SELECT id, username, real_name, phone, role, status
+      `SELECT id, username, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password
        FROM users
        WHERE id = :id
        LIMIT 1`,
@@ -54,8 +60,22 @@ function requireRoles(...roles) {
   }
 }
 
+function requireEngineerOnboardingComplete(req, res, next) {
+  if (!req.user) {
+    next(unauthorized())
+    return
+  }
+
+  if (requiresOnboarding(req.user)) {
+    next(forbidden('请先修改密码并补充手写签名'))
+    return
+  }
+
+  next()
+}
+
 module.exports = {
   authenticate,
   requireRoles,
+  requireEngineerOnboardingComplete,
 }
-
