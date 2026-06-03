@@ -378,7 +378,15 @@ onMounted(load)
             <h2>{{ zh('个人手写签名') }}</h2>
             <p class="signature-state">{{ zh(hasSavedSignature ? '已保存签名' : '尚未保存签名') }}</p>
           </div>
-          <div>
+          <div class="signature-action-panel">
+            <button
+              class="primary signature-primary-action"
+              type="button"
+              :disabled="savingSignature"
+              @click="signatureEditorOpen ? cancelSignatureEditor() : openSignatureEditor()"
+            >
+              <PreviewIcon name="pen" />{{ zh(signatureEditorOpen ? '取消编辑' : hasSavedSignature ? '重新签名' : '创建签名') }}
+            </button>
             <button
               v-if="hasSavedSignature"
               class="ghost"
@@ -389,16 +397,8 @@ onMounted(load)
               <PreviewIcon name="share" />{{ zh('预览签名') }}
             </button>
             <button
-              class="ghost"
-              type="button"
-              :disabled="savingSignature"
-              @click="signatureEditorOpen ? cancelSignatureEditor() : openSignatureEditor()"
-            >
-              <PreviewIcon name="pen" />{{ zh(signatureEditorOpen ? '取消编辑' : hasSavedSignature ? '重新签名' : '创建签名') }}
-            </button>
-            <button
               v-if="hasSavedSignature"
-              class="ghost"
+              class="ghost danger-soft"
               type="button"
               :disabled="savingSignature"
               @click="removeSignature"
