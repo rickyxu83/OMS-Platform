@@ -216,24 +216,28 @@ watch(() => [route.query.customerId, route.query.keyword], () => {
     </form>
 
     <section class="two-column-layout">
-      <div class="customer-card-grid">
-        <button
-          v-for="(customer, index) in filteredCustomers"
-          :key="customer.id"
-          class="customer-card"
-          :class="{ selected: activeCustomerId === customer.id }"
-          type="button"
-          @click="activeCustomerId = customer.id"
-        >
-          <span class="vip-pill">{{ index % 3 === 0 ? '重点' : '常规' }}</span>
-          <div class="customer-symbol">{{ String(customer.name).slice(0, 1) }}</div>
-          <strong>{{ customer.name }}</strong>
-          <small>{{ customer.address }}</small>
-          <div class="customer-card-meta">
-            <span><em>最近更新</em>{{ formatDate(customer.updatedAt) }}</span>
-            <span><em>本年度服务</em>{{ customer.count }}</span>
-          </div>
-        </button>
+      <div class="glass-panel table-card">
+        <div class="table-head">
+          <span>客户名称</span>
+          <span>地址</span>
+          <span>联系人</span>
+          <span>本年度服务</span>
+          <span>最近更新</span>
+        </div>
+        <template v-for="customer in filteredCustomers" :key="customer.id">
+          <button
+            class="table-row"
+            :class="{ selected: activeCustomerId === customer.id }"
+            type="button"
+            @click="activeCustomerId = customer.id"
+          >
+            <span><strong>{{ customer.name }}</strong></span>
+            <span class="muted-text">{{ customer.address }}</span>
+            <span>{{ customer.contact }}</span>
+            <span>{{ customer.count }}</span>
+            <span class="muted-text">{{ formatDate(customer.updatedAt) }}</span>
+          </button>
+        </template>
         <EmptyState v-if="!filteredCustomers.length && !loading" title="暂无客户资料" description="请尝试调整搜索条件或新增客户。" />
       </div>
 
