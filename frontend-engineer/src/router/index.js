@@ -38,6 +38,10 @@ function isEngineerUser(user) {
   return user?.role === 'engineer' || user?.role === 'engineering_supervisor'
 }
 
+function isFeatureGuideRoute(to) {
+  return String(to.query?.guide || '') === '1'
+}
+
 router.beforeEach(async (to) => {
   if (to.name !== 'login' && !isLoggedIn()) return { name: 'login' }
   if (to.name === 'login' && isLoggedIn()) return { name: 'tasks' }
@@ -47,10 +51,10 @@ router.beforeEach(async (to) => {
       const data = await api.get('/auth/me')
       if (!isEngineerUser(data.user)) return { name: 'login' }
       saveUser(data.user)
-      if (data.user?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
+      if (data.user?.requiresOnboarding && to.name !== 'profile' && !isFeatureGuideRoute(to)) return { name: 'profile' }
     } catch {
       if (!currentUser.value) return { name: 'login' }
-      if (currentUser.value?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
+      if (currentUser.value?.requiresOnboarding && to.name !== 'profile' && !isFeatureGuideRoute(to)) return { name: 'profile' }
     }
   }
 })

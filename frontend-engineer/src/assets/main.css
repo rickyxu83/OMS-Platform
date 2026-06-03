@@ -2008,8 +2008,8 @@ h2 {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgb(15 23 42 / 28%);
-  backdrop-filter: blur(1px);
+  background: rgb(15 23 42 / 16%);
+  backdrop-filter: none;
   pointer-events: auto;
 }
 
@@ -2020,7 +2020,7 @@ h2 {
   border-radius: 20px;
   pointer-events: none;
   box-shadow:
-    0 0 0 9999px rgb(15 23 42 / 18%),
+    0 0 0 9999px rgb(15 23 42 / 10%),
     0 0 0 8px rgb(94 234 212 / 18%),
     0 18px 44px rgb(0 0 0 / 24%);
   transition:

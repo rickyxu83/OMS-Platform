@@ -109,18 +109,19 @@ const guideSteps = [
   },
   {
     selector: '.quick-action-row .locate',
-    route: '/service-sheets/new?mode=onsite',
+    route: '/service-sheets/new?mode=onsite&guide=1',
     title: '定位查找',
     body: '填写客户时用它搜索附近客户和地点，系统会优先显示苏州、上海及当前位置附近结果。',
   },
   {
     selector: '.quick-action-row .ghost',
-    route: '/service-sheets/new?mode=onsite',
+    route: '/service-sheets/new?mode=onsite&guide=1',
     title: '同步资料',
     body: '在线时可以手动刷新客户、联系人、草稿和离线队列，避免现场资料不同步。',
   },
   {
-    selector: '.shell-menu-icon[aria-label="月报"]',
+    selector: '.timesheet-filter',
+    route: '/timesheet?guide=1',
     title: '查看月报',
     body: '月报会汇总你的现场、远程和内勤服务记录，方便核对当月工作。',
   },
@@ -192,10 +193,11 @@ function maybeOpenFirstLoginGuide() {
 
 async function prepareFeatureTourStep() {
   const step = activeGuideStep.value
-  if (step?.route && route.fullPath !== step.route) {
-    await router.push(step.route)
+  const targetRoute = step?.route ? router.resolve(step.route).fullPath : ''
+  if (targetRoute && route.fullPath !== targetRoute) {
+    await router.push(targetRoute)
   }
-  if (step?.selector?.includes('shell-menu-icon')) accountOpen.value = true
+  accountOpen.value = Boolean(step?.selector?.includes('shell-menu-icon'))
   await new Promise((resolve) => window.setTimeout(resolve, 180))
   updateFeatureTourTarget()
 }
