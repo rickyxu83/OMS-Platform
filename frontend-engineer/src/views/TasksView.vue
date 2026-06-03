@@ -327,7 +327,7 @@ function serviceModeBadge(task) {
 function serviceSummary(task) {
   const normalizedMode = normalizePreviewServiceMode(task)
   const category = taskCategoryLabel(task)
-  const detail = compactSummaryText(task.deviceName || task.productName || task.issueDescription || task.report?.faultSummary || '')
+  const detail = compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
   if (normalizedMode === 'office') {
     return detail ? `${category} · ${detail}` : category
   }
@@ -336,7 +336,7 @@ function serviceSummary(task) {
 
 function inspectionContext(task) {
   if (!isInspectionTask(task)) return ''
-  const parts = [taskDeviceContext(task), compactSummaryText(task.issueDescription || task.report?.faultSummary || '')].filter(Boolean)
+  const parts = [taskDeviceContext(task), compactSummaryText(task.issueDescription || '')].filter(Boolean)
   return parts.length ? `巡检对象：${parts.join(' · ')}` : '巡检对象：待补充设备信息'
 }
 

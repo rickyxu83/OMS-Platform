@@ -1932,9 +1932,9 @@ async function load() {
         remoteDraft.value = {
           ...remoteDraft.value,
           remoteCategory: previewTimesheetCategoryLabel('remote', detailData.item.timesheetCategory || remoteDraft.value.remoteCategory),
-          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.plannedStartAt),
-          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.plannedEndAt),
-          issueDescription: detailData.item.issueDescription || report.faultSummary || '',
+          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.submittedAt),
+          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.updatedAt || detailData.item.submittedAt),
+          issueDescription: detailData.item.issueDescription || '',
           commonWorkContent: legacyWork.commonWorkContent || '',
           workContent: effectiveWorkEntries.length ? currentWorkEntry?.workContent || '' : report.workContent || '',
           workEntries: effectiveWorkEntries,
@@ -1945,9 +1945,9 @@ async function load() {
         officeDraft.value = {
           ...officeDraft.value,
           officeCategory: previewTimesheetCategoryLabel('office', detailData.item.timesheetCategory || officeDraft.value.officeCategory),
-          deviceName: detailData.item.deviceName === '全自动核酸提取系统' ? '' : (detailData.item.deviceName || ''),
-          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.plannedStartAt),
-          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.plannedEndAt),
+          deviceName: detailData.item.internalNote || '',
+          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.submittedAt),
+          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.updatedAt || detailData.item.submittedAt),
           workContent: report.workContent || detailData.item.issueDescription || '',
         }
       } else {
@@ -1955,10 +1955,10 @@ async function load() {
           ...onsiteDraft.value,
           serviceType: detailData.item.serviceType || onsiteDraft.value.serviceType,
           departureAt: formatLoadedDateTime(report.departureAt),
-          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.plannedStartAt),
-          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.plannedEndAt),
+          actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.submittedAt),
+          actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.updatedAt || detailData.item.submittedAt),
           returnAt: formatLoadedDateTime(report.returnAt),
-          issueDescription: detailData.item.issueDescription || report.faultSummary || '',
+          issueDescription: detailData.item.issueDescription || '',
           commonWorkContent: legacyWork.commonWorkContent || '',
           workContent: effectiveWorkEntries.length ? currentWorkEntry?.workContent || '' : report.workContent || '',
           workEntries: effectiveWorkEntries,
@@ -2035,9 +2035,9 @@ function buildSubmitPayload() {
         ? null
         : previewTimesheetCategoryValue(effectiveServiceMode, serviceDraft.value.serviceType),
     priority: 'normal',
+    internalNote: isOfficeMode.value ? submitDeviceName : null,
     engineerIds: selectedCoEngineerIds.value,
     issueDescription,
-    faultSummary: issueDescription,
     workContent,
     workEntries,
     result: serviceDraft.value.result,
@@ -2046,8 +2046,6 @@ function buildSubmitPayload() {
     actualStartAt: submitDateTimeValue(serviceDraft.value.actualStartAt),
     actualEndAt: submitDateTimeValue(serviceDraft.value.actualEndAt),
     returnAt: submitDateTimeValue(serviceDraft.value.returnAt),
-    workHours: 2,
-    customerConfirmName: contactName || customerName,
     customerSignature: effectiveServiceMode === 'remote' ? '' : customerSignature.value,
   }
   if (isInstallOrder) {
@@ -2055,7 +2053,6 @@ function buildSubmitPayload() {
     payload.devicePn = firstDevice.devicePn
     payload.deviceSerialNo = firstDevice.deviceSerialNo
     payload.deviceRemark = firstDevice.deviceRemark
-    payload.installDevices = installDevices
   }
   return payload
 }

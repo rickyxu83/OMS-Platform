@@ -492,12 +492,11 @@ function reportPayload(row) {
     actualStartAt: row.actual_start_at,
     actualEndAt: row.actual_end_at,
     returnAt: row.return_at,
-    workHours: row.work_hours,
-    faultSummary: row.fault_summary,
     workContent: row.work_content,
     workEntries: row.workEntries || [],
     result: row.result,
     resultDescription: row.result_description,
+    customerConfirmName: row.customer_name,
     customerName: row.customer_name,
     customerSignatureFileId: row.customer_signature_file_id,
     customerSignature: row.customer_signature,
@@ -1059,8 +1058,8 @@ async function timesheetMonthly(req, res) {
             ? row.timesheet_category || category
             : category,
       customerName: row.customer_name,
-      productName: row.device_name || '',
-      workContent: row.issue_description || row.work_content || row.fault_summary || '',
+      productName: row.service_mode === 'office' ? row.internal_note || '' : row.device_name || '',
+      workContent: row.issue_description || row.work_content || '',
       salesperson: row.timesheet_salesperson || row.customer_salesperson || '',
       progress:
         {
@@ -1276,17 +1275,15 @@ async function createSelfReport(req, res) {
     timesheetSalesperson,
     priority = 'normal',
     issueDescription,
+    internalNote,
     departureAt,
     actualStartAt,
     actualEndAt,
     returnAt,
-    workHours,
-    faultSummary,
     workContent,
     workEntries = [],
     result,
     resultDescription,
-    customerConfirmName,
     customerSignature,
     engineerIds = [],
     parts = [],
@@ -1303,16 +1300,12 @@ async function createSelfReport(req, res) {
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
   if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
-  // [debug] office mode: log actual values
-  console.log('[office-debug]', JSON.stringify({ serviceMode, effectiveServiceMode, result, missing }))
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature) missing.push('客户手写签名')
 
   if (missing.length) {
-    // Final safety filter: remove '处理进度' / '服务结果' for office mode
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
-    console.log('[office-debug] filtered missing:', JSON.stringify(filtered))
     if (filtered.length) {
       throw badRequest(`请先补充必填项：${filtered.join('、')}`)
     }
@@ -1415,17 +1408,17 @@ async function createSelfReport(req, res) {
       )
     }
 
-    await recordCustomerContact(connection, effectiveCustomerId, contactName || customerConfirmName, contactPhone, req.user.id)
+    await recordCustomerContact(connection, effectiveCustomerId, contactName, contactPhone, req.user.id)
 
-    let effectiveDeviceId = deviceId || null
+    const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
+    let effectiveDeviceId = shouldManageInstallDevice ? deviceId || null : null
     if (effectiveDeviceId) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
-    const hasInstallDeviceFields = effectiveServiceMode === 'onsite'
-      && serviceType === 'install'
+    const hasInstallDeviceFields = shouldManageInstallDevice
       && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
     const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
-    if (!effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    if (shouldManageInstallDevice && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
       const [deviceResult] = await connection.execute(
         `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark)
          VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark)`,
@@ -1456,12 +1449,12 @@ async function createSelfReport(req, res) {
       `INSERT INTO service_orders (
          order_no, customer_id, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
-         assigned_engineer_id, planned_start_at, planned_end_at, created_by, submitted_at
+         assigned_engineer_id, internal_note, created_by, submitted_at
        )
        VALUES (
          :orderNo, :customerId, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
          :priority, 'submitted', :issueDescription,
-         :engineerId, :actualStartAt, :actualEndAt, :createdBy, CURRENT_TIMESTAMP
+         :engineerId, :internalNote, :createdBy, CURRENT_TIMESTAMP
        )`,
       {
         orderNo,
@@ -1473,9 +1466,8 @@ async function createSelfReport(req, res) {
         timesheetSalesperson: salespersonSnapshot,
         priority,
         issueDescription,
-        engineerId: null,
-        actualStartAt: actualStartAt || null,
-        actualEndAt: actualEndAt || null,
+        engineerId: req.user.id,
+        internalNote: internalNote || null,
         createdBy: req.user.id,
       },
     )
@@ -1503,11 +1495,11 @@ async function createSelfReport(req, res) {
 
     await connection.execute(
       `INSERT INTO service_reports (
-         service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_hours, fault_summary, work_content,
+         service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_content,
          result, result_description, customer_name, customer_signature_file_id, customer_signature
        )
        VALUES (
-         :orderId, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workHours, :faultSummary, :workContent,
+         :orderId, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workContent,
          :result, :resultDescription, :customerConfirmName, :customerSignatureFileId, NULL
        )`,
       {
@@ -1516,12 +1508,10 @@ async function createSelfReport(req, res) {
         actualStartAt: actualStartAt || null,
         actualEndAt: actualEndAt || null,
         returnAt: returnAt || null,
-        workHours: workHours || null,
-        faultSummary: faultSummary || null,
         workContent: effectiveWorkContent,
         result,
         resultDescription: resultDescription || null,
-        customerConfirmName: customerConfirmName || contactName || null,
+        customerConfirmName: contactName || null,
         customerSignatureFileId,
       },
     )
@@ -1801,12 +1791,11 @@ async function updateSelfReport(req, res) {
     timesheetSalesperson,
     priority = order.priority,
     issueDescription,
+    internalNote,
     departureAt,
     actualStartAt,
     actualEndAt,
     returnAt,
-    workHours,
-    faultSummary,
     workContent,
     workEntries = [],
     result,
@@ -1838,15 +1827,12 @@ async function updateSelfReport(req, res) {
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
   if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
-  // [debug-update] office mode: log actual values
-  console.log('[office-debug-update]', JSON.stringify({ serviceMode, effectiveServiceMode, result, missing }))
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature && !hasExistingSignature) missing.push('客户手写签名')
 
   if (missing.length) {
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
-    console.log('[office-debug-update] filtered missing:', JSON.stringify(filtered))
     if (filtered.length) {
       throw badRequest(`请先补充必填项：${filtered.join('、')}`)
     }
@@ -1890,15 +1876,17 @@ async function updateSelfReport(req, res) {
       },
     )
 
-    let effectiveDeviceId = hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null
+    const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
+    let effectiveDeviceId = shouldManageInstallDevice
+      ? (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
+      : order.device_id || null
     if (effectiveDeviceId) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, order.customer_id)
     }
-    const hasInstallDeviceFields = effectiveServiceMode === 'onsite'
-      && serviceType === 'install'
+    const hasInstallDeviceFields = shouldManageInstallDevice
       && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
     const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
-    if (effectiveServiceMode === 'onsite' && serviceType === 'install' && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    if (shouldManageInstallDevice && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
       const [deviceResult] = await connection.execute(
         `INSERT INTO devices (
            customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
@@ -1915,7 +1903,7 @@ async function updateSelfReport(req, res) {
         },
       )
       effectiveDeviceId = deviceResult.insertId
-    } else if (effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    } else if (shouldManageInstallDevice && effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
       await connection.execute(
         `UPDATE devices
          SET name = :deviceName,
@@ -1944,8 +1932,8 @@ async function updateSelfReport(req, res) {
            timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
            priority = :priority,
            issue_description = :issueDescription,
-           planned_start_at = :actualStartAt,
-           planned_end_at = :actualEndAt,
+           assigned_engineer_id = COALESCE(assigned_engineer_id, :engineerId),
+           internal_note = :internalNote,
            status = 'submitted',
            submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP)
        WHERE id = :id`,
@@ -1958,8 +1946,8 @@ async function updateSelfReport(req, res) {
         timesheetSalesperson: timesheetSalesperson || null,
         priority,
         issueDescription,
-        actualStartAt: actualStartAt || null,
-        actualEndAt: actualEndAt || null,
+        engineerId: req.user.id,
+        internalNote: internalNote || null,
       },
     )
 
@@ -1976,11 +1964,11 @@ async function updateSelfReport(req, res) {
 
     await connection.execute(
       `INSERT INTO service_reports (
-         service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_hours, fault_summary, work_content,
+         service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_content,
          result, result_description, customer_name, customer_signature_file_id, customer_signature
        )
        VALUES (
-         :id, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workHours, :faultSummary, :workContent,
+         :id, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workContent,
          :result, :resultDescription, :customerConfirmName, :customerSignatureFileId, NULL
        )
        ON DUPLICATE KEY UPDATE
@@ -1988,8 +1976,6 @@ async function updateSelfReport(req, res) {
          actual_start_at = VALUES(actual_start_at),
          actual_end_at = VALUES(actual_end_at),
          return_at = VALUES(return_at),
-         work_hours = VALUES(work_hours),
-         fault_summary = VALUES(fault_summary),
          work_content = VALUES(work_content),
          result = VALUES(result),
          result_description = VALUES(result_description),
@@ -2002,12 +1988,10 @@ async function updateSelfReport(req, res) {
         actualStartAt: actualStartAt || null,
         actualEndAt: actualEndAt || null,
         returnAt: returnAt || null,
-        workHours: workHours || null,
-        faultSummary: faultSummary || null,
         workContent: effectiveWorkContent,
         result,
         resultDescription: resultDescription || null,
-        customerConfirmName: customerConfirmName || contactName || null,
+        customerConfirmName: contactName || customerConfirmName || null,
         customerSignatureFileId: savedSignatureFileId,
       },
     )

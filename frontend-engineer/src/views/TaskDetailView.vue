@@ -42,7 +42,7 @@ const detailStatusLabel = computed(() => {
   }
   return statusMap[task.value?.status] || task.value?.status || '-'
 })
-const deviceContext = computed(() => task.value?.deviceName || task.value?.productName || '-')
+const deviceContext = computed(() => task.value?.deviceName || task.value?.internalNote || task.value?.productName || '-')
 const detailServiceTime = computed(() => task.value?.report?.actualStartAt || task.value?.serviceAt || task.value?.plannedAt || task.value?.scheduledAt || task.value?.submittedAt || task.value?.createdAt)
 const inspectionLead = computed(() => {
   if (!isInspectionTask.value) return task.value?.issueDescription || '暂无服务需求'

@@ -239,11 +239,11 @@ const sheetSvg = computed(() => {
   const departure = formatDateTime(item.report.departureAt) || '—'
   const returned = formatDateTime(item.report.returnAt) || '—'
   const finishedDate = formatDateTime(item.report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
-  const summaryText = cleanText(item.issueDescription || item.problemDescription || item.report.faultSummary || '', '未填写问题描述')
+  const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
   const workRecord = cleanText(item.report.workContent || item.serviceContent || item.issueDescription || '', '未填写处理记录')
   const titleText = isRemoteSheet.value ? '远程服务记录单' : '技术服务记录单'
   const secondLabel = '设备 / 系统'
-  const secondValue = cleanText(item.deviceName || item.productName || '', '未填写设备信息')
+  const secondValue = cleanText(item.deviceName || item.internalNote || item.productName || '', '未填写设备信息')
   const summaryLabel = '问题描述'
   const recordLabel = isRemoteSheet.value ? '工作内容' : '服务内容'
   const resultLabel = isRemoteSheet.value ? '处理结果' : '服务结论'
