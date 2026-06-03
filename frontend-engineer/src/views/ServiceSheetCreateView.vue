@@ -2595,7 +2595,6 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             <small v-if="fieldErrors.contactPhone" class="field-error">{{ zh(fieldErrors.contactPhone) }}</small>
           </label>
         </div>
-        <p v-if="isOfficeMode" class="muted compact">{{ zh('不关联客户也可以直接提交，记录会在月报中按内勤工作体现。') }}</p>
       </article>
 
       <article class="form-section service-info-section section-tone-service">

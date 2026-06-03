@@ -4263,12 +4263,6 @@ h2 {
   box-shadow: 0 14px 34px rgb(37 99 235 / 8%);
 }
 
-.required-hint {
-  margin: 0;
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
 .profile-card p {
   margin-top: 0;
   color: #64748b;
@@ -4482,12 +4476,6 @@ h2 {
   width: 100%;
   min-width: 0;
   padding: 0 12px;
-}
-
-.signature-state {
-  margin-top: 6px;
-  color: #64748b;
-  font-size: 13px;
 }
 
 .signature-summary-card {

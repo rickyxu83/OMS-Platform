@@ -363,11 +363,9 @@ onMounted(load)
           </div>
           <span :class="{ done: !mustChangePassword }">{{ zh(mustChangePassword ? '必做' : '已完成') }}</span>
         </div>
-        <p v-if="mustChangePassword" class="required-hint">{{ zh('请修改初始密码后继续使用系统。') }}</p>
-        <label class="field"><span>{{ zh('当前密码') }}</span><input v-model="passwordForm.currentPassword" type="password" required /></label>
-        <label class="field"><span>{{ zh('新密码') }}</span><input v-model="passwordForm.newPassword" type="password" required /></label>
-        <label class="field"><span>{{ zh('确认新密码') }}</span><input v-model="passwordForm.confirmPassword" type="password" required /></label>
-        <p class="muted compact">{{ zh('至少 8 位，包含大小写字母、数字和特殊符号。') }}</p>
+        <label class="field"><span>{{ zh('当前密码') }}</span><input v-model="passwordForm.currentPassword" type="password" required :placeholder="zh('输入当前密码')" /></label>
+        <label class="field"><span>{{ zh('新密码') }}</span><input v-model="passwordForm.newPassword" type="password" required :placeholder="zh('至少 8 位，包含大小写字母、数字和特殊符号')" /></label>
+        <label class="field"><span>{{ zh('确认新密码') }}</span><input v-model="passwordForm.confirmPassword" type="password" required :placeholder="zh('再次输入新密码')" /></label>
         <button class="primary" type="submit" :disabled="savingPassword"><PreviewIcon name="save" />{{ zh(savingPassword ? '保存中' : '更新密码') }}</button>
       </form>
 
@@ -376,13 +374,11 @@ onMounted(load)
           <div>
             <p>{{ zh('SIGNATURE') }}</p>
             <h2>{{ zh('个人手写签名') }}</h2>
-            <p class="signature-state">{{ zh(hasSavedSignature ? '已保存签名' : '尚未保存签名') }}</p>
           </div>
         </div>
-        <p v-if="!hasSavedSignature" class="required-hint">{{ zh('请补充手写签名，导出服务表时将使用此签名。') }}</p>
         <div class="signature-summary-card" :class="{ empty: !hasSavedSignature }">
           <img v-if="hasSavedSignature" :src="savedSignatureData" :alt="zh('签名缩略图')" />
-          <span v-else><PreviewIcon name="pen" />{{ zh('签名将用于服务表导出') }}</span>
+          <span v-else><PreviewIcon name="pen" />{{ zh('请补充手写签名') }}</span>
         </div>
         <div class="signature-toolbar">
           <button
