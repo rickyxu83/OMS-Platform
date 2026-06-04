@@ -53,78 +53,53 @@ async function submit() {
 </script>
 
 <template>
-  <main class="auth-shell make-login-shell">
-    <aside class="make-login-brand-panel">
-      <div class="make-login-deco make-login-deco-top"></div>
-      <div class="make-login-deco make-login-deco-bottom"></div>
+  <main class="make-login-v2">
+    <div class="make-login-orb make-login-orb-purple"></div>
+    <div class="make-login-orb make-login-orb-blue"></div>
+    <div class="make-login-orb make-login-orb-green"></div>
 
-      <div class="make-login-brand-content">
-        <div class="make-login-logo-row">
-          <span class="make-login-logo">技</span>
-          <div>
-            <strong>技服表管理端</strong>
-            <small>电子化服务管理平台</small>
-          </div>
+    <div class="make-login-language-v2">
+      <span>◎</span>
+      <strong>简体中文</strong>
+    </div>
+
+    <section class="make-login-card-v2" aria-label="登录管理端">
+      <header class="make-login-head-v2">
+        <span class="make-login-mark-v2">▣</span>
+        <h1>运维管理系统</h1>
+        <p>欢迎回来</p>
+      </header>
+
+      <form class="make-auth-form-v2" @submit.prevent="submit">
+        <p v-if="error" class="make-login-error-v2">{{ error }}</p>
+
+        <label>
+          <span>账号</span>
+          <input v-model.trim="form.username" autocomplete="username" required placeholder="请输入账号" />
+        </label>
+
+        <label>
+          <span>密码</span>
+          <input v-model="form.password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
+        </label>
+
+        <div class="make-auth-options-v2">
+          <label><input v-model="form.rememberUsername" type="checkbox" /> 记住账号</label>
+          <label><input v-model="form.remember" type="checkbox" /> 保持登录</label>
         </div>
 
-        <section class="make-login-copy">
-          <h1>专业的技术服务<br />管理解决方案</h1>
-          <p>全方位管理服务记录、客户关系、设备资产、报表导出和操作审计。</p>
-        </section>
+        <button class="make-login-submit-v2" type="submit" :disabled="loading">
+          {{ loading ? '正在鉴权...' : '登录' }}
+        </button>
+      </form>
 
-        <div class="make-login-feature-grid">
-          <article v-for="feature in features" :key="feature">
-            <span>{{ feature.slice(0, 1) }}</span>
-            <strong>{{ feature }}</strong>
-          </article>
+      <footer class="make-login-demo-v2">
+        <div>
+          <strong>系统功能</strong>
+          <p>{{ features.join(' / ') }}</p>
         </div>
-      </div>
-
-      <p class="make-login-copyright">© 2026 技服表管理系统</p>
-    </aside>
-
-    <section class="make-login-form-panel">
-      <div class="make-login-mobile-brand">
-        <span class="make-login-logo">技</span>
-        <strong>技服表管理端</strong>
-      </div>
-
-      <div class="make-login-card">
-        <header class="make-login-card-head">
-          <h2>登录管理端</h2>
-          <p>请输入您的账号和密码</p>
-        </header>
-
-        <form class="auth-form make-auth-form" @submit.prevent="submit">
-          <label>
-            <span>账号</span>
-            <input v-model.trim="form.username" autocomplete="username" required placeholder="请输入账号" />
-          </label>
-          <label>
-            <span>密码</span>
-            <input v-model="form.password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
-          </label>
-
-          <div class="auth-options make-auth-options">
-            <label><input v-model="form.rememberUsername" type="checkbox" /> 记住账号</label>
-            <label><input v-model="form.remember" type="checkbox" /> 保持登录</label>
-          </div>
-
-          <p v-if="error" class="form-error">{{ error }}</p>
-
-          <button class="auth-submit make-login-submit" type="submit" :disabled="loading">
-            {{ loading ? '正在鉴权...' : '登录' }}
-          </button>
-        </form>
-
-        <aside class="make-login-security-notice">
-          <span>安</span>
-          <div>
-            <strong>安全提示</strong>
-            <p>请勿在公共设备上保存登录状态，定期修改密码以确保账户安全。</p>
-          </div>
-        </aside>
-      </div>
+        <span>系统版本 <b>v2.4.8</b></span>
+      </footer>
     </section>
   </main>
 </template>

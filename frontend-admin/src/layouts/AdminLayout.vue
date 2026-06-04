@@ -18,8 +18,10 @@ const route = useRoute()
 const router = useRouter()
 const currentTime = ref('')
 const commandOpen = ref(false)
+const sidebarOpen = ref(true)
 const searchText = ref('')
 const searchMessage = ref('')
+const isTraditional = ref(false)
 
 const visibleGroups = computed(() => getVisibleNavigation(currentUser.value?.role))
 const activeGroup = computed(() => findNavigationGroup(route.name, visibleGroups.value) || visibleGroups.value[0] || null)
@@ -55,6 +57,8 @@ const activeTitle = computed(() => {
   return `${activeGroup.value.label} / ${activeItem.value?.label || activeGroup.value.children[0]?.label || ''}`
 })
 
+const systemVersion = computed(() => import.meta.env.VITE_APP_VERSION || 'v2.4.8')
+
 function navigateToGroup(group) {
   if (!group.children.length) return
   const firstChild = group.children[0]
@@ -78,6 +82,10 @@ function tick() {
 function handleLogout() {
   clearSession()
   router.push('/login')
+}
+
+function toggleLanguage() {
+  isTraditional.value = !isTraditional.value
 }
 
 function handleSearch() {
@@ -116,84 +124,100 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="admin-shell figma-shell make-admin-shell">
-    <aside class="admin-sidebar figma-sidebar">
-      <div class="sidebar-brand">
-        <img :src="BRAND_LOGO" alt="" class="brand-mark" />
+  <main class="admin-shell make-admin-shell-v2" :class="{ 'sidebar-collapsed': !sidebarOpen }">
+    <aside class="admin-sidebar make-sidebar-v2" :aria-hidden="!sidebarOpen">
+      <div class="sidebar-brand make-sidebar-brand-v2">
+        <span class="make-brand-tile"><img :src="BRAND_LOGO" alt="" /></span>
         <div>
-          <strong>技服表管理端</strong>
-          <small>电子化服务平台</small>
+          <strong>运维智管</strong>
+          <small>OMS SYSTEM</small>
         </div>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav make-sidebar-nav-v2">
         <section
           v-for="group in visibleGroups"
           :key="group.name"
-          class="sidebar-group"
-          :class="{ active: activeGroup?.name === group.name }"
+          class="make-nav-section-v2"
         >
-          <button type="button" class="sidebar-group-button" @click="navigateToGroup(group)">
-            <AdminIcon :name="group.icon" class="nav-icon-image" />
-            <span>{{ group.label }}</span>
-          </button>
+          <p class="make-nav-group-label-v2">{{ group.label }}</p>
+          <div class="make-nav-list-v2">
+            <RouterLink
+              v-for="item in group.children"
+              :key="item.name"
+              :to="item.to"
+              class="make-nav-item-v2"
+              :class="{ active: route.name === item.name }"
+            >
+              <AdminIcon :name="group.icon" class="nav-icon-image" />
+              <span>{{ item.label }}</span>
+              <i v-if="route.name === item.name" aria-hidden="true"></i>
+            </RouterLink>
+          </div>
         </section>
       </nav>
 
-      <div class="sidebar-footer">
-        <RouterLink v-if="canViewAuditLogs" class="sidebar-link subtle-link" :to="{ name: 'audit-logs' }">
-          <AdminIcon name="audit" class="nav-icon-image" />
-          <span>查看操作审计</span>
-        </RouterLink>
-        <button type="button" class="sidebar-link subtle-link" @click="handleLogout">
-          <AdminIcon name="logout" class="nav-icon-image" />
-          <span>注销账户</span>
-        </button>
+      <div class="make-sidebar-version-v2">
+        <span>System Version</span>
+        <strong>{{ systemVersion }}</strong>
       </div>
     </aside>
 
-    <div class="admin-main">
-      <header class="admin-topbar figma-topbar">
-        <div class="topbar-title">
-          <nav class="topbar-breadcrumbs" aria-label="当前位置">
-            <span>{{ activeGroup?.label || '工作台' }}</span>
+    <div class="admin-main make-admin-main-v2">
+      <div class="make-main-orb make-main-orb-primary"></div>
+      <div class="make-main-orb make-main-orb-blue"></div>
+
+      <header class="admin-topbar make-topbar-v2">
+        <div class="make-topbar-left-v2">
+          <button type="button" class="make-icon-button-v2" @click="sidebarOpen = !sidebarOpen" :aria-label="sidebarOpen ? '收起侧边栏' : '展开侧边栏'">
+            {{ sidebarOpen ? '×' : '☰' }}
+          </button>
+          <nav class="make-breadcrumb-v2" aria-label="当前位置">
+            <span>运维管理系统</span>
             <em>/</em>
             <strong>{{ activeItem?.label || activeGroup?.children?.[0]?.label || '运营总览' }}</strong>
           </nav>
-          <p>{{ currentTime }}</p>
         </div>
-        <div class="topbar-actions">
-          <button type="button" class="command-trigger" @click="commandOpen = true">
+
+        <div class="topbar-actions make-topbar-actions-v2">
+          <button type="button" class="command-trigger make-quick-button-v2" @click="commandOpen = true">
             <AdminIcon name="search" class="command-trigger-icon" />
-            <span>快速跳转模块...</span>
-            <kbd>⌘K</kbd>
+            <span>快速跳转</span>
           </button>
-          <div class="topbar-user">
-            <span class="topbar-avatar">{{ userInitial }}</span>
+          <button type="button" class="make-lang-button-v2" @click="toggleLanguage">
+            <span>文</span>
+            <strong>{{ isTraditional ? '繁体' : '简体' }}</strong>
+          </button>
+          <p class="make-time-v2">{{ currentTime }}</p>
+          <div class="make-topbar-separator-v2"></div>
+          <div class="topbar-user make-user-v2">
             <div>
               <strong>{{ userName }}</strong>
               <small>{{ userRoleLabel }}</small>
             </div>
+            <button type="button" class="make-icon-button-v2" @click="handleLogout" aria-label="退出登录">↗</button>
           </div>
-          <button type="button" class="topbar-logout" @click="handleLogout">退出</button>
         </div>
       </header>
 
-      <div v-if="commandOpen" class="command-overlay" @click.self="commandOpen = false">
-        <section class="command-dialog" role="dialog" aria-label="快速跳转模块">
-          <div class="command-input-wrap">
+      <div v-if="commandOpen" class="command-overlay make-command-overlay-v2" @click.self="commandOpen = false">
+        <section class="command-dialog make-command-dialog-v2" role="dialog" aria-label="快速跳转模块">
+          <header>
+            <h2>快速跳转</h2>
+            <button type="button" @click="commandOpen = false">×</button>
+          </header>
+          <div class="command-input-wrap make-command-input-v2">
             <AdminIcon name="search" class="command-input-icon" />
             <input
               v-model.trim="searchText"
               autofocus
-              placeholder="输入模块名称快速跳转..."
+              placeholder="搜索模块名称..."
               @keyup.enter="handleSearch"
               @keyup.esc="commandOpen = false"
             />
           </div>
           <p v-if="searchMessage" class="command-message">{{ searchMessage }}</p>
-          <div class="command-list">
-            <p class="command-group-label">常用模块</p>
+          <div class="command-list make-command-list-v2">
             <button
               v-for="item in commandItems"
               :key="item.name"
@@ -210,19 +234,7 @@ onBeforeUnmount(() => {
         </section>
       </div>
 
-      <nav v-if="activeChildren.length > 0" class="sub-nav">
-        <RouterLink
-          v-for="item in activeChildren"
-          :key="item.name"
-          :to="item.to"
-          class="sub-nav-link"
-          :class="{ active: route.name === item.name }"
-        >
-          {{ item.label }}
-        </RouterLink>
-      </nav>
-
-      <section class="admin-workspace figma-workspace" :data-page="String(route.name || '')">
+      <section class="admin-workspace make-workspace-v2" :data-page="String(route.name || '')">
         <RouterView />
       </section>
     </div>
