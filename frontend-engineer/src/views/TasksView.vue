@@ -76,6 +76,10 @@ const accountDraftPrefix = () => 'rc-engineer-offline-cache:rc:draft:account:ser
 const legacyDraftPrefix = () => 'rc-engineer-offline-cache:rc:draft:anonymous:service-sheet:'
 const collaborativeAckMarker = '\u2063\u2064\u2063'
 
+function isCurrentScopedDraftStorageKey(key) {
+  return String(key || '').includes(':rc:draft:account:service-sheet:')
+}
+
 const currentUserId = computed(() => Number(getCurrentUser()?.id || 0))
 
 function stripCollaborativeAckMarker(value) {
@@ -164,12 +168,13 @@ function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = nul
 }
 
 async function loadLocalDraftTasks() {
-  const prefixes = [...new Set([accountDraftPrefix(), localDraftPrefix(), legacyDraftPrefix()])]
   const drafts = []
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index)
-    if (!prefixes.some((prefix) => key?.startsWith(prefix))) continue
+    const isScopedDraft = isCurrentScopedDraftStorageKey(key)
+    const isLegacyDraft = key?.startsWith(localDraftPrefix()) || key?.startsWith(accountDraftPrefix()) || key?.startsWith(legacyDraftPrefix())
+    if (!isScopedDraft && !isLegacyDraft) continue
     try {
       const parsed = JSON.parse(localStorage.getItem(key) || '{}')
       const draft = parsed?.data || {}
@@ -182,7 +187,7 @@ async function loadLocalDraftTasks() {
           keyPrefix: `local-${key}`,
           storageKey: key,
           linkedOrderId: routeInfo.orderId,
-          remoteDraft: key.startsWith(accountDraftPrefix()),
+          remoteDraft: false,
           updatedAt: parsed?.updatedAt || '',
           createdAt: parsed?.updatedAt || '',
           payload,
@@ -231,14 +236,15 @@ async function clearResolvedLocalDrafts() {
   if (!tasks.value.length) return
 
   const existingTaskIds = new Set(tasks.value.map((task) => Number(task.id)).filter(Boolean))
-  const prefix = localDraftPrefix()
   let removed = false
   const removedEditOrderIds = new Set()
   const removedCreateDrafts = []
 
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
     const key = localStorage.key(index)
-    if (!key?.startsWith(prefix)) continue
+    const isScopedDraft = isCurrentScopedDraftStorageKey(key)
+    const isLegacyDraft = key?.startsWith(localDraftPrefix()) || key?.startsWith(accountDraftPrefix()) || key?.startsWith(legacyDraftPrefix())
+    if (!isScopedDraft && !isLegacyDraft) continue
     const routeInfo = parseDraftRoute(key)
     if (routeInfo.orderId && existingTaskIds.has(Number(routeInfo.orderId))) {
       localStorage.removeItem(key)
