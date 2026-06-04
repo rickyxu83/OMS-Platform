@@ -101,6 +101,7 @@ const I18N = {
     actions: {
       refresh: "刷新",
       create: "新增客户",
+      edit: "编辑",
       retry: "重试",
       cancel: "取消",
       saveNow: "立即创建",
@@ -123,10 +124,13 @@ const I18N = {
       level: "等级",
       address: "地址",
       salesperson: "业务",
+      action: "操作",
     },
     dialog: {
       title: "新增客户",
+      editTitle: "编辑客户",
       description: "填写客户基础信息，提交后保存到系统",
+      editDescription: "修改客户信息，可通过地图搜索更新坐标",
       name: "客户名称 *",
       code: "客户编码",
       contact: "联系人",
@@ -137,17 +141,33 @@ const I18N = {
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
       addressPlaceholder: "详细至街道门牌号",
+      coordinateLabel: "坐标与地图匹配",
+      coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
     },
     errors: {
       loadFailed: "加载失败",
       createFailed: "新增失败",
       nameRequired: "请输入客户名称",
+      geoSearchFailed: "搜索失败",
     },
     levels: {
       key: "重点客户",
       normal: "普通客户",
       potential: "潜在客户",
       vip: "VIP 客户",
+    },
+    geo: {
+      hasCoordinate: "已有坐标：{lat}, {lng}",
+      noCoordinate: "未填写坐标，可通过下方搜索或定位补全",
+      foundCandidates: "找到 {count} 个候选，点击可带入客户信息",
+      noCandidates: "未找到候选，可手动填写或换个关键词",
+      searching: "正在搜索\"{keyword}\"…",
+      selected: "已选：{name}（来源：{source}）",
+      sourceCustomer: "系统客户",
+      sourceMap: "地图",
+      locateFallback: "无法获取定位，先按关键词搜索",
+      locating: "正在获取定位并查找附近公司…",
+      searchCompanyKeyword: "公司",
     },
     misc: {
       unknown: "-",
@@ -159,6 +179,7 @@ const I18N = {
     actions: {
       refresh: "刷新",
       create: "新增客戶",
+      edit: "編輯",
       retry: "重試",
       cancel: "取消",
       saveNow: "立即建立",
@@ -181,10 +202,13 @@ const I18N = {
       level: "等級",
       address: "地址",
       salesperson: "業務",
+      action: "操作",
     },
     dialog: {
       title: "新增客戶",
+      editTitle: "編輯客戶",
       description: "填寫客戶基礎資訊，提交後保存到系統",
+      editDescription: "修改客戶資訊，可透過地圖搜尋更新座標",
       name: "客戶名稱 *",
       code: "客戶編碼",
       contact: "聯絡人",
@@ -195,17 +219,33 @@ const I18N = {
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
       addressPlaceholder: "詳細至街道路牌號",
+      coordinateLabel: "座標與地圖匹配",
+      coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
     },
     errors: {
       loadFailed: "載入失敗",
       createFailed: "新增失敗",
       nameRequired: "請輸入客戶名稱",
+      geoSearchFailed: "搜尋失敗",
     },
     levels: {
       key: "重點客戶",
       normal: "普通客戶",
       potential: "潛在客戶",
       vip: "VIP 客戶",
+    },
+    geo: {
+      hasCoordinate: "已有座標：{lat}, {lng}",
+      noCoordinate: "未填寫座標，可透過下方搜尋或定位補全",
+      foundCandidates: "找到 {count} 個候選，點擊可帶入客戶資訊",
+      noCandidates: "未找到候選，可手動填寫或更換關鍵字",
+      searching: "正在搜尋\"{keyword}\"…",
+      selected: "已選：{name}（來源：{source}）",
+      sourceCustomer: "系統客戶",
+      sourceMap: "地圖",
+      locateFallback: "無法取得定位，先按關鍵字搜尋",
+      locating: "正在取得定位並查找附近公司…",
+      searchCompanyKeyword: "公司",
     },
     misc: {
       unknown: "-",
@@ -231,6 +271,10 @@ function levelOf(c: Customer): string {
 function formatDate(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 10);
+}
+
+function interpolate(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ""));
 }
 
 export function Customers() {
@@ -328,8 +372,8 @@ export function Customers() {
     setShowCandidates(false);
     setLocationHint(
       c.latitude && c.longitude
-        ? `已有坐标：${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}`
-        : "未填写坐标，可通过下方搜索或定位补全",
+        ? interpolate(t.geo.hasCoordinate, { lat: c.latitude.toFixed(5), lng: c.longitude.toFixed(5) })
+        : t.geo.noCoordinate,
     );
     setDialogOpen(true);
   }
@@ -354,11 +398,11 @@ export function Customers() {
       setShowCandidates(true);
       setLocationHint(
         items.length
-          ? `找到 ${items.length} 个候选，点击可带入客户信息`
-          : "未找到候选，可手动填写或换个关键词",
+          ? interpolate(t.geo.foundCandidates, { count: items.length })
+          : t.geo.noCandidates,
       );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "搜索失败";
+      const msg = e instanceof Error ? e.message : t.errors.geoSearchFailed;
       setLocationHint(msg);
       setCandidates([]);
     } finally {
@@ -375,7 +419,7 @@ export function Customers() {
       setLocationHint("");
       return;
     }
-    setLocationHint(`正在搜索"${keyword}"…`);
+    setLocationHint(interpolate(t.geo.searching, { keyword }));
     const t = window.setTimeout(() => {
       searchGeo({}, { keyword }).catch(() => undefined);
     }, 300);
@@ -397,7 +441,10 @@ export function Customers() {
       contactName: company.contactName || prev.contactName,
       contactPhone: company.contactPhone || prev.contactPhone,
     }));
-    setLocationHint(`已选：${company.name}（来源：${company.source === "customer" ? "系统客户" : "地图"}）`);
+    setLocationHint(interpolate(t.geo.selected, {
+      name: company.name,
+      source: company.source === "customer" ? t.geo.sourceCustomer : t.geo.sourceMap,
+    }));
     setShowCandidates(false);
   }
 
@@ -406,22 +453,22 @@ export function Customers() {
     setLocating(true);
     const keyword = form.name.trim();
     if (keyword) {
-      setLocationHint(`正在搜索"${keyword}"…`);
+      setLocationHint(interpolate(t.geo.searching, { keyword }));
       searchGeo()
         .catch(() => undefined)
         .finally(() => setLocating(false));
       return;
     }
     const fallback = () => {
-      setLocationHint("无法获取定位，先按关键词搜索");
-      searchGeo({}, { keyword: "公司" }).catch(() => undefined);
+      setLocationHint(t.geo.locateFallback);
+      searchGeo({}, { keyword: t.geo.searchCompanyKeyword }).catch(() => undefined);
     };
     if (!navigator.geolocation) {
       fallback();
       setLocating(false);
       return;
     }
-    setLocationHint("正在获取定位并查找附近公司…");
+    setLocationHint(t.geo.locating);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         searchGeo(
@@ -547,7 +594,7 @@ export function Customers() {
                   <TableHead>{t.list.phone}</TableHead>
                   <TableHead>{t.list.level}</TableHead>
                   <TableHead>{t.list.address}</TableHead>
-                <TableHead className="w-[80px] text-right">操作</TableHead>
+                  <TableHead className="w-[80px] text-right">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -560,20 +607,20 @@ export function Customers() {
                 ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                      未找到相关客户数据
+                      {t.list.empty}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((c) => {
                     const lv = levelOf(c);
-                    const lvLabel = c.levelText || LEVEL_LABELS[lv] || "普通客户";
+                    const lvLabel = c.levelText || t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     return (
                       <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.code || "-"}</TableCell>
+                        <TableCell className="font-medium">{c.code || t.misc.unknown}</TableCell>
                         <TableCell>
-                          <div className="font-medium">{c.name || "-"}</div>
+                          <div className="font-medium">{c.name || t.misc.unknown}</div>
                           {c.salesperson && (
-                            <div className="text-xs text-muted-foreground">业务：{c.salesperson}</div>
+                            <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
                           )}
                           {c.latitude && c.longitude ? (
                             <div className="text-[10px] text-emerald-600 mt-0.5 flex items-center gap-1">
@@ -582,17 +629,17 @@ export function Customers() {
                             </div>
                           ) : null}
                         </TableCell>
-                        <TableCell>{c.contactName || "-"}</TableCell>
-                        <TableCell>{c.contactPhone || c.phone || "-"}</TableCell>
+                        <TableCell>{c.contactName || t.misc.unknown}</TableCell>
+                        <TableCell>{c.contactPhone || c.phone || t.misc.unknown}</TableCell>
                         <TableCell>
                           <Badge variant={LEVEL_VARIANT[lv] || "secondary"}>{lvLabel}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground max-w-[300px] truncate">
-                          {c.address || "-"}
+                          {c.address || t.misc.unknown}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
-                            编辑
+                            {t.actions.edit}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -608,9 +655,9 @@ export function Customers() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId != null ? "编辑客户" : t.dialog.title}</DialogTitle>
+            <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
-              {editingId != null ? "修改客户信息，可通过地图搜索更新坐标" : t.dialog.description}
+              {editingId != null ? t.dialog.editDescription : t.dialog.description}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
