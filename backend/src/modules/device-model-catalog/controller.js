@@ -1,5 +1,7 @@
 const { query } = require('../../config/db')
-const { normalizeAlias } = require('./normalize')
+const { normalizeAlias, deduplicateAliases } = require('./normalize')
+
+const catalogCategories = new Set(['server', 'storage', 'network'])
 
 async function suggest(req, res, next) {
   try {
@@ -162,6 +164,92 @@ async function suggest(req, res, next) {
   }
 }
 
+async function upsertEntry(req, res, next) {
+  try {
+    const brand = String(req.body?.brand || '').trim()
+    const category = String(req.body?.category || '').trim().toLowerCase()
+    const canonicalModel = String(req.body?.canonicalModel || '').trim()
+    const partNumber = String(req.body?.partNumber || '').trim()
+    const aliases = deduplicateAliases([
+      canonicalModel,
+      partNumber,
+      ...(Array.isArray(req.body?.aliases) ? req.body.aliases : String(req.body?.aliases || '').split(/\r?\n|,/)),
+    ])
+
+    if (!brand || !canonicalModel) {
+      res.status(400).json({ error: { message: '品牌和标准型号不能为空' } })
+      return
+    }
+    if (!catalogCategories.has(category)) {
+      res.status(400).json({ error: { message: '设备分类不合法' } })
+      return
+    }
+
+    await query(
+      `INSERT INTO device_model_catalog (
+         brand, category, canonical_model, part_number, source_provider, source_reference, is_active, synced_at
+       ) VALUES (
+         :brand, :category, :canonicalModel, :partNumber, 'manual', 'device-management', 1, CURRENT_TIMESTAMP
+       )
+       ON DUPLICATE KEY UPDATE
+         part_number = VALUES(part_number),
+         source_provider = 'manual',
+         source_reference = 'device-management',
+         is_active = 1,
+         synced_at = CURRENT_TIMESTAMP`,
+      {
+        brand,
+        category,
+        canonicalModel,
+        partNumber: partNumber || null,
+      },
+    )
+
+    const rows = await query(
+      `SELECT id, brand, category, canonical_model, part_number
+       FROM device_model_catalog
+       WHERE brand = :brand AND category = :category AND canonical_model = :canonicalModel
+       LIMIT 1`,
+      { brand, category, canonicalModel },
+    )
+
+    const item = rows[0]
+    if (!item) {
+      res.status(500).json({ error: { message: '型号库写入失败' } })
+      return
+    }
+
+    for (const alias of aliases) {
+      const normalizedAlias = normalizeAlias(alias)
+      if (!normalizedAlias) continue
+      await query(
+        `INSERT IGNORE INTO device_model_aliases (
+           catalog_id, normalized_alias, provider_scope
+         ) VALUES (
+           :catalogId, :normalizedAlias, 'approved-v1'
+         )`,
+        {
+          catalogId: item.id,
+          normalizedAlias,
+        },
+      )
+    }
+
+    res.status(201).json({
+      item: {
+        id: item.id,
+        brand: item.brand,
+        category: item.category,
+        canonicalModel: item.canonical_model,
+        partNumber: String(item.part_number || '').trim(),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 module.exports = {
   suggest,
+  upsertEntry,
 }

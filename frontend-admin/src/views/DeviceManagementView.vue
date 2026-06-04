@@ -7,6 +7,7 @@ import KpiCard from '../components/admin/KpiCard.vue'
 import PageHeader from '../components/admin/PageHeader.vue'
 import { useRoute } from 'vue-router'
 import { api } from '../services/api'
+import { getCurrentUser } from '../services/auth'
 
 const route = useRoute()
 const loading = ref(false)
@@ -60,6 +61,21 @@ const maintenanceTypeMeta = {
   original_manufacturer: { label: '原厂维护', className: 'maintenance-original', tone: '外部原厂' },
   our_maintenance: { label: '我方维护', className: 'maintenance-ours', tone: '内部维护' },
 }
+const currentUser = getCurrentUser()
+const savingCatalog = ref(false)
+const catalogCategoryOptions = [
+  ['server', '服务器'],
+  ['storage', '存储'],
+  ['network', '网络'],
+]
+const catalogForm = reactive({
+  brand: '',
+  category: 'network',
+  canonicalModel: '',
+  partNumber: '',
+  aliases: '',
+})
+const canManageCatalog = computed(() => ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor'].includes(currentUser?.role))
 
 function formatDate(value) {
   return String(value || '').replace('T', ' ').slice(0, 10) || '-'
@@ -157,6 +173,40 @@ function matchesExpiry(device) {
   if (expiry === 'within30') return isWithinDays(device.maintenanceEndRaw, 30)
   if (expiry === 'valid') return Boolean(device.maintenanceEndRaw) && !isExpired(device.maintenanceEndRaw)
   return true
+}
+
+function guessCatalogBrand(model = '') {
+  const text = String(model || '').trim()
+  if (/^Dell EMC\b/i.test(text)) return 'Dell EMC'
+  if (/^Dell\b/i.test(text)) return 'Dell'
+  if (/^HPE\b/i.test(text)) return 'HPE'
+  if (/^HP\b/i.test(text)) return 'HP'
+  if (/^Lenovo\b/i.test(text)) return 'Lenovo'
+  if (/^IBM\b/i.test(text)) return 'IBM'
+  if (/^NetApp\b/i.test(text)) return 'NetApp'
+  if (/^Huawei\b/i.test(text)) return 'Huawei'
+  if (/^H3C\b/i.test(text)) return 'H3C'
+  if (/^Cisco\b/i.test(text)) return 'Cisco'
+  if (/^F5\b/i.test(text)) return 'F5'
+  if (/^Brocade\b/i.test(text)) return 'Brocade'
+  return ''
+}
+
+function guessCatalogCategory(device = {}) {
+  const text = `${device?.raw?.model || device?.model || ''} ${device?.raw?.name || device?.name || ''}`.toLowerCase()
+  if (/oceanstor|dorado|powerstore|unity|vsp|netapp|aff|fas|ts-h|synology|qnap|me\d+/i.test(text)) return 'storage'
+  if (/switch|router|nexus|catalyst|cloudengine|s\d{3,}|h3c|brocade|f5|fortigate|firewall/i.test(text)) return 'network'
+  return 'server'
+}
+
+function resetCatalogForm(device = null) {
+  Object.assign(catalogForm, {
+    brand: guessCatalogBrand(device?.raw?.model || device?.model || ''),
+    category: guessCatalogCategory(device),
+    canonicalModel: String(device?.raw?.model || device?.model || '').trim(),
+    partNumber: String(device?.raw?.pn || device?.pn || '').trim(),
+    aliases: '',
+  })
 }
 
 async function load() {
@@ -263,6 +313,39 @@ function devicePayload() {
   }
 }
 
+async function syncSelectedDeviceToCatalog() {
+  if (!selectedDevice.value) return
+  if (!canManageCatalog.value) {
+    error.value = '当前账号没有写入型号库权限'
+    return
+  }
+  if (!catalogForm.brand.trim() || !catalogForm.canonicalModel.trim()) {
+    error.value = '请先补充品牌和标准型号'
+    return
+  }
+  savingCatalog.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    const aliases = String(catalogForm.aliases || '')
+      .split(/\r?\n|,/) 
+      .map((item) => item.trim())
+      .filter(Boolean)
+    await api.post('/device-model-catalog/entries', {
+      brand: catalogForm.brand.trim(),
+      category: catalogForm.category,
+      canonicalModel: catalogForm.canonicalModel.trim(),
+      partNumber: catalogForm.partNumber.trim(),
+      aliases,
+    })
+    message.value = '已写入型号库，后续安装单可直接联动'
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    savingCatalog.value = false
+  }
+}
+
 async function saveDevice() {
   if (!deviceForm.customerId || !deviceForm.name.trim()) {
     error.value = '客户和设备名称不能为空'
@@ -359,6 +442,10 @@ watch(filteredDevices, (items) => {
   }
 })
 
+watch(selectedDevice, (device) => {
+  resetCatalogForm(device)
+}, { immediate: true })
+
 onMounted(() => {
   filters.value.customerId = String(route.query.customerId || '')
   loadCustomerOptions()
@@ -399,7 +486,7 @@ onMounted(() => {
         <div class="table-head">
           <span>设备型号 / Model</span>
           <span>客户</span>
-          <span>PN / 序列号</span>
+          <span>部件号 / PN · 序列号 / SN</span>
           <span>维护类型</span>
           <span>维护方</span>
           <span>维护截止</span>
@@ -426,6 +513,9 @@ onMounted(() => {
               </div>
               <div class="page-actions">
                 <button class="ghost-button" type="button" @click="openEditForm">编辑设备</button>
+                <button v-if="canManageCatalog" class="ghost-button" type="button" :disabled="savingCatalog" @click="syncSelectedDeviceToCatalog">
+                  {{ savingCatalog ? '写入中...' : '写入型号库' }}
+                </button>
               </div>
             </div>
             <div class="drawer-stats">
@@ -435,10 +525,38 @@ onMounted(() => {
             <section class="drawer-section">
               <h3>设备标识</h3>
               <p>名称：{{ device.name }}</p>
-              <p>型号：{{ device.model }}</p>
-              <p>部件号：{{ device.pn }}</p>
-              <p>序列号：{{ device.serialNo }}</p>
+              <p>设备型号 / Model：{{ device.model }}</p>
+              <p>部件号 / PN：{{ device.pn }}</p>
+              <p>序列号 / SN：{{ device.serialNo }}</p>
               <p>位置：{{ device.location }}</p>
+            </section>
+            <section v-if="canManageCatalog" class="drawer-section">
+              <h3>写入型号库</h3>
+              <div class="drawer-form">
+                <label class="field">
+                  <span>品牌</span>
+                  <input v-model.trim="catalogForm.brand" placeholder="例如 Huawei / H3C / Dell" />
+                </label>
+                <label class="field">
+                  <span>分类</span>
+                  <select v-model="catalogForm.category">
+                    <option v-for="[value, label] in catalogCategoryOptions" :key="value" :value="value">{{ label }}</option>
+                  </select>
+                </label>
+                <label class="field wide">
+                  <span>标准型号 / Model</span>
+                  <input v-model.trim="catalogForm.canonicalModel" placeholder="与工程师安装单中的设备型号保持一致" />
+                </label>
+                <label class="field">
+                  <span>部件号 / PN</span>
+                  <input v-model.trim="catalogForm.partNumber" placeholder="没有可留空" />
+                </label>
+                <label class="field wide">
+                  <span>附加别名</span>
+                  <textarea v-model.trim="catalogForm.aliases" class="drawer-textarea" rows="3" placeholder="一行一个，或用逗号分隔"></textarea>
+                </label>
+              </div>
+              <p class="drawer-note">这里写入的是标准型号库，用于后续工程师安装单自动补全和 PN 联动，不会影响现有设备台账记录。</p>
             </section>
             <section class="drawer-section">
               <h3>维护信息</h3>
@@ -474,7 +592,7 @@ onMounted(() => {
             <input v-model.trim="deviceForm.name" placeholder="输入设备名称" />
           </label>
           <label class="field">
-            <span>型号</span>
+            <span>设备型号 / Model</span>
             <input v-model.trim="deviceForm.model" placeholder="输入设备型号" />
           </label>
           <label class="field">
@@ -482,7 +600,7 @@ onMounted(() => {
             <input v-model.trim="deviceForm.pn" placeholder="输入部件号" />
           </label>
           <label class="field">
-            <span>序列号</span>
+            <span>序列号 / SN</span>
             <input v-model.trim="deviceForm.serialNo" placeholder="输入序列号" />
           </label>
           <label class="field">
@@ -515,8 +633,8 @@ onMounted(() => {
             <input v-model="deviceForm.warrantyUntil" type="date" />
           </label>
           <label class="field wide">
-            <span>备注</span>
-            <textarea v-model.trim="deviceForm.remark" class="drawer-textarea" rows="4" placeholder="补充设备备注"></textarea>
+            <span>备注 / Remark</span>
+            <textarea v-model.trim="deviceForm.remark" class="drawer-textarea" rows="4" placeholder="补充备注"></textarea>
           </label>
           <p v-if="error" class="form-error">{{ error }}</p>
         </form>
