@@ -36,7 +36,6 @@ export function Login() {
       errorNotFound: "账号不存在",
       errorPassword: "密码错误",
       errorAuth: "您的账号无权访问管理端",
-      demoTitle: "测试账号",
       version: "系统版本",
     },
     "zh-TW": {
@@ -50,7 +49,6 @@ export function Login() {
       errorNotFound: "帳號不存在",
       errorPassword: "密碼錯誤",
       errorAuth: "您的帳號無權訪問管理端",
-      demoTitle: "測試帳號",
       version: "系統版本",
     },
   };
@@ -192,21 +190,10 @@ export function Login() {
             </Button>
           </form>
 
-          {/* Demo Info & Version */}
           <div className="mt-10 pt-8 border-t border-slate-100/80">
-            <div className="flex flex-col items-center gap-6">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground bg-slate-50/50 p-3 rounded-xl w-full">
-                <div className="col-span-2 text-center font-bold text-slate-400 mb-1 uppercase tracking-tighter">{t.demoTitle}</div>
-                <div className="text-right font-medium">admin001:</div>
-                <div className="font-mono">admin123</div>
-                <div className="text-right font-medium">wang.supervisor:</div>
-                <div className="font-mono">123456</div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.version}</span>
-                <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-50 border-slate-300">v2.4.8</Badge>
-              </div>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.version}</span>
+              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-50 border-slate-300">v2.4.8</Badge>
             </div>
           </div>
         </div>
