@@ -2715,7 +2715,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         </div>
       </article>
 
-      <article class="form-section work-detail-section section-tone-service">
+      <article class="form-section work-detail-section section-tone-service" :class="{ 'has-device-model-dropdown': showDeviceModelSuggestions }">
         <div class="section-heading">
           <div>
             <p class="section-kicker">{{ zh('04 / 处理记录') }}</p>
@@ -2773,23 +2773,6 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           />
           <small v-if="fieldErrors.workContent" class="field-error">{{ zh(fieldErrors.workContent) }}</small>
         </label>
-        <div v-if="!isOfficeMode" class="field-grid">
-          <label class="field select-field" :class="{ 'has-error': fieldErrors.result }">
-            <span>{{ zh(isRemoteLikeMode ? '处理结果' : '服务结论') }}<b>*</b></span>
-            <select
-              ref="serviceResultInput"
-              v-model="serviceDraft.result"
-              :class="{ invalid: fieldErrors.result }"
-              @change="clearFieldError('result')"
-            >
-              <option v-for="option in resultStatusOptions" :key="option.value" :value="option.value">
-                {{ zh(option.label) }}
-              </option>
-            </select>
-            <small v-if="fieldErrors.result" class="field-error">{{ zh(fieldErrors.result) }}</small>
-          </label>
-        </div>
-
         <!-- Install devices: multi-entry card for on-site install orders -->
         <div v-if="currentServiceMode === 'onsite' && serviceDraft.serviceType === 'install'" class="install-device-card">
           <div class="card-row">
@@ -2854,6 +2837,23 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               </label>
             </div>
           </div>
+        </div>
+
+        <div v-if="!isOfficeMode" class="field-grid">
+          <label class="field select-field" :class="{ 'has-error': fieldErrors.result }">
+            <span>{{ zh(isRemoteLikeMode ? '处理结果' : '服务结论') }}<b>*</b></span>
+            <select
+              ref="serviceResultInput"
+              v-model="serviceDraft.result"
+              :class="{ invalid: fieldErrors.result }"
+              @change="clearFieldError('result')"
+            >
+              <option v-for="option in resultStatusOptions" :key="option.value" :value="option.value">
+                {{ zh(option.label) }}
+              </option>
+            </select>
+            <small v-if="fieldErrors.result" class="field-error">{{ zh(fieldErrors.result) }}</small>
+          </label>
         </div>
       </article>
 

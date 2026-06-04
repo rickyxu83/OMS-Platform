@@ -1709,6 +1709,15 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.work-detail-section {
+  position: relative;
+  z-index: 3;
+}
+
+.work-detail-section.has-device-model-dropdown {
+  z-index: 8;
+}
+
 .service-info-section,
 .work-detail-section,
 .narrative {
@@ -1724,6 +1733,20 @@ h2 {
 
 .service-record-field textarea {
   min-height: 156px;
+}
+
+.install-device-card {
+  position: relative;
+  z-index: 2;
+}
+
+.install-device-row {
+  position: relative;
+  z-index: 1;
+}
+
+.install-device-row:has(.autocomplete-dropdown) {
+  z-index: 9;
 }
 
 .issue-summary-field textarea,
