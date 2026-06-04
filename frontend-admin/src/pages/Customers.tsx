@@ -102,8 +102,10 @@ const I18N = {
       refresh: "刷新",
       create: "新增客户",
       edit: "编辑",
+      saveEdit: "保存修改",
       retry: "重试",
       cancel: "取消",
+      clear: "清除",
       saveNow: "立即创建",
       saving: "保存中…",
     },
@@ -143,6 +145,11 @@ const I18N = {
       addressPlaceholder: "详细至街道门牌号",
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
+      level: "客户等级",
+      locate: "定位查找",
+      badgeSystem: "系统",
+      badgeMap: "地图",
+      selectedCoordinate: "已选坐标",
     },
     errors: {
       loadFailed: "加载失败",
@@ -180,8 +187,10 @@ const I18N = {
       refresh: "刷新",
       create: "新增客戶",
       edit: "編輯",
+      saveEdit: "保存修改",
       retry: "重試",
       cancel: "取消",
+      clear: "清除",
       saveNow: "立即建立",
       saving: "保存中…",
     },
@@ -221,6 +230,11 @@ const I18N = {
       addressPlaceholder: "詳細至街道路牌號",
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
+      level: "客戶等級",
+      locate: "定位查找",
+      badgeSystem: "系統",
+      badgeMap: "地圖",
+      selectedCoordinate: "已選座標",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -271,6 +285,11 @@ function levelOf(c: Customer): string {
 function formatDate(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 10);
+}
+
+function normalizeCoordinate(value?: number | string | null) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function interpolate(template: string, values: Record<string, string | number>) {
@@ -352,6 +371,8 @@ export function Customers() {
   }
 
   function openEdit(c: Customer) {
+    const latitude = normalizeCoordinate(c.latitude)
+    const longitude = normalizeCoordinate(c.longitude)
     setEditingId(c.id);
     setForm({
       id: c.id,
@@ -361,8 +382,8 @@ export function Customers() {
       contactPhone: c.contactPhone || c.phone || "",
       address: c.address || "",
       level: c.level || "normal",
-      latitude: c.latitude ?? null,
-      longitude: c.longitude ?? null,
+      latitude,
+      longitude,
       mapProvider: c.mapProvider || "",
       mapPoiId: c.mapPoiId || "",
       mapPoiName: c.mapPoiName || "",
@@ -371,8 +392,8 @@ export function Customers() {
     setCandidates([]);
     setShowCandidates(false);
     setLocationHint(
-      c.latitude && c.longitude
-        ? interpolate(t.geo.hasCoordinate, { lat: c.latitude.toFixed(5), lng: c.longitude.toFixed(5) })
+      latitude != null && longitude != null
+        ? interpolate(t.geo.hasCoordinate, { lat: latitude.toFixed(5), lng: longitude.toFixed(5) })
         : t.geo.noCoordinate,
     );
     setDialogOpen(true);
@@ -420,10 +441,10 @@ export function Customers() {
       return;
     }
     setLocationHint(interpolate(t.geo.searching, { keyword }));
-    const t = window.setTimeout(() => {
+    const timerId = window.setTimeout(() => {
       searchGeo({}, { keyword }).catch(() => undefined);
     }, 300);
-    setSearchTimer(t);
+    setSearchTimer(timerId);
   }
 
   function applyCandidate(company: GeoCandidate) {
@@ -691,7 +712,7 @@ export function Customers() {
                   ) : (
                     <Crosshair className="w-4 h-4 mr-1" />
                   )}
-                  定位查找
+                  {t.dialog.locate}
                 </Button>
               </div>
               {showCandidates && candidates.length > 0 ? (
@@ -708,9 +729,9 @@ export function Customers() {
                         <div className="font-medium text-sm truncate flex items-center gap-2">
                           {c.name}
                           {c.source === "customer" ? (
-                            <Badge variant="secondary" className="text-[10px] h-4 px-1">系统</Badge>
+                            <Badge variant="secondary" className="text-[10px] h-4 px-1">{t.dialog.badgeSystem}</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1">地图</Badge>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1">{t.dialog.badgeMap}</Badge>
                           )}
                         </div>
                         {c.address ? (
@@ -740,7 +761,7 @@ export function Customers() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cust-level">客户等级</Label>
+                <Label htmlFor="cust-level">{t.dialog.level}</Label>
                 <select
                   id="cust-level"
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -787,13 +808,13 @@ export function Customers() {
                 <Check className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
                 <div className="flex-1 min-w-0 text-xs space-y-1">
                   <div className="font-medium text-slate-700">
-                    {form.mapPoiName || "已选坐标"}
+                    {form.mapPoiName || t.dialog.selectedCoordinate}
                   </div>
                   <div className="text-muted-foreground">
                     {form.mapAddress || form.address}
                   </div>
                   <div className="font-mono text-[11px] text-slate-500">
-                    {form.latitude.toFixed(6)}, {form.longitude.toFixed(6)}
+                    {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
                     {form.mapPoiId ? ` · POI ${form.mapPoiId}` : ""}
                   </div>
                 </div>
@@ -813,7 +834,7 @@ export function Customers() {
                     })
                   }
                 >
-                  清除
+                  {t.actions.clear}
                 </Button>
               </div>
             ) : null}
@@ -823,7 +844,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? t.actions.saving : editingId != null ? "保存修改" : t.actions.saveNow}
+              {saving ? t.actions.saving : editingId != null ? t.actions.saveEdit : t.actions.saveNow}
             </Button>
           </DialogFooter>
         </DialogContent>
