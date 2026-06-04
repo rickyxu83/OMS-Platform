@@ -27,7 +27,7 @@
 ### 设备型号自动补全（Autocomplete）
 工程师创建安装单时，在「设备型号」输入框打字即可自动弹出建议：
 - 支持多词搜索：`hp dl380` → 匹配所有 HP ProLiant DL380 型号
-- 内置 267 条常见设备型号（服务器/网络/存储/防火墙）
+- 内置 186 条常见设备型号（服务器/网络/存储/防火墙）
 - 品牌搜索：`dell r740`、`huawei 5280`、`brocade` 等
 - 型号归一化：`g10` → `Gen10`、`v5` → `V5`
 
@@ -35,7 +35,7 @@
 ```bash
 bash scripts/deploy-seed.sh
 ```
-在本地 `fixture-data.js` 追加新设备后，一行命令推送到服务器并重新入库（INSERT IGNORE，不会重复）。
+在本地 `device-model-catalog` 数据文件追加新设备后，一行命令推送到服务器并重新入库（INSERT IGNORE，不会重复）。
 
 
 ## 本地启动
@@ -111,7 +111,7 @@ cd backend && npm test
 ```bash
 bash scripts/deploy-seed.sh
 ```
-在 `backend/src/modules/device-model-catalog/fixture-data.js` 追加新设备型号后，一键部署到服务器。
+在 `backend/src/modules/device-model-catalog/fixture-data.js` 或 `backend/src/modules/device-model-catalog/imported-fixture-data.js` 追加新设备型号后，一键部署到服务器。
 
 ### 全量部署
 ```bash

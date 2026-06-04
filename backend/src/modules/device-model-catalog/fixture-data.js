@@ -1,4 +1,6 @@
-const FIXTURE_DATA = [
+const IMPORTED_FIXTURE_DATA = require('./imported-fixture-data')
+
+const BASE_FIXTURE_DATA = [
   {
     brand: 'HPE',
     category: 'server',
@@ -217,4 +219,4 @@ const FIXTURE_DATA = [
   },
 ]
 
-module.exports = FIXTURE_DATA
+module.exports = [...BASE_FIXTURE_DATA, ...IMPORTED_FIXTURE_DATA]
