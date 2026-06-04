@@ -69,6 +69,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState<Summary>({});
   const [orders, setOrders] = useState<Order[]>([]);
+  const [mapPoints, setMapPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -78,14 +79,30 @@ export function Dashboard() {
       setLoading(true);
       setError("");
       try {
-        const [stats, orderRes] = await Promise.all([
+        const [stats, orderRes, customerRes] = await Promise.all([
           api.get("/service-orders/stats/overview"),
           api.get("/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc"),
+          api.get("/customers?pageSize=200").catch(() => null),
         ]);
         if (cancelled) return;
         setSummary(stats?.summary || {});
         const items = (stats?.recent || orderRes?.items || []) as Order[];
         setOrders(items);
+        const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
+        setMapPoints(
+          (Array.isArray(rawCustomers) ? rawCustomers : [])
+            .map((c: any) => ({
+              id: c.id,
+              name: c.name || c.customerName || "未命名",
+              lng: Number(c.longitude ?? c.lng ?? c.lon),
+              lat: Number(c.latitude ?? c.lat),
+              annualServices: c.annualServices ?? c.serviceOrderCount ?? c.orderCount ?? c.useCount ?? 0,
+              address: c.address,
+              contact: c.contactPerson || c.contact,
+              phone: c.contactPhone || c.phone,
+            }))
+            .filter((p: any) => Number.isFinite(p.lng) && Number.isFinite(p.lat) && p.lng !== 0 && p.lat !== 0)
+        );
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "加载失败");
       } finally {
@@ -174,33 +191,13 @@ export function Dashboard() {
               <Badge variant="outline" className="cursor-pointer">昆山市</Badge>
             </div>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[400px]">
-            <div className="relative w-full h-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-              <div className="absolute inset-0 opacity-20">
-                <svg width="100%" height="100%" viewBox="0 0 800 500" preserveAspectRatio="none">
-                  <path d="M50,100 Q150,50 250,100 T450,100 T650,50 T750,150 L750,450 L50,450 Z" fill="#6366f1" />
-                  <path d="M0,200 Q100,250 200,200 T400,250 T600,200 T800,300" stroke="#cbd5e1" fill="none" strokeWidth="2" />
-                  <path d="M200,0 L200,500 M400,0 L400,500 M600,0 L600,500" stroke="#cbd5e1" strokeWidth="0.5" />
-                </svg>
-              </div>
-              <div className="absolute top-4 right-4 flex flex-col gap-2">
-                <div className="p-2 bg-white rounded shadow-sm border border-border flex flex-col gap-2">
-                  <Button variant="ghost" size="icon" className="w-8 h-8">+</Button>
-                  <div className="h-px bg-border" />
-                  <Button variant="ghost" size="icon" className="w-8 h-8">-</Button>
-                </div>
-                <Button variant="secondary" size="icon" className="bg-white shadow-sm border border-border w-10 h-10">
-                  <MapPin className="w-5 h-5 text-primary" />
-                </Button>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center text-muted-foreground">
-                  <MapPin className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">客户地理分布图</p>
-                  <p className="text-xs">集成高德地图展示</p>
-                </div>
-              </div>
-            </div>
+          <CardContent className="flex-1 min-h-[400px] p-0">
+            <Amap
+              center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
+              points={mapPoints}
+              zoom={9}
+              height={420}
+            />
           </CardContent>
         </Card>
 
