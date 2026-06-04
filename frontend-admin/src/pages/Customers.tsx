@@ -44,6 +44,7 @@ interface Customer {
   salesperson?: string;
   updatedAt?: string;
   createdAt?: string;
+  contacts?: Array<{ id?: string | number; name?: string; phone?: string }>;
 }
 
 interface GeoCandidate {
@@ -67,8 +68,6 @@ interface CustomerForm {
   id?: string | number;
   name: string;
   code: string;
-  contactName: string;
-  contactPhone: string;
   address: string;
   level: string;
   latitude: number | null;
@@ -77,13 +76,12 @@ interface CustomerForm {
   mapPoiId: string;
   mapPoiName: string;
   mapAddress: string;
+  contacts: Array<{ id?: string | number; name: string; phone: string }>;
 }
 
 const EMPTY_FORM: CustomerForm = {
   name: "",
   code: "",
-  contactName: "",
-  contactPhone: "",
   address: "",
   level: "normal",
   latitude: null,
@@ -92,6 +90,7 @@ const EMPTY_FORM: CustomerForm = {
   mapPoiId: "",
   mapPoiName: "",
   mapAddress: "",
+  contacts: [{ name: "", phone: "" }],
 };
 
 const I18N = {
@@ -106,6 +105,8 @@ const I18N = {
       retry: "重试",
       cancel: "取消",
       clear: "清除",
+      addContact: "新增联系人",
+      removeContact: "删除联系人",
       saveNow: "立即创建",
       saving: "保存中…",
     },
@@ -147,6 +148,9 @@ const I18N = {
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
       level: "客户等级",
       locate: "定位查找",
+      contacts: "联系人列表",
+      contactName: "联系人姓名",
+      contactPhone: "联系人电话",
       badgeSystem: "系统",
       badgeMap: "地图",
       selectedCoordinate: "已选坐标",
@@ -191,6 +195,8 @@ const I18N = {
       retry: "重試",
       cancel: "取消",
       clear: "清除",
+      addContact: "新增聯絡人",
+      removeContact: "刪除聯絡人",
       saveNow: "立即建立",
       saving: "保存中…",
     },
@@ -232,6 +238,9 @@ const I18N = {
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
       level: "客戶等級",
       locate: "定位查找",
+      contacts: "聯絡人列表",
+      contactName: "聯絡人姓名",
+      contactPhone: "聯絡人電話",
       badgeSystem: "系統",
       badgeMap: "地圖",
       selectedCoordinate: "已選座標",
@@ -315,6 +324,8 @@ export function Customers() {
   const [locating, setLocating] = useState(false);
   const [searchTimer, setSearchTimer] = useState<number | null>(null);
 
+  const primaryContact = form.contacts[0] || { name: "", phone: "" };
+
   async function load() {
     setLoading(true);
     setError("");
@@ -373,13 +384,18 @@ export function Customers() {
   function openEdit(c: Customer) {
     const latitude = normalizeCoordinate(c.latitude)
     const longitude = normalizeCoordinate(c.longitude)
+    const contacts = c.contacts?.length
+      ? c.contacts.map((contact) => ({
+          id: contact.id,
+          name: contact.name || "",
+          phone: contact.phone || "",
+        }))
+      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "" }]
     setEditingId(c.id);
     setForm({
       id: c.id,
       name: c.name || "",
       code: c.code || "",
-      contactName: c.contactName || "",
-      contactPhone: c.contactPhone || c.phone || "",
       address: c.address || "",
       level: c.level || "normal",
       latitude,
@@ -388,6 +404,7 @@ export function Customers() {
       mapPoiId: c.mapPoiId || "",
       mapPoiName: c.mapPoiName || "",
       mapAddress: c.mapAddress || "",
+      contacts,
     });
     setCandidates([]);
     setShowCandidates(false);
@@ -448,20 +465,30 @@ export function Customers() {
   }
 
   function applyCandidate(company: GeoCandidate) {
-    setForm((prev) => ({
-      ...prev,
-      name: company.name || prev.name,
-      address: company.address || prev.address,
-      mapAddress: company.mapAddress || company.address || prev.mapAddress,
-      latitude: company.latitude ?? prev.latitude ?? null,
-      longitude: company.longitude ?? prev.longitude ?? null,
-      mapProvider:
-        company.mapProvider || (company.source === "map" ? "amap" : prev.mapProvider || ""),
-      mapPoiId: company.mapPoiId || (company.source === "map" ? company.id : prev.mapPoiId || ""),
-      mapPoiName: company.mapPoiName || company.name || prev.mapPoiName,
-      contactName: company.contactName || prev.contactName,
-      contactPhone: company.contactPhone || prev.contactPhone,
-    }));
+    setForm((prev) => {
+      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "" }]
+      if (company.contactName || company.contactPhone) {
+        currentContacts[0] = {
+          ...currentContacts[0],
+          name: company.contactName || currentContacts[0].name,
+          phone: company.contactPhone || currentContacts[0].phone,
+        }
+      }
+
+      return {
+        ...prev,
+        name: company.name || prev.name,
+        address: company.address || prev.address,
+        mapAddress: company.mapAddress || company.address || prev.mapAddress,
+        latitude: company.latitude ?? prev.latitude ?? null,
+        longitude: company.longitude ?? prev.longitude ?? null,
+        mapProvider:
+          company.mapProvider || (company.source === "map" ? "amap" : prev.mapProvider || ""),
+        mapPoiId: company.mapPoiId || (company.source === "map" ? company.id : prev.mapPoiId || ""),
+        mapPoiName: company.mapPoiName || company.name || prev.mapPoiName,
+        contacts: currentContacts,
+      }
+    });
     setLocationHint(interpolate(t.geo.selected, {
       name: company.name,
       source: company.source === "customer" ? t.geo.sourceCustomer : t.geo.sourceMap,
@@ -507,6 +534,32 @@ export function Customers() {
     );
   }
 
+  function updateContact(index: number, field: "name" | "phone", value: string) {
+    setForm((prev) => ({
+      ...prev,
+      contacts: prev.contacts.map((contact, contactIndex) => (
+        contactIndex === index ? { ...contact, [field]: value } : contact
+      )),
+    }))
+  }
+
+  function addContact() {
+    setForm((prev) => ({
+      ...prev,
+      contacts: [...prev.contacts, { name: "", phone: "" }],
+    }))
+  }
+
+  function removeContact(index: number) {
+    setForm((prev) => {
+      const nextContacts = prev.contacts.filter((_, contactIndex) => contactIndex !== index)
+      return {
+        ...prev,
+        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "" }],
+      }
+    })
+  }
+
   async function submit() {
     if (!form.name.trim()) {
       setError(t.errors.nameRequired);
@@ -518,8 +571,8 @@ export function Customers() {
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         code: form.code.trim() || undefined,
-        contactName: form.contactName.trim() || undefined,
-        contactPhone: form.contactPhone.trim() || undefined,
+        contactName: primaryContact.name.trim() || undefined,
+        contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
         latitude: form.latitude ?? undefined,
         longitude: form.longitude ?? undefined,
@@ -528,9 +581,13 @@ export function Customers() {
         mapPoiName: form.mapPoiName || undefined,
         mapAddress: form.mapAddress || undefined,
         level: form.level,
-        contacts: form.contactName.trim()
-          ? [{ name: form.contactName.trim(), phone: form.contactPhone.trim() || undefined }]
-          : [],
+        contacts: form.contacts
+          .map((contact) => ({
+            ...(contact.id ? { id: contact.id } : {}),
+            name: contact.name.trim(),
+            phone: contact.phone.trim() || undefined,
+          }))
+          .filter((contact) => contact.name),
       };
       if (editingId != null) {
         await api.put(`/customers/${editingId}`, payload);
@@ -778,18 +835,18 @@ export function Customers() {
                 <Label htmlFor="cust-contact">{t.dialog.contact}</Label>
                 <Input
                   id="cust-contact"
-                  value={form.contactName}
-                  onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-                  placeholder={t.dialog.contactPlaceholder}
+                  value={primaryContact.name}
+                  onChange={(e) => updateContact(0, "name", e.target.value)}
+                  placeholder={t.dialog.contactName}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-phone">{t.dialog.phone}</Label>
                 <Input
                   id="cust-phone"
-                  value={form.contactPhone}
-                  onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-                  placeholder={t.dialog.phonePlaceholder}
+                  value={primaryContact.phone}
+                  onChange={(e) => updateContact(0, "phone", e.target.value)}
+                  placeholder={t.dialog.contactPhone}
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
@@ -800,6 +857,47 @@ export function Customers() {
                   onChange={(e) => setForm({ ...form, address: e.target.value, mapAddress: e.target.value })}
                   placeholder={t.dialog.addressPlaceholder}
                 />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label>{t.dialog.contacts}</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addContact}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  {t.actions.addContact}
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {form.contacts.map((contact, index) => (
+                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
+                    <div className="space-y-2">
+                      <Label>{t.dialog.contactName}</Label>
+                      <Input
+                        value={contact.name}
+                        onChange={(e) => updateContact(index, "name", e.target.value)}
+                        placeholder={t.dialog.contactPlaceholder}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t.dialog.contactPhone}</Label>
+                      <Input
+                        value={contact.phone}
+                        onChange={(e) => updateContact(index, "phone", e.target.value)}
+                        placeholder={t.dialog.phonePlaceholder}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeContact(index)}
+                      disabled={form.contacts.length === 1}
+                    >
+                      {t.actions.removeContact}
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
 
