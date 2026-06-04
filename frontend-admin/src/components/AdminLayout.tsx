@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,7 +12,6 @@ import {
   Shield,
   LogOut,
   Search,
-  ChevronDown,
   Menu,
   X,
   Languages,
@@ -29,6 +28,7 @@ import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 
 interface NavItem {
   label: string;
@@ -42,45 +42,151 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const navGroups: NavGroup[] = [
+const STRINGS: Record<AppLang, {
+  brand: { title: string; version: string }
+  common: {
+    systemName: string
+    quickNav: string
+    quickNavTitle: string
+    quickNavPlaceholder: string
+    quickNavEmpty: string
+    langShort: string
+    switchedToCn: string
+    switchedToTw: string
+  }
+  groups: Record<string, string>
+  pages: Record<string, string>
+  roles: Record<string, string>
+}> = {
+  "zh-CN": {
+    brand: {
+      title: "运维智管",
+      version: "系统版本",
+    },
+    common: {
+      systemName: "运维管理系统",
+      quickNav: "快速跳转",
+      quickNavTitle: "快速跳转",
+      quickNavPlaceholder: "搜索模块名称...",
+      quickNavEmpty: "未找到匹配的模块",
+      langShort: "简体",
+      switchedToCn: "已切换至简体中文",
+      switchedToTw: "已切换至繁體中文",
+    },
+    groups: {
+      workspace: "工作台",
+      orders: "工单与巡检",
+      assets: "客户与资产",
+      reports: "报表中心",
+      system: "系统与权限",
+    },
+    pages: {
+      dashboard: "运营总览",
+      "service-orders": "工单处理",
+      "inspection-schedules": "巡检计划",
+      customers: "客户档案",
+      devices: "设备资产",
+      "maintenance-parties": "维保方目录",
+      timesheets: "月报导出",
+      users: "成员与角色",
+      "audit-logs": "操作审计",
+    },
+    roles: {
+      admin: "管理员",
+      assistant: "助理",
+      dispatcher: "调度",
+      supervisor: "主管",
+      engineering_supervisor: "工程主管",
+      sales_supervisor: "业务主管",
+      sales: "业务",
+      engineer: "工程师",
+    },
+  },
+  "zh-TW": {
+    brand: {
+      title: "運維智管",
+      version: "系統版本",
+    },
+    common: {
+      systemName: "運維管理系統",
+      quickNav: "快速跳轉",
+      quickNavTitle: "快速跳轉",
+      quickNavPlaceholder: "搜尋模組名稱...",
+      quickNavEmpty: "未找到匹配的模組",
+      langShort: "繁體",
+      switchedToCn: "已切換至简体中文",
+      switchedToTw: "已切換至繁體中文",
+    },
+    groups: {
+      workspace: "工作臺",
+      orders: "工單與巡檢",
+      assets: "客戶與資產",
+      reports: "報表中心",
+      system: "系統與權限",
+    },
+    pages: {
+      dashboard: "運營總覽",
+      "service-orders": "工單處理",
+      "inspection-schedules": "巡檢計畫",
+      customers: "客戶檔案",
+      devices: "設備資產",
+      "maintenance-parties": "維保方目錄",
+      timesheets: "月報導出",
+      users: "成員與角色",
+      "audit-logs": "操作審計",
+    },
+    roles: {
+      admin: "管理員",
+      assistant: "助理",
+      dispatcher: "調度",
+      supervisor: "主管",
+      engineering_supervisor: "工程主管",
+      sales_supervisor: "業務主管",
+      sales: "業務",
+      engineer: "工程師",
+    },
+  },
+};
+
+const NAV_CONFIG = [
   {
-    group: "工作台",
+    groupKey: "workspace",
     items: [
-      { label: "运营总览", icon: LayoutDashboard, path: "dashboard" },
+      { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard" },
     ],
   },
   {
-    group: "工单与巡检",
+    groupKey: "orders",
     items: [
-      { label: "工单处理", icon: FileText, path: "service-orders" },
-      { label: "巡检计划", icon: ClipboardCheck, path: "inspection-schedules" },
+      { labelKey: "service-orders", icon: FileText, path: "service-orders" },
+      { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules" },
     ],
   },
   {
-    group: "客户与资产",
+    groupKey: "assets",
     items: [
-      { label: "客户档案", icon: Users, path: "customers" },
-      { label: "设备资产", icon: Server, path: "devices" },
-      { label: "维保方目录", icon: Building2, path: "maintenance-parties" },
+      { labelKey: "customers", icon: Users, path: "customers" },
+      { labelKey: "devices", icon: Server, path: "devices" },
+      { labelKey: "maintenance-parties", icon: Building2, path: "maintenance-parties" },
     ],
   },
   {
-    group: "报表中心",
+    groupKey: "reports",
     items: [
-      { label: "月报导出", icon: BarChart3, path: "timesheets" },
+      { labelKey: "timesheets", icon: BarChart3, path: "timesheets" },
     ],
   },
   {
-    group: "系统与权限",
+    groupKey: "system",
     items: [
       {
-        label: "成员与角色",
+        labelKey: "users",
         icon: Settings,
         path: "users",
         requiredRoles: ["admin", "assistant", "dispatcher", "supervisor", "engineering_supervisor", "sales_supervisor"],
       },
       {
-        label: "操作审计",
+        labelKey: "audit-logs",
         icon: Shield,
         path: "audit-logs",
         requiredRoles: ["admin", "supervisor", "engineering_supervisor"],
@@ -97,52 +203,42 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { lang, toggleLang } = useLanguage();
   const currentUser = user || { name: "", role: "" };
   const currentPage = location.pathname.replace(/^\//, "") || "dashboard";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isTraditional, setIsTraditional] = useState(false);
+  const strings = STRINGS[lang];
 
-  // Update time every second
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   const handleLangToggle = () => {
-    setIsTraditional(!isTraditional);
-    toast.success(`已切换至${!isTraditional ? "繁体中文" : "简体中文"}`);
-  };
-
-  const roleLabels: Record<string, string> = {
-    admin: "管理员",
-    assistant: "助理",
-    dispatcher: "调度",
-    supervisor: "主管",
-    engineering_supervisor: "工程主管",
-    sales_supervisor: "业务主管",
-    sales: "业务",
-    engineer: "工程师",
-  };
-
-  const pageLabels: Record<string, string> = {
-    dashboard: "运营总览",
-    "service-orders": "工单处理",
-    "inspection-schedules": "巡检计划",
-    customers: "客户档案",
-    devices: "设备资产",
-    "maintenance-parties": "维保方目录",
-    timesheets: "月报导出",
-    users: "成员与角色",
-    "audit-logs": "操作审计",
+    const nextLang = lang === "zh-CN" ? "zh-TW" : "zh-CN";
+    toggleLang();
+    toast.success(nextLang === "zh-TW" ? STRINGS[nextLang].common.switchedToTw : STRINGS[nextLang].common.switchedToCn);
   };
 
   const hasAccess = (requiredRoles?: string[]) => {
     if (!requiredRoles) return true;
     return requiredRoles.includes(currentUser.role);
   };
+
+  const navGroups: NavGroup[] = useMemo(() => (
+    NAV_CONFIG.map((group) => ({
+      group: strings.groups[group.groupKey],
+      items: group.items.map((item) => ({
+        label: strings.pages[item.labelKey],
+        icon: item.icon,
+        path: item.path,
+        requiredRoles: item.requiredRoles,
+      })),
+    }))
+  ), [strings]);
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredRoles));
 
@@ -168,7 +264,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <LayoutDashboard className="w-6 h-5 text-white" />
               </div>
               <div>
-                <span className="font-bold text-base block text-sidebar-foreground tracking-tight">运维智管</span>
+                <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">OMS System</span>
               </div>
             </div>
@@ -218,7 +314,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {/* Sidebar Footer - Version Info */}
           <div className="p-4 border-t border-sidebar-border/50 bg-sidebar-accent/10">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">System Version</span>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{strings.brand.version}</span>
               <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">v2.4.8</Badge>
             </div>
           </div>
@@ -242,9 +338,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>运维管理系统</span>
+              <span>{strings.common.systemName}</span>
               <span>/</span>
-              <span className="text-foreground font-medium">{pageLabels[currentPage]}</span>
+              <span className="text-foreground font-medium">{strings.pages[currentPage] || currentPage}</span>
             </div>
           </div>
 
@@ -257,7 +353,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               className="gap-2"
             >
               <Search className="w-4 h-4" />
-              快速跳转
+              {strings.common.quickNav}
             </Button>
 
             {/* Language Toggle */}
@@ -268,12 +364,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
             >
               <Languages className="w-4 h-4" />
-              <span className="text-xs font-medium">{isTraditional ? "繁体" : "简体"}</span>
+              <span className="text-xs font-medium">{strings.common.langShort}</span>
             </Button>
 
-            {/* Current Time */}
             <div className="text-sm text-muted-foreground">
-              {currentTime.toLocaleString("zh-CN", {
+              {currentTime.toLocaleString(lang, {
                 year: "numeric",
                 month: "2-digit",
                 day: "2-digit",
@@ -290,7 +385,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <div className="text-right">
                 <div className="text-sm font-medium">{currentUser.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {roleLabels[currentUser.role] || currentUser.role}
+                  {strings.roles[currentUser.role] || currentUser.role}
                 </div>
               </div>
               <Button
@@ -317,11 +412,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       <Dialog open={quickNavOpen} onOpenChange={setQuickNavOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>快速跳转</DialogTitle>
+            <DialogTitle>{strings.common.quickNavTitle}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Input
-              placeholder="搜索模块名称..."
+              placeholder={strings.common.quickNavPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
@@ -346,7 +441,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               })}
               {filteredNavItems.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
-                  未找到匹配的模块
+                  {strings.common.quickNavEmpty}
                 </div>
               )}
             </div>

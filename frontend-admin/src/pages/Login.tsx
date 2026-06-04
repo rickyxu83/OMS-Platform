@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutDashboard, Languages, Globe } from "lucide-react";
+import { LayoutDashboard, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,15 +13,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { lang, setLang } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
-  const [lang, setLang] = useState<"zh-CN" | "zh-TW">("zh-CN");
   const [loading, setLoading] = useState(false);
 
   const i18n = {
@@ -32,11 +33,18 @@ export function Login() {
       password: "密码",
       remember: "记住账号",
       login: "登录",
+      loggingIn: "登录中…",
       errorEmpty: "请输入账号和密码",
       errorNotFound: "账号不存在",
       errorPassword: "密码错误",
       errorAuth: "您的账号无权访问管理端",
+      errorFallback: "登录失败",
       version: "系统版本",
+      langLabel: "简体中文",
+      langOptionCn: "简体中文",
+      langOptionTw: "繁體中文",
+      usernamePlaceholder: "请输入账号",
+      passwordPlaceholder: "请输入密码",
     },
     "zh-TW": {
       title: "運維管理系統",
@@ -45,11 +53,18 @@ export function Login() {
       password: "密碼",
       remember: "記住帳號",
       login: "登錄",
+      loggingIn: "登錄中…",
       errorEmpty: "請輸入帳號和密碼",
       errorNotFound: "帳號不存在",
       errorPassword: "密碼錯誤",
       errorAuth: "您的帳號無權訪問管理端",
+      errorFallback: "登錄失敗",
       version: "系統版本",
+      langLabel: "繁體中文",
+      langOptionCn: "简体中文",
+      langOptionTw: "繁體中文",
+      usernamePlaceholder: "請輸入帳號",
+      passwordPlaceholder: "請輸入密碼",
     },
   };
 
@@ -76,7 +91,7 @@ export function Login() {
       if (msg.includes("账号不存在") || msg.includes("User not found")) setError(t.errorNotFound)
       else if (msg.includes("密码") || msg.includes("password")) setError(t.errorPassword)
       else if (msg.includes("无权") || msg.includes("权限") || msg.includes("forbidden")) setError(t.errorAuth)
-      else setError(msg || "登录失败")
+      else setError(msg || t.errorFallback)
     } finally {
       setLoading(false);
     }
@@ -96,7 +111,7 @@ export function Login() {
             <Button variant="outline" size="sm" className="gap-2 bg-white/50 backdrop-blur-md border-slate-200/60 shadow-sm hover:bg-white transition-all rounded-full px-4 h-9">
               <Globe className="w-4 h-4 text-primary" />
               <span className="text-xs font-semibold text-slate-600">
-                {lang === "zh-CN" ? "简体中文" : "繁體中文"}
+                {t.langLabel}
               </span>
             </Button>
           </DropdownMenuTrigger>
@@ -105,13 +120,13 @@ export function Login() {
               onClick={() => setLang("zh-CN")}
               className={`cursor-pointer ${lang === "zh-CN" ? "bg-primary/10 text-primary font-bold" : ""}`}
             >
-              简体中文
+              {t.langOptionCn}
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => setLang("zh-TW")}
               className={`cursor-pointer ${lang === "zh-TW" ? "bg-primary/10 text-primary font-bold" : ""}`}
             >
-              繁體中文
+              {t.langOptionTw}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -146,7 +161,7 @@ export function Login() {
               </Label>
               <Input
                 id="username"
-                placeholder={lang === "zh-CN" ? "请输入账号" : "請輸入帳號"}
+                placeholder={t.usernamePlaceholder}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -161,7 +176,7 @@ export function Login() {
               <Input
                 id="password"
                 type="password"
-                placeholder={lang === "zh-CN" ? "请输入密码" : "請輸入密碼"}
+                placeholder={t.passwordPlaceholder}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -186,7 +201,7 @@ export function Login() {
             </div>
 
             <Button type="submit" disabled={loading} className="w-full h-12 text-base font-semibold rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/35 transition-all active:scale-[0.98]">
-              {loading ? "登录中…" : t.login}
+              {loading ? t.loggingIn : t.login}
             </Button>
           </form>
 

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Amap } from "@/components/Amap";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
 interface Summary {
@@ -43,14 +44,90 @@ interface CustomerPoint {
   level?: "peak" | "high" | "active" | "quiet";
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "草稿",
-  in_progress: "进行中",
-  submitted: "已结案",
-  pending_confirmation: "待确认",
-  cancelled: "已作废",
-  completed: "已完成",
-};
+const I18N = {
+  "zh-CN": {
+    title: "运营总览",
+    subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
+    searchPlaceholder: "快速搜索工单或客户...",
+    exportReport: "导出运营月报",
+    stats: {
+      todayTotal: "今日服务总数",
+      monthTotal: "本月服务总数",
+      monthCustomers: "本月客户数量",
+      monthEngineerVisits: "本月工程师拜访数",
+      realtime: "实时统计",
+    },
+    map: {
+      title: "客户地理分布",
+      description: "实时展示各区域客户密度及服务点位",
+      suzhou: "苏州市",
+      wuxi: "无锡市",
+      kunshan: "昆山市",
+    },
+    recent: {
+      title: "最近工单",
+      description: "最新的服务记录",
+      viewAll: "查看全部",
+      loading: "加载中",
+      empty: "暂无工单",
+      unnamedCustomer: "—",
+      serviceRecord: "服务记录",
+      unnamedEngineer: "—",
+    },
+    errors: {
+      loadFailed: "加载失败",
+    },
+    status: {
+      draft: "草稿",
+      in_progress: "进行中",
+      submitted: "已结案",
+      pending_confirmation: "待确认",
+      cancelled: "已作废",
+      completed: "已完成",
+    },
+  },
+  "zh-TW": {
+    title: "運營總覽",
+    subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
+    searchPlaceholder: "快速搜尋工單或客戶...",
+    exportReport: "匯出營運月報",
+    stats: {
+      todayTotal: "今日服務總數",
+      monthTotal: "本月服務總數",
+      monthCustomers: "本月客戶數量",
+      monthEngineerVisits: "本月工程師拜訪數",
+      realtime: "即時統計",
+    },
+    map: {
+      title: "客戶地理分佈",
+      description: "即時展示各區域客戶密度及服務點位",
+      suzhou: "蘇州市",
+      wuxi: "無錫市",
+      kunshan: "昆山市",
+    },
+    recent: {
+      title: "最近工單",
+      description: "最新的服務記錄",
+      viewAll: "查看全部",
+      loading: "載入中",
+      empty: "暫無工單",
+      unnamedCustomer: "—",
+      serviceRecord: "服務記錄",
+      unnamedEngineer: "—",
+    },
+    errors: {
+      loadFailed: "載入失敗",
+    },
+    status: {
+      draft: "草稿",
+      in_progress: "進行中",
+      submitted: "已結案",
+      pending_confirmation: "待確認",
+      cancelled: "已作廢",
+      completed: "已完成",
+    },
+  },
+} as const;
 
 const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
   draft: "secondary",
@@ -61,12 +138,14 @@ const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" |
   completed: "success",
 };
 
-function normalizeStatus(s: string) {
-  return STATUS_LABELS[s] || s;
+function normalizeStatus(s: string, labels: Record<string, string>) {
+  return labels[s] || s;
 }
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { lang } = useLanguage();
+  const t = I18N[lang];
   const [summary, setSummary] = useState<Summary>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -104,29 +183,29 @@ export function Dashboard() {
             .filter((p: any) => Number.isFinite(p.lng) && Number.isFinite(p.lat) && p.lng !== 0 && p.lat !== 0)
         );
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "加载失败");
+        if (!cancelled) setError(e?.message || t.errors.loadFailed);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [t.errors.loadFailed]);
 
   const stats = [
-    { title: "今日服务总数", value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
-    { title: "本月服务总数", value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: "本月客户数量", value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { title: "本月工程师拜访数", value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
+    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
+    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
+    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
   ];
 
   const recentOrders = orders.slice(0, 5).map((o) => ({
     id: o.orderNo || `TK-${o.id}`,
-    customer: typeof o.customer === "string" ? o.customer : o.customer?.name || o.deviceName || "—",
+    customer: typeof o.customer === "string" ? o.customer : o.customer?.name || o.deviceName || t.recent.unnamedCustomer,
     status: o.status,
-    statusLabel: o.displayStatus || normalizeStatus(o.status),
-    title: o.displayTitle || o.deviceName || "服务记录",
-    engineer: o.engineerName || "—",
+    statusLabel: normalizeStatus(o.status, t.status),
+    title: o.displayTitle || o.deviceName || t.recent.serviceRecord,
+    engineer: o.engineerName || t.recent.unnamedEngineer,
     date: o.createdAt ? o.createdAt.split(" ")[0] : "",
   }));
 
@@ -134,15 +213,15 @@ export function Dashboard() {
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">运营总览</h1>
-          <p className="text-muted-foreground mt-1">系统运行状态、服务工单及客户地理分布实时监测</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{t.title}</h1>
+          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input className="pl-9 w-64 bg-card" placeholder="快速搜索工单或客户..." />
+            <Input className="pl-9 w-64 bg-card" placeholder={t.searchPlaceholder} />
           </div>
-          <Button>导出运营月报</Button>
+          <Button>{t.exportReport}</Button>
         </div>
       </div>
 
@@ -171,7 +250,7 @@ export function Dashboard() {
                     {loading ? <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /> : stat.value}
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">实时统计</p>
+                <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
               </CardContent>
             </Card>
           );
@@ -182,13 +261,13 @@ export function Dashboard() {
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>客户地理分布</CardTitle>
-              <CardDescription>实时展示各区域客户密度及服务点位</CardDescription>
+              <CardTitle>{t.map.title}</CardTitle>
+              <CardDescription>{t.map.description}</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Badge variant="secondary" className="cursor-pointer">苏州市</Badge>
-              <Badge variant="outline" className="cursor-pointer">无锡市</Badge>
-              <Badge variant="outline" className="cursor-pointer">昆山市</Badge>
+              <Badge variant="secondary" className="cursor-pointer">{t.map.suzhou}</Badge>
+              <Badge variant="outline" className="cursor-pointer">{t.map.wuxi}</Badge>
+              <Badge variant="outline" className="cursor-pointer">{t.map.kunshan}</Badge>
             </div>
           </CardHeader>
           <CardContent className="flex-1 min-h-[400px] p-0">
@@ -204,20 +283,20 @@ export function Dashboard() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>最近工单</CardTitle>
-              <CardDescription>最新的服务记录</CardDescription>
+              <CardTitle>{t.recent.title}</CardTitle>
+              <CardDescription>{t.recent.description}</CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate("/service-orders")}>
-              查看全部
+              {t.recent.viewAll}
             </Button>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
               </div>
             ) : recentOrders.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">暂无工单</div>
+              <div className="text-center py-8 text-muted-foreground text-sm">{t.recent.empty}</div>
             ) : (
               <div className="space-y-4">
                 {recentOrders.map((order) => (

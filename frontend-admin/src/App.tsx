@@ -12,6 +12,7 @@ import { MaintenanceParties } from "@/pages/MaintenanceParties"
 import { Timesheets } from "@/pages/Timesheets"
 import { Users } from "@/pages/Users"
 import { AuditLogs } from "@/pages/AuditLogs"
+import { useLanguage } from "@/contexts/LanguageContext"
 import type { ReactNode } from "react"
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
@@ -22,9 +23,14 @@ const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
 function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: string[] }) {
   const { isAuthenticated, user, loading } = useAuth()
   const location = useLocation()
+  const { lang } = useLanguage()
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">加载中…</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+        {lang === "zh-TW" ? "載入中…" : "加载中…"}
+      </div>
+    )
   }
 
   if (!isAuthenticated) {

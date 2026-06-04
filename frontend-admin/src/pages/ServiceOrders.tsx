@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -33,14 +34,152 @@ interface EngineerOption {
   username?: string;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "草稿",
-  in_progress: "进行中",
-  pending_confirmation: "待确认",
-  submitted: "已结案",
-  cancelled: "已作废",
-  completed: "已完成",
-};
+const I18N = {
+  "zh-CN": {
+    title: "工单处理",
+    subtitle: "管理和查看服务工单",
+    actions: {
+      refresh: "刷新",
+      retry: "重试",
+      reset: "重置",
+      save: "保存工单信息",
+      saving: "保存中…",
+      cancel: "取消",
+      collapse: "收起详情",
+      expand: "查看详情",
+    },
+    filters: {
+      searchPlaceholder: "搜索工单编号、客户、描述...",
+      statusPlaceholder: "状态筛选",
+      all: "全部状态",
+    },
+    stats: {
+      all: "全部工单",
+      pending: "待确认",
+      processing: "进行中",
+      completed: "已结案",
+    },
+    list: {
+      title: "工单列表",
+      loading: "加载中…",
+      empty: "暂无工单数据",
+    },
+    detail: {
+      orderNo: "工单编号",
+      customerName: "客户名称",
+      contactName: "联系人",
+      serviceType: "服务类型",
+      serviceMode: "服务方式",
+      currentStatus: "当前状态",
+      engineer: "工程师",
+      serviceTime: "服务时间",
+      issueDescription: "详细描述",
+      internalNote: "内部备注",
+      descriptionPlaceholder: "服务描述",
+      notePlaceholder: "添加内部备注...",
+      unnamedEngineer: "未指定",
+      unnamedContact: "未维护联系人",
+    },
+    errors: {
+      loadFailed: "加载失败",
+      saveFailed: "保存失败",
+    },
+    status: {
+      draft: "草稿",
+      in_progress: "进行中",
+      pending_confirmation: "待确认",
+      submitted: "已结案",
+      cancelled: "已作废",
+      completed: "已完成",
+    },
+    type: {
+      install: "安装",
+      repair: "排障",
+      maintain: "保养",
+      inspect: "巡检",
+      training: "培训",
+      remote: "远程支持",
+      other: "其他",
+    },
+    mode: {
+      onsite: "现场服务",
+      remote: "远程服务",
+      office: "内勤工作",
+    },
+  },
+  "zh-TW": {
+    title: "工單處理",
+    subtitle: "管理和查看服務工單",
+    actions: {
+      refresh: "刷新",
+      retry: "重試",
+      reset: "重置",
+      save: "保存工單信息",
+      saving: "保存中…",
+      cancel: "取消",
+      collapse: "收起詳情",
+      expand: "查看詳情",
+    },
+    filters: {
+      searchPlaceholder: "搜尋工單編號、客戶、描述...",
+      statusPlaceholder: "狀態篩選",
+      all: "全部狀態",
+    },
+    stats: {
+      all: "全部工單",
+      pending: "待確認",
+      processing: "進行中",
+      completed: "已結案",
+    },
+    list: {
+      title: "工單列表",
+      loading: "載入中…",
+      empty: "暫無工單資料",
+    },
+    detail: {
+      orderNo: "工單編號",
+      customerName: "客戶名稱",
+      contactName: "聯絡人",
+      serviceType: "服務類型",
+      serviceMode: "服務方式",
+      currentStatus: "當前狀態",
+      engineer: "工程師",
+      serviceTime: "服務時間",
+      issueDescription: "詳細描述",
+      internalNote: "內部備註",
+      descriptionPlaceholder: "服務描述",
+      notePlaceholder: "新增內部備註...",
+      unnamedEngineer: "未指定",
+      unnamedContact: "未維護聯絡人",
+    },
+    errors: {
+      loadFailed: "載入失敗",
+      saveFailed: "保存失敗",
+    },
+    status: {
+      draft: "草稿",
+      in_progress: "進行中",
+      pending_confirmation: "待確認",
+      submitted: "已結案",
+      cancelled: "已作廢",
+      completed: "已完成",
+    },
+    type: {
+      install: "安裝",
+      repair: "排障",
+      maintain: "保養",
+      inspect: "巡檢",
+      training: "培訓",
+      remote: "遠端支援",
+      other: "其他",
+    },
+    mode: {
+      onsite: "現場服務",
+      remote: "遠端服務",
+      office: "內勤工作",
+    },
+  },
+} as const;
 
 const STATUS_BADGE_VARIANT: Record<string, "secondary" | "purple" | "success" | "warning" | "destructive"> = {
   draft: "secondary",
@@ -49,16 +188,6 @@ const STATUS_BADGE_VARIANT: Record<string, "secondary" | "purple" | "success" | 
   submitted: "success",
   cancelled: "destructive",
   completed: "success",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  install: "安装",
-  repair: "排障",
-  maintain: "保养",
-  inspect: "巡检",
-  training: "培训",
-  remote: "远程支持",
-  other: "其他",
 };
 
 const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purple" | "secondary"> = {
@@ -71,21 +200,6 @@ const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purpl
   other: "secondary",
 };
 
-const MODE_LABELS: Record<string, string> = {
-  onsite: "现场服务",
-  remote: "远程服务",
-  office: "内勤工作",
-};
-
-const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "all", label: "全部状态" },
-  { value: "draft", label: "草稿" },
-  { value: "in_progress", label: "进行中" },
-  { value: "pending_confirmation", label: "待确认" },
-  { value: "submitted", label: "已结案" },
-  { value: "cancelled", label: "已作废" },
-];
-
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -96,6 +210,8 @@ function displayId(order: ServiceOrder) {
 }
 
 export function ServiceOrders() {
+  const { lang } = useLanguage();
+  const t = I18N[lang];
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -104,6 +220,14 @@ export function ServiceOrders() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | number | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailForm, setDetailForm] = useState({ issueDescription: "", internalNote: "" });
+  const statusOptions = [
+    { value: "all", label: t.filters.all },
+    { value: "draft", label: t.status.draft },
+    { value: "in_progress", label: t.status.in_progress },
+    { value: "pending_confirmation", label: t.status.pending_confirmation },
+    { value: "submitted", label: t.status.submitted },
+    { value: "cancelled", label: t.status.cancelled },
+  ];
 
   async function load() {
     setLoading(true);
@@ -125,7 +249,7 @@ export function ServiceOrders() {
         setExpandedOrderId(null);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "加载失败";
+      const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
     } finally {
       setLoading(false);
@@ -135,7 +259,7 @@ export function ServiceOrders() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, t.errors.loadFailed]);
 
   const filteredOrders = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -154,12 +278,12 @@ export function ServiceOrders() {
     const processing = orders.filter((o) => o.status === "in_progress").length;
     const submitted = orders.filter((o) => o.status === "submitted" || o.status === "completed").length;
     return [
-      { label: "全部工单", value: all },
-      { label: "待确认", value: pending },
-      { label: "进行中", value: processing },
-      { label: "已结案", value: submitted },
+      { label: t.stats.all, value: all },
+      { label: t.stats.pending, value: pending },
+      { label: t.stats.processing, value: processing },
+      { label: t.stats.completed, value: submitted },
     ];
-  }, [orders]);
+  }, [orders, t.stats]);
 
   useEffect(() => {
     const current = orders.find((o) => o.id === expandedOrderId);
@@ -183,7 +307,7 @@ export function ServiceOrders() {
       });
       await load();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "保存失败";
+      const msg = e instanceof Error ? e.message : t.errors.saveFailed;
       setError(msg);
     } finally {
       setSaving(false);
@@ -194,13 +318,13 @@ export function ServiceOrders() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">工单处理</h1>
-          <p className="text-muted-foreground mt-1">管理和查看服务工单</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{t.title}</h1>
+          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
+            {t.actions.refresh}
           </Button>
         </div>
       </div>
@@ -208,7 +332,7 @@ export function ServiceOrders() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>重试</Button>
+          <Button variant="ghost" size="sm" onClick={load}>{t.actions.retry}</Button>
         </div>
       )}
 
@@ -232,7 +356,7 @@ export function ServiceOrders() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索工单编号、客户、描述..."
+                placeholder={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -242,10 +366,10 @@ export function ServiceOrders() {
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="状态筛选" />
+                <SelectValue placeholder={t.filters.statusPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                {STATUS_OPTIONS.map((opt) => (
+                {statusOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </SelectItem>
@@ -259,7 +383,7 @@ export function ServiceOrders() {
                 setStatusFilter("all");
               }}
             >
-              重置
+              {t.actions.reset}
             </Button>
           </div>
         </CardContent>
@@ -267,21 +391,21 @@ export function ServiceOrders() {
 
       <Card>
         <CardHeader>
-          <CardTitle>工单列表 ({filteredOrders.length})</CardTitle>
+          <CardTitle>{t.list.title} ({filteredOrders.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
             </div>
           ) : filteredOrders.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">暂无工单数据</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
           ) : (
             <div className="space-y-2">
               {filteredOrders.map((order) => {
                 const isOpen = expandedOrderId === order.id;
-                const statusLabel = order.displayStatus || STATUS_LABELS[order.status] || order.status || "-";
-                const typeLabel = TYPE_LABELS[order.serviceType || ""] || order.serviceType || "-";
+                const statusLabel = order.displayStatus || t.status[order.status as keyof typeof t.status] || order.status || "-";
+                const typeLabel = t.type[order.serviceType as keyof typeof t.type] || order.serviceType || "-";
                 return (
                   <div key={order.id} className="border border-border rounded-lg overflow-hidden">
                     <div
@@ -306,7 +430,7 @@ export function ServiceOrders() {
                           </Badge>
                         </div>
                         <div>
-                          <div className="text-sm">{order.engineerName || "未指定"}</div>
+                          <div className="text-sm">{order.engineerName || t.detail.unnamedEngineer}</div>
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">{formatDateTime(order.serviceAt || order.createdAt)}</div>
@@ -317,7 +441,7 @@ export function ServiceOrders() {
                           </Badge>
                         </div>
                         <div className="text-right text-sm text-muted-foreground">
-                          {isOpen ? "收起详情" : "查看详情"}
+                          {isOpen ? t.actions.collapse : t.actions.expand}
                         </div>
                       </div>
                     </div>
@@ -327,19 +451,19 @@ export function ServiceOrders() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-4">
                             <div>
-                              <Label className="text-muted-foreground">工单编号</Label>
+                              <Label className="text-muted-foreground">{t.detail.orderNo}</Label>
                               <div className="mt-1 font-medium">{displayId(order)}</div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">客户名称</Label>
+                              <Label className="text-muted-foreground">{t.detail.customerName}</Label>
                               <div className="mt-1">{order.customerName || "-"}</div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">联系人</Label>
-                              <div className="mt-1">{order.contactName || "未维护联系人"}</div>
+                              <Label className="text-muted-foreground">{t.detail.contactName}</Label>
+                              <div className="mt-1">{order.contactName || t.detail.unnamedContact}</div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">服务类型</Label>
+                              <Label className="text-muted-foreground">{t.detail.serviceType}</Label>
                               <div className="mt-1">
                                 <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
                                   {typeLabel}
@@ -347,14 +471,14 @@ export function ServiceOrders() {
                               </div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">服务方式</Label>
-                              <div className="mt-1">{MODE_LABELS[order.serviceMode || ""] || order.serviceMode || "-"}</div>
+                              <Label className="text-muted-foreground">{t.detail.serviceMode}</Label>
+                              <div className="mt-1">{t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-"}</div>
                             </div>
                           </div>
 
                           <div className="space-y-4">
                             <div>
-                              <Label className="text-muted-foreground">当前状态</Label>
+                              <Label className="text-muted-foreground">{t.detail.currentStatus}</Label>
                               <div className="mt-1">
                                 <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"}>
                                   {statusLabel}
@@ -362,18 +486,18 @@ export function ServiceOrders() {
                               </div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">工程师</Label>
-                              <div className="mt-1">{order.engineerName || "未指定"}</div>
+                              <Label className="text-muted-foreground">{t.detail.engineer}</Label>
+                              <div className="mt-1">{order.engineerName || t.detail.unnamedEngineer}</div>
                             </div>
                             <div>
-                              <Label className="text-muted-foreground">服务时间</Label>
+                              <Label className="text-muted-foreground">{t.detail.serviceTime}</Label>
                               <div className="mt-1">{formatDateTime(order.serviceAt || order.createdAt)}</div>
                             </div>
                           </div>
                         </div>
 
                         <div>
-                          <Label>详细描述</Label>
+                          <Label>{t.detail.issueDescription}</Label>
                           <Textarea
                             className="mt-2"
                             value={detailForm.issueDescription}
@@ -381,12 +505,12 @@ export function ServiceOrders() {
                               setDetailForm((f) => ({ ...f, issueDescription: e.target.value }))
                             }
                             rows={3}
-                            placeholder="服务描述"
+                            placeholder={t.detail.descriptionPlaceholder}
                           />
                         </div>
 
                         <div>
-                          <Label>内部备注</Label>
+                          <Label>{t.detail.internalNote}</Label>
                           <Textarea
                             className="mt-2"
                             value={detailForm.internalNote}
@@ -394,16 +518,16 @@ export function ServiceOrders() {
                               setDetailForm((f) => ({ ...f, internalNote: e.target.value }))
                             }
                             rows={2}
-                            placeholder="添加内部备注..."
+                            placeholder={t.detail.notePlaceholder}
                           />
                         </div>
 
                         <div className="flex gap-2 pt-2">
                           <Button onClick={saveSelectedOrder} disabled={saving}>
-                            {saving ? "保存中…" : "保存工单信息"}
+                            {saving ? t.actions.saving : t.actions.save}
                           </Button>
                           <Button variant="ghost" onClick={() => setExpandedOrderId(null)}>
-                            取消
+                            {t.actions.cancel}
                           </Button>
                         </div>
                       </div>
