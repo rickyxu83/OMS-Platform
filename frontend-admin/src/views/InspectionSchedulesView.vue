@@ -63,7 +63,7 @@ function normalizeSchedule(schedule) {
     customerId: String(schedule.customerId || ''),
     customerName: schedule.customerName || '-',
     deviceId: String(schedule.deviceId || ''),
-    deviceName: schedule.deviceName || '-',
+    deviceName: schedule.deviceName || '未指定设备',
     targetEngineerId: String(schedule.targetEngineerId || ''),
     targetEngineerName: schedule.targetEngineerName || '未指定',
     cadence: schedule.cadence || 'monthly',
@@ -108,8 +108,8 @@ function cleanOptionalDate(value) {
 }
 
 function validateForm() {
-  if (!form.customerId || !form.deviceId || !form.targetEngineerId || !form.cadence || !form.nextRunAnchor) {
-    throw new Error('客户、设备、目标工程师、周期和下次生成日期不能为空')
+  if (!form.customerId || !form.targetEngineerId || !form.cadence || !form.nextRunAnchor) {
+    throw new Error('客户、目标工程师、周期和下次生成日期不能为空')
   }
   if (form.endDate && form.endDate < form.nextRunAnchor) {
     throw new Error('结束日期不能早于下次生成日期')
@@ -120,7 +120,7 @@ function schedulePayload() {
   validateForm()
   return {
     customerId: form.customerId,
-    deviceId: form.deviceId,
+    deviceId: form.deviceId || null,
     targetEngineerId: form.targetEngineerId,
     cadence: form.cadence,
     nextRunAnchor: form.nextRunAnchor,
@@ -251,7 +251,7 @@ async function toggleSchedule(schedule = selectedSchedule.value) {
   try {
     await api.put(`/inspection-schedules/${schedule.id}`, {
       customerId: schedule.customerId,
-      deviceId: schedule.deviceId,
+      deviceId: schedule.deviceId || null,
       targetEngineerId: schedule.targetEngineerId,
       cadence: schedule.cadence,
       nextRunAnchor: schedule.nextRunAnchor,
@@ -365,7 +365,7 @@ onMounted(async () => {
           type="button"
           @click="selectedScheduleId = schedule.id"
         >
-          <span><strong>{{ schedule.customerName }}</strong><small>{{ schedule.deviceName }}</small></span>
+          <span><strong>{{ schedule.customerName }}</strong><small>{{ schedule.deviceName || '未指定设备' }}</small></span>
           <span>{{ schedule.targetEngineerName }}</span>
           <span><em class="type-pill">{{ schedule.cadenceText }}</em></span>
           <span class="muted-text">{{ schedule.nextRunAnchor }}</span>
@@ -379,7 +379,7 @@ onMounted(async () => {
         <div class="drawer-head">
           <div>
             <p>{{ formMode ? '巡检计划配置' : '巡检计划详情' }}</p>
-            <h2>{{ formMode === 'create' ? '新增巡检计划' : selectedSchedule?.deviceName || '请选择计划' }}</h2>
+            <h2>{{ formMode === 'create' ? '新增巡检计划' : selectedSchedule?.deviceName || selectedSchedule?.customerName || '请选择计划' }}</h2>
           </div>
           <em v-if="selectedSchedule && !formMode" class="status" :class="selectedSchedule.active ? '启用' : '已作废'">{{ selectedSchedule.activeText }}</em>
         </div>
@@ -393,9 +393,9 @@ onMounted(async () => {
             </select>
           </label>
           <label class="field">
-            <span>设备</span>
+            <span>设备（可留空）</span>
             <select v-model="form.deviceId" :disabled="!form.customerId">
-              <option value="">{{ form.customerId ? '请选择该客户设备' : '请先选择客户' }}</option>
+              <option value="">{{ form.customerId ? '暂不指定设备（后续可补）' : '请先选择客户' }}</option>
               <option v-for="device in deviceOptions" :key="device.id" :value="device.id">
                 {{ device.name }}<template v-if="device.model"> / {{ device.model }}</template><template v-if="device.serialNo"> / {{ device.serialNo }}</template>
               </option>
@@ -429,7 +429,7 @@ onMounted(async () => {
               <option :value="false">停用</option>
             </select>
           </label>
-          <p class="drawer-note">计划保存后只是巡检模板；到期生成的巡检工单状态为待确认，主管确认并派发前不会出现在工程师任务列表。</p>
+          <p class="drawer-note">设备可以先留空，只指定客户和目标工程师。计划保存后只是巡检模板；到期生成的巡检工单状态为待确认，主管确认并派发前不会出现在工程师任务列表。</p>
           <p v-if="error" class="form-error">{{ error }}</p>
           <div class="page-actions">
             <button class="ghost-button" type="button" :disabled="saving" @click="closeForm">取消</button>
@@ -445,7 +445,7 @@ onMounted(async () => {
           <section class="drawer-section">
             <h3>绑定对象</h3>
             <p>客户：{{ selectedSchedule.customerName }}</p>
-            <p>设备：{{ selectedSchedule.deviceName }}</p>
+            <p>设备：{{ selectedSchedule.deviceName || '未指定设备' }}</p>
             <p>目标工程师：{{ selectedSchedule.targetEngineerName }}</p>
           </section>
           <section class="drawer-section">

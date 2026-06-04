@@ -20,7 +20,7 @@ function schedulePayload(row) {
     customerId: row.customer_id,
     customerName: row.customer_name,
     deviceId: row.device_id,
-    deviceName: row.device_name,
+    deviceName: row.device_name || '',
     targetEngineerId: row.target_engineer_id,
     targetEngineerName: row.target_engineer_name || row.target_engineer_username,
     cadence: row.cadence,
@@ -53,7 +53,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
     `CREATE TABLE IF NOT EXISTS inspection_schedules (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       customer_id BIGINT UNSIGNED NOT NULL,
-      device_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NULL,
       target_engineer_id BIGINT UNSIGNED NOT NULL,
       cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,
       next_run_anchor DATE NOT NULL,
@@ -72,6 +72,18 @@ async function ensureInspectionSchedulesTable(connection = null) {
       KEY idx_inspection_schedules_next_run (active, next_run_anchor)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const [deviceRows] = await executor.execute(
+    `SELECT is_nullable AS isNullable
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'inspection_schedules'
+       AND column_name = 'device_id'
+     LIMIT 1`,
+  )
+  const deviceNullable = deviceRows?.[0]?.isNullable || deviceRows?.[0]?.is_nullable || 'YES'
+  if (String(deviceNullable).toUpperCase() !== 'YES') {
+    await executor.execute('ALTER TABLE inspection_schedules MODIFY COLUMN device_id BIGINT UNSIGNED NULL')
+  }
   if (!connection) {
     inspectionSchedulesTableReady = true
   }
@@ -247,18 +259,22 @@ async function createInspectionOrder(connection, schedule, occurrenceDate) {
      )
      VALUES (
        :orderNo, :customerId, :deviceId, 'onsite', 'inspect', NULL, NULL,
-       'normal', 'pending_confirmation', :issueDescription,
+      'normal', 'pending_confirmation', :issueDescription,
        NULL, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy,
        :inspectionScheduleId, :inspectionOccurrenceDate, :targetEngineerId, NULL, NULL
      )`,
     {
       orderNo,
       customerId: schedule.customer_id,
-      deviceId: schedule.device_id,
-      issueDescription: `巡检计划自动生成：${schedule.customer_name} / ${schedule.device_name}，周期 ${schedule.cadence}`,
+      deviceId: schedule.device_id || null,
+      issueDescription: schedule.device_name
+        ? `巡检计划自动生成：${schedule.customer_name} / ${schedule.device_name}，周期 ${schedule.cadence}`
+        : `巡检计划自动生成：${schedule.customer_name}，周期 ${schedule.cadence}`,
       plannedStartAt: occurrenceStartAt,
       plannedEndAt: occurrenceEndAt,
-      internalNote: `巡检计划 ${schedule.id} 自动生成，待主管确认`,
+      internalNote: schedule.device_name
+        ? `巡检计划 ${schedule.id} 自动生成（设备：${schedule.device_name}），待主管确认`
+        : `巡检计划 ${schedule.id} 自动生成（未指定设备），待主管确认`,
       createdBy: schedule.created_by,
       inspectionScheduleId: schedule.id,
       inspectionOccurrenceDate: occurrenceDate,
@@ -301,6 +317,7 @@ function duplicateScheduleError(error) {
 }
 
 async function assertDeviceBelongsToCustomer(connection, customerId, deviceId) {
+  if (!deviceId) return
   const [rows] = await connection.execute(
     `SELECT d.id
      FROM devices d
@@ -326,21 +343,34 @@ async function assertActiveEngineer(connection, engineerId) {
   }
 }
 
-async function assertNoDuplicateActive(connection, { id = null, deviceId, targetEngineerId, cadence, active }) {
+async function assertNoDuplicateActive(connection, { id = null, customerId, deviceId, targetEngineerId, cadence, active }) {
   if (!active) return
-  const [rows] = await connection.execute(
-    `SELECT id
-     FROM inspection_schedules
-     WHERE device_id = :deviceId
-       AND target_engineer_id = :targetEngineerId
-       AND cadence = :cadence
-       AND active = 1
-       AND (:id IS NULL OR id <> :id)
-     LIMIT 1`,
-    { id, deviceId, targetEngineerId, cadence },
-  )
+  const [rows] = deviceId
+    ? await connection.execute(
+        `SELECT id
+         FROM inspection_schedules
+         WHERE device_id = :deviceId
+           AND target_engineer_id = :targetEngineerId
+           AND cadence = :cadence
+           AND active = 1
+           AND (:id IS NULL OR id <> :id)
+         LIMIT 1`,
+        { id, deviceId, targetEngineerId, cadence },
+      )
+    : await connection.execute(
+        `SELECT id
+         FROM inspection_schedules
+         WHERE customer_id = :customerId
+           AND device_id IS NULL
+           AND target_engineer_id = :targetEngineerId
+           AND cadence = :cadence
+           AND active = 1
+           AND (:id IS NULL OR id <> :id)
+         LIMIT 1`,
+        { id, customerId, targetEngineerId, cadence },
+      )
   if (rows[0]) {
-    throw badRequest('同一设备、目标工程师和周期已存在启用中的巡检计划')
+    throw badRequest(deviceId ? '同一设备、目标工程师和周期已存在启用中的巡检计划' : '同一客户、目标工程师和周期已存在未指定设备的启用巡检计划')
   }
 }
 
@@ -349,7 +379,7 @@ async function loadSchedule(id) {
     `SELECT ${scheduleColumns}
      FROM inspection_schedules s
      JOIN customers c ON c.id = s.customer_id
-     JOIN devices d ON d.id = s.device_id
+     LEFT JOIN devices d ON d.id = s.device_id
      JOIN users u ON u.id = s.target_engineer_id
      JOIN users creator ON creator.id = s.created_by
      LEFT JOIN users updater ON updater.id = s.updated_by
@@ -380,7 +410,7 @@ async function list(req, res) {
   const fromAndWhere = `
     FROM inspection_schedules s
     JOIN customers c ON c.id = s.customer_id
-    JOIN devices d ON d.id = s.device_id
+    LEFT JOIN devices d ON d.id = s.device_id
     JOIN users u ON u.id = s.target_engineer_id
     JOIN users creator ON creator.id = s.created_by
     LEFT JOIN users updater ON updater.id = s.updated_by
@@ -410,10 +440,10 @@ async function list(req, res) {
 async function create(req, res) {
   const { customerId, deviceId, targetEngineerId, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
-  const normalizedDeviceId = Number(deviceId || 0)
+  const normalizedDeviceId = Number(deviceId || 0) || null
   const normalizedEngineerId = Number(targetEngineerId || 0)
-  if (!normalizedCustomerId || !normalizedDeviceId || !normalizedEngineerId) {
-    throw badRequest('客户、设备和目标工程师不能为空')
+  if (!normalizedCustomerId || !normalizedEngineerId) {
+    throw badRequest('客户和目标工程师不能为空')
   }
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
@@ -430,6 +460,7 @@ async function create(req, res) {
       await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, normalizedDeviceId)
       await assertActiveEngineer(connection, normalizedEngineerId)
       await assertNoDuplicateActive(connection, {
+        customerId: normalizedCustomerId,
         deviceId: normalizedDeviceId,
         targetEngineerId: normalizedEngineerId,
         cadence: normalizedCadence,
@@ -483,10 +514,10 @@ async function update(req, res) {
 
   const body = req.body || {}
   const normalizedCustomerId = body.customerId !== undefined ? Number(body.customerId || 0) : Number(existing.customer_id)
-  const normalizedDeviceId = body.deviceId !== undefined ? Number(body.deviceId || 0) : Number(existing.device_id)
+  const normalizedDeviceId = body.deviceId !== undefined ? Number(body.deviceId || 0) || null : (existing.device_id ? Number(existing.device_id) : null)
   const normalizedEngineerId = body.targetEngineerId !== undefined ? Number(body.targetEngineerId || 0) : Number(existing.target_engineer_id)
-  if (!normalizedCustomerId || !normalizedDeviceId || !normalizedEngineerId) {
-    throw badRequest('客户、设备和目标工程师不能为空')
+  if (!normalizedCustomerId || !normalizedEngineerId) {
+    throw badRequest('客户和目标工程师不能为空')
   }
   const normalizedCadence = body.cadence !== undefined ? normalizeCadence(body.cadence) : existing.cadence
   const normalizedNextRunAnchor = body.nextRunAnchor !== undefined ? normalizeDate(body.nextRunAnchor, '下次运行锚点') : existing.next_run_anchor
@@ -503,6 +534,7 @@ async function update(req, res) {
       await assertActiveEngineer(connection, normalizedEngineerId)
       await assertNoDuplicateActive(connection, {
         id: req.params.id,
+        customerId: normalizedCustomerId,
         deviceId: normalizedDeviceId,
         targetEngineerId: normalizedEngineerId,
         cadence: normalizedCadence,
@@ -562,7 +594,7 @@ async function generateDue(req, res) {
     `SELECT ${scheduleColumns}
      FROM inspection_schedules s
      JOIN customers c ON c.id = s.customer_id
-     JOIN devices d ON d.id = s.device_id
+     LEFT JOIN devices d ON d.id = s.device_id
      JOIN users u ON u.id = s.target_engineer_id
      JOIN users creator ON creator.id = s.created_by
      LEFT JOIN users updater ON updater.id = s.updated_by

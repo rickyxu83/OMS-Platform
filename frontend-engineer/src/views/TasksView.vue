@@ -10,7 +10,10 @@ import {
   clearSelfReportDraft,
   fetchRemoteSelfReportDraft,
   listCreateDraftBuckets,
+  removeLocalSelfReportDraft,
   readLocalSelfReportDraft,
+  removeScopedDraftPayload,
+  writeLocalSelfReportDraft,
 } from '../services/self-report-draft'
 import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
 
@@ -134,11 +137,13 @@ function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = nul
   const customer = payload.selectedCustomer || {}
   const serviceDraft = payload.serviceDraft || {}
   const normalizedDraftId = String(draftId || payload.__draftId || '').trim()
+  const submittedOrderId = Number(payload.__submittedOrderId || 0) || null
+  const resolvedLinkedOrderId = linkedOrderId || submittedOrderId
   drafts.push({
     id: `${keyPrefix}:${normalizedDraftId || mode}`,
     storageKey,
-    localRoute: linkedOrderId ? `/service-sheets/${linkedOrderId}/edit?resume=1` : createDraftRouteByMode(mode, normalizedDraftId),
-    linkedOrderId,
+    localRoute: resolvedLinkedOrderId ? `/service-sheets/${resolvedLinkedOrderId}/edit?resume=1` : createDraftRouteByMode(mode, normalizedDraftId),
+    linkedOrderId: resolvedLinkedOrderId,
     remoteDraft,
     draftId: normalizedDraftId,
     draftMode: mode,
@@ -222,7 +227,7 @@ async function loadLocalDraftTasks() {
   localDraftTasks.value = mergeDraftCards(drafts)
 }
 
-function clearResolvedLocalDrafts() {
+async function clearResolvedLocalDrafts() {
   if (!tasks.value.length) return
 
   const existingTaskIds = new Set(tasks.value.map((task) => Number(task.id)).filter(Boolean))
@@ -233,12 +238,31 @@ function clearResolvedLocalDrafts() {
     const key = localStorage.key(index)
     if (!key?.startsWith(prefix)) continue
     const routeInfo = parseDraftRoute(key)
-    if (!routeInfo.orderId || !existingTaskIds.has(Number(routeInfo.orderId))) continue
-    localStorage.removeItem(key)
-    removed = true
+    if (routeInfo.orderId && existingTaskIds.has(Number(routeInfo.orderId))) {
+      localStorage.removeItem(key)
+      removed = true
+      continue
+    }
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || '{}')
+      const nextPayload = listCreateDraftBuckets(parsed?.data).reduce((payload, item) => {
+        const submittedOrderId = Number(item.payload?.__submittedOrderId || 0)
+        if (!submittedOrderId || !existingTaskIds.has(submittedOrderId)) return payload
+        removed = true
+        return removeScopedDraftPayload(payload, null, item.mode, item.draftId)
+      }, parsed?.data || null)
+
+      if (!removed) continue
+      if (nextPayload) writeLocalSelfReportDraft(null, nextPayload)
+      else removeLocalSelfReportDraft(null)
+    } catch {
+      // Ignore invalid local draft entries so the page stays usable.
+    }
   }
 
-  if (removed) loadLocalDraftTasks()
+  if (removed) await clearSelfReportDraft(null).catch(() => {})
+  if (removed) await loadLocalDraftTasks()
 }
 
 function mergeTasks(nextItems) {
@@ -280,7 +304,7 @@ async function loadWithMode({ append = false, silent = false } = {}) {
     } else {
       tasks.value = nextItems
     }
-    clearResolvedLocalDrafts()
+    await clearResolvedLocalDrafts()
     lastRefreshedAt.value = Date.now()
   } catch (err) {
     if (append) {
