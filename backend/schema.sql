@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS device_model_catalog (
   brand VARCHAR(100) NOT NULL,
   category ENUM('server','storage','network') NOT NULL,
   canonical_model VARCHAR(255) NOT NULL,
+  part_number VARCHAR(255) DEFAULT NULL,
   source_provider VARCHAR(50) NOT NULL DEFAULT 'fixture',
   source_reference VARCHAR(255) DEFAULT NULL,
   priority INT NOT NULL DEFAULT 0,

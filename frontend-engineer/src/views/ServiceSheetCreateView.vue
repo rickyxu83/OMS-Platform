@@ -1750,6 +1750,7 @@ function normalizeDeviceModelSuggestion(item, fallbackIndex = 0) {
   return {
     id: item?.id || `${officialName}-${fallbackIndex}`,
     officialName,
+    partNumber: String(item?.partNumber || '').trim(),
     vendor: String(item?.vendor || item?.brand || '').trim(),
     category: String(item?.category || '').trim(),
   }
@@ -1792,7 +1793,10 @@ function onDeviceModelInput() {
 
 function selectDeviceModel(item) {
   const active = installDeviceList.value[activeInstallDeviceIndex.value]
-  if (active) active.model = item?.officialName || ''
+  if (active) {
+    active.model = item?.officialName || ''
+    if (item?.partNumber) active.pn = item.partNumber
+  }
   showDeviceModelSuggestions.value = false
   deviceModelSuggestions.value = []
   selectedSuggestionIndex.value = -1
@@ -2818,7 +2822,9 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
                       @mousedown.prevent="selectDeviceModel(item)"
                     >
                       <strong>{{ item.officialName }}</strong>
-                      <small>{{ item.vendor }} · {{ item.category }}</small>
+                      <small>
+                        {{ item.vendor }} · {{ item.category }}<template v-if="item.partNumber"> · PN {{ item.partNumber }}</template>
+                      </small>
                     </li>
                   </ul>
                 </div>

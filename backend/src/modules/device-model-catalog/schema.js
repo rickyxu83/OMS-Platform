@@ -12,6 +12,7 @@ async function ensureDeviceModelCatalogTable(connection = null) {
       brand VARCHAR(100) NOT NULL,
       category ENUM('server','storage','network') NOT NULL,
       canonical_model VARCHAR(255) NOT NULL,
+      part_number VARCHAR(255) DEFAULT NULL,
       source_provider VARCHAR(50) NOT NULL DEFAULT 'fixture',
       source_reference VARCHAR(255) DEFAULT NULL,
       priority INT NOT NULL DEFAULT 0,
@@ -23,6 +24,16 @@ async function ensureDeviceModelCatalogTable(connection = null) {
       UNIQUE KEY uk_catalog_brand_cat_model (brand, category, canonical_model)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const [catalogColumns] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'device_model_catalog'
+       AND column_name = 'part_number'`,
+  )
+  if (!catalogColumns.length) {
+    await execute('ALTER TABLE device_model_catalog ADD COLUMN part_number VARCHAR(255) DEFAULT NULL AFTER canonical_model')
+  }
   if (!connection) {
     deviceModelCatalogTableReady = true
   }

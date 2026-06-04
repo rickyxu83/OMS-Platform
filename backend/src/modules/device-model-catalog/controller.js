@@ -15,6 +15,7 @@ async function suggest(req, res, next) {
               matched.brand,
               matched.category,
               matched.canonical_model,
+              matched.part_number,
               matched.source_provider,
               matched.confidence,
               matched.priority,
@@ -24,6 +25,7 @@ async function suggest(req, res, next) {
                 c.brand,
                 c.category,
                 c.canonical_model,
+                c.part_number,
                 c.source_provider,
                 c.confidence,
                 c.priority,
@@ -38,6 +40,22 @@ async function suggest(req, res, next) {
                 c.brand,
                 c.category,
                 c.canonical_model,
+                c.part_number,
+                c.source_provider,
+                c.confidence,
+                c.priority,
+                9 AS match_rank
+         FROM device_model_catalog c
+         WHERE c.is_active = 1
+           AND LOWER(COALESCE(c.part_number, '')) = LOWER(:rawKeyword)
+
+         UNION ALL
+
+         SELECT c.id,
+                c.brand,
+                c.category,
+                c.canonical_model,
+                c.part_number,
                 c.source_provider,
                 c.confidence,
                 c.priority,
@@ -53,13 +71,17 @@ async function suggest(req, res, next) {
                 c.brand,
                 c.category,
                 c.canonical_model,
+                c.part_number,
                 c.source_provider,
                 c.confidence,
                 c.priority,
                 5 AS match_rank
          FROM device_model_catalog c
          WHERE c.is_active = 1
-           AND LOWER(c.canonical_model) LIKE LOWER(:prefixKeyword)
+           AND (
+             LOWER(c.canonical_model) LIKE LOWER(:prefixKeyword)
+             OR LOWER(COALESCE(c.part_number, '')) LIKE LOWER(:prefixKeyword)
+           )
 
          UNION ALL
 
@@ -67,6 +89,7 @@ async function suggest(req, res, next) {
                 c.brand,
                 c.category,
                 c.canonical_model,
+                c.part_number,
                 c.source_provider,
                 c.confidence,
                 c.priority,
@@ -75,6 +98,7 @@ async function suggest(req, res, next) {
          WHERE c.is_active = 1
            AND (
              LOWER(c.canonical_model) LIKE LOWER(:partialKeyword)
+             OR LOWER(COALESCE(c.part_number, '')) LIKE LOWER(:partialKeyword)
              OR EXISTS (
                SELECT 1
                FROM device_model_aliases a
@@ -107,6 +131,7 @@ async function suggest(req, res, next) {
 
       const item = {
         canonicalModel: row.canonical_model,
+        partNumber: String(row.part_number || '').trim(),
         brand: row.brand,
         category: row.category,
         sourceProvider: row.source_provider,
