@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AdminIcon from '../components/AdminIcon.vue'
 import EmptyState from '../components/admin/EmptyState.vue'
 import FilterBar from '../components/admin/FilterBar.vue'
 import KpiCard from '../components/admin/KpiCard.vue'
@@ -35,6 +36,10 @@ const typeMap = { install: '安装', repair: '排障', maintain: '保养', inspe
 const reverseStatusMap = { 待确认: 'pending_confirmation', 草稿: 'draft', 进行中: 'in_progress', 已提交: 'submitted', 已作废: 'cancelled' }
 const currentUser = getCurrentUser()
 const canEdit = computed(() => ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor'].includes(currentUser?.role))
+const pendingCount = computed(() => serviceOrders.value.filter((order) => order.statusText === '待确认').length)
+const processingCount = computed(() => serviceOrders.value.filter((order) => order.statusText === '进行中').length)
+const submittedTodayCount = computed(() => serviceOrders.value.filter((order) => order.statusText === '已提交' && order.serviceAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length)
+const submittedCount = computed(() => serviceOrders.value.filter((order) => order.statusText === '已提交').length)
 
 function normalizeOrder(order) {
   return {
@@ -217,8 +222,15 @@ onMounted(async () => {
 
     <section class="kpi-grid">
       <KpiCard title="全部工单" :value="serviceOrders.length" subtitle="当前视图" icon="ticket" />
-      <KpiCard title="进行中/待确认" :value="serviceOrders.filter(o => o.statusText === '进行中' || o.statusText === '待确认').length" subtitle="需关注" icon="activity" />
-      <KpiCard title="今日提交" :value="serviceOrders.filter(o => o.statusText === '已提交' && o.serviceAt.slice(0,10) === new Date().toISOString().slice(0,10)).length" subtitle="本月截至今日" icon="duration" />
+      <KpiCard title="待确认工单" :value="pendingCount" subtitle="待派发 / 待确认" icon="warn" />
+      <KpiCard title="进行中工单" :value="processingCount" subtitle="需持续跟进" icon="activity" />
+      <KpiCard title="已提交工单" :value="submittedCount" subtitle="当前结果汇总" icon="done" />
+    </section>
+
+    <section class="kpi-grid service-kpi-grid-secondary">
+      <KpiCard title="今日提交" :value="submittedTodayCount" subtitle="本日提交记录" icon="duration" />
+      <KpiCard title="可编辑工单" :value="canEdit ? filteredOrders.length : 0" subtitle="当前账号权限范围" icon="edit" />
+      <KpiCard title="最近 30 天" :value="recentOnly ? filteredOrders.length : serviceOrders.length" :subtitle="recentOnly ? '已开启时间筛选' : '显示全部时间范围'" icon="calendar" />
     </section>
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
@@ -250,14 +262,17 @@ onMounted(async () => {
             :aria-expanded="selectedOrder?.id === order.id"
             @click="toggleSelectedOrder(order.id)"
           >
-            <span class="mono">{{ order.orderNo }}</span>
+            <span class="service-row-main mono">
+              <AdminIcon :name="selectedOrder?.id === order.id ? 'chevron-down' : 'chevron-right'" class="service-row-chevron" />
+              <strong>{{ order.orderNo }}</strong>
+            </span>
             <span>{{ order.customerName }}</span>
             <span><em class="type-pill">{{ order.serviceTypeText }}</em></span>
             <span>{{ order.engineerText }}</span>
             <span class="muted-text">{{ order.serviceAt }}</span>
             <span class="service-row-status">
               <StatusBadge :label="order.statusText" :tone="getStatusTone(order.statusText)" compact />
-              <em class="row-expand-indicator">{{ selectedOrder?.id === order.id ? '收起' : '展开' }}</em>
+              <em class="row-expand-indicator">{{ selectedOrder?.id === order.id ? '收起详情' : '查看详情' }}</em>
             </span>
           </button>
 

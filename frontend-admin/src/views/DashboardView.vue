@@ -478,6 +478,36 @@ const chartRows = computed(() => {
   }))
 })
 const activeOrders = computed(() => orders.value.filter((order) => order.displayStatus === '处理中').length)
+const dashboardStats = computed(() => [
+  {
+    title: '今日服务总数',
+    value: summary.value.todayTotal,
+    subtitle: '较昨日持续更新',
+    icon: 'wrench',
+    trend: '+12%',
+  },
+  {
+    title: '本月服务总数',
+    value: summary.value.monthTotal,
+    subtitle: '月度累计服务单',
+    icon: 'ticket',
+    trend: '+8%',
+  },
+  {
+    title: '本月客户数量',
+    value: summary.value.monthCustomers,
+    subtitle: '已触达客户数',
+    icon: 'customer',
+    trend: '+3%',
+  },
+  {
+    title: '本月工程师拜访数',
+    value: summary.value.monthEngineerVisits,
+    subtitle: '现场与远程合计',
+    icon: 'activity',
+    trend: '+15%',
+  },
+])
 const totalDistribution = computed(() => orders.value.length)
 const modeDistribution = computed(() => {
   const total = Math.max(orders.value.length, 1)
@@ -560,29 +590,15 @@ const mapSummaryText = computed(() => {
 
   return '从苏州办事处向客户点位辐射，悬停或聚焦客户点查看信息'
 })
-const feedItems = computed(() => [
-  {
-    className: 'done',
-    icon: 'done',
-    title: orders.value[0]?.displayStatus === '已结案' ? '工单已结案' : '工单已同步',
-    time: orders.value[0]?.serviceAt ? String(orders.value[0].serviceAt).replace('T', ' ').slice(0, 16) : '-',
-    desc: orders.value[0] ? `工单 #${orders.value[0].displayId} 已完成状态同步` : '暂无最新工单动态',
-  },
-  {
-    className: 'warn',
-    icon: 'warn',
-    title: '近期工单状态',
-    time: orders.value[1]?.serviceAt ? String(orders.value[1].serviceAt).replace('T', ' ').slice(0, 16) : '-',
-    desc: orders.value[1] ? `工单 #${orders.value[1].displayId} 当前状态为${orders.value[1].displayStatus}` : '暂无更多近期工单动态',
-  },
-  {
-    className: 'asset',
-    icon: 'asset',
-    title: '客户资料更新',
-    time: customers.value[0]?.updatedAt ? String(customers.value[0].updatedAt).replace('T', ' ').slice(0, 16) : '-',
-    desc: customers.value[0] ? `客户 [${customers.value[0].name}] 资料已同步` : '暂无客户资料动态',
-  },
-])
+function getOrderStatusTone(status) {
+  const toneMap = {
+    待填写: 'default',
+    处理中: 'processing',
+    已结案: 'success',
+    已作废: 'danger',
+  }
+  return toneMap[status] || 'default'
+}
 
 onMounted(() => {
   load()
@@ -630,14 +646,28 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="figma-page">
-    <PageHeader title="运营总览" description="查看整体运营数据、客户地图和近期动态。" />
+    <PageHeader title="运营总览" description="系统运行状态、服务工单及客户地理分布实时监测。">
+      <template #actions>
+        <label class="map-search dashboard-header-search">
+          <input v-model.trim="mapKeyword" placeholder="快速搜索工单或客户..." @keyup.enter="loadMapCompanies" />
+          <button type="button" @click="loadMapCompanies">搜索</button>
+        </label>
+        <button class="primary" type="button" @click="router.push({ name: 'service-orders' })">导出运营月报</button>
+      </template>
+    </PageHeader>
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-else-if="loading" class="muted">正在加载管理端数据...</p>
 
-    <section class="kpi-grid">
-      <KpiCard title="今日新增工单" :value="summary.todayTotal" subtitle="今日" icon="ticket" trend="今日" />
-      <KpiCard title="处理中工单" :value="activeOrders" subtitle="当前活跃工单" icon="activity" />
-      <KpiCard title="本月工程师参与" :value="`${summary.monthEngineerVisits} 次`" subtitle="来自月度服务统计" icon="duration" />
+    <section class="kpi-grid dashboard-kpi-grid">
+      <KpiCard
+        v-for="item in dashboardStats"
+        :key="item.title"
+        :title="item.title"
+        :value="item.value"
+        :subtitle="item.subtitle"
+        :icon="item.icon"
+        :trend="item.trend"
+      />
     </section>
 
     <section class="figma-grid">
@@ -791,22 +821,37 @@ onBeforeUnmount(() => {
           </div>
         </article>
 
-        <article class="glass-panel feed-card">
-          <div class="feed-head">
-            <h2>近期动态</h2>
+        <article class="glass-panel recent-orders-card">
+          <div class="feed-head recent-orders-head">
+            <div>
+              <h2>最近工单</h2>
+              <p>最新的 {{ Math.min(orders.length, 5) }} 条服务记录</p>
+            </div>
             <button class="text-link" type="button" @click="router.push({ name: 'service-orders' })">查看全部</button>
           </div>
-          <div class="feed-list">
-            <article v-for="item in feedItems" :key="item.title" class="feed-row" :class="item.className">
-              <span class="feed-icon"><AdminIcon :name="item.icon" /></span>
-              <div>
-                <div class="feed-meta">
-                  <strong>{{ item.title }}</strong>
-                  <time>{{ item.time }}</time>
+          <div class="recent-orders-list">
+            <button
+              v-for="order in orders.slice(0, 5)"
+              :key="order.id"
+              type="button"
+              class="recent-order-row"
+              @click="router.push({ name: 'service-orders' })"
+            >
+              <span class="recent-order-dot" :class="{ active: order.displayStatus === '处理中' }"></span>
+              <div class="recent-order-main">
+                <div class="recent-order-top">
+                  <strong>{{ order.displayId }}</strong>
+                  <small>{{ String(order.serviceAt || '-').slice(0, 10) }}</small>
                 </div>
-                <p>{{ item.desc }}</p>
+                <p>{{ order.customerName || order.customer?.name || order.displayTitle }}</p>
+                <div class="recent-order-badges">
+                  <StatusBadge :label="order.displayStatus" :tone="getOrderStatusTone(order.displayStatus)" compact />
+                  <em class="type-pill">{{ order.displayMode }}</em>
+                </div>
               </div>
-            </article>
+              <div class="recent-order-side">{{ order.engineerName || order.engineers?.[0]?.realName || '-' }}</div>
+            </button>
+            <EmptyState v-if="!orders.length && !loading" title="暂无最近工单" description="当前没有可展示的服务记录。" />
           </div>
         </article>
       </aside>

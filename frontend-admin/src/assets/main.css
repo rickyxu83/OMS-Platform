@@ -3860,6 +3860,125 @@ body {
   white-space: nowrap;
 }
 
+.service-kpi-grid-secondary {
+  margin-top: -8px;
+}
+
+.service-row-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.service-row-main strong {
+  font-size: 13px;
+}
+
+.service-row-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--make-text-secondary);
+}
+
+.dashboard-header-search {
+  min-width: 260px;
+}
+
+.dashboard-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.recent-orders-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.recent-orders-head p {
+  margin-top: 4px;
+  color: var(--make-text-secondary);
+  font-size: 13px;
+}
+
+.recent-orders-list {
+  display: grid;
+  gap: 12px;
+}
+
+.recent-order-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 14px;
+  background: transparent;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.recent-order-row:hover {
+  background: rgb(249 250 251 / 90%);
+}
+
+.recent-order-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgb(113 113 130 / 35%);
+  flex: 0 0 auto;
+}
+
+.recent-order-dot.active {
+  background: var(--primary);
+}
+
+.recent-order-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.recent-order-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recent-order-top strong {
+  color: var(--make-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recent-order-top small,
+.recent-order-main p,
+.recent-order-side {
+  color: var(--make-text-secondary);
+  font-size: 12px;
+}
+
+.recent-order-main p {
+  line-height: 18px;
+}
+
+.recent-order-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recent-order-side {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  white-space: nowrap;
+}
+
 @media (max-width: 1100px) {
   .make-admin-shell .figma-sidebar {
     position: relative;
@@ -3878,6 +3997,10 @@ body {
   .service-detail-body,
   .confirm-form-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .dashboard-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .make-login-brand-panel {
@@ -3924,6 +4047,21 @@ body {
   .service-form-grid,
   .confirm-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .recent-order-row,
+  .recent-order-top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .service-form-grid .drawer-field.wide {

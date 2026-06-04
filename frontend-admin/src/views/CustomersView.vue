@@ -1,10 +1,10 @@
 <script setup>
 import { computed, reactive, onMounted, ref, watch } from 'vue'
-import DetailPanel from '../components/admin/DetailPanel.vue'
 import EmptyState from '../components/admin/EmptyState.vue'
 import FilterBar from '../components/admin/FilterBar.vue'
 import KpiCard from '../components/admin/KpiCard.vue'
 import PageHeader from '../components/admin/PageHeader.vue'
+import AdminIcon from '../components/AdminIcon.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../services/api'
 import { getCurrentUser } from '../services/auth'
@@ -28,10 +28,12 @@ const form = reactive({
 })
 const currentUser = getCurrentUser()
 const canEdit = computed(() => ['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales'].includes(currentUser?.role))
+const viewMode = ref('list')
 
 function selectCustomer(id) {
   if (!id) return
   selectedCustomerId.value = id
+  viewMode.value = 'detail'
 }
 
 async function load() {
@@ -141,13 +143,41 @@ function viewCustomerDevices(customerId) {
   router.push({ name: 'devices', query: { customerId } })
 }
 
+function openCreateView() {
+  viewMode.value = 'create'
+}
+
+function openListView() {
+  viewMode.value = 'list'
+}
+
+function openDetailView(customerId) {
+  if (!customerId) return
+  selectedCustomerId.value = customerId
+  viewMode.value = 'detail'
+}
+
+async function submitCreateCustomer() {
+  await createCustomer()
+  if (!error.value) {
+    viewMode.value = 'list'
+  }
+}
+
+const selectedCustomerDeviceStats = computed(() => {
+  if (!selectedCustomer.value) return null
+  return customerDeviceStats.value[selectedCustomer.value.id] || null
+})
+
 onMounted(() => {
   if (route.query.keyword) keyword.value = String(route.query.keyword)
+  if (route.query.customerId) viewMode.value = 'detail'
   load()
 })
 
 watch(() => [route.query.customerId, route.query.keyword], () => {
   if (route.query.keyword) keyword.value = String(route.query.keyword)
+  if (route.query.customerId) viewMode.value = 'detail'
   load()
 })
 
@@ -169,31 +199,32 @@ watch(filteredCustomers, (items) => {
     <PageHeader kicker="CLIENT VAULT" title="客户资产" description="统一管理客户、联系人、地址和历史服务关系。">
       <template #actions>
         <button class="ghost-button" type="button" @click="exportCsv">导出当前列表明细</button>
-        <button v-if="canEdit" class="primary" type="submit" form="customer-create-form" :disabled="saving">新增客户</button>
+        <button v-if="viewMode !== 'list'" class="ghost-button" type="button" @click="openListView">返回列表</button>
+        <button v-if="canEdit && viewMode === 'list'" class="primary" type="button" @click="openCreateView">新增客户</button>
       </template>
     </PageHeader>
 
-    <FilterBar v-model:query="keyword" search-placeholder="搜索客户名称、地址或联系人..." @submit="load" />
+    <FilterBar v-if="viewMode === 'list'" v-model:query="keyword" search-placeholder="搜索客户名称、地址或联系人..." @submit="load" />
 
     <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
     <p v-if="message" class="form-success">{{ message }}</p>
     <p v-else-if="loading" class="muted">正在加载客户资料...</p>
 
-    <section class="kpi-grid">
+    <section v-if="viewMode === 'list'" class="kpi-grid">
       <KpiCard title="客户总数" :value="customers.length" subtitle="当前列表" icon="customer" />
       <KpiCard title="有服务记录客户" :value="keyCustomerCount" subtitle="本年度" icon="activity" />
       <KpiCard title="本年度服务" :value="totalRecords" subtitle="服务单汇总" icon="ticket" />
     </section>
 
-    <form v-if="canEdit" id="customer-create-form" class="inline-form" @submit.prevent="createCustomer">
-      <label class="field"><span>客户名称</span><input v-model.trim="form.name" required /></label>
-      <label class="field"><span>联系人</span><input v-model.trim="form.contactName" /></label>
-      <label class="field"><span>联系电话</span><input v-model.trim="form.contactPhone" /></label>
-      <label class="field wide"><span>客户地址</span><input v-model.trim="form.address" /></label>
-    </form>
-
-    <section class="detail-layout">
-      <div class="glass-panel table-card customer-table">
+    <section v-if="viewMode === 'list'" class="detail-layout">
+      <div class="glass-panel table-card customer-table make-data-table">
+        <div class="table-toolbar">
+          <div>
+            <h2>客户列表</h2>
+            <p>查看客户档案、服务次数、业务归属与最近资料更新时间。</p>
+          </div>
+          <span class="table-count">{{ filteredCustomers.length }} 条记录</span>
+        </div>
         <div class="table-head">
           <span>客户名称</span>
           <span>客户编码</span>
@@ -203,6 +234,7 @@ watch(filteredCustomers, (items) => {
           <span>本年服务</span>
           <span>业务员</span>
           <span>最近更新</span>
+          <span>操作</span>
         </div>
         <button
           v-for="customer in filteredCustomers"
@@ -223,11 +255,33 @@ watch(filteredCustomers, (items) => {
           <span><strong>{{ customer.count }}</strong></span>
           <span>{{ customer.salesperson || '-' }}</span>
           <span class="muted-text">{{ formatDate(customer.updatedAt) }}</span>
+          <span class="service-row-status">
+            <span class="ghost-button subtle-link">查看详情</span>
+          </span>
         </button>
         <EmptyState v-if="!filteredCustomers.length && !loading" title="暂无客户资料" description="请尝试调整搜索条件或新增客户。" />
       </div>
 
-      <DetailPanel v-if="selectedCustomer" subtitle="客户详情" :title="selectedCustomer.name">
+      <aside class="glass-panel drawer">
+        <h2>客户管理视图</h2>
+        <p class="empty-state">当前列表页已按 Figma Make 的客户台账布局调整。点击左侧任一客户可进入详情页。</p>
+      </aside>
+    </section>
+
+    <section v-else-if="viewMode === 'detail' && selectedCustomer" class="page-stack">
+      <article class="glass-panel drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="page-kicker">CUSTOMER DETAIL</p>
+            <h2>{{ selectedCustomer.name }}</h2>
+            <p>客户编码 {{ selectedCustomer.code || '-' }}</p>
+          </div>
+          <button class="ghost-button" type="button" @click="openListView">
+            <AdminIcon name="chevron-left" />
+            返回客户列表
+          </button>
+        </div>
+
         <div class="drawer-stats">
           <article><span>客户编码</span><strong class="mono">{{ selectedCustomer.code || '-' }}</strong></article>
           <article><span>最近更新</span><strong>{{ formatDate(selectedCustomer.updatedAt) }}</strong></article>
@@ -237,6 +291,7 @@ watch(filteredCustomers, (items) => {
 
         <section class="drawer-section">
           <h3>客户资料</h3>
+          <p>客户名称：{{ selectedCustomer.name }}</p>
           <p>联系人：{{ selectedCustomer.contactName || '未维护' }}</p>
           <p>联系电话：{{ selectedCustomer.contactPhone || '未维护' }}</p>
           <p>客户地址：{{ selectedCustomer.address }}</p>
@@ -245,22 +300,49 @@ watch(filteredCustomers, (items) => {
         <section class="drawer-section">
           <h3>设备概览</h3>
           <div class="drawer-stats">
-            <article><span>设备总数</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.total ?? '…' }}</strong></article>
-            <article><span>需关注维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.expiring ?? '…' }}</strong></article>
-            <article><span>我方维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.ours ?? '…' }}</strong></article>
-            <article><span>原厂维护</span><strong>{{ customerDeviceStats[selectedCustomer.id]?.original ?? '…' }}</strong></article>
+            <article><span>设备总数</span><strong>{{ selectedCustomerDeviceStats?.total ?? '…' }}</strong></article>
+            <article><span>需关注维护</span><strong>{{ selectedCustomerDeviceStats?.expiring ?? '…' }}</strong></article>
+            <article><span>我方维护</span><strong>{{ selectedCustomerDeviceStats?.ours ?? '…' }}</strong></article>
+            <article><span>原厂维护</span><strong>{{ selectedCustomerDeviceStats?.original ?? '…' }}</strong></article>
           </div>
           <p v-if="customerDeviceStats[selectedCustomer.id]?.error" class="form-error">设备统计加载失败：{{ customerDeviceStats[selectedCustomer.id].error }}</p>
         </section>
 
-        <template #footer>
+        <div class="page-actions">
           <button class="ghost-button full" type="button" @click="viewCustomerDevices(selectedCustomer.id)">查看该客户全部设备</button>
-        </template>
-      </DetailPanel>
+          <button v-if="canEdit" class="primary" type="button" @click="openCreateView">新增客户</button>
+        </div>
+      </article>
+    </section>
 
-      <aside v-else class="glass-panel drawer">
+    <section v-else-if="viewMode === 'create' && canEdit" class="page-stack">
+      <article class="glass-panel drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="page-kicker">NEW CUSTOMER</p>
+            <h2>新增客户</h2>
+            <p>按照 Figma Make 的新建客户流程，先录入基础档案，再进入后续资产管理。</p>
+          </div>
+          <button class="ghost-button" type="button" @click="openListView">取消</button>
+        </div>
+
+        <form id="customer-create-form" class="inline-form" @submit.prevent="submitCreateCustomer">
+          <label class="field wide"><span>客户名称</span><input v-model.trim="form.name" required /></label>
+          <label class="field"><span>联系人</span><input v-model.trim="form.contactName" /></label>
+          <label class="field"><span>联系电话</span><input v-model.trim="form.contactPhone" /></label>
+          <label class="field wide"><span>客户地址</span><input v-model.trim="form.address" /></label>
+          <div class="page-actions" style="grid-column: 1 / -1; justify-content: flex-end;">
+            <button class="ghost-button" type="button" @click="openListView">取消</button>
+            <button class="primary" type="submit" :disabled="saving">{{ saving ? '保存中...' : '保存客户档案' }}</button>
+          </div>
+        </form>
+      </article>
+    </section>
+
+    <section v-else class="detail-layout">
+      <aside class="glass-panel drawer">
         <h2>请选择客户</h2>
-        <p class="empty-state">从左侧表格选择客户后，可在这里查看联系人、服务统计和设备概览。</p>
+        <p class="empty-state">从客户列表选择客户后，可在这里查看联系人、服务统计和设备概览。</p>
       </aside>
     </section>
   </section>

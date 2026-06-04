@@ -9,8 +9,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@hugeicons/core-free-icons": "^4.2.0",
-    "@hugeicons/vue": "^1.0.5",
+    "@lucide/vue": "^1.17.0",
     "@vitejs/plugin-vue": "^6.0.6",
     "pinia": "^3.0.4",
     "vite": "^8.0.8",

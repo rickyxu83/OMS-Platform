@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Globe, LayoutDashboard } from '@lucide/vue'
 import { api } from '../services/api'
 import { ADMIN_ACCESS_ROLES } from '../config/navigation'
 import { clearSession, loadRememberedCredentials, saveRememberedCredentials, saveSession } from '../services/auth'
@@ -59,13 +60,13 @@ async function submit() {
     <div class="make-login-orb make-login-orb-green"></div>
 
     <div class="make-login-language-v2">
-      <span>◎</span>
+      <Globe :size="16" :stroke-width="2" />
       <strong>简体中文</strong>
     </div>
 
     <section class="make-login-card-v2" aria-label="登录管理端">
       <header class="make-login-head-v2">
-        <span class="make-login-mark-v2">▣</span>
+        <span class="make-login-mark-v2"><LayoutDashboard :size="32" :stroke-width="2" /></span>
         <h1>运维管理系统</h1>
         <p>欢迎回来</p>
       </header>

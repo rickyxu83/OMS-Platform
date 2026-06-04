@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { LayoutDashboard } from '@lucide/vue'
 import AdminIcon from '../components/AdminIcon.vue'
 import {
   canAccessRoute,
@@ -10,9 +11,6 @@ import {
   getVisibleNavigation,
 } from '../config/navigation'
 import { clearSession, currentUser } from '../services/auth'
-import {
-  BRAND_LOGO,
-} from '../constants/figmaAssets'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,7 +125,7 @@ onBeforeUnmount(() => {
   <main class="admin-shell make-admin-shell-v2" :class="{ 'sidebar-collapsed': !sidebarOpen }">
     <aside class="admin-sidebar make-sidebar-v2" :aria-hidden="!sidebarOpen">
       <div class="sidebar-brand make-sidebar-brand-v2">
-        <span class="make-brand-tile"><img :src="BRAND_LOGO" alt="" /></span>
+        <span class="make-brand-tile"><LayoutDashboard :size="24" :stroke-width="2" /></span>
         <div>
           <strong>运维智管</strong>
           <small>OMS SYSTEM</small>
@@ -149,7 +147,7 @@ onBeforeUnmount(() => {
               class="make-nav-item-v2"
               :class="{ active: route.name === item.name }"
             >
-              <AdminIcon :name="group.icon" class="nav-icon-image" />
+              <AdminIcon :name="item.name" class="nav-icon-image" />
               <span>{{ item.label }}</span>
               <i v-if="route.name === item.name" aria-hidden="true"></i>
             </RouterLink>
@@ -170,7 +168,7 @@ onBeforeUnmount(() => {
       <header class="admin-topbar make-topbar-v2">
         <div class="make-topbar-left-v2">
           <button type="button" class="make-icon-button-v2" @click="sidebarOpen = !sidebarOpen" :aria-label="sidebarOpen ? '收起侧边栏' : '展开侧边栏'">
-            {{ sidebarOpen ? '×' : '☰' }}
+            <AdminIcon :name="sidebarOpen ? 'close' : 'menu'" />
           </button>
           <nav class="make-breadcrumb-v2" aria-label="当前位置">
             <span>运维管理系统</span>
@@ -185,7 +183,7 @@ onBeforeUnmount(() => {
             <span>快速跳转</span>
           </button>
           <button type="button" class="make-lang-button-v2" @click="toggleLanguage">
-            <span>文</span>
+            <AdminIcon name="language" />
             <strong>{{ isTraditional ? '繁体' : '简体' }}</strong>
           </button>
           <p class="make-time-v2">{{ currentTime }}</p>
@@ -195,7 +193,7 @@ onBeforeUnmount(() => {
               <strong>{{ userName }}</strong>
               <small>{{ userRoleLabel }}</small>
             </div>
-            <button type="button" class="make-icon-button-v2" @click="handleLogout" aria-label="退出登录">↗</button>
+            <button type="button" class="make-icon-button-v2" @click="handleLogout" aria-label="退出登录"><AdminIcon name="logout" /></button>
           </div>
         </div>
       </header>
@@ -204,7 +202,7 @@ onBeforeUnmount(() => {
         <section class="command-dialog make-command-dialog-v2" role="dialog" aria-label="快速跳转模块">
           <header>
             <h2>快速跳转</h2>
-            <button type="button" @click="commandOpen = false">×</button>
+            <button type="button" @click="commandOpen = false"><AdminIcon name="close" /></button>
           </header>
           <div class="command-input-wrap make-command-input-v2">
             <AdminIcon name="search" class="command-input-icon" />
@@ -225,7 +223,7 @@ onBeforeUnmount(() => {
               class="command-item"
               @click="selectNavigationItem(item)"
             >
-              <AdminIcon :name="item.group.icon" class="command-item-icon" />
+              <AdminIcon :name="item.name" class="command-item-icon" />
               <span>{{ item.label }}</span>
               <small>{{ item.group.label }}</small>
             </button>

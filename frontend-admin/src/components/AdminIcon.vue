@@ -1,24 +1,45 @@
 <script setup>
 import { computed } from 'vue'
-import { HugeiconsIcon } from '@hugeicons/vue'
 import {
-  Activity01Icon,
-  Alert02Icon,
-  Clock01Icon,
-  DashboardSquareIcon,
-  File01Icon,
-  HelpCircleIcon,
-  Location01Icon,
-  Logout03Icon,
-  MapsIcon,
-  Search01Icon,
-  Shield01Icon,
-  TaskDaily01Icon,
-  Ticket01Icon,
-  UserGroupIcon,
-  UserMultiple02Icon,
-  CheckmarkCircle01Icon,
-} from '@hugeicons/core-free-icons'
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
+  Download,
+  Edit,
+  ExternalLink,
+  FileSpreadsheet,
+  FileText,
+  Globe,
+  Languages,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  MapPin,
+  Menu,
+  Plus,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Search,
+  Server,
+  Settings,
+  Shield,
+  Trash2,
+  TrendingUp,
+  User,
+  UserCheck,
+  UserX,
+  Users,
+  Wrench,
+  X,
+} from '@lucide/vue'
 
 const props = defineProps({
   name: {
@@ -28,34 +49,65 @@ const props = defineProps({
 })
 
 const iconMap = {
-  dashboard: DashboardSquareIcon,
-  service: TaskDaily01Icon,
-  customer: UserGroupIcon,
-  member: UserMultiple02Icon,
-  audit: Shield01Icon,
-  report: File01Icon,
-  search: Search01Icon,
-  help: HelpCircleIcon,
-  logout: Logout03Icon,
-  ticket: Ticket01Icon,
-  activity: Activity01Icon,
-  duration: Clock01Icon,
-  'map-pin': Location01Icon,
-  'map-action': MapsIcon,
-  done: CheckmarkCircle01Icon,
-  warn: Alert02Icon,
-  asset: File01Icon,
+  dashboard: LayoutDashboard,
+  'layout-dashboard': LayoutDashboard,
+  service: FileText,
+  'service-orders': FileText,
+  inspect: ClipboardCheck,
+  'inspection-schedules': ClipboardCheck,
+  customer: Users,
+  customers: Users,
+  member: Settings,
+  users: Settings,
+  audit: Shield,
+  'audit-logs': Shield,
+  report: BarChart3,
+  timesheets: BarChart3,
+  search: Search,
+  logout: LogOut,
+  asset: Server,
+  devices: Server,
+  'maintenance-parties': Building2,
+  ticket: FileText,
+  activity: TrendingUp,
+  duration: Clock,
+  'map-pin': MapPin,
+  done: CheckCircle2,
+  warn: AlertTriangle,
+  menu: Menu,
+  close: X,
+  language: Languages,
+  globe: Globe,
+  download: Download,
+  refresh: RefreshCw,
+  plus: Plus,
+  edit: Edit,
+  trash: Trash2,
+  external: ExternalLink,
+  user: User,
+  phone: User,
+  mail: Mail,
+  calendar: Calendar,
+  server: Server,
+  spreadsheet: FileSpreadsheet,
+  'user-check': UserCheck,
+  'user-x': UserX,
+  wrench: Wrench,
+  power: Power,
+  'power-off': PowerOff,
+  'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
+  'chevron-down': ChevronDown,
 }
 
-const icon = computed(() => iconMap[props.name] || DashboardSquareIcon)
+const icon = computed(() => iconMap[props.name] || LayoutDashboard)
 </script>
 
 <template>
-  <HugeiconsIcon
-    :icon="icon"
+  <component
+    :is="icon"
     :size="24"
-    color="currentColor"
-    :stroke-width="1.8"
+    :stroke-width="2"
     aria-hidden="true"
     focusable="false"
   />
