@@ -8,6 +8,7 @@ import CustomersView from '../views/CustomersView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DeviceManagementView from '../views/DeviceManagementView.vue'
 import InspectionSchedulesView from '../views/InspectionSchedulesView.vue'
+import LayoutPreviewView from '../views/LayoutPreviewView.vue'
 import LoginView from '../views/LoginView.vue'
 import MaintenancePartiesView from '../views/MaintenancePartiesView.vue'
 import ServiceOrdersView from '../views/ServiceOrdersView.vue'
@@ -33,6 +34,7 @@ const router = createRouter({
         { path: 'timesheets', name: 'timesheets', component: TimesheetsView },
         { path: 'users', name: 'users', component: UsersView },
         { path: 'audit-logs', name: 'audit-logs', component: AuditLogsView },
+        { path: 'layout-preview', name: 'layout-preview', component: LayoutPreviewView },
       ],
     },
   ],
