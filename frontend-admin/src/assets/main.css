@@ -4121,6 +4121,7 @@ body {
   flex: 1;
   flex-direction: column;
   margin-left: 256px;
+  padding-left: 0;
   overflow: hidden;
   background: #f9fafb;
   transition: margin-left 0.3s ease;
