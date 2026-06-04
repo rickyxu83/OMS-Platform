@@ -1744,6 +1744,25 @@ function scheduleCustomerLookup(value) {
   }, 300)
 }
 
+function normalizeDeviceModelSuggestion(item, fallbackIndex = 0) {
+  const officialName = String(item?.officialName || item?.canonicalModel || '').trim()
+  if (!officialName) return null
+  return {
+    id: item?.id || `${officialName}-${fallbackIndex}`,
+    officialName,
+    vendor: String(item?.vendor || item?.brand || '').trim(),
+    category: String(item?.category || '').trim(),
+  }
+}
+
+async function fetchDeviceModelSuggestions(queryText) {
+  const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(queryText)}`)
+  return (data?.items || [])
+    .map((item, index) => normalizeDeviceModelSuggestion(item, index))
+    .filter(Boolean)
+    .slice(0, 12)
+}
+
 function onDeviceModelInput() {
   const active = installDeviceList.value[activeInstallDeviceIndex.value]
   const q = String(active?.model || '').trim()
@@ -1757,13 +1776,15 @@ function onDeviceModelInput() {
   deviceModelSearchTimer = window.setTimeout(async () => {
     const reqId = deviceModelReqId
     try {
-      const data = await api.get(`/device-models/suggest?q=${encodeURIComponent(q)}`)
+      const items = await fetchDeviceModelSuggestions(q)
       if (reqId !== deviceModelReqId) return
-      deviceModelSuggestions.value = data?.items || []
+      deviceModelSuggestions.value = items
+      selectedSuggestionIndex.value = items.length ? 0 : -1
       showDeviceModelSuggestions.value = deviceModelSuggestions.value.length > 0
     } catch {
       if (reqId !== deviceModelReqId) return
       deviceModelSuggestions.value = []
+      selectedSuggestionIndex.value = -1
       showDeviceModelSuggestions.value = false
     }
   }, 300)

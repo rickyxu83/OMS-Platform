@@ -13,12 +13,12 @@
 ```text
 .
 ├── backend
-│   └── src/modules/device-models/    ← 设备型号库（autocomplete + 自动发现）
+│   └── src/modules/device-model-catalog/  ← 设备型号标准目录（autocomplete + 别名规范化）
 ├── frontend-admin
 ├── frontend-engineer
 ├── scripts
 │   ├── deploy.sh                     ← 全量部署
-│   └── deploy-seed.sh                ← 设备型号 seed 一键部署
+│   └── deploy-seed.sh                ← 设备型号 catalog fixture 一键部署
 └── README.md
 ```
 
@@ -31,17 +31,11 @@
 - 品牌搜索：`dell r740`、`huawei 5280`、`brocade` 等
 - 型号归一化：`g10` → `Gen10`、`v5` → `V5`
 
-### 设备型号自动发现（Beta）
-```bash
-LLM_API_KEY=sk-xxx node backend/src/modules/device-models/auto-discover.js
-```
-通过 LLM API 每日自动查询各品牌最新型号，与数据库对比后自动追加。支持 HPE、Dell、Cisco、Lenovo、Huawei、NetApp 等 20+ 品牌。
-
 ### 一键部署 seed
 ```bash
 bash scripts/deploy-seed.sh
 ```
-在本地 `seed.js` 追加新设备后，一行命令推送到服务器并重新入库（INSERT IGNORE，不会重复）。
+在本地 `fixture-data.js` 追加新设备后，一行命令推送到服务器并重新入库（INSERT IGNORE，不会重复）。
 
 
 ## 本地启动
@@ -117,7 +111,7 @@ cd backend && npm test
 ```bash
 bash scripts/deploy-seed.sh
 ```
-在 `backend/src/modules/device-models/seed.js` 追加新设备型号后，一键部署到服务器。
+在 `backend/src/modules/device-model-catalog/fixture-data.js` 追加新设备型号后，一键部署到服务器。
 
 ### 全量部署
 ```bash
@@ -134,13 +128,6 @@ export DEPLOY_REMOTE_ROOT=/root/service-sheet-aliyun  # 远程目录
 > 访问地址：
 > - 工程师端：`https://eng-aliyun.tinypanel.de`
 > - 管理端：`https://admin-aliyun.tinypanel.de`
-
-### 每日自动发现（可选）
-如需每日自动检查各品牌新设备型号，设置 cron：
-```bash
-# 每天早上 8 点运行
-0 8 * * * cd /path/to/project && LLM_API_KEY=sk-xxx node backend/src/modules/device-models/auto-discover.js >> /var/log/device-discover.log 2>&1
-```
 
 ## 当前约定
 

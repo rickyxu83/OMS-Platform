@@ -2020,7 +2020,7 @@ h2 {
   border-radius: 20px;
   pointer-events: none;
   box-shadow:
-    0 0 0 9999px rgb(15 23 42 / 18%),
+    0 0 0 9999px rgb(15 23 42 / 10%),
     0 0 0 8px rgb(94 234 212 / 18%),
     0 18px 44px rgb(0 0 0 / 24%);
   transition:
@@ -2076,11 +2076,37 @@ h2 {
   min-height: 38px;
 }
 
+@media (max-width: 680px) {
+  .feature-tour-card {
+    gap: 8px;
+    padding: 12px;
+    border-radius: 16px;
+    box-shadow: 0 16px 44px rgb(0 0 0 / 22%);
+  }
+
+  .feature-tour-card p {
+    font-size: 11px;
+  }
+
+  .feature-tour-card h2 {
+    font-size: 18px;
+  }
+
+  .feature-tour-card span {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .feature-tour-card footer button {
+    min-height: 34px;
+    padding-inline: 12px;
+  }
+}
+
 @media (max-width: 520px) {
   .feature-tour-card {
-    left: 14px !important;
-    right: 14px;
-    width: auto !important;
+    padding: 10px;
+    border-radius: 14px;
   }
 
   .feature-tour-card footer {

@@ -142,9 +142,13 @@ const featureTourSpotlightStyle = computed(() => {
 const featureTourBubbleStyle = computed(() => {
   const rect = featureTourRect.value
   if (!rect) return {}
-  const width = Math.min(340, window.innerWidth - 28)
+  const maxWidth = window.innerWidth <= 520 ? 264 : window.innerWidth <= 680 ? 296 : 340
+  const sideGap = window.innerWidth <= 520 ? 72 : window.innerWidth <= 680 ? 56 : 28
+  const width = Math.min(maxWidth, window.innerWidth - sideGap)
   const preferBelow = rect.top + rect.height + 18 + 190 < window.innerHeight
-  const top = preferBelow ? rect.top + rect.height + 18 : Math.max(14, rect.top - 210)
+  const top = preferBelow
+    ? rect.top + rect.height + 16
+    : Math.max(12, rect.top - (window.innerWidth <= 520 ? 170 : 210))
   const left = Math.min(Math.max(14, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 14)
   return { width: `${width}px`, left: `${left}px`, top: `${top}px` }
 })

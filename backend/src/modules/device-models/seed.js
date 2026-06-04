@@ -1,5 +1,3 @@
-const { query } = require('../../config/db')
-
 const models = [
   // ========== HPE Server (16) ==========
   { vendor: 'HPE', productLine: 'ProLiant DL', officialName: 'HPE ProLiant DL380 Gen9', keywords: 'DL380,Gen9,380', category: 'Server' },
@@ -331,15 +329,6 @@ const models = [
   { vendor: 'Dell', productLine: 'PowerEdge XR', officialName: 'Dell PowerEdge XR12', keywords: 'XR12,PowerEdge', category: 'Server' },
 ]
 
-async function seed() {
-  for (const m of models) {
-    await query(
-      'INSERT IGNORE INTO device_models (vendor, product_line, official_name, search_keywords, category) VALUES (:vendor, :productLine, :officialName, :keywords, :category)',
-      { vendor: m.vendor, productLine: m.productLine, officialName: m.officialName, keywords: m.keywords, category: m.category },
-    )
-  }
-  const count = await query('SELECT COUNT(*) as cnt FROM device_models')
-  console.log(`Seeded ${count[0].cnt} device models`)
+module.exports = {
+  models,
 }
-
-seed().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1) })

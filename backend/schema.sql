@@ -319,19 +319,6 @@ CREATE TABLE audit_logs (
   CONSTRAINT fk_audit_logs_actor_id FOREIGN KEY (actor_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 设备型号目录（用于自动补全和名称规范化）
-CREATE TABLE IF NOT EXISTS device_models (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  vendor VARCHAR(64) NOT NULL COMMENT '厂商',
-  product_line VARCHAR(128) DEFAULT NULL COMMENT '产品线',
-  official_name VARCHAR(255) NOT NULL COMMENT '官方型号名称',
-  search_keywords TEXT DEFAULT NULL COMMENT '搜索关键词（逗号分隔）',
-  category VARCHAR(64) DEFAULT NULL COMMENT '分类: Server/Storage/Network',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_official_name (official_name),
-  KEY idx_vendor (vendor)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- Canonical device model catalog for normalized backend lookups.
 CREATE TABLE IF NOT EXISTS device_model_catalog (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
