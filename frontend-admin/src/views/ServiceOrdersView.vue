@@ -90,7 +90,7 @@ async function load() {
     serviceOrders.value = (data.items || []).map(normalizeOrder)
     selectedOrderId.value = serviceOrders.value.some((order) => order.id === selectedOrderId.value)
       ? selectedOrderId.value
-      : serviceOrders.value[0]?.id || ''
+      : ''
   } catch (err) {
     error.value = err.message
   } finally {
@@ -168,7 +168,11 @@ function exportCsv() {
 }
 
 const filteredOrders = computed(() => serviceOrders.value)
-const selectedOrder = computed(() => filteredOrders.value.find((order) => order.id === selectedOrderId.value) || filteredOrders.value[0] || null)
+const selectedOrder = computed(() => filteredOrders.value.find((order) => order.id === selectedOrderId.value) || null)
+
+function toggleSelectedOrder(orderId) {
+  selectedOrderId.value = selectedOrderId.value === orderId ? '' : orderId
+}
 
 function getStatusTone(statusText) {
   const toneMap = {
@@ -238,102 +242,106 @@ onMounted(async () => {
           <span>时间</span>
           <span>状态</span>
         </div>
-        <button
-          v-for="order in filteredOrders"
-          :key="order.id"
-          class="table-row"
-          :class="{ selected: selectedOrder?.id === order.id }"
-          type="button"
-          @click="selectedOrderId = order.id"
-        >
-          <span class="mono">{{ order.orderNo }}</span>
-          <span>{{ order.customerName }}</span>
-          <span><em class="type-pill">{{ order.serviceTypeText }}</em></span>
-          <span>{{ order.engineerText }}</span>
-          <span class="muted-text">{{ order.serviceAt }}</span>
-          <span><StatusBadge :label="order.statusText" :tone="getStatusTone(order.statusText)" compact /></span>
-        </button>
+        <template v-for="order in filteredOrders" :key="order.id">
+          <button
+            class="table-row"
+            :class="{ selected: selectedOrder?.id === order.id }"
+            type="button"
+            :aria-expanded="selectedOrder?.id === order.id"
+            @click="toggleSelectedOrder(order.id)"
+          >
+            <span class="mono">{{ order.orderNo }}</span>
+            <span>{{ order.customerName }}</span>
+            <span><em class="type-pill">{{ order.serviceTypeText }}</em></span>
+            <span>{{ order.engineerText }}</span>
+            <span class="muted-text">{{ order.serviceAt }}</span>
+            <span class="service-row-status">
+              <StatusBadge :label="order.statusText" :tone="getStatusTone(order.statusText)" compact />
+              <em class="row-expand-indicator">{{ selectedOrder?.id === order.id ? '收起' : '展开' }}</em>
+            </span>
+          </button>
+
+          <section v-if="selectedOrder?.id === order.id" class="service-detail-card service-inline-detail">
+            <div class="service-detail-head">
+              <div>
+                <p class="page-kicker">SERVICE DETAIL</p>
+                <h2>{{ selectedOrder.orderNo }}</h2>
+                <p>{{ selectedOrder.customerName }} · {{ selectedOrder.contactName }}</p>
+              </div>
+              <StatusBadge :label="selectedOrder.statusText" :tone="getStatusTone(selectedOrder.statusText)" />
+            </div>
+
+            <div class="service-detail-metrics">
+              <article><span>服务方式</span><strong>{{ selectedOrder.mode }}</strong></article>
+              <article><span>服务类型</span><strong>{{ selectedOrder.serviceTypeText }}</strong></article>
+              <article><span>工程师</span><strong>{{ selectedOrder.engineerText }}</strong></article>
+              <article><span>服务时间</span><strong>{{ selectedOrder.serviceAt }}</strong></article>
+            </div>
+
+            <section v-if="selectedOrder.raw.pendingConfirmation && canEdit" class="confirm-panel service-confirm-card">
+              <div>
+                <h3>巡检派发确认</h3>
+                <p class="muted">该巡检单由计划自动生成，确认前不会出现在工程师任务列表。</p>
+              </div>
+              <div class="service-form-grid confirm-form-grid">
+                <label class="drawer-field">
+                  <span>派发工程师</span>
+                  <select v-model="confirmForm.engineerId" class="drawer-input">
+                    <option value="">请选择工程师</option>
+                    <option v-for="engineer in engineerOptions" :key="engineer.id" :value="engineer.id">
+                      {{ engineer.realName || engineer.username }}
+                    </option>
+                  </select>
+                </label>
+                <label class="drawer-field">
+                  <span>计划开始</span>
+                  <input v-model="confirmForm.plannedStartAt" class="drawer-input" type="datetime-local" />
+                </label>
+                <label class="drawer-field">
+                  <span>计划结束</span>
+                  <input v-model="confirmForm.plannedEndAt" class="drawer-input" type="datetime-local" />
+                </label>
+                <button class="primary" type="button" :disabled="saving || !confirmForm.engineerId" @click="confirmSelectedInspectionOrder">
+                  {{ saving ? '确认中...' : '确认并派发' }}
+                </button>
+              </div>
+              <p class="muted">原计划目标工程师：{{ selectedOrder.targetEngineerText }}</p>
+            </section>
+
+            <div class="service-detail-body">
+              <section class="service-edit-section">
+                <h3>服务信息</h3>
+                <div class="service-form-grid">
+                  <label class="drawer-field wide">
+                    <span>详细描述</span>
+                    <textarea v-model.trim="detailForm.issueDescription" class="drawer-textarea" rows="5" />
+                  </label>
+                  <label class="drawer-field wide">
+                    <span>内部备注</span>
+                    <textarea v-model.trim="detailForm.internalNote" class="drawer-textarea" rows="5" placeholder="填写内部备注，保存后写入后端" />
+                  </label>
+                </div>
+              </section>
+              <section class="service-timeline-card">
+                <h3>服务时间线</h3>
+                <div class="timeline">
+                  <article><span></span><div><strong>服务时间</strong><small>{{ selectedOrder.serviceAt }}</small></div></article>
+                  <article><span></span><div><strong>服务方式</strong><small>{{ selectedOrder.mode }}</small></div></article>
+                  <article class="active"><span></span><div><strong>当前状态</strong><small>{{ selectedOrder.statusText }}</small></div></article>
+                </div>
+              </section>
+            </div>
+
+            <div class="service-detail-actions">
+              <p v-if="!canEdit" class="form-error">当前账号只可查看，不可修改工单。</p>
+              <button v-else class="primary" type="button" :disabled="saving" @click="saveSelectedOrder">
+                {{ saving ? '保存中...' : '保存工单信息' }}
+              </button>
+            </div>
+          </section>
+        </template>
         <EmptyState v-if="!filteredOrders.length && !loading" title="暂无服务记录" description="请调整筛选条件或刷新数据。" />
       </div>
-
-      <section v-if="selectedOrder" class="glass-panel service-detail-card">
-        <div class="service-detail-head">
-          <div>
-            <p class="page-kicker">SERVICE DETAIL</p>
-            <h2>{{ selectedOrder.orderNo }}</h2>
-            <p>{{ selectedOrder.customerName }} · {{ selectedOrder.contactName }}</p>
-          </div>
-          <StatusBadge :label="selectedOrder.statusText" :tone="getStatusTone(selectedOrder.statusText)" />
-        </div>
-
-        <div class="service-detail-metrics">
-          <article><span>服务方式</span><strong>{{ selectedOrder.mode }}</strong></article>
-          <article><span>服务类型</span><strong>{{ selectedOrder.serviceTypeText }}</strong></article>
-          <article><span>工程师</span><strong>{{ selectedOrder.engineerText }}</strong></article>
-          <article><span>服务时间</span><strong>{{ selectedOrder.serviceAt }}</strong></article>
-        </div>
-
-        <section v-if="selectedOrder.raw.pendingConfirmation && canEdit" class="confirm-panel service-confirm-card">
-          <div>
-            <h3>巡检派发确认</h3>
-            <p class="muted">该巡检单由计划自动生成，确认前不会出现在工程师任务列表。</p>
-          </div>
-          <div class="service-form-grid confirm-form-grid">
-            <label class="drawer-field">
-              <span>派发工程师</span>
-              <select v-model="confirmForm.engineerId" class="drawer-input">
-                <option value="">请选择工程师</option>
-                <option v-for="engineer in engineerOptions" :key="engineer.id" :value="engineer.id">
-                  {{ engineer.realName || engineer.username }}
-                </option>
-              </select>
-            </label>
-            <label class="drawer-field">
-              <span>计划开始</span>
-              <input v-model="confirmForm.plannedStartAt" class="drawer-input" type="datetime-local" />
-            </label>
-            <label class="drawer-field">
-              <span>计划结束</span>
-              <input v-model="confirmForm.plannedEndAt" class="drawer-input" type="datetime-local" />
-            </label>
-            <button class="primary" type="button" :disabled="saving || !confirmForm.engineerId" @click="confirmSelectedInspectionOrder">
-              {{ saving ? '确认中...' : '确认并派发' }}
-            </button>
-          </div>
-          <p class="muted">原计划目标工程师：{{ selectedOrder.targetEngineerText }}</p>
-        </section>
-
-        <div class="service-detail-body">
-          <section class="service-edit-section">
-            <h3>服务信息</h3>
-            <div class="service-form-grid">
-              <label class="drawer-field wide">
-                <span>详细描述</span>
-                <textarea v-model.trim="detailForm.issueDescription" class="drawer-textarea" rows="5" />
-              </label>
-              <label class="drawer-field wide">
-                <span>内部备注</span>
-                <textarea v-model.trim="detailForm.internalNote" class="drawer-textarea" rows="5" placeholder="填写内部备注，保存后写入后端" />
-              </label>
-            </div>
-          </section>
-          <section class="service-timeline-card">
-            <h3>服务时间线</h3>
-            <div class="timeline">
-              <article><span></span><div><strong>服务时间</strong><small>{{ selectedOrder.serviceAt }}</small></div></article>
-              <article><span></span><div><strong>服务方式</strong><small>{{ selectedOrder.mode }}</small></div></article>
-              <article class="active"><span></span><div><strong>当前状态</strong><small>{{ selectedOrder.statusText }}</small></div></article>
-            </div>
-          </section>
-        </div>
-
-        <div class="service-detail-actions">
-          <p v-if="!canEdit" class="form-error">当前账号只可查看，不可修改工单。</p>
-          <button v-else class="primary" type="button" :disabled="saving" @click="saveSelectedOrder">
-            {{ saving ? '保存中...' : '保存工单信息' }}
-          </button>
-        </div>
-      </section>
     </section>
   </section>
 </template>

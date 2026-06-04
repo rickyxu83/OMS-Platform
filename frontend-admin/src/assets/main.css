@@ -3697,6 +3697,21 @@ body {
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
+.service-row-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.row-expand-indicator {
+  color: var(--primary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .service-detail-card {
   display: grid;
   gap: 22px;
@@ -3704,6 +3719,14 @@ body {
   border-radius: 16px;
   padding: 22px;
   box-shadow: 0 1px 2px rgb(17 24 39 / 6%);
+}
+
+.service-inline-detail {
+  margin: 0;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: #fbfdff;
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .service-detail-head,
