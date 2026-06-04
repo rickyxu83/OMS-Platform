@@ -233,6 +233,8 @@ async function clearResolvedLocalDrafts() {
   const existingTaskIds = new Set(tasks.value.map((task) => Number(task.id)).filter(Boolean))
   const prefix = localDraftPrefix()
   let removed = false
+  const removedEditOrderIds = new Set()
+  const removedCreateDrafts = []
 
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
     const key = localStorage.key(index)
@@ -241,6 +243,7 @@ async function clearResolvedLocalDrafts() {
     if (routeInfo.orderId && existingTaskIds.has(Number(routeInfo.orderId))) {
       localStorage.removeItem(key)
       removed = true
+      removedEditOrderIds.add(Number(routeInfo.orderId))
       continue
     }
 
@@ -250,6 +253,7 @@ async function clearResolvedLocalDrafts() {
         const submittedOrderId = Number(item.payload?.__submittedOrderId || 0)
         if (!submittedOrderId || !existingTaskIds.has(submittedOrderId)) return payload
         removed = true
+        removedCreateDrafts.push({ mode: item.mode, draftId: item.draftId })
         return removeScopedDraftPayload(payload, null, item.mode, item.draftId)
       }, parsed?.data || null)
 
@@ -261,7 +265,12 @@ async function clearResolvedLocalDrafts() {
     }
   }
 
-  if (removed) await clearSelfReportDraft(null).catch(() => {})
+  for (const orderId of removedEditOrderIds) {
+    await clearSelfReportDraft(orderId).catch(() => {})
+  }
+  for (const draft of removedCreateDrafts) {
+    await clearSelfReportDraft(null, draft.mode, draft.draftId).catch(() => {})
+  }
   if (removed) await loadLocalDraftTasks()
 }
 
