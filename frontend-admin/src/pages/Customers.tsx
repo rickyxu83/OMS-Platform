@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -135,7 +136,7 @@ const I18N = {
       description: "填写客户基础信息，提交后保存到系统",
       editDescription: "修改客户信息，可通过地图搜索更新坐标",
       name: "客户名称 *",
-      code: "客户编码",
+      code: "客户编码（留空自动生成）",
       contact: "联系人",
       phone: "联系电话",
       address: "客户地址",
@@ -225,7 +226,7 @@ const I18N = {
       description: "填寫客戶基礎資訊，提交後保存到系統",
       editDescription: "修改客戶資訊，可透過地圖搜尋更新座標",
       name: "客戶名稱 *",
-      code: "客戶編碼",
+      code: "客戶編碼（留空自動生成）",
       contact: "聯絡人",
       phone: "聯絡電話",
       address: "客戶地址",
@@ -307,11 +308,12 @@ function interpolate(template: string, values: Record<string, string | number>) 
 
 export function Customers() {
   const { lang } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
@@ -350,6 +352,11 @@ export function Customers() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t.errors.loadFailed]);
+
+  useEffect(() => {
+    const keyword = searchParams.get("keyword") || searchParams.get("city") || "";
+    setSearchQuery(keyword);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -487,7 +494,7 @@ export function Customers() {
         mapPoiId: company.mapPoiId || (company.source === "map" ? company.id : prev.mapPoiId || ""),
         mapPoiName: company.mapPoiName || company.name || prev.mapPoiName,
         contacts: currentContacts,
-      }
+      };
     });
     setLocationHint(interpolate(t.geo.selected, {
       name: company.name,
@@ -540,14 +547,14 @@ export function Customers() {
       contacts: prev.contacts.map((contact, contactIndex) => (
         contactIndex === index ? { ...contact, [field]: value } : contact
       )),
-    }))
+    }));
   }
 
   function addContact() {
     setForm((prev) => ({
       ...prev,
       contacts: [...prev.contacts, { name: "", phone: "" }],
-    }))
+    }));
   }
 
   function removeContact(index: number) {
@@ -556,8 +563,8 @@ export function Customers() {
       return {
         ...prev,
         contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "" }],
-      }
-    })
+      };
+    });
   }
 
   async function submit() {

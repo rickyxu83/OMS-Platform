@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Search, Building2, Loader2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Building2, Loader2, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
 interface Party {
@@ -29,14 +30,150 @@ interface Party {
   createdAt?: string;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  vendor_contact: "原厂联系人",
-  our_maintenance: "合作维保方",
-  partner: "合作维保方",
-  vendor: "原厂联系人",
-  original_manufacturer: "原厂联系人",
-  our: "我方维护",
-};
+const I18N = {
+  "zh-CN": {
+    title: "维保方目录",
+    subtitle: "管理原厂联系人和合作维保方",
+    actions: {
+      refresh: "刷新",
+      create: "新增维保方",
+      edit: "编辑",
+      retry: "重试",
+      reset: "重置",
+      cancel: "取消",
+      save: "保存维保方",
+      saveEdit: "保存修改",
+      saving: "保存中…",
+      delete: "删除",
+    },
+    stats: {
+      total: "维保方总数",
+      vendor: "原厂联系人",
+      partner: "合作维保方",
+    },
+    filters: {
+      searchPlaceholder: "搜索名称、电话、服务范围...",
+      typePlaceholder: "类型筛选",
+      all: "全部类型",
+      vendor: "原厂联系人",
+      partner: "合作维保方",
+    },
+    list: {
+      title: "维保方列表",
+      loading: "加载中…",
+      empty: "暂无维保方资料",
+      updatedAt: "最近更新",
+      contactLine: "联系人：{contact} · 电话：{phone}",
+      serviceScope: "服务范围：{scope}",
+    },
+    dialog: {
+      createTitle: "新增维保方",
+      editTitle: "编辑维保方",
+      description: "填写维保方基础信息，提交后保存到系统",
+      name: "维保方名称 *",
+      namePlaceholder: "例如 Dell EMC 原厂技术支持",
+      contact: "联系人",
+      contactPlaceholder: "联系人姓名",
+      phone: "联系电话",
+      phonePlaceholder: "支持数字、加号、括号、横线、空格，长度 7-32",
+      type: "类型",
+      typePlaceholder: "选择类型",
+      serviceScope: "服务范围",
+      serviceScopePlaceholder: "例如 服务器、存储、网络设备",
+      remark: "备注",
+      remarkPlaceholder: "补充说明",
+    },
+    errors: {
+      loadFailed: "加载失败",
+      saveFailed: "保存失败",
+      nameRequired: "请输入维保方名称",
+      phoneInvalid: "联系电话格式不正确",
+      deleteFailed: "删除失败",
+    },
+    types: {
+      vendor_contact: "原厂联系人",
+      our_maintenance: "合作维保方",
+      partner: "合作维保方",
+      vendor: "原厂联系人",
+      original_manufacturer: "原厂联系人",
+      our: "我方维护",
+    },
+    misc: {
+      unknown: "-",
+    },
+  },
+  "zh-TW": {
+    title: "維保方目錄",
+    subtitle: "管理原廠聯絡人和合作維保方",
+    actions: {
+      refresh: "刷新",
+      create: "新增維保方",
+      edit: "編輯",
+      retry: "重試",
+      reset: "重置",
+      cancel: "取消",
+      save: "保存維保方",
+      saveEdit: "保存修改",
+      saving: "保存中…",
+      delete: "刪除",
+    },
+    stats: {
+      total: "維保方總數",
+      vendor: "原廠聯絡人",
+      partner: "合作維保方",
+    },
+    filters: {
+      searchPlaceholder: "搜尋名稱、電話、服務範圍...",
+      typePlaceholder: "類型篩選",
+      all: "全部類型",
+      vendor: "原廠聯絡人",
+      partner: "合作維保方",
+    },
+    list: {
+      title: "維保方列表",
+      loading: "載入中…",
+      empty: "暫無維保方資料",
+      updatedAt: "最近更新",
+      contactLine: "聯絡人：{contact} · 電話：{phone}",
+      serviceScope: "服務範圍：{scope}",
+    },
+    dialog: {
+      createTitle: "新增維保方",
+      editTitle: "編輯維保方",
+      description: "填寫維保方基礎資訊，提交後保存到系統",
+      name: "維保方名稱 *",
+      namePlaceholder: "例如 Dell EMC 原廠技術支援",
+      contact: "聯絡人",
+      contactPlaceholder: "聯絡人姓名",
+      phone: "聯絡電話",
+      phonePlaceholder: "支援數字、加號、括號、橫線、空格，長度 7-32",
+      type: "類型",
+      typePlaceholder: "選擇類型",
+      serviceScope: "服務範圍",
+      serviceScopePlaceholder: "例如 伺服器、儲存、網路設備",
+      remark: "備註",
+      remarkPlaceholder: "補充說明",
+    },
+    errors: {
+      loadFailed: "載入失敗",
+      saveFailed: "保存失敗",
+      nameRequired: "請輸入維保方名稱",
+      phoneInvalid: "聯絡電話格式不正確",
+      deleteFailed: "刪除失敗",
+    },
+    types: {
+      vendor_contact: "原廠聯絡人",
+      our_maintenance: "合作維保方",
+      partner: "合作維保方",
+      vendor: "原廠聯絡人",
+      original_manufacturer: "原廠聯絡人",
+      our: "我方維護",
+    },
+    misc: {
+      unknown: "-",
+    },
+  },
+} as const;
 
 const TYPE_VARIANT: Record<string, "default" | "info" | "secondary" | "purple"> = {
   vendor_contact: "info",
@@ -53,6 +190,8 @@ function formatDate(value?: string) {
 }
 
 export function MaintenanceParties() {
+  const { lang } = useLanguage();
+  const t = I18N[lang];
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -77,7 +216,7 @@ export function MaintenanceParties() {
       const data = await api.get("/maintenance-parties");
       setParties((data?.items || []) as Party[]);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "加载失败";
+      const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
     } finally {
       setLoading(false);
@@ -86,7 +225,7 @@ export function MaintenanceParties() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [t.errors.loadFailed]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -108,11 +247,11 @@ export function MaintenanceParties() {
       (p) => p.partyType === "our_maintenance" || p.partyType === "partner" || p.partyType === "our",
     ).length;
     return [
-      { label: "维保方总数", value: total },
-      { label: "原厂联系人", value: vendor },
-      { label: "合作维保方", value: partner },
+      { label: t.stats.total, value: total },
+      { label: t.stats.vendor, value: vendor },
+      { label: t.stats.partner, value: partner },
     ];
-  }, [parties]);
+  }, [parties, t.stats]);
 
   function openCreate() {
     setEditingId(null);
@@ -142,13 +281,13 @@ export function MaintenanceParties() {
 
   async function submit() {
     if (!form.name.trim()) {
-      setError("请输入维保方名称");
+      setError(t.errors.nameRequired);
       return;
     }
     if (form.phone.trim()) {
       const phoneRe = /^[0-9+()\-\s]{7,32}$/;
       if (!phoneRe.test(form.phone.trim())) {
-        setError("联系电话格式不正确");
+        setError(t.errors.phoneInvalid);
         return;
       }
     }
@@ -171,8 +310,24 @@ export function MaintenanceParties() {
       setDialogOpen(false);
       await load();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "保存失败";
+      const msg = e instanceof Error ? e.message : t.errors.saveFailed;
       setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteParty(party: Party) {
+    if (!party.id) return;
+    const name = party.name || `#${party.id}`;
+    if (!window.confirm(`确认删除维保方「${name}」？`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.delete(`/maintenance-parties/${party.id}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errors.deleteFailed);
     } finally {
       setSaving(false);
     }
@@ -182,17 +337,17 @@ export function MaintenanceParties() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">维保方目录</h1>
-          <p className="text-muted-foreground mt-1">管理原厂联系人和合作维保方</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{t.title}</h1>
+          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
+            {t.actions.refresh}
           </Button>
           <Button onClick={openCreate}>
             <Plus className="w-4 h-4 mr-2" />
-            新增维保方
+            {t.actions.create}
           </Button>
         </div>
       </div>
@@ -200,7 +355,7 @@ export function MaintenanceParties() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>重试</Button>
+          <Button variant="ghost" size="sm" onClick={load}>{t.actions.retry}</Button>
         </div>
       )}
 
@@ -224,19 +379,19 @@ export function MaintenanceParties() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索名称、电话、服务范围..."
+                placeholder={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="类型筛选" />
+                <SelectValue placeholder={t.filters.typePlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部类型</SelectItem>
-                <SelectItem value="vendor_contact">原厂联系人</SelectItem>
-                <SelectItem value="our_maintenance">合作维保方</SelectItem>
+                <SelectItem value="all">{t.filters.all}</SelectItem>
+                <SelectItem value="vendor_contact">{t.filters.vendor}</SelectItem>
+                <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -246,7 +401,7 @@ export function MaintenanceParties() {
                 setTypeFilter("all");
               }}
             >
-              重置
+              {t.actions.reset}
             </Button>
           </div>
         </CardContent>
@@ -254,19 +409,19 @@ export function MaintenanceParties() {
 
       <Card>
         <CardHeader>
-          <CardTitle>维保方列表 ({filtered.length})</CardTitle>
+          <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">暂无维保方资料</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
           ) : (
             <div className="space-y-3">
               {filtered.map((p) => {
-                const typeLabel = TYPE_LABELS[p.partyType || ""] || p.partyType || "-";
+                const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
                 return (
                   <div
                     key={p.id}
@@ -276,28 +431,32 @@ export function MaintenanceParties() {
                       <Building2 className="w-5 h-5 text-primary" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="font-medium">{p.name || "-"}</span>
+                          <span className="font-medium">{p.name || t.misc.unknown}</span>
                           <Badge variant={TYPE_VARIANT[p.partyType || ""] || "secondary"}>
                             {typeLabel}
                           </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          联系人：{p.contact || "-"} · 电话：{p.phone || "-"}
+                          {`${t.dialog.contact}：${p.contact || t.misc.unknown} · ${t.dialog.phone}：${p.phone || t.misc.unknown}`}
                         </div>
                         {p.serviceScope && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            服务范围：{p.serviceScope}
+                            {`${t.dialog.serviceScope}：${p.serviceScope}`}
                           </div>
                         )}
                       </div>
                       <div className="text-right hidden md:block">
-                        <div className="text-xs text-muted-foreground">最近更新</div>
+                        <div className="text-xs text-muted-foreground">{t.list.updatedAt}</div>
                         <div className="text-sm">{formatDate(p.updatedAt)}</div>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
-                        编辑
+                        {t.actions.edit}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteParty(p)} disabled={saving}>
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        {t.actions.delete}
                       </Button>
                     </div>
                   </div>
@@ -311,75 +470,75 @@ export function MaintenanceParties() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>{editingId ? "编辑维保方" : "新增维保方"}</DialogTitle>
-            <DialogDescription>填写维保方基础信息，提交后保存到系统</DialogDescription>
+            <DialogTitle>{editingId ? t.dialog.editTitle : t.dialog.createTitle}</DialogTitle>
+            <DialogDescription>{t.dialog.description}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>维保方名称 *</Label>
+              <Label>{t.dialog.name}</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="例如 Dell EMC 原厂技术支持"
+                placeholder={t.dialog.namePlaceholder}
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>联系人</Label>
+                <Label>{t.dialog.contact}</Label>
                 <Input
                   value={form.contact}
                   onChange={(e) => setForm({ ...form, contact: e.target.value })}
-                  placeholder="联系人姓名"
+                  placeholder={t.dialog.contactPlaceholder}
                 />
               </div>
               <div className="space-y-2">
-                <Label>联系电话</Label>
+                <Label>{t.dialog.phone}</Label>
                 <Input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="支持数字、加号、括号、横线、空格，长度 7-32"
+                  placeholder={t.dialog.phonePlaceholder}
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>类型</Label>
+              <Label>{t.dialog.type}</Label>
               <Select
                 value={form.partyType}
                 onValueChange={(v) => setForm({ ...form, partyType: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择类型" />
+                  <SelectValue placeholder={t.dialog.typePlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="vendor_contact">原厂联系人</SelectItem>
-                  <SelectItem value="our_maintenance">合作维保方</SelectItem>
+                  <SelectItem value="vendor_contact">{t.filters.vendor}</SelectItem>
+                  <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>服务范围</Label>
+              <Label>{t.dialog.serviceScope}</Label>
               <Input
                 value={form.serviceScope}
                 onChange={(e) => setForm({ ...form, serviceScope: e.target.value })}
-                placeholder="例如 服务器、存储、网络设备"
+                placeholder={t.dialog.serviceScopePlaceholder}
               />
             </div>
             <div className="space-y-2">
-              <Label>备注</Label>
+              <Label>{t.dialog.remark}</Label>
               <Textarea
                 value={form.remark}
                 onChange={(e) => setForm({ ...form, remark: e.target.value })}
                 rows={2}
-                placeholder="补充说明"
+                placeholder={t.dialog.remarkPlaceholder}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              取消
+              {t.actions.cancel}
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? "保存中…" : editingId ? "保存修改" : "保存维保方"}
+              {saving ? t.actions.saving : editingId ? t.actions.saveEdit : t.actions.save}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -46,6 +46,7 @@ function orderPayload(row) {
     timesheetSalesperson: row.timesheet_salesperson,
     priority: row.priority,
     status: publicStatus(row.status),
+    workflowStatus: row.status,
     issueDescription: row.issue_description,
     engineerName: row.engineer_name,
     inspectionScheduleId: row.inspection_schedule_id,
@@ -2072,6 +2073,113 @@ async function update(req, res) {
   res.status(204).end()
 }
 
+async function assign(req, res) {
+  await ensureServiceOrderInspectionColumns()
+  const order = await getOrder(req.params.id)
+  if (!order) {
+    throw notFound('服务单不存在')
+  }
+  assertEditable(order)
+
+  const primaryEngineerId = Number(req.body?.primaryEngineerId || req.body?.engineerId || 0)
+  const engineerIds = [...new Set([primaryEngineerId, ...(Array.isArray(req.body?.engineerIds) ? req.body.engineerIds : [])].map(Number).filter(Boolean))]
+  if (!primaryEngineerId || !engineerIds.length) {
+    throw badRequest('请选择派发工程师')
+  }
+  const plannedStartAt = String(req.body?.plannedStartAt || order.planned_start_at || '').trim() || null
+  const plannedEndAt = String(req.body?.plannedEndAt || order.planned_end_at || '').trim() || null
+  const note = String(req.body?.note || '').trim()
+  if (plannedStartAt && plannedEndAt && plannedEndAt < plannedStartAt) {
+    throw badRequest('计划结束时间不能早于开始时间')
+  }
+
+  await transaction(async (connection) => {
+    const found = idParams(engineerIds, 'engineerId')
+    const [engineerRows] = await connection.execute(
+      `SELECT id
+       FROM users
+       WHERE id IN (${found.placeholders})
+         AND role IN ('engineer', 'engineering_supervisor')
+         AND status = 'active'`,
+      found.params,
+    )
+    if (engineerRows.length !== engineerIds.length) {
+      throw badRequest('派发工程师不存在或未启用')
+    }
+    await connection.execute(
+      `UPDATE service_orders
+       SET assigned_engineer_id = :primaryEngineerId,
+           target_engineer_id = :primaryEngineerId,
+           status = CASE WHEN status IN ('draft', 'pending_confirmation', 'rejected') THEN 'assigned' ELSE status END,
+           planned_start_at = :plannedStartAt,
+           planned_end_at = :plannedEndAt,
+           internal_note = CASE
+             WHEN :note = '' THEN internal_note
+             WHEN internal_note IS NULL OR internal_note = '' THEN :note
+             ELSE CONCAT(internal_note, '\n', :note)
+           END
+       WHERE id = :id`,
+      { id: req.params.id, primaryEngineerId, plannedStartAt, plannedEndAt, note },
+    )
+    await replaceOrderEngineers(connection, req.params.id, engineerIds, req.user.id)
+    await writeAudit(connection, req.user.id, req.params.id, 'assign', {
+      previousStatus: order.status,
+      primaryEngineerId,
+      engineerIds,
+      plannedStartAt,
+      plannedEndAt,
+    })
+  })
+
+  res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
+}
+
+async function transition(req, res) {
+  await ensureServiceOrderInspectionColumns()
+  const order = await getOrder(req.params.id)
+  if (!order) {
+    throw notFound('服务单不存在')
+  }
+  const status = String(req.body?.status || '').trim()
+  const reason = String(req.body?.reason || '').trim()
+  const allowedStatuses = new Set(['draft', 'assigned', 'in_progress', 'submitted', 'approved', 'archived', 'cancelled'])
+  if (!allowedStatuses.has(status)) {
+    throw badRequest('目标状态不正确')
+  }
+  if (order.status === 'archived' && status !== 'archived') {
+    throw badRequest('已归档服务单不允许变更状态')
+  }
+  if (order.status === status) {
+    res.json({ item: orderPayload((await attachEngineers([order]))[0]) })
+    return
+  }
+
+  await transaction(async (connection) => {
+    await connection.execute(
+      `UPDATE service_orders
+       SET status = :status,
+           submitted_at = CASE WHEN :status = 'submitted' THEN COALESCE(submitted_at, CURRENT_TIMESTAMP) ELSE submitted_at END,
+           reviewed_by = CASE WHEN :status IN ('approved', 'archived') THEN :actorId ELSE reviewed_by END,
+           reviewed_at = CASE WHEN :status IN ('approved', 'archived') THEN CURRENT_TIMESTAMP ELSE reviewed_at END,
+           archived_at = CASE WHEN :status = 'archived' THEN CURRENT_TIMESTAMP ELSE archived_at END,
+           internal_note = CASE
+             WHEN :reason = '' THEN internal_note
+             WHEN internal_note IS NULL OR internal_note = '' THEN :reason
+             ELSE CONCAT(internal_note, '\n', :reason)
+           END
+       WHERE id = :id`,
+      { id: req.params.id, status, actorId: req.user.id, reason },
+    )
+    await writeAudit(connection, req.user.id, req.params.id, 'transition', {
+      from: order.status,
+      to: status,
+      reason,
+    })
+  })
+
+  res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
+}
+
 async function confirmInspectionOrder(req, res) {
   await ensureServiceOrderInspectionColumns()
   const order = await getOrder(req.params.id)
@@ -2221,6 +2329,8 @@ module.exports = {
   saveSelfReportDraft,
   deleteSelfReportDraft,
   cancelByEngineer,
+  assign,
+  transition,
   confirmInspectionOrder,
   update,
   bulkDelete,

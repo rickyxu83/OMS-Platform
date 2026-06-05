@@ -10,5 +10,6 @@ router.get('/', controller.list)
 router.post('/', requireRoles(...deviceEditRoles), controller.create)
 router.get('/:id', controller.detail)
 router.put('/:id', requireRoles(...deviceEditRoles), controller.update)
+router.delete('/:id', requireRoles(...deviceEditRoles), controller.remove)
 
 module.exports = router

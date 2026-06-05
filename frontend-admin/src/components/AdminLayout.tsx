@@ -211,6 +211,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const strings = STRINGS[lang];
+  const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -315,7 +316,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <div className="p-4 border-t border-sidebar-border/50 bg-sidebar-accent/10">
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{strings.brand.version}</span>
-              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">v2.4.8</Badge>
+              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
             </div>
           </div>
         </div>

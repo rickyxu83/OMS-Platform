@@ -22,6 +22,7 @@ interface Order {
   displayId?: string;
   displayStatus?: string;
   displayTitle?: string;
+  workflowStatus?: string;
   status: string;
   customer?: { name?: string } | string;
   deviceName?: string;
@@ -42,6 +43,32 @@ interface CustomerPoint {
   contact?: string;
   phone?: string;
   level?: "peak" | "high" | "active" | "quiet";
+}
+
+function csvCell(value: unknown) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: unknown[][]) {
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const format = (date: Date) => date.toISOString().slice(0, 10);
+  return { startDate: format(start), endDate: format(end), month: format(start).slice(0, 7) };
 }
 
 const I18N = {
@@ -79,9 +106,12 @@ const I18N = {
     },
     status: {
       draft: "草稿",
+      assigned: "已派发",
       in_progress: "进行中",
       submitted: "已结案",
       pending_confirmation: "待确认",
+      approved: "已审核",
+      archived: "已归档",
       cancelled: "已作废",
       completed: "已完成",
     },
@@ -120,9 +150,12 @@ const I18N = {
     },
     status: {
       draft: "草稿",
+      assigned: "已派發",
       in_progress: "進行中",
       submitted: "已結案",
       pending_confirmation: "待確認",
+      approved: "已審核",
+      archived: "已歸檔",
       cancelled: "已作廢",
       completed: "已完成",
     },
@@ -131,15 +164,22 @@ const I18N = {
 
 const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
   draft: "secondary",
+  assigned: "warning",
   in_progress: "purple",
   submitted: "success",
   pending_confirmation: "warning",
+  approved: "success",
+  archived: "secondary",
   cancelled: "destructive",
   completed: "success",
 };
 
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
+}
+
+function getWorkflowStatus(order: Order) {
+  return order.workflowStatus || order.status;
 }
 
 export function Dashboard() {
@@ -151,6 +191,8 @@ export function Dashboard() {
   const [mapPoints, setMapPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,15 +241,65 @@ export function Dashboard() {
     { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
   ];
 
-  const recentOrders = orders.slice(0, 5).map((o) => ({
-    id: o.orderNo || `TK-${o.id}`,
-    customer: typeof o.customer === "string" ? o.customer : o.customer?.name || o.deviceName || t.recent.unnamedCustomer,
-    status: o.status,
-    statusLabel: normalizeStatus(o.status, t.status),
-    title: o.displayTitle || o.deviceName || t.recent.serviceRecord,
-    engineer: o.engineerName || t.recent.unnamedEngineer,
-    date: o.createdAt ? o.createdAt.split(" ")[0] : "",
-  }));
+  const recentOrders = orders.slice(0, 5).map((o) => {
+    const status = getWorkflowStatus(o);
+    return {
+      id: o.orderNo || `TK-${o.id}`,
+      customer: typeof o.customer === "string" ? o.customer : o.customer?.name || o.deviceName || t.recent.unnamedCustomer,
+      status,
+      statusLabel: normalizeStatus(status, t.status),
+      title: o.displayTitle || o.deviceName || t.recent.serviceRecord,
+      engineer: o.engineerName || t.recent.unnamedEngineer,
+      date: o.createdAt ? o.createdAt.split(" ")[0] : "",
+    };
+  });
+
+  function submitSearch() {
+    const keyword = searchQuery.trim();
+    if (!keyword) return;
+    navigate(`/service-orders?keyword=${encodeURIComponent(keyword)}`);
+  }
+
+  function navigateCity(city: string) {
+    navigate(`/customers?keyword=${encodeURIComponent(city)}`);
+  }
+
+  async function exportMonthlyReport() {
+    if (exporting) return;
+    setExporting(true);
+    setError("");
+    try {
+      const { startDate, endDate, month } = currentMonthRange();
+      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${startDate}&endDate=${endDate}&engineerId=all`);
+      const rows = data?.items || [];
+      downloadCsv(`运营月报-${month}.csv`, [
+        ["月份", month],
+        ["今日服务总数", summary.todayTotal ?? 0],
+        ["本月服务总数", summary.monthTotal ?? 0],
+        ["本月客户数量", summary.monthCustomers ?? 0],
+        ["本月工程师拜访数", summary.monthEngineerVisits ?? 0],
+        [],
+        ["工程师", "日期", "星期", "工作性质", "类别", "客户名称", "专案/产品", "工作内容", "进度", "备注", "工单号"],
+        ...rows.map((item: any) => [
+          item.engineerName,
+          item.date,
+          item.weekday,
+          item.workNature,
+          item.category,
+          item.customerName,
+          item.productName,
+          item.workContent,
+          item.progress,
+          item.remark,
+          item.orderNo,
+        ]),
+      ]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errors.loadFailed);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -219,9 +311,24 @@ export function Dashboard() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input className="pl-9 w-64 bg-card" placeholder={t.searchPlaceholder} />
+            <Input
+              className="pl-9 w-64 bg-card"
+              placeholder={t.searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitSearch();
+              }}
+            />
           </div>
-          <Button>{t.exportReport}</Button>
+          <Button variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
+            <Search className="w-4 h-4 mr-2" />
+            搜索
+          </Button>
+          <Button onClick={exportMonthlyReport} disabled={exporting}>
+            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            {t.exportReport}
+          </Button>
         </div>
       </div>
 
@@ -265,9 +372,9 @@ export function Dashboard() {
               <CardDescription>{t.map.description}</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Badge variant="secondary" className="cursor-pointer">{t.map.suzhou}</Badge>
-              <Badge variant="outline" className="cursor-pointer">{t.map.wuxi}</Badge>
-              <Badge variant="outline" className="cursor-pointer">{t.map.kunshan}</Badge>
+              <Badge variant="secondary" className="cursor-pointer" onClick={() => navigateCity(t.map.suzhou)}>{t.map.suzhou}</Badge>
+              <Badge variant="outline" className="cursor-pointer" onClick={() => navigateCity(t.map.wuxi)}>{t.map.wuxi}</Badge>
+              <Badge variant="outline" className="cursor-pointer" onClick={() => navigateCity(t.map.kunshan)}>{t.map.kunshan}</Badge>
             </div>
           </CardHeader>
           <CardContent className="flex-1 min-h-[400px] p-0">

@@ -69,6 +69,7 @@ export function Login() {
   };
 
   const t = i18n[lang];
+  const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +209,7 @@ export function Login() {
           <div className="mt-10 pt-8 border-t border-slate-100/80">
             <div className="flex items-center justify-center gap-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.version}</span>
-              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-50 border-slate-300">v2.4.8</Badge>
+              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-50 border-slate-300">{appVersion}</Badge>
             </div>
           </div>
         </div>

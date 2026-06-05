@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2 } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,13 @@ interface MaintenanceParty {
   id: string | number;
   name?: string;
   partyType?: string;
+}
+
+interface ModelSuggestion {
+  canonicalModel?: string;
+  partNumber?: string;
+  brand?: string;
+  category?: string;
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
@@ -102,6 +109,9 @@ export function Devices() {
   const [customerFilter, setCustomerFilter] = useState("all");
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelTimer, setModelTimer] = useState<number | null>(null);
   const [form, setForm] = useState({
     customerId: "",
     name: "",
@@ -201,6 +211,7 @@ export function Devices() {
       status: "active",
       remark: "",
     });
+    setModelSuggestions([]);
     setDialogOpen(true);
   }
 
@@ -220,6 +231,7 @@ export function Devices() {
       status: device.status || "active",
       remark: device.remark || "",
     });
+    setModelSuggestions([]);
     setDialogOpen(true);
   }
 
@@ -260,6 +272,53 @@ export function Devices() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "保存失败";
       setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function scheduleModelSearch(value: string) {
+    if (modelTimer) window.clearTimeout(modelTimer);
+    const keyword = value.trim();
+    if (keyword.length < 2) {
+      setModelSuggestions([]);
+      return;
+    }
+    const timerId = window.setTimeout(async () => {
+      setModelLoading(true);
+      try {
+        const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`);
+        setModelSuggestions((data?.items || []) as ModelSuggestion[]);
+      } catch {
+        setModelSuggestions([]);
+      } finally {
+        setModelLoading(false);
+      }
+    }, 250);
+    setModelTimer(timerId);
+  }
+
+  function applyModelSuggestion(suggestion: ModelSuggestion) {
+    setForm((prev) => ({
+      ...prev,
+      model: suggestion.canonicalModel || prev.model,
+      pn: suggestion.partNumber || prev.pn,
+    }));
+    setModelSuggestions([]);
+  }
+
+  async function deleteDevice(device: Device) {
+    if (!device.id) return;
+    const label = device.name || device.model || `#${device.id}`;
+    if (!window.confirm(`确认删除设备「${label}」？已有工单或巡检计划引用的设备不能删除。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.delete(`/devices/${device.id}`);
+      if (expandedDeviceId === device.id) setExpandedDeviceId(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除失败");
     } finally {
       setSaving(false);
     }
@@ -467,6 +526,10 @@ export function Devices() {
                           <Button variant="outline" size="sm" onClick={() => openEdit(device)}>
                             编辑设备
                           </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteDevice(device)} disabled={saving}>
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            删除设备
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -511,13 +574,40 @@ export function Devices() {
                   placeholder="例如 精密空调-01"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <Label>设备型号</Label>
                 <Input
                   value={form.model}
-                  onChange={(e) => setForm({ ...form, model: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, model: e.target.value });
+                    scheduleModelSearch(e.target.value);
+                  }}
                   placeholder="例如 PowerEdge R740"
                 />
+                {(modelLoading || modelSuggestions.length > 0) && (
+                  <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
+                    {modelLoading ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+                      </div>
+                    ) : modelSuggestions.map((suggestion, index) => (
+                      <button
+                        key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
+                        onClick={() => applyModelSuggestion(suggestion)}
+                      >
+                        <Check className="w-4 h-4 mt-0.5 text-primary" />
+                        <span>
+                          <span className="font-medium">{suggestion.canonicalModel}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>部件号 PN</Label>

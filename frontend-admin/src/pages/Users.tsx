@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface User {
   id: string | number;
@@ -52,6 +53,7 @@ const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "
 
 const STATUS_VARIANT: Record<string, "success" | "secondary"> = {
   active: "success",
+  disabled: "secondary",
   inactive: "secondary",
 };
 
@@ -65,6 +67,7 @@ function formatDateTime(value?: string) {
 }
 
 export function Users() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -73,12 +76,14 @@ export function Users() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | number | null>(null);
   const [form, setForm] = useState({
     username: "",
     realName: "",
     password: "",
     role: "engineer",
     phone: "",
+    status: "active",
   });
 
   async function load() {
@@ -87,6 +92,7 @@ export function Users() {
     try {
       const params = new URLSearchParams();
       if (roleFilter !== "all") params.set("role", roleFilter);
+      if (statusFilter !== "all") params.set("status", statusFilter);
       const query = params.toString();
       const data = await api.get(`/users${query ? `?${query}` : ""}`);
       setUsers((data?.items || []) as User[]);
@@ -101,7 +107,7 @@ export function Users() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleFilter]);
+  }, [roleFilter, statusFilter]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -127,12 +133,27 @@ export function Users() {
   }, [users]);
 
   function openCreate() {
+    setEditingUserId(null);
     setForm({
       username: "",
       realName: "",
       password: "",
       role: "engineer",
       phone: "",
+      status: "active",
+    });
+    setDialogOpen(true);
+  }
+
+  function openEdit(user: User) {
+    setEditingUserId(user.id);
+    setForm({
+      username: user.username || "",
+      realName: user.realName || user.name || "",
+      password: "",
+      role: user.role || "engineer",
+      phone: user.phone || "",
+      status: user.status || "active",
     });
     setDialogOpen(true);
   }
@@ -146,25 +167,30 @@ export function Users() {
       setError("请输入姓名");
       return;
     }
-    if (!form.password) {
+    if (!editingUserId && !form.password) {
       setError("请输入密码");
       return;
     }
     setSaving(true);
     setError("");
     try {
-      await api.post("/users", {
+      const payload: Record<string, unknown> = {
         username: form.username.trim(),
         realName: form.realName.trim(),
-        password: form.password,
         role: form.role,
-        phone: form.phone.trim() || undefined,
-        status: "active",
-      });
+        phone: form.phone.trim() || null,
+        status: form.status,
+      };
+      if (form.password) payload.password = form.password;
+      if (editingUserId) {
+        await api.put(`/users/${editingUserId}`, payload);
+      } else {
+        await api.post("/users", payload);
+      }
       setDialogOpen(false);
       await load();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "新增失败";
+      const msg = e instanceof Error ? e.message : editingUserId ? "保存失败" : "新增失败";
       setError(msg);
     } finally {
       setSaving(false);
@@ -173,6 +199,12 @@ export function Users() {
 
   async function toggleStatus(user: User) {
     if (!user.id) return;
+    if (String(currentUser?.id) === String(user.id)) {
+      setError("不能停用或恢复当前登录账号");
+      return;
+    }
+    const action = user.status === "active" ? "停用" : "启用";
+    if (!window.confirm(`确认${action}成员「${displayName(user)}」？`)) return;
     setSaving(true);
     setError("");
     try {
@@ -261,7 +293,7 @@ export function Users() {
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
                 <SelectItem value="active">在岗</SelectItem>
-                <SelectItem value="inactive">离岗</SelectItem>
+                <SelectItem value="disabled">离岗</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -335,8 +367,17 @@ export function Users() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleStatus(user)}
+                        onClick={() => openEdit(user)}
                         disabled={saving}
+                      >
+                        <Pencil className="w-4 h-4 mr-1" />
+                        编辑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleStatus(user)}
+                        disabled={saving || String(currentUser?.id) === String(user.id)}
                       >
                         {user.status === "active" ? "停用" : "启用"}
                       </Button>
@@ -352,8 +393,8 @@ export function Users() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>新增成员</DialogTitle>
-            <DialogDescription>填写账号基础信息，保存后状态默认为在岗</DialogDescription>
+            <DialogTitle>{editingUserId ? "编辑成员" : "新增成员"}</DialogTitle>
+            <DialogDescription>{editingUserId ? "修改成员资料、角色、状态；填写密码则同步重置密码" : "填写账号基础信息，保存后状态默认为在岗"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -374,12 +415,12 @@ export function Users() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>密码 *</Label>
+                <Label>{editingUserId ? "重置密码（留空不修改）" : "密码 *"}</Label>
                 <Input
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="登录密码"
+                  placeholder={editingUserId ? "填写则重置登录密码" : "登录密码"}
                 />
               </div>
               <div className="space-y-2">
@@ -394,6 +435,18 @@ export function Users() {
                         {label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>状态</Label>
+                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">在岗</SelectItem>
+                    <SelectItem value="disabled">离岗</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -412,7 +465,7 @@ export function Users() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? "保存中…" : "立即创建"}
+              {saving ? "保存中…" : editingUserId ? "保存修改" : "立即创建"}
             </Button>
           </DialogFooter>
         </DialogContent>

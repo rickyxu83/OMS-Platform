@@ -217,10 +217,31 @@ async function update(req, res) {
   res.status(204).end()
 }
 
+async function remove(req, res) {
+  const rows = await query('SELECT id, name FROM devices WHERE id = :id LIMIT 1', { id: req.params.id })
+  if (!rows[0]) {
+    throw notFound('设备不存在')
+  }
+
+  const [serviceOrders, schedules] = await Promise.all([
+    query('SELECT COUNT(*) AS total FROM service_orders WHERE device_id = :id', { id: req.params.id }),
+    query('SELECT COUNT(*) AS total FROM inspection_schedules WHERE device_id = :id', { id: req.params.id }),
+  ])
+  const serviceOrderCount = Number(serviceOrders[0]?.total || 0)
+  const scheduleCount = Number(schedules[0]?.total || 0)
+  if (serviceOrderCount || scheduleCount) {
+    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划引用，不能删除`)
+  }
+
+  await query('DELETE FROM devices WHERE id = :id', { id: req.params.id })
+  res.status(204).end()
+}
+
 module.exports = {
   list,
   create,
   detail,
   update,
+  remove,
   normalizeMaintenanceType,
 }

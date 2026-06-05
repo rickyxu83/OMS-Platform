@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Loader2, Search } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Search, Trash2, Play } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +89,7 @@ export function InspectionSchedules() {
   const [cadenceFilter, setCadenceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -283,6 +284,37 @@ export function InspectionSchedules() {
     }
   }
 
+  async function generateDueSchedules() {
+    setSaving(true);
+    setError("");
+    setGenerationResult(null);
+    try {
+      const data = await api.post("/inspection-schedules/generate-due", {});
+      setGenerationResult({ generated: data?.generated ?? 0, skipped: data?.skipped ?? 0 });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "生成到期巡检单失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteSchedule(schedule: Schedule) {
+    if (!schedule.id) return;
+    const name = schedule.name || schedule.customerName || `#${schedule.id}`;
+    if (!window.confirm(`确认删除巡检计划「${name}」？历史工单不会被删除。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.delete(`/inspection-schedules/${schedule.id}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -291,11 +323,15 @@ export function InspectionSchedules() {
           <p className="text-muted-foreground mt-1">管理周期性巡检任务</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
+          <Button variant="outline" onClick={load} disabled={saving}>
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button onClick={openCreate}>
+          <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+            生成到期巡检单
+          </Button>
+          <Button onClick={openCreate} disabled={saving}>
             <Plus className="w-4 h-4 mr-2" />
             新增计划
           </Button>
@@ -306,6 +342,12 @@ export function InspectionSchedules() {
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
           <Button variant="ghost" size="sm" onClick={load}>重试</Button>
+        </div>
+      )}
+
+      {generationResult && (
+        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm">
+          已生成 {generationResult.generated ?? 0} 张待确认巡检工单，跳过 {generationResult.skipped ?? 0} 项；请到工单处理页确认并派发。
         </div>
       )}
 
@@ -424,6 +466,10 @@ export function InspectionSchedules() {
                     <div className="flex gap-2">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
                         编辑
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteSchedule(s)} disabled={saving}>
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        删除
                       </Button>
                     </div>
                   </div>
