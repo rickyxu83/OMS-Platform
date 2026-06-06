@@ -10,6 +10,7 @@ router.put('/me', requireRoles('engineer', 'admin', 'assistant', 'dispatcher', '
 router.post('/me/avatar', requireRoles('engineer', 'admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales'), controller.avatarUploadMiddleware, controller.uploadAvatar)
 router.delete('/me/avatar', requireRoles('engineer', 'admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales'), controller.removeAvatar)
 router.get('/engineers', requireRoles('admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales', 'engineer'), controller.listEngineers)
+router.get('/salespeople', requireRoles('admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales'), controller.listSalespeople)
 router.post('/', requireRoles('admin'), controller.create)
 router.put('/:id', requireRoles('admin'), controller.update)
 router.delete('/:id', requireRoles('admin'), controller.remove)

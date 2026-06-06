@@ -7,6 +7,7 @@ const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
+const salespersonRoles = new Set(['sales', 'sales_supervisor'])
 const publicColumns = 'id, username, real_name, phone, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(['admin', 'assistant', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher'])
@@ -133,6 +134,16 @@ async function listEngineers(req, res) {
      ORDER BY real_name ASC`,
   )
   res.json({ items: rows.map(userPayload) })
+}
+
+async function listSalespeople(req, res) {
+  const rows = await query(
+    `SELECT ${publicColumns}
+     FROM users
+     WHERE role IN ('sales', 'sales_supervisor') AND status = 'active'
+     ORDER BY real_name ASC, username ASC`,
+  )
+  res.json({ items: rows.map(userPayload).filter((user) => salespersonRoles.has(user.role)) })
 }
 
 async function create(req, res) {
@@ -342,6 +353,7 @@ module.exports = {
   updateMe,
   list,
   listEngineers,
+  listSalespeople,
   create,
   update,
   remove,

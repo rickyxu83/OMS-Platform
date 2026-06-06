@@ -65,6 +65,13 @@ interface GeoCandidate {
   source?: "customer" | "map";
 }
 
+interface SalespersonOption {
+  id: string | number;
+  username?: string;
+  realName?: string;
+  role?: string;
+}
+
 interface CustomerForm {
   id?: string | number;
   name: string;
@@ -145,7 +152,7 @@ const I18N = {
       address: "客户地址",
       namePlaceholder: "请输入企业全称",
       codePlaceholder: "例如 SZGY-001（可留空）",
-      salespersonPlaceholder: "请输入对应销售姓名",
+      salespersonPlaceholder: "请选择对应销售",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
       addressPlaceholder: "详细至街道门牌号",
@@ -237,7 +244,7 @@ const I18N = {
       address: "客戶地址",
       namePlaceholder: "請輸入企業全稱",
       codePlaceholder: "例如 SZGY-001（可留空）",
-      salespersonPlaceholder: "請輸入對應銷售姓名",
+      salespersonPlaceholder: "請選擇對應銷售",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
       addressPlaceholder: "詳細至街道路牌號",
@@ -324,6 +331,7 @@ export function Customers() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
 
   const [candidates, setCandidates] = useState<GeoCandidate[]>([]);
   const [showCandidates, setShowCandidates] = useState(false);
@@ -333,6 +341,15 @@ export function Customers() {
   const [searchTimer, setSearchTimer] = useState<number | null>(null);
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
+  const salespersonOptions = useMemo(() => {
+    const options = salespeople
+      .map((user) => (user.realName || user.username || "").trim())
+      .filter(Boolean);
+    if (form.salesperson.trim() && !options.includes(form.salesperson.trim())) {
+      options.unshift(form.salesperson.trim());
+    }
+    return options;
+  }, [form.salesperson, salespeople]);
 
   async function load() {
     setLoading(true);
@@ -358,6 +375,12 @@ export function Customers() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t.errors.loadFailed]);
+
+  useEffect(() => {
+    api.get("/users/salespeople")
+      .then((data) => setSalespeople((data?.items || []) as SalespersonOption[]))
+      .catch(() => setSalespeople([]));
+  }, []);
 
   useEffect(() => {
     const keyword = searchParams.get("keyword") || searchParams.get("city") || "";
@@ -834,12 +857,17 @@ export function Customers() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-salesperson">{t.dialog.salesperson}</Label>
-                <Input
+                <select
                   id="cust-salesperson"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={form.salesperson}
                   onChange={(e) => setForm({ ...form, salesperson: e.target.value })}
-                  placeholder={t.dialog.salespersonPlaceholder}
-                />
+                >
+                  <option value="">{t.dialog.salespersonPlaceholder}</option>
+                  {salespersonOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-level">{t.dialog.level}</Label>
