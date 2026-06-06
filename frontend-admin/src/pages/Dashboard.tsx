@@ -124,9 +124,9 @@ function saveReportRange(startDate: string, endDate: string) {
 
 function reportFilename(startDate: string, endDate: string) {
   if (startDate.slice(0, 7) === endDate.slice(0, 7)) {
-    return `运营月报-${startDate.slice(0, 7)}.csv`;
+    return `运营汇总-${startDate.slice(0, 7)}.csv`;
   }
-  return `运营报表-${startDate}至${endDate}.csv`;
+  return `运营汇总-${startDate}至${endDate}.csv`;
 }
 
 const I18N = {
@@ -134,10 +134,10 @@ const I18N = {
     title: "运营总览",
     subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
     searchPlaceholder: "快速搜索工单或客户...",
-    exportReport: "导出运营月报",
+    exportReport: "导出运营汇总",
     reportDialog: {
-      title: "导出运营月报",
-      description: "选择本次报表统计日期，导出成功后会记住结束日期，下次自动从下一天开始。",
+      title: "导出运营汇总",
+      description: "选择本次汇总统计日期，导出成功后会记住结束日期，下次自动从下一天开始。",
       startDate: "开始日期",
       endDate: "结束日期",
       cancel: "取消",
@@ -187,10 +187,10 @@ const I18N = {
     title: "運營總覽",
     subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
     searchPlaceholder: "快速搜尋工單或客戶...",
-    exportReport: "匯出營運月報",
+    exportReport: "匯出營運彙總",
     reportDialog: {
-      title: "匯出營運月報",
-      description: "選擇本次報表統計日期，匯出成功後會記住結束日期，下次自動從下一天開始。",
+      title: "匯出營運彙總",
+      description: "選擇本次彙總統計日期，匯出成功後會記住結束日期，下次自動從下一天開始。",
       startDate: "開始日期",
       endDate: "結束日期",
       cancel: "取消",
