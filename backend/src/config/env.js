@@ -29,6 +29,7 @@ if (nodeEnv === 'production' && (!process.env.JWT_SECRET || jwtSecret === jwtPla
   throw new Error('JWT_SECRET must be set to a non-placeholder value in production')
 }
 
+const aiProvider = process.env.AI_PROVIDER || 'anthropic'
 const env = {
   rootDir,
   nodeEnv,

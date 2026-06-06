@@ -57,6 +57,9 @@ function extractTextFromProviderResponse(data) {
   if (Array.isArray(data?.choices?.[0]?.message?.content)) {
     return data.choices[0].message.content.map((part) => part?.text || part?.content || '').join('\n')
   }
+  if (Array.isArray(data?.content)) {
+    return data.content.map((part) => part?.text || '').join('\n')
+  }
   if (typeof data?.output_text === 'string') return data.output_text
   if (typeof data?.text === 'string') return data.text
   return ''
@@ -126,7 +129,7 @@ function buildPrompt(payload) {
   ].join('\n')
 }
 
-async function callProvider(payload) {
+async function callCompatibleProvider(payload) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(env.ai.summaryTimeoutMs || 30000)))
   try {
@@ -159,6 +162,10 @@ async function callProvider(payload) {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+async function callProvider(payload) {
+  return callCompatibleProvider(payload)
 }
 
 async function generateTimesheetWorkSummary(payload) {

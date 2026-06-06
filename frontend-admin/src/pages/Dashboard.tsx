@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -48,27 +46,6 @@ interface CustomerPoint {
   level?: "peak" | "high" | "active" | "quiet";
 }
 
-interface OperationalReportItem {
-  id?: string | number;
-  orderNo?: string;
-  customerName?: string;
-  engineerName?: string;
-  serviceDate?: string;
-  serviceAt?: string;
-  date?: string;
-  weekday?: string;
-  workNature?: string;
-  serviceMode?: string;
-  category?: string;
-  productName?: string;
-  workContent?: string;
-  progress?: string;
-  remark?: string;
-  workHours?: number;
-  duration?: number;
-  source?: string;
-}
-
 interface WorkSummaryTheme {
   theme?: string;
   evidenceCount?: number;
@@ -101,278 +78,12 @@ function textValue(value: unknown, fallback = "-") {
   return text || fallback;
 }
 
-function reportServiceDate(item: OperationalReportItem) {
-  return item.date || item.serviceDate || item.serviceAt || "";
+function summaryList(items?: string[]) {
+  return Array.isArray(items) ? items.filter(Boolean) : [];
 }
 
-function reportWorkHours(item: OperationalReportItem) {
-  const value = Number(item.workHours ?? item.duration ?? 1);
-  return Number.isFinite(value) ? value : 0;
-}
-
-function reportSourceLabel(source?: string) {
-  return source === "service_order" ? "服务记录" : source === "manual" ? "手工记录" : textValue(source);
-}
-
-function buildGroupSummary(items: OperationalReportItem[], keyGetter: (item: OperationalReportItem) => string) {
-  const groups = new Map<string, { name: string; count: number; hours: number }>();
-  for (const item of items) {
-    const name = textValue(keyGetter(item), "未指定");
-    const current = groups.get(name) || { name, count: 0, hours: 0 };
-    current.count += 1;
-    current.hours += reportWorkHours(item);
-    groups.set(name, current);
-  }
-  return [...groups.values()].sort((a, b) => b.count - a.count || b.hours - a.hours || a.name.localeCompare(b.name, "zh-Hans-CN"));
-}
-
-function distinctCount(items: OperationalReportItem[], keyGetter: (item: OperationalReportItem) => string | undefined) {
-  const values = new Set(items.map((item) => keyGetter(item)?.trim()).filter(Boolean));
-  return values.size;
-}
-
-function reportFilename(startDate: string, endDate: string) {
-  if (startDate.slice(0, 7) === endDate.slice(0, 7)) {
-    return `运营汇总-${startDate.slice(0, 7)}.xlsx`;
-  }
-  return `运营汇总-${startDate}至${endDate}.xlsx`;
-}
-
-function addAiSummaryWorksheet(workbook: ExcelJS.Workbook, rangeLabel: string, workSummary?: WorkSummaryResponse | null) {
-  const sheet = workbook.addWorksheet("AI营运摘要", {
-    views: [{ state: "frozen", ySplit: 2 }],
-    pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
-  sheet.columns = [{ width: 20 }, { width: 88 }];
-  sheet.mergeCells("A1:B1");
-  sheet.getCell("A1").value = "AI 营运摘要";
-  sheet.getCell("A1").font = { size: 20, bold: true, color: { argb: "FFFFFFFF" } };
-  sheet.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-  sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
-  sheet.getRow(1).height = 32;
-
-  const appendRow = (label: string, value: string) => {
-    const row = sheet.addRow([label, value]);
-    row.getCell(1).font = { bold: true, color: { argb: "FF312E81" } };
-    row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
-    row.getCell(2).alignment = { vertical: "top", horizontal: "left", wrapText: true };
-    row.eachCell((cell) => {
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFE9D5FF" } },
-        left: { style: "thin", color: { argb: "FFE9D5FF" } },
-        bottom: { style: "thin", color: { argb: "FFE9D5FF" } },
-        right: { style: "thin", color: { argb: "FFE9D5FF" } },
-      };
-    });
-    row.height = Math.max(24, Math.min(120, Math.ceil(value.length / 45) * 18));
-  };
-
-  appendRow("统计范围", rangeLabel);
-  if (!workSummary?.available || !workSummary.summary) {
-    appendRow("生成状态", workSummary?.reason || "AI 摘要未生成");
-    return;
-  }
-
-  const summary = workSummary.summary;
-  appendRow("生成模型", [workSummary.provider, workSummary.usage?.model].filter(Boolean).join(" / ") || "AI");
-  appendRow("总体摘要", textValue(summary.executiveSummary, "记录未体现足够的可总结内容。"));
-  if (summary.keyThemes?.length) {
-    appendRow("重点主题", summary.keyThemes.map((item, index) => `${index + 1}. ${item.theme || "未命名主题"}${item.evidenceCount ? `（${item.evidenceCount} 条）` : ""}：${item.details || "-"}`).join("\n"));
-  }
-  if (summary.customerImpact?.length) appendRow("客户影响", summary.customerImpact.map((item, index) => `${index + 1}. ${item}`).join("\n"));
-  if (summary.riskSignals?.length) appendRow("风险信号", summary.riskSignals.map((item, index) => `${index + 1}. ${item}`).join("\n"));
-  if (summary.followUpRecommendations?.length) appendRow("后续建议", summary.followUpRecommendations.map((item, index) => `${index + 1}. ${item}`).join("\n"));
-  if (summary.coverageNotes) appendRow("覆盖说明", summary.coverageNotes);
-}
-
-async function downloadOperationalSummaryWorkbook(filename: string, rangeLabel: string, summary: Summary, items: OperationalReportItem[], workSummary?: WorkSummaryResponse | null) {
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Service Sheet RC";
-  workbook.created = new Date();
-  workbook.modified = new Date();
-
-  const totalHours = items.reduce((sum, item) => sum + reportWorkHours(item), 0);
-  const serviceRecordCount = items.filter((item) => item.source === "service_order").length;
-  const manualRecordCount = items.filter((item) => item.source === "manual").length;
-  const engineerCount = distinctCount(items, (item) => item.engineerName);
-  const customerCount = distinctCount(items, (item) => item.customerName);
-
-  const overview = workbook.addWorksheet("运营概览", {
-    views: [{ state: "frozen", ySplit: 4 }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
-  overview.columns = [
-    { width: 16 }, { width: 16 }, { width: 4 },
-    { width: 16 }, { width: 16 }, { width: 4 },
-    { width: 18 }, { width: 18 },
-  ];
-  overview.properties.defaultRowHeight = 22;
-  overview.mergeCells("A1:H1");
-  overview.getCell("A1").value = "运营汇总报告";
-  overview.getCell("A1").font = { size: 22, bold: true, color: { argb: "FFFFFFFF" } };
-  overview.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-  overview.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
-  overview.getRow(1).height = 34;
-
-  overview.mergeCells("A2:H2");
-  overview.getCell("A2").value = `统计范围：${rangeLabel}    生成时间：${new Date().toLocaleString("zh-CN")}`;
-  overview.getCell("A2").font = { color: { argb: "FF5B6472" }, bold: true };
-  overview.getCell("A2").alignment = { vertical: "middle", horizontal: "center" };
-  overview.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F0FF" } };
-
-  const kpis = [
-    { label: "本次记录数", value: items.length, unit: "条" },
-    { label: "总工时", value: totalHours.toFixed(1), unit: "小时" },
-    { label: "服务客户数", value: customerCount, unit: "家" },
-    { label: "参与工程师", value: engineerCount, unit: "人" },
-    { label: "服务记录", value: serviceRecordCount, unit: "条" },
-    { label: "手工记录", value: manualRecordCount, unit: "条" },
-  ];
-  kpis.forEach((kpi, index) => {
-    const col = (index % 3) * 3 + 1;
-    const row = 4 + Math.floor(index / 3) * 4;
-    overview.mergeCells(row, col, row, col + 1);
-    overview.mergeCells(row + 1, col, row + 2, col + 1);
-    const labelCell = overview.getCell(row, col);
-    const valueCell = overview.getCell(row + 1, col);
-    labelCell.value = kpi.label;
-    labelCell.font = { bold: true, color: { argb: "FF4B5563" } };
-    labelCell.alignment = { vertical: "middle", horizontal: "center" };
-    valueCell.value = `${kpi.value} ${kpi.unit}`;
-    valueCell.font = { size: 18, bold: true, color: { argb: "FF4C1D95" } };
-    valueCell.alignment = { vertical: "middle", horizontal: "center" };
-    for (let r = row; r <= row + 2; r += 1) {
-      for (let c = col; c <= col + 1; c += 1) {
-        const cell = overview.getCell(r, c);
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 === 0 ? "FFF7F2FF" : "FFF0FDF4" } };
-        cell.border = {
-          top: { style: "thin", color: { argb: "FFD8B4FE" } },
-          left: { style: "thin", color: { argb: "FFD8B4FE" } },
-          bottom: { style: "thin", color: { argb: "FFD8B4FE" } },
-          right: { style: "thin", color: { argb: "FFD8B4FE" } },
-        };
-      }
-    }
-  });
-
-  const sectionHeaderFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FF6D28D9" } };
-  const tableHeaderFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFEDE9FE" } };
-  const applyTable = (startRow: number, title: string, headers: string[], rows: Array<Array<string | number>>) => {
-    const endCol = Math.max(headers.length, 1);
-    overview.mergeCells(startRow, 1, startRow, endCol);
-    const titleCell = overview.getCell(startRow, 1);
-    titleCell.value = title;
-    titleCell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    titleCell.fill = sectionHeaderFill;
-    titleCell.alignment = { vertical: "middle", horizontal: "left" };
-    const headerRow = overview.getRow(startRow + 1);
-    headers.forEach((header, index) => {
-      const cell = headerRow.getCell(index + 1);
-      cell.value = header;
-      cell.font = { bold: true, color: { argb: "FF312E81" } };
-      cell.fill = tableHeaderFill;
-      cell.alignment = { vertical: "middle", horizontal: "center" };
-    });
-    rows.forEach((rowValues, rowIndex) => {
-      const row = overview.getRow(startRow + 2 + rowIndex);
-      rowValues.forEach((value, index) => {
-        const cell = row.getCell(index + 1);
-        cell.value = value;
-        cell.alignment = { vertical: "middle", horizontal: index > 0 ? "right" : "left", wrapText: true };
-        if (rowIndex % 2 === 1) {
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAF5FF" } };
-        }
-      });
-    });
-    for (let r = startRow; r <= startRow + 1 + Math.max(rows.length, 1); r += 1) {
-      for (let c = 1; c <= endCol; c += 1) {
-        overview.getCell(r, c).border = {
-          top: { style: "thin", color: { argb: "FFE9D5FF" } },
-          left: { style: "thin", color: { argb: "FFE9D5FF" } },
-          bottom: { style: "thin", color: { argb: "FFE9D5FF" } },
-          right: { style: "thin", color: { argb: "FFE9D5FF" } },
-        };
-      }
-    }
-    return startRow + 3 + rows.length;
-  };
-
-  const toRows = (rows: Array<{ name: string; count: number; hours: number }>, limit?: number) =>
-    rows.slice(0, limit).map((row) => [row.name, row.count, Number(row.hours.toFixed(1))]);
-
-  let rowCursor = 13;
-  rowCursor = applyTable(rowCursor, "按工程师统计", ["工程师", "记录数", "工时"], toRows(buildGroupSummary(items, (item) => item.engineerName || "未指定工程师"))) + 1;
-  rowCursor = applyTable(rowCursor, "客户服务 Top 10", ["客户", "记录数", "工时"], toRows(buildGroupSummary(items, (item) => item.customerName || "未指定客户"), 10)) + 1;
-  rowCursor = applyTable(rowCursor, "按服务类别统计", ["类别", "记录数", "工时"], toRows(buildGroupSummary(items, (item) => item.category || "未分类"))) + 1;
-  applyTable(rowCursor, "按工作性质统计", ["工作性质", "记录数", "工时"], toRows(buildGroupSummary(items, (item) => item.workNature || item.serviceMode || "未指定")));
-
-  overview.getColumn(3).numFmt = "0.0";
-  overview.headerFooter.oddHeader = `&C运营汇总报告 - ${rangeLabel}`;
-  overview.headerFooter.oddFooter = "&R第 &P / &N 页";
-
-  const detail = workbook.addWorksheet("工单明细", {
-    views: [{ state: "frozen", ySplit: 1 }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
-  detail.columns = [
-    { header: "日期", key: "date", width: 13 },
-    { header: "工程师", key: "engineerName", width: 14 },
-    { header: "客户名称", key: "customerName", width: 24 },
-    { header: "工作性质", key: "workNature", width: 13 },
-    { header: "类别", key: "category", width: 16 },
-    { header: "专案/产品", key: "productName", width: 24 },
-    { header: "工作内容", key: "workContent", width: 44 },
-    { header: "进度", key: "progress", width: 12 },
-    { header: "工时", key: "workHours", width: 10 },
-    { header: "来源", key: "source", width: 12 },
-    { header: "备注/工单号", key: "remark", width: 20 },
-  ];
-
-  [...items].sort((left, right) => String(reportServiceDate(left)).localeCompare(String(reportServiceDate(right))) || String(left.orderNo || left.id || "").localeCompare(String(right.orderNo || right.id || ""))).forEach((item) => {
-    detail.addRow({
-      date: reportServiceDate(item),
-      engineerName: textValue(item.engineerName, "未指定工程师"),
-      customerName: textValue(item.customerName, "未指定客户"),
-      workNature: textValue(item.workNature || item.serviceMode),
-      category: textValue(item.category, "未分类"),
-      productName: textValue(item.productName),
-      workContent: textValue(item.workContent, ""),
-      progress: textValue(item.progress),
-      workHours: reportWorkHours(item),
-      source: reportSourceLabel(item.source),
-      remark: textValue(item.remark || item.orderNo, ""),
-    });
-  });
-  detail.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, detail.rowCount), column: detail.columns.length } };
-  detail.getRow(1).height = 24;
-  detail.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
-    cell.alignment = { vertical: "middle", horizontal: "center" };
-  });
-  detail.eachRow((row, rowNumber) => {
-    row.eachCell((cell, colNumber) => {
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFE9D5FF" } },
-        left: { style: "thin", color: { argb: "FFE9D5FF" } },
-        bottom: { style: "thin", color: { argb: "FFE9D5FF" } },
-        right: { style: "thin", color: { argb: "FFE9D5FF" } },
-      };
-      cell.alignment = { vertical: "middle", horizontal: colNumber === 9 ? "right" : "left", wrapText: [3, 6, 7, 11].includes(colNumber) };
-      if (rowNumber > 1 && rowNumber % 2 === 0) {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAF5FF" } };
-      }
-    });
-  });
-  detail.getColumn("date").numFmt = "yyyy-mm-dd";
-  detail.getColumn("workHours").numFmt = "0.0";
-  detail.headerFooter.oddHeader = `&C运营汇总明细 - ${rangeLabel}`;
-  detail.headerFooter.oddFooter = "&R第 &P / &N 页";
-
-  addAiSummaryWorksheet(workbook, rangeLabel, workSummary);
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
+function summaryThemes(items?: WorkSummaryTheme[]) {
+  return Array.isArray(items) ? items.filter((item) => item.theme || item.details) : [];
 }
 
 const LAST_REPORT_EXPORT_KEY = "admin:lastMonthlyReportExport";
@@ -438,14 +149,14 @@ const I18N = {
     title: "运营总览",
     subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
     searchPlaceholder: "快速搜索工单或客户...",
-    exportReport: "导出运营汇总",
+    exportReport: "AI营运总结",
     reportDialog: {
-      title: "导出运营汇总",
-      description: "选择运营汇总统计日期，导出包含指标概览、分类统计和工单明细的 Excel 报表。",
+      title: "AI营运总结",
+      description: "选择统计日期，使用 AI 根据服务记录生成营运总结并显示在当前页面。",
       startDate: "开始日期",
       endDate: "结束日期",
       cancel: "取消",
-      submit: "导出报表",
+      submit: "生成总结",
       invalidRange: "开始日期不能晚于结束日期",
     },
     stats: {
@@ -491,14 +202,14 @@ const I18N = {
     title: "運營總覽",
     subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
     searchPlaceholder: "快速搜尋工單或客戶...",
-    exportReport: "匯出營運彙總",
+    exportReport: "AI營運總結",
     reportDialog: {
-      title: "匯出營運彙總",
-      description: "選擇營運彙總統計日期，匯出包含指標概覽、分類統計和工單明細的 Excel 報表。",
+      title: "AI營運總結",
+      description: "選擇統計日期，使用 AI 根據服務記錄生成營運總結並顯示在目前頁面。",
       startDate: "開始日期",
       endDate: "結束日期",
       cancel: "取消",
-      submit: "匯出報表",
+      submit: "生成總結",
       invalidRange: "開始日期不能晚於結束日期",
     },
     stats: {
@@ -573,6 +284,8 @@ export function Dashboard() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [workSummary, setWorkSummary] = useState<WorkSummaryResponse | null>(null);
+  const [workSummaryRange, setWorkSummaryRange] = useState("");
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
@@ -668,9 +381,9 @@ export function Dashboard() {
     setError("");
     try {
       const data = await api.get(`/service-orders/timesheet/monthly?startDate=${reportStartDate}&endDate=${reportEndDate}&engineerId=all&includeWorkSummary=1`);
-      const rows = (data?.items || []) as OperationalReportItem[];
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
-      await downloadOperationalSummaryWorkbook(reportFilename(reportStartDate, reportEndDate), rangeLabel, summary, rows, data?.workSummary || null);
+      setWorkSummary((data?.workSummary || null) as WorkSummaryResponse | null);
+      setWorkSummaryRange(rangeLabel);
       saveReportRange(reportStartDate, reportEndDate);
       setReportDialogOpen(false);
     } catch (e) {
@@ -742,6 +455,83 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      {workSummary && (
+        <Card className="border-purple-100 bg-purple-50/40">
+          <CardHeader>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle>AI營運總結</CardTitle>
+                <CardDescription>
+                  {workSummaryRange || "—"}
+                  {workSummary.available && (workSummary.provider || workSummary.usage?.model)
+                    ? ` · ${[workSummary.provider, workSummary.usage?.model].filter(Boolean).join(" / ")}`
+                    : ""}
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
+                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                重新生成
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 text-sm">
+            {!workSummary.available || !workSummary.summary ? (
+              <div className="rounded-lg border bg-background px-4 py-3 text-muted-foreground">
+                {workSummary.reason || "AI 營運總結暫不可用"}
+              </div>
+            ) : (
+              <>
+                <p className="rounded-lg border bg-background px-4 py-3 leading-7">
+                  {textValue(workSummary.summary.executiveSummary, "记录未体现足够的可总结内容。")}
+                </p>
+                {summaryThemes(workSummary.summary.keyThemes).length > 0 && (
+                  <div>
+                    <div className="mb-2 font-medium">重點主題</div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {summaryThemes(workSummary.summary.keyThemes).map((item, index) => (
+                        <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
+                          <div className="font-medium">{item.theme || "未命名主題"}</div>
+                          <div className="mt-1 text-muted-foreground leading-6">
+                            {item.evidenceCount ? `${item.evidenceCount} 條證據 · ` : ""}{item.details || "—"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {summaryList(workSummary.summary.customerImpact).length > 0 && (
+                  <div>
+                    <div className="mb-2 font-medium">客戶影響</div>
+                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                      {summaryList(workSummary.summary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {summaryList(workSummary.summary.riskSignals).length > 0 && (
+                  <div>
+                    <div className="mb-2 font-medium">風險信號</div>
+                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                      {summaryList(workSummary.summary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {summaryList(workSummary.summary.followUpRecommendations).length > 0 && (
+                  <div>
+                    <div className="mb-2 font-medium">後續建議</div>
+                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                      {summaryList(workSummary.summary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {workSummary.summary.coverageNotes && (
+                  <div className="text-xs text-muted-foreground">{workSummary.summary.coverageNotes}</div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <Card className="lg:col-span-3 flex flex-col">

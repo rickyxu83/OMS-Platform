@@ -347,6 +347,18 @@ function mergedWorkContent(entries, fallback = '') {
   return String(fallback || '').trim()
 }
 
+function joinTimesheetWorkContent(...values) {
+  const parts = []
+  const seen = new Set()
+  for (const value of values) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    parts.push(text)
+  }
+  return parts.join('\n')
+}
+
 function hasSubmittedWorkContent(workContent, workEntries) {
   return Boolean(String(workContent || '').trim() || normalizeWorkEntries(workEntries).length)
 }
@@ -998,9 +1010,10 @@ async function timesheetMonthly(req, res) {
   const rows = await query(
     `SELECT
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
-       so.issue_description, so.planned_start_at,
+       so.issue_description, so.internal_note, so.planned_start_at,
        so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name AS device_name,
        sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
+       work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
      FROM service_orders so
      JOIN (
@@ -1014,6 +1027,13 @@ async function timesheetMonthly(req, res) {
      JOIN customers c ON c.id = so.customer_id
      LEFT JOIN devices d ON d.id = so.device_id
      LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     LEFT JOIN (
+       SELECT srwe.service_order_id,
+              GROUP_CONCAT(CONCAT(COALESCE(uwe.real_name, uwe.username, '工程师'), '：', srwe.work_content) SEPARATOR '\n\n') AS work_content
+       FROM service_report_work_entries srwe
+       JOIN users uwe ON uwe.id = srwe.engineer_id
+       GROUP BY srwe.service_order_id
+     ) work_entries ON work_entries.service_order_id = so.id
      WHERE DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) >= :startDate
        AND DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate
        AND so.status <> 'cancelled'
@@ -1061,7 +1081,13 @@ async function timesheetMonthly(req, res) {
             : category,
       customerName: row.customer_name,
       productName: row.service_mode === 'office' ? row.internal_note || '' : row.device_name || '',
-      workContent: row.issue_description || row.work_content || '',
+      workContent: joinTimesheetWorkContent(
+        row.work_entries_content,
+        row.work_content,
+        row.fault_summary,
+        row.result_description,
+        row.issue_description,
+      ),
       salesperson: row.timesheet_salesperson || row.customer_salesperson || '',
       progress:
         {
