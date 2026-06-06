@@ -81,7 +81,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜索工单编号、客户、描述...",
+      searchPlaceholder: "搜索工单编号、客户、工程师、描述...",
       statusPlaceholder: "状态筛选",
       all: "全部状态",
     },
@@ -332,6 +332,7 @@ export function ServiceOrders() {
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
   const [selectedIds, setSelectedIds] = useState<Array<string | number>>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createFiles, setCreateFiles] = useState<File[]>([]);
   const [createForm, setCreateForm] = useState({
     customerId: "",
     deviceId: "",
@@ -351,6 +352,7 @@ export function ServiceOrders() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignOrder, setAssignOrder] = useState<ServiceOrder | null>(null);
   const [assignForm, setAssignForm] = useState({ primaryEngineerId: "", plannedStartAt: "", plannedEndAt: "", note: "" });
+  const [assignFiles, setAssignFiles] = useState<File[]>([]);
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [transitionOrder, setTransitionOrder] = useState<ServiceOrder | null>(null);
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
@@ -411,8 +413,9 @@ export function ServiceOrders() {
     return orders.filter((order) => {
       const id = String(displayId(order)).toLowerCase();
       const customer = String(order.customerName || "").toLowerCase();
+      const engineer = engineerText(order, "").toLowerCase();
       const desc = String(order.issueDescription || "").toLowerCase();
-      return id.includes(keyword) || customer.includes(keyword) || desc.includes(keyword);
+      return id.includes(keyword) || customer.includes(keyword) || engineer.includes(keyword) || desc.includes(keyword);
     });
   }, [orders, searchQuery]);
 
@@ -443,7 +446,15 @@ export function ServiceOrders() {
       issueDescription: "",
       internalNote: "",
     });
+    setCreateFiles([]);
     setCreateOpen(true);
+  }
+
+  function applyNameFilter(value?: string) {
+    const keyword = textValue(value, "").trim();
+    if (!keyword) return;
+    setSearchQuery(keyword);
+    setSearchParams({ keyword });
   }
 
   async function createOrder() {
@@ -454,7 +465,7 @@ export function ServiceOrders() {
     setSaving(true);
     setError("");
     try {
-      await api.post("/service-orders", {
+      const created = await api.post("/service-orders", {
         customerId: Number(createForm.customerId),
         deviceId: createForm.deviceId && createForm.deviceId !== "none" ? Number(createForm.deviceId) : null,
         serviceMode: createForm.serviceMode,
@@ -467,7 +478,11 @@ export function ServiceOrders() {
         issueDescription: createForm.issueDescription.trim(),
         internalNote: createForm.internalNote.trim() || null,
       });
+      if (createFiles.length && created?.id) {
+        await uploadOrderFiles(created.id, createFiles);
+      }
       setCreateOpen(false);
+      setCreateFiles([]);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建工单失败");
@@ -524,7 +539,18 @@ export function ServiceOrders() {
   function openAssign(order: ServiceOrder) {
     setAssignOrder(order);
     setAssignForm({ primaryEngineerId: "", plannedStartAt: "", plannedEndAt: "", note: "" });
+    setAssignFiles([]);
     setAssignOpen(true);
+  }
+
+  async function uploadOrderFiles(orderId: string | number, files: File[]) {
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("ownerType", "service_order");
+      formData.append("ownerId", String(orderId));
+      await api.postForm("/files", formData);
+    }
   }
 
   async function assignOrderToEngineer() {
@@ -542,8 +568,12 @@ export function ServiceOrders() {
         plannedEndAt: assignForm.plannedEndAt || undefined,
         note: assignForm.note || undefined,
       });
+      if (assignFiles.length) {
+        await uploadOrderFiles(assignOrder.id, assignFiles);
+      }
       setAssignOpen(false);
       setAssignOrder(null);
+      setAssignFiles([]);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "派单失败");
@@ -712,7 +742,14 @@ export function ServiceOrders() {
                       <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.15fr_0.7fr_2fr_1fr_1fr_0.75fr_auto] xl:items-center">
                         <div className="min-w-0">
                           <div className="font-semibold tracking-tight">{displayId(order)}</div>
-                          <div className="truncate text-sm text-muted-foreground">{textValue(order.customerName)}</div>
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
+                            title={`按客户过滤：${textValue(order.customerName)}`}
+                            onClick={() => applyNameFilter(order.customerName)}
+                          >
+                            {textValue(order.customerName)}
+                          </button>
                         </div>
 
                         <div className="min-w-0">
@@ -724,7 +761,15 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="min-w-0 text-sm">
-                          <span className="truncate">{engineerText(order, t.detail.unnamedEngineer)}</span>
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                            title={`按工程师过滤：${engineerText(order, t.detail.unnamedEngineer)}`}
+                            onClick={() => applyNameFilter(engineerText(order, ""))}
+                            disabled={!engineerText(order, "")}
+                          >
+                            {engineerText(order, t.detail.unnamedEngineer)}
+                          </button>
                         </div>
 
                         <div className="space-y-0.5 whitespace-nowrap text-xs">
@@ -932,6 +977,22 @@ export function ServiceOrders() {
               <Label>内部备注</Label>
               <Textarea value={createForm.internalNote} onChange={(e) => setCreateForm({ ...createForm, internalNote: e.target.value })} rows={2} />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>附件</Label>
+              <Input
+                type="file"
+                multiple
+                onChange={(event) => setCreateFiles(Array.from(event.target.files || []))}
+              />
+              <p className="text-xs text-muted-foreground">选择工程师后可随工单派发给工程师查看；未派发时附件会先保存到工单中。</p>
+              {createFiles.length > 0 && (
+                <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+                  {createFiles.map((file) => (
+                    <div key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
@@ -1005,8 +1066,24 @@ export function ServiceOrders() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>派单备注</Label>
+              <Label>派单说明</Label>
               <Textarea value={assignForm.note} onChange={(e) => setAssignForm({ ...assignForm, note: e.target.value })} rows={2} />
+            </div>
+            <div className="space-y-2">
+              <Label>附件</Label>
+              <Input
+                type="file"
+                multiple
+                onChange={(event) => setAssignFiles(Array.from(event.target.files || []))}
+              />
+              <p className="text-xs text-muted-foreground">可上传装机设备清单、报错截图、客户资料等，工程师可在工单详情中下载查看。</p>
+              {assignFiles.length > 0 && (
+                <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+                  {assignFiles.map((file) => (
+                    <div key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

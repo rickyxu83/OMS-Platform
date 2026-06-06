@@ -4005,6 +4005,48 @@ h2 {
   gap: 10px;
 }
 
+.attachment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.attachment-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #1f2937;
+  background: #f8fafc;
+  text-align: left;
+}
+
+.attachment-item span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.attachment-item strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-item small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.attachment-item:disabled {
+  cursor: progress;
+  opacity: 0.64;
+}
+
 .muted.compact {
   margin: 0;
 }

@@ -5,6 +5,8 @@ import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
+import { resolveApiBase } from '../services/api-base'
+import { getToken } from '../services/auth'
 import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
 
 const { zh } = usePreviewI18n()
@@ -12,6 +14,7 @@ const route = useRoute()
 const loading = ref(false)
 const error = ref('')
 const task = ref(null)
+const downloadingFileId = ref(null)
 
 const statusMap = { draft: '草稿', in_progress: '填写中', submitted: '已提交', cancelled: '已作废' }
 const canEdit = computed(() => ['draft', 'in_progress', 'submitted'].includes(task.value?.status || ''))
@@ -57,6 +60,39 @@ const engineers = computed(() => {
 
 function formatTime(value) {
   return String(value || '').replace('T', ' ').slice(0, 16) || '-'
+}
+
+function formatFileSize(value) {
+  const size = Number(value || 0)
+  if (!size) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+async function downloadFile(file) {
+  if (!file?.id || downloadingFileId.value) return
+  downloadingFileId.value = file.id
+  error.value = ''
+  try {
+    const response = await fetch(`${resolveApiBase()}/files/${file.id}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    if (!response.ok) throw new Error('附件下载失败')
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.originalName || `attachment-${file.id}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    error.value = err.message || '附件下载失败'
+  } finally {
+    downloadingFileId.value = null
+  }
 }
 
 async function load() {
@@ -117,6 +153,26 @@ onMounted(load)
         <article class="form-section detail-card">
           <h2>{{ zh(isInspectionTask ? '巡检说明' : '服务需求') }}</h2>
           <p>{{ zh(inspectionLead) }}</p>
+        </article>
+
+        <article v-if="task.files?.length" class="form-section detail-card">
+          <h2>{{ zh('派单附件') }}</h2>
+          <div class="attachment-list">
+            <button
+              v-for="file in task.files"
+              :key="file.id"
+              class="attachment-item"
+              type="button"
+              :disabled="downloadingFileId === file.id"
+              @click="downloadFile(file)"
+            >
+              <span>
+                <strong>{{ file.originalName || `附件 #${file.id}` }}</strong>
+                <small>{{ formatFileSize(file.size) }}</small>
+              </span>
+              <PreviewIcon name="download" />
+            </button>
+          </div>
         </article>
 
         <article class="form-section detail-card">

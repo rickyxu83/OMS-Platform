@@ -902,7 +902,21 @@ async function list(req, res) {
           OR so.timesheet_salesperson = :salespersonUsernameScope
           OR c.salesperson = :salespersonUsernameScope
         )
-        AND (:keyword = '' OR so.order_no LIKE :likeKeyword OR c.name LIKE :likeKeyword OR so.issue_description LIKE :likeKeyword)
+        AND (
+          :keyword = ''
+          OR so.order_no LIKE :likeKeyword
+          OR c.name LIKE :likeKeyword
+          OR so.issue_description LIKE :likeKeyword
+          OR u.real_name LIKE :likeKeyword
+          OR u.username LIKE :likeKeyword
+          OR EXISTS (
+            SELECT 1
+            FROM service_order_engineers keyword_soe
+            JOIN users keyword_u ON keyword_u.id = keyword_soe.engineer_id
+            WHERE keyword_soe.service_order_id = so.id
+              AND (keyword_u.real_name LIKE :likeKeyword OR keyword_u.username LIKE :likeKeyword)
+          )
+        )
   `
   const params = {
     status: status || null,
