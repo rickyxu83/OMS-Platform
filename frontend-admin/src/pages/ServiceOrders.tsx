@@ -663,6 +663,16 @@ export function ServiceOrders() {
             <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
           ) : (
             <div className="space-y-3">
+              <div className="hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:flex xl:items-center">
+                <div className="w-7 shrink-0" />
+                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_auto] xl:items-center">
+                  <div>Case ID / 客户</div>
+                  <div>主要内容</div>
+                  <div>设备 / 工程师</div>
+                  <div>结案</div>
+                  <div className="text-right">操作</div>
+                </div>
+              </div>
               {filteredOrders.map((order) => {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const typeLabel = t.type[order.serviceType as keyof typeof t.type] || order.serviceType || "-";
@@ -670,7 +680,6 @@ export function ServiceOrders() {
                 const priorityLabel = PRIORITY_LABELS[order.priority || ""] || order.priority || "-";
                 const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
-                const canTransition = getWorkflowStatus(order) !== "cancelled";
                 return (
                   <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -685,7 +694,7 @@ export function ServiceOrders() {
                         />
                       </div>
 
-                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_1fr_auto] xl:items-center">
+                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_auto] xl:items-center">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="font-semibold tracking-tight">{displayId(order)}</div>
@@ -715,11 +724,6 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="text-sm">
-                          <div className="text-xs text-muted-foreground">计划</div>
-                          <div className="mt-1 whitespace-nowrap">{formatDateTime(order.plannedStartAt || order.serviceAt || order.createdAt)}</div>
-                        </div>
-
-                        <div className="text-sm">
                           <div className="text-xs text-muted-foreground">结案</div>
                           <div className="mt-1 whitespace-nowrap">{formatDateTime(order.submittedAt)}</div>
                         </div>
@@ -737,11 +741,6 @@ export function ServiceOrders() {
                           {canAssign && (
                             <Button variant="outline" size="sm" onClick={() => openAssign(order)} disabled={saving}>
                               派单 / 改派
-                            </Button>
-                          )}
-                          {canTransition && (
-                            <Button variant="outline" size="sm" onClick={() => openTransition(order)} disabled={saving}>
-                              状态流转
                             </Button>
                           )}
                         </div>
