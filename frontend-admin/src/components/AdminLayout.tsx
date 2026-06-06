@@ -211,6 +211,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const strings = STRINGS[lang];
+  const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
 
   useEffect(() => {
@@ -262,7 +263,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <div className="h-16 flex items-center px-6 border-b border-sidebar-border/50">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-                <LayoutDashboard className="w-6 h-5 text-white" />
+                <img src={logoSrc} alt="" className="h-7 w-7 object-contain" aria-hidden="true" />
               </div>
               <div>
                 <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
