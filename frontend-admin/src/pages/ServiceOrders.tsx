@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, ChevronDown, ChevronRight, Search, Loader2, Plus, Trash2, CheckCircle } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,14 +29,27 @@ interface ServiceOrder {
   workflowStatus?: string;
   status: string;
   customerName?: string;
+  customerAddress?: string;
   contactName?: string;
+  contactPhone?: string;
+  deviceName?: string;
   serviceType?: string;
   serviceMode?: string;
+  timesheetCategory?: string;
+  timesheetSalesperson?: string;
+  priority?: string;
   engineerName?: string;
+  engineers?: Array<{ realName?: string; name?: string; username?: string }>;
   serviceAt?: string;
+  plannedStartAt?: string;
+  plannedEndAt?: string;
   issueDescription?: string;
   internalNote?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewComment?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 interface EngineerOption {
@@ -64,11 +77,8 @@ const I18N = {
       refresh: "刷新",
       retry: "重试",
       reset: "重置",
-      save: "保存工单信息",
       saving: "保存中…",
       cancel: "取消",
-      collapse: "收起详情",
-      expand: "查看详情",
     },
     filters: {
       searchPlaceholder: "搜索工单编号、客户、描述...",
@@ -139,11 +149,8 @@ const I18N = {
       refresh: "刷新",
       retry: "重試",
       reset: "重置",
-      save: "保存工單信息",
       saving: "保存中…",
       cancel: "取消",
-      collapse: "收起詳情",
-      expand: "查看詳情",
     },
     filters: {
       searchPlaceholder: "搜尋工單編號、客戶、描述...",
@@ -231,6 +238,20 @@ const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purpl
   other: "secondary",
 };
 
+const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
+  low: "secondary",
+  normal: "secondary",
+  high: "warning",
+  urgent: "destructive",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  low: "低",
+  normal: "普通",
+  high: "高",
+  urgent: "紧急",
+};
+
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -244,6 +265,30 @@ function getWorkflowStatus(order: ServiceOrder) {
   return order.workflowStatus || order.status;
 }
 
+function textValue(value?: string, fallback = "-") {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function compactText(value?: string, fallback = "-") {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text || fallback;
+}
+
+function engineerText(order: ServiceOrder, fallback: string) {
+  const names = (order.engineers || [])
+    .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
+    .filter(Boolean);
+  if (names.length) return names.join("、");
+  return order.engineerName || fallback;
+}
+
+function formatDateRange(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
+  return formatDateTime(start || end);
+}
+
 export function ServiceOrders() {
   const { lang } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -253,9 +298,7 @@ export function ServiceOrders() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
-  const [expandedOrderId, setExpandedOrderId] = useState<string | number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [detailForm, setDetailForm] = useState({ issueDescription: "", internalNote: "" });
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
@@ -317,11 +360,6 @@ export function ServiceOrders() {
       const items = (data?.items || []) as ServiceOrder[];
       setOrders(items);
       setSelectedIds((ids) => ids.filter((id) => items.some((item) => String(item.id) === String(id))));
-      if (items.length && !items.some((o) => o.id === expandedOrderId)) {
-        setExpandedOrderId(items[0].id);
-      } else if (!items.length) {
-        setExpandedOrderId(null);
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
@@ -358,35 +396,6 @@ export function ServiceOrders() {
       { label: t.stats.completed, value: submitted },
     ];
   }, [orders, t.stats]);
-
-  useEffect(() => {
-    const current = orders.find((o) => o.id === expandedOrderId);
-    if (current) {
-      setDetailForm({
-        issueDescription: current.issueDescription || "",
-        internalNote: current.internalNote || "",
-      });
-    }
-  }, [expandedOrderId, orders]);
-
-  async function saveSelectedOrder() {
-    const current = orders.find((o) => o.id === expandedOrderId);
-    if (!current) return;
-    setSaving(true);
-    setError("");
-    try {
-      await api.put(`/service-orders/${current.id}`, {
-        issueDescription: detailForm.issueDescription,
-        internalNote: detailForm.internalNote,
-      });
-      await load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : t.errors.saveFailed;
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   function openCreateOrder() {
     setCreateForm({
@@ -630,18 +639,19 @@ export function ServiceOrders() {
           ) : filteredOrders.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {filteredOrders.map((order) => {
-                const isOpen = expandedOrderId === order.id;
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const typeLabel = t.type[order.serviceType as keyof typeof t.type] || order.serviceType || "-";
+                const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
+                const priorityLabel = PRIORITY_LABELS[order.priority || ""] || order.priority || "-";
+                const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
+                const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
+                const canTransition = getWorkflowStatus(order) !== "cancelled";
                 return (
-                  <div key={order.id} className="border border-border rounded-lg overflow-hidden">
-                    <div
-                      className="flex items-center p-4 hover:bg-accent/40 cursor-pointer transition-colors"
-                      onClick={() => setExpandedOrderId(isOpen ? null : order.id)}
-                    >
-                      <div className="mr-3" onClick={(event) => event.stopPropagation()}>
+                  <div key={order.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+                      <div className="pt-1">
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
                           onCheckedChange={(checked) => {
@@ -651,142 +661,101 @@ export function ServiceOrders() {
                           }}
                         />
                       </div>
-                      <div className="mr-3">
-                        {isOpen ? (
-                          <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+
+                      <div className="min-w-0 flex-1 space-y-4">
+                        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="font-semibold tracking-tight">{displayId(order)}</div>
+                              <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
+                                {statusLabel}
+                              </Badge>
+                              <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
+                                {priorityLabel}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 truncate text-sm font-medium">{textValue(order.customerName)}</div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {textValue(order.customerAddress)}
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 text-sm">
+                            <div className="text-xs text-muted-foreground">联系人</div>
+                            <div className="mt-1 truncate">{textValue(order.contactName, t.detail.unnamedContact)}</div>
+                            <div className="mt-1 truncate text-muted-foreground">{textValue(order.contactPhone)}</div>
+                          </div>
+
+                          <div className="min-w-0 text-sm">
+                            <div className="text-xs text-muted-foreground">设备 / 服务</div>
+                            <div className="mt-1 truncate">{textValue(order.deviceName, "未指定设备")}</div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
+                                {typeLabel}
+                              </Badge>
+                              <Badge variant="secondary">{modeLabel}</Badge>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 text-sm">
+                            <div className="text-xs text-muted-foreground">工程师 / 计划</div>
+                            <div className="mt-1 truncate">{engineerText(order, t.detail.unnamedEngineer)}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{formatDateRange(order.plannedStartAt, order.plannedEndAt)}</div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 lg:justify-end">
+                            {canConfirmInspection && (
+                              <Button variant="outline" size="sm" onClick={() => openConfirmInspection(order)} disabled={saving}>
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                确认巡检
+                              </Button>
+                            )}
+                            {canAssign && (
+                              <Button variant="outline" size="sm" onClick={() => openAssign(order)} disabled={saving}>
+                                派单 / 改派
+                              </Button>
+                            )}
+                            {canTransition && (
+                              <Button variant="outline" size="sm" onClick={() => openTransition(order)} disabled={saving}>
+                                状态流转
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 border-t border-border pt-3 text-sm md:grid-cols-[1.5fr_1.2fr_1fr_1fr]">
+                          <div className="min-w-0">
+                            <div className="text-xs text-muted-foreground">问题描述</div>
+                            <div className="mt-1 line-clamp-2 leading-6">
+                              {compactText(order.issueDescription)}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs text-muted-foreground">内部备注</div>
+                            <div className="mt-1 line-clamp-2 leading-6 text-muted-foreground">
+                              {compactText(order.internalNote)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">业务 / 类别</div>
+                            <div className="mt-1">{textValue(order.timesheetSalesperson)}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{textValue(order.timesheetCategory)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">创建 / 结案 / 更新</div>
+                            <div className="mt-1">建：{formatDateTime(order.createdAt)}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">结：{formatDateTime(order.submittedAt)}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">更：{formatDateTime(order.updatedAt)}</div>
+                          </div>
+                        </div>
+
+                        {(order.reviewedAt || order.reviewComment) && (
+                          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                            审核：{formatDateTime(order.reviewedAt)}{order.reviewComment ? ` · ${compactText(order.reviewComment, "")}` : ""}
+                          </div>
                         )}
                       </div>
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
-                        <div>
-                          <div className="font-medium">{displayId(order)}</div>
-                          <div className="text-sm text-muted-foreground">{order.customerName || "-"}</div>
-                        </div>
-                        <div>
-                          <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
-                            {typeLabel}
-                          </Badge>
-                        </div>
-                        <div>
-                          <div className="text-sm">{order.engineerName || t.detail.unnamedEngineer}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">{formatDateTime(order.serviceAt || order.createdAt)}</div>
-                        </div>
-                        <div>
-                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                            {statusLabel}
-                          </Badge>
-                        </div>
-                        <div className="text-right text-sm text-muted-foreground">
-                          {isOpen ? t.actions.collapse : t.actions.expand}
-                        </div>
-                      </div>
                     </div>
-
-                    {isOpen && (
-                      <div className="border-t border-border bg-muted/30 p-6 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-4">
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.orderNo}</Label>
-                              <div className="mt-1 font-medium">{displayId(order)}</div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.customerName}</Label>
-                              <div className="mt-1">{order.customerName || "-"}</div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.contactName}</Label>
-                              <div className="mt-1">{order.contactName || t.detail.unnamedContact}</div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.serviceType}</Label>
-                              <div className="mt-1">
-                                <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
-                                  {typeLabel}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.serviceMode}</Label>
-                              <div className="mt-1">{t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-"}</div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-4">
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.currentStatus}</Label>
-                              <div className="mt-1">
-                                <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                                  {statusLabel}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.engineer}</Label>
-                              <div className="mt-1">{order.engineerName || t.detail.unnamedEngineer}</div>
-                            </div>
-                            <div>
-                              <Label className="text-muted-foreground">{t.detail.serviceTime}</Label>
-                              <div className="mt-1">{formatDateTime(order.serviceAt || order.createdAt)}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>{t.detail.issueDescription}</Label>
-                          <Textarea
-                            className="mt-2"
-                            value={detailForm.issueDescription}
-                            onChange={(e) =>
-                              setDetailForm((f) => ({ ...f, issueDescription: e.target.value }))
-                            }
-                            rows={3}
-                            placeholder={t.detail.descriptionPlaceholder}
-                          />
-                        </div>
-
-                        <div>
-                          <Label>{t.detail.internalNote}</Label>
-                          <Textarea
-                            className="mt-2"
-                            value={detailForm.internalNote}
-                            onChange={(e) =>
-                              setDetailForm((f) => ({ ...f, internalNote: e.target.value }))
-                            }
-                            rows={2}
-                            placeholder={t.detail.notePlaceholder}
-                          />
-                        </div>
-
-                        <div className="flex gap-2 pt-2 flex-wrap">
-                          {getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect" && (
-                            <Button variant="outline" onClick={() => openConfirmInspection(order)} disabled={saving}>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              确认巡检并派发
-                            </Button>
-                          )}
-                          {getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted" && (
-                            <Button variant="outline" onClick={() => openAssign(order)} disabled={saving}>
-                              派单 / 改派
-                            </Button>
-                          )}
-                          {getWorkflowStatus(order) !== "cancelled" && (
-                            <Button variant="outline" onClick={() => openTransition(order)} disabled={saving}>
-                              状态流转
-                            </Button>
-                          )}
-                          <Button onClick={saveSelectedOrder} disabled={saving}>
-                            {saving ? t.actions.saving : t.actions.save}
-                          </Button>
-                          <Button variant="ghost" onClick={() => setExpandedOrderId(null)}>
-                            {t.actions.cancel}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
