@@ -289,6 +289,28 @@ function formatDateRange(start?: string, end?: string) {
   return formatDateTime(start || end);
 }
 
+function DetailField({ label, value, muted = false }: { label: string; value?: string; muted?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`mt-1 break-words text-sm leading-6 ${muted ? "text-muted-foreground" : ""}`}>
+        {textValue(value)}
+      </div>
+    </div>
+  );
+}
+
+function DetailBlock({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6">
+        {compactText(value)}
+      </div>
+    </div>
+  );
+}
+
 export function ServiceOrders() {
   const { lang } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -323,6 +345,7 @@ export function ServiceOrders() {
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [transitionOrder, setTransitionOrder] = useState<ServiceOrder | null>(null);
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
+  const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -649,9 +672,9 @@ export function ServiceOrders() {
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 const canTransition = getWorkflowStatus(order) !== "cancelled";
                 return (
-                  <div key={order.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-                      <div className="pt-1">
+                  <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                      <div className="shrink-0">
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
                           onCheckedChange={(checked) => {
@@ -662,98 +685,66 @@ export function ServiceOrders() {
                         />
                       </div>
 
-                      <div className="min-w-0 flex-1 space-y-4">
-                        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="font-semibold tracking-tight">{displayId(order)}</div>
-                              <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                                {statusLabel}
-                              </Badge>
-                              <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
-                                {priorityLabel}
-                              </Badge>
-                            </div>
-                            <div className="mt-1 truncate text-sm font-medium">{textValue(order.customerName)}</div>
-                            <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {textValue(order.customerAddress)}
-                            </div>
+                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_1fr_auto] xl:items-center">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-semibold tracking-tight">{displayId(order)}</div>
+                            <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
+                              {statusLabel}
+                            </Badge>
                           </div>
+                          <div className="mt-1 truncate text-sm text-muted-foreground">{textValue(order.customerName)}</div>
+                        </div>
 
-                          <div className="min-w-0 text-sm">
-                            <div className="text-xs text-muted-foreground">联系人</div>
-                            <div className="mt-1 truncate">{textValue(order.contactName, t.detail.unnamedContact)}</div>
-                            <div className="mt-1 truncate text-muted-foreground">{textValue(order.contactPhone)}</div>
-                          </div>
-
-                          <div className="min-w-0 text-sm">
-                            <div className="text-xs text-muted-foreground">设备 / 服务</div>
-                            <div className="mt-1 truncate">{textValue(order.deviceName, "未指定设备")}</div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
-                                {typeLabel}
-                              </Badge>
-                              <Badge variant="secondary">{modeLabel}</Badge>
-                            </div>
-                          </div>
-
-                          <div className="min-w-0 text-sm">
-                            <div className="text-xs text-muted-foreground">工程师 / 计划</div>
-                            <div className="mt-1 truncate">{engineerText(order, t.detail.unnamedEngineer)}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{formatDateRange(order.plannedStartAt, order.plannedEndAt)}</div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2 lg:justify-end">
-                            {canConfirmInspection && (
-                              <Button variant="outline" size="sm" onClick={() => openConfirmInspection(order)} disabled={saving}>
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                确认巡检
-                              </Button>
-                            )}
-                            {canAssign && (
-                              <Button variant="outline" size="sm" onClick={() => openAssign(order)} disabled={saving}>
-                                派单 / 改派
-                              </Button>
-                            )}
-                            {canTransition && (
-                              <Button variant="outline" size="sm" onClick={() => openTransition(order)} disabled={saving}>
-                                状态流转
-                              </Button>
-                            )}
+                        <div className="min-w-0">
+                          <div className="line-clamp-1 text-sm font-medium">{compactText(order.issueDescription)}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
+                              {typeLabel}
+                            </Badge>
+                            <Badge variant="secondary">{modeLabel}</Badge>
+                            <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
+                              {priorityLabel}
+                            </Badge>
                           </div>
                         </div>
 
-                        <div className="grid gap-3 border-t border-border pt-3 text-sm md:grid-cols-[1.5fr_1.2fr_1fr_1fr]">
-                          <div className="min-w-0">
-                            <div className="text-xs text-muted-foreground">问题描述</div>
-                            <div className="mt-1 line-clamp-2 leading-6">
-                              {compactText(order.issueDescription)}
-                            </div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs text-muted-foreground">内部备注</div>
-                            <div className="mt-1 line-clamp-2 leading-6 text-muted-foreground">
-                              {compactText(order.internalNote)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">业务 / 类别</div>
-                            <div className="mt-1">{textValue(order.timesheetSalesperson)}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{textValue(order.timesheetCategory)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">创建 / 结案 / 更新</div>
-                            <div className="mt-1">建：{formatDateTime(order.createdAt)}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">结：{formatDateTime(order.submittedAt)}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">更：{formatDateTime(order.updatedAt)}</div>
-                          </div>
+                        <div className="min-w-0 text-sm">
+                          <div className="truncate">{textValue(order.deviceName, "未指定设备")}</div>
+                          <div className="mt-1 truncate text-xs text-muted-foreground">{engineerText(order, t.detail.unnamedEngineer)}</div>
                         </div>
 
-                        {(order.reviewedAt || order.reviewComment) && (
-                          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                            审核：{formatDateTime(order.reviewedAt)}{order.reviewComment ? ` · ${compactText(order.reviewComment, "")}` : ""}
-                          </div>
-                        )}
+                        <div className="text-sm">
+                          <div className="text-xs text-muted-foreground">计划</div>
+                          <div className="mt-1 whitespace-nowrap">{formatDateTime(order.plannedStartAt || order.serviceAt || order.createdAt)}</div>
+                        </div>
+
+                        <div className="text-sm">
+                          <div className="text-xs text-muted-foreground">结案</div>
+                          <div className="mt-1 whitespace-nowrap">{formatDateTime(order.submittedAt)}</div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 xl:justify-end">
+                          <Button variant="outline" size="sm" onClick={() => setDetailOrder(order)}>
+                            详情
+                          </Button>
+                          {canConfirmInspection && (
+                            <Button variant="outline" size="sm" onClick={() => openConfirmInspection(order)} disabled={saving}>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              确认巡检
+                            </Button>
+                          )}
+                          {canAssign && (
+                            <Button variant="outline" size="sm" onClick={() => openAssign(order)} disabled={saving}>
+                              派单 / 改派
+                            </Button>
+                          )}
+                          {canTransition && (
+                            <Button variant="outline" size="sm" onClick={() => openTransition(order)} disabled={saving}>
+                              状态流转
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -763,6 +754,67 @@ export function ServiceOrders() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => { if (!open) setDetailOrder(null); }}>
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>{detailOrder ? displayId(detailOrder) : "工单详情"}</DialogTitle>
+            <DialogDescription>
+              {detailOrder ? `${textValue(detailOrder.customerName)} · ${compactText(detailOrder.issueDescription, "")}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {detailOrder && (() => {
+            const statusLabel = detailOrder.displayStatus || t.status[getWorkflowStatus(detailOrder) as keyof typeof t.status] || getWorkflowStatus(detailOrder) || "-";
+            const typeLabel = t.type[detailOrder.serviceType as keyof typeof t.type] || detailOrder.serviceType || "-";
+            const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
+            const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
+            return (
+              <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(detailOrder)] || "secondary"}>{statusLabel}</Badge>
+                  <Badge variant={TYPE_BADGE_VARIANT[detailOrder.serviceType || ""] || "outline"}>{typeLabel}</Badge>
+                  <Badge variant="secondary">{modeLabel}</Badge>
+                  <Badge variant={PRIORITY_BADGE_VARIANT[detailOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <DetailField label={t.detail.customerName} value={detailOrder.customerName} />
+                  <DetailField label={t.detail.contactName} value={detailOrder.contactName || t.detail.unnamedContact} />
+                  <DetailField label="联系电话" value={detailOrder.contactPhone} />
+                  <DetailField label="客户地址" value={detailOrder.customerAddress} />
+                  <DetailField label="设备" value={detailOrder.deviceName || "未指定设备"} />
+                  <DetailField label={t.detail.engineer} value={engineerText(detailOrder, t.detail.unnamedEngineer)} />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <DetailField label="计划时间" value={formatDateRange(detailOrder.plannedStartAt, detailOrder.plannedEndAt)} />
+                  <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
+                  <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
+                  <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
+                  <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} />
+                  <DetailField label="工时类别" value={detailOrder.timesheetCategory} />
+                </div>
+
+                <DetailBlock label={t.detail.issueDescription} value={detailOrder.issueDescription} />
+                <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} />
+
+                {(detailOrder.reviewedAt || detailOrder.reviewComment) && (
+                  <div className="rounded-md border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground">审核信息</div>
+                    <div className="mt-1 text-sm leading-6">
+                      {formatDateTime(detailOrder.reviewedAt)}
+                      {detailOrder.reviewComment ? ` · ${compactText(detailOrder.reviewComment, "")}` : ""}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailOrder(null)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-[640px]">
