@@ -1225,6 +1225,11 @@ async function create(req, res) {
     serviceType,
     timesheetCategory,
     timesheetSalesperson,
+    engineerId,
+    primaryEngineerId,
+    engineerIds = [],
+    plannedStartAt,
+    plannedEndAt,
     priority = 'normal',
     issueDescription,
     internalNote,
@@ -1234,8 +1239,30 @@ async function create(req, res) {
   if (!customerId || !serviceType || !issueDescription) {
     throw badRequest('客户、服务类型和问题描述不能为空')
   }
+  const requestedEngineerIds = Array.isArray(engineerIds) ? engineerIds : []
+  const normalizedPrimaryEngineerId = Number(primaryEngineerId || engineerId || requestedEngineerIds[0] || 0)
+  const normalizedEngineerIds = [...new Set([normalizedPrimaryEngineerId, ...requestedEngineerIds].map(Number).filter(Boolean))]
+  const normalizedPlannedStartAt = String(plannedStartAt || '').trim() || null
+  const normalizedPlannedEndAt = String(plannedEndAt || '').trim() || null
+  if (normalizedPlannedStartAt && normalizedPlannedEndAt && normalizedPlannedEndAt < normalizedPlannedStartAt) {
+    throw badRequest('计划结束时间不能早于开始时间')
+  }
 
   const result = await transaction(async (connection) => {
+    if (normalizedEngineerIds.length) {
+      const found = idParams(normalizedEngineerIds, 'engineerId')
+      const [engineerRows] = await connection.execute(
+        `SELECT id
+         FROM users
+         WHERE id IN (${found.placeholders})
+           AND role IN ('engineer', 'engineering_supervisor')
+           AND status = 'active'`,
+        found.params,
+      )
+      if (engineerRows.length !== normalizedEngineerIds.length) {
+        throw badRequest('派发工程师不存在或未启用')
+      }
+    }
     const now = new Date()
     const prefix = buildOrderNo(0, now).slice(0, 10)
     const [countRows] = await connection.execute(
@@ -1245,19 +1272,19 @@ async function create(req, res) {
       { prefix: `${prefix}%` },
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
-    const status = 'draft'
+    const status = normalizedPrimaryEngineerId ? 'assigned' : 'draft'
     const salespersonSnapshot = timesheetSalesperson || (await customerSalesperson(connection, customerId))
 
     const [insertResult] = await connection.execute(
       `INSERT INTO service_orders (
          order_no, customer_id, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
-         assigned_engineer_id, planned_start_at, planned_end_at, internal_note, created_by
+         assigned_engineer_id, target_engineer_id, planned_start_at, planned_end_at, internal_note, created_by
        )
        VALUES (
          :orderNo, :customerId, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
          :priority, :status, :issueDescription,
-         :assignedEngineerId, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy
+         :assignedEngineerId, :targetEngineerId, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy
        )`,
       {
         orderNo,
@@ -1270,15 +1297,26 @@ async function create(req, res) {
         priority,
         status,
         issueDescription,
-        assignedEngineerId: null,
-        plannedStartAt: null,
-        plannedEndAt: null,
+        assignedEngineerId: normalizedPrimaryEngineerId || null,
+        targetEngineerId: normalizedPrimaryEngineerId || null,
+        plannedStartAt: normalizedPlannedStartAt,
+        plannedEndAt: normalizedPlannedEndAt,
         internalNote: internalNote || null,
         createdBy: req.user.id,
       },
     )
 
-    await writeAudit(connection, req.user.id, insertResult.insertId, 'create', { status })
+    if (normalizedEngineerIds.length) {
+      await replaceOrderEngineers(connection, insertResult.insertId, normalizedEngineerIds, req.user.id)
+    }
+
+    await writeAudit(connection, req.user.id, insertResult.insertId, 'create', {
+      status,
+      primaryEngineerId: normalizedPrimaryEngineerId || null,
+      engineerIds: normalizedEngineerIds,
+      plannedStartAt: normalizedPlannedStartAt,
+      plannedEndAt: normalizedPlannedEndAt,
+    })
     return { id: insertResult.insertId, orderNo }
   })
 

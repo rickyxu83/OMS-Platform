@@ -338,6 +338,9 @@ export function ServiceOrders() {
     serviceMode: "onsite",
     serviceType: "repair",
     timesheetCategory: "",
+    engineerId: "none",
+    plannedStartAt: "",
+    plannedEndAt: "",
     priority: "normal",
     issueDescription: "",
     internalNote: "",
@@ -433,6 +436,9 @@ export function ServiceOrders() {
       serviceMode: "onsite",
       serviceType: "repair",
       timesheetCategory: "",
+      engineerId: "none",
+      plannedStartAt: "",
+      plannedEndAt: "",
       priority: "normal",
       issueDescription: "",
       internalNote: "",
@@ -454,6 +460,9 @@ export function ServiceOrders() {
         serviceMode: createForm.serviceMode,
         serviceType: createForm.serviceMode === "onsite" ? createForm.serviceType : "other",
         timesheetCategory: createForm.serviceMode === "onsite" ? null : createForm.timesheetCategory || "其他",
+        engineerId: createForm.engineerId && createForm.engineerId !== "none" ? Number(createForm.engineerId) : undefined,
+        plannedStartAt: createForm.plannedStartAt || undefined,
+        plannedEndAt: createForm.plannedEndAt || undefined,
         priority: createForm.priority,
         issueDescription: createForm.issueDescription.trim(),
         internalNote: createForm.internalNote.trim() || null,
@@ -671,11 +680,12 @@ export function ServiceOrders() {
             <div className="space-y-3">
               <div className="hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:flex xl:items-center">
                 <div className="w-7 shrink-0" />
-                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_0.8fr_auto] xl:items-center">
+                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.15fr_0.7fr_2fr_1fr_1fr_0.75fr_auto] xl:items-center">
                   <div>Case ID / 客户</div>
+                  <div>{t.detail.serviceMode}</div>
                   <div>主要内容</div>
                   <div>工程师</div>
-                  <div>结案</div>
+                  <div>服务时间</div>
                   <div>状态</div>
                   <div className="text-right">操作</div>
                 </div>
@@ -699,23 +709,33 @@ export function ServiceOrders() {
                         />
                       </div>
 
-                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_0.8fr_auto] xl:items-center">
+                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.15fr_0.7fr_2fr_1fr_1fr_0.75fr_auto] xl:items-center">
                         <div className="min-w-0">
                           <div className="font-semibold tracking-tight">{displayId(order)}</div>
                           <div className="truncate text-sm text-muted-foreground">{textValue(order.customerName)}</div>
                         </div>
 
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-sm font-medium">{compactText(order.issueDescription)}</span>
+                        <div className="min-w-0">
                           <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                        </div>
+
+                        <div className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{compactText(order.issueDescription)}</span>
                         </div>
 
                         <div className="min-w-0 text-sm">
                           <span className="truncate">{engineerText(order, t.detail.unnamedEngineer)}</span>
                         </div>
 
-                        <div className="whitespace-nowrap text-sm">
-                          {formatDateTime(order.submittedAt)}
+                        <div className="space-y-0.5 whitespace-nowrap text-xs">
+                          <div>
+                            <span className="text-muted-foreground">开始：</span>
+                            <span className="text-sm">{formatDateTime(order.plannedStartAt)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">结束：</span>
+                            <span className="text-sm">{formatDateTime(order.plannedEndAt)}</span>
+                          </div>
                         </div>
 
                         <div>
@@ -815,7 +835,7 @@ export function ServiceOrders() {
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>新建工单</DialogTitle>
-            <DialogDescription>创建后状态为草稿；普通派单流程将在派单接口补齐后继续完善。</DialogDescription>
+            <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
             <div className="space-y-2">
@@ -881,6 +901,28 @@ export function ServiceOrders() {
                   <SelectItem value="urgent">紧急</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>派发工程师</Label>
+              <Select value={createForm.engineerId} onValueChange={(v) => setCreateForm({ ...createForm, engineerId: v })}>
+                <SelectTrigger><SelectValue placeholder="创建后暂不派发" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">创建后暂不派发</SelectItem>
+                  {engineers.map((engineer) => (
+                    <SelectItem key={engineer.id} value={String(engineer.id)}>
+                      {engineer.realName || engineer.username || `工程师 #${engineer.id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>计划开始</Label>
+              <Input type="datetime-local" value={createForm.plannedStartAt} onChange={(e) => setCreateForm({ ...createForm, plannedStartAt: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>计划结束</Label>
+              <Input type="datetime-local" value={createForm.plannedEndAt} onChange={(e) => setCreateForm({ ...createForm, plannedEndAt: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>问题描述 *</Label>
