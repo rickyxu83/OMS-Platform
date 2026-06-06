@@ -303,15 +303,15 @@ const AMAP_MARKER_CSS = `
 .ops-map-marker-office-label { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.7); border-radius: 999px; padding: 3px 8px; color: white; background: rgba(27,12,59,0.94); font-size: 10px; white-space: nowrap; }
 .ops-map-flight-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .ops-map-flight-svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.ops-map-flight-line { fill: none; stroke: rgba(217,119,6,0.24); stroke-width: 1.2; stroke-linecap: round; }
-.ops-map-flight-line-peak { stroke: rgba(245,158,11,0.36); stroke-width: 1.6; }
-.ops-map-flight-line-high { stroke: rgba(234,179,8,0.32); }
-.ops-map-flight-line-quiet { stroke: rgba(180,83,9,0.18); stroke-width: 0.95; }
-.ops-map-flight-glow { fill: none; stroke: rgba(250,204,21,0.95); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 1 280; animation: ops-map-fly 3.6s linear infinite; filter: drop-shadow(0 0 4px rgba(251,191,36,0.9)) drop-shadow(0 0 10px rgba(245,158,11,0.55)); }
+.ops-map-flight-line { fill: none; stroke: rgba(217,119,6,0.32); stroke-width: 1.9; stroke-linecap: round; }
+.ops-map-flight-line-peak { stroke: rgba(245,158,11,0.46); stroke-width: 2.4; }
+.ops-map-flight-line-high { stroke: rgba(234,179,8,0.4); stroke-width: 2.1; }
+.ops-map-flight-line-quiet { stroke: rgba(180,83,9,0.24); stroke-width: 1.45; }
+.ops-map-flight-glow { fill: none; stroke: rgba(250,204,21,0.98); stroke-width: 3.8; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; filter: drop-shadow(0 0 5px rgba(251,191,36,0.95)) drop-shadow(0 0 13px rgba(245,158,11,0.65)); }
 .ops-map-flight-glow-peak { stroke: rgba(251,191,36,1); }
 .ops-map-flight-glow-high { stroke: rgba(253,224,71,0.96); }
 .ops-map-flight-glow-quiet { stroke: rgba(245,158,11,0.72); }
-.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.78); stroke-width: 2.4; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; filter: drop-shadow(0 0 6px rgba(251,191,36,0.85)); }
+.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.86); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; filter: drop-shadow(0 0 7px rgba(251,191,36,0.9)); }
 .ops-map-heartbeat-two { animation-delay: 1.1s; }
 @keyframes ops-map-fly { from { stroke-dashoffset: 280; } to { stroke-dashoffset: 0; } }
 @keyframes ops-map-heartbeat { 0% { opacity: 0.75; transform: scale(0.4); } 80%, 100% { opacity: 0; transform: scale(3.2); } }
