@@ -999,7 +999,7 @@ async function timesheetMonthly(req, res) {
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
        so.issue_description, so.planned_start_at,
        so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name AS device_name,
-       sr.actual_start_at, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
+       sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
        u.real_name AS engineer_name
      FROM service_orders so
      JOIN (
@@ -1068,6 +1068,7 @@ async function timesheetMonthly(req, res) {
           unresolved: '未完成',
           follow_up_required: '擱置中',
         }[row.result] || '已完成',
+      workHours: Number(row.work_hours || 1),
       remark: row.order_no,
     })
   })

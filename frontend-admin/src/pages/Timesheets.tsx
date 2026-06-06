@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,9 +25,18 @@ interface TimesheetItem {
   engineerName?: string;
   serviceDate?: string;
   serviceAt?: string;
+  date?: string;
+  weekday?: string;
+  workNature?: string;
+  serviceMode?: string;
+  category?: string;
+  productName?: string;
+  workContent?: string;
+  salesperson?: string;
+  progress?: string;
+  remark?: string;
   workHours?: number;
   duration?: number;
-  category?: string;
   source?: string;
 }
 
@@ -45,22 +56,130 @@ function formatHours(value?: number) {
   return `${value.toFixed(1)}h`;
 }
 
-function toCsv(rows: string[][]) {
-  return rows
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
+function safeSheetName(value: string, fallback: string) {
+  const cleaned = value.replace(/[\\/?*\[\]:]/g, " ").trim() || fallback;
+  return cleaned.slice(0, 31);
 }
 
-function downloadCsv(filename: string, content: string) {
-  const blob = new Blob([`\ufeff${content}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+function getServiceDate(item: TimesheetItem) {
+  return item.date || item.serviceDate || item.serviceAt || "";
+}
+
+function getWorkHours(item: TimesheetItem) {
+  const value = Number(item.workHours ?? item.duration ?? 1);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getSourceLabel(source?: string) {
+  return source === "service_order" ? "服务记录" : source === "manual" ? "手工记录" : source || "-";
+}
+
+async function downloadEngineerWorkbook(filename: string, label: string, items: TimesheetItem[]) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Service Sheet RC";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const groups = new Map<string, TimesheetItem[]>();
+  for (const item of items) {
+    const engineer = item.engineerName || "未指定工程师";
+    groups.set(engineer, [...(groups.get(engineer) || []), item]);
+  }
+
+  const sortedGroups = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"));
+  const columns = [
+    { header: "填表人", key: "engineerName", width: 14 },
+    { header: "日期", key: "date", width: 13 },
+    { header: "星期", key: "weekday", width: 10 },
+    { header: "工作性质", key: "workNature", width: 13 },
+    { header: "类别", key: "category", width: 16 },
+    { header: "客户名称", key: "customerName", width: 24 },
+    { header: "专案/产品", key: "productName", width: 24 },
+    { header: "工作内容", key: "workContent", width: 42 },
+    { header: "进度", key: "progress", width: 12 },
+    { header: "工时", key: "workHours", width: 10 },
+    { header: "备注", key: "remark", width: 18 },
+    { header: "来源", key: "source", width: 12 },
+  ];
+
+  sortedGroups.forEach(([engineer, engineerItems], index) => {
+    const worksheet = workbook.addWorksheet(safeSheetName(engineer, `工程师${index + 1}`), {
+      views: [{ state: "frozen", ySplit: 1 }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    worksheet.columns = columns;
+
+    const sortedItems = [...engineerItems].sort((left, right) => {
+      const dateCompare = String(getServiceDate(left)).localeCompare(String(getServiceDate(right)));
+      if (dateCompare) return dateCompare;
+      return String(left.orderNo || left.id || "").localeCompare(String(right.orderNo || right.id || ""));
+    });
+
+    sortedItems.forEach((item) => {
+      worksheet.addRow({
+        engineerName: item.engineerName || engineer,
+        date: getServiceDate(item),
+        weekday: item.weekday || "",
+        workNature: item.workNature || item.serviceMode || "",
+        category: item.category || "",
+        customerName: item.customerName || "",
+        productName: item.productName || "",
+        workContent: item.workContent || "",
+        progress: item.progress || "",
+        workHours: getWorkHours(item),
+        remark: item.remark || item.orderNo || "",
+        source: getSourceLabel(item.source),
+      });
+    });
+
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: Math.max(1, worksheet.rowCount), column: columns.length },
+    };
+
+    worksheet.getRow(1).height = 24;
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFB7C9D6" } },
+        left: { style: "thin", color: { argb: "FFB7C9D6" } },
+        bottom: { style: "thin", color: { argb: "FFB7C9D6" } },
+        right: { style: "thin", color: { argb: "FFB7C9D6" } },
+      };
+    });
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.height = 22;
+      row.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFD9E2EC" } },
+          left: { style: "thin", color: { argb: "FFD9E2EC" } },
+          bottom: { style: "thin", color: { argb: "FFD9E2EC" } },
+          right: { style: "thin", color: { argb: "FFD9E2EC" } },
+        };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: colNumber === 10 ? "right" : "left",
+          wrapText: [7, 8, 11].includes(colNumber),
+        };
+        if (rowNumber % 2 === 0) {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAFC" } };
+        }
+      });
+    });
+
+    worksheet.getColumn("date").numFmt = "yyyy-mm-dd";
+    worksheet.getColumn("workHours").numFmt = "0.0";
+    worksheet.properties.defaultRowHeight = 22;
+    worksheet.headerFooter.oddHeader = `&C${label} - ${engineer}`;
+    worksheet.headerFooter.oddFooter = "&R第 &P / &N 页";
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
 }
 
 function defaultMonthRange() {
@@ -136,20 +255,9 @@ export function Timesheets() {
     ];
   }, [items]);
 
-  function exportCsv() {
+  async function exportExcel() {
     if (!items.length) return;
-    const rows: string[][] = [
-      ["工单编号", "客户", "工程师", "服务日期", "工时(h)", "来源"],
-      ...items.map((item) => [
-        item.orderNo || String(item.id || "-"),
-        item.customerName || "-",
-        item.engineerName || "-",
-        formatDate(item.serviceDate || item.serviceAt),
-        String(item.workHours ?? item.duration ?? 0),
-        item.source || "-",
-      ]),
-    ];
-    downloadCsv(`timesheet-${startDate}-to-${endDate}.csv`, toCsv(rows));
+    await downloadEngineerWorkbook(`timesheet-${startDate}-to-${endDate}.xlsx`, label || `${startDate} 至 ${endDate}`, items);
   }
 
   return (
@@ -164,9 +272,9 @@ export function Timesheets() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button onClick={exportCsv} disabled={loading || items.length === 0}>
+          <Button onClick={exportExcel} disabled={loading || items.length === 0}>
             <Download className="w-4 h-4 mr-2" />
-            导出 CSV
+            导出 Excel
           </Button>
         </div>
       </div>
