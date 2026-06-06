@@ -493,7 +493,7 @@ export function Dashboard() {
                         <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
                           <div className="font-medium">{item.theme || "未命名主題"}</div>
                           <div className="mt-1 text-muted-foreground leading-6">
-                            {item.evidenceCount ? `${item.evidenceCount} 條證據 · ` : ""}{item.details || "—"}
+                            {item.evidenceCount ? `${item.evidenceCount} 条相关记录：` : ""}{item.details || "—"}
                           </div>
                         </div>
                       ))}
