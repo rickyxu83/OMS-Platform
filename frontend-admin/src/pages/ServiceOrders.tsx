@@ -252,6 +252,12 @@ const PRIORITY_LABELS: Record<string, string> = {
   urgent: "紧急",
 };
 
+const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
+  onsite: "success",
+  remote: "info",
+  office: "purple",
+};
+
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -665,19 +671,18 @@ export function ServiceOrders() {
             <div className="space-y-3">
               <div className="hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:flex xl:items-center">
                 <div className="w-7 shrink-0" />
-                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_auto] xl:items-center">
+                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_0.8fr_auto] xl:items-center">
                   <div>Case ID / 客户</div>
                   <div>主要内容</div>
-                  <div>设备 / 工程师</div>
+                  <div>工程师</div>
                   <div>结案</div>
+                  <div>状态</div>
                   <div className="text-right">操作</div>
                 </div>
               </div>
               {filteredOrders.map((order) => {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
-                const typeLabel = t.type[order.serviceType as keyof typeof t.type] || order.serviceType || "-";
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
-                const priorityLabel = PRIORITY_LABELS[order.priority || ""] || order.priority || "-";
                 const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 return (
@@ -694,33 +699,29 @@ export function ServiceOrders() {
                         />
                       </div>
 
-                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_auto] xl:items-center">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 font-semibold tracking-tight">{displayId(order)}</span>
-                          <span className="truncate text-sm text-muted-foreground">{textValue(order.customerName)}</span>
-                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                            {statusLabel}
-                          </Badge>
+                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_0.8fr_auto] xl:items-center">
+                        <div className="min-w-0">
+                          <div className="font-semibold tracking-tight">{displayId(order)}</div>
+                          <div className="truncate text-sm text-muted-foreground">{textValue(order.customerName)}</div>
                         </div>
 
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-sm font-medium">{compactText(order.issueDescription)}</span>
-                          <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
-                            {typeLabel}
-                          </Badge>
-                          <Badge variant="secondary">{modeLabel}</Badge>
-                          <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
-                            {priorityLabel}
-                          </Badge>
+                          <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
                         </div>
 
-                        <div className="flex min-w-0 items-center gap-2 text-sm">
-                          <span className="truncate">{textValue(order.deviceName, "未指定设备")}</span>
-                          <span className="truncate text-muted-foreground">{engineerText(order, t.detail.unnamedEngineer)}</span>
+                        <div className="min-w-0 text-sm">
+                          <span className="truncate">{engineerText(order, t.detail.unnamedEngineer)}</span>
                         </div>
 
                         <div className="whitespace-nowrap text-sm">
                           {formatDateTime(order.submittedAt)}
+                        </div>
+
+                        <div>
+                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
+                            {statusLabel}
+                          </Badge>
                         </div>
 
                         <div className="flex flex-wrap gap-2 xl:justify-end">

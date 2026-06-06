@@ -266,7 +266,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </div>
               <div>
                 <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">OMS System</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">OMS Platform</span>
               </div>
             </div>
           </div>
