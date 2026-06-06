@@ -20,6 +20,7 @@ const geoRoutes = require('./modules/geo/routes')
 const inspectionScheduleRoutes = require('./modules/inspection-schedules/routes')
 const { initializeDeviceModelCatalog } = require('./modules/device-model-catalog')
 const serviceOrderRoutes = require('./modules/service-orders/routes')
+const settingsRoutes = require('./modules/settings/routes')
 const userRoutes = require('./modules/users/routes')
 
 const allowedOrigins = new Set([
@@ -77,6 +78,7 @@ app.use('/api/v1/geo', authenticate, requireEngineerOnboardingComplete, auditLog
 app.use('/api/v1/inspection-schedules', authenticate, requireEngineerOnboardingComplete, auditLogger, inspectionScheduleRoutes)
 app.use('/api/v1/service-orders', authenticate, requireEngineerOnboardingComplete, auditLogger, serviceOrderRoutes)
 app.use('/api/v1/files', authenticate, requireEngineerOnboardingComplete, auditLogger, fileRoutes)
+app.use('/api/v1/settings', authenticate, requireEngineerOnboardingComplete, auditLogger, settingsRoutes)
 app.use('/api/v1/audit-logs', authenticate, requireEngineerOnboardingComplete, auditLogger, auditLogRoutes)
 
 app.use(notFoundHandler)

@@ -39,7 +39,7 @@ interface ServiceOrder {
   timesheetSalesperson?: string;
   priority?: string;
   engineerName?: string;
-  engineers?: Array<{ realName?: string; name?: string; username?: string }>;
+  engineers?: Array<{ id?: string | number; realName?: string; name?: string; username?: string }>;
   serviceAt?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
@@ -153,7 +153,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜尋工單編號、客戶、描述...",
+      searchPlaceholder: "搜尋工單編號、客戶、工程師、描述...",
       statusPlaceholder: "狀態篩選",
       all: "全部狀態",
     },
@@ -258,6 +258,8 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   office: "purple",
 };
 
+const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(160px,1.15fr)_112px_minmax(220px,2fr)_minmax(120px,1fr)_150px_92px_176px]";
+
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -351,7 +353,7 @@ export function ServiceOrders() {
   const [confirmForm, setConfirmForm] = useState({ engineerId: "", plannedStartAt: "", plannedEndAt: "" });
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignOrder, setAssignOrder] = useState<ServiceOrder | null>(null);
-  const [assignForm, setAssignForm] = useState({ primaryEngineerId: "", plannedStartAt: "", plannedEndAt: "", note: "" });
+  const [assignForm, setAssignForm] = useState({ engineerIds: [] as string[], plannedStartAt: "", plannedEndAt: "", note: "" });
   const [assignFiles, setAssignFiles] = useState<File[]>([]);
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [transitionOrder, setTransitionOrder] = useState<ServiceOrder | null>(null);
@@ -538,9 +540,26 @@ export function ServiceOrders() {
 
   function openAssign(order: ServiceOrder) {
     setAssignOrder(order);
-    setAssignForm({ primaryEngineerId: "", plannedStartAt: "", plannedEndAt: "", note: "" });
+    setAssignForm({
+      engineerIds: (order.engineers || [])
+        .map((engineer: any) => String(engineer.id || ""))
+        .filter(Boolean),
+      plannedStartAt: order.plannedStartAt ? String(order.plannedStartAt).replace(" ", "T").slice(0, 16) : "",
+      plannedEndAt: order.plannedEndAt ? String(order.plannedEndAt).replace(" ", "T").slice(0, 16) : "",
+      note: "",
+    });
     setAssignFiles([]);
     setAssignOpen(true);
+  }
+
+  function toggleAssignEngineer(engineerId: string | number, checked: boolean) {
+    const id = String(engineerId);
+    setAssignForm((form) => ({
+      ...form,
+      engineerIds: checked
+        ? [...form.engineerIds, id].filter((value, index, values) => values.indexOf(value) === index)
+        : form.engineerIds.filter((value) => value !== id),
+    }));
   }
 
   async function uploadOrderFiles(orderId: string | number, files: File[]) {
@@ -554,16 +573,16 @@ export function ServiceOrders() {
   }
 
   async function assignOrderToEngineer() {
-    if (!assignOrder?.id || !assignForm.primaryEngineerId) {
-      setError("请选择派发工程师");
+    if (!assignOrder?.id || !assignForm.engineerIds.length) {
+      setError("请至少选择一位派发工程师");
       return;
     }
     setSaving(true);
     setError("");
     try {
       await api.post(`/service-orders/${assignOrder.id}/assign`, {
-        primaryEngineerId: Number(assignForm.primaryEngineerId),
-        engineerIds: [Number(assignForm.primaryEngineerId)],
+        primaryEngineerId: Number(assignForm.engineerIds[0]),
+        engineerIds: assignForm.engineerIds.map(Number),
         plannedStartAt: assignForm.plannedStartAt || undefined,
         plannedEndAt: assignForm.plannedEndAt || undefined,
         note: assignForm.note || undefined,
@@ -708,17 +727,15 @@ export function ServiceOrders() {
             <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
           ) : (
             <div className="space-y-3">
-              <div className="hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:flex xl:items-center">
-                <div className="w-7 shrink-0" />
-                <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.15fr_0.7fr_2fr_1fr_1fr_0.75fr_auto] xl:items-center">
-                  <div>Case ID / 客户</div>
-                  <div>{t.detail.serviceMode}</div>
-                  <div>主要内容</div>
-                  <div>工程师</div>
-                  <div>服务时间</div>
-                  <div>状态</div>
-                  <div className="text-right">操作</div>
-                </div>
+              <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
+                <div />
+                <div>Case ID / 客户</div>
+                <div>{t.detail.serviceMode}</div>
+                <div>主要内容</div>
+                <div>工程师</div>
+                <div>服务时间</div>
+                <div>状态</div>
+                <div className="text-right">操作</div>
               </div>
               {filteredOrders.map((order) => {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
@@ -727,8 +744,8 @@ export function ServiceOrders() {
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 return (
                   <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                      <div className="shrink-0">
+                    <div className={`grid gap-3 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
+                      <div>
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
                           onCheckedChange={(checked) => {
@@ -739,8 +756,7 @@ export function ServiceOrders() {
                         />
                       </div>
 
-                      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.15fr_0.7fr_2fr_1fr_1fr_0.75fr_auto] xl:items-center">
-                        <div className="min-w-0">
+                      <div className="min-w-0">
                           <div className="font-semibold tracking-tight">{displayId(order)}</div>
                           <button
                             type="button"
@@ -805,7 +821,6 @@ export function ServiceOrders() {
                             </Button>
                           )}
                         </div>
-                      </div>
                     </div>
                   </div>
                 );
@@ -1046,14 +1061,24 @@ export function ServiceOrders() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>工程师 *</Label>
-              <Select value={assignForm.primaryEngineerId} onValueChange={(v) => setAssignForm({ ...assignForm, primaryEngineerId: v })}>
-                <SelectTrigger><SelectValue placeholder="选择工程师" /></SelectTrigger>
-                <SelectContent>
-                  {engineers.map((engineer) => (
-                    <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.realName || engineer.username || `工程师 #${engineer.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+                {engineers.map((engineer) => {
+                  const checked = assignForm.engineerIds.includes(String(engineer.id));
+                  return (
+                    <label key={engineer.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) => toggleAssignEngineer(engineer.id, Boolean(value))}
+                      />
+                      <span>{engineer.realName || engineer.username || `工程师 #${engineer.id}`}</span>
+                      {checked && assignForm.engineerIds[0] === String(engineer.id) && (
+                        <Badge variant="secondary">主</Badge>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">可选择多位工程师；第一位选中的工程师作为主工程师。</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

@@ -12,12 +12,14 @@ import { MaintenanceParties } from "@/pages/MaintenanceParties"
 import { Timesheets } from "@/pages/Timesheets"
 import { Users } from "@/pages/Users"
 import { AuditLogs } from "@/pages/AuditLogs"
+import { SystemSettings } from "@/pages/SystemSettings"
 import { useLanguage } from "@/contexts/LanguageContext"
 import type { ReactNode } from "react"
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
   users: ["admin", "assistant", "dispatcher", "supervisor", "engineering_supervisor", "sales_supervisor"],
   "audit-logs": ["admin", "supervisor", "engineering_supervisor"],
+  settings: ["admin", "supervisor", "engineering_supervisor"],
 }
 
 function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: string[] }) {
@@ -145,6 +147,16 @@ export default function App() {
             <ProtectedRoute allow={ROUTE_ACCESS_ROLES["audit-logs"]}>
               <AdminLayout>
                 <AuditLogs />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute allow={ROUTE_ACCESS_ROLES.settings}>
+              <AdminLayout>
+                <SystemSettings />
               </AdminLayout>
             </ProtectedRoute>
           }

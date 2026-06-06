@@ -1,4 +1,5 @@
 const env = require('../../config/env')
+const { effectiveSettings } = require('../settings/controller')
 
 const FALLBACK_REASON = 'AI 摘要未生成：当前未配置 AI 服务或服务暂不可用。'
 
@@ -134,19 +135,19 @@ function buildPrompt(payload) {
   ].join('\n')
 }
 
-async function callCompatibleProvider(payload) {
+async function callCompatibleProvider(payload, aiSettings) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(env.ai.summaryTimeoutMs || 30000)))
   try {
-    const response = await fetch(env.ai.apiUrl, {
+    const response = await fetch(aiSettings.apiUrl, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.ai.apiKey}`,
+        Authorization: `Bearer ${aiSettings.apiKey}`,
       },
       body: JSON.stringify({
-        model: env.ai.model,
+        model: aiSettings.model,
         messages: [
           { role: 'system', content: '你是严谨的企业运营总结助手，必须只返回合法 JSON。' },
           { role: 'user', content: buildPrompt(payload) },
@@ -169,13 +170,15 @@ async function callCompatibleProvider(payload) {
   }
 }
 
-async function callProvider(payload) {
-  return callCompatibleProvider(payload)
+async function callProvider(payload, aiSettings) {
+  return callCompatibleProvider(payload, aiSettings)
 }
 
 async function generateTimesheetWorkSummary(payload) {
-  if (!env.ai.workSummaryEnabled) return fallback('AI 摘要未生成：当前未启用 AI 工作内容总结。')
-  if (!env.ai.apiUrl || !env.ai.apiKey || !env.ai.model) return fallback('AI 摘要未生成：当前未完整配置 AI API 地址、Key 或模型。')
+  const settings = await effectiveSettings()
+  const aiSettings = settings.ai
+  if (aiSettings.workSummaryEnabled !== 'true') return fallback('AI 摘要未生成：当前未启用 AI 工作内容总结。')
+  if (!aiSettings.apiUrl || !aiSettings.apiKey || !aiSettings.model) return fallback('AI 摘要未生成：当前未完整配置 AI API 地址、Key 或模型。')
 
   const normalized = normalizeRecords(payload.items)
   if (!normalized.records.length) return fallback('AI 摘要未生成：所选范围内没有可总结的工作内容。')
@@ -198,24 +201,24 @@ async function generateTimesheetWorkSummary(payload) {
   const coverageNotes = `摘要基于 ${normalized.records.length} 条有工作内容的记录生成${normalized.omittedRecords ? `，另有 ${normalized.omittedRecords} 条因数量限制未发送给 AI` : ''}。`
 
   try {
-    const { data, text } = await callProvider(requestPayload)
+    const { data, text } = await callProvider(requestPayload, aiSettings)
     const rawContent = extractTextFromProviderResponse(data) || text
     const parsed = parseJsonText(rawContent)
     const summarySource = parsed || { executiveSummary: rawContent }
     return {
       ok: true,
       available: true,
-      provider: env.ai.provider,
+      provider: aiSettings.provider,
       summary: normalizeSummary(summarySource, coverageNotes),
       usage: {
-        model: env.ai.model,
+        model: aiSettings.model,
         inputTokens: data?.usage?.prompt_tokens ?? data?.usage?.input_tokens ?? null,
         outputTokens: data?.usage?.completion_tokens ?? data?.usage?.output_tokens ?? null,
       },
     }
   } catch (error) {
     console.error('[ai-work-summary] provider request failed', {
-      provider: env.ai.provider,
+      provider: aiSettings.provider,
       message: error?.message,
       name: error?.name,
     })

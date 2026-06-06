@@ -8,13 +8,31 @@ const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
-const publicColumns = 'id, username, real_name, phone, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
+const publicColumns = 'id, username, real_name, phone, email, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(['admin', 'assistant', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher'])
 const allowedStatuses = new Set(['active', 'disabled'])
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const avatarUploadDir = path.join(uploadRoot, 'avatars')
 fs.mkdirSync(avatarUploadDir, { recursive: true })
+
+let userEmailColumnReady = false
+
+async function ensureUserEmailColumn() {
+  if (userEmailColumnReady) return
+  const rows = await query(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'users'
+       AND column_name = 'email'
+     LIMIT 1`,
+  )
+  if (!rows[0]) {
+    await query('ALTER TABLE users ADD COLUMN email VARCHAR(128) NULL AFTER phone')
+  }
+  userEmailColumnReady = true
+}
 
 const avatarUploadMiddleware = multer({
   storage: multer.diskStorage({
@@ -62,6 +80,7 @@ function userPayload(row) {
     username: String(row.username).replace(/__deleted_\d+$/, ''),
     realName: row.real_name,
     phone: row.phone,
+    email: row.email,
     role: row.role,
     status: row.status,
     engineerSignature: row.engineer_signature || '',
@@ -98,13 +117,14 @@ function validateSignature(dataUrl) {
 }
 
 async function list(req, res) {
+  await ensureUserEmailColumn()
   const { role, status = 'active', keyword = '' } = req.query
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
      WHERE (:role IS NULL OR role = :role)
        AND (:status IS NULL OR status = :status)
-       AND (:keyword = '' OR username LIKE :likeKeyword OR real_name LIKE :likeKeyword OR phone LIKE :likeKeyword)
+       AND (:keyword = '' OR username LIKE :likeKeyword OR real_name LIKE :likeKeyword OR phone LIKE :likeKeyword OR email LIKE :likeKeyword)
      ORDER BY id DESC`,
     {
       role: role || null,
@@ -127,6 +147,7 @@ function assertUserInput({ role, status }) {
 }
 
 async function listEngineers(req, res) {
+  await ensureUserEmailColumn()
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
@@ -137,6 +158,7 @@ async function listEngineers(req, res) {
 }
 
 async function listSalespeople(req, res) {
+  await ensureUserEmailColumn()
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
@@ -147,7 +169,8 @@ async function listSalespeople(req, res) {
 }
 
 async function create(req, res) {
-  const { username, password, realName, phone, role, status = 'active' } = req.body || {}
+  await ensureUserEmailColumn()
+  const { username, password, realName, phone, email, role, status = 'active' } = req.body || {}
 
   if (!username || !password || !realName || !role) {
     throw badRequest('用户名、密码、姓名和角色不能为空')
@@ -157,13 +180,14 @@ async function create(req, res) {
 
   const passwordHash = await bcrypt.hash(password, 10)
   const result = await query(
-    `INSERT INTO users (username, password_hash, real_name, phone, role, status, must_change_password)
-     VALUES (:username, :passwordHash, :realName, :phone, :role, :status, :mustChangePassword)`,
+    `INSERT INTO users (username, password_hash, real_name, phone, email, role, status, must_change_password)
+     VALUES (:username, :passwordHash, :realName, :phone, :email, :role, :status, :mustChangePassword)`,
     {
       username,
       passwordHash,
       realName,
       phone: phone || null,
+      email: email || null,
       role,
       status,
       mustChangePassword: mustChangePasswordForRole(role),
@@ -174,8 +198,9 @@ async function create(req, res) {
 }
 
 async function update(req, res) {
+  await ensureUserEmailColumn()
   const { id } = req.params
-  const { username, realName, phone, role, status, password } = req.body || {}
+  const { username, realName, phone, email, role, status, password } = req.body || {}
   assertUserInput({ role, status })
 
   const existing = await query('SELECT id, role FROM users WHERE id = :id LIMIT 1', { id })
@@ -195,6 +220,7 @@ async function update(req, res) {
        SET username = COALESCE(:username, username),
            real_name = COALESCE(:realName, real_name),
            phone = :phone,
+           email = :email,
            role = COALESCE(:role, role),
            status = COALESCE(:status, status),
            password_hash = :passwordHash,
@@ -207,6 +233,7 @@ async function update(req, res) {
         username: username || null,
         realName: realName || null,
         phone: phone || null,
+        email: email || null,
         role: role || null,
         status: status || null,
         passwordHash,
@@ -219,10 +246,11 @@ async function update(req, res) {
        SET username = COALESCE(:username, username),
            real_name = COALESCE(:realName, real_name),
            phone = :phone,
+           email = :email,
            role = COALESCE(:role, role),
            status = COALESCE(:status, status)
        WHERE id = :id`,
-      { id, username: username || null, realName: realName || null, phone: phone || null, role: role || null, status: status || null },
+      { id, username: username || null, realName: realName || null, phone: phone || null, email: email || null, role: role || null, status: status || null },
     )
   }
 
@@ -230,6 +258,7 @@ async function update(req, res) {
 }
 
 async function me(req, res) {
+  await ensureUserEmailColumn()
   const rows = await query(`SELECT ${privateColumns} FROM users WHERE id = :id LIMIT 1`, { id: req.user.id })
   if (!rows[0]) {
     throw notFound('用户不存在')

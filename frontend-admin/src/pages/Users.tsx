@@ -25,6 +25,7 @@ interface User {
   role?: string;
   status?: string;
   phone?: string;
+  email?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -83,6 +84,7 @@ export function Users() {
     password: "",
     role: "engineer",
     phone: "",
+    email: "",
     status: "active",
   });
 
@@ -115,7 +117,7 @@ export function Users() {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
       if (!keyword) return true;
       const roleLabel = ROLE_LABELS[u.role || ""] || u.role || "";
-      return [displayName(u), u.username, u.phone, roleLabel]
+      return [displayName(u), u.username, u.phone, u.email, roleLabel]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -140,6 +142,7 @@ export function Users() {
       password: "",
       role: "engineer",
       phone: "",
+      email: "",
       status: "active",
     });
     setDialogOpen(true);
@@ -153,6 +156,7 @@ export function Users() {
       password: "",
       role: user.role || "engineer",
       phone: user.phone || "",
+      email: user.email || "",
       status: user.status || "active",
     });
     setDialogOpen(true);
@@ -179,6 +183,7 @@ export function Users() {
         realName: form.realName.trim(),
         role: form.role,
         phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
         status: form.status,
       };
       if (form.password) payload.password = form.password;
@@ -268,7 +273,7 @@ export function Users() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索姓名、账号、角色、电话..."
+                placeholder="搜索姓名、账号、角色、电话、邮箱..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -349,8 +354,9 @@ export function Users() {
                           </Badge>
                         </div>
                         <div>
-                          <div className="text-sm text-muted-foreground">电话</div>
+                          <div className="text-sm text-muted-foreground">联系方式</div>
                           <div className="text-sm">{user.phone || "-"}</div>
+                          <div className="text-xs text-muted-foreground truncate">{user.email || "-"}</div>
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">创建时间</div>
@@ -450,12 +456,21 @@ export function Users() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
                 <Label>电话</Label>
                 <Input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="联系电话（可选）"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>邮箱</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="派单通知邮箱（可选）"
                 />
               </div>
             </div>

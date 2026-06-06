@@ -4,6 +4,7 @@ CREATE TABLE users (
   password_hash VARCHAR(255) NOT NULL,
   real_name VARCHAR(64) NOT NULL,
   phone VARCHAR(32) NULL,
+  email VARCHAR(128) NULL,
   engineer_signature LONGTEXT NULL,
   avatar_path VARCHAR(255) NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
@@ -303,6 +304,16 @@ CREATE TABLE files (
   PRIMARY KEY (id),
   KEY idx_files_owner (owner_type, owner_id),
   CONSTRAINT fk_files_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE system_settings (
+  setting_key VARCHAR(128) NOT NULL,
+  setting_value LONGTEXT NULL,
+  updated_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (setting_key),
+  KEY idx_system_settings_updated_by (updated_by),
+  CONSTRAINT fk_system_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE audit_logs (

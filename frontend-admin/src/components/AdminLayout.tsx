@@ -90,6 +90,7 @@ const STRINGS: Record<AppLang, {
       timesheets: "月报导出",
       users: "成员与角色",
       "audit-logs": "操作审计",
+      settings: "系统设置",
     },
     roles: {
       admin: "管理员",
@@ -134,6 +135,7 @@ const STRINGS: Record<AppLang, {
       timesheets: "月報導出",
       users: "成員與角色",
       "audit-logs": "操作審計",
+      settings: "系統設定",
     },
     roles: {
       admin: "管理員",
@@ -189,6 +191,12 @@ const NAV_CONFIG = [
         labelKey: "audit-logs",
         icon: Shield,
         path: "audit-logs",
+        requiredRoles: ["admin", "supervisor", "engineering_supervisor"],
+      },
+      {
+        labelKey: "settings",
+        icon: Settings,
+        path: "settings",
         requiredRoles: ["admin", "supervisor", "engineering_supervisor"],
       },
     ],

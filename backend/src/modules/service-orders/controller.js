@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
@@ -739,7 +740,7 @@ async function listOrderEngineers(orderIds) {
     return values
   }, {})
   const rows = await query(
-    `SELECT soe.service_order_id, u.id, u.real_name, u.username, u.phone, u.engineer_signature
+    `SELECT soe.service_order_id, u.id, u.real_name, u.username, u.phone, u.email, u.engineer_signature
      FROM service_order_engineers soe
      JOIN users u ON u.id = soe.engineer_id
      WHERE soe.service_order_id IN (${orderIds.map((_, index) => `:orderId${index}`).join(',')})
@@ -753,6 +754,7 @@ async function listOrderEngineers(orderIds) {
       realName: row.real_name,
       username: row.username,
       phone: row.phone,
+      email: row.email,
       engineerSignature: row.engineer_signature || '',
     })
     return groups
@@ -1333,6 +1335,13 @@ async function create(req, res) {
     })
     return { id: insertResult.insertId, orderNo }
   })
+
+  if (normalizedEngineerIds.length) {
+    const createdOrder = (await attachEngineers([await getOrder(result.id)]))[0]
+    sendAssignmentMail(createdOrder, createdOrder.engineers).catch((error) => {
+      console.error('[mail] assignment notification failed', { orderId: result.id, message: error?.message })
+    })
+  }
 
   res.status(201).json(result)
 }
@@ -2217,7 +2226,11 @@ async function assign(req, res) {
     })
   })
 
-  res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
+  const updatedOrder = (await attachEngineers([await getOrder(req.params.id)]))[0]
+  sendAssignmentMail(updatedOrder, updatedOrder.engineers).catch((error) => {
+    console.error('[mail] assignment notification failed', { orderId: req.params.id, message: error?.message })
+  })
+  res.json({ item: orderPayload(updatedOrder) })
 }
 
 async function transition(req, res) {
