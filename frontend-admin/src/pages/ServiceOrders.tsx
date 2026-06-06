@@ -681,7 +681,7 @@ export function ServiceOrders() {
                 const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 return (
-                  <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+                  <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                       <div className="shrink-0">
                         <Checkbox
@@ -695,37 +695,32 @@ export function ServiceOrders() {
                       </div>
 
                       <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[1.2fr_2fr_1.1fr_1fr_auto] xl:items-center">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-semibold tracking-tight">{displayId(order)}</div>
-                            <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                              {statusLabel}
-                            </Badge>
-                          </div>
-                          <div className="mt-1 truncate text-sm text-muted-foreground">{textValue(order.customerName)}</div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="shrink-0 font-semibold tracking-tight">{displayId(order)}</span>
+                          <span className="truncate text-sm text-muted-foreground">{textValue(order.customerName)}</span>
+                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
+                            {statusLabel}
+                          </Badge>
                         </div>
 
-                        <div className="min-w-0">
-                          <div className="line-clamp-1 text-sm font-medium">{compactText(order.issueDescription)}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
-                              {typeLabel}
-                            </Badge>
-                            <Badge variant="secondary">{modeLabel}</Badge>
-                            <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
-                              {priorityLabel}
-                            </Badge>
-                          </div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-medium">{compactText(order.issueDescription)}</span>
+                          <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>
+                            {typeLabel}
+                          </Badge>
+                          <Badge variant="secondary">{modeLabel}</Badge>
+                          <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>
+                            {priorityLabel}
+                          </Badge>
                         </div>
 
-                        <div className="min-w-0 text-sm">
-                          <div className="truncate">{textValue(order.deviceName, "未指定设备")}</div>
-                          <div className="mt-1 truncate text-xs text-muted-foreground">{engineerText(order, t.detail.unnamedEngineer)}</div>
+                        <div className="flex min-w-0 items-center gap-2 text-sm">
+                          <span className="truncate">{textValue(order.deviceName, "未指定设备")}</span>
+                          <span className="truncate text-muted-foreground">{engineerText(order, t.detail.unnamedEngineer)}</span>
                         </div>
 
-                        <div className="text-sm">
-                          <div className="text-xs text-muted-foreground">结案</div>
-                          <div className="mt-1 whitespace-nowrap">{formatDateTime(order.submittedAt)}</div>
+                        <div className="whitespace-nowrap text-sm">
+                          {formatDateTime(order.submittedAt)}
                         </div>
 
                         <div className="flex flex-wrap gap-2 xl:justify-end">
