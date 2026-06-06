@@ -260,10 +260,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       >
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="h-16 flex items-center px-6 border-b border-sidebar-border/50">
+          <div className="h-[76px] flex items-center px-6 border-b border-sidebar-border/50">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-                <img src={logoSrc} alt="" className="h-7 w-7 object-contain" aria-hidden="true" />
+              <div className="admin-brand-mark">
+                <img src={logoSrc} alt="" aria-hidden="true" />
               </div>
               <div>
                 <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
