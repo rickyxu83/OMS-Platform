@@ -38,7 +38,9 @@ const fallbackPois = [
   },
 ]
 
-const preferredMapCities = ['苏州', '上海']
+function normalizeSearchText(value) {
+  return customerNameKey(value)
+}
 
 function toNumber(value) {
   if (value === undefined || value === null || value === '') return null
@@ -69,6 +71,45 @@ function normalizePoi(poi) {
 
 function poiSignature(item) {
   return `${item.name || ''}|${item.address || ''}|${item.location || ''}`
+}
+
+function distanceScore(item, latitude, longitude) {
+  const [lng, lat] = String(item.location || '').split(',').map(Number)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || latitude === null || longitude === null) return null
+  return Math.pow(lat - latitude, 2) + Math.pow(lng - longitude, 2)
+}
+
+function keywordScore(item, keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword)
+  if (!normalizedKeyword) return 0
+
+  const normalizedName = normalizeSearchText(item.name)
+  const normalizedAddress = normalizeSearchText(item.address)
+
+  if (normalizedName === normalizedKeyword) return 1000
+  if (normalizedName.includes(normalizedKeyword)) return 800
+  if (normalizedKeyword.includes(normalizedName)) return 650
+  if (normalizedAddress.includes(normalizedKeyword)) return 300
+
+  return 0
+}
+
+function rankPoiResults(items, { keyword, latitude, longitude }) {
+  const lat = toNumber(latitude)
+  const lng = toNumber(longitude)
+
+  return [...items].sort((a, b) => {
+    const keywordDelta = keywordScore(b, keyword) - keywordScore(a, keyword)
+    if (keywordDelta) return keywordDelta
+
+    const distanceA = distanceScore(a, lat, lng)
+    const distanceB = distanceScore(b, lat, lng)
+    if (distanceA !== null && distanceB !== null && distanceA !== distanceB) return distanceA - distanceB
+    if (distanceA !== null) return -1
+    if (distanceB !== null) return 1
+
+    return 0
+  })
 }
 
 async function fetchAmapPois(params) {
@@ -109,16 +150,11 @@ async function searchMapPois({ keyword, latitude, longitude }) {
     baseParams.set('sortrule', 'distance')
   }
 
-  const preferredResults = await Promise.all(
-    preferredMapCities.map((city) => {
-      const params = new URLSearchParams(baseParams)
-      params.set('city', city)
-      params.set('citylimit', 'true')
-      return fetchAmapPois(params)
-    }),
-  )
   const nationwideResults = await fetchAmapPois(baseParams)
-  const merged = mergePoiResults(...preferredResults, nationwideResults)
+  const merged = rankPoiResults(
+    mergePoiResults(nationwideResults),
+    { keyword, latitude, longitude },
+  )
 
   if (!merged.length) {
     return fallbackPois.filter((item) => !keyword || `${item.name}${item.address}`.includes(keyword))
