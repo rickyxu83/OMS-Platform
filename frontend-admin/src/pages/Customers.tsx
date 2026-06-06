@@ -69,6 +69,7 @@ interface CustomerForm {
   id?: string | number;
   name: string;
   code: string;
+  salesperson: string;
   address: string;
   level: string;
   latitude: number | null;
@@ -83,6 +84,7 @@ interface CustomerForm {
 const EMPTY_FORM: CustomerForm = {
   name: "",
   code: "",
+  salesperson: "",
   address: "",
   level: "normal",
   latitude: null,
@@ -137,11 +139,13 @@ const I18N = {
       editDescription: "修改客户信息，可通过地图搜索更新坐标",
       name: "客户名称 *",
       code: "客户编码（留空自动生成）",
+      salesperson: "对应销售",
       contact: "联系人",
       phone: "联系电话",
       address: "客户地址",
       namePlaceholder: "请输入企业全称",
       codePlaceholder: "例如 SZGY-001（可留空）",
+      salespersonPlaceholder: "请输入对应销售姓名",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
       addressPlaceholder: "详细至街道门牌号",
@@ -227,11 +231,13 @@ const I18N = {
       editDescription: "修改客戶資訊，可透過地圖搜尋更新座標",
       name: "客戶名稱 *",
       code: "客戶編碼（留空自動生成）",
+      salesperson: "對應銷售",
       contact: "聯絡人",
       phone: "聯絡電話",
       address: "客戶地址",
       namePlaceholder: "請輸入企業全稱",
       codePlaceholder: "例如 SZGY-001（可留空）",
+      salespersonPlaceholder: "請輸入對應銷售姓名",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
       addressPlaceholder: "詳細至街道路牌號",
@@ -403,6 +409,7 @@ export function Customers() {
       id: c.id,
       name: c.name || "",
       code: c.code || "",
+      salesperson: c.salesperson || "",
       address: c.address || "",
       level: c.level || "normal",
       latitude,
@@ -578,6 +585,7 @@ export function Customers() {
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         code: form.code.trim() || undefined,
+        salesperson: form.salesperson.trim() || undefined,
         contactName: primaryContact.name.trim() || undefined,
         contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
@@ -822,6 +830,15 @@ export function Customers() {
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   placeholder={t.dialog.codePlaceholder}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cust-salesperson">{t.dialog.salesperson}</Label>
+                <Input
+                  id="cust-salesperson"
+                  value={form.salesperson}
+                  onChange={(e) => setForm({ ...form, salesperson: e.target.value })}
+                  placeholder={t.dialog.salespersonPlaceholder}
                 />
               </div>
               <div className="space-y-2">
