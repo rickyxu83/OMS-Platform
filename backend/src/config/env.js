@@ -37,6 +37,16 @@ const env = {
   jwtSecret,
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
+  ai: {
+    workSummaryEnabled: process.env.AI_WORK_SUMMARY_ENABLED === 'true',
+    provider: process.env.AI_PROVIDER || 'custom',
+    apiUrl: process.env.AI_API_URL || '',
+    apiKey: process.env.AI_API_KEY || '',
+    model: process.env.AI_MODEL || '',
+    maxInputItems: Number(process.env.AI_MAX_INPUT_ITEMS || 200),
+    maxWorkContentChars: Number(process.env.AI_MAX_WORK_CONTENT_CHARS || 600),
+    summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 30000),
+  },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
     port: Number(process.env.DB_PORT || 3306),

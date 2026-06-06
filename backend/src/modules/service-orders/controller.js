@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { generateTimesheetWorkSummary } = require('./work-summary')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const signatureRoot = path.join(uploadRoot, 'signatures')
@@ -1099,14 +1100,20 @@ async function timesheetMonthly(req, res) {
     return String(left.engineerName).localeCompare(String(right.engineerName), 'zh-Hans-CN')
   })
 
-  res.json({
+  const response = {
     month,
     startDate,
     endDate,
     label,
     engineerName: toTraditional(filterEngineerId ? rows[0]?.engineer_name || manualRows[0]?.engineer_name || req.user.real_name || req.user.username : '全部工程師'),
     items,
-  })
+  }
+
+  if (String(req.query.includeWorkSummary || '') === '1') {
+    response.workSummary = await generateTimesheetWorkSummary(response)
+  }
+
+  res.json(response)
 }
 
 async function createTimesheetManualEntry(req, res) {

@@ -69,6 +69,33 @@ interface OperationalReportItem {
   source?: string;
 }
 
+interface WorkSummaryTheme {
+  theme?: string;
+  evidenceCount?: number;
+  details?: string;
+}
+
+interface WorkSummaryResult {
+  executiveSummary?: string;
+  keyThemes?: WorkSummaryTheme[];
+  customerImpact?: string[];
+  riskSignals?: string[];
+  followUpRecommendations?: string[];
+  coverageNotes?: string;
+}
+
+interface WorkSummaryResponse {
+  available?: boolean;
+  reason?: string;
+  provider?: string;
+  summary?: WorkSummaryResult | null;
+  usage?: {
+    model?: string;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+  };
+}
+
 function textValue(value: unknown, fallback = "-") {
   const text = value == null ? "" : String(value).trim();
   return text || fallback;
@@ -111,7 +138,54 @@ function reportFilename(startDate: string, endDate: string) {
   return `运营汇总-${startDate}至${endDate}.xlsx`;
 }
 
-async function downloadOperationalSummaryWorkbook(filename: string, rangeLabel: string, summary: Summary, items: OperationalReportItem[]) {
+function addAiSummaryWorksheet(workbook: ExcelJS.Workbook, rangeLabel: string, workSummary?: WorkSummaryResponse | null) {
+  const sheet = workbook.addWorksheet("AI营运摘要", {
+    views: [{ state: "frozen", ySplit: 2 }],
+    pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+  sheet.columns = [{ width: 20 }, { width: 88 }];
+  sheet.mergeCells("A1:B1");
+  sheet.getCell("A1").value = "AI 营运摘要";
+  sheet.getCell("A1").font = { size: 20, bold: true, color: { argb: "FFFFFFFF" } };
+  sheet.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
+  sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
+  sheet.getRow(1).height = 32;
+
+  const appendRow = (label: string, value: string) => {
+    const row = sheet.addRow([label, value]);
+    row.getCell(1).font = { bold: true, color: { argb: "FF312E81" } };
+    row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
+    row.getCell(2).alignment = { vertical: "top", horizontal: "left", wrapText: true };
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFE9D5FF" } },
+        left: { style: "thin", color: { argb: "FFE9D5FF" } },
+        bottom: { style: "thin", color: { argb: "FFE9D5FF" } },
+        right: { style: "thin", color: { argb: "FFE9D5FF" } },
+      };
+    });
+    row.height = Math.max(24, Math.min(120, Math.ceil(value.length / 45) * 18));
+  };
+
+  appendRow("统计范围", rangeLabel);
+  if (!workSummary?.available || !workSummary.summary) {
+    appendRow("生成状态", workSummary?.reason || "AI 摘要未生成");
+    return;
+  }
+
+  const summary = workSummary.summary;
+  appendRow("生成模型", [workSummary.provider, workSummary.usage?.model].filter(Boolean).join(" / ") || "AI");
+  appendRow("总体摘要", textValue(summary.executiveSummary, "记录未体现足够的可总结内容。"));
+  if (summary.keyThemes?.length) {
+    appendRow("重点主题", summary.keyThemes.map((item, index) => `${index + 1}. ${item.theme || "未命名主题"}${item.evidenceCount ? `（${item.evidenceCount} 条）` : ""}：${item.details || "-"}`).join("\n"));
+  }
+  if (summary.customerImpact?.length) appendRow("客户影响", summary.customerImpact.map((item, index) => `${index + 1}. ${item}`).join("\n"));
+  if (summary.riskSignals?.length) appendRow("风险信号", summary.riskSignals.map((item, index) => `${index + 1}. ${item}`).join("\n"));
+  if (summary.followUpRecommendations?.length) appendRow("后续建议", summary.followUpRecommendations.map((item, index) => `${index + 1}. ${item}`).join("\n"));
+  if (summary.coverageNotes) appendRow("覆盖说明", summary.coverageNotes);
+}
+
+async function downloadOperationalSummaryWorkbook(filename: string, rangeLabel: string, summary: Summary, items: OperationalReportItem[], workSummary?: WorkSummaryResponse | null) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Service Sheet RC";
   workbook.created = new Date();
@@ -294,6 +368,8 @@ async function downloadOperationalSummaryWorkbook(filename: string, rangeLabel: 
   detail.getColumn("workHours").numFmt = "0.0";
   detail.headerFooter.oddHeader = `&C运营汇总明细 - ${rangeLabel}`;
   detail.headerFooter.oddFooter = "&R第 &P / &N 页";
+
+  addAiSummaryWorksheet(workbook, rangeLabel, workSummary);
 
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
@@ -591,10 +667,10 @@ export function Dashboard() {
     setExporting(true);
     setError("");
     try {
-      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${reportStartDate}&endDate=${reportEndDate}&engineerId=all`);
+      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${reportStartDate}&endDate=${reportEndDate}&engineerId=all&includeWorkSummary=1`);
       const rows = (data?.items || []) as OperationalReportItem[];
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
-      await downloadOperationalSummaryWorkbook(reportFilename(reportStartDate, reportEndDate), rangeLabel, summary, rows);
+      await downloadOperationalSummaryWorkbook(reportFilename(reportStartDate, reportEndDate), rangeLabel, summary, rows, data?.workSummary || null);
       saveReportRange(reportStartDate, reportEndDate);
       setReportDialogOpen(false);
     } catch (e) {
