@@ -4,6 +4,7 @@ import { BarChart3, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "l
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Amap } from "@/components/Amap";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -63,12 +64,69 @@ function downloadCsv(filename: string, rows: unknown[][]) {
   URL.revokeObjectURL(url);
 }
 
-function currentMonthRange() {
+const LAST_REPORT_EXPORT_KEY = "admin:lastMonthlyReportExport";
+
+function formatDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function addDays(value: string, days: number) {
+  const date = parseDate(value);
+  if (!date) return "";
+  date.setDate(date.getDate() + days);
+  return formatDate(date);
+}
+
+function getDefaultReportRange(lang: "zh-CN" | "zh-TW") {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const format = (date: Date) => date.toISOString().slice(0, 10);
-  return { startDate: format(start), endDate: format(end), month: format(start).slice(0, 7) };
+  const today = formatDate(now);
+  let startDate = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  let hint = lang === "zh-TW" ? "首次匯出，已預設選擇本月範圍。" : "首次导出，已默认选择本月范围。";
+
+  try {
+    const raw = window.localStorage.getItem(LAST_REPORT_EXPORT_KEY);
+    const previous = raw ? JSON.parse(raw) : null;
+    if (previous?.endDate && parseDate(previous.endDate)) {
+      const nextDate = addDays(previous.endDate, 1);
+      startDate = nextDate && nextDate <= today ? nextDate : today;
+      hint = lang === "zh-TW"
+        ? `上次匯出至：${previous.endDate}，本次已自動從 ${startDate} 開始。`
+        : `上次导出至：${previous.endDate}，本次已自动从 ${startDate} 开始。`;
+    }
+  } catch {
+    // localStorage 不可用时使用本月默认范围。
+  }
+
+  return { startDate, endDate: today, hint };
+}
+
+function saveReportRange(startDate: string, endDate: string) {
+  try {
+    window.localStorage.setItem(
+      LAST_REPORT_EXPORT_KEY,
+      JSON.stringify({ startDate, endDate, exportedAt: new Date().toISOString() }),
+    );
+  } catch {
+    // 忽略本地记录失败，不影响报表导出。
+  }
+}
+
+function reportFilename(startDate: string, endDate: string) {
+  if (startDate.slice(0, 7) === endDate.slice(0, 7)) {
+    return `运营月报-${startDate.slice(0, 7)}.csv`;
+  }
+  return `运营报表-${startDate}至${endDate}.csv`;
 }
 
 const I18N = {
@@ -77,6 +135,15 @@ const I18N = {
     subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
     searchPlaceholder: "快速搜索工单或客户...",
     exportReport: "导出运营月报",
+    reportDialog: {
+      title: "导出运营月报",
+      description: "选择本次报表统计日期，导出成功后会记住结束日期，下次自动从下一天开始。",
+      startDate: "开始日期",
+      endDate: "结束日期",
+      cancel: "取消",
+      submit: "导出报表",
+      invalidRange: "开始日期不能晚于结束日期",
+    },
     stats: {
       todayTotal: "今日服务总数",
       monthTotal: "本月服务总数",
@@ -121,6 +188,15 @@ const I18N = {
     subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
     searchPlaceholder: "快速搜尋工單或客戶...",
     exportReport: "匯出營運月報",
+    reportDialog: {
+      title: "匯出營運月報",
+      description: "選擇本次報表統計日期，匯出成功後會記住結束日期，下次自動從下一天開始。",
+      startDate: "開始日期",
+      endDate: "結束日期",
+      cancel: "取消",
+      submit: "匯出報表",
+      invalidRange: "開始日期不能晚於結束日期",
+    },
     stats: {
       todayTotal: "今日服務總數",
       monthTotal: "本月服務總數",
@@ -193,6 +269,10 @@ export function Dashboard() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportStartDate, setReportStartDate] = useState("");
+  const [reportEndDate, setReportEndDate] = useState("");
+  const [reportHint, setReportHint] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -264,16 +344,29 @@ export function Dashboard() {
     navigate(`/customers?keyword=${encodeURIComponent(city)}`);
   }
 
+  function openReportDialog() {
+    const range = getDefaultReportRange(lang);
+    setReportStartDate(range.startDate);
+    setReportEndDate(range.endDate);
+    setReportHint(range.hint);
+    setError("");
+    setReportDialogOpen(true);
+  }
+
   async function exportMonthlyReport() {
     if (exporting) return;
+    if (!reportStartDate || !reportEndDate) return;
+    if (reportStartDate > reportEndDate) {
+      setError(t.reportDialog.invalidRange);
+      return;
+    }
     setExporting(true);
     setError("");
     try {
-      const { startDate, endDate, month } = currentMonthRange();
-      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${startDate}&endDate=${endDate}&engineerId=all`);
+      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${reportStartDate}&endDate=${reportEndDate}&engineerId=all`);
       const rows = data?.items || [];
-      downloadCsv(`运营月报-${month}.csv`, [
-        ["月份", month],
+      downloadCsv(reportFilename(reportStartDate, reportEndDate), [
+        ["日期范围", `${reportStartDate} 至 ${reportEndDate}`],
         ["今日服务总数", summary.todayTotal ?? 0],
         ["本月服务总数", summary.monthTotal ?? 0],
         ["本月客户数量", summary.monthCustomers ?? 0],
@@ -294,6 +387,8 @@ export function Dashboard() {
           item.orderNo,
         ]),
       ]);
+      saveReportRange(reportStartDate, reportEndDate);
+      setReportDialogOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.loadFailed);
     } finally {
@@ -325,7 +420,7 @@ export function Dashboard() {
             <Search className="w-4 h-4 mr-2" />
             搜索
           </Button>
-          <Button onClick={exportMonthlyReport} disabled={exporting}>
+          <Button onClick={openReportDialog} disabled={exporting}>
             {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             {t.exportReport}
           </Button>
@@ -437,6 +532,49 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.reportDialog.title}</DialogTitle>
+            <DialogDescription>{t.reportDialog.description}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {reportHint && (
+              <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                {reportHint}
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium">
+                <span>{t.reportDialog.startDate}</span>
+                <Input
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>{t.reportDialog.endDate}</span>
+                <Input
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportDialogOpen(false)} disabled={exporting}>
+              {t.reportDialog.cancel}
+            </Button>
+            <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
+              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {t.reportDialog.submit}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
