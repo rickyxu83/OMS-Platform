@@ -2711,6 +2711,23 @@ h2 {
   line-height: 1.55;
 }
 
+.login-license-footer {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 2;
+  width: min(720px, calc(100% - 32px));
+  transform: translateX(-50%);
+  color: #64748b;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.login-license-footer p {
+  margin: 0;
+}
+
 .rich-login small {
   display: block;
   color: #94a3b8;

@@ -53,6 +53,8 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "请输入账号",
       passwordPlaceholder: "请输入密码",
+      companyName: "敦阳（宁波）科技有限公司",
+      licenseNotice: "本软件依据 GNU GPL v3.0（GPL-3.0）发布。",
     },
     "zh-TW": {
       title: "OMS Platform",
@@ -77,6 +79,8 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "請輸入帳號",
       passwordPlaceholder: "請輸入密碼",
+      companyName: "敦陽（寧波）科技有限公司",
+      licenseNotice: "本軟體依據 GNU GPL v3.0（GPL-3.0）發布。",
     },
   };
 
@@ -317,8 +321,8 @@ export function Login() {
       </div>
 
       <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-sm text-gray-500 sm:bottom-4">
-        <p className="mb-1">{lang === "zh-TW" ? "敦陽（寧波）科技有限公司" : "敦阳（宁波）科技有限公司"}</p>
-        <p className="text-xs">© 2026 All rights reserved.</p>
+        <p className="mb-1">{t.companyName}</p>
+        <p className="text-xs">{t.licenseNotice}</p>
       </div>
     </div>
   );

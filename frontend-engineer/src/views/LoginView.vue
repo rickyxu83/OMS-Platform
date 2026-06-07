@@ -51,5 +51,8 @@ onMounted(() => {
         <div class="person-mark"></div>
       </aside>
     </section>
+    <footer class="login-license-footer">
+      <p>{{ zh('本软件依据 GNU GPL v3.0（GPL-3.0）发布。') }}</p>
+    </footer>
   </main>
 </template>
