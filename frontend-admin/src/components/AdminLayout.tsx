@@ -27,7 +27,7 @@ import {
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
-import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_NAME, APP_NAME_HANT, goToWorkspace } from "@/config/app";
+import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 
@@ -44,7 +44,7 @@ interface NavGroup {
 }
 
 const STRINGS: Record<AppLang, {
-  brand: { title: string; version: string }
+  brand: { title: string; subtitle: string; version: string }
   common: {
     systemName: string
     quickNav: string
@@ -62,7 +62,8 @@ const STRINGS: Record<AppLang, {
 }> = {
   "zh-CN": {
     brand: {
-      title: APP_NAME,
+      title: "OMS Platform",
+      subtitle: "运维智管",
       version: "系统版本",
     },
     common: {
@@ -108,7 +109,8 @@ const STRINGS: Record<AppLang, {
   },
   "zh-TW": {
     brand: {
-      title: APP_NAME_HANT,
+      title: "OMS Platform",
+      subtitle: "運維智管",
       version: "系統版本",
     },
     common: {
@@ -280,7 +282,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <img src={logoSrc} alt="" aria-hidden="true" />
               </div>
               <div>
-                <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
+                <span className="font-bold text-base leading-tight block text-sidebar-foreground tracking-tight">
+                  <span className="block">{strings.brand.title}</span>
+                  <span className="block">{strings.brand.subtitle}</span>
+                </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">{strings.common.systemName}</span>
               </div>
             </div>
