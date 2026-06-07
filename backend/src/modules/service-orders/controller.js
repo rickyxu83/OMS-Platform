@@ -782,6 +782,23 @@ async function attachEngineers(rows) {
   }))
 }
 
+function triggerAssignmentMail(order, orderId = order?.id) {
+  sendAssignmentMail(order, order?.engineers || [])
+    .then((result) => {
+      if (result?.skipped) {
+        console.warn('[mail] assignment notification skipped', {
+          orderId,
+          reason: result.reason || 'unknown',
+          missing: result.missing,
+          engineerIds: result.engineerIds,
+        })
+      }
+    })
+    .catch((error) => {
+      console.error('[mail] assignment notification failed', { orderId, message: error?.message })
+    })
+}
+
 async function attachReports(rows) {
   const orderIds = rows.map((row) => Number(row.id)).filter(Boolean)
   if (!orderIds.length) return rows
@@ -1341,9 +1358,7 @@ async function create(req, res) {
 
   if (normalizedEngineerIds.length) {
     const createdOrder = (await attachEngineers([await getOrder(result.id)]))[0]
-    sendAssignmentMail(createdOrder, createdOrder.engineers).catch((error) => {
-      console.error('[mail] assignment notification failed', { orderId: result.id, message: error?.message })
-    })
+    triggerAssignmentMail(createdOrder, result.id)
   }
 
   res.status(201).json(result)
@@ -2230,9 +2245,7 @@ async function assign(req, res) {
   })
 
   const updatedOrder = (await attachEngineers([await getOrder(req.params.id)]))[0]
-  sendAssignmentMail(updatedOrder, updatedOrder.engineers).catch((error) => {
-    console.error('[mail] assignment notification failed', { orderId: req.params.id, message: error?.message })
-  })
+  triggerAssignmentMail(updatedOrder, req.params.id)
   res.json({ item: orderPayload(updatedOrder) })
 }
 
@@ -2345,7 +2358,9 @@ async function confirmInspectionOrder(req, res) {
     })
   })
 
-  res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
+  const updatedOrder = (await attachEngineers([await getOrder(req.params.id)]))[0]
+  triggerAssignmentMail(updatedOrder, req.params.id)
+  res.json({ item: orderPayload(updatedOrder) })
 }
 
 async function cancelByEngineer(req, res) {

@@ -14,19 +14,38 @@ function formatTime(value) {
 }
 
 function recipientEmails(engineers = []) {
+  const seen = new Set()
   return engineers
     .map((engineer) => String(engineer.email || '').trim())
-    .filter((email, index, values) => email && values.indexOf(email) === index)
+    .filter((email) => {
+      const key = email.toLowerCase()
+      if (!email || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function missingMailFields(mail) {
+  return ['host', 'port', 'from', 'user', 'password'].filter((key) => !mail[key])
 }
 
 async function sendAssignmentMail(order, engineers = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
-  if (mail.enabled !== 'true' || mail.assignNotifyEnabled !== 'true') return { skipped: true }
-  if (!mail.host || !mail.port || !mail.from || !mail.user || !mail.password) return { skipped: true }
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+  if (mail.assignNotifyEnabled !== 'true') return { skipped: true, reason: 'assign_notify_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
 
   const to = recipientEmails(engineers)
-  if (!to.length) return { skipped: true }
+  if (!to.length) {
+    return {
+      skipped: true,
+      reason: 'no_recipient_email',
+      engineerIds: engineers.map((engineer) => engineer.id).filter(Boolean),
+    }
+  }
 
   const transporter = nodemailer.createTransport({
     host: mail.host,

@@ -2,9 +2,20 @@ const { query } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
 
 const validPartyTypes = new Set(['original_manufacturer', 'our_maintenance'])
+const partyTypeAliases = {
+  vendor_contact: 'original_manufacturer',
+  vendor: 'original_manufacturer',
+  partner: 'our_maintenance',
+  our: 'our_maintenance',
+}
 
 function normalizeText(value) {
   return String(value || '').trim()
+}
+
+function normalizePartyType(value, fallback = 'our_maintenance') {
+  const partyType = normalizeText(value) || fallback
+  return partyTypeAliases[partyType] || partyType
 }
 
 function validatePhone(input) {
@@ -29,7 +40,8 @@ function partyPayload(row) {
 
 async function list(req, res) {
   const { keyword = '', partyType = '' } = req.query
-  if (partyType && !validPartyTypes.has(partyType)) {
+  const normalizedPartyType = partyType ? normalizePartyType(partyType, '') : ''
+  if (normalizedPartyType && !validPartyTypes.has(normalizedPartyType)) {
     throw badRequest('维护方类型不正确')
   }
   const rows = await query(
@@ -45,7 +57,7 @@ async function list(req, res) {
      LIMIT 200`,
     {
       keyword,
-      partyType,
+      partyType: normalizedPartyType,
       likeKeyword: `%${keyword}%`,
     },
   )
@@ -54,7 +66,7 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const partyType = normalizeText(req.body?.partyType) || 'our_maintenance'
+  const partyType = normalizePartyType(req.body?.partyType)
   const name = normalizeText(req.body?.name)
   const phone = validatePhone(req.body?.phone)
 
@@ -100,7 +112,7 @@ async function update(req, res) {
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
   const hasPhone = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')
 
-  const partyType = hasPartyType ? normalizeText(req.body.partyType) : null
+  const partyType = hasPartyType ? normalizePartyType(req.body.partyType, '') : null
   const name = hasName ? normalizeText(req.body.name) : null
   const phone = hasPhone ? validatePhone(req.body.phone) : null
 

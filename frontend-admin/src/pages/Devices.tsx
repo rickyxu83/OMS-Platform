@@ -72,6 +72,11 @@ const MAINTENANCE_TYPE_BADGE: Record<string, "default" | "secondary" | "info" | 
   our_maintenance: "purple",
 };
 
+const MAINTENANCE_TYPE_ALIASES: Record<string, string> = {
+  vendor: "original_manufacturer",
+  our: "our_maintenance",
+};
+
 const DEVICE_STATUS_LABELS: Record<string, string> = {
   active: "在用",
   inactive: "停用",
@@ -94,6 +99,11 @@ function formatDate(value?: string) {
 function inputDate(value?: string) {
   if (!value) return "";
   return String(value).slice(0, 10);
+}
+
+function canonicalMaintenanceType(value?: string) {
+  const type = String(value || "none").trim() || "none";
+  return MAINTENANCE_TYPE_ALIASES[type] || type;
 }
 
 export function Devices() {
@@ -176,7 +186,8 @@ export function Devices() {
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     return devices.filter((d) => {
-      if (maintenanceFilter !== "all" && d.maintenanceType !== maintenanceFilter) return false;
+      const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
+      if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (!keyword) return true;
       return [d.name, d.model, d.pn, d.serialNo, d.customerName]
         .filter(Boolean)
@@ -186,8 +197,8 @@ export function Devices() {
 
   const stats = useMemo(() => {
     const total = filtered.length;
-    const ours = filtered.filter((d) => d.maintenanceType === "our" || d.maintenanceType === "our_maintenance").length;
-    const vendor = filtered.filter((d) => d.maintenanceType === "vendor" || d.maintenanceType === "original_manufacturer").length;
+    const ours = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "our_maintenance").length;
+    const vendor = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "original_manufacturer").length;
     return [
       { label: "设备总数", value: total },
       { label: "我方维护", value: ours },
@@ -223,7 +234,7 @@ export function Devices() {
       model: device.model || "",
       pn: device.pn || "",
       serialNo: device.serialNo || "",
-      maintenanceType: device.maintenanceType || "none",
+      maintenanceType: canonicalMaintenanceType(device.maintenanceType),
       maintenancePartyId: device.maintenancePartyId ? String(device.maintenancePartyId) : "",
       maintenanceStart: inputDate(device.maintenanceStart),
       maintenanceEnd: inputDate(device.maintenanceEnd),
@@ -253,9 +264,9 @@ export function Devices() {
         model: form.model.trim() || undefined,
         pn: form.pn.trim() || undefined,
         serialNo: form.serialNo.trim() || undefined,
-        maintenanceType: form.maintenanceType,
+        maintenanceType: canonicalMaintenanceType(form.maintenanceType),
         maintenancePartyId:
-          form.maintenanceType === "none" ? null : form.maintenancePartyId || null,
+          canonicalMaintenanceType(form.maintenanceType) === "none" ? null : form.maintenancePartyId || null,
         maintenanceStart: form.maintenanceStart || undefined,
         maintenanceEnd: form.maintenanceEnd || undefined,
         location: form.location.trim() || undefined,
@@ -394,8 +405,8 @@ export function Devices() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部类型</SelectItem>
-                <SelectItem value="our">我方维护</SelectItem>
-                <SelectItem value="vendor">原厂维护</SelectItem>
+                <SelectItem value="our_maintenance">我方维护</SelectItem>
+                <SelectItem value="original_manufacturer">原厂维护</SelectItem>
                 <SelectItem value="none">无维护</SelectItem>
               </SelectContent>
             </Select>
@@ -427,7 +438,8 @@ export function Devices() {
           ) : (
             <div className="space-y-2">
               {filtered.map((device) => {
-                const typeLabel = MAINTENANCE_TYPE_LABELS[device.maintenanceType || ""] || device.maintenanceType || "-";
+                const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
+                const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
                 const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
                 return (
                   <div key={device.id} className="border border-border rounded-lg overflow-hidden">
@@ -454,7 +466,7 @@ export function Devices() {
                           </div>
                         </div>
                         <div>
-                          <Badge variant={MAINTENANCE_TYPE_BADGE[device.maintenanceType || ""] || "outline"}>
+                          <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>
                             {typeLabel}
                           </Badge>
                         </div>
@@ -496,7 +508,7 @@ export function Devices() {
                           <div>
                             <Label className="text-muted-foreground">维护类型</Label>
                             <div className="mt-1">
-                              <Badge variant={MAINTENANCE_TYPE_BADGE[device.maintenanceType || ""] || "outline"}>
+                              <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>
                                 {typeLabel}
                               </Badge>
                             </div>
@@ -636,8 +648,8 @@ export function Devices() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">无维护</SelectItem>
-                    <SelectItem value="our">我方维护</SelectItem>
-                    <SelectItem value="vendor">原厂维护</SelectItem>
+                    <SelectItem value="our_maintenance">我方维护</SelectItem>
+                    <SelectItem value="original_manufacturer">原厂维护</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

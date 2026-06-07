@@ -355,6 +355,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </div>
 
           <div className="flex items-center gap-6">
+            <div className="text-sm text-muted-foreground">
+              {currentTime.toLocaleString(lang, {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </div>
+
             {/* Quick Nav */}
             <Button
               variant="outline"
@@ -376,17 +387,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <Languages className="w-4 h-4" />
               <span className="text-xs font-medium">{strings.common.langShort}</span>
             </Button>
-
-            <div className="text-sm text-muted-foreground">
-              {currentTime.toLocaleString(lang, {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </div>
 
             <Separator orientation="vertical" className="h-8" />
 

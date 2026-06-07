@@ -189,6 +189,10 @@ function formatDate(value?: string) {
   return String(value).replace("T", " ").slice(0, 10);
 }
 
+function isOriginalManufacturer(type?: string) {
+  return type === "original_manufacturer" || type === "vendor_contact" || type === "vendor";
+}
+
 export function MaintenanceParties() {
   const { lang } = useLanguage();
   const t = I18N[lang];
@@ -296,7 +300,7 @@ export function MaintenanceParties() {
     try {
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
-        contact: form.contact.trim() || undefined,
+        contact: isOriginalManufacturer(form.partyType) ? undefined : form.contact.trim() || undefined,
         phone: form.phone.trim() || undefined,
         partyType: form.partyType,
         serviceScope: form.serviceScope.trim() || undefined,
@@ -390,7 +394,7 @@ export function MaintenanceParties() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t.filters.all}</SelectItem>
-                <SelectItem value="vendor_contact">{t.filters.vendor}</SelectItem>
+                <SelectItem value="original_manufacturer">{t.filters.vendor}</SelectItem>
                 <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
               </SelectContent>
             </Select>
@@ -437,7 +441,9 @@ export function MaintenanceParties() {
                           </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {`${t.dialog.contact}：${p.contact || t.misc.unknown} · ${t.dialog.phone}：${p.phone || t.misc.unknown}`}
+                          {isOriginalManufacturer(p.partyType)
+                            ? `${t.dialog.phone}：${p.phone || t.misc.unknown}`
+                            : `${t.dialog.contact}：${p.contact || t.misc.unknown} · ${t.dialog.phone}：${p.phone || t.misc.unknown}`}
                         </div>
                         {p.serviceScope && (
                           <div className="text-xs text-muted-foreground mt-1">
@@ -483,14 +489,16 @@ export function MaintenanceParties() {
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t.dialog.contact}</Label>
-                <Input
-                  value={form.contact}
-                  onChange={(e) => setForm({ ...form, contact: e.target.value })}
-                  placeholder={t.dialog.contactPlaceholder}
-                />
-              </div>
+              {!isOriginalManufacturer(form.partyType) && (
+                <div className="space-y-2">
+                  <Label>{t.dialog.contact}</Label>
+                  <Input
+                    value={form.contact}
+                    onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                    placeholder={t.dialog.contactPlaceholder}
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>{t.dialog.phone}</Label>
                 <Input
@@ -504,13 +512,13 @@ export function MaintenanceParties() {
               <Label>{t.dialog.type}</Label>
               <Select
                 value={form.partyType}
-                onValueChange={(v) => setForm({ ...form, partyType: v })}
+                onValueChange={(v) => setForm({ ...form, partyType: v, contact: isOriginalManufacturer(v) ? "" : form.contact })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t.dialog.typePlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="vendor_contact">{t.filters.vendor}</SelectItem>
+                  <SelectItem value="original_manufacturer">{t.filters.vendor}</SelectItem>
                   <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
                 </SelectContent>
               </Select>
