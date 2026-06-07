@@ -2,8 +2,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { api } from '../services/api'
 import { currentUser, isLoggedIn, saveUser } from '../services/auth'
 import EngineerLayout from '../layouts/EngineerLayout.vue'
+import AssetCustomerDetailView from '../views/AssetCustomerDetailView.vue'
 import AssetCustomersView from '../views/AssetCustomersView.vue'
+import AssetDeviceDetailView from '../views/AssetDeviceDetailView.vue'
 import AssetDevicesView from '../views/AssetDevicesView.vue'
+import AssetMaintenancePartyDetailView from '../views/AssetMaintenancePartyDetailView.vue'
 import AssetMaintenancePartiesView from '../views/AssetMaintenancePartiesView.vue'
 import AssetsView from '../views/AssetsView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -30,8 +33,11 @@ const router = createRouter({
         { path: 'tasks/:id/share', name: 'task-share', component: TaskShareView },
         { path: 'assets', name: 'assets', component: AssetsView },
         { path: 'assets/customers', name: 'asset-customers', component: AssetCustomersView },
+        { path: 'assets/customers/:id', name: 'asset-customer-detail', component: AssetCustomerDetailView },
         { path: 'assets/devices', name: 'asset-devices', component: AssetDevicesView },
+        { path: 'assets/devices/:id', name: 'asset-device-detail', component: AssetDeviceDetailView },
         { path: 'assets/maintenance-parties', name: 'asset-maintenance-parties', component: AssetMaintenancePartiesView },
+        { path: 'assets/maintenance-parties/:id', name: 'asset-maintenance-party-detail', component: AssetMaintenancePartyDetailView },
         { path: 'timesheets', name: 'timesheets', component: TimesheetsView },
         { path: 'timesheet', name: 'timesheet', component: TimesheetsView },
         { path: 'profile', name: 'profile', component: ProfileView },

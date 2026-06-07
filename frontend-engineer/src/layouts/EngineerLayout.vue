@@ -64,7 +64,12 @@ const networkLabel = computed(() => {
 
 const navItems = [
   { label: '服务记录', icon: 'list', to: '/', names: ['tasks', 'task-detail', 'task-share'] },
-  { label: '客户资产', icon: 'assets', to: '/assets', names: ['assets', 'asset-customers', 'asset-devices', 'asset-maintenance-parties'] },
+  {
+    label: '客户资产',
+    icon: 'assets',
+    to: '/assets',
+    names: ['assets', 'asset-customers', 'asset-customer-detail', 'asset-devices', 'asset-device-detail', 'asset-maintenance-parties', 'asset-maintenance-party-detail'],
+  },
   { label: '新建服务表', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
   { label: '月报', icon: 'calendar', to: '/timesheet', names: ['timesheet', 'timesheets'] },
   { label: '我的', icon: 'user', to: '/profile', names: ['profile'] },

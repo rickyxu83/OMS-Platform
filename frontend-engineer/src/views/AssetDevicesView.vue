@@ -1,11 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 
 const { zh } = usePreviewI18n()
+const route = useRoute()
 const devices = ref([])
 const customers = ref([])
 const parties = ref([])
@@ -154,6 +156,7 @@ async function saveDevice() {
 
 onMounted(async () => {
   try {
+    customerFilter.value = String(route.query.customerId || '')
     await loadBaseData()
     await loadDevices()
   } catch (err) {
@@ -189,13 +192,22 @@ onMounted(async () => {
     <p v-if="loading" class="muted">{{ zh('正在载入设备资产...') }}</p>
 
     <section class="asset-card-list">
-      <article v-for="device in filteredDevices" :key="device.id" class="asset-record-card">
+      <article
+        v-for="device in filteredDevices"
+        :key="device.id"
+        class="asset-record-card asset-clickable-card"
+        role="link"
+        tabindex="0"
+        @click="$router.push(`/assets/devices/${device.id}`)"
+        @keydown.enter="$router.push(`/assets/devices/${device.id}`)"
+        @keydown.space.prevent="$router.push(`/assets/devices/${device.id}`)"
+      >
         <header>
           <div>
             <span class="asset-record-kicker">{{ zh(device.customerName || '未关联客户') }}</span>
             <h2>{{ zh(device.name || '未命名设备') }}</h2>
           </div>
-          <button class="ghost" type="button" @click="openEdit(device)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
+          <button class="ghost" type="button" @click.stop="openEdit(device)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <p class="asset-record-line"><PreviewIcon name="devices" />{{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}</p>
         <p class="asset-record-line"><PreviewIcon name="pin" />{{ zh(device.location || '未维护位置') }}</p>

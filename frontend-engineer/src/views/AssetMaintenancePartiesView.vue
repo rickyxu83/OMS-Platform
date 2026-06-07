@@ -151,13 +151,22 @@ onMounted(() => {
     <p v-if="loading" class="muted">{{ zh('正在载入维保方目录...') }}</p>
 
     <section class="asset-card-list">
-      <article v-for="party in filteredParties" :key="party.id" class="asset-record-card">
+      <article
+        v-for="party in filteredParties"
+        :key="party.id"
+        class="asset-record-card asset-clickable-card"
+        role="link"
+        tabindex="0"
+        @click="$router.push(`/assets/maintenance-parties/${party.id}`)"
+        @keydown.enter="$router.push(`/assets/maintenance-parties/${party.id}`)"
+        @keydown.space.prevent="$router.push(`/assets/maintenance-parties/${party.id}`)"
+      >
         <header>
           <div>
             <span class="asset-record-kicker">{{ zh(partyTypeLabel(party.partyType)) }}</span>
             <h2>{{ zh(party.name || '未命名维保方') }}</h2>
           </div>
-          <button class="ghost" type="button" @click="openEdit(party)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
+          <button class="ghost" type="button" @click.stop="openEdit(party)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <div class="asset-contact-list">
           <span><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>

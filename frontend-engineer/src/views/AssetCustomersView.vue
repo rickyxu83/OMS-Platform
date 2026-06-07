@@ -170,13 +170,22 @@ onMounted(() => {
     <p v-if="loading" class="muted">{{ zh('正在载入客户档案...') }}</p>
 
     <section class="asset-card-list">
-      <article v-for="customer in filteredCustomers" :key="customer.id" class="asset-record-card">
+      <article
+        v-for="customer in filteredCustomers"
+        :key="customer.id"
+        class="asset-record-card asset-clickable-card"
+        role="link"
+        tabindex="0"
+        @click="$router.push(`/assets/customers/${customer.id}`)"
+        @keydown.enter="$router.push(`/assets/customers/${customer.id}`)"
+        @keydown.space.prevent="$router.push(`/assets/customers/${customer.id}`)"
+      >
         <header>
           <div>
             <span class="asset-record-kicker">{{ customer.code || zh('未维护编码') }}</span>
             <h2>{{ zh(customer.name || '未命名客户') }}</h2>
           </div>
-          <button class="ghost" type="button" @click="openEdit(customer)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
+          <button class="ghost" type="button" @click.stop="openEdit(customer)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <p class="asset-record-line"><PreviewIcon name="pin" />{{ zh(customer.address || '未维护地址') }}</p>
         <div class="asset-contact-list">

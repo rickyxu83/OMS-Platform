@@ -5754,3 +5754,173 @@ h2 {
     width: 100%;
   }
 }
+
+.asset-clickable-card {
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.asset-clickable-card:focus-visible {
+  outline: 3px solid rgb(37 99 235 / 24%);
+  outline-offset: 3px;
+}
+
+.asset-detail-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.asset-detail-card {
+  align-content: start;
+}
+
+.asset-detail-card header .primary,
+.asset-detail-card header .ghost,
+.asset-locate-button,
+.asset-save-message {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-inline-form {
+  padding: 0;
+}
+
+.asset-locate-button {
+  width: fit-content;
+}
+
+.asset-save-message {
+  width: fit-content;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgb(34 197 94 / 22%);
+  border-radius: 999px;
+  color: #166534;
+  background: rgb(220 252 231 / 82%);
+  font-weight: 800;
+}
+
+.asset-candidate-list {
+  display: grid;
+  gap: 8px;
+}
+
+.asset-candidate-list button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgb(37 99 235 / 14%);
+  border-radius: 16px;
+  color: #172033;
+  text-align: left;
+  background: rgb(239 246 255 / 78%);
+}
+
+.asset-candidate-list span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.asset-device-linked-list {
+  gap: 10px;
+}
+
+.asset-linked-device-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 20px;
+  color: inherit;
+  text-decoration: none;
+  background: rgb(255 255 255 / 64%);
+}
+
+.asset-linked-device-card h3 {
+  margin: 8px 0 4px;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.asset-linked-device-card p,
+.asset-linked-maintenance {
+  color: #64748b;
+}
+
+.asset-linked-maintenance {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(148 163 184 / 16%);
+  line-height: 1.55;
+}
+
+.asset-linked-maintenance b {
+  color: #0f172a;
+}
+
+.asset-detail-kv {
+  display: grid;
+  gap: 10px;
+}
+
+.asset-detail-kv p {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgb(248 250 252 / 72%);
+}
+
+.asset-detail-kv span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.asset-detail-kv b {
+  color: #0f172a;
+  font-weight: 850;
+  line-height: 1.55;
+}
+
+.asset-warranty-success {
+  color: #166534;
+  background: rgb(220 252 231 / 86%);
+}
+
+.asset-warranty-warning {
+  color: #9a3412;
+  background: rgb(255 237 213 / 88%);
+}
+
+.asset-warranty-danger {
+  color: #be123c;
+  background: rgb(255 228 230 / 88%);
+}
+
+.asset-warranty-neutral {
+  color: #475569;
+  background: rgb(226 232 240 / 82%);
+}
+
+@media (min-width: 980px) {
+  .asset-detail-grid {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .asset-locate-button,
+  .asset-detail-card header .primary,
+  .asset-detail-card header .ghost {
+    width: 100%;
+  }
+}
