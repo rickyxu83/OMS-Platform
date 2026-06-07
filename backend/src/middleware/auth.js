@@ -1,18 +1,31 @@
 const jwt = require('jsonwebtoken')
 const env = require('../config/env')
 const { query } = require('../config/db')
+const { ROLE_GROUPS } = require('../permissions/roles')
 const { forbidden, unauthorized } = require('../utils/http-error')
 
-const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
+function cookieToken(req) {
+  const cookieHeader = req.get('cookie') || ''
+  const cookieName = env.sessionCookieName || 'service_sheet_rc_token'
+  return cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .map((part) => {
+      const separator = part.indexOf('=')
+      return separator === -1 ? ['', ''] : [part.slice(0, separator), part.slice(separator + 1)]
+    })
+    .find(([name]) => name === cookieName)?.[1] || ''
+}
 
 function requiresOnboarding(user) {
-  return engineerRoles.has(user?.role) && (Boolean(user.must_change_password) || !Boolean(user.engineer_signature))
+  return ROLE_GROUPS.engineerWorkspace.includes(user?.role) && (Boolean(user.must_change_password) || !Boolean(user.engineer_signature))
 }
 
 async function authenticate(req, res, next) {
   try {
     const header = req.get('authorization') || ''
-    const token = header.startsWith('Bearer ') ? header.slice(7) : ''
+    const bearerToken = header.startsWith('Bearer ') ? header.slice(7) : ''
+    const token = bearerToken || cookieToken(req)
 
     if (!token) {
       throw unauthorized()

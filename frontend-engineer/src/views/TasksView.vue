@@ -570,7 +570,7 @@ onBeforeUnmount(() => {
   <main class="engineer-shell" :class="{ 'home-entry-motion-done': homeEntryMotionDone }">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 服务记录" title="服务记录" />
+        <BrandEyebrow text="工程师工作台 / 服务记录" title="服务记录" />
       </div>
     </header>
 

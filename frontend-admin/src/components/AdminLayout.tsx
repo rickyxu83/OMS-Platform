@@ -27,6 +27,7 @@ import {
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
+import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_NAME, APP_NAME_HANT, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 
@@ -53,6 +54,7 @@ const STRINGS: Record<AppLang, {
     langShort: string
     switchedToCn: string
     switchedToTw: string
+    switchEngineer: string
   }
   groups: Record<string, string>
   pages: Record<string, string>
@@ -60,11 +62,11 @@ const STRINGS: Record<AppLang, {
 }> = {
   "zh-CN": {
     brand: {
-      title: "运维智管",
+      title: APP_NAME,
       version: "系统版本",
     },
     common: {
-      systemName: "运维管理系统",
+      systemName: ADMIN_WORKSPACE_LABEL,
       quickNav: "快速跳转",
       quickNavTitle: "快速跳转",
       quickNavPlaceholder: "搜索模块名称...",
@@ -72,6 +74,7 @@ const STRINGS: Record<AppLang, {
       langShort: "简体",
       switchedToCn: "已切换至简体中文",
       switchedToTw: "已切换至繁體中文",
+      switchEngineer: "工程师工作台",
     },
     groups: {
       workspace: "工作台",
@@ -105,11 +108,11 @@ const STRINGS: Record<AppLang, {
   },
   "zh-TW": {
     brand: {
-      title: "運維智管",
+      title: APP_NAME_HANT,
       version: "系統版本",
     },
     common: {
-      systemName: "運維管理系統",
+      systemName: ADMIN_WORKSPACE_LABEL_HANT,
       quickNav: "快速跳轉",
       quickNavTitle: "快速跳轉",
       quickNavPlaceholder: "搜尋模組名稱...",
@@ -117,6 +120,7 @@ const STRINGS: Record<AppLang, {
       langShort: "繁體",
       switchedToCn: "已切換至简体中文",
       switchedToTw: "已切換至繁體中文",
+      switchEngineer: "工程師工作臺",
     },
     groups: {
       workspace: "工作臺",
@@ -221,6 +225,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
+  const canSwitchEngineer = Array.isArray(user?.availableWorkspaces)
+    && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -275,7 +281,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </div>
               <div>
                 <span className="font-bold text-base block text-sidebar-foreground tracking-tight">{strings.brand.title}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">OMS Platform</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">{strings.common.systemName}</span>
               </div>
             </div>
           </div>
@@ -387,6 +393,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <Languages className="w-4 h-4" />
               <span className="text-xs font-medium">{strings.common.langShort}</span>
             </Button>
+
+            {canSwitchEngineer && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToWorkspace("engineer")}
+              >
+                {strings.common.switchEngineer}
+              </Button>
+            )}
 
             <Separator orientation="vertical" className="h-8" />
 

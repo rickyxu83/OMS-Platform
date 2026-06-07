@@ -97,7 +97,7 @@ onMounted(load)
   <main class="engineer-shell">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 月报" title="月报" />
+        <BrandEyebrow text="工程师工作台 / 月报" title="月报" />
       </div>
     </header>
 

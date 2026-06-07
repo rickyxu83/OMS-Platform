@@ -327,6 +327,7 @@ const CUSTOMER_ADMIN_DELETE_ROLES = new Set([
   "supervisor",
   "engineering_supervisor",
   "sales_supervisor",
+  "sales",
 ]);
 
 function levelOf(c: Customer): string {

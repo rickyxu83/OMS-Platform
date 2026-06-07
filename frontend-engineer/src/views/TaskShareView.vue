@@ -410,7 +410,7 @@ onMounted(load)
   <main class="engineer-shell share-shell">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 分享服务表" title="分享服务表" />
+        <BrandEyebrow text="工程师工作台 / 分享服务表" title="分享服务表" />
       </div>
       <RouterLink class="ghost top-link" :to="`/tasks/${route.params.id}`"><PreviewIcon name="eye" />{{ zh('返回详情') }}</RouterLink>
     </header>

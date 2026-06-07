@@ -49,6 +49,8 @@ const router = createRouter({
 export default router
 
 function isEngineerUser(user) {
+  const workspaces = Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
+  if (workspaces.length > 0) return workspaces.some((workspace) => workspace.key === 'engineer')
   return user?.role === 'engineer' || user?.role === 'engineering_supervisor'
 }
 
@@ -57,10 +59,9 @@ function isFeatureGuideRoute(to) {
 }
 
 router.beforeEach(async (to) => {
-  if (to.name !== 'login' && !isLoggedIn()) return { name: 'login' }
   if (to.name === 'login' && isLoggedIn()) return { name: 'tasks' }
 
-  if (to.name !== 'login' && isLoggedIn()) {
+  if (to.name !== 'login') {
     try {
       const data = await api.get('/auth/me')
       if (!isEngineerUser(data.user)) return { name: 'login' }

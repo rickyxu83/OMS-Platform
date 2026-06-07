@@ -1,12 +1,20 @@
-const TOKEN_KEY = 'service-sheet-rc-admin-token'
-const USER_KEY = 'service-sheet-rc-admin-user'
+const TOKEN_KEY = 'service-sheet-rc-token'
+const USER_KEY = 'service-sheet-rc-user'
+const LEGACY_TOKEN_KEY = 'service-sheet-rc-admin-token'
+const LEGACY_USER_KEY = 'service-sheet-rc-admin-user'
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY)
+  return localStorage.getItem(TOKEN_KEY)
+    || sessionStorage.getItem(TOKEN_KEY)
+    || localStorage.getItem(LEGACY_TOKEN_KEY)
+    || sessionStorage.getItem(LEGACY_TOKEN_KEY)
 }
 
 export function getCurrentUser(): Record<string, any> | null {
-  const raw = localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY)
+  const raw = localStorage.getItem(USER_KEY)
+    || sessionStorage.getItem(USER_KEY)
+    || localStorage.getItem(LEGACY_USER_KEY)
+    || sessionStorage.getItem(LEGACY_USER_KEY)
   if (!raw) return null
   try { return JSON.parse(raw) } catch { return null }
 }
@@ -31,8 +39,12 @@ export function saveUser(user: Record<string, any> | null) {
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_USER_KEY)
   sessionStorage.removeItem(TOKEN_KEY)
   sessionStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(LEGACY_TOKEN_KEY)
+  sessionStorage.removeItem(LEGACY_USER_KEY)
 }
 
 export function isLoggedIn(): boolean {
@@ -64,7 +76,7 @@ export async function request(path: string, options: RequestInit = {}) {
   const API_BASE = resolveApiBase()
   let response: Response
   try {
-    response = await fetch(`${API_BASE}${path}`, { ...options, headers })
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' })
   } catch {
     throw new Error('无法连接服务器')
   }

@@ -1,11 +1,12 @@
 const express = require('express')
 const controller = require('./controller')
 const { requireRoles } = require('../../middleware/auth')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
 
-const opsRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor']
-const viewRoles = [...opsRoles, 'sales', 'sales_supervisor']
+const opsRoles = ROLE_GROUPS.inspectionScheduleOps
+const viewRoles = ROLE_GROUPS.inspectionScheduleView
 
 router.get('/', requireRoles(...viewRoles), controller.list)
 router.post('/bulk', requireRoles(...opsRoles), controller.createBulk)

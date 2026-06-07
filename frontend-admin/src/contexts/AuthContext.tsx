@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api, saveSession, clearSession, getCurrentUser, getToken, isLoggedIn } from '@/services/api'
+import type { WorkspaceOption } from '@/config/app'
 
 const ADMIN_ACCESS_ROLES = [
   'admin', 'assistant', 'dispatcher', 'supervisor',
@@ -10,18 +11,36 @@ interface User {
   id?: string
   name: string
   role: string
+  availableWorkspaces?: WorkspaceOption[]
+  defaultWorkspace?: string
   [key: string]: any
+}
+
+interface LoginResult {
+  user: User
+  availableWorkspaces: WorkspaceOption[]
+  defaultWorkspace: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  login: (username: string, password: string, remember?: boolean) => Promise<void>
+  login: (username: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => void
   isAuthenticated: boolean
 }
 
 const AuthContext = createContext<AuthContextType>(null!)
+
+function availableWorkspaces(user?: User | null): WorkspaceOption[] {
+  return Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
+}
+
+function hasAdminWorkspace(user?: User | null) {
+  const workspaces = availableWorkspaces(user)
+  if (workspaces.length > 0) return workspaces.some((workspace) => workspace.key === 'admin')
+  return Boolean(user?.role && ADMIN_ACCESS_ROLES.includes(user.role))
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getCurrentUser() as User | null)
@@ -30,13 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const verify = async () => {
-      if (!isLoggedIn()) {
-        setLoading(false)
-        return
-      }
       try {
         const data = await api.get('/auth/me')
-        if (!ADMIN_ACCESS_ROLES.includes(data.user?.role)) {
+        if (!hasAdminWorkspace(data.user)) {
           clearSession()
           setUser(null)
           setIsAuthenticated(false)
@@ -57,15 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
     const data = await api.post('/auth/login', { username, password })
-    if (!ADMIN_ACCESS_ROLES.includes(data.user?.role)) {
-      throw new Error('您的账号无权访问管理端')
-    }
     saveSession(data.token, data.user, remember)
     setUser(data.user)
-    setIsAuthenticated(true)
+    setIsAuthenticated(hasAdminWorkspace(data.user))
+    return {
+      user: data.user,
+      availableWorkspaces: data.availableWorkspaces || data.user?.availableWorkspaces || [],
+      defaultWorkspace: data.defaultWorkspace || data.user?.defaultWorkspace || '',
+    }
   }, [])
 
   const logout = useCallback(() => {
+    api.post('/auth/logout').catch(() => {})
     clearSession()
     setUser(null)
     setIsAuthenticated(false)

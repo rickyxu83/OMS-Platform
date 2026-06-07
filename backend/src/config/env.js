@@ -36,6 +36,8 @@ const env = {
   port: Number(process.env.PORT || 3000),
   host: process.env.HOST || '127.0.0.1',
   jwtSecret,
+  sessionCookieName: process.env.SESSION_COOKIE_NAME || 'service_sheet_rc_token',
+  sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {

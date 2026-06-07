@@ -518,7 +518,7 @@ const internalRecordDefaults = computed(() => {
   }
 })
 const pageEyebrow = computed(() => {
-  return `工程师端 / ${route.params.id ? '修改' : '新建'}${serviceModeDocumentLabel(currentServiceMode.value)}`
+  return `工程师工作台 / ${route.params.id ? '修改' : '新建'}${serviceModeDocumentLabel(currentServiceMode.value)}`
 })
 const pageTitle = computed(() => {
   return `${route.params.id ? '修改' : '新建'}${serviceModeDocumentLabel(currentServiceMode.value)}`

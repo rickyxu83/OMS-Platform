@@ -2,11 +2,12 @@ const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const env = require('../../config/env')
 const { transaction } = require('../../config/db')
+const { ROLE_GROUPS, getAvailableWorkspaces, getDefaultWorkspace } = require('../../permissions/roles')
 const { badRequest, unauthorized } = require('../../utils/http-error')
 
 const MAX_FAILED_LOGINS = 5
 const LOCKOUT_MINUTES = 15
-const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
+const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000
 
 function isLockActive(lockedUntil) {
   return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
@@ -14,6 +15,41 @@ function isLockActive(lockedUntil) {
 
 function invalidLoginResult() {
   return { ok: false }
+}
+
+function requestHostname(req) {
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim()
+  const host = forwardedHost || req.hostname || String(req.get('host') || '')
+  return host.split(':')[0].toLowerCase()
+}
+
+function cookieDomain(req) {
+  if (env.sessionCookieDomain) return env.sessionCookieDomain
+  const hostname = requestHostname(req)
+  if (hostname.endsWith('.starkgrp.com')) return '.starkgrp.com'
+  if (hostname.endsWith('.tinypanel.de')) return '.tinypanel.de'
+  return undefined
+}
+
+function sessionCookieOptions(req) {
+  const domain = cookieDomain(req)
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: env.nodeEnv === 'production' || req.get('x-forwarded-proto') === 'https',
+    path: '/',
+    maxAge: SESSION_MAX_AGE_MS,
+    ...(domain ? { domain } : {}),
+  }
+}
+
+function setSessionCookie(req, res, token) {
+  res.cookie(env.sessionCookieName || 'service_sheet_rc_token', token, sessionCookieOptions(req))
+}
+
+function clearSessionCookie(req, res) {
+  const { maxAge, ...options } = sessionCookieOptions(req)
+  res.clearCookie(env.sessionCookieName || 'service_sheet_rc_token', options)
 }
 
 function publicUser(user) {
@@ -29,9 +65,20 @@ function publicUser(user) {
     status: user.status,
     hasEngineerSignature,
     mustChangePassword,
-    requiresOnboarding: engineerRoles.has(user.role) && (mustChangePassword || !hasEngineerSignature),
+    requiresOnboarding: ROLE_GROUPS.engineerWorkspace.includes(user.role) && (mustChangePassword || !hasEngineerSignature),
+    availableWorkspaces: getAvailableWorkspaces(user.role),
+    defaultWorkspace: getDefaultWorkspace(user.role),
     avatarUrl: hasAvatar ? `/api/v1/avatars/${String(user.avatar_path).split(/[\\/]/).pop()}` : '',
     hasAvatar,
+  }
+}
+
+function sessionPayload(user) {
+  const safeUser = publicUser(user)
+  return {
+    user: safeUser,
+    availableWorkspaces: safeUser.availableWorkspaces,
+    defaultWorkspace: safeUser.defaultWorkspace,
   }
 }
 
@@ -103,19 +150,20 @@ async function login(req, res) {
     { expiresIn: '12h' },
   )
 
+  setSessionCookie(req, res, token)
+
   res.json({
     token,
-    user: publicUser(user),
+    ...sessionPayload(user),
   })
 }
 
 function me(req, res) {
-  res.json({
-    user: publicUser(req.user),
-  })
+  res.json(sessionPayload(req.user))
 }
 
 function logout(req, res) {
+  clearSessionCookie(req, res)
   res.status(204).end()
 }
 

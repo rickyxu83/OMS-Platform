@@ -2,10 +2,14 @@ import { ref } from 'vue'
 import { clearOfflineCacheForCurrentSession } from './offline-cache'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from './safe-storage'
 
-const TOKEN_KEY = 'service-sheet-rc-engineer-token'
-const USER_KEY = 'service-sheet-rc-engineer-user'
+const TOKEN_KEY = 'service-sheet-rc-token'
+const USER_KEY = 'service-sheet-rc-user'
+const LEGACY_TOKEN_KEY = 'service-sheet-rc-engineer-token'
+const LEGACY_USER_KEY = 'service-sheet-rc-engineer-user'
 const REMEMBER_USERNAME_KEY = 'service-sheet-rc-engineer-remember-username'
-const REMEMBER_PASSWORD_KEY = 'service-sheet-rc-engineer-remember-password'
+const LEGACY_REMEMBER_PASSWORD_KEY = 'service-sheet-rc-engineer-remember-password'
+
+safeStorageRemove(localStorage, LEGACY_REMEMBER_PASSWORD_KEY)
 
 function compactUser(user) {
   if (!user || typeof user !== 'object') return null
@@ -15,7 +19,7 @@ function compactUser(user) {
 }
 
 function readStoredUser() {
-  const raw = safeStorageGet(localStorage, USER_KEY, '')
+  const raw = safeStorageGet(localStorage, USER_KEY, '') || safeStorageGet(localStorage, LEGACY_USER_KEY, '')
   if (!raw) return null
 
   try {
@@ -23,6 +27,8 @@ function readStoredUser() {
   } catch {
     safeStorageRemove(localStorage, TOKEN_KEY)
     safeStorageRemove(localStorage, USER_KEY)
+    safeStorageRemove(localStorage, LEGACY_TOKEN_KEY)
+    safeStorageRemove(localStorage, LEGACY_USER_KEY)
     return null
   }
 }
@@ -30,7 +36,7 @@ function readStoredUser() {
 export const currentUser = ref(readStoredUser())
 
 export function getToken() {
-  return safeStorageGet(localStorage, TOKEN_KEY, '')
+  return safeStorageGet(localStorage, TOKEN_KEY, '') || safeStorageGet(localStorage, LEGACY_TOKEN_KEY, '')
 }
 
 export function getCurrentUser() {
@@ -40,6 +46,7 @@ export function getCurrentUser() {
 
 export function saveSession({ token, user }) {
   safeStorageSet(localStorage, TOKEN_KEY, token)
+  safeStorageRemove(localStorage, LEGACY_TOKEN_KEY)
   if (user) {
     const storedUser = compactUser(user)
     safeStorageSet(localStorage, USER_KEY, JSON.stringify(storedUser))
@@ -50,19 +57,18 @@ export function saveSession({ token, user }) {
 export function loadRememberedCredentials() {
   return {
     username: safeStorageGet(localStorage, REMEMBER_USERNAME_KEY, '') || '',
-    password: safeStorageGet(localStorage, REMEMBER_PASSWORD_KEY, '') || '',
+    password: '',
   }
 }
 
-export function saveRememberedCredentials({ username = '', password = '' }, rememberPassword) {
+export function saveRememberedCredentials({ username = '' }, rememberPassword) {
   if (rememberPassword) {
     safeStorageSet(localStorage, REMEMBER_USERNAME_KEY, username)
-    safeStorageSet(localStorage, REMEMBER_PASSWORD_KEY, password)
     return
   }
 
   safeStorageRemove(localStorage, REMEMBER_USERNAME_KEY)
-  safeStorageRemove(localStorage, REMEMBER_PASSWORD_KEY)
+  safeStorageRemove(localStorage, LEGACY_REMEMBER_PASSWORD_KEY)
 }
 
 export function saveUser(user) {
@@ -80,6 +86,8 @@ export function clearSession() {
   clearOfflineCacheForCurrentSession()
   safeStorageRemove(localStorage, TOKEN_KEY)
   safeStorageRemove(localStorage, USER_KEY)
+  safeStorageRemove(localStorage, LEGACY_TOKEN_KEY)
+  safeStorageRemove(localStorage, LEGACY_USER_KEY)
   currentUser.value = null
 }
 

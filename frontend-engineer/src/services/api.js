@@ -32,7 +32,7 @@ export async function request(path, options = {}) {
 
   let response
   try {
-    response = await fetch(`${API_BASE}${path}`, { ...options, headers })
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' })
   } catch {
     setNetworkOnline(false)
     if (canUseCache) {

@@ -305,7 +305,7 @@ onMounted(load)
   <main class="engineer-shell profile-shell">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 我的" title="我的" />
+        <BrandEyebrow text="工程师工作台 / 我的" title="我的" />
       </div>
       <RouterLink class="ghost profile-login" to="/login"><PreviewIcon name="user" />{{ zh('切换账号') }}</RouterLink>
     </header>

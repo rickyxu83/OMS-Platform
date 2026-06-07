@@ -1,87 +1,41 @@
 <script setup>
-import { reactive, ref } from 'vue'
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import PreviewControls from '../components/PreviewControls.vue'
+import { APP_NAME, ENGINEER_WORKSPACE_LABEL, unifiedLoginUrl } from '../config/app'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
-import { api } from '../services/api'
-import { loadRememberedCredentials, saveRememberedCredentials, saveSession } from '../services/auth'
 
 const { zh } = usePreviewI18n()
-const router = useRouter()
 const assetBase = import.meta.env.BASE_URL || '/'
-const loading = ref(false)
-const error = ref('')
-const form = reactive({
-  username: '',
-  password: '',
-  rememberPassword: true,
-})
+
+function goUnifiedLogin() {
+  window.location.assign(unifiedLoginUrl('/'))
+}
 
 onMounted(() => {
-  const credentials = loadRememberedCredentials()
-  if (credentials.username || credentials.password) {
-    form.username = credentials.username
-    form.password = credentials.password
-    form.rememberPassword = true
-  }
+  window.location.replace(unifiedLoginUrl('/'))
 })
-
-async function submit() {
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await api.post('/auth/login', form)
-    if (data.user?.role !== 'engineer' && data.user?.role !== 'engineering_supervisor') throw new Error('当前账号不是工程师账号')
-    saveSession(data)
-    saveRememberedCredentials(
-      {
-        username: form.username,
-        password: form.password,
-      },
-      form.rememberPassword,
-    )
-    router.push('/')
-  } catch (err) {
-    error.value = err.message
-  } finally {
-    loading.value = false
-  }
-}
 </script>
 
 <template>
   <main class="login-shell">
     <PreviewControls class="global-preview-controls login-preview-controls" />
-    <section class="login-stage" aria-label="engineer login">
-      <form class="login-card rich-login" @submit.prevent="submit">
+    <section class="login-stage" aria-label="unified login redirect">
+      <div class="login-card rich-login">
         <div class="login-form-head">
-          <div class="login-brand-mark" aria-label="敦阳服务表电子化系统">
+          <div class="login-brand-mark" :aria-label="APP_NAME">
             <img :src="`${assetBase}dunyang-mark.png`" alt="" aria-hidden="true" />
-            <strong>敦阳科技服务表电子化系统</strong>
+            <strong>{{ APP_NAME }}</strong>
           </div>
           <div>
-            <h1>{{ zh('工程师端登录') }}</h1>
+            <h1>{{ zh(ENGINEER_WORKSPACE_LABEL) }}</h1>
+            <p>{{ zh('正在前往统一登录入口') }}</p>
           </div>
         </div>
-        <label class="field">
-          <span>{{ zh('账号') }}</span>
-          <input v-model.trim="form.username" autocomplete="username" required :placeholder="zh('请输入账号')" />
-          <PreviewIcon name="user" class="login-field-icon" />
-        </label>
-        <label class="field">
-          <span>{{ zh('密码') }}</span>
-          <input v-model="form.password" type="password" autocomplete="current-password" required placeholder="••••••••" />
-          <PreviewIcon name="contact" class="login-field-icon" />
-        </label>
-        <label class="login-options">
-          <input v-model="form.rememberPassword" type="checkbox" />
-          <span>{{ zh('记住密码') }}</span>
-        </label>
-        <p v-if="error" class="form-error">{{ zh(error) }}</p>
-        <button class="primary login-link" type="submit" :disabled="loading">{{ zh(loading ? '登录中' : '进入服务表') }}<span aria-hidden="true">→</span></button>
-      </form>
+        <button class="primary login-link" type="button" @click="goUnifiedLogin">
+          {{ zh('进入统一登录') }}<span aria-hidden="true">→</span>
+        </button>
+      </div>
       <aside class="login-visual" aria-hidden="true">
         <div class="visual-card ghost one"></div>
         <div class="visual-card ghost two"></div>

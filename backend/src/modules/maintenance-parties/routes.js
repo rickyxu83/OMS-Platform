@@ -1,11 +1,12 @@
 const express = require('express')
 const controller = require('./controller')
 const { requireRoles } = require('../../middleware/auth')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
 
-const maintenancePartyWriteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'engineer']
-const maintenancePartyDeleteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor']
+const maintenancePartyWriteRoles = ROLE_GROUPS.maintenancePartyWrite
+const maintenancePartyDeleteRoles = ROLE_GROUPS.maintenancePartyDelete
 
 router.get('/', controller.list)
 router.post('/', requireRoles(...maintenancePartyWriteRoles), controller.create)

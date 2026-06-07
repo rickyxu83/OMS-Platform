@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
+import { api } from '../services/api'
 import { clearSession, currentUser } from '../services/auth'
 import { isOnline, probeNetwork, startNetworkWatch, stopNetworkWatch } from '../services/network'
 import { readOfflineCacheMeta } from '../services/offline-cache'
@@ -184,6 +185,7 @@ function isNavActive(item) {
 
 function logout() {
   accountOpen.value = false
+  api.post('/auth/logout').catch(() => {})
   clearSession()
   router.push('/login')
 }

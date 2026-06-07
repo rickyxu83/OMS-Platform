@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { LayoutDashboard, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,11 +12,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { APP_NAME, APP_NAME_HANT, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const { lang, setLang } = useLanguage();
   const [username, setUsername] = useState("");
@@ -24,20 +26,24 @@ export function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [workspaceChoices, setWorkspaceChoices] = useState<WorkspaceOption[]>([]);
 
   const i18n = {
     "zh-CN": {
-      title: "运维管理系统",
+      title: APP_NAME,
       welcome: "欢迎回来",
+      subtitle: "统一登录入口",
       username: "账号",
       password: "密码",
       remember: "记住账号",
       login: "登录",
       loggingIn: "登录中…",
+      chooseWorkspace: "请选择要进入的工作台",
+      enterWorkspace: "进入",
       errorEmpty: "请输入账号和密码",
       errorNotFound: "账号不存在",
       errorPassword: "密码错误",
-      errorAuth: "您的账号无权访问管理端",
+      errorAuth: "当前账号没有可用工作台",
       errorFallback: "登录失败",
       version: "系统版本",
       langLabel: "简体中文",
@@ -47,17 +53,20 @@ export function Login() {
       passwordPlaceholder: "请输入密码",
     },
     "zh-TW": {
-      title: "運維管理系統",
+      title: APP_NAME_HANT,
       welcome: "歡迎回來",
+      subtitle: "統一登錄入口",
       username: "帳號",
       password: "密碼",
       remember: "記住帳號",
       login: "登錄",
       loggingIn: "登錄中…",
+      chooseWorkspace: "請選擇要進入的工作臺",
+      enterWorkspace: "進入",
       errorEmpty: "請輸入帳號和密碼",
       errorNotFound: "帳號不存在",
       errorPassword: "密碼錯誤",
-      errorAuth: "您的帳號無權訪問管理端",
+      errorAuth: "目前帳號沒有可用工作臺",
       errorFallback: "登錄失敗",
       version: "系統版本",
       langLabel: "繁體中文",
@@ -71,6 +80,11 @@ export function Login() {
   const t = i18n[lang];
   const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
 
+  const enterWorkspace = (workspaceKey: string) => {
+    const localTarget = goToWorkspace(workspaceKey);
+    if (localTarget) navigate(localTarget, { replace: true });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -82,11 +96,30 @@ export function Login() {
 
     setLoading(true);
     try {
-      await login(username, password, rememberMe);
+      const result = await login(username, password, rememberMe);
       if (rememberMe) {
         localStorage.setItem("remembered_username", username);
       }
-      navigate("/dashboard");
+      const workspaces = result.availableWorkspaces || result.user?.availableWorkspaces || [];
+      const requestedWorkspace = searchParams.get("workspace") || "";
+      const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
+
+      if (explicitWorkspace) {
+        enterWorkspace(explicitWorkspace.key);
+        return;
+      }
+
+      if (workspaces.length === 1) {
+        enterWorkspace(workspaces[0].key);
+        return;
+      }
+
+      if (workspaces.length > 1) {
+        setWorkspaceChoices(workspaces);
+        return;
+      }
+
+      setError(t.errorAuth);
     } catch (err: any) {
       const msg = String(err?.message || "")
       if (msg.includes("账号不存在") || msg.includes("User not found")) setError(t.errorNotFound)
@@ -147,6 +180,9 @@ export function Login() {
             <p className="text-sm text-muted-foreground font-medium uppercase tracking-widest opacity-70">
               {t.welcome}
             </p>
+            <p className="mt-2 text-xs text-muted-foreground font-semibold tracking-[0.2em] uppercase">
+              {t.subtitle}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -205,6 +241,26 @@ export function Login() {
               {loading ? t.loggingIn : t.login}
             </Button>
           </form>
+
+          {workspaceChoices.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <p className="text-sm text-center text-muted-foreground font-medium">{t.chooseWorkspace}</p>
+              <div className="grid gap-2">
+                {workspaceChoices.map((workspace) => (
+                  <Button
+                    key={workspace.key}
+                    type="button"
+                    variant="outline"
+                    className="h-12 justify-between rounded-xl bg-white/70"
+                    onClick={() => enterWorkspace(workspace.key)}
+                  >
+                    <span>{workspaceLabel(workspace.key, workspace.label)}</span>
+                    <span className="text-xs text-muted-foreground">{t.enterWorkspace}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-10 pt-8 border-t border-slate-100/80">
             <div className="flex items-center justify-center gap-2">

@@ -1,12 +1,13 @@
 const express = require('express')
 const controller = require('./controller')
 const { requireRoles } = require('../../middleware/auth')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
 
-const opsRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor']
-const viewRoles = [...opsRoles, 'sales', 'sales_supervisor']
-const engineerRoles = ['engineer', 'engineering_supervisor']
+const opsRoles = ROLE_GROUPS.serviceOrderOps
+const viewRoles = ROLE_GROUPS.serviceOrderView
+const engineerRoles = ROLE_GROUPS.serviceOrderEngineer
 router.get('/stats/overview', requireRoles(...viewRoles), controller.statsOverview)
 router.get('/timesheet/monthly', requireRoles(...engineerRoles, ...viewRoles), controller.timesheetMonthly)
 router.post('/timesheet/manual-entries', requireRoles(...engineerRoles), controller.createTimesheetManualEntry)

@@ -1,12 +1,13 @@
 const express = require('express')
 const controller = require('./controller')
 const { requireRoles } = require('../../middleware/auth')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
 
-const customerWriteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales', 'engineer', 'engineering_supervisor']
-const customerDeleteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'engineer', 'engineering_supervisor']
-const customerMergeRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales']
+const customerWriteRoles = ROLE_GROUPS.customerWrite
+const customerDeleteRoles = ROLE_GROUPS.customerDelete
+const customerMergeRoles = ROLE_GROUPS.customerMerge
 
 router.get('/', controller.list)
 router.post('/', requireRoles(...customerWriteRoles), controller.create)

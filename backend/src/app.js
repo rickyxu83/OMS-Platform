@@ -36,6 +36,7 @@ const allowedOrigins = new Set([
 ])
 
 const corsOptions = {
+  credentials: true,
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
       callback(null, true)

@@ -115,7 +115,7 @@ onMounted(load)
   <main class="engineer-shell detail-shell">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 服务记录详情" title="服务记录详情" />
+        <BrandEyebrow text="工程师工作台 / 服务记录详情" title="服务记录详情" />
       </div>
     </header>
 

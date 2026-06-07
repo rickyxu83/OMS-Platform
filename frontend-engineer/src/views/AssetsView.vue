@@ -67,7 +67,7 @@ onMounted(() => {
   <main class="engineer-shell asset-shell">
     <header class="topbar asset-topbar">
       <div>
-        <BrandEyebrow text="工程师端 / 客户资产" title="客户与资产" />
+        <BrandEyebrow text="工程师工作台 / 客户资产" title="客户与资产" />
         <p class="asset-page-lead">{{ zh('现场常用资料库，所有工程师均可查询、新增和维护基础资料。') }}</p>
       </div>
       <button class="ghost asset-refresh" type="button" :disabled="loading" @click="loadSummary">
