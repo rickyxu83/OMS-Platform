@@ -67,6 +67,8 @@ const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary
   weekly: "secondary",
 };
 
+const NO_DEVICE_VALUE = "__no_device__";
+
 function formatDate(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 10);
@@ -519,15 +521,15 @@ export function InspectionSchedules() {
               <div className="space-y-2">
                 <Label>设备（可选）</Label>
                 <Select
-                  value={form.deviceId}
-                  onValueChange={(v) => setForm({ ...form, deviceId: v })}
+                  value={form.deviceId || NO_DEVICE_VALUE}
+                  onValueChange={(v) => setForm({ ...form, deviceId: v === NO_DEVICE_VALUE ? "" : v })}
                   disabled={!form.customerId}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={form.customerId ? "选择设备" : "请先选择客户"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">不指定设备</SelectItem>
+                    <SelectItem value={NO_DEVICE_VALUE}>不指定设备</SelectItem>
                     {deviceOptions.map((d) => (
                       <SelectItem key={d.id} value={String(d.id)}>
                         {d.name || `设备 #${d.id}`}
