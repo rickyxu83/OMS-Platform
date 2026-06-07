@@ -487,11 +487,11 @@ h2 {
 
 .shell-account-menu {
   display: flex;
-  gap: 5px;
-  width: 238px;
+  gap: 8px;
+  width: 306px;
   min-width: 0;
-  margin-right: -7px;
-  padding: 0 13px 0 12px;
+  margin-right: -9px;
+  padding: 0 17px 0 16px;
   overflow: hidden;
   border: 0;
   border-radius: 999px;
@@ -502,8 +502,8 @@ h2 {
 }
 
 .shell-menu-icon {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: inline-grid;
   place-items: center;
   border: 0;
@@ -520,6 +520,11 @@ h2 {
     color 140ms ease,
     transform 140ms ease,
     box-shadow 140ms ease;
+}
+
+.shell-menu-icon .preview-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .shell-menu-icon.active {

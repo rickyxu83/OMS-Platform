@@ -579,15 +579,6 @@ onBeforeUnmount(() => {
 
     <div v-if="actionToast" class="floating-toast">{{ zh(actionToast) }}</div>
 
-    <RouterLink class="home-asset-shortcut" to="/assets">
-      <span><PreviewIcon name="assets" /></span>
-      <div>
-        <strong>{{ zh('客户与资产') }}</strong>
-        <p>{{ zh('维护客户、设备和维保方联系方式') }}</p>
-      </div>
-      <PreviewIcon name="eye" />
-    </RouterLink>
-
     <section class="task-board">
       <article
         v-for="(task, index) in displayTasks"
