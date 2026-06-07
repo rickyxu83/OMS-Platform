@@ -8,6 +8,32 @@ const partyTypeAliases = {
   partner: 'our_maintenance',
   our: 'our_maintenance',
 }
+let ensureMaintenancePartyColumnsPromise = null
+
+async function ensureMaintenancePartyColumns() {
+  if (!ensureMaintenancePartyColumnsPromise) {
+    ensureMaintenancePartyColumnsPromise = (async () => {
+      const rows = await query(
+        `SELECT COLUMN_NAME AS columnName
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'maintenance_parties'
+           AND COLUMN_NAME IN ('contact', 'service_scope', 'remark')`,
+      )
+      const existing = new Set(rows.map((row) => row.columnName))
+      if (!existing.has('contact')) {
+        await query('ALTER TABLE maintenance_parties ADD COLUMN contact VARCHAR(100) NULL AFTER phone')
+      }
+      if (!existing.has('service_scope')) {
+        await query('ALTER TABLE maintenance_parties ADD COLUMN service_scope VARCHAR(255) NULL AFTER contact')
+      }
+      if (!existing.has('remark')) {
+        await query('ALTER TABLE maintenance_parties ADD COLUMN remark TEXT NULL AFTER service_scope')
+      }
+    })()
+  }
+  return ensureMaintenancePartyColumnsPromise
+}
 
 function normalizeText(value) {
   return String(value || '').trim()
@@ -32,26 +58,33 @@ function partyPayload(row) {
     id: row.id,
     partyType: row.party_type,
     name: row.name,
+    contact: row.contact,
     phone: row.phone,
+    serviceScope: row.service_scope,
+    remark: row.remark,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
 async function list(req, res) {
+  await ensureMaintenancePartyColumns()
   const { keyword = '', partyType = '' } = req.query
   const normalizedPartyType = partyType ? normalizePartyType(partyType, '') : ''
   if (normalizedPartyType && !validPartyTypes.has(normalizedPartyType)) {
     throw badRequest('维护方类型不正确')
   }
   const rows = await query(
-    `SELECT id, party_type, name, phone, created_at, updated_at
+    `SELECT id, party_type, name, contact, phone, service_scope, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE (:partyType = '' OR party_type = :partyType)
        AND (
          :keyword = ''
          OR name LIKE :likeKeyword
+         OR contact LIKE :likeKeyword
          OR phone LIKE :likeKeyword
+         OR service_scope LIKE :likeKeyword
+         OR remark LIKE :likeKeyword
        )
      ORDER BY id DESC
      LIMIT 200`,
@@ -66,9 +99,13 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
+  await ensureMaintenancePartyColumns()
   const partyType = normalizePartyType(req.body?.partyType)
   const name = normalizeText(req.body?.name)
+  const contact = normalizeText(req.body?.contact) || null
   const phone = validatePhone(req.body?.phone)
+  const serviceScope = normalizeText(req.body?.serviceScope) || null
+  const remark = normalizeText(req.body?.remark) || null
 
   if (!validPartyTypes.has(partyType)) {
     throw badRequest('维护方类型不正确')
@@ -78,17 +115,18 @@ async function create(req, res) {
   }
 
   const result = await query(
-    `INSERT INTO maintenance_parties (party_type, name, phone)
-     VALUES (:partyType, :name, :phone)`,
-    { partyType, name, phone },
+    `INSERT INTO maintenance_parties (party_type, name, contact, phone, service_scope, remark)
+     VALUES (:partyType, :name, :contact, :phone, :serviceScope, :remark)`,
+    { partyType, name, contact, phone, serviceScope, remark },
   )
 
   res.status(201).json({ id: result.insertId })
 }
 
 async function detail(req, res) {
+  await ensureMaintenancePartyColumns()
   const rows = await query(
-    `SELECT id, party_type, name, phone, created_at, updated_at
+    `SELECT id, party_type, name, contact, phone, service_scope, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE id = :id
      LIMIT 1`,
@@ -103,6 +141,7 @@ async function detail(req, res) {
 }
 
 async function update(req, res) {
+  await ensureMaintenancePartyColumns()
   const existing = await query('SELECT id FROM maintenance_parties WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('维护方不存在')
@@ -110,11 +149,17 @@ async function update(req, res) {
 
   const hasPartyType = Object.prototype.hasOwnProperty.call(req.body || {}, 'partyType')
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
+  const hasContact = Object.prototype.hasOwnProperty.call(req.body || {}, 'contact')
   const hasPhone = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')
+  const hasServiceScope = Object.prototype.hasOwnProperty.call(req.body || {}, 'serviceScope')
+  const hasRemark = Object.prototype.hasOwnProperty.call(req.body || {}, 'remark')
 
   const partyType = hasPartyType ? normalizePartyType(req.body.partyType, '') : null
   const name = hasName ? normalizeText(req.body.name) : null
+  const contact = hasContact ? normalizeText(req.body.contact) || null : null
   const phone = hasPhone ? validatePhone(req.body.phone) : null
+  const serviceScope = hasServiceScope ? normalizeText(req.body.serviceScope) || null : null
+  const remark = hasRemark ? normalizeText(req.body.remark) || null : null
 
   if (hasPartyType && !validPartyTypes.has(partyType)) {
     throw badRequest('维护方类型不正确')
@@ -127,14 +172,23 @@ async function update(req, res) {
     `UPDATE maintenance_parties
      SET party_type = COALESCE(:partyType, party_type),
          name = COALESCE(:name, name),
-         phone = CASE WHEN :hasPhone THEN :phone ELSE phone END
+         contact = CASE WHEN :hasContact THEN :contact ELSE contact END,
+         phone = CASE WHEN :hasPhone THEN :phone ELSE phone END,
+         service_scope = CASE WHEN :hasServiceScope THEN :serviceScope ELSE service_scope END,
+         remark = CASE WHEN :hasRemark THEN :remark ELSE remark END
      WHERE id = :id`,
     {
       id: req.params.id,
       partyType: hasPartyType ? partyType : null,
       name: hasName ? name : null,
+      hasContact,
+      contact: hasContact ? contact : null,
       hasPhone,
       phone: hasPhone ? phone : null,
+      hasServiceScope,
+      serviceScope: hasServiceScope ? serviceScope : null,
+      hasRemark,
+      remark: hasRemark ? remark : null,
     },
   )
 

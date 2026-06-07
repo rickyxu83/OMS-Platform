@@ -64,6 +64,7 @@ const networkLabel = computed(() => {
 
 const navItems = [
   { label: '服务记录', icon: 'list', to: '/', names: ['tasks', 'task-detail', 'task-share'] },
+  { label: '客户资产', icon: 'assets', to: '/assets', names: ['assets', 'asset-customers', 'asset-devices', 'asset-maintenance-parties'] },
   { label: '新建服务表', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
   { label: '月报', icon: 'calendar', to: '/timesheet', names: ['timesheet', 'timesheets'] },
   { label: '我的', icon: 'user', to: '/profile', names: ['profile'] },
@@ -71,8 +72,9 @@ const navItems = [
 
 const quickActions = computed(() => [
   navItems[0],
-  navItems[2],
   navItems[3],
+  navItems[1],
+  navItems[4],
 ])
 const createModeOptions = [
   { mode: 'onsite', label: '现场服务', icon: 'onsite-service', className: 'onsite' },
@@ -83,7 +85,7 @@ const guideSteps = [
   {
     selector: '.shell-account-trigger',
     title: '账户菜单',
-    body: '这里可以打开快捷菜单，进入服务记录、月报、我的，也可以重新打开功能指引。',
+    body: '这里可以打开快捷菜单，进入服务记录、月报、客户资产、我的，也可以重新打开功能指引。',
   },
   {
     selector: '.home-create-action',

@@ -7,7 +7,12 @@ const API_BASE = resolveApiBase()
 
 function cacheablePath(path) {
   if (/^\/service-orders\/\d+/.test(path)) return false
-  return path.startsWith('/auth/me') || path.startsWith('/customers') || path.startsWith('/service-orders') || path.startsWith('/users/engineers')
+  return path.startsWith('/auth/me')
+    || path.startsWith('/customers')
+    || path.startsWith('/devices')
+    || path.startsWith('/maintenance-parties')
+    || path.startsWith('/service-orders')
+    || path.startsWith('/users/engineers')
 }
 
 function requestCacheKey(path) {

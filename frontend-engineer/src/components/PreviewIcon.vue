@@ -70,6 +70,10 @@ const iconMap = {
   language: LanguageCircleIcon,
   home: Home01Icon,
   status: Activity01Icon,
+  assets: ComputerIcon,
+  customers: UserMultiple02Icon,
+  devices: ComputerIcon,
+  maintenance: Contact01Icon,
 }
 
 const icon = computed(() => iconMap[props.name] || ListViewIcon)

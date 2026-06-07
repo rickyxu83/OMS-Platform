@@ -4,12 +4,13 @@ const { requireRoles } = require('../../middleware/auth')
 
 const router = express.Router()
 
-const deviceEditRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor']
+const deviceWriteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'engineer']
+const deviceDeleteRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor']
 
 router.get('/', controller.list)
-router.post('/', requireRoles(...deviceEditRoles), controller.create)
+router.post('/', requireRoles(...deviceWriteRoles), controller.create)
 router.get('/:id', controller.detail)
-router.put('/:id', requireRoles(...deviceEditRoles), controller.update)
-router.delete('/:id', requireRoles(...deviceEditRoles), controller.remove)
+router.put('/:id', requireRoles(...deviceWriteRoles), controller.update)
+router.delete('/:id', requireRoles(...deviceDeleteRoles), controller.remove)
 
 module.exports = router
