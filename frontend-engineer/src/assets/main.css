@@ -525,8 +525,8 @@ h2 {
 }
 
 .shell-menu-icon .preview-icon {
-  width: 24px;
-  height: 24px;
+  width: 1em;
+  height: 1em;
 }
 
 .shell-menu-icon.active {
