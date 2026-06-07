@@ -1,16 +1,21 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 
 const { zh } = usePreviewI18n()
+const route = useRoute()
+const router = useRouter()
 const customers = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
 const error = ref('')
+const successMessage = ref('')
+const deleteError = ref('')
 const searchQuery = ref('')
 const dialogOpen = ref(false)
 const deleteTarget = ref(null)
@@ -71,12 +76,14 @@ async function loadCustomers() {
 }
 
 function openCreate() {
+  successMessage.value = ''
   editingId.value = null
   form.value = emptyForm()
   dialogOpen.value = true
 }
 
 function openEdit(customer) {
+  successMessage.value = ''
   const contacts = contactsFor(customer)
   editingId.value = customer.id
   form.value = {
@@ -100,11 +107,14 @@ function closeDialog() {
 
 function openDeleteConfirm(customer) {
   error.value = ''
+  successMessage.value = ''
+  deleteError.value = ''
   deleteTarget.value = customer
 }
 
 function closeDeleteConfirm() {
   if (deleting.value) return
+  deleteError.value = ''
   deleteTarget.value = null
 }
 
@@ -156,21 +166,35 @@ async function saveCustomer() {
 
 async function deleteCustomer() {
   if (!deleteTarget.value?.id) return
+  const deletedName = deleteTarget.value.name || '客户'
   deleting.value = true
   error.value = ''
+  successMessage.value = ''
+  deleteError.value = ''
   try {
     await api.delete(`/customers/${deleteTarget.value.id}`)
     deleteTarget.value = null
     await loadCustomers()
+    successMessage.value = `已删除客户：${deletedName}`
   } catch (err) {
-    deleteTarget.value = null
-    error.value = err.message || '删除失败'
+    deleteError.value = err.message || '删除失败'
+    error.value = deleteError.value
   } finally {
     deleting.value = false
   }
 }
 
+function consumeDeleteSuccessQuery() {
+  const deletedName = String(route.query.deleted || '').trim()
+  if (!deletedName) return
+  successMessage.value = `已删除客户：${deletedName}`
+  const nextQuery = { ...route.query }
+  delete nextQuery.deleted
+  router.replace({ path: route.path, query: nextQuery })
+}
+
 onMounted(() => {
+  consumeDeleteSuccessQuery()
   loadCustomers()
 })
 </script>
@@ -197,6 +221,7 @@ onMounted(() => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
+    <p v-if="successMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(successMessage) }}</p>
     <p v-if="loading" class="muted">{{ zh('正在载入客户档案...') }}</p>
 
     <section class="asset-card-list">
@@ -277,6 +302,7 @@ onMounted(() => {
         <div class="exit-confirm-body">
           <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
           <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+          <p v-if="deleteError" class="form-error asset-delete-error">{{ zh(deleteError) }}</p>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>

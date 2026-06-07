@@ -18,6 +18,7 @@ const deleting = ref(false)
 const locating = ref(false)
 const error = ref('')
 const saveMessage = ref('')
+const deleteError = ref('')
 const deleteConfirmOpen = ref(false)
 const geoCandidates = ref([])
 const form = ref(emptyForm())
@@ -155,11 +156,13 @@ async function loadDetail() {
 function openDeleteConfirm() {
   error.value = ''
   saveMessage.value = ''
+  deleteError.value = ''
   deleteConfirmOpen.value = true
 }
 
 function closeDeleteConfirm() {
   if (deleting.value) return
+  deleteError.value = ''
   deleteConfirmOpen.value = false
 }
 
@@ -260,13 +263,15 @@ async function deleteCustomer() {
   deleting.value = true
   error.value = ''
   saveMessage.value = ''
+  deleteError.value = ''
+  const deletedName = customer.value?.name || form.value.name || '客户'
   try {
     await api.delete(`/customers/${customerId.value}`)
     deleteConfirmOpen.value = false
-    router.push('/assets/customers')
+    router.push({ path: '/assets/customers', query: { deleted: deletedName } })
   } catch (err) {
-    deleteConfirmOpen.value = false
-    error.value = err.message || '删除失败'
+    deleteError.value = err.message || '删除失败'
+    error.value = deleteError.value
   } finally {
     deleting.value = false
   }
@@ -377,6 +382,7 @@ onMounted(() => {
         <div class="exit-confirm-body">
           <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
           <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+          <p v-if="deleteError" class="form-error asset-delete-error">{{ zh(deleteError) }}</p>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>

@@ -513,8 +513,8 @@ h2 {
   color: #475569;
   background: transparent;
   text-decoration: none;
-  opacity: 0;
-  transform: translateX(14px) scale(0.84);
+  opacity: 1;
+  transform: translateX(0) scale(1);
   animation: account-icon-pop 240ms ease-out both;
   animation-delay: calc(var(--menu-index, 0) * 32ms + 70ms);
   transition:
@@ -596,6 +596,11 @@ h2 {
 }
 
 @keyframes account-icon-pop {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(0.84);
+  }
+
   to {
     opacity: 1;
     transform: translateX(0) scale(1);
@@ -5912,6 +5917,10 @@ h2 {
   color: #166534;
   background: rgb(220 252 231 / 82%);
   font-weight: 800;
+}
+
+.asset-delete-error {
+  margin: 10px 0 0;
 }
 
 .asset-candidate-list {
