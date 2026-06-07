@@ -23,15 +23,10 @@ function trimTrailingSlash(value: string) {
 
 function inferEngineerWorkspaceUrl() {
   const url = new URL(window.location.href)
-  if (url.hostname.startsWith("admin-aliyun.")) {
-    url.hostname = url.hostname.replace(/^admin-aliyun\./, "eng-aliyun.")
-    url.pathname = "/"
-    url.search = ""
-    url.hash = ""
-    return url.toString()
-  }
-  if (url.hostname.startsWith("admin.")) {
-    url.hostname = url.hostname.replace(/^admin\./, "eng.")
+  const adminHostPrefix = (import.meta as any).env.VITE_ADMIN_HOST_PREFIX || "admin."
+  const engineerHostPrefix = (import.meta as any).env.VITE_ENGINEER_HOST_PREFIX || "eng."
+  if (adminHostPrefix && engineerHostPrefix && url.hostname.startsWith(adminHostPrefix)) {
+    url.hostname = `${engineerHostPrefix}${url.hostname.slice(adminHostPrefix.length)}`
     url.pathname = "/"
     url.search = ""
     url.hash = ""

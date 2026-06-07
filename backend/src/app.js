@@ -23,16 +23,15 @@ const serviceOrderRoutes = require('./modules/service-orders/routes')
 const settingsRoutes = require('./modules/settings/routes')
 const userRoutes = require('./modules/users/routes')
 
-const allowedOrigins = new Set([
-  'https://eng.starkgrp.com',
-  'https://admin.starkgrp.com',
-  'https://eng.tinypanel.de',
-  'https://admin.tinypanel.de',
-  'https://eng-aliyun.tinypanel.de',
-  'https://admin-aliyun.tinypanel.de',
+const developmentOrigins = env.nodeEnv === 'production' ? [] : [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'http://192.168.5.60:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+]
+const allowedOrigins = new Set([
+  ...developmentOrigins,
+  ...env.corsAllowedOrigins,
 ])
 
 const corsOptions = {

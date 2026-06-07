@@ -4,7 +4,25 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 
 ![统一登录入口](docs/screenshots/unified-login.png)
 
-> 截图仅展示登录入口，不包含真实客户、工单、手机号、地址、签名、Token 或其他隐私数据。后续如补充业务页面截图，请使用演示数据并对敏感信息做实心遮罩或马赛克处理。
+> 公开截图请使用演示数据或脱敏数据，不包含真实客户、工单、手机号、地址、签名、Token 或其他隐私数据。涉及真实数据时请使用实心遮罩或马赛克处理。
+
+## 界面预览
+
+### 管理工作台
+
+![管理工作台总览](docs/screenshots/admin_dashboard.png)
+
+### 工程师工作台
+
+![工程师工作台首页](docs/screenshots/engineer_main.png)
+
+### 新建服务表
+
+![新建服务表](docs/screenshots/new%20sheet.png)
+
+### 客户维护信息
+
+![客户维护信息](docs/screenshots/client%20maintenance.png)
 
 ## 核心能力
 
@@ -39,8 +57,8 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 
 常见入口：
 
-- 管理端：`https://admin-aliyun.tinypanel.de/login`
-- 工程师端：`https://eng-aliyun.tinypanel.de/`，未登录时跳转统一登录
+- 管理端：`https://<admin-domain>/login`
+- 工程师端：`https://<engineer-domain>/`，未登录时跳转统一登录
 
 ## 本地启动
 
@@ -122,29 +140,31 @@ npm run test:service-form-regression
 
 ## 部署
 
-默认部署到阿里云 SSH 目标 `aliyun`，远程目录沿用现有生产目录 `/root/service-sheet-aliyun`。
+真实 SSH 目标、远程目录和域名属于私有部署信息，不写入公开仓库。部署前请在本地 `scripts/deploy.local.env` 或当前 shell 环境中配置 `DEPLOY_*` 变量。
 
 ```bash
-# 阿里云（默认）
+# 默认环境（读取 DEPLOY_* 或 scripts/deploy.local.env）
 bash scripts/deploy.sh all
 bash scripts/deploy.sh backend
 bash scripts/deploy.sh frontend
 bash scripts/deploy.sh admin
 bash scripts/deploy.sh engineer
 
-# 腾讯云 stark
-bash scripts/deploy.sh stark
-bash scripts/deploy.sh stark backend
-bash scripts/deploy.sh stark front
-bash scripts/deploy.sh stark admin
-bash scripts/deploy.sh stark eng
+# 指定本地私有 profile（profile 变量在 scripts/deploy.local.env 中定义）
+bash scripts/deploy.sh <profile> all
+bash scripts/deploy.sh <profile> backend
+bash scripts/deploy.sh <profile> front
+bash scripts/deploy.sh <profile> admin
+bash scripts/deploy.sh <profile> eng
 ```
 
-环境变量覆盖：
+环境变量示例：
 
 ```bash
-export DEPLOY_SSH_TARGET=aliyun
-export DEPLOY_REMOTE_ROOT=/root/service-sheet-aliyun
+export DEPLOY_SSH_TARGET=<ssh-alias-or-host>
+export DEPLOY_REMOTE_ROOT=<remote-project-root>
+export DEPLOY_BACKEND_RELATIVE=app/backend
+export DEPLOY_SITE_RELATIVE=app/site
 export DEPLOY_PROJECT_SLUG=oms-platform
 ```
 

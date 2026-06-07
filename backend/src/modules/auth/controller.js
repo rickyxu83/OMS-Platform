@@ -17,22 +17,12 @@ function invalidLoginResult() {
   return { ok: false }
 }
 
-function requestHostname(req) {
-  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim()
-  const host = forwardedHost || req.hostname || String(req.get('host') || '')
-  return host.split(':')[0].toLowerCase()
-}
-
-function cookieDomain(req) {
-  if (env.sessionCookieDomain) return env.sessionCookieDomain
-  const hostname = requestHostname(req)
-  if (hostname.endsWith('.starkgrp.com')) return '.starkgrp.com'
-  if (hostname.endsWith('.tinypanel.de')) return '.tinypanel.de'
-  return undefined
+function cookieDomain() {
+  return env.sessionCookieDomain || undefined
 }
 
 function sessionCookieOptions(req) {
-  const domain = cookieDomain(req)
+  const domain = cookieDomain()
   return {
     httpOnly: true,
     sameSite: 'lax',

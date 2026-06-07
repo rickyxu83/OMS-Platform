@@ -7,15 +7,10 @@ function trimTrailingSlash(value) {
 
 function inferUnifiedLoginUrl() {
   const url = new URL(window.location.href)
-  if (url.hostname.startsWith('eng-aliyun.')) {
-    url.hostname = url.hostname.replace(/^eng-aliyun\./, 'admin-aliyun.')
-    url.pathname = '/login'
-    url.search = ''
-    url.hash = ''
-    return url.toString()
-  }
-  if (url.hostname.startsWith('eng.')) {
-    url.hostname = url.hostname.replace(/^eng\./, 'admin.')
+  const engineerHostPrefix = import.meta.env.VITE_ENGINEER_HOST_PREFIX || 'eng.'
+  const adminHostPrefix = import.meta.env.VITE_ADMIN_HOST_PREFIX || 'admin.'
+  if (engineerHostPrefix && adminHostPrefix && url.hostname.startsWith(engineerHostPrefix)) {
+    url.hostname = `${adminHostPrefix}${url.hostname.slice(engineerHostPrefix.length)}`
     url.pathname = '/login'
     url.search = ''
     url.hash = ''
