@@ -51,14 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const verify = async () => {
       try {
         const data = await api.get('/auth/me')
-        if (!hasAdminWorkspace(data.user)) {
-          clearSession()
-          setUser(null)
-          setIsAuthenticated(false)
-        } else {
-          setUser(data.user)
-          setIsAuthenticated(true)
-        }
+        setUser(data.user)
+        setIsAuthenticated(hasAdminWorkspace(data.user))
       } catch {
         clearSession()
         setUser(null)

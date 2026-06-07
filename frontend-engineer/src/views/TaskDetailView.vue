@@ -75,8 +75,10 @@ async function downloadFile(file) {
   downloadingFileId.value = file.id
   error.value = ''
   try {
+    const token = getToken()
     const response = await fetch(`${resolveApiBase()}/files/${file.id}`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
     })
     if (!response.ok) throw new Error('附件下载失败')
     const blob = await response.blob()

@@ -29,7 +29,7 @@ const ROLE_GROUPS = Object.freeze({
   settings: Object.freeze(['admin', 'supervisor', 'engineering_supervisor']),
   customerWrite: Object.freeze([...VIEW_ROLES, 'engineer']),
   customerDelete: Object.freeze([...VIEW_ROLES, 'engineer']),
-  customerMerge: VIEW_ROLES,
+  customerMerge: Object.freeze(['admin', 'assistant', 'dispatcher', 'supervisor', 'sales_supervisor', 'sales']),
   deviceWrite: Object.freeze([...OPERATION_ROLES, 'engineer']),
   deviceDelete: OPERATION_ROLES,
   deviceModelCatalogWrite: OPERATION_ROLES,
