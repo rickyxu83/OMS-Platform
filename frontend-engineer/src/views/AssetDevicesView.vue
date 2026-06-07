@@ -172,7 +172,7 @@ onMounted(async () => {
         <BrandEyebrow text="客户与资产 / 设备资产" title="设备资产" />
         <p class="asset-page-lead">{{ zh('维护客户设备、序列号、位置和维保信息。') }}</p>
       </div>
-      <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('总览') }}</RouterLink>
+      <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('客户资产') }}</RouterLink>
     </header>
 
     <section class="asset-toolbar">

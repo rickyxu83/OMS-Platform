@@ -5517,6 +5517,13 @@ h2 {
   text-decoration: none;
 }
 
+.asset-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .asset-hero-card {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -5738,10 +5745,15 @@ h2 {
   }
 
   .asset-refresh,
+  .asset-header-actions,
   .asset-toolbar .primary,
   .asset-toolbar .ghost,
   .asset-select {
     width: 100%;
+  }
+
+  .asset-header-actions {
+    justify-content: stretch;
   }
 
   .asset-record-card header,

@@ -154,7 +154,7 @@ onMounted(() => {
         <BrandEyebrow text="客户与资产 / 客户档案" title="客户档案" />
         <p class="asset-page-lead">{{ zh('维护客户地址、联系人和联系电话。') }}</p>
       </div>
-      <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('总览') }}</RouterLink>
+      <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('客户资产') }}</RouterLink>
     </header>
 
     <section class="asset-toolbar">
