@@ -258,11 +258,16 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   office: "purple",
 };
 
-const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_132px_76px_128px]";
+const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_112px_76px_128px]";
 
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
+}
+
+function formatDateOnly(value?: string) {
+  if (!value) return "-";
+  return String(value).replace("T", " ").slice(0, 10);
 }
 
 function displayId(order: ServiceOrder) {
@@ -788,14 +793,14 @@ export function ServiceOrders() {
                           </button>
                         </div>
 
-                        <div className="space-y-0.5 whitespace-nowrap text-xs">
+                        <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
                           <div>
                             <span className="text-muted-foreground">开始：</span>
-                            <span className="text-sm">{formatDateTime(order.plannedStartAt)}</span>
+                            <span>{formatDateOnly(order.plannedStartAt)}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">结束：</span>
-                            <span className="text-sm">{formatDateTime(order.plannedEndAt)}</span>
+                            <span>{formatDateOnly(order.plannedEndAt)}</span>
                           </div>
                         </div>
 
