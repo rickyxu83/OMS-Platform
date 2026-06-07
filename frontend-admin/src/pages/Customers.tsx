@@ -290,10 +290,10 @@ const I18N = {
   },
 } as const;
 
-const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warning" | "info"> = {
+const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warning" | "info" | "success"> = {
   key: "purple",
   vip: "warning",
-  normal: "secondary",
+  normal: "success",
   potential: "info",
 };
 
