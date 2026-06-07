@@ -129,8 +129,10 @@ onMounted(() => {
       <div>
         <BrandEyebrow text="客户与资产 / 维保方目录" title="维保方目录" />
         <p class="asset-page-lead">{{ zh('维护原厂联系人、合作维保方电话和服务范围。') }}</p>
+        <div class="asset-inline-nav">
+          <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
+        </div>
       </div>
-      <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('客户资产') }}</RouterLink>
     </header>
 
     <section class="asset-toolbar">

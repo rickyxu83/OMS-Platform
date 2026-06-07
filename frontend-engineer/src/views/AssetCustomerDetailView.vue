@@ -253,10 +253,10 @@ onMounted(() => {
       <div>
         <BrandEyebrow text="客户与资产 / 客户详情" :title="customer?.name || '客户详情'" />
         <p class="asset-page-lead">{{ zh('重点查看客户名下设备、在保状态和故障时应联系的维保厂商。') }}</p>
-      </div>
-      <div class="asset-header-actions">
-        <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('客户资产') }}</RouterLink>
-        <RouterLink class="ghost asset-refresh" to="/assets/customers"><PreviewIcon name="customers" />{{ zh('客户列表') }}</RouterLink>
+        <div class="asset-inline-nav">
+          <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
+          <RouterLink class="ghost asset-refresh" to="/assets/customers"><PreviewIcon name="customers" />{{ zh('客户列表') }}</RouterLink>
+        </div>
       </div>
     </header>
 
