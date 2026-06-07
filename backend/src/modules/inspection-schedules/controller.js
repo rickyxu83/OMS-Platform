@@ -496,6 +496,94 @@ async function create(req, res) {
   res.status(201).json({ item: schedulePayload(row) })
 }
 
+async function createBulk(req, res) {
+  const { customerId, assignments = [], cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const normalizedCustomerId = Number(customerId || 0)
+  if (!normalizedCustomerId) {
+    throw badRequest('客户不能为空')
+  }
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    throw badRequest('请至少选择一台设备和目标工程师')
+  }
+  if (assignments.length > 200) {
+    throw badRequest('单次最多创建 200 条巡检计划')
+  }
+  const normalizedCadence = normalizeCadence(cadence)
+  const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
+  const normalizedEndDate = normalizeDate(endDate, '结束日期', false)
+  if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) {
+    throw badRequest('结束日期不能早于下次运行锚点')
+  }
+  const normalizedActive = normalizeActive(active, true)
+
+  const normalizedAssignments = assignments.map((assignment) => ({
+    deviceId: Number(assignment?.deviceId || 0),
+    targetEngineerId: Number(assignment?.targetEngineerId || 0),
+  }))
+  if (normalizedAssignments.some((assignment) => !assignment.deviceId || !assignment.targetEngineerId)) {
+    throw badRequest('每台设备都必须指定有效的目标工程师')
+  }
+
+  const uniqueKeys = new Set()
+  for (const assignment of normalizedAssignments) {
+    const key = `${assignment.deviceId}:${assignment.targetEngineerId}`
+    if (uniqueKeys.has(key)) {
+      throw badRequest('批量分配中存在重复的设备和工程师组合')
+    }
+    uniqueKeys.add(key)
+  }
+
+  let createdIds = []
+  try {
+    createdIds = await transaction(async (connection) => {
+      await ensureInspectionSchedulesTable(connection)
+      const ids = []
+      for (const assignment of normalizedAssignments) {
+        await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, assignment.deviceId)
+        await assertActiveEngineer(connection, assignment.targetEngineerId)
+        await assertNoDuplicateActive(connection, {
+          customerId: normalizedCustomerId,
+          deviceId: assignment.deviceId,
+          targetEngineerId: assignment.targetEngineerId,
+          cadence: normalizedCadence,
+          active: normalizedActive,
+        })
+        const [result] = await connection.execute(
+          `INSERT INTO inspection_schedules (
+            customer_id, device_id, target_engineer_id, cadence, next_run_anchor,
+            active, end_date, next_order_status, created_by
+          )
+          VALUES (
+            :customerId, :deviceId, :targetEngineerId, :cadence, :nextRunAnchor,
+            :active, :endDate, 'pending_confirmation', :createdBy
+          )`,
+          {
+            customerId: normalizedCustomerId,
+            deviceId: assignment.deviceId,
+            targetEngineerId: assignment.targetEngineerId,
+            cadence: normalizedCadence,
+            nextRunAnchor: normalizedNextRunAnchor,
+            active: normalizedActive ? 1 : 0,
+            endDate: normalizedEndDate,
+            createdBy: req.user.id,
+          },
+        )
+        ids.push(result.insertId)
+      }
+      return ids
+    })
+  } catch (error) {
+    throw duplicateScheduleError(error) || error
+  }
+
+  const rows = []
+  for (const id of createdIds) {
+    const row = await loadSchedule(id)
+    if (row) rows.push(schedulePayload(row))
+  }
+  res.status(201).json({ items: rows, total: rows.length })
+}
+
 async function detail(req, res) {
   await ensureInspectionSchedulesTable()
   const row = await loadSchedule(req.params.id)
@@ -639,6 +727,7 @@ async function generateDue(req, res) {
 module.exports = {
   list,
   create,
+  createBulk,
   generateDue,
   detail,
   update,

@@ -68,6 +68,7 @@ const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary
 };
 
 const NO_DEVICE_VALUE = "__no_device__";
+const UNASSIGNED_VALUE = "__unassigned__";
 
 function formatDate(value?: string) {
   if (!value) return "-";
@@ -93,6 +94,8 @@ export function InspectionSchedules() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [deviceAssignments, setDeviceAssignments] = useState<Record<string, string>>({});
+  const [bulkEngineerId, setBulkEngineerId] = useState("");
   const [form, setForm] = useState({
     name: "",
     customerId: "",
@@ -187,8 +190,15 @@ export function InspectionSchedules() {
     return devices.filter((d) => String(d.customerId) === form.customerId);
   }, [devices, form.customerId]);
 
+  const assignedDeviceOptions = useMemo(
+    () => deviceOptions.filter((device) => deviceAssignments[String(device.id)]),
+    [deviceAssignments, deviceOptions],
+  );
+
   function openCreate() {
     setEditingId(null);
+    setDeviceAssignments({});
+    setBulkEngineerId("");
     setForm({
       name: "",
       customerId: "",
@@ -205,6 +215,8 @@ export function InspectionSchedules() {
 
   function openEdit(schedule: Schedule) {
     setEditingId(schedule.id);
+    setDeviceAssignments({});
+    setBulkEngineerId("");
     setForm({
       name: schedule.name || "",
       customerId: schedule.customerId ? String(schedule.customerId) : "",
@@ -219,13 +231,49 @@ export function InspectionSchedules() {
     setDialogOpen(true);
   }
 
+  function updateCustomer(customerId: string) {
+    setForm({ ...form, customerId, deviceId: "", targetEngineerId: "" });
+    setDeviceAssignments({});
+    setBulkEngineerId("");
+  }
+
+  function assignDevice(deviceId: string | number, engineerId: string) {
+    const key = String(deviceId);
+    setDeviceAssignments((current) => {
+      const next = { ...current };
+      if (!engineerId || engineerId === UNASSIGNED_VALUE) {
+        delete next[key];
+      } else {
+        next[key] = engineerId;
+      }
+      return next;
+    });
+  }
+
+  function applyEngineerToAllDevices(engineerId: string) {
+    setBulkEngineerId(engineerId);
+    if (!engineerId || engineerId === UNASSIGNED_VALUE) {
+      setDeviceAssignments({});
+      return;
+    }
+    setDeviceAssignments(Object.fromEntries(deviceOptions.map((device) => [String(device.id), engineerId])));
+  }
+
   async function submit() {
     if (!form.customerId) {
       setError("请选择客户");
       return;
     }
-    if (!form.targetEngineerId) {
+    if (editingId && !form.targetEngineerId) {
       setError("请选择目标工程师");
+      return;
+    }
+    if (!editingId && deviceOptions.length > 0 && assignedDeviceOptions.length === 0) {
+      setError("请至少为一台设备指定巡检人");
+      return;
+    }
+    if (!editingId && deviceOptions.length === 0 && !form.targetEngineerId) {
+      setError("该客户暂无设备，请选择目标工程师创建未指定设备的巡检计划");
       return;
     }
     if (!form.cadence) {
@@ -243,11 +291,9 @@ export function InspectionSchedules() {
     setSaving(true);
     setError("");
     try {
-      const payload: Record<string, unknown> = {
+      const basePayload: Record<string, unknown> = {
         name: form.name.trim() || undefined,
         customerId: form.customerId,
-        deviceId: form.deviceId || null,
-        targetEngineerId: form.targetEngineerId,
         cadence: form.cadence,
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
@@ -255,9 +301,26 @@ export function InspectionSchedules() {
         remark: form.remark.trim() || undefined,
       };
       if (editingId) {
+        const payload = {
+          ...basePayload,
+          deviceId: form.deviceId || null,
+          targetEngineerId: form.targetEngineerId,
+        };
         await api.put(`/inspection-schedules/${editingId}`, payload);
+      } else if (assignedDeviceOptions.length > 0) {
+        await api.post("/inspection-schedules/bulk", {
+          ...basePayload,
+          assignments: assignedDeviceOptions.map((device) => ({
+            deviceId: device.id,
+            targetEngineerId: deviceAssignments[String(device.id)],
+          })),
+        });
       } else {
-        await api.post("/inspection-schedules", payload);
+        await api.post("/inspection-schedules", {
+          ...basePayload,
+          deviceId: null,
+          targetEngineerId: form.targetEngineerId,
+        });
       }
       setDialogOpen(false);
       await load();
@@ -385,7 +448,7 @@ export function InspectionSchedules() {
               <SelectContent>
                 <SelectItem value="all">全部周期</SelectItem>
                 <SelectItem value="monthly">每月</SelectItem>
-                <SelectItem value="bimonthly">每两月</SelectItem>
+                <SelectItem value="bi-monthly">每两月</SelectItem>
                 <SelectItem value="quarterly">每季度</SelectItem>
               </SelectContent>
             </Select>
@@ -483,11 +546,11 @@ export function InspectionSchedules() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[820px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "编辑巡检计划" : "新增巡检计划"}</DialogTitle>
             <DialogDescription>
-              配置客户、设备、巡检人和周期，保存后即按规则生成待确认的巡检工单
+              配置客户、设备、巡检人和周期
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -504,7 +567,7 @@ export function InspectionSchedules() {
                 <Label>客户 *</Label>
                 <Select
                   value={form.customerId}
-                  onValueChange={(v) => setForm({ ...form, customerId: v, deviceId: "" })}
+                  onValueChange={updateCustomer}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="选择客户" />
@@ -518,44 +581,139 @@ export function InspectionSchedules() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>设备（可选）</Label>
-                <Select
-                  value={form.deviceId || NO_DEVICE_VALUE}
-                  onValueChange={(v) => setForm({ ...form, deviceId: v === NO_DEVICE_VALUE ? "" : v })}
-                  disabled={!form.customerId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={form.customerId ? "选择设备" : "请先选择客户"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_DEVICE_VALUE}>不指定设备</SelectItem>
-                    {deviceOptions.map((d) => (
-                      <SelectItem key={d.id} value={String(d.id)}>
-                        {d.name || `设备 #${d.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>巡检人 *</Label>
-                <Select
-                  value={form.targetEngineerId}
-                  onValueChange={(v) => setForm({ ...form, targetEngineerId: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择工程师" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {engineers.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)}>
-                        {e.realName || e.username || `工程师 #${e.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {editingId ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>设备（可选）</Label>
+                    <Select
+                      value={form.deviceId || NO_DEVICE_VALUE}
+                      onValueChange={(v) => setForm({ ...form, deviceId: v === NO_DEVICE_VALUE ? "" : v })}
+                      disabled={!form.customerId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={form.customerId ? "选择设备" : "请先选择客户"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_DEVICE_VALUE}>不指定设备</SelectItem>
+                        {deviceOptions.map((d) => (
+                          <SelectItem key={d.id} value={String(d.id)}>
+                            {d.name || `设备 #${d.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>巡检人 *</Label>
+                    <Select
+                      value={form.targetEngineerId}
+                      onValueChange={(v) => setForm({ ...form, targetEngineerId: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择工程师" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {engineers.map((e) => (
+                          <SelectItem key={e.id} value={String(e.id)}>
+                            {e.realName || e.username || `工程师 #${e.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/20 p-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <Label>设备巡检人 *</Label>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        已分配 {assignedDeviceOptions.length} / {form.customerId ? deviceOptions.length : 0} 台设备
+                      </div>
+                    </div>
+                    <div className="w-full md:w-[220px]">
+                      <Select
+                        value={bulkEngineerId || UNASSIGNED_VALUE}
+                        onValueChange={applyEngineerToAllDevices}
+                        disabled={!form.customerId || deviceOptions.length === 0}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="批量指定" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNASSIGNED_VALUE}>清空分配</SelectItem>
+                          {engineers.map((e) => (
+                            <SelectItem key={e.id} value={String(e.id)}>
+                              {e.realName || e.username || `工程师 #${e.id}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {!form.customerId ? (
+                    <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                      请先选择客户
+                    </div>
+                  ) : deviceOptions.length === 0 ? (
+                    <div className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+                      <div className="min-w-0">
+                        <div className="font-medium">未指定设备</div>
+                        <div className="text-xs text-muted-foreground">该客户暂无设备档案</div>
+                      </div>
+                      <Select
+                        value={form.targetEngineerId}
+                        onValueChange={(v) => setForm({ ...form, targetEngineerId: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择工程师" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {engineers.map((e) => (
+                            <SelectItem key={e.id} value={String(e.id)}>
+                              {e.realName || e.username || `工程师 #${e.id}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {deviceOptions.map((d) => {
+                        const deviceId = String(d.id);
+                        return (
+                          <div
+                            key={d.id}
+                            className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-center"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{d.name || `设备 #${d.id}`}</div>
+                              <div className="text-xs text-muted-foreground">设备 #{d.id}</div>
+                            </div>
+                            <Select
+                              value={deviceAssignments[deviceId] || UNASSIGNED_VALUE}
+                              onValueChange={(v) => assignDevice(deviceId, v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="选择工程师" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNASSIGNED_VALUE}>不创建计划</SelectItem>
+                                {engineers.map((e) => (
+                                  <SelectItem key={e.id} value={String(e.id)}>
+                                    {e.realName || e.username || `工程师 #${e.id}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>巡检周期 *</Label>
                 <Select value={form.cadence} onValueChange={(v) => setForm({ ...form, cadence: v })}>
@@ -564,7 +722,7 @@ export function InspectionSchedules() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="monthly">每月</SelectItem>
-                    <SelectItem value="bimonthly">每两月</SelectItem>
+                    <SelectItem value="bi-monthly">每两月</SelectItem>
                     <SelectItem value="quarterly">每季度</SelectItem>
                   </SelectContent>
                 </Select>
@@ -609,7 +767,7 @@ export function InspectionSchedules() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? "保存中…" : editingId ? "保存修改" : "保存计划"}
+              {saving ? "保存中…" : editingId ? "保存修改" : assignedDeviceOptions.length ? `保存 ${assignedDeviceOptions.length} 条计划` : "保存计划"}
             </Button>
           </DialogFooter>
         </DialogContent>

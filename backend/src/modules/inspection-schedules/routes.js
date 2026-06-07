@@ -8,6 +8,7 @@ const opsRoles = ['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering
 const viewRoles = [...opsRoles, 'sales', 'sales_supervisor']
 
 router.get('/', requireRoles(...viewRoles), controller.list)
+router.post('/bulk', requireRoles(...opsRoles), controller.createBulk)
 router.post('/', requireRoles(...opsRoles), controller.create)
 router.post('/generate-due', requireRoles(...opsRoles), controller.generateDue)
 router.get('/:id', requireRoles(...viewRoles), controller.detail)
