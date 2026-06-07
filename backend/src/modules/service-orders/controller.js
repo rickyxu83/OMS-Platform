@@ -32,6 +32,7 @@ const orderColumns = `
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
 
 function orderPayload(row) {
+  const targetEngineerName = row.target_engineer_name || row.target_engineer_username
   return {
     id: row.id,
     orderNo: row.order_no,
@@ -50,11 +51,11 @@ function orderPayload(row) {
     status: publicStatus(row.status),
     workflowStatus: row.status,
     issueDescription: row.issue_description,
-    engineerName: row.engineer_name,
+    engineerName: row.engineer_name || (row.status === 'pending_confirmation' ? targetEngineerName : null),
     inspectionScheduleId: row.inspection_schedule_id,
     inspectionOccurrenceDate: row.inspection_occurrence_date,
     targetEngineerId: row.target_engineer_id,
-    targetEngineerName: row.target_engineer_name || row.target_engineer_username,
+    targetEngineerName,
     pendingConfirmation: row.status === 'pending_confirmation',
     confirmedBy: row.confirmed_by,
     confirmedByName: row.confirmed_by_name,
@@ -911,6 +912,8 @@ async function list(req, res) {
           OR so.issue_description LIKE :likeKeyword
           OR u.real_name LIKE :likeKeyword
           OR u.username LIKE :likeKeyword
+          OR target_u.real_name LIKE :likeKeyword
+          OR target_u.username LIKE :likeKeyword
           OR EXISTS (
             SELECT 1
             FROM service_order_engineers keyword_soe
