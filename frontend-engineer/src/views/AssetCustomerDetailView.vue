@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
@@ -8,14 +8,17 @@ import { api } from '../services/api'
 
 const { zh } = usePreviewI18n()
 const route = useRoute()
+const router = useRouter()
 const customer = ref(null)
 const devices = ref([])
 const partyDetails = ref({})
 const loading = ref(true)
 const saving = ref(false)
+const deleting = ref(false)
 const locating = ref(false)
 const error = ref('')
 const saveMessage = ref('')
+const deleteConfirmOpen = ref(false)
 const geoCandidates = ref([])
 const form = ref(emptyForm())
 
@@ -149,6 +152,17 @@ async function loadDetail() {
   }
 }
 
+function openDeleteConfirm() {
+  error.value = ''
+  saveMessage.value = ''
+  deleteConfirmOpen.value = true
+}
+
+function closeDeleteConfirm() {
+  if (deleting.value) return
+  deleteConfirmOpen.value = false
+}
+
 function currentPosition() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
@@ -242,6 +256,22 @@ async function saveCustomer() {
   }
 }
 
+async function deleteCustomer() {
+  deleting.value = true
+  error.value = ''
+  saveMessage.value = ''
+  try {
+    await api.delete(`/customers/${customerId.value}`)
+    deleteConfirmOpen.value = false
+    router.push('/assets/customers')
+  } catch (err) {
+    deleteConfirmOpen.value = false
+    error.value = err.message || '删除失败'
+  } finally {
+    deleting.value = false
+  }
+}
+
 onMounted(() => {
   loadDetail()
 })
@@ -271,9 +301,14 @@ onMounted(() => {
             <span class="asset-record-kicker">{{ zh('客户档案') }}</span>
             <h2>{{ zh('基础信息') }}</h2>
           </div>
-          <button class="primary" type="button" :disabled="saving" @click="saveCustomer">
-            <PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}
-          </button>
+          <div class="asset-record-actions">
+            <button class="ghost danger-lite" type="button" :disabled="saving || deleting" @click="openDeleteConfirm">
+              <PreviewIcon name="trash" />{{ zh('删除客户') }}
+            </button>
+            <button class="primary" type="button" :disabled="saving || deleting" @click="saveCustomer">
+              <PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}
+            </button>
+          </div>
         </header>
 
         <div class="asset-editor-form asset-inline-form">
@@ -330,5 +365,26 @@ onMounted(() => {
         </section>
       </article>
     </section>
+
+    <div v-if="deleteConfirmOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('删除客户')">
+      <div class="signature-modal-shell exit-confirm-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('删除客户') }}</p>
+            <h2>{{ zh(customer?.name || '未命名客户') }}</h2>
+          </div>
+        </header>
+        <div class="exit-confirm-body">
+          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
+          <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>
+          <button class="primary danger-action" type="button" :disabled="deleting" @click="deleteCustomer">
+            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中...' : '确认删除') }}
+          </button>
+        </footer>
+      </div>
+    </div>
   </main>
 </template>

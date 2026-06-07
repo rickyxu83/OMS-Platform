@@ -5736,6 +5736,14 @@ h2 {
   justify-content: space-between;
 }
 
+.asset-record-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .asset-record-card h2 {
   margin-top: 6px;
   font-size: 20px;
@@ -5845,7 +5853,13 @@ h2 {
     flex-direction: column;
   }
 
-  .asset-record-card header .ghost {
+  .asset-record-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .asset-record-card header .ghost,
+  .asset-record-card header .primary {
     width: 100%;
   }
 }

@@ -11,6 +11,7 @@ router.get('/', controller.list)
 router.post('/', requireRoles(...customerWriteRoles), controller.create)
 router.get('/:id', controller.detail)
 router.put('/:id', requireRoles(...customerWriteRoles), controller.update)
+router.delete('/:id', requireRoles(...customerWriteRoles), controller.remove)
 router.post('/:id/merge', requireRoles(...customerMergeRoles), controller.merge)
 router.get('/:id/devices', controller.devices)
 

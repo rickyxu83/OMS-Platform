@@ -9,9 +9,11 @@ const { zh } = usePreviewI18n()
 const customers = ref([])
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const error = ref('')
 const searchQuery = ref('')
 const dialogOpen = ref(false)
+const deleteTarget = ref(null)
 const editingId = ref(null)
 const form = ref(emptyForm())
 
@@ -96,6 +98,16 @@ function closeDialog() {
   dialogOpen.value = false
 }
 
+function openDeleteConfirm(customer) {
+  error.value = ''
+  deleteTarget.value = customer
+}
+
+function closeDeleteConfirm() {
+  if (deleting.value) return
+  deleteTarget.value = null
+}
+
 function addContact() {
   form.value.contacts.push({ name: '', phone: '' })
 }
@@ -139,6 +151,22 @@ async function saveCustomer() {
     error.value = err.message || '保存失败'
   } finally {
     saving.value = false
+  }
+}
+
+async function deleteCustomer() {
+  if (!deleteTarget.value?.id) return
+  deleting.value = true
+  error.value = ''
+  try {
+    await api.delete(`/customers/${deleteTarget.value.id}`)
+    deleteTarget.value = null
+    await loadCustomers()
+  } catch (err) {
+    deleteTarget.value = null
+    error.value = err.message || '删除失败'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -187,7 +215,10 @@ onMounted(() => {
             <span class="asset-record-kicker">{{ customer.code || zh('未维护编码') }}</span>
             <h2>{{ zh(customer.name || '未命名客户') }}</h2>
           </div>
-          <button class="ghost" type="button" @click.stop="openEdit(customer)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
+          <div class="asset-record-actions">
+            <button class="ghost" type="button" @click.stop="openEdit(customer)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
+            <button class="ghost danger-lite" type="button" @click.stop="openDeleteConfirm(customer)"><PreviewIcon name="trash" />{{ zh('删除') }}</button>
+          </div>
         </header>
         <p class="asset-record-line"><PreviewIcon name="pin" />{{ zh(customer.address || '未维护地址') }}</p>
         <div class="asset-contact-list">
@@ -231,6 +262,27 @@ onMounted(() => {
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
           <button class="primary" type="button" :disabled="saving" @click="saveCustomer"><PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <div v-if="deleteTarget" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('删除客户')">
+      <div class="signature-modal-shell exit-confirm-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('删除客户') }}</p>
+            <h2>{{ zh(deleteTarget.name || '未命名客户') }}</h2>
+          </div>
+        </header>
+        <div class="exit-confirm-body">
+          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
+          <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>
+          <button class="primary danger-action" type="button" :disabled="deleting" @click="deleteCustomer">
+            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中...' : '确认删除') }}
+          </button>
         </footer>
       </div>
     </div>

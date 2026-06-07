@@ -600,6 +600,47 @@ async function update(req, res) {
   res.status(204).end()
 }
 
+async function remove(req, res) {
+  await transaction(async (connection) => {
+    const customerId = Number(req.params.id)
+    const [customers] = await connection.execute('SELECT id FROM customers WHERE id = :customerId LIMIT 1 FOR UPDATE', { customerId })
+    if (!customers[0]) {
+      throw notFound('客户不存在')
+    }
+
+    const [relationRows] = await connection.execute(
+      `SELECT
+         (SELECT COUNT(*) FROM devices WHERE customer_id = :customerId) AS device_count,
+         (SELECT COUNT(*) FROM service_orders WHERE customer_id = :customerId) AS service_order_count`,
+      { customerId },
+    )
+    const deviceCount = Number(relationRows[0]?.device_count || 0)
+    const serviceOrderCount = Number(relationRows[0]?.service_order_count || 0)
+    if (deviceCount > 0) {
+      throw badRequest('该客户下还有关联设备，请先删除或转移设备后再删除客户')
+    }
+    if (serviceOrderCount > 0) {
+      throw badRequest('该客户已有服务单关联，请先删除关联的服务单，再删除客户')
+    }
+
+    const [contactRows] = await connection.execute('SELECT id FROM customer_contacts WHERE customer_id = :customerId', { customerId })
+    const contactIds = contactRows.map((row) => Number(row.id)).filter(Boolean)
+    if (contactIds.length) {
+      const params = contactIds.reduce((values, id, index) => {
+        values[`contactId${index}`] = id
+        return values
+      }, {})
+      const placeholders = contactIds.map((_, index) => `:contactId${index}`).join(',')
+      await connection.execute(`DELETE FROM customer_contact_usage WHERE customer_contact_id IN (${placeholders})`, params)
+      await connection.execute(`DELETE FROM customer_contacts WHERE id IN (${placeholders})`, params)
+    }
+
+    await connection.execute('DELETE FROM customers WHERE id = :customerId', { customerId })
+  })
+
+  res.status(204).end()
+}
+
 async function merge(req, res) {
   await ensureCustomerLevelColumn()
   const targetCustomerId = Number(req.params.id)
@@ -722,6 +763,7 @@ module.exports = {
   create,
   detail,
   update,
+  remove,
   merge,
   devices,
 }
