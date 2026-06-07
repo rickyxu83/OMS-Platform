@@ -28,6 +28,7 @@ CREATE TABLE customers (
   contact_name VARCHAR(64) NULL,
   contact_phone VARCHAR(32) NULL,
   salesperson VARCHAR(64) NULL,
+  level ENUM('key', 'normal', 'potential', 'vip') NOT NULL DEFAULT 'normal',
   latitude DECIMAL(10, 7) NULL,
   longitude DECIMAL(10, 7) NULL,
   map_provider VARCHAR(32) NULL,

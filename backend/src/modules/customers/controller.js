@@ -2,6 +2,35 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
 
+const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
+let ensureCustomerLevelColumnPromise = null
+
+async function ensureCustomerLevelColumn() {
+  if (!ensureCustomerLevelColumnPromise) {
+    ensureCustomerLevelColumnPromise = (async () => {
+      const rows = await query(
+        `SELECT COUNT(*) AS total
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'customers'
+           AND COLUMN_NAME = 'level'`,
+      )
+      if (Number(rows[0]?.total || 0) === 0) {
+        await query(
+          `ALTER TABLE customers
+           ADD COLUMN level ENUM('key', 'normal', 'potential', 'vip') NOT NULL DEFAULT 'normal'
+           AFTER salesperson`,
+        )
+      }
+    })()
+  }
+  return ensureCustomerLevelColumnPromise
+}
+
+function normalizeCustomerLevel(level) {
+  return CUSTOMER_LEVELS.has(level) ? level : 'normal'
+}
+
 function contactPayload(row) {
   return {
     id: row.id,
@@ -23,6 +52,7 @@ function customerPayload(row, contacts = []) {
     contactName: row.contact_name,
     contactPhone: row.contact_phone,
     salesperson: row.salesperson,
+    level: normalizeCustomerLevel(row.level),
     latitude: row.latitude,
     longitude: row.longitude,
     mapProvider: row.map_provider,
@@ -315,10 +345,12 @@ function duplicateCustomerError(error) {
 }
 
 async function list(req, res) {
+  await ensureCustomerLevelColumn()
   const { keyword = '', salesperson = '' } = req.query
   const keywordKey = customerNameKey(keyword)
   const rows = await query(
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.contact_name, c.contact_phone, c.salesperson,
+            c.level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
             remark, created_at, updated_at,
             COALESCE(soc.service_order_count, 0) AS service_order_count
@@ -354,6 +386,7 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
+  await ensureCustomerLevelColumn()
   const {
     name,
     code,
@@ -362,6 +395,7 @@ async function create(req, res) {
     contactPhone,
     contacts,
     salesperson,
+    level,
     latitude,
     longitude,
     mapProvider,
@@ -389,6 +423,7 @@ async function create(req, res) {
                contact_name = COALESCE(:contactName, contact_name),
                contact_phone = COALESCE(:contactPhone, contact_phone),
                salesperson = COALESCE(:salesperson, salesperson),
+               level = :level,
                latitude = COALESCE(:latitude, latitude),
                longitude = COALESCE(:longitude, longitude),
                map_provider = COALESCE(:mapProvider, map_provider),
@@ -405,6 +440,7 @@ async function create(req, res) {
             contactName: contactName || null,
             contactPhone: contactPhone || null,
             salesperson: salesperson || null,
+            level: normalizeCustomerLevel(level),
             latitude: latitude || null,
             longitude: longitude || null,
             mapProvider: mapProvider || null,
@@ -425,10 +461,12 @@ async function create(req, res) {
       const [insertResult] = await connection.execute(
         `INSERT INTO customers (
            name, name_key, code, address, contact_name, contact_phone, salesperson,
+           level,
            latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address, remark
          )
          VALUES (
            :name, :nameKey, :code, :address, :contactName, :contactPhone, :salesperson,
+           :level,
            :latitude, :longitude, :mapProvider, :mapPoiId, :mapPoiName, :mapAddress, :remark
          )`,
         {
@@ -439,6 +477,7 @@ async function create(req, res) {
           contactName: contactName || null,
           contactPhone: contactPhone || null,
           salesperson: salesperson || null,
+          level: normalizeCustomerLevel(level),
           latitude: latitude || null,
           longitude: longitude || null,
           mapProvider: mapProvider || null,
@@ -463,8 +502,10 @@ async function create(req, res) {
 }
 
 async function detail(req, res) {
+  await ensureCustomerLevelColumn()
   const rows = await query(
     `SELECT id, name, name_key, code, address, contact_name, contact_phone, salesperson,
+            level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
             remark, created_at, updated_at
      FROM customers
@@ -483,6 +524,7 @@ async function detail(req, res) {
 }
 
 async function update(req, res) {
+  await ensureCustomerLevelColumn()
   const {
     name,
     code,
@@ -491,6 +533,7 @@ async function update(req, res) {
     contactPhone,
     contacts,
     salesperson,
+    level,
     latitude,
     longitude,
     mapProvider,
@@ -516,6 +559,7 @@ async function update(req, res) {
              contact_name = :contactName,
              contact_phone = :contactPhone,
              salesperson = :salesperson,
+             level = :level,
              latitude = :latitude,
              longitude = :longitude,
              map_provider = :mapProvider,
@@ -533,6 +577,7 @@ async function update(req, res) {
           contactName: contactName || null,
           contactPhone: contactPhone || null,
           salesperson: salesperson || null,
+          level: normalizeCustomerLevel(level),
           latitude: latitude || null,
           longitude: longitude || null,
           mapProvider: mapProvider || null,
@@ -556,6 +601,7 @@ async function update(req, res) {
 }
 
 async function merge(req, res) {
+  await ensureCustomerLevelColumn()
   const targetCustomerId = Number(req.params.id)
   const sourceCustomerId = Number(req.body?.sourceCustomerId)
 
@@ -568,6 +614,7 @@ async function merge(req, res) {
 
   const customers = await query(
     `SELECT id, name, code, address, contact_name, contact_phone, salesperson,
+            level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address, remark
      FROM customers
      WHERE id = :targetCustomerId OR id = :sourceCustomerId`,
@@ -603,6 +650,7 @@ async function merge(req, res) {
            contact_name = COALESCE(NULLIF(contact_name, ''), :contactName),
            contact_phone = COALESCE(NULLIF(contact_phone, ''), :contactPhone),
            salesperson = COALESCE(NULLIF(salesperson, ''), :salesperson),
+           level = COALESCE(level, :level),
            latitude = COALESCE(latitude, :latitude),
            longitude = COALESCE(longitude, :longitude),
            map_provider = COALESCE(NULLIF(map_provider, ''), :mapProvider),
@@ -617,6 +665,7 @@ async function merge(req, res) {
         contactName: sourceCustomer.contact_name || null,
         contactPhone: sourceCustomer.contact_phone || null,
         salesperson: sourceCustomer.salesperson || null,
+        level: normalizeCustomerLevel(sourceCustomer.level),
         latitude: sourceCustomer.latitude || null,
         longitude: sourceCustomer.longitude || null,
         mapProvider: sourceCustomer.map_provider || null,

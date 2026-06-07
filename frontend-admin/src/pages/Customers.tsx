@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
@@ -40,7 +41,6 @@ interface Customer {
   mapPoiName?: string;
   mapAddress?: string;
   level?: string;
-  levelText?: string;
   serviceOrderCount?: number;
   salesperson?: string;
   updatedAt?: string;
@@ -298,11 +298,7 @@ const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warnin
 };
 
 function levelOf(c: Customer): string {
-  if (c.level) return c.level;
-  const count = Number(c.serviceOrderCount || 0);
-  if (count >= 20) return "key";
-  if (count >= 5) return "normal";
-  return "potential";
+  return c.level || "normal";
 }
 
 function formatDate(value?: string) {
@@ -451,6 +447,21 @@ export function Customers() {
         : t.geo.noCoordinate,
     );
     setDialogOpen(true);
+  }
+
+  function clearMapSelection() {
+    setForm((prev) => ({
+      ...prev,
+      latitude: null,
+      longitude: null,
+      mapProvider: "",
+      mapPoiId: "",
+      mapPoiName: "",
+      mapAddress: "",
+    }));
+    setCandidates([]);
+    setShowCandidates(false);
+    setLocationHint(t.geo.noCoordinate);
   }
 
   async function searchGeo(
@@ -612,12 +623,12 @@ export function Customers() {
         contactName: primaryContact.name.trim() || undefined,
         contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
-        latitude: form.latitude ?? undefined,
-        longitude: form.longitude ?? undefined,
-        mapProvider: form.mapProvider || undefined,
-        mapPoiId: form.mapPoiId || undefined,
-        mapPoiName: form.mapPoiName || undefined,
-        mapAddress: form.mapAddress || undefined,
+        latitude: form.latitude,
+        longitude: form.longitude,
+        mapProvider: form.mapProvider || null,
+        mapPoiId: form.mapPoiId || null,
+        mapPoiName: form.mapPoiName || null,
+        mapAddress: form.mapAddress || null,
         level: form.level,
         contacts: form.contacts
           .map((contact) => ({
@@ -729,7 +740,7 @@ export function Customers() {
                 ) : (
                   filtered.map((c) => {
                     const lv = levelOf(c);
-                    const lvLabel = c.levelText || t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+                    const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     return (
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">{c.code || t.misc.unknown}</TableCell>
@@ -857,31 +868,34 @@ export function Customers() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-salesperson">{t.dialog.salesperson}</Label>
-                <select
-                  id="cust-salesperson"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={form.salesperson}
-                  onChange={(e) => setForm({ ...form, salesperson: e.target.value })}
+                <Select
+                  value={form.salesperson || "__none"}
+                  onValueChange={(value) => setForm({ ...form, salesperson: value === "__none" ? "" : value })}
                 >
-                  <option value="">{t.dialog.salespersonPlaceholder}</option>
+                  <SelectTrigger id="cust-salesperson">
+                    <SelectValue placeholder={t.dialog.salespersonPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">{t.dialog.salespersonPlaceholder}</SelectItem>
                   {salespersonOptions.map((name) => (
-                    <option key={name} value={name}>{name}</option>
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
                   ))}
-                </select>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-level">{t.dialog.level}</Label>
-                <select
-                  id="cust-level"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={form.level}
-                  onChange={(e) => setForm({ ...form, level: e.target.value })}
-                >
-                  <option value="normal">{t.levels.normal}</option>
-                  <option value="key">{t.levels.key}</option>
-                  <option value="vip">{t.levels.vip}</option>
-                  <option value="potential">{t.levels.potential}</option>
-                </select>
+                <Select value={form.level} onValueChange={(value) => setForm({ ...form, level: value })}>
+                  <SelectTrigger id="cust-level">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">{t.levels.normal}</SelectItem>
+                    <SelectItem value="key">{t.levels.key}</SelectItem>
+                    <SelectItem value="vip">{t.levels.vip}</SelectItem>
+                    <SelectItem value="potential">{t.levels.potential}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-contact">{t.dialog.contact}</Label>
@@ -972,17 +986,7 @@ export function Customers() {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      latitude: null,
-                      longitude: null,
-                      mapProvider: "",
-                      mapPoiId: "",
-                      mapPoiName: "",
-                      mapAddress: "",
-                    })
-                  }
+                  onClick={clearMapSelection}
                 >
                   {t.actions.clear}
                 </Button>
