@@ -3331,6 +3331,7 @@ h2 {
 .task-card {
   position: relative;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 14px;
   background:
     linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(248 251 255 / 92%)),
@@ -3634,6 +3635,7 @@ h2 {
 
 .task-actions {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-self: end;
   margin-top: 0;
 }
 

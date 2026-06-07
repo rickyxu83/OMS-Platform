@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { APP_NAME, APP_NAME_HANT, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
+import { goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -31,9 +31,9 @@ export function Login() {
 
   const i18n = {
     "zh-CN": {
-      title: APP_NAME,
+      title: "OMS Platform",
       welcome: "欢迎回来",
-      subtitle: "统一登录入口",
+      subtitle: "运维智管",
       pleaseLogin: "请登录您的账户",
       username: "账号",
       password: "密码",
@@ -55,9 +55,9 @@ export function Login() {
       passwordPlaceholder: "请输入密码",
     },
     "zh-TW": {
-      title: APP_NAME_HANT,
+      title: "OMS Platform",
       welcome: "歡迎回來",
-      subtitle: "統一登錄入口",
+      subtitle: "運維智管",
       pleaseLogin: "請登錄您的賬戶",
       username: "帳號",
       password: "密碼",
@@ -137,7 +137,7 @@ export function Login() {
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden p-4"
+      className="relative min-h-screen overflow-hidden p-3 sm:p-4"
       style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)" }}
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -150,13 +150,13 @@ export function Login() {
         <div className="absolute bottom-[30%] right-[40%] h-[380px] w-[380px] rounded-full bg-rose-400/20 blur-3xl" />
       </div>
 
-      <div className="absolute top-6 right-6 z-20">
+      <div className="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="h-10 gap-2 rounded-full border bg-white/80 px-4 shadow-md backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-lg"
+              className="h-9 gap-2 rounded-full border bg-white/80 px-3.5 shadow-md backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-lg"
               style={{ borderColor: "rgba(88, 43, 139, 0.2)" }}
             >
               <Globe className="h-4 w-4" style={{ color: "#582B8B" }} />
@@ -180,45 +180,45 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="relative z-10 flex min-h-[calc(100vh-2rem)] items-center justify-center">
-        <div className="w-full max-w-md">
-          <div className="rounded-3xl border border-white/20 bg-white/80 p-8 shadow-2xl backdrop-blur-xl">
-            <div className="mb-8 mt-2 flex justify-center">
-              <div className="relative flex h-32 w-32 items-center justify-center">
+      <div className="relative z-10 flex min-h-[calc(100vh-1.5rem)] items-center justify-center">
+        <div className="w-full max-w-sm">
+          <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
+            <div className="mb-4 flex justify-center">
+              <div className="relative flex h-24 w-24 items-center justify-center">
                 <div
-                  className="absolute h-28 w-28 rounded-full blur-2xl"
+                  className="absolute h-20 w-20 rounded-full blur-2xl"
                   style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
                 />
                 <div
-                  className="absolute h-32 w-32 rounded-full blur-3xl"
+                  className="absolute h-24 w-24 rounded-full blur-3xl"
                   style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
                 />
                 <div
-                  className="absolute h-36 w-36 rounded-full blur-3xl"
+                  className="absolute h-28 w-28 rounded-full blur-3xl"
                   style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
                 />
                 <div
-                  className="absolute h-24 w-24 rounded-full blur-xl"
+                  className="absolute h-[72px] w-[72px] rounded-full blur-xl"
                   style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
                 />
                 <img
                   src={logoSrc}
                   alt="Dunyang Technology Logo"
-                  className="relative z-10 h-24 w-24 object-contain"
+                  className="relative z-10 h-[72px] w-[72px] object-contain"
                   style={{ filter: "drop-shadow(0 0 10px rgba(88, 43, 139, 0.5))" }}
                 />
               </div>
             </div>
 
-            <div className="mb-10 text-center">
-              <h1 className="mb-2 text-3xl font-bold" style={{ color: "#582B8B" }}>
+            <div className="mb-6 text-center">
+              <h1 className="mb-1.5 text-2xl font-bold" style={{ color: "#582B8B" }}>
                 {t.title}
               </h1>
               <p className="text-sm text-gray-500">{t.subtitle}</p>
-              <p className="mt-2 text-sm text-gray-400">{t.pleaseLogin}</p>
+              <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
                   {error}
@@ -235,7 +235,7 @@ export function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
-                  className="h-12 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                  className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
                 />
               </div>
 
@@ -251,7 +251,7 @@ export function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
-                    className="h-12 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                    className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
                   />
                   <button
                     type="button"
@@ -279,14 +279,14 @@ export function Login() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="h-12 w-full rounded-[10px] bg-[#582B8B] text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[#4A2472] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
+                className="h-11 w-full rounded-[10px] bg-[#582B8B] text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[#4A2472] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
               >
                 {loading ? t.loggingIn : t.login}
               </Button>
             </form>
 
             {workspaceChoices.length > 0 && (
-              <div className="mt-6 space-y-3">
+              <div className="mt-4 space-y-2.5">
                 <p className="text-center text-sm font-medium text-gray-500">{t.chooseWorkspace}</p>
                 <div className="grid gap-2">
                   {workspaceChoices.map((workspace) => (
@@ -294,7 +294,7 @@ export function Login() {
                       key={workspace.key}
                       type="button"
                       variant="outline"
-                      className="h-12 justify-between rounded-[10px] border-purple-100 bg-white/70 hover:border-[#582B8B] hover:bg-purple-50"
+                      className="h-11 justify-between rounded-[10px] border-purple-100 bg-white/70 hover:border-[#582B8B] hover:bg-purple-50"
                       onClick={() => enterWorkspace(workspace.key)}
                     >
                       <span>{workspaceLabel(workspace.key, workspace.label)}</span>
@@ -305,7 +305,7 @@ export function Login() {
               </div>
             )}
 
-            <div className="mt-8 flex items-center justify-center gap-2 border-t border-white/60 pt-5">
+            <div className="mt-5 flex items-center justify-center gap-2 border-t border-white/60 pt-4">
               <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{t.version}</span>
               <Badge variant="outline" className="h-4 border-gray-300 px-1.5 py-0 font-mono text-[10px] opacity-50">
                 {appVersion}
@@ -313,7 +313,7 @@ export function Login() {
             </div>
           </div>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
+          <div className="mt-3 text-center text-sm text-gray-500">
             <p className="mb-1">{lang === "zh-TW" ? "敦陽（寧波）科技有限公司" : "敦阳（宁波）科技有限公司"}</p>
             <p className="text-xs">© 2026 All rights reserved.</p>
           </div>
