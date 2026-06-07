@@ -74,6 +74,8 @@ onMounted(() => {
         <div class="asset-inline-nav">
           <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
           <RouterLink class="ghost asset-refresh" to="/assets/devices"><PreviewIcon name="devices" />{{ zh('设备列表') }}</RouterLink>
+          <RouterLink v-if="device?.customerId" class="ghost asset-refresh" :to="`/assets/customers/${device.customerId}`"><PreviewIcon name="customers" />{{ zh('客户') }}</RouterLink>
+          <RouterLink v-if="device?.maintenancePartyId" class="ghost asset-refresh" :to="`/assets/maintenance-parties/${device.maintenancePartyId}`"><PreviewIcon name="maintenance" />{{ zh('维保方') }}</RouterLink>
         </div>
       </div>
     </header>
@@ -88,7 +90,6 @@ onMounted(() => {
             <span class="asset-record-kicker" :class="`asset-warranty-${warrantyStatus(device).className}`">{{ zh(warrantyStatus(device).label) }}</span>
             <h2>{{ zh(device.name || '未命名设备') }}</h2>
           </div>
-          <RouterLink v-if="device.customerId" class="ghost" :to="`/assets/customers/${device.customerId}`"><PreviewIcon name="customers" />{{ zh('客户') }}</RouterLink>
         </header>
 
         <div class="asset-detail-kv">
@@ -107,7 +108,6 @@ onMounted(() => {
             <span class="asset-record-kicker">{{ zh(maintenanceTypeLabel(device.maintenanceType)) }}</span>
             <h2>{{ zh('维保与联系人') }}</h2>
           </div>
-          <RouterLink v-if="device.maintenancePartyId" class="ghost" :to="`/assets/maintenance-parties/${device.maintenancePartyId}`"><PreviewIcon name="maintenance" />{{ zh('维保方') }}</RouterLink>
         </header>
 
         <div class="asset-detail-kv">
