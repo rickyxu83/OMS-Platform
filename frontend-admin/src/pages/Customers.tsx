@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
@@ -117,6 +118,9 @@ const I18N = {
       clear: "清除",
       addContact: "新增联系人",
       removeContact: "删除联系人",
+      delete: "删除",
+      forceDelete: "强制删除",
+      deleting: "删除中…",
       saveNow: "立即创建",
       saving: "保存中…",
     },
@@ -166,10 +170,18 @@ const I18N = {
       badgeSystem: "系统",
       badgeMap: "地图",
       selectedCoordinate: "已选坐标",
+      deleteTitle: "删除客户",
+      deleteDescription: "删除客户前请确认关联数据。管理端删除会强制清理该客户下的设备、服务单、巡检计划和联系人，操作不可恢复。",
+      deleteWarning: "强制删除会一并删除关联设备、服务单和巡检计划，请确认已经备份或不再需要这些数据。",
+      deleteServiceCount: "当前客户已有 {count} 条服务单记录。",
+      deleteNoServiceCount: "系统会再次检查是否有关联设备或服务单。",
+      deleteSuccess: "已删除客户：{name}",
+      deleteForceSuccess: "已删除客户：{name}（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张服务单）",
     },
     errors: {
       loadFailed: "加载失败",
       createFailed: "新增失败",
+      deleteFailed: "删除失败",
       nameRequired: "请输入客户名称",
       geoSearchFailed: "搜索失败",
     },
@@ -209,6 +221,9 @@ const I18N = {
       clear: "清除",
       addContact: "新增聯絡人",
       removeContact: "刪除聯絡人",
+      delete: "刪除",
+      forceDelete: "強制刪除",
+      deleting: "刪除中…",
       saveNow: "立即建立",
       saving: "保存中…",
     },
@@ -258,10 +273,18 @@ const I18N = {
       badgeSystem: "系統",
       badgeMap: "地圖",
       selectedCoordinate: "已選座標",
+      deleteTitle: "刪除客戶",
+      deleteDescription: "刪除客戶前請確認關聯資料。管理端刪除會強制清理該客戶下的設備、服務單、巡檢計畫和聯絡人，操作不可恢復。",
+      deleteWarning: "強制刪除會一併刪除關聯設備、服務單和巡檢計畫，請確認已經備份或不再需要這些資料。",
+      deleteServiceCount: "目前客戶已有 {count} 條服務單記錄。",
+      deleteNoServiceCount: "系統會再次檢查是否有關聯設備或服務單。",
+      deleteSuccess: "已刪除客戶：{name}",
+      deleteForceSuccess: "已刪除客戶：{name}（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張服務單）",
     },
     errors: {
       loadFailed: "載入失敗",
       createFailed: "新增失敗",
+      deleteFailed: "刪除失敗",
       nameRequired: "請輸入客戶名稱",
       geoSearchFailed: "搜尋失敗",
     },
@@ -297,6 +320,15 @@ const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warnin
   potential: "info",
 };
 
+const CUSTOMER_ADMIN_DELETE_ROLES = new Set([
+  "admin",
+  "assistant",
+  "dispatcher",
+  "supervisor",
+  "engineering_supervisor",
+  "sales_supervisor",
+]);
+
 function levelOf(c: Customer): string {
   return c.level || "normal";
 }
@@ -317,14 +349,19 @@ function interpolate(template: string, values: Record<string, string | number>) 
 
 export function Customers() {
   const { lang } = useLanguage();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
@@ -335,6 +372,7 @@ export function Customers() {
   const [locationHint, setLocationHint] = useState("");
   const [locating, setLocating] = useState(false);
   const [searchTimer, setSearchTimer] = useState<number | null>(null);
+  const canForceDeleteCustomer = CUSTOMER_ADMIN_DELETE_ROLES.has(String(user?.role || ""));
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
   const salespersonOptions = useMemo(() => {
@@ -405,6 +443,8 @@ export function Customers() {
   }, [customers, t.stats]);
 
   function openCreate() {
+    setSuccessMessage("");
+    setDeleteError("");
     setEditingId(null);
     setForm(EMPTY_FORM);
     setCandidates([]);
@@ -414,6 +454,8 @@ export function Customers() {
   }
 
   function openEdit(c: Customer) {
+    setSuccessMessage("");
+    setDeleteError("");
     const latitude = normalizeCoordinate(c.latitude)
     const longitude = normalizeCoordinate(c.longitude)
     const contacts = c.contacts?.length
@@ -608,6 +650,47 @@ export function Customers() {
     });
   }
 
+  function openDelete(c: Customer) {
+    setError("");
+    setSuccessMessage("");
+    setDeleteError("");
+    setDeleteTarget(c);
+  }
+
+  function closeDelete() {
+    if (deleting) return;
+    setDeleteError("");
+    setDeleteTarget(null);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const customerName = deleteTarget.name || t.misc.unknown;
+    setDeleting(true);
+    setError("");
+    setSuccessMessage("");
+    setDeleteError("");
+    try {
+      const data = await api.delete(`/customers/${deleteTarget.id}?force=1`);
+      setDeleteTarget(null);
+      await load();
+      const message = data?.forced
+        ? interpolate(t.dialog.deleteForceSuccess, {
+            name: customerName,
+            deviceCount: Number(data.deviceCount || 0),
+            serviceOrderCount: Number(data.serviceOrderCount || 0),
+          })
+        : interpolate(t.dialog.deleteSuccess, { name: customerName });
+      setSuccessMessage(message);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t.errors.deleteFailed;
+      setDeleteError(msg);
+      setError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function submit() {
     if (!form.name.trim()) {
       setError(t.errors.nameRequired);
@@ -679,6 +762,13 @@ export function Customers() {
         </div>
       )}
 
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm flex items-center gap-2">
+          <Check className="w-4 h-4" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
@@ -721,7 +811,7 @@ export function Customers() {
                   <TableHead>{t.list.phone}</TableHead>
                   <TableHead>{t.list.level}</TableHead>
                   <TableHead>{t.list.address}</TableHead>
-                  <TableHead className="w-[80px] text-right">{t.list.action}</TableHead>
+                  <TableHead className="w-[160px] text-right">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -765,9 +855,17 @@ export function Customers() {
                           {c.address || t.misc.unknown}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
-                            {t.actions.edit}
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
+                              {t.actions.edit}
+                            </Button>
+                            {canForceDeleteCustomer ? (
+                              <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => openDelete(c)}>
+                                <Trash2 className="w-4 h-4" />
+                                {t.actions.delete}
+                              </Button>
+                            ) : null}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -999,6 +1097,45 @@ export function Customers() {
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? t.actions.saving : editingId != null ? t.actions.saveEdit : t.actions.saveNow}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) closeDelete(); }}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              {t.dialog.deleteTitle}
+            </DialogTitle>
+            <DialogDescription>{t.dialog.deleteDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-700">
+              {t.dialog.deleteWarning}
+            </div>
+            <div className="rounded-lg border bg-slate-50 p-3 text-slate-700">
+              <div className="font-medium text-slate-900">{deleteTarget?.name || t.misc.unknown}</div>
+              <div className="mt-1 text-muted-foreground">
+                {Number(deleteTarget?.serviceOrderCount || 0) > 0
+                  ? interpolate(t.dialog.deleteServiceCount, { count: Number(deleteTarget?.serviceOrderCount || 0) })
+                  : t.dialog.deleteNoServiceCount}
+              </div>
+            </div>
+            {deleteError ? (
+              <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-600">
+                {deleteError}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDelete} disabled={deleting}>
+              {t.actions.cancel}
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting || !canForceDeleteCustomer}>
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deleting ? t.actions.deleting : t.actions.forceDelete}
             </Button>
           </DialogFooter>
         </DialogContent>

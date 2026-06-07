@@ -1,8 +1,9 @@
 const { query, transaction } = require('../../config/db')
-const { badRequest, notFound } = require('../../utils/http-error')
+const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
+const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
 let ensureCustomerLevelColumnPromise = null
 
 async function ensureCustomerLevelColumn() {
@@ -344,6 +345,95 @@ function duplicateCustomerError(error) {
   return badRequest('客户资料已存在，请检查客户名称或编码')
 }
 
+function idParams(ids, prefix) {
+  return ids.reduce(
+    (result, id, index) => {
+      const key = `${prefix}${index}`
+      result.params[key] = id
+      result.placeholders.push(`:${key}`)
+      return result
+    },
+    { params: {}, placeholders: [] },
+  )
+}
+
+function isForceDeleteRequest(req) {
+  return ['1', 'true', 'yes'].includes(String(req.query?.force || '').toLowerCase())
+}
+
+async function deleteCustomerContacts(connection, customerId) {
+  const [contactRows] = await connection.execute('SELECT id FROM customer_contacts WHERE customer_id = :customerId', { customerId })
+  const contactIds = contactRows.map((row) => Number(row.id)).filter(Boolean)
+  if (!contactIds.length) return
+
+  const { params, placeholders } = idParams(contactIds, 'contactId')
+  await connection.execute(`DELETE FROM customer_contact_usage WHERE customer_contact_id IN (${placeholders.join(',')})`, params)
+  await connection.execute(`DELETE FROM customer_contacts WHERE id IN (${placeholders.join(',')})`, params)
+}
+
+async function deleteServiceOrders(connection, orderIds) {
+  if (!orderIds.length) return
+  const { params, placeholders } = idParams(orderIds, 'orderId')
+  const list = placeholders.join(',')
+
+  await connection.execute(`UPDATE devices SET installation_source_service_order_id = NULL WHERE installation_source_service_order_id IN (${list})`, params)
+  await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${list})`, params)
+  await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${list})`, params)
+  await connection.execute(`DELETE FROM self_report_drafts WHERE service_order_id IN (${list})`, params)
+  await connection.execute(
+    `DELETE FROM files
+     WHERE (owner_type = 'service_order' AND owner_id IN (${list}))
+        OR (owner_type = 'service_report' AND owner_id IN (${list}))
+        OR (owner_type = 'signature' AND owner_id IN (${list}))`,
+    params,
+  )
+  await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${list})`, params)
+  await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${list})`, params)
+  await connection.execute(`DELETE FROM service_orders WHERE id IN (${list})`, params)
+}
+
+async function forceDeleteCustomer(connection, customerId) {
+  const [deviceRows] = await connection.execute('SELECT id FROM devices WHERE customer_id = :customerId', { customerId })
+  const deviceIds = deviceRows.map((row) => Number(row.id)).filter(Boolean)
+
+  let orderRows
+  if (deviceIds.length) {
+    const deviceIdParams = idParams(deviceIds, 'deviceId')
+    orderRows = (await connection.execute(
+      `SELECT id
+       FROM service_orders
+       WHERE customer_id = :customerId OR device_id IN (${deviceIdParams.placeholders.join(',')})`,
+      { customerId, ...deviceIdParams.params },
+    ))[0]
+  } else {
+    orderRows = (await connection.execute('SELECT id FROM service_orders WHERE customer_id = :customerId', { customerId }))[0]
+  }
+  const orderIds = orderRows.map((row) => Number(row.id)).filter(Boolean)
+
+  if (orderIds.length) {
+    const orderIdParams = idParams(orderIds, 'linkedOrderId')
+    await connection.execute(`UPDATE service_orders SET device_id = NULL WHERE id IN (${orderIdParams.placeholders.join(',')})`, orderIdParams.params)
+    await deleteServiceOrders(connection, orderIds)
+  }
+
+  if (deviceIds.length) {
+    const deviceIdParams = idParams(deviceIds, 'deleteDeviceId')
+    await connection.execute(
+      `DELETE FROM inspection_schedules
+       WHERE customer_id = :customerId OR device_id IN (${deviceIdParams.placeholders.join(',')})`,
+      { customerId, ...deviceIdParams.params },
+    )
+    await connection.execute(`DELETE FROM devices WHERE id IN (${deviceIdParams.placeholders.join(',')})`, deviceIdParams.params)
+  } else {
+    await connection.execute('DELETE FROM inspection_schedules WHERE customer_id = :customerId', { customerId })
+  }
+
+  await deleteCustomerContacts(connection, customerId)
+  await connection.execute('DELETE FROM customers WHERE id = :customerId', { customerId })
+
+  return { deviceCount: deviceIds.length, serviceOrderCount: orderIds.length }
+}
+
 async function list(req, res) {
   await ensureCustomerLevelColumn()
   const { keyword = '', salesperson = '' } = req.query
@@ -601,6 +691,12 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
+  const forced = isForceDeleteRequest(req)
+  if (forced && !CUSTOMER_FORCE_DELETE_ROLES.has(req.user?.role)) {
+    throw forbidden('当前账号无权强制删除客户')
+  }
+
+  let forceDeleteResult = null
   await transaction(async (connection) => {
     const customerId = Number(req.params.id)
     const [customers] = await connection.execute('SELECT id FROM customers WHERE id = :customerId LIMIT 1 FOR UPDATE', { customerId })
@@ -617,26 +713,29 @@ async function remove(req, res) {
     const deviceCount = Number(relationRows[0]?.device_count || 0)
     const serviceOrderCount = Number(relationRows[0]?.service_order_count || 0)
     if (deviceCount > 0) {
+      if (forced) {
+        forceDeleteResult = await forceDeleteCustomer(connection, customerId)
+        return
+      }
       throw badRequest('该客户下还有关联设备，请先删除或转移设备后再删除客户')
     }
     if (serviceOrderCount > 0) {
+      if (forced) {
+        forceDeleteResult = await forceDeleteCustomer(connection, customerId)
+        return
+      }
       throw badRequest('该客户已有服务单关联，请先删除关联的服务单，再删除客户')
     }
 
-    const [contactRows] = await connection.execute('SELECT id FROM customer_contacts WHERE customer_id = :customerId', { customerId })
-    const contactIds = contactRows.map((row) => Number(row.id)).filter(Boolean)
-    if (contactIds.length) {
-      const params = contactIds.reduce((values, id, index) => {
-        values[`contactId${index}`] = id
-        return values
-      }, {})
-      const placeholders = contactIds.map((_, index) => `:contactId${index}`).join(',')
-      await connection.execute(`DELETE FROM customer_contact_usage WHERE customer_contact_id IN (${placeholders})`, params)
-      await connection.execute(`DELETE FROM customer_contacts WHERE id IN (${placeholders})`, params)
-    }
+    await deleteCustomerContacts(connection, customerId)
 
     await connection.execute('DELETE FROM customers WHERE id = :customerId', { customerId })
   })
+
+  if (forceDeleteResult) {
+    res.json({ deleted: true, forced: true, ...forceDeleteResult })
+    return
+  }
 
   res.status(204).end()
 }
