@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { LayoutDashboard, Globe } from "lucide-react";
+import { Eye, EyeOff, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,7 @@ export function Login() {
   const { lang, setLang } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,7 @@ export function Login() {
       title: APP_NAME,
       welcome: "欢迎回来",
       subtitle: "统一登录入口",
+      pleaseLogin: "请登录您的账户",
       username: "账号",
       password: "密码",
       remember: "记住账号",
@@ -56,6 +58,7 @@ export function Login() {
       title: APP_NAME_HANT,
       welcome: "歡迎回來",
       subtitle: "統一登錄入口",
+      pleaseLogin: "請登錄您的賬戶",
       username: "帳號",
       password: "密碼",
       remember: "記住帳號",
@@ -79,6 +82,7 @@ export function Login() {
 
   const t = i18n[lang];
   const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
+  const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
 
   const enterWorkspace = (workspaceKey: string) => {
     const localTarget = goToWorkspace(workspaceKey);
@@ -132,33 +136,43 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] relative overflow-hidden p-4">
-      {/* Dynamic Background Elements */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute top-1/4 left-1/4 w-[20%] h-[20%] bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" />
+    <div
+      className="relative min-h-screen overflow-hidden p-4"
+      style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)" }}
+    >
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] right-[10%] h-[500px] w-[500px] rounded-full bg-orange-400/25 blur-3xl" />
+        <div className="absolute top-[20%] right-[-10%] h-[400px] w-[400px] rounded-full bg-pink-500/20 blur-3xl" />
+        <div className="absolute bottom-[-15%] left-[-10%] h-[550px] w-[550px] rounded-full bg-blue-500/25 blur-3xl" />
+        <div className="absolute bottom-[10%] right-[20%] h-[350px] w-[350px] rounded-full bg-yellow-400/25 blur-3xl" />
+        <div className="absolute top-[40%] left-[10%] h-[450px] w-[450px] rounded-full bg-sky-500/20 blur-3xl" />
+        <div className="absolute top-[10%] left-[30%] h-[300px] w-[300px] rounded-full bg-purple-500/20 blur-3xl" />
+        <div className="absolute bottom-[30%] right-[40%] h-[380px] w-[380px] rounded-full bg-rose-400/20 blur-3xl" />
+      </div>
 
-      {/* Language Switcher Fixed at Top Right */}
-      <div className="absolute top-8 right-8 z-50">
+      <div className="absolute top-6 right-6 z-20">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2 bg-white/50 backdrop-blur-md border-slate-200/60 shadow-sm hover:bg-white transition-all rounded-full px-4 h-9">
-              <Globe className="w-4 h-4 text-primary" />
-              <span className="text-xs font-semibold text-slate-600">
-                {t.langLabel}
-              </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 gap-2 rounded-full border bg-white/80 px-4 shadow-md backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-lg"
+              style={{ borderColor: "rgba(88, 43, 139, 0.2)" }}
+            >
+              <Globe className="h-4 w-4" style={{ color: "#582B8B" }} />
+              <span className="text-sm font-medium text-gray-700">{t.langLabel}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="rounded-xl mt-2 min-w-[120px]">
-            <DropdownMenuItem 
+          <DropdownMenuContent align="end" className="mt-2 min-w-[120px] rounded-xl">
+            <DropdownMenuItem
               onClick={() => setLang("zh-CN")}
-              className={`cursor-pointer ${lang === "zh-CN" ? "bg-primary/10 text-primary font-bold" : ""}`}
+              className={`cursor-pointer ${lang === "zh-CN" ? "bg-purple-50 font-bold text-[#582B8B]" : ""}`}
             >
               {t.langOptionCn}
             </DropdownMenuItem>
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={() => setLang("zh-TW")}
-              className={`cursor-pointer ${lang === "zh-TW" ? "bg-primary/10 text-primary font-bold" : ""}`}
+              className={`cursor-pointer ${lang === "zh-TW" ? "bg-purple-50 font-bold text-[#582B8B]" : ""}`}
             >
               {t.langOptionTw}
             </DropdownMenuItem>
@@ -166,107 +180,142 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="w-full max-w-md relative z-10">
-        {/* Login Card */}
-        <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl shadow-purple-500/10 border border-white/50 p-10">
-          {/* Logo */}
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-purple-600 mb-6 shadow-xl shadow-primary/20 rotate-3 hover:rotate-0 transition-transform duration-300">
-              <LayoutDashboard className="w-8 h-8 text-white" />
+      <div className="relative z-10 flex min-h-[calc(100vh-2rem)] items-center justify-center">
+        <div className="w-full max-w-md">
+          <div className="rounded-3xl border border-white/20 bg-white/80 p-8 shadow-2xl backdrop-blur-xl">
+            <div className="mb-8 mt-2 flex justify-center">
+              <div className="relative flex h-32 w-32 items-center justify-center">
+                <div
+                  className="absolute h-28 w-28 rounded-full blur-2xl"
+                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
+                />
+                <div
+                  className="absolute h-32 w-32 rounded-full blur-3xl"
+                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
+                />
+                <div
+                  className="absolute h-36 w-36 rounded-full blur-3xl"
+                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
+                />
+                <div
+                  className="absolute h-24 w-24 rounded-full blur-xl"
+                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
+                />
+                <img
+                  src={logoSrc}
+                  alt="Dunyang Technology Logo"
+                  className="relative z-10 h-24 w-24 object-contain"
+                  style={{ filter: "drop-shadow(0 0 10px rgba(88, 43, 139, 0.5))" }}
+                />
+              </div>
             </div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2 bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent">
-              {t.title}
-            </h1>
-            <p className="text-sm text-muted-foreground font-medium uppercase tracking-widest opacity-70">
-              {t.welcome}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground font-semibold tracking-[0.2em] uppercase">
-              {t.subtitle}
-            </p>
-          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-medium text-center animate-shake">
-                {error}
+            <div className="mb-10 text-center">
+              <h1 className="mb-2 text-3xl font-bold" style={{ color: "#582B8B" }}>
+                {t.title}
+              </h1>
+              <p className="text-sm text-gray-500">{t.subtitle}</p>
+              <p className="mt-2 text-sm text-gray-400">{t.pleaseLogin}</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <div className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="username" className="sr-only">
+                  {t.username}
+                </Label>
+                <Input
+                  id="username"
+                  placeholder={t.usernamePlaceholder || t.username}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  className="h-12 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="password" className="sr-only">
+                  {t.password}
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t.passwordPlaceholder || t.password}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="h-12 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-purple-50 hover:text-[#582B8B]"
+                    onClick={() => setShowPassword((value) => !value)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center text-sm">
+                <label className="group flex cursor-pointer items-center">
+                  <Checkbox
+                    id="remember"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                    className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-[#582B8B] data-[state=checked]:bg-[#582B8B]"
+                  />
+                  <span className="ml-2 text-gray-600 transition-colors group-hover:text-[#582B8B]">{t.remember}</span>
+                </label>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="h-12 w-full rounded-[10px] bg-[#582B8B] text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[#4A2472] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
+              >
+                {loading ? t.loggingIn : t.login}
+              </Button>
+            </form>
+
+            {workspaceChoices.length > 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-center text-sm font-medium text-gray-500">{t.chooseWorkspace}</p>
+                <div className="grid gap-2">
+                  {workspaceChoices.map((workspace) => (
+                    <Button
+                      key={workspace.key}
+                      type="button"
+                      variant="outline"
+                      className="h-12 justify-between rounded-[10px] border-purple-100 bg-white/70 hover:border-[#582B8B] hover:bg-purple-50"
+                      onClick={() => enterWorkspace(workspace.key)}
+                    >
+                      <span>{workspaceLabel(workspace.key, workspace.label)}</span>
+                      <span className="text-xs text-gray-500">{t.enterWorkspace}</span>
+                    </Button>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
-                {t.username}
-              </Label>
-              <Input
-                id="username"
-                placeholder={t.usernamePlaceholder}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                className="h-12 rounded-xl bg-slate-50/50 border-slate-200/60 focus:bg-white transition-all"
-              />
+            <div className="mt-8 flex items-center justify-center gap-2 border-t border-white/60 pt-5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{t.version}</span>
+              <Badge variant="outline" className="h-4 border-gray-300 px-1.5 py-0 font-mono text-[10px] opacity-50">
+                {appVersion}
+              </Badge>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
-                {t.password}
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder={t.passwordPlaceholder}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                className="h-12 rounded-xl bg-slate-50/50 border-slate-200/60 focus:bg-white transition-all"
-              />
-            </div>
-
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                />
-                <Label
-                  htmlFor="remember"
-                  className="text-sm cursor-pointer font-medium text-slate-600"
-                >
-                  {t.remember}
-                </Label>
-              </div>
-            </div>
-
-            <Button type="submit" disabled={loading} className="w-full h-12 text-base font-semibold rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/35 transition-all active:scale-[0.98]">
-              {loading ? t.loggingIn : t.login}
-            </Button>
-          </form>
-
-          {workspaceChoices.length > 0 && (
-            <div className="mt-6 space-y-3">
-              <p className="text-sm text-center text-muted-foreground font-medium">{t.chooseWorkspace}</p>
-              <div className="grid gap-2">
-                {workspaceChoices.map((workspace) => (
-                  <Button
-                    key={workspace.key}
-                    type="button"
-                    variant="outline"
-                    className="h-12 justify-between rounded-xl bg-white/70"
-                    onClick={() => enterWorkspace(workspace.key)}
-                  >
-                    <span>{workspaceLabel(workspace.key, workspace.label)}</span>
-                    <span className="text-xs text-muted-foreground">{t.enterWorkspace}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-10 pt-8 border-t border-slate-100/80">
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.version}</span>
-              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-50 border-slate-300">{appVersion}</Badge>
-            </div>
+          <div className="mt-6 text-center text-sm text-gray-500">
+            <p className="mb-1">{lang === "zh-TW" ? "敦陽（寧波）科技有限公司" : "敦阳（宁波）科技有限公司"}</p>
+            <p className="text-xs">© 2026 All rights reserved.</p>
           </div>
         </div>
       </div>
