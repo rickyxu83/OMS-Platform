@@ -70,12 +70,12 @@ body::after {
   animation: ambient-orb-drift-b 7s ease-in-out infinite alternate;
 }
 
-body.rc-home-motion-static,
-body.rc-home-motion-static::before,
-body.rc-home-motion-static::after,
-body.rc-home-motion-static .engineer-shell,
-body.rc-home-motion-static .engineer-shell::before,
-body.rc-home-motion-static .engineer-shell::after {
+body.oms-home-motion-static,
+body.oms-home-motion-static::before,
+body.oms-home-motion-static::after,
+body.oms-home-motion-static .engineer-shell,
+body.oms-home-motion-static .engineer-shell::before,
+body.oms-home-motion-static .engineer-shell::after {
   animation: none;
 }
 

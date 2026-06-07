@@ -36,7 +36,7 @@ const env = {
   port: Number(process.env.PORT || 3000),
   host: process.env.HOST || '127.0.0.1',
   jwtSecret,
-  sessionCookieName: process.env.SESSION_COOKIE_NAME || 'service_sheet_rc_token',
+  sessionCookieName: process.env.SESSION_COOKIE_NAME || 'oms_platform_token',
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
@@ -55,7 +55,7 @@ const env = {
     port: Number(process.env.DB_PORT || 3306),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'service_sheet',
+    database: process.env.DB_NAME || 'oms_platform',
     connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
   },
 }

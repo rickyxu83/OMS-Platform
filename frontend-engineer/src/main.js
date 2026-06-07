@@ -23,11 +23,11 @@ if ('serviceWorker' in navigator) {
 
         if ('caches' in window) {
           const keys = await caches.keys()
-          await Promise.all(keys.filter((key) => key.startsWith('rc-engineer-shell-')).map((key) => caches.delete(key)))
+          await Promise.all(keys.filter((key) => key.startsWith('oms-platform-engineer-shell-')).map((key) => caches.delete(key)))
         }
 
-        if (navigator.serviceWorker.controller && !window.__rcSwCleanupReloaded) {
-          window.__rcSwCleanupReloaded = true
+        if (navigator.serviceWorker.controller && !window.__omsPlatformSwCleanupReloaded) {
+          window.__omsPlatformSwCleanupReloaded = true
           window.location.reload()
         }
       })

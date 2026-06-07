@@ -23,7 +23,7 @@ export function normalizeDraftItemId(draftId) {
 
 function localDraftKey(serviceOrderId) {
   const orderId = normalizeOrderId(serviceOrderId)
-  return orderId ? `rc:draft:account:service-sheet:${orderId}` : 'rc:draft:account:service-sheet:new'
+  return orderId ? `oms-platform:draft:account:service-record:${orderId}` : 'oms-platform:draft:account:service-record:new'
 }
 
 export function readLocalSelfReportDraft(serviceOrderId) {

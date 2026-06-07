@@ -1,4 +1,4 @@
-const CACHE_PREFIX = 'rc-engineer-shell-'
+const CACHE_PREFIX = 'oms-platform-engineer-shell-'
 
 self.addEventListener('install', () => {
   self.skipWaiting()

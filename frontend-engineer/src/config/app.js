@@ -1,4 +1,4 @@
-export const APP_NAME = '敦阳科技服务表电子化系统'
+export const APP_NAME = 'OMS Platform 运维智管'
 export const ENGINEER_WORKSPACE_LABEL = '工程师工作台'
 
 function trimTrailingSlash(value) {

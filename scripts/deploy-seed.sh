@@ -11,13 +11,14 @@
 set -e
 
 SSH_TARGET="${DEPLOY_SSH_TARGET:-aliyun}"
+PROJECT_SLUG="${DEPLOY_PROJECT_SLUG:-oms-platform}"
 REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-/root/service-sheet-aliyun}"
 CATALOG_DIR="backend/src/modules/device-model-catalog"
 SEED_SRC="$CATALOG_DIR/fixture-data.js"
 SEED_DST="$REMOTE_ROOT/app/$CATALOG_DIR/fixture-data.js"
 IMPORTED_SRC="$CATALOG_DIR/imported-fixture-data.js"
 IMPORTED_DST="$REMOTE_ROOT/app/$CATALOG_DIR/imported-fixture-data.js"
-CONTAINER="service-sheet-aliyun-backend"
+CONTAINER="${DEPLOY_BACKEND_CONTAINER:-service-sheet-aliyun-backend}"
 
 echo "=== 1/4 推送 catalog 数据文件到服务器 ==="
 scp "$SEED_SRC" "$SSH_TARGET:$SEED_DST"

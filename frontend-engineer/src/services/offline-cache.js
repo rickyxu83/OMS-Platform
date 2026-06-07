@@ -1,8 +1,8 @@
 import { safeStorageGet } from './safe-storage'
 
-const CACHE_PREFIX = 'rc-engineer-offline-cache:'
-const TOKEN_KEY = 'service-sheet-rc-engineer-token'
-const USER_KEY = 'service-sheet-rc-engineer-user'
+const CACHE_PREFIX = 'oms-platform-engineer-offline-cache:'
+const TOKEN_KEY = 'oms-platform-token'
+const USER_KEY = 'oms-platform-user'
 
 function hashValue(value) {
   let hash = 5381

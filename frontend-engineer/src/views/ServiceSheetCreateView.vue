@@ -116,8 +116,8 @@ let cancelFabMoved = false
 let cancelFabStartPointer = { x: 0, y: 0 }
 let cancelFabStartPosition = { x: 0, y: 0 }
 const draftAutoSaveSeconds = 15
-const cancelFabStorageKey = 'rc:service-sheet:cancel-fab-position'
-const taskHomeForceRefreshKey = 'rc-engineer:tasks:force-refresh'
+const cancelFabStorageKey = 'oms-platform:service-record:create-fab-position'
+const taskHomeForceRefreshKey = 'oms-platform-engineer:tasks:force-refresh'
 const collaborativeAckMarker = '\u2063\u2064\u2063'
 
 function formatLocalDateTime(date) {

@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { getCurrentUser } from './auth'
 import { api } from './api'
 
-const STORAGE_PREFIX = 'rc-service-sheet-sync-queue'
+const STORAGE_PREFIX = 'oms-platform-engineer-sync-queue'
 
 function storageKey() {
   const user = getCurrentUser()

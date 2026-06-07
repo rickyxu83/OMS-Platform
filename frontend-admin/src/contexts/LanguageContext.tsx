@@ -9,7 +9,7 @@ interface LanguageContextType {
   toggleLang: () => void
 }
 
-const STORAGE_KEY = 'service-sheet-rc-admin-lang'
+const STORAGE_KEY = 'oms-platform-admin-lang'
 
 const LanguageContext = createContext<LanguageContextType | null>(null)
 

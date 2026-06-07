@@ -357,7 +357,7 @@ function downloadPng() {
   const url = URL.createObjectURL(previewBlob.value)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${task.value.orderNo || 'service-sheet'}.png`
+  link.download = `${task.value.orderNo || 'service-record'}.png`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -368,7 +368,7 @@ async function shareSheet() {
   error.value = ''
   try {
     if (navigator.share && previewBlob.value) {
-      const file = new File([previewBlob.value], `${task.value.orderNo || 'service-sheet'}.png`, { type: 'image/png' })
+      const file = new File([previewBlob.value], `${task.value.orderNo || 'service-record'}.png`, { type: 'image/png' })
       if (!navigator.canShare || navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: `${task.value?.customerName || ''} 技术服务表`,

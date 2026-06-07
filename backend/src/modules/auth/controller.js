@@ -44,12 +44,12 @@ function sessionCookieOptions(req) {
 }
 
 function setSessionCookie(req, res, token) {
-  res.cookie(env.sessionCookieName || 'service_sheet_rc_token', token, sessionCookieOptions(req))
+  res.cookie(env.sessionCookieName || 'oms_platform_token', token, sessionCookieOptions(req))
 }
 
 function clearSessionCookie(req, res) {
   const { maxAge, ...options } = sessionCookieOptions(req)
-  res.clearCookie(env.sessionCookieName || 'service_sheet_rc_token', options)
+  res.clearCookie(env.sessionCookieName || 'oms_platform_token', options)
 }
 
 function publicUser(user) {

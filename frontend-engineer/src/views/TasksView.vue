@@ -31,9 +31,9 @@ const totalTasks = ref(0)
 const pageSize = 12
 const lastRefreshedAt = ref(0)
 const homeRefreshThresholdMs = 60 * 1000
-const taskHomeForceRefreshKey = 'rc-engineer:tasks:force-refresh'
-const homeEntryMotionKey = 'rc-engineer:home-entry-motion-played'
-const homeMotionStaticClass = 'rc-home-motion-static'
+const taskHomeForceRefreshKey = 'oms-platform-engineer:tasks:force-refresh'
+const homeEntryMotionKey = 'oms-platform-engineer:home-entry-motion-played'
+const homeMotionStaticClass = 'oms-home-motion-static'
 const actionToast = ref('')
 const homeEntryMotionDone = ref(false)
 let actionToastTimer = null
@@ -69,15 +69,15 @@ function taskCategoryLabel(task) {
 const localDraftPrefix = () => {
   const user = getCurrentUser()
   const userId = user?.id || 'anonymous'
-  return `rc-engineer-offline-cache:rc:draft:${userId}:service-sheet:`
+  return `oms-platform-engineer-offline-cache:oms-platform:draft:${userId}:service-record:`
 }
 
-const accountDraftPrefix = () => 'rc-engineer-offline-cache:rc:draft:account:service-sheet:'
-const legacyDraftPrefix = () => 'rc-engineer-offline-cache:rc:draft:anonymous:service-sheet:'
+const accountDraftPrefix = () => 'oms-platform-engineer-offline-cache:oms-platform:draft:account:service-record:'
+const legacyDraftPrefix = () => 'oms-platform-engineer-offline-cache:oms-platform:draft:anonymous:service-record:'
 const collaborativeAckMarker = '\u2063\u2064\u2063'
 
 function isCurrentScopedDraftStorageKey(key) {
-  return String(key || '').includes(':rc:draft:account:service-sheet:')
+  return String(key || '').includes(':oms-platform:draft:account:service-record:')
 }
 
 const currentUserId = computed(() => Number(getCurrentUser()?.id || 0))
@@ -106,7 +106,7 @@ function needsMyWorkEntry(task) {
 }
 
 function parseDraftRoute(key) {
-  const match = key.match(/service-sheet:(new|\d+)$/)
+  const match = key.match(/service-record:(new|\d+)$/)
   if (!match) return { route: '/service-sheets/new?resume=1', orderId: null }
   return match[1] === 'new'
     ? { route: '/service-sheets/new?resume=1', orderId: null }

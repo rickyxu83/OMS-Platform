@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from '../services/safe-storage'
 
-const TOKEN_KEY = 'service-sheet-rc-engineer-token'
+const TOKEN_KEY = 'oms-platform-token'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({

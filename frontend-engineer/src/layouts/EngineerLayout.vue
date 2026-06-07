@@ -50,7 +50,7 @@ const exitConfirmMeta = computed(() => {
     actionIcon: 'trash',
   }
 })
-const sharedFabStorageKey = 'rc:service-sheet:cancel-fab-position'
+const sharedFabStorageKey = 'oms-platform:service-record:create-fab-position'
 const guideStorageVersion = 'v1'
 let createFabMoved = false
 let createFabStartPointer = { x: 0, y: 0 }
@@ -193,7 +193,7 @@ function logout() {
 function guideStorageKey() {
   const user = currentUser.value || {}
   const userKey = user.id || user.username || 'anonymous'
-  return `rc-engineer:first-login-guide:${guideStorageVersion}:${userKey}`
+  return `oms-platform-engineer:first-login-guide:${guideStorageVersion}:${userKey}`
 }
 
 function openFirstLoginGuide() {
@@ -265,7 +265,7 @@ async function previousFeatureTourStep() {
 function draftStorageKey() {
   const userId = currentUser.value?.id || 'anonymous'
   const suffix = route.name === 'service-sheet-edit' ? route.params.id : 'new'
-  return `rc-engineer-offline-cache:rc:draft:${userId}:service-sheet:${suffix}`
+  return `oms-platform:draft:${userId}:service-record:${suffix}`
 }
 
 function goHome() {

@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH_TARGET="${DEPLOY_SSH_TARGET:-aliyun}"
+PROJECT_SLUG="${DEPLOY_PROJECT_SLUG:-oms-platform}"
 REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-/root/service-sheet-aliyun}"
 BACKEND_RELATIVE="${DEPLOY_BACKEND_RELATIVE:-app/backend}"
 SITE_RELATIVE="${DEPLOY_SITE_RELATIVE:-app/site}"
@@ -26,8 +27,9 @@ git_sync() {
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   branch="${branch:-public-clean-260601}"
+  local target_branch="${DEPLOY_BRANCH:-$branch}"
 
-  info "Git: 同步代码到 GitHub (${branch})"
+  info "Git: 同步代码到 GitHub (${target_branch})"
 
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     local msg="${COMMIT_MSG:-部署更新 $(date +%Y-%m-%d\ %H:%M)}"
@@ -38,8 +40,8 @@ git_sync() {
     skip "没有待提交的变更"
   fi
 
-  git push origin "${branch}"
-  ok "已推送到 origin/${branch}"
+  git push origin "HEAD:${target_branch}"
+  ok "已推送到 origin/${target_branch}"
 }
 
 # ============================================================
@@ -49,8 +51,8 @@ deploy_backend() {
   info "部署后端"
 
   local remote_dir="$REMOTE_ROOT/$BACKEND_RELATIVE"
-  local archive="/tmp/service-sheet-backend-src.tgz"
-  local remote_archive="/tmp/service-sheet-backend-src.tgz"
+  local archive="/tmp/${PROJECT_SLUG}-backend-src.tgz"
+  local remote_archive="/tmp/${PROJECT_SLUG}-backend-src.tgz"
 
   # 打包（排除不需要的文件）
   cd "$ROOT_DIR/backend"
@@ -102,9 +104,9 @@ deploy_frontend() {
   local name="$1"
   local local_dist="$2"
   local remote_dir="$3"
-  local archive="/tmp/service-sheet-${name}-dist.tgz"
-  local remote_archive="/tmp/service-sheet-${name}-dist.tgz"
-  local remote_new="/tmp/service-sheet-${name}-new"
+  local archive="/tmp/${PROJECT_SLUG}-${name}-dist.tgz"
+  local remote_archive="/tmp/${PROJECT_SLUG}-${name}-dist.tgz"
+  local remote_new="/tmp/${PROJECT_SLUG}-${name}-new"
 
   tar -C "$local_dist" -czf "$archive" .
   scp "$archive" "$SSH_TARGET:$remote_archive"
@@ -152,14 +154,14 @@ case "$DEPLOY_TARGET" in
     ok "管理端部署完成"
     ;;
 
-  engineer)
+  engineer|eng)
     git_sync
     build_engineer
     deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "工程师端部署完成"
     ;;
 
-  frontend)
+  frontend|front)
     git_sync
     build_admin
     build_engineer
@@ -184,17 +186,19 @@ case "$DEPLOY_TARGET" in
     echo "  all       全量部署（默认）：Git 推送 → 后端 → 前端"
     echo "  backend   仅部署后端：Git 推送 → 上传后端源码 → Docker 重建"
     echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + engineer"
+    echo "  front     frontend 的别名"
     echo "  admin     仅部署管理端"
     echo "  engineer  仅部署工程师端"
+    echo "  eng       engineer 的别名"
     echo ""
-    echo "  stark     腾讯云 stark 服务器（用法: $0 stark [all|backend|front|admin|eng]）"
+    echo "  stark     腾讯云 stark 服务器（用法: $0 stark [all|backend|frontend|front|admin|engineer|eng]）"
     echo ""
     echo "提交信息: 可选的 git commit message，不传则自动生成"
     echo ""
     echo "环境变量:"
     echo "  DEPLOY_SSH_TARGET    SSH 主机（默认：aliyun）"
     echo "  DEPLOY_REMOTE_ROOT   远程目录（默认：/root/service-sheet-aliyun）"
-    echo "  DEPLOY_BRANCH        Git 分支（默认：当前分支）"
+    echo "  DEPLOY_BRANCH        Git 目标分支（默认：当前分支）"
     echo ""
     exit 2
     ;;

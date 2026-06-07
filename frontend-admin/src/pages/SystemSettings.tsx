@@ -299,7 +299,7 @@ export function SystemSettings() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>发件人</Label>
-                  <Input value={form.mail.from} onChange={(e) => setForm({ ...form, mail: { ...form.mail, from: e.target.value } })} placeholder="敦阳科技服务表电子化系统 <service@example.com>" />
+                  <Input value={form.mail.from} onChange={(e) => setForm({ ...form, mail: { ...form.mail, from: e.target.value } })} placeholder="OMS Platform 运维智管 <service@example.com>" />
                 </div>
                 <div className="space-y-2">
                   <Label>SMTP 账号</Label>

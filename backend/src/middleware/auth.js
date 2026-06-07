@@ -6,7 +6,7 @@ const { forbidden, unauthorized } = require('../utils/http-error')
 
 function cookieToken(req) {
   const cookieHeader = req.get('cookie') || ''
-  const cookieName = env.sessionCookieName || 'service_sheet_rc_token'
+  const cookieName = env.sessionCookieName || 'oms_platform_token'
   return cookieHeader
     .split(';')
     .map((part) => part.trim())

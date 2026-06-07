@@ -1,11 +1,11 @@
 import { computed, ref } from 'vue'
 import { safeStorageGet, safeStorageSet } from '../services/safe-storage'
 
-const STORAGE_KEY = 'service-sheet-rc-lang'
+const STORAGE_KEY = 'oms-platform-engineer-lang'
 const language = ref(safeStorageGet(localStorage, STORAGE_KEY, 'hans') || 'hans')
 
 const textMap = {
-  '敦阳科技服务表电子化系统': '敦陽科技服務表電子化系統',
+  'OMS Platform 运维智管': 'OMS Platform 運維智管',
   工程师工作台: '工程師工作臺',
   正在前往统一登录入口: '正在前往統一登錄入口',
   进入统一登录: '進入統一登錄',
@@ -133,8 +133,7 @@ const textMap = {
   当前环境: '目前環境',
   正式: '正式',
   正式环境: '正式環境',
-  RC版: 'RC版',
-  RC版: 'RC版',
+  正式版: '正式版',
   登录: '登入',
   '登录页预留，下一阶段接入正式认证接口。': '登入頁預留，下一階段接入正式認證接口。',
   上海某医院检验科: '上海某醫院檢驗科',
