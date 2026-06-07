@@ -30,6 +30,13 @@ if (nodeEnv === 'production' && (!process.env.JWT_SECRET || jwtSecret === jwtPla
 }
 
 const aiProvider = process.env.AI_PROVIDER || 'anthropic'
+function parseCsv(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 const env = {
   rootDir,
   nodeEnv,
@@ -38,6 +45,7 @@ const env = {
   jwtSecret,
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'oms_platform_token',
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
+  corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {

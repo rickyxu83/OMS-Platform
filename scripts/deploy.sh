@@ -2,13 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SSH_TARGET="${DEPLOY_SSH_TARGET:-aliyun}"
-PROJECT_SLUG="${DEPLOY_PROJECT_SLUG:-oms-platform}"
-REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-/root/service-sheet-aliyun}"
-BACKEND_RELATIVE="${DEPLOY_BACKEND_RELATIVE:-app/backend}"
-SITE_RELATIVE="${DEPLOY_SITE_RELATIVE:-app/site}"
-DEPLOY_TARGET="${1:-all}"
-COMMIT_MSG="${2:-}"
+LOCAL_ENV_FILE="$ROOT_DIR/scripts/deploy.local.env"
+
+if [ -f "$LOCAL_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$LOCAL_ENV_FILE"
+  set +a
+fi
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -18,6 +19,99 @@ NC='\033[0m'
 info()  { echo -e "${BLUE}━━━ $1 ━━━${NC}"; }
 ok()    { echo -e "${GREEN}  ✓ $1${NC}"; }
 skip()  { echo -e "${YELLOW}  - $1${NC}"; }
+
+is_deploy_target() {
+  case "${1:-}" in
+    all|backend|frontend|front|admin|engineer|eng) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+usage() {
+  echo ""
+  echo "用法: $0 [profile] <目标> [提交信息]"
+  echo ""
+  echo "目标:"
+  echo "  all       全量部署：Git 推送 → 后端 → 前端"
+  echo "  backend   仅部署后端：Git 推送 → 上传后端源码 → Docker 重建"
+  echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + engineer"
+  echo "  front     frontend 的别名"
+  echo "  admin     仅部署管理端"
+  echo "  engineer  仅部署工程师端"
+  echo "  eng       engineer 的别名"
+  echo ""
+  echo "profile: 可选，本地私有环境名。会读取 scripts/deploy.local.env 中的 DEPLOY_<PROFILE>_* 变量。"
+  echo "提交信息: 可选的 git commit message，不传则自动生成"
+  echo ""
+  echo "必需环境变量:"
+  echo "  DEPLOY_SSH_TARGET       SSH 主机别名或目标"
+  echo "  DEPLOY_REMOTE_ROOT      远程项目根目录"
+  echo ""
+  echo "可选环境变量:"
+  echo "  DEPLOY_BACKEND_RELATIVE 后端目录相对远程根目录的位置（默认：app/backend）"
+  echo "  DEPLOY_SITE_RELATIVE    前端站点目录相对远程根目录的位置（默认：app/site）"
+  echo "  DEPLOY_PROJECT_SLUG     临时归档名前缀（默认：oms-platform）"
+  echo "  DEPLOY_BRANCH           Git 目标分支（默认：当前分支）"
+  echo ""
+}
+
+apply_profile() {
+  local profile="$1"
+  local profile_key
+  profile_key="$(printf '%s' "$profile" | tr '[:lower:]-' '[:upper:]_')"
+
+  local suffix source_var
+  for suffix in SSH_TARGET REMOTE_ROOT BACKEND_RELATIVE SITE_RELATIVE PROJECT_SLUG BRANCH; do
+    source_var="DEPLOY_${profile_key}_${suffix}"
+    if [ -n "${!source_var:-}" ]; then
+      export "DEPLOY_${suffix}=${!source_var}"
+    fi
+  done
+}
+
+parse_args() {
+  DEPLOY_PROFILE=""
+  if [ "$#" -gt 0 ] && ! is_deploy_target "$1"; then
+    DEPLOY_PROFILE="$1"
+    apply_profile "$DEPLOY_PROFILE"
+    DEPLOY_TARGET="${2:-all}"
+    COMMIT_MSG="${3:-}"
+  else
+    DEPLOY_TARGET="${1:-all}"
+    COMMIT_MSG="${2:-}"
+  fi
+
+  SSH_TARGET="${DEPLOY_SSH_TARGET:-}"
+  PROJECT_SLUG="${DEPLOY_PROJECT_SLUG:-oms-platform}"
+  REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-}"
+  BACKEND_RELATIVE="${DEPLOY_BACKEND_RELATIVE:-app/backend}"
+  SITE_RELATIVE="${DEPLOY_SITE_RELATIVE:-app/site}"
+}
+
+require_deploy_config() {
+  local missing=()
+  [ -n "$SSH_TARGET" ] || missing+=(DEPLOY_SSH_TARGET)
+  [ -n "$REMOTE_ROOT" ] || missing+=(DEPLOY_REMOTE_ROOT)
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    echo "缺少部署配置：${missing[*]}" >&2
+    echo "请在当前 shell 中导出变量，或在本地私有文件 scripts/deploy.local.env 中配置。" >&2
+    exit 2
+  fi
+}
+
+parse_args "$@"
+
+if ! is_deploy_target "$DEPLOY_TARGET"; then
+  usage
+  exit 2
+fi
+
+require_deploy_config
+
+if [ -n "$DEPLOY_PROFILE" ]; then
+  skip "使用部署 profile：$DEPLOY_PROFILE"
+fi
 
 # ============================================================
 # 1. Git: 提交本地变更 + 推送到 GitHub
@@ -170,36 +264,8 @@ case "$DEPLOY_TARGET" in
     ok "前端全量部署完成"
     ;;
 
-  stark)
-    export DEPLOY_SSH_TARGET=tencent
-    export DEPLOY_REMOTE_ROOT=/root/service-sheet-stark
-    export DEPLOY_BACKEND_RELATIVE=backend
-    export DEPLOY_SITE_RELATIVE=site
-    exec "$0" "${2:-all}" "${3:-}"
-    ;;
-
   *)
-    echo ""
-    echo "用法: $0 <目标> [提交信息]"
-    echo ""
-    echo "目标:"
-    echo "  all       全量部署（默认）：Git 推送 → 后端 → 前端"
-    echo "  backend   仅部署后端：Git 推送 → 上传后端源码 → Docker 重建"
-    echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + engineer"
-    echo "  front     frontend 的别名"
-    echo "  admin     仅部署管理端"
-    echo "  engineer  仅部署工程师端"
-    echo "  eng       engineer 的别名"
-    echo ""
-    echo "  stark     腾讯云 stark 服务器（用法: $0 stark [all|backend|frontend|front|admin|engineer|eng]）"
-    echo ""
-    echo "提交信息: 可选的 git commit message，不传则自动生成"
-    echo ""
-    echo "环境变量:"
-    echo "  DEPLOY_SSH_TARGET    SSH 主机（默认：aliyun）"
-    echo "  DEPLOY_REMOTE_ROOT   远程目录（默认：/root/service-sheet-aliyun）"
-    echo "  DEPLOY_BRANCH        Git 目标分支（默认：当前分支）"
-    echo ""
+    usage
     exit 2
     ;;
 esac

@@ -8,11 +8,22 @@ backend/scripts/reset-from-timesheet.js
 backend/scripts/timesheet-seed-data.json
 .env
 .env.local
+.env.production
+.env.production.local
 .env.development.local
+**/.env.local
+**/.env.production
+**/.env.production.local
 backend/uploads/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local deployment/private agent context
+AGENTS.local.md
+docs/deploy.local.md
+scripts/deploy.local.env
+.env.deploy.local
 
 # Local automation and session artifacts
 .playwright-mcp/
