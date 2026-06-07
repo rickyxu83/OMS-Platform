@@ -258,7 +258,7 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   office: "purple",
 };
 
-const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(160px,1.15fr)_112px_minmax(220px,2fr)_minmax(120px,1fr)_150px_92px_176px]";
+const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_132px_76px_128px]";
 
 function formatDateTime(value?: string) {
   if (!value) return "-";
@@ -744,7 +744,7 @@ export function ServiceOrders() {
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 return (
                   <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
-                    <div className={`grid gap-3 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
+                    <div className={`grid min-w-0 gap-3 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
                       <div>
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
@@ -805,7 +805,7 @@ export function ServiceOrders() {
                           </Badge>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 xl:justify-end">
+                        <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
                           <Button variant="outline" size="sm" onClick={() => setDetailOrder(order)}>
                             详情
                           </Button>
