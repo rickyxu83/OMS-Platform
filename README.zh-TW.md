@@ -201,4 +201,6 @@ bash scripts/deploy-seed.sh
 
 ## 授權與維護
 
+OMS Platform 是依據 **GNU General Public License v3.0（GPL-3.0）** 發布的自由軟體。你可以在 GPL-3.0 條款下使用、學習、修改和再發布本軟體。任何修改版或再發布版本都必須繼續保留 GPL-3.0 授權條款，並按授權要求提供相應原始碼。
+
 本倉庫為 OMS Platform 運維智管的正式專案倉庫。生產部署和權限約定可參考 [AGENTS.md](AGENTS.md)。

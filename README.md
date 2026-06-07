@@ -201,4 +201,6 @@ Recommended public screenshots include the unified login page, blank or demo-dat
 
 ## License and Maintenance
 
+OMS Platform is released under the **GNU General Public License v3.0 (GPL-3.0)**. You may use, study, modify, and redistribute this software under the terms of GPL-3.0. Any modified or redistributed version must keep the same GPL-3.0 license terms and provide the corresponding source code as required by the license.
+
 This repository is the official OMS Platform project repository. Public deployment and permission conventions are documented in [AGENTS.md](AGENTS.md).
