@@ -28,6 +28,7 @@ const isFormPage = computed(() => ['service-sheet-new', 'service-sheet-edit'].in
 const showHomeQuickAction = computed(() => route.name !== 'login')
 const showGlobalCreateAction = computed(() => !isFormPage.value && route.name !== 'service-sheet-edit')
 const isEditingExistingSheet = computed(() => route.name === 'service-sheet-edit')
+const shouldAutoOpenFirstLoginGuide = computed(() => Boolean(currentUser.value?.requiresOnboarding))
 const controlsAnchorClass = computed(() => ({
   'service-sheet-controls-anchor': isFormPage.value,
 }))
@@ -111,7 +112,7 @@ const guideSteps = [
     selector: '.quick-action-row .locate',
     route: '/service-sheets/new?mode=onsite&guide=1',
     title: '定位查找',
-    body: '填写客户时用它搜索附近客户和地点，系统会优先显示苏州、上海及当前位置附近结果。',
+    body: '填写客户时用它搜索附近客户和地点，系统会按关键词匹配和当前位置排序。',
   },
   {
     selector: '.quick-action-row .ghost',
@@ -142,7 +143,17 @@ const featureTourSpotlightStyle = computed(() => {
 const featureTourBubbleStyle = computed(() => {
   const rect = featureTourRect.value
   if (!rect) return {}
-  const maxWidth = window.innerWidth <= 520 ? 264 : window.innerWidth <= 680 ? 296 : 340
+  if (window.innerWidth <= 520) {
+    const width = Math.min(320, window.innerWidth - 24)
+    const placeAtTop = rect.top > window.innerHeight * 0.52
+    return {
+      width: `${width}px`,
+      left: '12px',
+      top: placeAtTop ? '12px' : 'auto',
+      bottom: placeAtTop ? 'auto' : 'calc(12px + env(safe-area-inset-bottom))',
+    }
+  }
+  const maxWidth = window.innerWidth <= 680 ? 296 : 340
   const sideGap = window.innerWidth <= 520 ? 72 : window.innerWidth <= 680 ? 56 : 28
   const width = Math.min(maxWidth, window.innerWidth - sideGap)
   const preferBelow = rect.top + rect.height + 18 + 190 < window.innerHeight
@@ -191,6 +202,7 @@ function closeFirstLoginGuide() {
 
 function maybeOpenFirstLoginGuide() {
   if (!currentUser.value) return
+  if (!shouldAutoOpenFirstLoginGuide.value) return
   if (safeStorageGet(localStorage, guideStorageKey(), '') === '1') return
   openFirstLoginGuide()
 }
@@ -527,6 +539,10 @@ watch(
     window.setTimeout(maybeOpenFirstLoginGuide, 240)
   },
 )
+
+watch(shouldAutoOpenFirstLoginGuide, (required) => {
+  if (required) window.setTimeout(maybeOpenFirstLoginGuide, 240)
+})
 </script>
 
 <template>

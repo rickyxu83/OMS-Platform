@@ -2031,8 +2031,9 @@ h2 {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgb(15 23 42 / 28%);
-  backdrop-filter: blur(5px);
+  background: rgb(15 23 42 / 10%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   pointer-events: auto;
 }
 
@@ -2043,9 +2044,9 @@ h2 {
   border-radius: 20px;
   pointer-events: none;
   box-shadow:
-    0 0 0 9999px rgb(15 23 42 / 10%),
+    0 0 0 9999px rgb(15 23 42 / 4%),
     0 0 0 8px rgb(94 234 212 / 18%),
-    0 18px 44px rgb(0 0 0 / 24%);
+    0 16px 36px rgb(0 0 0 / 16%);
   transition:
     left 220ms ease,
     top 220ms ease,
@@ -2065,7 +2066,7 @@ h2 {
   background:
     radial-gradient(circle at 14% 8%, rgb(94 234 212 / 16%), transparent 35%),
     linear-gradient(180deg, rgb(255 255 255 / 98%), rgb(248 250 252 / 96%));
-  box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
+  box-shadow: 0 20px 50px rgb(15 23 42 / 20%);
   pointer-events: auto;
   animation: signature-panel-in 180ms ease-out both;
 }
@@ -2100,11 +2101,15 @@ h2 {
 }
 
 @media (max-width: 680px) {
+  .feature-tour-backdrop {
+    background: rgb(15 23 42 / 6%);
+  }
+
   .feature-tour-card {
     gap: 8px;
     padding: 12px;
     border-radius: 16px;
-    box-shadow: 0 16px 44px rgb(0 0 0 / 22%);
+    box-shadow: 0 14px 34px rgb(15 23 42 / 18%);
   }
 
   .feature-tour-card p {
@@ -2127,6 +2132,15 @@ h2 {
 }
 
 @media (max-width: 520px) {
+  .feature-tour-spotlight {
+    border-width: 2px;
+    border-radius: 16px;
+    box-shadow:
+      0 0 0 9999px rgb(15 23 42 / 3%),
+      0 0 0 5px rgb(94 234 212 / 14%),
+      0 12px 26px rgb(15 23 42 / 12%);
+  }
+
   .feature-tour-card {
     padding: 10px;
     border-radius: 14px;
