@@ -180,7 +180,7 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="relative z-10 flex min-h-[calc(100vh-1.5rem)] items-center justify-center">
+      <div className="relative z-10 flex min-h-[calc(100vh-1.5rem)] items-center justify-center pb-14">
         <div className="w-full max-w-sm">
           <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
             <div className="mb-4 flex justify-center">
@@ -313,11 +313,12 @@ export function Login() {
             </div>
           </div>
 
-          <div className="mt-3 text-center text-sm text-gray-500">
-            <p className="mb-1">{lang === "zh-TW" ? "敦陽（寧波）科技有限公司" : "敦阳（宁波）科技有限公司"}</p>
-            <p className="text-xs">© 2026 All rights reserved.</p>
-          </div>
         </div>
+      </div>
+
+      <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-sm text-gray-500 sm:bottom-4">
+        <p className="mb-1">{lang === "zh-TW" ? "敦陽（寧波）科技有限公司" : "敦阳（宁波）科技有限公司"}</p>
+        <p className="text-xs">© 2026 All rights reserved.</p>
       </div>
     </div>
   );
