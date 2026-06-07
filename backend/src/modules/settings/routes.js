@@ -8,5 +8,7 @@ const settingsRoles = ['admin', 'supervisor', 'engineering_supervisor']
 
 router.get('/', requireRoles(...settingsRoles), controller.list)
 router.put('/', requireRoles(...settingsRoles), controller.update)
+router.post('/test-ai', requireRoles(...settingsRoles), controller.testAi)
+router.post('/test-mail', requireRoles(...settingsRoles), controller.testMail)
 
 module.exports = router

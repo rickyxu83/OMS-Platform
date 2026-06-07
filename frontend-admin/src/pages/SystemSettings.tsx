@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Save } from "lucide-react";
+import { Loader2, RefreshCw, Save, Send, WandSparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,8 +56,11 @@ export function SystemSettings() {
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [testingMail, setTestingMail] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [testRecipient, setTestRecipient] = useState("");
 
   async function load() {
     setLoading(true);
@@ -122,6 +125,34 @@ export function SystemSettings() {
     }
   }
 
+  async function testAi() {
+    setTestingAi(true);
+    setError("");
+    setSaved("");
+    try {
+      const data = await api.post("/settings/test-ai", { ai: form.ai });
+      setSaved(data?.message || "AI 连接测试成功");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI 连接测试失败");
+    } finally {
+      setTestingAi(false);
+    }
+  }
+
+  async function testMail() {
+    setTestingMail(true);
+    setError("");
+    setSaved("");
+    try {
+      const data = await api.post("/settings/test-mail", { mail: form.mail, to: testRecipient.trim() || undefined });
+      setSaved(data?.message || "SMTP 测试邮件已发送");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "SMTP 测试失败");
+    } finally {
+      setTestingMail(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -159,7 +190,13 @@ export function SystemSettings() {
         <div className="grid gap-6 xl:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>AI 总结</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>AI 总结</CardTitle>
+                <Button variant="outline" size="sm" onClick={testAi} disabled={loading || saving || testingAi}>
+                  {testingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                  测试 AI
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center justify-between rounded-lg border p-3">
@@ -203,7 +240,13 @@ export function SystemSettings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>邮件通知</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>邮件通知</CardTitle>
+                <Button variant="outline" size="sm" onClick={testMail} disabled={loading || saving || testingMail}>
+                  {testingMail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  测试 SMTP
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-3 md:grid-cols-2">
@@ -271,6 +314,15 @@ export function SystemSettings() {
                   value={form.mail.password}
                   onChange={(e) => setForm({ ...form, mail: { ...form.mail, password: e.target.value } })}
                   placeholder="保存后会以星号显示"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>测试收件人</Label>
+                <Input
+                  value={testRecipient}
+                  onChange={(e) => setTestRecipient(e.target.value)}
+                  placeholder="不填则发送到 SMTP 账号"
                 />
               </div>
             </CardContent>

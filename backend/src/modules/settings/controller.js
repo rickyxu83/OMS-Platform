@@ -1,4 +1,5 @@
 const env = require('../../config/env')
+const nodemailer = require('nodemailer')
 const { badRequest } = require('../../utils/http-error')
 const { getSettings, setSettings } = require('./store')
 
@@ -78,34 +79,160 @@ function normalizePort(value) {
   return String(port)
 }
 
+function normalizeAiSettings(bodyAi = {}, currentAi) {
+  const apiKey = String(bodyAi.apiKey || '').trim()
+  return {
+    workSummaryEnabled: boolText(bodyAi.workSummaryEnabled, currentAi.workSummaryEnabled === 'true'),
+    provider: String(bodyAi.provider || currentAi.provider || 'custom').trim(),
+    apiUrl: String(bodyAi.apiUrl || currentAi.apiUrl || '').trim(),
+    model: String(bodyAi.model || currentAi.model || '').trim(),
+    apiKey: apiKey && apiKey !== HIDDEN_SECRET ? apiKey : currentAi.apiKey,
+  }
+}
+
+function normalizeMailSettings(bodyMail = {}, currentMail) {
+  const password = String(bodyMail.password || '').trim()
+  return {
+    enabled: boolText(bodyMail.enabled, currentMail.enabled === 'true'),
+    host: String(bodyMail.host || currentMail.host || '').trim(),
+    port: normalizePort(bodyMail.port || currentMail.port || 465),
+    secure: boolText(bodyMail.secure, currentMail.secure === 'true'),
+    from: String(bodyMail.from || currentMail.from || '').trim(),
+    user: String(bodyMail.user || currentMail.user || '').trim(),
+    password: password && password !== HIDDEN_SECRET ? password : currentMail.password,
+    assignNotifyEnabled: boolText(bodyMail.assignNotifyEnabled, currentMail.assignNotifyEnabled === 'true'),
+  }
+}
+
+function extractEmail(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  return match ? match[0] : text
+}
+
 async function update(req, res) {
   const body = req.body || {}
   const current = await effectiveSettings()
   const next = {}
 
   if (body.ai) {
-    next['ai.workSummaryEnabled'] = boolText(body.ai.workSummaryEnabled)
-    next['ai.provider'] = String(body.ai.provider || 'custom').trim()
-    next['ai.apiUrl'] = String(body.ai.apiUrl || '').trim()
-    next['ai.model'] = String(body.ai.model || '').trim()
-    const apiKey = String(body.ai.apiKey || '').trim()
-    next['ai.apiKey'] = apiKey && apiKey !== HIDDEN_SECRET ? apiKey : current.ai.apiKey
+    const ai = normalizeAiSettings(body.ai, current.ai)
+    next['ai.workSummaryEnabled'] = ai.workSummaryEnabled
+    next['ai.provider'] = ai.provider
+    next['ai.apiUrl'] = ai.apiUrl
+    next['ai.model'] = ai.model
+    next['ai.apiKey'] = ai.apiKey
   }
 
   if (body.mail) {
-    next['mail.enabled'] = boolText(body.mail.enabled)
-    next['mail.host'] = String(body.mail.host || '').trim()
-    next['mail.port'] = normalizePort(body.mail.port || current.mail.port || 465)
-    next['mail.secure'] = boolText(body.mail.secure)
-    next['mail.from'] = String(body.mail.from || '').trim()
-    next['mail.user'] = String(body.mail.user || '').trim()
-    next['mail.assignNotifyEnabled'] = boolText(body.mail.assignNotifyEnabled)
-    const password = String(body.mail.password || '').trim()
-    next['mail.password'] = password && password !== HIDDEN_SECRET ? password : current.mail.password
+    const mail = normalizeMailSettings(body.mail, current.mail)
+    next['mail.enabled'] = mail.enabled
+    next['mail.host'] = mail.host
+    next['mail.port'] = mail.port
+    next['mail.secure'] = mail.secure
+    next['mail.from'] = mail.from
+    next['mail.user'] = mail.user
+    next['mail.assignNotifyEnabled'] = mail.assignNotifyEnabled
+    next['mail.password'] = mail.password
   }
 
   await setSettings(next, req.user.id)
   res.status(204).end()
+}
+
+async function testAi(req, res) {
+  const current = await effectiveSettings()
+  const ai = normalizeAiSettings(req.body?.ai || {}, current.ai)
+  if (!ai.apiUrl || !ai.apiKey || !ai.model) {
+    throw badRequest('请先填写 AI API 地址、Token 和模型')
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(env.ai.summaryTimeoutMs || 30000)))
+  try {
+    const response = await fetch(ai.apiUrl, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ai.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: ai.model,
+        messages: [
+          { role: 'system', content: '你是 OMS Platform 的连通性测试助手。' },
+          { role: 'user', content: '请只回复“测试成功”。' },
+        ],
+        stream: false,
+        max_tokens: 32,
+      }),
+    })
+
+    const text = await response.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch {}
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || `AI 服务返回 HTTP ${response.status}`
+      throw badRequest(message)
+    }
+
+    res.json({
+      ok: true,
+      message: 'AI 连接测试成功',
+      item: {
+        provider: ai.provider,
+        model: ai.model,
+        usage: data?.usage || null,
+      },
+    })
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw badRequest('AI 连接测试超时')
+    }
+    if (error.status) throw error
+    throw badRequest(`AI 连接测试失败：${error.message || '无法连接 AI 服务'}`)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function testMail(req, res) {
+  const current = await effectiveSettings()
+  const mail = normalizeMailSettings(req.body?.mail || {}, current.mail)
+  if (!mail.host || !mail.port || !mail.from || !mail.user || !mail.password) {
+    throw badRequest('请先填写 SMTP 主机、端口、发件人、账号和密码')
+  }
+
+  const to = extractEmail(req.body?.to || mail.user || mail.from)
+  if (!to) {
+    throw badRequest('请填写测试收件人邮箱')
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: mail.host,
+    port: Number(mail.port || 465),
+    secure: mail.secure === 'true',
+    auth: {
+      user: mail.user,
+      pass: mail.password,
+    },
+  })
+
+  try {
+    await transporter.sendMail({
+      from: mail.from,
+      to,
+      subject: 'OMS Platform SMTP 测试',
+      text: `这是一封 OMS Platform SMTP 连通性测试邮件。\n发送时间：${new Date().toISOString()}`,
+    })
+  } catch (error) {
+    throw badRequest(`SMTP 测试失败：${error.message || '邮件发送失败'}`)
+  }
+
+  res.json({
+    ok: true,
+    message: `SMTP 测试邮件已发送至 ${to}`,
+  })
 }
 
 module.exports = {
@@ -113,4 +240,6 @@ module.exports = {
   effectiveSettings,
   list: publicSettings,
   update,
+  testAi,
+  testMail,
 }
