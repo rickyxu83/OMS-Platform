@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +79,8 @@ const I18N = {
       refresh: "刷新",
       retry: "重试",
       reset: "重置",
+      export: "导出 Excel",
+      exporting: "导出中…",
       saving: "保存中…",
       cancel: "取消",
     },
@@ -84,6 +88,10 @@ const I18N = {
       searchPlaceholder: "搜索工单编号、客户、工程师、描述...",
       statusPlaceholder: "状态筛选",
       all: "全部状态",
+      allCustomers: "全部客户",
+      customerPlaceholder: "客户筛选",
+      startDate: "开始日期",
+      endDate: "结束日期",
     },
     stats: {
       all: "全部工单",
@@ -115,6 +123,8 @@ const I18N = {
     errors: {
       loadFailed: "加载失败",
       saveFailed: "保存失败",
+      exportFailed: "导出失败",
+      exportEmpty: "当前筛选条件下暂无可导出的工单",
     },
     status: {
       draft: "草稿",
@@ -149,6 +159,8 @@ const I18N = {
       refresh: "刷新",
       retry: "重試",
       reset: "重置",
+      export: "匯出 Excel",
+      exporting: "匯出中…",
       saving: "保存中…",
       cancel: "取消",
     },
@@ -156,6 +168,10 @@ const I18N = {
       searchPlaceholder: "搜尋工單編號、客戶、工程師、描述...",
       statusPlaceholder: "狀態篩選",
       all: "全部狀態",
+      allCustomers: "全部客戶",
+      customerPlaceholder: "客戶篩選",
+      startDate: "開始日期",
+      endDate: "結束日期",
     },
     stats: {
       all: "全部工單",
@@ -187,6 +203,8 @@ const I18N = {
     errors: {
       loadFailed: "載入失敗",
       saveFailed: "保存失敗",
+      exportFailed: "匯出失敗",
+      exportEmpty: "當前篩選條件下暫無可匯出的工單",
     },
     status: {
       draft: "草稿",
@@ -270,6 +288,26 @@ function formatDateOnly(value?: string) {
   return String(value).replace("T", " ").slice(0, 10);
 }
 
+function cleanDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+function normalizedDateRange(startDate: string, endDate: string) {
+  const start = cleanDate(startDate);
+  const end = cleanDate(endDate);
+  if (start && end && start > end) return { startDate: end, endDate: start };
+  return { startDate: start, endDate: end };
+}
+
+function safeSheetName(value: string, fallback: string) {
+  const cleaned = value.replace(/[\\/?*\[\]:]/g, " ").trim() || fallback;
+  return cleaned.slice(0, 31);
+}
+
+function safeFilenamePart(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "").slice(0, 40);
+}
+
 function displayId(order: ServiceOrder) {
   return order.orderNo || order.displayId || `SR-${order.id}`;
 }
@@ -332,8 +370,13 @@ export function ServiceOrders() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
+  const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
+  const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [total, setTotal] = useState(0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
@@ -376,6 +419,9 @@ export function ServiceOrders() {
   useEffect(() => {
     const keyword = searchParams.get("keyword") || searchParams.get("q") || "";
     setSearchQuery(keyword);
+    setCustomerFilter(searchParams.get("customerId") || "all");
+    setStartDate(searchParams.get("startDate") || "");
+    setEndDate(searchParams.get("endDate") || "");
   }, [searchParams]);
 
   useEffect(() => {
@@ -390,16 +436,21 @@ export function ServiceOrders() {
     setLoading(true);
     setError("");
     try {
+      const range = normalizedDateRange(startDate, endDate);
       const params = new URLSearchParams({
         pageSize: "50",
         sortBy: "createdAt",
         sortDir: "desc",
       });
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      if (customerFilter !== "all") params.set("customerId", customerFilter);
+      if (range.startDate) params.set("startDate", range.startDate);
+      if (range.endDate) params.set("endDate", range.endDate);
+      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
       const data = await api.get(`/service-orders?${params.toString()}`);
       const items = (data?.items || []) as ServiceOrder[];
       setOrders(items);
+      setTotal(Number(data?.total ?? items.length));
       setSelectedIds((ids) => ids.filter((id) => items.some((item) => String(item.id) === String(id))));
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
@@ -412,7 +463,7 @@ export function ServiceOrders() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, searchQuery, t.errors.loadFailed]);
+  }, [statusFilter, customerFilter, startDate, endDate, searchQuery, t.errors.loadFailed]);
 
   const filteredOrders = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -425,6 +476,11 @@ export function ServiceOrders() {
       return id.includes(keyword) || customer.includes(keyword) || engineer.includes(keyword) || desc.includes(keyword);
     });
   }, [orders, searchQuery]);
+
+  const selectedCustomerName = useMemo(() => {
+    if (customerFilter === "all") return "";
+    return customers.find((customer) => String(customer.id) === customerFilter)?.name || "";
+  }, [customerFilter, customers]);
 
   const stats = useMemo(() => {
     const all = orders.length;
@@ -461,7 +517,168 @@ export function ServiceOrders() {
     const keyword = textValue(value, "").trim();
     if (!keyword) return;
     setSearchQuery(keyword);
-    setSearchParams({ keyword });
+    setSearchParams(() => {
+      const range = normalizedDateRange(startDate, endDate);
+      const next = new URLSearchParams();
+      next.set("keyword", keyword);
+      if (customerFilter !== "all") next.set("customerId", customerFilter);
+      if (range.startDate) next.set("startDate", range.startDate);
+      if (range.endDate) next.set("endDate", range.endDate);
+      return next;
+    });
+  }
+
+  function resetFilters() {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setCustomerFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setSearchParams({});
+  }
+
+  function buildListParams(page: number, pageSize: number) {
+    const range = normalizedDateRange(startDate, endDate);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+      sortBy: "createdAt",
+      sortDir: "desc",
+    });
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (customerFilter !== "all") params.set("customerId", customerFilter);
+    if (range.startDate) params.set("startDate", range.startDate);
+    if (range.endDate) params.set("endDate", range.endDate);
+    if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+    return params;
+  }
+
+  async function fetchExportOrders() {
+    const pageSize = 100;
+    let page = 1;
+    let totalCount = 0;
+    const allItems: ServiceOrder[] = [];
+    do {
+      const data = await api.get(`/service-orders?${buildListParams(page, pageSize).toString()}`);
+      const items = (data?.items || []) as ServiceOrder[];
+      allItems.push(...items);
+      totalCount = Number(data?.total ?? allItems.length);
+      if (!items.length) break;
+      page += 1;
+    } while (allItems.length < totalCount);
+    return allItems;
+  }
+
+  async function exportOrders() {
+    setExporting(true);
+    setError("");
+    try {
+      const items = await fetchExportOrders();
+      if (!items.length) {
+        setError(t.errors.exportEmpty);
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Service Sheet RC";
+      workbook.created = new Date();
+      workbook.modified = new Date();
+      const worksheet = workbook.addWorksheet(safeSheetName(selectedCustomerName || "工单导出", "工单导出"), {
+        views: [{ state: "frozen", ySplit: 1 }],
+        pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+      });
+      worksheet.columns = [
+        { header: "工单编号", key: "orderNo", width: 20 },
+        { header: "客户名称", key: "customerName", width: 26 },
+        { header: "联系人", key: "contactName", width: 14 },
+        { header: "联系电话", key: "contactPhone", width: 16 },
+        { header: "客户地址", key: "customerAddress", width: 30 },
+        { header: "设备", key: "deviceName", width: 18 },
+        { header: "服务方式", key: "serviceMode", width: 12 },
+        { header: "服务类型", key: "serviceType", width: 12 },
+        { header: "优先级", key: "priority", width: 10 },
+        { header: "工程师", key: "engineerName", width: 18 },
+        { header: "计划开始", key: "plannedStartAt", width: 18 },
+        { header: "计划结束", key: "plannedEndAt", width: 18 },
+        { header: "状态", key: "status", width: 12 },
+        { header: "创建时间", key: "createdAt", width: 18 },
+        { header: "更新时间", key: "updatedAt", width: 18 },
+        { header: "问题描述", key: "issueDescription", width: 42 },
+        { header: "内部备注", key: "internalNote", width: 28 },
+      ];
+
+      items.forEach((order) => {
+        worksheet.addRow({
+          orderNo: displayId(order),
+          customerName: order.customerName || "",
+          contactName: order.contactName || "",
+          contactPhone: order.contactPhone || "",
+          customerAddress: order.customerAddress || "",
+          deviceName: order.deviceName || "",
+          serviceMode: t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "",
+          serviceType: t.type[order.serviceType as keyof typeof t.type] || order.serviceType || order.timesheetCategory || "",
+          priority: PRIORITY_LABELS[order.priority || ""] || order.priority || "",
+          engineerName: engineerText(order, ""),
+          plannedStartAt: formatDateTime(order.plannedStartAt),
+          plannedEndAt: formatDateTime(order.plannedEndAt),
+          status: order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "",
+          createdAt: formatDateTime(order.createdAt),
+          updatedAt: formatDateTime(order.updatedAt),
+          issueDescription: compactText(order.issueDescription, ""),
+          internalNote: compactText(order.internalNote, ""),
+        });
+      });
+
+      worksheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: Math.max(1, worksheet.rowCount), column: worksheet.columns.length },
+      };
+      worksheet.getRow(1).height = 24;
+      worksheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFB7C9D6" } },
+          left: { style: "thin", color: { argb: "FFB7C9D6" } },
+          bottom: { style: "thin", color: { argb: "FFB7C9D6" } },
+          right: { style: "thin", color: { argb: "FFB7C9D6" } },
+        };
+      });
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        row.height = 22;
+        row.eachCell((cell, colNumber) => {
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFD9E2EC" } },
+            left: { style: "thin", color: { argb: "FFD9E2EC" } },
+            bottom: { style: "thin", color: { argb: "FFD9E2EC" } },
+            right: { style: "thin", color: { argb: "FFD9E2EC" } },
+          };
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: [11, 12, 14, 15].includes(colNumber) ? "center" : "left",
+            wrapText: [5, 16, 17].includes(colNumber),
+          };
+          if (rowNumber % 2 === 0) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAFC" } };
+          }
+        });
+      });
+
+      const range = normalizedDateRange(startDate, endDate);
+      const datePart = range.startDate || range.endDate ? `${range.startDate || "不限"}-至-${range.endDate || "不限"}` : new Date().toISOString().slice(0, 10);
+      const customerPart = selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(
+        new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `工单导出${customerPart}-${datePart}.xlsx`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errors.exportFailed);
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function createOrder() {
@@ -647,6 +864,10 @@ export function ServiceOrders() {
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
+          <Button variant="outline" onClick={exportOrders} disabled={saving || exporting || loading}>
+            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+            {exporting ? t.actions.exporting : t.actions.export}
+          </Button>
           <Button variant="outline" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
             <Trash2 className="w-4 h-4 mr-2" />
             批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
@@ -680,8 +901,8 @@ export function ServiceOrders() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1 relative">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_220px_150px_150px_auto]">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -694,7 +915,7 @@ export function ServiceOrders() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger>
                 <SelectValue placeholder={t.filters.statusPlaceholder} />
               </SelectTrigger>
               <SelectContent>
@@ -705,23 +926,47 @@ export function ServiceOrders() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={customerFilter} onValueChange={setCustomerFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder={t.filters.customerPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
+                {customers.map((customer) => (
+                  <SelectItem key={customer.id} value={String(customer.id)}>
+                    {customer.name || `客户 #${customer.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label={t.filters.startDate}
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <Input
+              aria-label={t.filters.endDate}
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
             <Button
               variant="outline"
-              onClick={() => {
-                setSearchQuery("");
-                setStatusFilter("all");
-                setSearchParams({});
-              }}
+              onClick={resetFilters}
             >
               {t.actions.reset}
             </Button>
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            当前条件匹配 {total} 张工单；导出会包含所有匹配记录，不只当前页。
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.list.title} ({filteredOrders.length})</CardTitle>
+          <CardTitle>{t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
