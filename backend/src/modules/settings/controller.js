@@ -19,6 +19,9 @@ const settingKeys = [
   'mail.user',
   'mail.password',
   'mail.assignNotifyEnabled',
+  'map.amapRestKey',
+  'map.amapJsapiKey',
+  'map.amapSecurityJsCode',
 ]
 
 function boolText(value, fallback = false) {
@@ -50,6 +53,11 @@ async function effectiveSettings() {
       password: saved['mail.password'] ?? '',
       assignNotifyEnabled: boolText(saved['mail.assignNotifyEnabled'], false),
     },
+    map: {
+      amapRestKey: saved['map.amapRestKey'] ?? env.amapKey,
+      amapJsapiKey: saved['map.amapJsapiKey'] ?? '',
+      amapSecurityJsCode: saved['map.amapSecurityJsCode'] ?? '',
+    },
   }
 }
 
@@ -67,6 +75,26 @@ async function publicSettings(_req, res) {
         password: masked(settings.mail.password),
         hasPassword: Boolean(settings.mail.password),
       },
+      map: {
+        ...settings.map,
+        amapRestKey: masked(settings.map.amapRestKey),
+        hasAmapRestKey: Boolean(settings.map.amapRestKey),
+        amapJsapiKey: masked(settings.map.amapJsapiKey),
+        hasAmapJsapiKey: Boolean(settings.map.amapJsapiKey),
+        amapSecurityJsCode: masked(settings.map.amapSecurityJsCode),
+        hasAmapSecurityJsCode: Boolean(settings.map.amapSecurityJsCode),
+      },
+    },
+  })
+}
+
+async function publicMapSettings(_req, res) {
+  const settings = await effectiveSettings()
+  res.json({
+    item: {
+      amapJsapiKey: settings.map.amapJsapiKey,
+      amapSecurityJsCode: settings.map.amapSecurityJsCode,
+      configured: Boolean(settings.map.amapJsapiKey && settings.map.amapSecurityJsCode),
     },
   })
 }
@@ -104,6 +132,17 @@ function normalizeMailSettings(bodyMail = {}, currentMail) {
   }
 }
 
+function normalizeMapSettings(bodyMap = {}, currentMap) {
+  const amapRestKey = String(bodyMap.amapRestKey || '').trim()
+  const amapJsapiKey = String(bodyMap.amapJsapiKey || '').trim()
+  const amapSecurityJsCode = String(bodyMap.amapSecurityJsCode || '').trim()
+  return {
+    amapRestKey: amapRestKey && amapRestKey !== HIDDEN_SECRET ? amapRestKey : currentMap.amapRestKey,
+    amapJsapiKey: amapJsapiKey && amapJsapiKey !== HIDDEN_SECRET ? amapJsapiKey : currentMap.amapJsapiKey,
+    amapSecurityJsCode: amapSecurityJsCode && amapSecurityJsCode !== HIDDEN_SECRET ? amapSecurityJsCode : currentMap.amapSecurityJsCode,
+  }
+}
+
 function extractEmail(value) {
   const text = String(value || '').trim()
   const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
@@ -134,6 +173,13 @@ async function update(req, res) {
     next['mail.user'] = mail.user
     next['mail.assignNotifyEnabled'] = mail.assignNotifyEnabled
     next['mail.password'] = mail.password
+  }
+
+  if (body.map) {
+    const map = normalizeMapSettings(body.map, current.map)
+    next['map.amapRestKey'] = map.amapRestKey
+    next['map.amapJsapiKey'] = map.amapJsapiKey
+    next['map.amapSecurityJsCode'] = map.amapSecurityJsCode
   }
 
   await setSettings(next, req.user.id)
@@ -239,6 +285,7 @@ module.exports = {
   HIDDEN_SECRET,
   effectiveSettings,
   list: publicSettings,
+  publicMapSettings,
   update,
   testAi,
   testMail,

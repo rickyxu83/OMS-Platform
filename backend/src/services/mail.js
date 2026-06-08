@@ -81,6 +81,60 @@ async function sendAssignmentMail(order, engineers = []) {
   return { sent: true, to }
 }
 
+async function sendInspectionConfirmationMail(order, recipients = []) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+  if (mail.assignNotifyEnabled !== 'true') return { skipped: true, reason: 'assign_notify_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients)
+  if (!to.length) {
+    return {
+      skipped: true,
+      reason: 'no_recipient_email',
+      recipientIds: recipients.map((recipient) => recipient.id).filter(Boolean),
+    }
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: mail.host,
+    port: Number(mail.port || 465),
+    secure: mail.secure === 'true',
+    auth: {
+      user: mail.user,
+      pass: mail.password,
+    },
+  })
+
+  const subject = `巡检待确认：${order.order_no || order.orderNo || order.id} / ${order.customer_name || order.customerName || ''}`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">巡检工单待确认</h2>
+      <p>系统已根据巡检计划生成待确认工单，请登录管理端确认并派发。</p>
+      <table style="border-collapse:collapse;width:100%;max-width:680px">
+        <tr><td style="padding:6px 0;color:#64748b;width:96px">Case ID</td><td>${htmlEscape(order.order_no || order.orderNo || order.id)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">客户</td><td>${htmlEscape(order.customer_name || order.customerName || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">设备</td><td>${htmlEscape(order.device_name || order.deviceName || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">计划时间</td><td>${htmlEscape(formatTime(order.planned_start_at || order.plannedStartAt))} 至 ${htmlEscape(formatTime(order.planned_end_at || order.plannedEndAt))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">巡检说明</td><td>${htmlEscape(order.issue_description || order.issueDescription || '-')}</td></tr>
+      </table>
+      <p style="color:#64748b">确认后，该巡检工单会派发到工程师端。</p>
+    </div>
+  `
+
+  await transporter.sendMail({
+    from: mail.from,
+    to,
+    subject,
+    html,
+  })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
+  sendInspectionConfirmationMail,
 }

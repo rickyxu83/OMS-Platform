@@ -67,6 +67,26 @@ apply_profile() {
       export "DEPLOY_${suffix}=${!source_var}"
     fi
   done
+
+  local vite_suffix target_var
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ENGINEER_WORKSPACE_URL ADMIN_HOST_PREFIX ENGINEER_HOST_PREFIX AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+    source_var="DEPLOY_${profile_key}_VITE_${vite_suffix}"
+    target_var="VITE_${vite_suffix}"
+    if [ -n "${!source_var:-}" ]; then
+      export "${target_var}=${!source_var}"
+    fi
+  done
+}
+
+apply_vite_defaults() {
+  local vite_suffix source_var target_var
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ENGINEER_WORKSPACE_URL ADMIN_HOST_PREFIX ENGINEER_HOST_PREFIX AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+    source_var="DEPLOY_VITE_${vite_suffix}"
+    target_var="VITE_${vite_suffix}"
+    if [ -n "${!source_var:-}" ] && [ -z "${!target_var:-}" ]; then
+      export "${target_var}=${!source_var}"
+    fi
+  done
 }
 
 parse_args() {
@@ -86,6 +106,7 @@ parse_args() {
   REMOTE_ROOT="${DEPLOY_REMOTE_ROOT:-}"
   BACKEND_RELATIVE="${DEPLOY_BACKEND_RELATIVE:-app/backend}"
   SITE_RELATIVE="${DEPLOY_SITE_RELATIVE:-app/site}"
+  apply_vite_defaults
 }
 
 require_deploy_config() {
