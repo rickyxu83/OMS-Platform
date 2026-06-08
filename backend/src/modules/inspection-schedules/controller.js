@@ -1,6 +1,7 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
+const { sendInspectionConfirmationMail } = require('../../services/mail')
 
 const allowedCadences = new Set(['monthly', 'bi-monthly', 'quarterly'])
 let inspectionSchedulesTableReady = false
@@ -283,6 +284,54 @@ async function createInspectionOrder(connection, schedule, occurrenceDate) {
   )
 
   return { created: true, orderId: insertResult.insertId, orderNo }
+}
+
+async function loadInspectionOrderForMail(orderId) {
+  const rows = await query(
+    `SELECT so.id, so.order_no, so.customer_id, c.name AS customer_name,
+            so.device_id, d.name AS device_name, so.issue_description,
+            so.planned_start_at, so.planned_end_at
+     FROM service_orders so
+     JOIN customers c ON c.id = so.customer_id
+     LEFT JOIN devices d ON d.id = so.device_id
+     WHERE so.id = :orderId
+     LIMIT 1`,
+    { orderId },
+  )
+  return rows[0] || null
+}
+
+async function loadEngineeringSupervisorsForMail() {
+  return query(
+    `SELECT id, real_name AS realName, username, email
+     FROM users
+     WHERE role = 'engineering_supervisor'
+       AND status = 'active'
+       AND email IS NOT NULL
+       AND email <> ''
+     ORDER BY real_name ASC, username ASC`,
+  )
+}
+
+function triggerInspectionConfirmationMail(orderId) {
+  Promise.all([loadInspectionOrderForMail(orderId), loadEngineeringSupervisorsForMail()])
+    .then(([order, recipients]) => {
+      if (!order) return { skipped: true, reason: 'order_not_found' }
+      return sendInspectionConfirmationMail(order, recipients)
+    })
+    .then((result) => {
+      if (result?.skipped) {
+        console.warn('[mail] inspection confirmation notification skipped', {
+          orderId,
+          reason: result.reason || 'unknown',
+          missing: result.missing,
+          recipientIds: result.recipientIds,
+        })
+      }
+    })
+    .catch((error) => {
+      console.error('[mail] inspection confirmation notification failed', { orderId, message: error?.message })
+    })
 }
 
 function nextAnchorAfterOccurrence(schedule, occurrenceDate) {
@@ -695,6 +744,7 @@ async function generateDue(req, res) {
   )
 
   const items = []
+  const createdOrderIds = []
   await transaction(async (connection) => {
     await ensureInspectionSchedulesTable(connection)
     await ensureInspectionOrderColumns(connection)
@@ -713,8 +763,11 @@ async function generateDue(req, res) {
         nextRunAnchor: nextState.nextRunAnchor,
         active: nextState.active,
       })
+      if (result.created) createdOrderIds.push(result.orderId)
     }
   })
+
+  createdOrderIds.forEach((orderId) => triggerInspectionConfirmationMail(orderId))
 
   res.json({
     dueDate,

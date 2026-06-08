@@ -1,6 +1,7 @@
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { customerNameKey } = require('../../utils/chinese')
+const { effectiveSettings } = require('../settings/controller')
 
 const fallbackPois = [
   {
@@ -132,12 +133,14 @@ function mergePoiResults(...groups) {
 }
 
 async function searchMapPois({ keyword, latitude, longitude }) {
-  if (!env.amapKey) {
+  const settings = await effectiveSettings()
+  const amapKey = settings.map?.amapRestKey || env.amapKey
+  if (!amapKey) {
     return fallbackPois.filter((item) => !keyword || `${item.name}${item.address}`.includes(keyword))
   }
 
   const baseParams = new URLSearchParams({
-    key: env.amapKey,
+    key: amapKey,
     keywords: keyword || '公司',
     offset: '10',
     page: '1',
