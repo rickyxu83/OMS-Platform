@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin } from "lucide-react";
+import { api } from "@/services/api";
 
-const AMAP_JSAPI_KEY =
+const ENV_AMAP_JSAPI_KEY =
   (import.meta as any).env.VITE_AMAP_JSAPI_KEY?.trim() ||
   (import.meta as any).env.VITE_AMAP_KEY?.trim() ||
   "";
-const AMAP_SECURITY_JS_CODE =
+const ENV_AMAP_SECURITY_JS_CODE =
   (import.meta as any).env.VITE_AMAP_SECURITY_JS_CODE?.trim() || "";
 
-export const AMAP_CONFIGURED = Boolean(AMAP_JSAPI_KEY && AMAP_SECURITY_JS_CODE);
+export const AMAP_CONFIGURED = Boolean(ENV_AMAP_JSAPI_KEY && ENV_AMAP_SECURITY_JS_CODE);
 
 interface AmapPoint {
   id: string | number;
@@ -33,29 +34,52 @@ interface AmapProps {
 }
 
 let amapLoaderPromise: Promise<any> | null = null;
+let amapConfigPromise: Promise<AmapRuntimeConfig> | null = null;
 const MAX_FLIGHT_LINES = 80;
 
-function loadAMapScript(): Promise<any> {
+interface AmapRuntimeConfig {
+  jsapiKey: string;
+  securityJsCode: string;
+}
+
+async function loadAmapConfig(): Promise<AmapRuntimeConfig> {
+  if (amapConfigPromise) return amapConfigPromise;
+  amapConfigPromise = api.get("/settings/public-map")
+    .then((data) => ({
+      jsapiKey: String(data?.item?.amapJsapiKey || ENV_AMAP_JSAPI_KEY || "").trim(),
+      securityJsCode: String(data?.item?.amapSecurityJsCode || ENV_AMAP_SECURITY_JS_CODE || "").trim(),
+    }))
+    .catch(() => ({
+      jsapiKey: ENV_AMAP_JSAPI_KEY,
+      securityJsCode: ENV_AMAP_SECURITY_JS_CODE,
+    }));
+  return amapConfigPromise;
+}
+
+function loadAMapScript(config: AmapRuntimeConfig): Promise<any> {
   if (typeof window === "undefined") return Promise.reject(new Error("AMap 需在浏览器环境"));
   if ((window as any).AMap?.Map) return Promise.resolve((window as any).AMap);
   if (amapLoaderPromise) return amapLoaderPromise;
-  if (!AMAP_JSAPI_KEY || !AMAP_SECURITY_JS_CODE) {
+  if (!config.jsapiKey || !config.securityJsCode) {
     return Promise.reject(new Error("未配置 AMap JSAPI 密钥或安全密钥"));
   }
-  (window as any)._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY_JS_CODE };
+  (window as any)._AMapSecurityConfig = { securityJsCode: config.securityJsCode };
   amapLoaderPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector('script[data-amap-jsapi="true"]') as HTMLScriptElement | null;
-    if (existing) {
+    if (existing && existing.dataset.amapKey === config.jsapiKey) {
       existing.addEventListener("load", () => resolve((window as any).AMap), { once: true });
       existing.addEventListener("error", () => reject(new Error("AMap JSAPI 加载失败")), { once: true });
       return;
+    } else if (existing) {
+      existing.remove();
     }
     const script = document.createElement("script");
     script.type = "text/javascript";
     script.async = true;
     script.defer = true;
     script.dataset.amapJsapi = "true";
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(AMAP_JSAPI_KEY)}`;
+    script.dataset.amapKey = config.jsapiKey;
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(config.jsapiKey)}`;
     script.onload = () => resolve((window as any).AMap);
     script.onerror = () => reject(new Error("AMap JSAPI 加载失败"));
     document.head.appendChild(script);
@@ -168,15 +192,14 @@ export function Amap({
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    if (!AMAP_CONFIGURED) {
-      setState("fallback");
-      setErrorMsg("未配置 AMap JSAPI 密钥");
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
-        const AMap = await loadAMapScript();
+        const config = await loadAmapConfig();
+        if (!config.jsapiKey || !config.securityJsCode) {
+          throw new Error("未配置 AMap JSAPI 密钥或安全密钥");
+        }
+        const AMap = await loadAMapScript(config);
         if (cancelled || !containerRef.current) return;
         if (mapRef.current) {
           mapRef.current.destroy();

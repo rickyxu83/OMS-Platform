@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Save, Send, WandSparkles } from "lucide-react";
+import { Loader2, MapPinned, RefreshCw, Save, Send, WandSparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,11 @@ interface SettingsForm {
     password: string;
     assignNotifyEnabled: boolean;
   };
+  map: {
+    amapRestKey: string;
+    amapJsapiKey: string;
+    amapSecurityJsCode: string;
+  };
 }
 
 const emptyForm: SettingsForm = {
@@ -45,6 +50,11 @@ const emptyForm: SettingsForm = {
     user: "",
     password: "",
     assignNotifyEnabled: false,
+  },
+  map: {
+    amapRestKey: "",
+    amapJsapiKey: "",
+    amapSecurityJsCode: "",
   },
 };
 
@@ -87,6 +97,11 @@ export function SystemSettings() {
           password: item.mail?.password || "",
           assignNotifyEnabled: toBool(item.mail?.assignNotifyEnabled),
         },
+        map: {
+          amapRestKey: item.map?.amapRestKey || "",
+          amapJsapiKey: item.map?.amapJsapiKey || "",
+          amapSecurityJsCode: item.map?.amapSecurityJsCode || "",
+        },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载设置失败");
@@ -115,6 +130,7 @@ export function SystemSettings() {
           secure: form.mail.secure,
           assignNotifyEnabled: form.mail.assignNotifyEnabled,
         },
+        map: form.map,
       });
       setSaved("设置已保存");
       await load();
@@ -158,7 +174,7 @@ export function SystemSettings() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">系统设置</h1>
-          <p className="mt-1 text-muted-foreground">配置 AI 总结和派单邮件通知</p>
+          <p className="mt-1 text-muted-foreground">配置 AI 总结、地图服务和派单邮件通知</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load} disabled={loading || saving}>
@@ -324,6 +340,53 @@ export function SystemSettings() {
                   onChange={(e) => setTestRecipient(e.target.value)}
                   placeholder="不填则发送到 SMTP 账号"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <MapPinned className="h-5 w-5 text-primary" />
+                <CardTitle>地图服务</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label>高德 Web 服务 API Key</Label>
+                <Input
+                  type="password"
+                  value={form.map.amapRestKey}
+                  onChange={(e) => setForm({ ...form, map: { ...form.map, amapRestKey: e.target.value } })}
+                  placeholder="用于客户地址搜索，保存后会以星号显示"
+                />
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>高德 JSAPI Key</Label>
+                  <Input
+                    type="password"
+                    value={form.map.amapJsapiKey}
+                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapJsapiKey: e.target.value } })}
+                    placeholder="用于管理端地图展示"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>高德安全密钥</Label>
+                  <Input
+                    type="password"
+                    value={form.map.amapSecurityJsCode}
+                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapSecurityJsCode: e.target.value } })}
+                    placeholder="securityJsCode，保存后会以星号显示"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                后端地址搜索使用 Web 服务 API Key；仪表盘地图使用 JSAPI Key 和安全密钥。修改后保存并刷新页面即可生效。
               </div>
             </CardContent>
           </Card>
