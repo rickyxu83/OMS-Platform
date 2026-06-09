@@ -97,13 +97,15 @@ async function upload(req, res) {
     throw error
   }
 
+  const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8')
+
   const result = await query(
     `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
      VALUES (:ownerType, :ownerId, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
     {
       ownerType,
       ownerId,
-      originalName: req.file.originalname,
+      originalName,
       storagePath: req.file.path,
       mimeType: req.file.mimetype,
       size: req.file.size,
@@ -113,7 +115,7 @@ async function upload(req, res) {
 
   res.status(201).json({
     id: result.insertId,
-    originalName: req.file.originalname,
+    originalName,
     mimeType: req.file.mimetype,
     size: req.file.size,
   })
@@ -128,7 +130,10 @@ async function download(req, res) {
 
   await assertCanAccessFile(file, req.user)
 
-  res.download(file.storage_path, file.original_name)
+  const filename = file.original_name
+  const encoded = encodeURIComponent(filename)
+  res.set('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
+  res.download(file.storage_path)
 }
 
 async function remove(req, res) {
