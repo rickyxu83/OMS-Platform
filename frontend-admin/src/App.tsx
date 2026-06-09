@@ -1,20 +1,21 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/contexts/AuthContext"
-import { AdminLayout } from "@/components/AdminLayout"
 import { Login } from "@/pages/Login"
-import { Dashboard } from "@/pages/Dashboard"
-import { ServiceOrders } from "@/pages/ServiceOrders"
-import { InspectionSchedules } from "@/pages/InspectionSchedules"
-import { Customers } from "@/pages/Customers"
-import { Devices } from "@/pages/Devices"
-import { MaintenanceParties } from "@/pages/MaintenanceParties"
-import { Timesheets } from "@/pages/Timesheets"
-import { Users } from "@/pages/Users"
-import { AuditLogs } from "@/pages/AuditLogs"
-import { SystemSettings } from "@/pages/SystemSettings"
 import { useLanguage } from "@/contexts/LanguageContext"
-import type { ReactNode } from "react"
+import { lazy, Suspense, type ReactNode } from "react"
+
+const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
+const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })))
+const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
+const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
+const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
+const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default: module.Devices })))
+const MaintenanceParties = lazy(() => import("@/pages/MaintenanceParties").then((module) => ({ default: module.MaintenanceParties })))
+const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ default: module.Timesheets })))
+const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
+const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
+const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
   users: ["admin", "assistant", "dispatcher", "supervisor", "engineering_supervisor", "sales_supervisor"],
@@ -46,6 +47,27 @@ function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: stri
   return <>{children}</>
 }
 
+function PageLoading() {
+  const { lang } = useLanguage()
+  return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+      {lang === "zh-TW" ? "載入中…" : "加载中…"}
+    </div>
+  )
+}
+
+function ProtectedAdminPage({ children, allow }: { children: ReactNode; allow?: string[] }) {
+  return (
+    <ProtectedRoute allow={allow}>
+      <Suspense fallback={<PageLoading />}>
+        <AdminLayout>
+          {children}
+        </AdminLayout>
+      </Suspense>
+    </ProtectedRoute>
+  )
+}
+
 export default function App() {
   return (
     <>
@@ -54,111 +76,89 @@ export default function App() {
         <Route
           path="/"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <Dashboard />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <Dashboard />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <Dashboard />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <Dashboard />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/service-orders"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <ServiceOrders />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <ServiceOrders />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/inspection-schedules"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <InspectionSchedules />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <InspectionSchedules />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/customers"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <Customers />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <Customers />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/devices"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <Devices />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <Devices />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/maintenance-parties"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <MaintenanceParties />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <MaintenanceParties />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/timesheets"
           element={
-            <ProtectedRoute>
-              <AdminLayout>
-                <Timesheets />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage>
+              <Timesheets />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/users"
           element={
-            <ProtectedRoute allow={ROUTE_ACCESS_ROLES.users}>
-              <AdminLayout>
-                <Users />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES.users}>
+              <Users />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/audit-logs"
           element={
-            <ProtectedRoute allow={ROUTE_ACCESS_ROLES["audit-logs"]}>
-              <AdminLayout>
-                <AuditLogs />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES["audit-logs"]}>
+              <AuditLogs />
+            </ProtectedAdminPage>
           }
         />
         <Route
           path="/settings"
           element={
-            <ProtectedRoute allow={ROUTE_ACCESS_ROLES.settings}>
-              <AdminLayout>
-                <SystemSettings />
-              </AdminLayout>
-            </ProtectedRoute>
+            <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES.settings}>
+              <SystemSettings />
+            </ProtectedAdminPage>
           }
         />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
