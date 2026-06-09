@@ -142,13 +142,14 @@ function drawSignature(event) {
   ctx.stroke()
   lastPoint = point
   lastMidPoint = midPoint
-  signatureData.value = canvas.toDataURL('image/png')
 }
 
 function endSignature() {
+  const shouldCapture = drawing && signatureCanvas.value
   drawing = false
   lastPoint = null
   lastMidPoint = null
+  if (shouldCapture) signatureData.value = signatureCanvas.value.toDataURL('image/png')
 }
 
 function clearSignature() {

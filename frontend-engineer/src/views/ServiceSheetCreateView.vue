@@ -1318,13 +1318,14 @@ function drawSignature(event) {
   lastSignaturePoint = point
   lastSignatureMidPoint = midPoint
   signatureDrawn.value = true
-  customerSignature.value = canvas.toDataURL('image/png')
 }
 
 function endSignature() {
+  const shouldCapture = drawingSignature && signatureCanvas.value && signatureDrawn.value
   drawingSignature = false
   lastSignaturePoint = null
   lastSignatureMidPoint = null
+  if (shouldCapture) customerSignature.value = signatureCanvas.value.toDataURL('image/png')
 }
 
 function clearSignature() {
