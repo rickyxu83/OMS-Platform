@@ -424,9 +424,9 @@ const orders = [
 
 // ─── Inspection Schedules ────────────────────────────────────────────────────
 const inspectionSchedules = [
-  { customerCode: 'DEMO-ACME', deviceSerial: 'DEMO-ACME-VMW', engineerUsername: 'engineer', cadence: 'quarterly', nextRunAnchor: '2026-08-06' },
-  { customerCode: 'DEMO-BETA', deviceSerial: 'DEMO-BETA-STG', engineerUsername: 'engineer_zhou', cadence: 'monthly', nextRunAnchor: '2026-06-08' },
-  { customerCode: 'DEMO-GAMMA', deviceSerial: 'DEMO-GAMMA-FW', engineerUsername: 'engineer_chen', cadence: 'bi-monthly', nextRunAnchor: '2026-07-03' },
+  { customerCode: 'DEMO-ACME', deviceSerials: ['DEMO-ACME-VMW', 'DEMO-ACME-PAN'], engineerUsername: 'engineer', cadence: 'quarterly', nextRunAnchor: '2026-08-06' },
+  { customerCode: 'DEMO-BETA', deviceSerials: ['DEMO-BETA-STG'], engineerUsername: 'engineer_zhou', cadence: 'monthly', nextRunAnchor: '2026-06-08' },
+  { customerCode: 'DEMO-GAMMA', deviceSerials: ['DEMO-GAMMA-FW', 'DEMO-GAMMA-AP'], engineerUsername: 'engineer_chen', cadence: 'bi-monthly', nextRunAnchor: '2026-07-03' },
 ]
 
 // ─── Timesheet Manual Entries ────────────────────────────────────────────────
@@ -701,15 +701,32 @@ async function main() {
     // ── Inspection Schedules ──
     for (const s of inspectionSchedules) {
       const customerId = await idBy(connection, 'SELECT id FROM customers WHERE code = :code LIMIT 1', { code: s.customerCode })
-      const deviceId = await idBy(connection, 'SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: s.deviceSerial })
       const engineerId = await idBy(connection, 'SELECT id FROM users WHERE username = :username LIMIT 1', { username: s.engineerUsername })
-      if (customerId && deviceId && engineerId) {
-        await connection.execute(
-          `INSERT INTO inspection_schedules (customer_id, device_id, target_engineer_id, cadence, next_run_anchor, created_by)
-           VALUES (:customerId, :deviceId, :engineerId, :cadence, :nextRun, :adminId)
+      if (customerId && engineerId) {
+        const [result] = await connection.execute(
+          `INSERT INTO inspection_schedules (customer_id, target_engineer_id, cadence, next_run_anchor, created_by)
+           VALUES (:customerId, :engineerId, :cadence, :nextRun, :adminId)
            ON DUPLICATE KEY UPDATE next_run_anchor = VALUES(next_run_anchor)`,
-          { customerId, deviceId, engineerId, cadence: s.cadence, nextRun: s.nextRunAnchor, adminId },
+          { customerId, engineerId, cadence: s.cadence, nextRun: s.nextRunAnchor, adminId },
         )
+        const scheduleId = result.insertId || await (async () => {
+          const [rows] = await connection.execute(
+            `SELECT id FROM inspection_schedules WHERE customer_id = :customerId AND target_engineer_id = :engineerId AND cadence = :cadence LIMIT 1`,
+            { customerId, engineerId, cadence: s.cadence },
+          )
+          return rows[0]?.id
+        })()
+        if (scheduleId && s.deviceSerials) {
+          for (const serial of s.deviceSerials) {
+            const deviceId = await idBy(connection, 'SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: serial })
+            if (deviceId) {
+              await connection.execute(
+                `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
+                { scheduleId, deviceId },
+              )
+            }
+          }
+        }
       }
     }
 
