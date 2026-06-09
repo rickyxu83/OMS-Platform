@@ -216,7 +216,7 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
       (s) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(s.customer_name || '-')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(s.device_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(s.device_names || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(cadenceLabel[s.cadence] || s.cadence)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(s.next_run_anchor || '').slice(0, 10))}</td>
       </tr>`,
