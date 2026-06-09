@@ -33,7 +33,6 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 ## User Guide
 
 - [English user guide](docs/wiki/user-guide.en.md)
-- [中文使用说明](docs/wiki/user-guide.md)
 - [简体中文使用说明](docs/wiki/user-guide.zh-CN.md)
 - [繁體中文使用說明](docs/wiki/user-guide.zh-TW.md)
 
