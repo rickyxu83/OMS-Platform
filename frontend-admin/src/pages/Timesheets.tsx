@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,7 +73,11 @@ function getSourceLabel(source?: string) {
 }
 
 async function downloadEngineerWorkbook(filename: string, label: string, items: TimesheetItem[]) {
-  const workbook = new ExcelJS.Workbook();
+  const [{ Workbook }, { saveAs }] = await Promise.all([
+    import("exceljs"),
+    import("file-saver"),
+  ]);
+  const workbook = new Workbook();
   workbook.creator = "Service Sheet RC";
   workbook.created = new Date();
   workbook.modified = new Date();

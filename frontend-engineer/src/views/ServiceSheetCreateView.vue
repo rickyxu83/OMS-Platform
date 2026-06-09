@@ -2167,17 +2167,20 @@ async function submitServiceSheet() {
       : await api.post('/service-orders/self-report', payload)
     const submittedLabel = result?.orderNo || editingTask.value?.orderNo || result?.id || route.params.id || '服务记录'
     message.value = `服务记录已提交：${submittedLabel}`
-    if (route.params.id) {
-      await clearSelfReportDraft(draftTargetOrderId(), createDraftRouteMode(), createDraftRouteId())
-    } else if (result?.id) {
-      await preserveSubmittedCreateDraftBridge(result.id)
+    try {
+      if (route.params.id) {
+        await clearSelfReportDraft(draftTargetOrderId(), createDraftRouteMode(), createDraftRouteId())
+      } else if (result?.id) {
+        await preserveSubmittedCreateDraftBridge(result.id)
+      }
+    } catch (cleanupError) {
+      console.warn('[service-sheet] submitted, but draft cleanup failed', cleanupError)
     }
     draftSavedAt.value = ''
     draftSavedAtMs.value = 0
     draftDirty.value = false
     draftCountdown.value = 0
     if (pendingSyncCount.value) syncPendingSelfReports().catch(() => {})
-    await load()
     returnToTasks()
   } catch (err) {
     if (isConnectivityError(err)) {
