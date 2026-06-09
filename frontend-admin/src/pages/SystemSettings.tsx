@@ -375,7 +375,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <div className="font-medium">维保到期预警</div>
-                  <div className="text-sm text-muted-foreground">设备维保到期前发送邮件通知。</div>
+                  <div className="text-sm text-muted-foreground">设备维保到期前发送邮件通知，默认同时抄送客户销售负责人。</div>
                 </div>
                 <Switch
                   checked={form.notification.maintenanceExpiryEnabled}
@@ -392,7 +392,7 @@ export function SystemSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>收件人（留空则发送给管理员和主管）</Label>
+                  <Label>额外收件人（留空则仅发送默认收件人）</Label>
                   <Input
                     value={form.notification.maintenanceExpiryRecipients}
                     onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: e.target.value } })}
