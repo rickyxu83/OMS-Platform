@@ -49,6 +49,7 @@ const app = express()
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 
 app.disable('x-powered-by')
+app.set('trust proxy', true)
 app.use(helmet())
 app.use(cors(corsOptions))
 app.use(express.json({ limit: '10mb' }))
