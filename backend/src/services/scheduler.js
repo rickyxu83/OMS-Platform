@@ -72,12 +72,38 @@ function startScheduler() {
         )
       }
 
-      if (!adminRows.length) {
+      const salespersonNames = [...new Set(devices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
+      let salespersonRows = []
+      if (salespersonNames.length) {
+        const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
+        const params = {}
+        salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
+        salespersonRows = await query(
+          `SELECT email, real_name FROM users
+           WHERE (real_name IN (${placeholders}) OR username IN (${placeholders}))
+             AND email IS NOT NULL AND email <> ''`,
+          params,
+        )
+        if (salespersonRows.length) {
+          console.log(`[scheduler] Found ${salespersonRows.length} salespeople with emails: ${salespersonRows.map((r) => `${r.real_name}<${r.email}>`).join(', ')}`)
+        }
+      }
+
+      const allRecipients = [...adminRows, ...salespersonRows]
+      const seen = new Set()
+      const deduped = allRecipients.filter((r) => {
+        const key = r.email.toLowerCase().trim()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+      if (!deduped.length) {
         console.warn('[scheduler] No recipients for maintenance expiry mail')
         return
       }
 
-      const result = await sendMaintenanceExpiryMail(devices, adminRows)
+      const result = await sendMaintenanceExpiryMail(devices, deduped)
       if (result?.skipped) {
         console.warn('[scheduler] Maintenance expiry mail skipped', {
           reason: result.reason,
