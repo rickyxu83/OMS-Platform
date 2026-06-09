@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil } from "lucide-react";
+import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +77,9 @@ export function Users() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [permDialogOpen, setPermDialogOpen] = useState(false);
+  const [permData, setPermData] = useState<Record<string, { label: string; permissions: { key: string; label: string }[] }> | null>(null);
+  const [loadingPerms, setLoadingPerms] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | number | null>(null);
   const [form, setForm] = useState({
     username: "",
@@ -238,6 +241,19 @@ export function Users() {
           <Button variant="outline" onClick={load}>
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
+          </Button>
+          <Button variant="outline" onClick={async () => {
+            if (permData) { setPermDialogOpen(true); return }
+            setLoadingPerms(true);
+            try {
+              const data = await api.get("/roles/permissions");
+              setPermData(data as Record<string, { label: string; permissions: { key: string; label: string }[] }>);
+              setPermDialogOpen(true);
+            } catch { setError("加载权限目录失败") }
+            finally { setLoadingPerms(false) }
+          }}>
+            <Shield className="w-4 h-4 mr-2" />
+            权限说明
           </Button>
           <Button onClick={openCreate}>
             <Plus className="w-4 h-4 mr-2" />
@@ -483,6 +499,60 @@ export function Users() {
               {saving ? "保存中…" : editingUserId ? "保存修改" : "立即创建"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={permDialogOpen} onOpenChange={setPermDialogOpen}>
+        <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>角色权限目录</DialogTitle>
+            <DialogDescription>
+              各角色可访问的功能模块对照表
+            </DialogDescription>
+          </DialogHeader>
+          {loadingPerms ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+            </div>
+          ) : permData ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">功能模块</th>
+                    {Object.values(permData).map((role) => (
+                      <th key={role.label} className="text-center py-2 px-2 font-medium text-muted-foreground text-xs">
+                        {role.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.values(permData)[0]?.permissions.map((_, idx) => {
+                    const permKey = Object.values(permData)[0]?.permissions[idx]?.key || "";
+                    const permLabel = Object.values(permData)[0]?.permissions[idx]?.label || "";
+                    return (
+                      <tr key={permKey} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="py-2 px-3 text-sm">{permLabel}</td>
+                        {Object.values(permData).map((role) => {
+                          const has = role.permissions.some((p) => p.key === permKey);
+                          return (
+                            <td key={role.label} className="text-center py-2 px-2">
+                              {has ? (
+                                <span className="text-emerald-600 font-bold">✓</span>
+                              ) : (
+                                <span className="text-muted-foreground/30">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

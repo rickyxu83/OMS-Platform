@@ -81,6 +81,10 @@ app.use('/api/v1/service-orders', authenticate, requireEngineerOnboardingComplet
 app.use('/api/v1/files', authenticate, requireEngineerOnboardingComplete, auditLogger, fileRoutes)
 app.use('/api/v1/settings', authenticate, requireEngineerOnboardingComplete, auditLogger, settingsRoutes)
 app.use('/api/v1/audit-logs', authenticate, requireEngineerOnboardingComplete, auditLogger, auditLogRoutes)
+app.get('/api/v1/roles/permissions', authenticate, requireEngineerOnboardingComplete, (_req, res) => {
+  const { getRolePermissions } = require('./permissions/catalog')
+  res.json(getRolePermissions())
+})
 
 app.use(notFoundHandler)
 app.use(errorHandler)
