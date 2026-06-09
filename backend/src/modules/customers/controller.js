@@ -905,4 +905,5 @@ module.exports = {
   remove,
   merge,
   devices,
+  nextCustomerCode,
 }

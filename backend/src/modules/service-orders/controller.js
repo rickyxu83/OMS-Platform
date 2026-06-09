@@ -7,6 +7,7 @@ const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
+const { nextCustomerCode } = require('../customers/controller')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const signatureRoot = path.join(uploadRoot, 'signatures')
@@ -1471,18 +1472,20 @@ async function createSelfReport(req, res) {
           },
         )
       } else {
+        const customerCode = await nextCustomerCode(connection)
         const [customerResult] = await connection.execute(
         `INSERT INTO customers (
-           name, name_key, address, contact_name, contact_phone, latitude, longitude,
+           name, name_key, code, address, contact_name, contact_phone, latitude, longitude,
            map_provider, map_poi_id, map_poi_name, map_address
          )
          VALUES (
-           :customerName, :nameKey, :customerAddress, :contactName, :contactPhone, :customerLatitude, :customerLongitude,
+           :customerName, :nameKey, :customerCode, :customerAddress, :contactName, :contactPhone, :customerLatitude, :customerLongitude,
            :customerMapProvider, :customerMapPoiId, :customerMapPoiName, :customerMapAddress
          )`,
           {
             customerName,
             nameKey,
+            customerCode,
             customerAddress: customerAddress || null,
             contactName: contactName || null,
             contactPhone: contactPhone || null,
