@@ -222,6 +222,11 @@ function normalizeProgress(value) {
   return String(value || '已完成').trim() || '已完成'
 }
 
+function normalizeReportResult(value) {
+  const result = String(value || '').trim()
+  return ['resolved', 'unresolved', 'follow_up_required'].includes(result) ? result : null
+}
+
 async function ensureTimesheetManualEntriesTable(connection = null) {
   const executor = connection || { execute: query }
   await executor.execute(
@@ -1404,6 +1409,7 @@ async function createSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const normalizedResult = normalizeReportResult(result)
   const missing = []
   if (!customerId && !customerName) missing.push('客户名称')
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
@@ -1413,7 +1419,7 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
-  if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature) missing.push('客户手写签名')
@@ -1623,7 +1629,7 @@ async function createSelfReport(req, res) {
         actualEndAt: actualEndAt || null,
         returnAt: returnAt || null,
         workContent: effectiveWorkContent,
-        result,
+        result: normalizedResult,
         resultDescription: resultDescription || null,
         customerConfirmName: contactName || null,
         customerSignatureFileId,
@@ -1921,6 +1927,7 @@ async function updateSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const normalizedResult = normalizeReportResult(result)
   const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
   const existingSignature = await query(
     `SELECT customer_signature_file_id, customer_signature
@@ -1940,7 +1947,7 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
   if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
-  if (effectiveServiceMode !== 'office' && !result) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
+  if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature && !hasExistingSignature) missing.push('客户手写签名')
@@ -2103,7 +2110,7 @@ async function updateSelfReport(req, res) {
         actualEndAt: actualEndAt || null,
         returnAt: returnAt || null,
         workContent: effectiveWorkContent,
-        result,
+        result: normalizedResult,
         resultDescription: resultDescription || null,
         customerConfirmName: contactName || customerConfirmName || null,
         customerSignatureFileId: savedSignatureFileId,

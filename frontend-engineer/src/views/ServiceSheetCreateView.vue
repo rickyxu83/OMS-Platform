@@ -203,6 +203,8 @@ function createOfficeDraft() {
     actualStartAt: '',
     actualEndAt: '',
     workContent: '',
+    result: 'resolved',
+    resultDescription: '',
   }
 }
 
@@ -264,8 +266,8 @@ function currentModeServiceDraftView() {
       commonWorkContent: '',
       workContent: officeDraft.value.workContent,
       workEntries: [],
-      result: '',
-      resultDescription: '',
+      result: officeDraft.value.result,
+      resultDescription: officeDraft.value.resultDescription,
     }
   }
   return {
@@ -316,6 +318,8 @@ function updateActiveDraftField(field, value) {
     else if (field === 'actualStartAt') officeDraft.value.actualStartAt = value
     else if (field === 'actualEndAt') officeDraft.value.actualEndAt = value
     else if (field === 'workContent') officeDraft.value.workContent = value
+    else if (field === 'result') officeDraft.value.result = value
+    else if (field === 'resultDescription') officeDraft.value.resultDescription = value
     return
   }
 
@@ -873,6 +877,8 @@ async function restoreDraftIfPresent() {
         actualStartAt: legacyDraft.actualStartAt || '',
         actualEndAt: legacyDraft.actualEndAt || '',
         workContent: legacyDraft.workContent || '',
+        result: legacyDraft.result || officeDraft.value.result,
+        resultDescription: legacyDraft.resultDescription || '',
       }
     } else {
       onsiteDraft.value = {
@@ -2025,6 +2031,8 @@ async function load() {
           actualStartAt: formatLoadedDateTime(report.actualStartAt || detailData.item.submittedAt),
           actualEndAt: formatLoadedDateTime(report.actualEndAt || detailData.item.updatedAt || detailData.item.submittedAt),
           workContent: report.workContent || detailData.item.issueDescription || '',
+          result: report.result || officeDraft.value.result || 'resolved',
+          resultDescription: report.resultDescription || '',
         }
       } else {
         onsiteDraft.value = {
@@ -2236,8 +2244,8 @@ async function validateRequiredFields() {
   }
   if (!isOfficeMode.value && !String(serviceDraft.value.issueDescription || '').trim()) errors.issueDescription = '请填写问题描述'
   if (!combinedWorkContent()) errors.workContent = currentServiceMode.value === 'remote' ? '请填写处理记录' : '请填写服务内容 / 现场处理记录'
-  if (!isOfficeMode.value && !String(serviceDraft.value.result || '').trim()) {
-    errors.result = currentServiceMode.value === 'remote' ? '请选择处理结果' : '请选择服务结论'
+  if (!String(serviceDraft.value.result || '').trim()) {
+    errors.result = isOfficeMode.value ? '请选择完成状态' : currentServiceMode.value === 'remote' ? '请选择处理结果' : '请选择服务结论'
   }
   for (const [label, , required] of [...travelTimeFields.value, ...closeoutTimeFields.value]) {
     if (!required) continue
@@ -2903,9 +2911,9 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           </div>
         </div>
 
-        <div v-if="!isOfficeMode" class="field-grid">
+        <div class="field-grid">
           <label class="field select-field" :class="{ 'has-error': fieldErrors.result }">
-            <span>{{ zh(isRemoteLikeMode ? '处理结果' : '服务结论') }}<b>*</b></span>
+            <span>{{ zh(isOfficeMode ? '完成状态' : isRemoteLikeMode ? '处理结果' : '服务结论') }}<b>*</b></span>
             <select
               ref="serviceResultInput"
               v-model="serviceDraft.result"
