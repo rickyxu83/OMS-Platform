@@ -26,6 +26,13 @@ interface SettingsForm {
     password: string;
     assignNotifyEnabled: boolean;
   };
+  notification: {
+    maintenanceExpiryEnabled: boolean;
+    maintenanceExpiryDays: string;
+    maintenanceExpiryRecipients: string;
+    inspectionReminderEnabled: boolean;
+    inspectionReminderDays: string;
+  };
   map: {
     amapRestKey: string;
     amapJsapiKey: string;
@@ -50,6 +57,13 @@ const emptyForm: SettingsForm = {
     user: "",
     password: "",
     assignNotifyEnabled: false,
+  },
+  notification: {
+    maintenanceExpiryEnabled: true,
+    maintenanceExpiryDays: "30",
+    maintenanceExpiryRecipients: "",
+    inspectionReminderEnabled: true,
+    inspectionReminderDays: "3",
   },
   map: {
     amapRestKey: "",
@@ -79,6 +93,7 @@ export function SystemSettings() {
     try {
       const data = await api.get("/settings");
       const item = data?.item || {};
+      const n = item.notification || {};
       setForm({
         ai: {
           workSummaryEnabled: toBool(item.ai?.workSummaryEnabled),
@@ -96,6 +111,13 @@ export function SystemSettings() {
           user: item.mail?.user || "",
           password: item.mail?.password || "",
           assignNotifyEnabled: toBool(item.mail?.assignNotifyEnabled),
+        },
+        notification: {
+          maintenanceExpiryEnabled: toBool(n.maintenanceExpiryEnabled ?? true),
+          maintenanceExpiryDays: String(n.maintenanceExpiryDays || "30"),
+          maintenanceExpiryRecipients: n.maintenanceExpiryRecipients || "",
+          inspectionReminderEnabled: toBool(n.inspectionReminderEnabled ?? true),
+          inspectionReminderDays: String(n.inspectionReminderDays || "3"),
         },
         map: {
           amapRestKey: item.map?.amapRestKey || "",
@@ -130,6 +152,7 @@ export function SystemSettings() {
           secure: form.mail.secure,
           assignNotifyEnabled: form.mail.assignNotifyEnabled,
         },
+        notification: form.notification,
         map: form.map,
       });
       setSaved("设置已保存");
@@ -340,6 +363,67 @@ export function SystemSettings() {
                   onChange={(e) => setTestRecipient(e.target.value)}
                   placeholder="不填则发送到 SMTP 账号"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>通知提醒</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">维保到期预警</div>
+                  <div className="text-sm text-muted-foreground">设备维保到期前发送邮件通知。</div>
+                </div>
+                <Switch
+                  checked={form.notification.maintenanceExpiryEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryEnabled: c } })}
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>提前提醒天数</Label>
+                  <Input
+                    type="number" min="1" max="365"
+                    value={form.notification.maintenanceExpiryDays}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryDays: e.target.value } })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>收件人（留空则发送给管理员和主管）</Label>
+                  <Input
+                    value={form.notification.maintenanceExpiryRecipients}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: e.target.value } })}
+                    placeholder="user1@example.com, user2@example.com"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">巡检执行提醒</div>
+                  <div className="text-sm text-muted-foreground">巡检计划执行前发送邮件给工程师。</div>
+                </div>
+                <Switch
+                  checked={form.notification.inspectionReminderEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionReminderEnabled: c } })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>提前提醒天数</Label>
+                <Input
+                  type="number" min="1" max="365"
+                  value={form.notification.inspectionReminderDays}
+                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionReminderDays: e.target.value } })}
+                />
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                系统每天 08:00 检查维保到期，07:00 检查巡检执行。保存后次日生效。
               </div>
             </CardContent>
           </Card>

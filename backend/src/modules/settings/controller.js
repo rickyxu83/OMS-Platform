@@ -22,6 +22,13 @@ const settingKeys = [
   'map.amapRestKey',
   'map.amapJsapiKey',
   'map.amapSecurityJsCode',
+  'notification.maintenanceExpiryEnabled',
+  'notification.maintenanceExpiryDays',
+  'notification.maintenanceExpiryRecipients',
+  'notification.maintenanceExpiryCron',
+  'notification.inspectionReminderEnabled',
+  'notification.inspectionReminderDays',
+  'notification.inspectionReminderCron',
 ]
 
 function boolText(value, fallback = false) {
@@ -58,6 +65,15 @@ async function effectiveSettings() {
       amapJsapiKey: saved['map.amapJsapiKey'] ?? '',
       amapSecurityJsCode: saved['map.amapSecurityJsCode'] ?? '',
     },
+    notification: {
+      maintenanceExpiryEnabled: boolText(saved['notification.maintenanceExpiryEnabled'], true),
+      maintenanceExpiryDays: saved['notification.maintenanceExpiryDays'] || '30',
+      maintenanceExpiryRecipients: saved['notification.maintenanceExpiryRecipients'] || '',
+      maintenanceExpiryCron: saved['notification.maintenanceExpiryCron'] || '0 8 * * *',
+      inspectionReminderEnabled: boolText(saved['notification.inspectionReminderEnabled'], true),
+      inspectionReminderDays: saved['notification.inspectionReminderDays'] || '3',
+      inspectionReminderCron: saved['notification.inspectionReminderCron'] || '0 7 * * *',
+    },
   }
 }
 
@@ -84,6 +100,7 @@ async function publicSettings(_req, res) {
         amapSecurityJsCode: masked(settings.map.amapSecurityJsCode),
         hasAmapSecurityJsCode: Boolean(settings.map.amapSecurityJsCode),
       },
+      notification: settings.notification,
     },
   })
 }
@@ -180,6 +197,17 @@ async function update(req, res) {
     next['map.amapRestKey'] = map.amapRestKey
     next['map.amapJsapiKey'] = map.amapJsapiKey
     next['map.amapSecurityJsCode'] = map.amapSecurityJsCode
+  }
+
+  if (body.notification) {
+    const n = body.notification
+    next['notification.maintenanceExpiryEnabled'] = String(n.maintenanceExpiryEnabled === true || n.maintenanceExpiryEnabled === 'true')
+    next['notification.maintenanceExpiryDays'] = String(Math.max(1, Math.min(365, Number(n.maintenanceExpiryDays || 30))))
+    next['notification.maintenanceExpiryRecipients'] = String(n.maintenanceExpiryRecipients || '').trim()
+    next['notification.maintenanceExpiryCron'] = String(n.maintenanceExpiryCron || '0 8 * * *').trim()
+    next['notification.inspectionReminderEnabled'] = String(n.inspectionReminderEnabled === true || n.inspectionReminderEnabled === 'true')
+    next['notification.inspectionReminderDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionReminderDays || 3))))
+    next['notification.inspectionReminderCron'] = String(n.inspectionReminderCron || '0 7 * * *').trim()
   }
 
   await setSettings(next, req.user.id)

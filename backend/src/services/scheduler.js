@@ -1,29 +1,81 @@
 const cron = require('node-cron')
 const { query } = require('../config/db')
+const { getSettings } = require('../modules/settings/store')
 const { sendMaintenanceExpiryMail, sendInspectionReminderMail } = require('./mail')
 
+async function notificationSettings() {
+  const saved = await getSettings([
+    'notification.maintenanceExpiryEnabled',
+    'notification.maintenanceExpiryDays',
+    'notification.maintenanceExpiryRecipients',
+    'notification.inspectionReminderEnabled',
+    'notification.inspectionReminderDays',
+  ])
+  return {
+    maintenanceExpiryEnabled: saved['notification.maintenanceExpiryEnabled'] !== 'false',
+    maintenanceExpiryDays: Math.max(1, Math.min(365, Number(saved['notification.maintenanceExpiryDays'] || 30))),
+    maintenanceExpiryRecipients: String(saved['notification.maintenanceExpiryRecipients'] || '').trim(),
+    inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
+    inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
+  }
+}
+
 function startScheduler() {
-  // ── Maintenance expiry check: daily at 08:00 ──
   cron.schedule('0 8 * * *', async () => {
     console.log('[scheduler] Running maintenance expiry check...')
     try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.maintenanceExpiryEnabled) {
+        console.log('[scheduler] Maintenance expiry notification is disabled')
+        return
+      }
+
       const devices = await query(
         `SELECT d.id, d.name, d.model, d.serial_no, d.maintenance_end, d.maintenance_type,
                 c.name AS customer_name, c.salesperson
          FROM devices d
          JOIN customers c ON c.id = d.customer_id
          WHERE d.maintenance_end IS NOT NULL
-           AND DATEDIFF(d.maintenance_end, CURDATE()) = 30
+           AND DATEDIFF(d.maintenance_end, CURDATE()) = :expiryDays
            AND d.maintenance_type != 'none'`,
+        { expiryDays: nSettings.maintenanceExpiryDays },
       )
       if (!devices.length) {
-        console.log('[scheduler] No devices expiring in 30 days')
+        console.log(`[scheduler] No devices expiring in ${nSettings.maintenanceExpiryDays} days`)
         return
       }
 
-      const adminRows = await query(
-        `SELECT email FROM users WHERE email IS NOT NULL AND email <> '' AND role IN ('admin', 'supervisor')`,
-      )
+      let adminRows
+      if (nSettings.maintenanceExpiryRecipients) {
+        const emails = nSettings.maintenanceExpiryRecipients.split(/[,;\s]+/).filter(Boolean)
+        if (emails.length) {
+          const placeholders = emails.map((_, i) => `:email${i}`).join(',')
+          const params = {}
+          emails.forEach((email, i) => { params[`email${i}`] = email })
+          adminRows = await query(
+            `SELECT email FROM users WHERE email IN (${placeholders})`,
+            params,
+          )
+          if (adminRows.length < emails.length) {
+            const found = new Set(adminRows.map((r) => r.email))
+            const missing = emails.filter((e) => !found.has(e))
+            if (missing.length) {
+              console.warn('[scheduler] Some configured recipients not found in users table:', missing)
+            }
+          }
+        } else {
+          adminRows = []
+        }
+      } else {
+        adminRows = await query(
+          `SELECT email FROM users WHERE email IS NOT NULL AND email <> '' AND role IN ('admin', 'supervisor')`,
+        )
+      }
+
+      if (!adminRows.length) {
+        console.warn('[scheduler] No recipients for maintenance expiry mail')
+        return
+      }
 
       const result = await sendMaintenanceExpiryMail(devices, adminRows)
       if (result?.skipped) {
@@ -39,29 +91,36 @@ function startScheduler() {
     }
   })
 
-  // ── Inspection reminder: daily at 07:00 ──
   cron.schedule('0 7 * * *', async () => {
     console.log('[scheduler] Running inspection reminder check...')
     try {
-      const schedules = await query(
-        `SELECT s.id, s.cadence, s.next_run_anchor, s.target_engineer_id,
-                d.name AS device_name,
-                c.name AS customer_name,
-                u.email AS engineer_email, u.real_name AS engineer_name
-         FROM inspection_schedules s
-         JOIN customers c ON c.id = s.customer_id
-         JOIN devices d ON d.id = s.device_id
-         JOIN users u ON u.id = s.target_engineer_id
-         WHERE s.active = 1
-           AND DATEDIFF(s.next_run_anchor, CURDATE()) = 3
-           AND u.email IS NOT NULL AND u.email <> ''`,
-      )
-      if (!schedules.length) {
-        console.log('[scheduler] No inspections due in 3 days')
+      const nSettings = await notificationSettings()
+      if (!nSettings.inspectionReminderEnabled) {
+        console.log('[scheduler] Inspection reminder notification is disabled')
         return
       }
 
-      // Send one email per engineer with all their upcoming inspections
+      const schedules = await query(
+        `SELECT s.id, s.cadence, s.next_run_anchor, s.target_engineer_id,
+                c.name AS customer_name,
+                u.email AS engineer_email, u.real_name AS engineer_name,
+                (SELECT GROUP_CONCAT(d2.name SEPARATOR '、')
+                 FROM inspection_schedule_devices sd2
+                 LEFT JOIN devices d2 ON d2.id = sd2.device_id
+                 WHERE sd2.schedule_id = s.id) AS device_names
+         FROM inspection_schedules s
+         JOIN customers c ON c.id = s.customer_id
+         JOIN users u ON u.id = s.target_engineer_id
+         WHERE s.active = 1
+           AND DATEDIFF(s.next_run_anchor, CURDATE()) = :reminderDays
+           AND u.email IS NOT NULL AND u.email <> ''`,
+        { reminderDays: nSettings.inspectionReminderDays },
+      )
+      if (!schedules.length) {
+        console.log(`[scheduler] No inspections due in ${nSettings.inspectionReminderDays} days`)
+        return
+      }
+
       const byEngineer = new Map()
       for (const schedule of schedules) {
         const key = schedule.engineer_email.toLowerCase()
