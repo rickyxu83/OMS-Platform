@@ -111,6 +111,7 @@ let draftCountdownTimer = null
 let statusClockTimer = null
 let drawingSignature = false
 let lastSignaturePoint = null
+let lastSignatureMidPoint = null
 let signatureBeforeOpen = ''
 let cancelFabMoved = false
 let cancelFabStartPointer = { x: 0, y: 0 }
@@ -1289,6 +1290,7 @@ function beginSignature(event) {
   signatureHistory.value = [...signatureHistory.value.slice(-11), customerSignature.value || '']
   drawingSignature = true
   lastSignaturePoint = signaturePoint(event, canvas)
+  lastSignatureMidPoint = lastSignaturePoint
 }
 
 function drawSignature(event) {
@@ -1310,10 +1312,11 @@ function drawSignature(event) {
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.beginPath()
-  ctx.moveTo(lastSignaturePoint.x, lastSignaturePoint.y)
+  ctx.moveTo(lastSignatureMidPoint?.x ?? lastSignaturePoint.x, lastSignatureMidPoint?.y ?? lastSignaturePoint.y)
   ctx.quadraticCurveTo(lastSignaturePoint.x, lastSignaturePoint.y, midPoint.x, midPoint.y)
   ctx.stroke()
   lastSignaturePoint = point
+  lastSignatureMidPoint = midPoint
   signatureDrawn.value = true
   customerSignature.value = canvas.toDataURL('image/png')
 }
@@ -1321,6 +1324,7 @@ function drawSignature(event) {
 function endSignature() {
   drawingSignature = false
   lastSignaturePoint = null
+  lastSignatureMidPoint = null
 }
 
 function clearSignature() {

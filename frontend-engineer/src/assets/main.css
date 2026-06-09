@@ -5472,20 +5472,21 @@ h2 {
   }
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
+@media (orientation: landscape) {
   .signature-modal {
     place-items: stretch;
-    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
   }
 
-  .signature-modal-shell {
+  .signature-modal-shell:not(.exit-confirm-shell):not(.asset-editor-shell):not(.profile-signature-preview-shell) {
     width: 100%;
     height: 100%;
-    max-height: calc(100svh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    max-width: none;
+    max-height: none;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 8px;
-    border-radius: 16px;
-    padding: 10px;
+    gap: 6px;
+    border-radius: 14px;
+    padding: 8px;
     overflow: hidden;
   }
 
@@ -5521,7 +5522,7 @@ h2 {
 
   .signature-modal-actions button {
     min-width: 0;
-    min-height: 38px;
+    min-height: 36px;
     padding: 0 10px;
     justify-content: center;
     font-size: 13px;

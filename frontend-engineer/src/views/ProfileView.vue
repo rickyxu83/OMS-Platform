@@ -22,6 +22,7 @@ const signatureEditorOpen = ref(false)
 const signaturePreviewOpen = ref(false)
 let drawing = false
 let lastPoint = null
+let lastMidPoint = null
 let signaturePaintToken = 0
 let signaturePaintPromise = Promise.resolve()
 let signaturePaintPending = false
@@ -115,6 +116,7 @@ function beginSignature(event) {
   invalidatePendingSignaturePaint()
   drawing = true
   lastPoint = canvasPoint(event)
+  lastMidPoint = lastPoint
 }
 
 function drawSignature(event) {
@@ -135,16 +137,18 @@ function drawSignature(event) {
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.beginPath()
-  ctx.moveTo(lastPoint.x, lastPoint.y)
+  ctx.moveTo(lastMidPoint?.x ?? lastPoint.x, lastMidPoint?.y ?? lastPoint.y)
   ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y)
   ctx.stroke()
   lastPoint = point
+  lastMidPoint = midPoint
   signatureData.value = canvas.toDataURL('image/png')
 }
 
 function endSignature() {
   drawing = false
   lastPoint = null
+  lastMidPoint = null
 }
 
 function clearSignature() {
