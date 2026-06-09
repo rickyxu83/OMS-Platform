@@ -436,8 +436,31 @@ async function forceDeleteCustomer(connection, customerId) {
 
 async function list(req, res) {
   await ensureCustomerLevelColumn()
-  const { keyword = '', salesperson = '' } = req.query
+  const { keyword = '', salesperson = '', mine = '' } = req.query
   const keywordKey = customerNameKey(keyword)
+  const normalizedPageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 200))
+  const mineQuery = mine === '1' || mine === 'true'
+  const effectiveEngineerId = mineQuery ? Number(req.user.id) : null
+  const engineerCustomerWhere = effectiveEngineerId
+    ? `AND EXISTS (
+          SELECT 1
+          FROM service_orders mine_so
+          WHERE mine_so.customer_id = c.id
+            AND mine_so.status <> 'cancelled'
+            AND (
+              mine_so.assigned_engineer_id = :effectiveEngineerId
+              OR EXISTS (
+                SELECT 1
+                FROM service_order_engineers mine_soe
+                WHERE mine_soe.service_order_id = mine_so.id
+                  AND mine_soe.engineer_id = :effectiveEngineerId
+              )
+            )
+        )`
+    : ''
+  const orderBy = effectiveEngineerId
+    ? 'COALESCE(es.last_used_at, c.updated_at, c.created_at) DESC, COALESCE(es.engineer_order_count, 0) DESC, c.id DESC'
+    : 'c.id DESC'
   const rows = await query(
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
@@ -451,7 +474,24 @@ async function list(req, res) {
         WHERE status <> 'cancelled'
         GROUP BY customer_id
       ) soc ON soc.customer_id = c.id
+      LEFT JOIN (
+        SELECT so.customer_id, COUNT(*) AS engineer_order_count, MAX(COALESCE(so.submitted_at, so.created_at)) AS last_used_at
+        FROM service_orders so
+        WHERE so.status <> 'cancelled'
+          AND (
+            :effectiveEngineerId IS NULL
+            OR so.assigned_engineer_id = :effectiveEngineerId
+            OR EXISTS (
+              SELECT 1
+              FROM service_order_engineers soe
+              WHERE soe.service_order_id = so.id
+                AND soe.engineer_id = :effectiveEngineerId
+            )
+          )
+        GROUP BY so.customer_id
+      ) es ON es.customer_id = c.id
      WHERE (:salesperson = '' OR c.salesperson = :salesperson)
+       ${engineerCustomerWhere}
        AND (
          :keyword = ''
          OR c.name LIKE :likeKeyword
@@ -465,9 +505,9 @@ async function list(req, res) {
          OR c.map_poi_name LIKE :likeKeyword
          OR c.map_address LIKE :likeKeyword
        )
-     ORDER BY c.id DESC
-     LIMIT 200`,
-    { keyword, salesperson, likeKeyword: `%${keyword}%`, likeKeywordKey: `%${keywordKey}%` },
+     ORDER BY ${orderBy}
+     LIMIT ${normalizedPageSize}`,
+    { keyword, salesperson, effectiveEngineerId, likeKeyword: `%${keyword}%`, likeKeywordKey: `%${keywordKey}%` },
   )
 
   await cleanupDuplicateContacts(rows.map((row) => row.id))
