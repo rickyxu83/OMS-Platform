@@ -169,9 +169,6 @@ const I18N = {
     map: {
       title: "客户地理分布",
       description: "实时展示各区域客户密度及服务点位",
-      suzhou: "苏州市",
-      wuxi: "无锡市",
-      kunshan: "昆山市",
     },
     recent: {
       title: "最近工单",
@@ -222,9 +219,6 @@ const I18N = {
     map: {
       title: "客戶地理分佈",
       description: "即時展示各區域客戶密度及服務點位",
-      suzhou: "蘇州市",
-      wuxi: "無錫市",
-      kunshan: "昆山市",
     },
     recent: {
       title: "最近工單",
@@ -355,10 +349,6 @@ export function Dashboard() {
     const keyword = searchQuery.trim();
     if (!keyword) return;
     navigate(`/service-orders?keyword=${encodeURIComponent(keyword)}`);
-  }
-
-  function navigateCity(city: string) {
-    navigate(`/customers?keyword=${encodeURIComponent(city)}`);
   }
 
   function openReportDialog() {
@@ -540,11 +530,7 @@ export function Dashboard() {
               <CardTitle>{t.map.title}</CardTitle>
               <CardDescription>{t.map.description}</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => navigateCity(t.map.suzhou)}>{t.map.suzhou}</Badge>
-              <Badge variant="outline" className="cursor-pointer" onClick={() => navigateCity(t.map.wuxi)}>{t.map.wuxi}</Badge>
-              <Badge variant="outline" className="cursor-pointer" onClick={() => navigateCity(t.map.kunshan)}>{t.map.kunshan}</Badge>
-            </div>
+
           </CardHeader>
           <CardContent className="flex-1 min-h-[400px] p-0">
             <Amap
