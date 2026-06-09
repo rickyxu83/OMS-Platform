@@ -1297,6 +1297,13 @@ function drawSignature(event) {
   const canvas = signatureCanvas.value
   if (!canvas || !lastSignaturePoint) return
   const point = signaturePoint(event, canvas)
+  const dx = point.x - lastSignaturePoint.x
+  const dy = point.y - lastSignaturePoint.y
+  if (Math.hypot(dx, dy) < 1.5) return
+  const midPoint = {
+    x: (lastSignaturePoint.x + point.x) / 2,
+    y: (lastSignaturePoint.y + point.y) / 2,
+  }
   const ctx = canvas.getContext('2d')
   ctx.strokeStyle = '#172033'
   ctx.lineWidth = Math.max(6, canvas.width / 150)
@@ -1304,7 +1311,7 @@ function drawSignature(event) {
   ctx.lineJoin = 'round'
   ctx.beginPath()
   ctx.moveTo(lastSignaturePoint.x, lastSignaturePoint.y)
-  ctx.lineTo(point.x, point.y)
+  ctx.quadraticCurveTo(lastSignaturePoint.x, lastSignaturePoint.y, midPoint.x, midPoint.y)
   ctx.stroke()
   lastSignaturePoint = point
   signatureDrawn.value = true

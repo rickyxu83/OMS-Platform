@@ -5472,6 +5472,62 @@ h2 {
   }
 }
 
+@media (orientation: landscape) and (max-height: 520px) {
+  .signature-modal {
+    place-items: stretch;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .signature-modal-shell {
+    width: 100%;
+    height: 100%;
+    max-height: calc(100svh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    border-radius: 16px;
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  .signature-modal-head {
+    min-height: 0;
+  }
+
+  .signature-modal-head p {
+    display: none;
+  }
+
+  .signature-modal-head h2 {
+    font-size: 18px;
+    line-height: 1.1;
+  }
+
+  .signature-landscape-box {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .signature-pad.landscape {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .signature-modal-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .signature-modal-actions button {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 10px;
+    justify-content: center;
+    font-size: 13px;
+  }
+}
+
 /* RC: keep buttons steady on hover. Cards and ambient page motion keep their own effects. */
 :where(
   button:not(.create-mode-option),
