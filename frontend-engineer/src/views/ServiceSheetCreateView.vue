@@ -1964,7 +1964,7 @@ async function load() {
   retryableError.value = false
   try {
     const requests = [
-      api.get('/customers?pageSize=10'),
+      api.get('/customers?mine=1&pageSize=10'),
       api.get('/service-orders?mine=1&pageSize=10&sortBy=createdAt&sortDir=desc'),
       api.get('/users/engineers'),
     ]
