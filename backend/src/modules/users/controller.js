@@ -34,13 +34,20 @@ async function ensureUserEmailColumn() {
   userEmailColumnReady = true
 }
 
+const avatarExtensionByMime = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+}
+
 const avatarUploadMiddleware = multer({
   storage: multer.diskStorage({
     destination(_req, _file, cb) {
       cb(null, avatarUploadDir)
     },
     filename(req, file, cb) {
-      const extension = path.extname(file.originalname || '').toLowerCase() || '.jpg'
+      // 扩展名由 mimetype 白名单映射得出，不信任客户端文件名（防止 .html/.svg 落盘导致存储型 XSS）
+      const extension = avatarExtensionByMime[file.mimetype] || '.jpg'
       cb(null, `user-${req.user.id}-${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`)
     },
   }),
@@ -48,7 +55,7 @@ const avatarUploadMiddleware = multer({
     fileSize: 2 * 1024 * 1024,
   },
   fileFilter(_req, file, cb) {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+    if (!Object.prototype.hasOwnProperty.call(avatarExtensionByMime, file.mimetype)) {
       cb(badRequest('头像仅支持 JPG、PNG 或 WebP'))
       return
     }

@@ -31,7 +31,7 @@ async function authenticate(req, res, next) {
       throw unauthorized()
     }
 
-    const payload = jwt.verify(token, env.jwtSecret)
+    const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] })
     const users = await query(
       `SELECT id, username, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password
        FROM users

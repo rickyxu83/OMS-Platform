@@ -25,8 +25,13 @@ const jwtPlaceholderSecret = 'change-this-secret-in-production'
 const nodeEnv = process.env.NODE_ENV || 'development'
 const jwtSecret = process.env.JWT_SECRET || jwtPlaceholderSecret
 
-if (nodeEnv === 'production' && (!process.env.JWT_SECRET || jwtSecret === jwtPlaceholderSecret)) {
-  throw new Error('JWT_SECRET must be set to a non-placeholder value in production')
+// 只有显式声明 NODE_ENV=development/test 才允许占位密钥；
+// 生产环境忘设 NODE_ENV 时不再静默回退到公开默认值（可被用于伪造 token）
+const isExplicitDevEnv = ['development', 'test'].includes(process.env.NODE_ENV || '')
+if (!isExplicitDevEnv && (!process.env.JWT_SECRET || jwtSecret === jwtPlaceholderSecret)) {
+  throw new Error(
+    'JWT_SECRET must be set to a non-placeholder value (or set NODE_ENV=development explicitly for local development)',
+  )
 }
 
 const aiProvider = process.env.AI_PROVIDER || 'anthropic'
