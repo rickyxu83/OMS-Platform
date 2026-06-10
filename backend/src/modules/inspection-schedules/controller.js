@@ -442,10 +442,25 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
     { dbName },
   )
   if (oldIdx?.[0] && !newIdx?.[0]) {
-    await execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
+    // 旧唯一索引以 device_id 开头,是 fk_inspection_schedules_device_id 的支撑索引,
+    // 直接 drop 会报 "needed in a foreign key constraint":先补 device_id 普通索引接住外键
+    const [deviceIdx] = await execute(
+      `SELECT index_name AS indexName
+       FROM information_schema.statistics
+       WHERE table_schema = :dbName
+         AND table_name = 'inspection_schedules'
+         AND index_name = 'idx_inspection_schedules_device'
+       LIMIT 1`,
+      { dbName },
+    )
+    if (!deviceIdx?.[0]) {
+      await execute('ALTER TABLE inspection_schedules ADD KEY idx_inspection_schedules_device (device_id)')
+    }
+    // 先建新唯一索引再删旧索引:若因存量重复数据建失败,旧约束仍完整保留
     await execute(
       'ALTER TABLE inspection_schedules ADD UNIQUE KEY uk_schedule_engineer_cadence (customer_id, target_engineer_id, cadence, active_slot)',
     )
+    await execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
   }
 
   if (!connection) inspectionScheduleDevicesReady = true
