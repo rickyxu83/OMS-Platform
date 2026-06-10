@@ -73,8 +73,9 @@ async function loadScheduleDevices(scheduleIds, connection = null) {
 
 async function ensureInspectionSchedulesTable(connection = null) {
   if (!connection && inspectionSchedulesTableReady) return
-  const executor = connection || { execute: query }
-  await executor.execute(
+  // query() 直接返回 rows,connection.execute() 返回 [rows, fields],统一包装成后者形态
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
     `CREATE TABLE IF NOT EXISTS inspection_schedules (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       customer_id BIGINT UNSIGNED NOT NULL,
@@ -97,7 +98,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
       KEY idx_inspection_schedules_next_run (active, next_run_anchor)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  const [deviceRows] = await executor.execute(
+  const [deviceRows] = await execute(
     `SELECT is_nullable AS isNullable
      FROM information_schema.columns
      WHERE table_schema = DATABASE()
@@ -107,7 +108,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
   )
   const deviceNullable = deviceRows?.[0]?.isNullable || deviceRows?.[0]?.is_nullable || 'YES'
   if (String(deviceNullable).toUpperCase() !== 'YES') {
-    await executor.execute('ALTER TABLE inspection_schedules MODIFY COLUMN device_id BIGINT UNSIGNED NULL')
+    await execute('ALTER TABLE inspection_schedules MODIFY COLUMN device_id BIGINT UNSIGNED NULL')
   }
   if (!connection) {
     inspectionSchedulesTableReady = true
@@ -394,8 +395,9 @@ let inspectionScheduleDevicesReady = false
 
 async function ensureInspectionScheduleDevicesTable(connection = null) {
   if (!connection && inspectionScheduleDevicesReady) return
-  const executor = connection || { execute: query }
-  await executor.execute(
+  // query() 直接返回 rows,connection.execute() 返回 [rows, fields],统一包装成后者形态
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
     `CREATE TABLE IF NOT EXISTS inspection_schedule_devices (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       schedule_id BIGINT UNSIGNED NOT NULL,
@@ -409,7 +411,7 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
 
-  await executor.execute(
+  await execute(
     `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
      SELECT s.id, s.device_id FROM inspection_schedules s
      WHERE s.device_id IS NOT NULL
@@ -419,9 +421,9 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
        )`,
   )
 
-  const [dbRows] = await executor.execute('SELECT DATABASE() AS db')
+  const [dbRows] = await execute('SELECT DATABASE() AS db')
   const dbName = dbRows?.[0]?.db || ''
-  const [oldIdx] = await executor.execute(
+  const [oldIdx] = await execute(
     `SELECT index_name AS indexName
      FROM information_schema.statistics
      WHERE table_schema = :dbName
@@ -430,7 +432,7 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
      LIMIT 1`,
     { dbName },
   )
-  const [newIdx] = await executor.execute(
+  const [newIdx] = await execute(
     `SELECT index_name AS indexName
      FROM information_schema.statistics
      WHERE table_schema = :dbName
@@ -439,9 +441,9 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
      LIMIT 1`,
     { dbName },
   )
-  if (oldIdx[0] && !newIdx[0]) {
-    await executor.execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
-    await executor.execute(
+  if (oldIdx?.[0] && !newIdx?.[0]) {
+    await execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
+    await execute(
       'ALTER TABLE inspection_schedules ADD UNIQUE KEY uk_schedule_engineer_cadence (customer_id, target_engineer_id, cadence, active_slot)',
     )
   }

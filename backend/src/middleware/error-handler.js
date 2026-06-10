@@ -17,6 +17,11 @@ function errorHandler(error, req, res, next) {
   }
 
   const status = error instanceof HttpError ? error.status : 500
+
+  if (status === 500) {
+    console.error(`[error] ${req.method} ${req.originalUrl}`, error)
+  }
+
   const payload = {
     error: {
       message: status === 500 ? '服务器内部错误' : error.message,
