@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -372,6 +372,10 @@ export function ServiceOrders() {
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
+  // 搜索词防抖:输入即时更新 UI(本地过滤),停顿 300ms 后才发起服务端请求
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  // 请求序号守卫:慢请求的过期响应不再覆盖新结果
+  const loadSeqRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [total, setTotal] = useState(0);
@@ -431,6 +435,7 @@ export function ServiceOrders() {
   }, []);
 
   async function load() {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setError("");
     try {
@@ -444,24 +449,31 @@ export function ServiceOrders() {
       if (customerFilter !== "all") params.set("customerId", customerFilter);
       if (range.startDate) params.set("startDate", range.startDate);
       if (range.endDate) params.set("endDate", range.endDate);
-      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+      if (debouncedSearch.trim()) params.set("keyword", debouncedSearch.trim());
       const data = await api.get(`/service-orders?${params.toString()}`);
+      if (seq !== loadSeqRef.current) return; // 已有更新的请求,丢弃过期响应
       const items = (data?.items || []) as ServiceOrder[];
       setOrders(items);
       setTotal(Number(data?.total ?? items.length));
       setSelectedIds((ids) => ids.filter((id) => items.some((item) => String(item.id) === String(id))));
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, customerFilter, startDate, endDate, searchQuery, t.errors.loadFailed]);
+  }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
 
   const filteredOrders = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -912,7 +924,8 @@ export function ServiceOrders() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") load();
+                  // 回车跳过防抖立即搜索(值未变时由 effect 去重,不会重复请求)
+                  if (e.key === "Enter") setDebouncedSearch(searchQuery);
                 }}
               />
             </div>
