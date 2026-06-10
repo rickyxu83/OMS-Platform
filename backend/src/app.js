@@ -49,13 +49,20 @@ const app = express()
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 
 app.disable('x-powered-by')
-app.set('trust proxy', true)
+// 只信任最近一跳反向代理（nginx），避免伪造 X-Forwarded-For 绕过基于 IP 的限流
+app.set('trust proxy', 1)
 app.use(helmet())
 app.use(cors(corsOptions))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 app.use(simplifyInput)
-app.use('/api/v1/avatars', express.static(path.join(uploadRoot, 'avatars')))
+app.use('/api/v1/avatars', express.static(path.join(uploadRoot, 'avatars'), {
+  setHeaders(res) {
+    // 防止历史遗留的非图片文件被浏览器嗅探/渲染为 HTML
+    res.set('X-Content-Type-Options', 'nosniff')
+    res.set('Content-Security-Policy', "default-src 'none'")
+  },
+}))
 
 app.get('/api/v1/health', async (_req, res) => {
   await pool.query('SELECT 1')

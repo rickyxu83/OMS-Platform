@@ -4,6 +4,7 @@ const multer = require('multer')
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 fs.mkdirSync(uploadRoot, { recursive: true })
@@ -26,6 +27,10 @@ const uploadMiddleware = multer({
 }).single('file')
 
 const orderFileOwnerTypes = new Set(['service_order', 'service_report', 'signature'])
+// 查看（下载）与管理（上传/删除）分别对齐服务单的查看/操作角色组；
+// 工程师不在组内，只能访问被指派的服务单
+const orderFileViewRoles = new Set(ROLE_GROUPS.serviceOrderView)
+const orderFileManageRoles = new Set(ROLE_GROUPS.serviceOrderOps)
 
 function normalizeOwnerType(ownerType) {
   return String(ownerType || '').trim()
@@ -40,9 +45,7 @@ function cleanupUploadedFile(file) {
   if (file?.path) fs.rm(file.path, { force: true }, () => {})
 }
 
-async function canAccessOrderFile(orderId, user) {
-  if (user.role !== 'engineer') return true
-
+async function isAssignedEngineer(orderId, user) {
   const rows = await query(
     `SELECT 1
      FROM service_orders so
@@ -60,7 +63,14 @@ async function canAccessOrderFile(orderId, user) {
   return Boolean(rows[0])
 }
 
-async function assertCanAccessOwner(ownerType, ownerId, user) {
+async function canAccessOrderFile(orderId, user, action) {
+  const allowedRoles = action === 'view' ? orderFileViewRoles : orderFileManageRoles
+  if (allowedRoles.has(user.role)) return true
+  if (user.role === 'engineer') return isAssignedEngineer(orderId, user)
+  return false
+}
+
+async function assertCanAccessOwner(ownerType, ownerId, user, action) {
   if (!orderFileOwnerTypes.has(ownerType)) {
     throw badRequest('文件归属类型不支持')
   }
@@ -70,13 +80,13 @@ async function assertCanAccessOwner(ownerType, ownerId, user) {
     throw notFound('文件归属服务单不存在')
   }
 
-  if (!(await canAccessOrderFile(ownerId, user))) {
+  if (!(await canAccessOrderFile(ownerId, user, action))) {
     throw forbidden('无权访问该服务单文件')
   }
 }
 
-async function assertCanAccessFile(file, user) {
-  await assertCanAccessOwner(file.owner_type, Number(file.owner_id), user)
+async function assertCanAccessFile(file, user, action) {
+  await assertCanAccessOwner(file.owner_type, Number(file.owner_id), user, action)
 }
 
 async function upload(req, res) {
@@ -91,7 +101,7 @@ async function upload(req, res) {
   }
 
   try {
-    await assertCanAccessOwner(ownerType, ownerId, req.user)
+    await assertCanAccessOwner(ownerType, ownerId, req.user, 'manage')
   } catch (error) {
     cleanupUploadedFile(req.file)
     throw error
@@ -128,7 +138,7 @@ async function download(req, res) {
     throw notFound('文件不存在')
   }
 
-  await assertCanAccessFile(file, req.user)
+  await assertCanAccessFile(file, req.user, 'view')
 
   const filename = file.original_name
   const encoded = encodeURIComponent(filename)
@@ -143,7 +153,7 @@ async function remove(req, res) {
     throw notFound('文件不存在')
   }
 
-  await assertCanAccessFile(file, req.user)
+  await assertCanAccessFile(file, req.user, 'manage')
 
   await query('DELETE FROM files WHERE id = :id', { id: req.params.id })
   fs.rm(file.storage_path, { force: true }, () => {})

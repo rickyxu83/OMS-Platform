@@ -14,11 +14,13 @@ fi
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 info()  { echo -e "${BLUE}━━━ $1 ━━━${NC}"; }
 ok()    { echo -e "${GREEN}  ✓ $1${NC}"; }
 skip()  { echo -e "${YELLOW}  - $1${NC}"; }
+err()   { echo -e "${RED}  ✗ $1${NC}" >&2; }
 
 is_deploy_target() {
   case "${1:-}" in
@@ -147,10 +149,9 @@ git_sync() {
   info "Git: 同步代码到 GitHub (${target_branch})"
 
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    local msg="${COMMIT_MSG:-部署更新 $(date +%Y-%m-%d\ %H:%M)}"
-    git add -A
-    git commit -m "$msg"
-    ok "已提交：${msg}"
+    err "工作区存在未提交的变更，请先手动检查并提交后再部署（避免误提交敏感/无关文件）："
+    git status --short
+    exit 1
   else
     skip "没有待提交的变更"
   fi
