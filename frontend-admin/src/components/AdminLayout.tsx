@@ -43,6 +43,13 @@ interface NavGroup {
   items: NavItem[];
 }
 
+interface NavConfigItem {
+  labelKey: string;
+  icon: any;
+  path: string;
+  requiredRoles?: string[];
+}
+
 const STRINGS: Record<AppLang, {
   brand: { title: string; subtitle: string; version: string }
   common: {
@@ -156,7 +163,7 @@ const STRINGS: Record<AppLang, {
   },
 };
 
-const NAV_CONFIG = [
+const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "workspace",
     items: [

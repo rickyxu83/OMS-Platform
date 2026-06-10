@@ -351,7 +351,7 @@ interface FallbackProps {
 
 function FallbackMap({ center, points, onPointClick, message, height, className }: FallbackProps) {
   const validPoints = points.filter((p) => p.lng && p.lat);
-  const all = [{ ...center, name: center.name || "中心", annualServices: 0, level: "peak" as const }, ...validPoints];
+  const all = [{ ...center, id: center.lng + center.lat, name: center.name || "中心", annualServices: 0, level: "peak" as const }, ...validPoints];
   const lngs = all.map((p) => p.lng);
   const lats = all.map((p) => p.lat);
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
