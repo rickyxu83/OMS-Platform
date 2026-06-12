@@ -1108,6 +1108,8 @@ function parseLegacyWorkEntries(workContent, item = {}) {
 
 function syncWorkEntries() {
   const selected = new Set(selectedEngineerIds.value.map(Number))
+  const singleWorkContent = String(serviceDraft.value.workContent || '').trim()
+  const shouldSeedCurrentEntry = isCollaborativeService.value && currentUserId.value && singleWorkContent
   serviceDraft.value.workEntries = (serviceDraft.value.workEntries || [])
     .map((entry) => ({
       engineerId: Number(entry.engineerId),
@@ -1118,6 +1120,12 @@ function syncWorkEntries() {
   for (const engineerId of selected) {
     if (!serviceDraft.value.workEntries.some((entry) => Number(entry.engineerId) === Number(engineerId))) {
       serviceDraft.value.workEntries.push({ engineerId: Number(engineerId), engineerName: engineerName(engineerId), workContent: '' })
+    }
+  }
+  if (shouldSeedCurrentEntry) {
+    const currentEntry = serviceDraft.value.workEntries.find((entry) => Number(entry.engineerId) === currentUserId.value)
+    if (currentEntry && !hasVisibleWorkContent(currentEntry.workContent)) {
+      currentEntry.workContent = singleWorkContent
     }
   }
 }
