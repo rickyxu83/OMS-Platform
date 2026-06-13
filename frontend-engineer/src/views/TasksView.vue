@@ -296,9 +296,9 @@ async function load({ append = false } = {}) {
   return loadWithMode({ append })
 }
 
-async function loadWithMode({ append = false, silent = false } = {}) {
+async function loadWithMode({ append = false, silent = false, expandVisible = true } = {}) {
   if (append) {
-    if (loading.value || loadingMore.value || !hasMoreTasks.value) return
+    if (loadingMore.value || !hasMoreRemoteTasks.value) return false
     loadingMore.value = true
     loadMoreError.value = ''
   } else if (!silent) {
@@ -315,27 +315,44 @@ async function loadWithMode({ append = false, silent = false } = {}) {
 
   try {
     const page = append ? currentPage.value + 1 : 1
+    const previousVisibleLimit = visibleTaskLimit.value
     const data = await api.get(`/service-orders?mine=1&page=${page}&pageSize=${taskCardPageSize}&sortBy=createdAt&sortDir=desc`)
     const nextItems = data.items || []
     totalTasks.value = Number(data.total || nextItems.length)
     currentPage.value = Number(data.page || page)
     if (append) {
       mergeTasks(nextItems)
-      visibleTaskLimit.value = Math.max(visibleTaskLimit.value, displayTasks.value.length + taskCardPageSize)
+      if (expandVisible) {
+        visibleTaskLimit.value = previousVisibleLimit + taskCardPageSize
+      }
     } else {
       tasks.value = nextItems
     }
     await clearResolvedLocalDrafts()
+    if (!append) {
+      await fillInitialTaskBatch()
+    }
     lastRefreshedAt.value = Date.now()
+    return true
   } catch (err) {
     if (append) {
       loadMoreError.value = err.message
     } else {
       error.value = err.message
     }
+    return false
   } finally {
-    loading.value = false
+    if (!append) loading.value = false
     loadingMore.value = false
+  }
+}
+
+async function fillInitialTaskBatch() {
+  let loadedPages = 0
+  while (allDisplayTasks.value.length < taskCardPageSize && hasMoreRemoteTasks.value && loadedPages < 8) {
+    loadedPages += 1
+    const loaded = await loadWithMode({ append: true, expandVisible: false })
+    if (!loaded) break
   }
 }
 
