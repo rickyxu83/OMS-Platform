@@ -28,7 +28,8 @@ const localDraftTasks = ref([])
 const pendingTaskAction = ref(null)
 const currentPage = ref(1)
 const totalTasks = ref(0)
-const pageSize = 12
+const taskCardPageSize = 12
+const visibleTaskLimit = ref(taskCardPageSize)
 const lastRefreshedAt = ref(0)
 const homeRefreshThresholdMs = 60 * 1000
 const taskHomeForceRefreshKey = 'oms-platform-engineer:tasks:force-refresh'
@@ -41,8 +42,11 @@ let homeMotionTimer = null
 
 const statusMap = { draft: '待填写', draft_local: '本机草稿', draft_sync: '账号草稿', in_progress: '填写中', submitted: '已提交', cancelled: '已作废' }
 const activeTasks = computed(() => tasks.value.filter((task) => task.status !== 'cancelled'))
-const displayTasks = computed(() => [...localDraftTasks.value, ...activeTasks.value])
-const hasMoreTasks = computed(() => currentPage.value * pageSize < totalTasks.value)
+const allDisplayTasks = computed(() => [...localDraftTasks.value, ...activeTasks.value])
+const displayTasks = computed(() => allDisplayTasks.value.slice(0, visibleTaskLimit.value))
+const hasHiddenLoadedTasks = computed(() => visibleTaskLimit.value < allDisplayTasks.value.length)
+const hasMoreRemoteTasks = computed(() => currentPage.value * taskCardPageSize < totalTasks.value)
+const hasMoreTasks = computed(() => hasHiddenLoadedTasks.value || hasMoreRemoteTasks.value)
 const serviceModeMap = {
   remote: { label: '远程服务', icon: 'remote-service' },
   onsite: { label: '现场服务', icon: 'onsite-service' },
@@ -303,6 +307,7 @@ async function loadWithMode({ append = false, silent = false } = {}) {
     loadMoreError.value = ''
     currentPage.value = 1
     totalTasks.value = 0
+    visibleTaskLimit.value = taskCardPageSize
   } else {
     error.value = ''
     loadMoreError.value = ''
@@ -310,12 +315,13 @@ async function loadWithMode({ append = false, silent = false } = {}) {
 
   try {
     const page = append ? currentPage.value + 1 : 1
-    const data = await api.get(`/service-orders?mine=1&page=${page}&pageSize=${pageSize}&sortBy=createdAt&sortDir=desc`)
+    const data = await api.get(`/service-orders?mine=1&page=${page}&pageSize=${taskCardPageSize}&sortBy=createdAt&sortDir=desc`)
     const nextItems = data.items || []
     totalTasks.value = Number(data.total || nextItems.length)
     currentPage.value = Number(data.page || page)
     if (append) {
       mergeTasks(nextItems)
+      visibleTaskLimit.value = Math.max(visibleTaskLimit.value, displayTasks.value.length + taskCardPageSize)
     } else {
       tasks.value = nextItems
     }
@@ -334,7 +340,14 @@ async function loadWithMode({ append = false, silent = false } = {}) {
 }
 
 function loadMoreTasks() {
-  load({ append: true })
+  if (loading.value || loadingMore.value) return
+  if (hasHiddenLoadedTasks.value) {
+    visibleTaskLimit.value += taskCardPageSize
+    return
+  }
+  if (hasMoreRemoteTasks.value) {
+    load({ append: true })
+  }
 }
 
 function handleScrollLoadMore() {
@@ -633,10 +646,10 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </article>
-      <p v-if="!displayTasks.length && !loading" class="empty-state">{{ zh('暂无服务记录') }}</p>
+      <p v-if="!allDisplayTasks.length && !loading" class="empty-state">{{ zh('暂无服务记录') }}</p>
     </section>
 
-    <footer v-if="displayTasks.length" class="task-load-state">
+    <footer v-if="allDisplayTasks.length" class="task-load-state">
       <p v-if="loadingMore">{{ zh('正在加载更多服务记录...') }}</p>
       <p v-else-if="loadMoreError">
         {{ zh(loadMoreError) }}
