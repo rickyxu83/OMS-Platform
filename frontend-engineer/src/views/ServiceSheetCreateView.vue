@@ -102,6 +102,19 @@ const createDraftId = ref('')
 const statusNowMs = ref(Date.now())
 const cancelFabPosition = ref({ x: null, y: null })
 const cancelFabDragging = ref(false)
+const aiDraftStatus = ref({ loaded: false, enabled: false, configured: false })
+const aiVoiceOpen = ref(false)
+const speechSupported = ref(false)
+const speechListening = ref(false)
+const speechTranscript = ref('')
+const speechInterimTranscript = ref('')
+const aiDraftLoading = ref(false)
+const aiDraftMissing = ref([])
+const aiDraftWarnings = ref([])
+const aiDraftAppliedLabels = ref([])
+const aiDraftConflicts = ref([])
+const aiDraftPendingFields = ref(null)
+const aiDraftConfirmSubmitOpen = ref(false)
 let customerSearchTimer = null
 let deviceModelSearchTimer = null
 let deviceModelReqId = 0
@@ -116,6 +129,7 @@ let signatureBeforeOpen = ''
 let cancelFabMoved = false
 let cancelFabStartPointer = { x: 0, y: 0 }
 let cancelFabStartPosition = { x: 0, y: 0 }
+let speechRecognition = null
 const draftAutoSaveSeconds = 15
 const cancelFabStorageKey = 'oms-platform:service-record:create-fab-position'
 const taskHomeForceRefreshKey = 'oms-platform-engineer:tasks:force-refresh'
@@ -691,6 +705,16 @@ const draftStatusLabel = computed(() => {
 const queueStatusLabel = computed(() => {
   if (syncingPendingReports.value) return `同步中 · ${pendingSyncCount.value} 条`
   return pendingSyncCount.value ? `待同步 ${pendingSyncCount.value} 条` : '无待同步'
+})
+const aiDraftAvailable = computed(() => aiDraftStatus.value.enabled && aiDraftStatus.value.configured)
+const aiDraftStatusLabel = computed(() => {
+  if (!aiDraftStatus.value.loaded) return '正在检查 AI 填单配置...'
+  if (!aiDraftStatus.value.enabled) return 'AI 语音填单未启用'
+  if (!aiDraftStatus.value.configured) return 'AI API 尚未配置完整'
+  return '可用'
+})
+const speechTranscriptPreview = computed(() => {
+  return [speechTranscript.value, speechInterimTranscript.value].filter(Boolean).join('')
 })
 
 function draftSnapshot() {
@@ -2075,6 +2099,337 @@ async function load() {
   }
 }
 
+async function loadAiDraftStatus() {
+  try {
+    const data = await api.get('/service-orders/self-report/ai-draft/status')
+    const item = data?.item || {}
+    aiDraftStatus.value = {
+      loaded: true,
+      enabled: Boolean(item.enabled),
+      configured: Boolean(item.configured),
+    }
+  } catch {
+    aiDraftStatus.value = { loaded: true, enabled: false, configured: false }
+  }
+}
+
+function normalizeAiText(value, maxLength = 2000) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? text.slice(0, maxLength) : text
+}
+
+function aiFieldLabel(field) {
+  const labels = {
+    customerName: '客户名称',
+    customerAddress: '客户地址',
+    contactName: '联系人',
+    contactPhone: '联系电话',
+    deviceName: deviceFieldLabel.value,
+    serviceType: serviceCategoryLabel.value,
+    timesheetCategory: serviceCategoryLabel.value,
+    issueDescription: issueDescriptionLabel.value,
+    workContent: workContentLabel.value,
+    commonWorkContent: '共同内容',
+    result: isOfficeMode.value ? '完成状态' : isRemoteLikeMode.value ? '处理结果' : '服务结论',
+    resultDescription: '结果说明',
+    departureAt: '出发时间',
+    actualStartAt: isRemoteLikeMode.value ? '开始时间' : '到达时间',
+    actualEndAt: isRemoteLikeMode.value ? '结束时间' : '完成时间',
+    returnAt: '返抵时间',
+  }
+  return labels[field] || field
+}
+
+function aiEditableFields() {
+  const fields = [
+    'customerName',
+    'customerAddress',
+    'contactName',
+    'contactPhone',
+    'issueDescription',
+    'workContent',
+    'commonWorkContent',
+    'result',
+    'resultDescription',
+    'departureAt',
+    'actualStartAt',
+    'actualEndAt',
+    'returnAt',
+  ]
+  if (showDeviceField.value) fields.push('deviceName')
+  fields.push(currentServiceMode.value === 'onsite' ? 'serviceType' : 'timesheetCategory')
+  return fields
+}
+
+function currentAiFieldValue(field) {
+  if (field === 'customerName') return activeCustomer.value.name || ''
+  if (field === 'customerAddress') return activeCustomer.value.address || activeCustomer.value.mapAddress || ''
+  if (field === 'contactName') return activeCustomer.value.contactName || ''
+  if (field === 'contactPhone') return activeCustomer.value.contactPhone || ''
+  if (field === 'timesheetCategory') return serviceDraft.value.serviceType || ''
+  if (field === 'workContent') {
+    if (!isCollaborativeService.value) return serviceDraft.value.workContent || ''
+    const entry = (serviceDraft.value.workEntries || []).find((item) => Number(item.engineerId) === currentUserId.value)
+    return entry?.workContent || ''
+  }
+  return serviceDraft.value[field] || ''
+}
+
+function currentAiDraftContext() {
+  return {
+    customerName: activeCustomer.value.name || '',
+    customerAddress: activeCustomer.value.address || activeCustomer.value.mapAddress || '',
+    contactName: activeCustomer.value.contactName || '',
+    contactPhone: activeCustomer.value.contactPhone || '',
+    deviceName: serviceDraft.value.deviceName || '',
+    serviceMode: currentServiceMode.value,
+    serviceType: currentServiceMode.value === 'onsite' ? serviceDraft.value.serviceType : '',
+    timesheetCategory: currentServiceMode.value === 'onsite' ? '' : serviceDraft.value.serviceType,
+    issueDescription: serviceDraft.value.issueDescription || '',
+    workContent: currentAiFieldValue('workContent'),
+    commonWorkContent: serviceDraft.value.commonWorkContent || '',
+    result: serviceDraft.value.result || '',
+    resultDescription: serviceDraft.value.resultDescription || '',
+    departureAt: serviceDraft.value.departureAt || '',
+    actualStartAt: serviceDraft.value.actualStartAt || '',
+    actualEndAt: serviceDraft.value.actualEndAt || '',
+    returnAt: serviceDraft.value.returnAt || '',
+  }
+}
+
+function normalizeAiFields(fields = {}) {
+  const allowed = new Set(aiEditableFields())
+  const next = {}
+  for (const [field, value] of Object.entries(fields || {})) {
+    if (!allowed.has(field)) continue
+    const text = normalizeAiText(value, field === 'workContent' ? 2000 : 600)
+    if (!text) continue
+    next[field] = text
+  }
+  if (next.serviceType && !serviceCategoryOptions.value.some((option) => option.value === next.serviceType)) {
+    delete next.serviceType
+  }
+  if (next.timesheetCategory && !serviceCategoryOptions.value.some((option) => option.value === next.timesheetCategory)) {
+    delete next.timesheetCategory
+  }
+  if (next.result && !resultStatusOptions.some((option) => option.value === next.result)) {
+    delete next.result
+  }
+  return next
+}
+
+function setCurrentUserWorkContent(value) {
+  if (!isCollaborativeService.value) {
+    serviceDraft.value.workContent = value
+    return
+  }
+  syncWorkEntries()
+  const entry = (serviceDraft.value.workEntries || []).find((item) => Number(item.engineerId) === currentUserId.value)
+  if (entry) entry.workContent = value
+}
+
+function applyAiField(field, value) {
+  const text = normalizeAiText(value, field === 'workContent' ? 2000 : 600)
+  if (!text) return false
+  if (field === 'customerName') updateCustomerField('name', text)
+  else if (field === 'customerAddress') updateCustomerField('address', text)
+  else if (field === 'contactName') updateContactField('contactName', text)
+  else if (field === 'contactPhone') updateContactField('contactPhone', text)
+  else if (field === 'serviceType' || field === 'timesheetCategory') serviceDraft.value.serviceType = text
+  else if (field === 'workContent') setCurrentUserWorkContent(text)
+  else serviceDraft.value[field] = text
+
+  const errorFieldMap = {
+    customerName: 'name',
+    customerAddress: 'address',
+    serviceType: '',
+    timesheetCategory: '',
+  }
+  const errorKey = errorFieldMap[field] ?? field
+  if (errorKey) clearFieldError(errorKey)
+  return true
+}
+
+function splitAiFieldsByConflict(fields) {
+  const conflicts = []
+  const autoFields = {}
+  for (const [field, value] of Object.entries(fields)) {
+    const current = normalizeAiText(currentAiFieldValue(field), field === 'workContent' ? 2000 : 600)
+    const next = normalizeAiText(value, field === 'workContent' ? 2000 : 600)
+    if (!next) continue
+    if (current && current !== next) {
+      conflicts.push({ field, label: aiFieldLabel(field), current, next })
+    } else {
+      autoFields[field] = next
+    }
+  }
+  return { autoFields, conflicts }
+}
+
+async function finishAiDraftReview() {
+  await nextTick()
+  const ok = await validateRequiredFields()
+  if (ok) {
+    aiDraftConfirmSubmitOpen.value = true
+    return
+  }
+  if (aiDraftMissing.value.length) {
+    message.value = `AI 已填入可识别内容，仍需补充：${aiDraftMissing.value.join('、')}`
+  } else {
+    message.value = 'AI 已填入可识别内容，请补齐页面标红字段后再提交'
+  }
+}
+
+async function applyAiDraftFields(fields) {
+  const normalized = normalizeAiFields(fields)
+  const { autoFields, conflicts } = splitAiFieldsByConflict(normalized)
+  const applied = []
+  for (const [field, value] of Object.entries(autoFields)) {
+    if (applyAiField(field, value)) applied.push(aiFieldLabel(field))
+  }
+  aiDraftAppliedLabels.value = applied
+  aiDraftConflicts.value = conflicts
+  aiDraftPendingFields.value = normalized
+  if (conflicts.length) return
+  await finishAiDraftReview()
+}
+
+async function resolveAiDraftConflicts(overwrite) {
+  if (overwrite) {
+    for (const conflict of aiDraftConflicts.value) {
+      if (applyAiField(conflict.field, conflict.next)) {
+        aiDraftAppliedLabels.value.push(conflict.label)
+      }
+    }
+  }
+  aiDraftConflicts.value = []
+  aiDraftPendingFields.value = null
+  await finishAiDraftReview()
+}
+
+function closeAiConfirmSubmit() {
+  aiDraftConfirmSubmitOpen.value = false
+}
+
+async function confirmAiSubmit() {
+  closeAiConfirmSubmit()
+  await submitServiceSheet()
+}
+
+async function generateAiDraftFromTranscript() {
+  const transcript = speechTranscriptPreview.value.trim()
+  if (!transcript) {
+    error.value = '请先录入语音或粘贴工作内容'
+    retryableError.value = false
+    return
+  }
+  if (!aiDraftAvailable.value) {
+    error.value = aiDraftStatusLabel.value
+    retryableError.value = false
+    return
+  }
+  stopSpeechRecognition()
+  aiDraftLoading.value = true
+  error.value = ''
+  message.value = ''
+  aiDraftMissing.value = []
+  aiDraftWarnings.value = []
+  aiDraftAppliedLabels.value = []
+  aiDraftConflicts.value = []
+  aiDraftPendingFields.value = null
+  try {
+    const data = await api.post('/service-orders/self-report/ai-draft', {
+      transcript,
+      serviceMode: currentServiceMode.value,
+      currentDraft: currentAiDraftContext(),
+    })
+    aiDraftMissing.value = Array.isArray(data?.missingFields) ? data.missingFields : []
+    aiDraftWarnings.value = Array.isArray(data?.warnings) ? data.warnings : []
+    await applyAiDraftFields(data?.fields || {})
+  } catch (err) {
+    error.value = err.message || 'AI 语音填单失败'
+    retryableError.value = false
+  } finally {
+    aiDraftLoading.value = false
+  }
+}
+
+function initSpeechRecognition() {
+  if (typeof window === 'undefined') return
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  speechSupported.value = Boolean(SpeechRecognition)
+  if (!SpeechRecognition) return
+  speechRecognition = new SpeechRecognition()
+  speechRecognition.lang = 'zh-CN'
+  speechRecognition.continuous = true
+  speechRecognition.interimResults = true
+  speechRecognition.onresult = (event) => {
+    let finalText = ''
+    let interimText = ''
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const result = event.results[index]
+      const text = result?.[0]?.transcript || ''
+      if (result.isFinal) finalText += text
+      else interimText += text
+    }
+    if (finalText) {
+      speechTranscript.value = `${speechTranscript.value}${finalText}`.trim()
+      speechInterimTranscript.value = ''
+    } else {
+      speechInterimTranscript.value = interimText
+    }
+  }
+  speechRecognition.onerror = (event) => {
+    speechListening.value = false
+    error.value = event?.error === 'not-allowed' ? '浏览器未允许麦克风权限' : '语音识别中断，请重试或手动输入'
+    retryableError.value = false
+  }
+  speechRecognition.onend = () => {
+    speechListening.value = false
+    speechInterimTranscript.value = ''
+  }
+}
+
+function openAiVoicePanel() {
+  aiVoiceOpen.value = !aiVoiceOpen.value
+  if (aiVoiceOpen.value && !aiDraftStatus.value.loaded) loadAiDraftStatus()
+}
+
+function startSpeechRecognition() {
+  if (!speechRecognition) {
+    aiVoiceOpen.value = true
+    return
+  }
+  error.value = ''
+  speechInterimTranscript.value = ''
+  try {
+    speechRecognition.start()
+    speechListening.value = true
+  } catch {
+    speechListening.value = true
+  }
+}
+
+function stopSpeechRecognition() {
+  if (!speechRecognition) {
+    speechListening.value = false
+    return
+  }
+  try {
+    speechRecognition.stop()
+  } catch {}
+  speechListening.value = false
+}
+
+function resetSpeechTranscript() {
+  stopSpeechRecognition()
+  speechTranscript.value = ''
+  speechInterimTranscript.value = ''
+  aiDraftMissing.value = []
+  aiDraftWarnings.value = []
+  aiDraftAppliedLabels.value = []
+}
+
 function buildSubmitPayload() {
   const customer = activeCustomer.value
   const effectiveServiceMode = currentServiceMode.value
@@ -2458,6 +2813,8 @@ function syncCancelFabPositionToViewport() {
 restoreCancelFabPosition()
 
 onMounted(async () => {
+  initSpeechRecognition()
+  loadAiDraftStatus()
   refreshPendingSyncQueue()
   statusClockTimer = window.setInterval(() => {
     statusNowMs.value = Date.now()
@@ -2489,6 +2846,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  stopSpeechRecognition()
   window.clearTimeout(customerSearchTimer)
   window.clearTimeout(deviceModelSearchTimer)
   window.clearTimeout(draftTimer)
@@ -2595,6 +2953,67 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           <span>{{ zh(company.source === 'customer' ? '系统客户' : '地图结果') }} · {{ zh(company.address || company.mapAddress || '暂无地址') }}</span>
         </button>
         <span v-if="!nearbyCompanies.length">{{ zh('暂无附近候选') }}</span>
+      </div>
+    </section>
+
+    <section class="quick-card ai-voice-card" :class="{ open: aiVoiceOpen, unavailable: aiDraftStatus.loaded && !aiDraftAvailable }">
+      <div class="quick-card-head">
+        <div>
+          <p class="section-kicker">{{ zh('AI VOICE') }}</p>
+          <h2>{{ zh('语音填写') }}</h2>
+          <p>{{ zh('说出客户、问题、处理过程和时间，AI 会整理成服务记录草稿。') }}</p>
+        </div>
+        <button class="primary" type="button" :disabled="loading" @click="openAiVoicePanel">
+          <PreviewIcon name="status" />
+          {{ zh(aiVoiceOpen ? '收起' : '开始语音') }}
+        </button>
+      </div>
+      <div v-if="aiVoiceOpen" class="ai-voice-panel">
+        <div class="ai-voice-status-row">
+          <span :class="{ ready: aiDraftAvailable }">{{ zh(aiDraftStatusLabel) }}</span>
+          <span>{{ zh(speechSupported ? '浏览器语音识别可用' : '可手动输入文字') }}</span>
+        </div>
+        <div class="ai-voice-actions">
+          <button
+            class="locate"
+            type="button"
+            :disabled="!speechSupported || speechListening || aiDraftLoading || !aiDraftAvailable"
+            @click="startSpeechRecognition"
+          >
+            <PreviewIcon name="status" />{{ zh('开始') }}
+          </button>
+          <button class="ghost" type="button" :disabled="!speechListening" @click="stopSpeechRecognition">
+            <PreviewIcon name="close" />{{ zh('暂停') }}
+          </button>
+          <button class="ghost" type="button" :disabled="aiDraftLoading || (!speechTranscript && !speechInterimTranscript)" @click="resetSpeechTranscript">
+            <PreviewIcon name="trash" />{{ zh('重录') }}
+          </button>
+        </div>
+        <label class="field service-record-field ai-transcript-field">
+          <span>{{ zh('语音转写 / 手动输入') }}</span>
+          <textarea
+            v-model="speechTranscript"
+            :placeholder="zh(speechSupported ? '点击开始后说话，也可直接粘贴工作内容。' : '当前浏览器不支持语音识别，请直接输入或粘贴工作内容。')"
+            rows="5"
+          />
+          <small v-if="speechInterimTranscript">{{ zh('识别中：') }}{{ zh(speechInterimTranscript) }}</small>
+        </label>
+        <div v-if="aiDraftAppliedLabels.length || aiDraftMissing.length || aiDraftWarnings.length" class="ai-draft-result">
+          <p v-if="aiDraftAppliedLabels.length">{{ zh('已填入') }}：{{ zh(aiDraftAppliedLabels.join('、')) }}</p>
+          <p v-if="aiDraftMissing.length">{{ zh('仍需补充') }}：{{ zh(aiDraftMissing.join('、')) }}</p>
+          <p v-if="aiDraftWarnings.length">{{ zh('提示') }}：{{ zh(aiDraftWarnings.join('、')) }}</p>
+        </div>
+        <div class="ai-voice-footer">
+          <span>{{ zh(speechListening ? '正在听写...' : speechTranscriptPreview ? '转写内容可继续编辑' : '尚未录入内容') }}</span>
+          <button
+            class="primary"
+            type="button"
+            :disabled="aiDraftLoading || !aiDraftAvailable || !speechTranscriptPreview.trim()"
+            @click="generateAiDraftFromTranscript"
+          >
+            <PreviewIcon name="check" />{{ zh(aiDraftLoading ? '整理中' : 'AI 填入表单') }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -3026,6 +3445,62 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
       </div>
     </div>
 
+    <div v-if="aiDraftConflicts.length" class="signature-modal ai-review-modal" role="dialog" aria-modal="true" :aria-label="zh('确认 AI 建议')">
+      <div class="signature-modal-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('AI 发现部分字段已有内容') }}</p>
+            <h2>{{ zh('确认是否覆盖') }}</h2>
+          </div>
+          <button class="ghost" type="button" @click="resolveAiDraftConflicts(false)">
+            <PreviewIcon name="close" />{{ zh('保留现有') }}
+          </button>
+        </header>
+        <div class="ai-conflict-list">
+          <div v-for="conflict in aiDraftConflicts" :key="conflict.field" class="ai-conflict-item">
+            <strong>{{ zh(conflict.label) }}</strong>
+            <p><span>{{ zh('现有') }}</span>{{ zh(conflict.current) }}</p>
+            <p><span>{{ zh('AI 建议') }}</span>{{ zh(conflict.next) }}</p>
+          </div>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" @click="resolveAiDraftConflicts(false)">
+            <PreviewIcon name="check" />{{ zh('保留现有并继续') }}
+          </button>
+          <button class="primary" type="button" @click="resolveAiDraftConflicts(true)">
+            <PreviewIcon name="rotate" />{{ zh('应用 AI 建议') }}
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <div v-if="aiDraftConfirmSubmitOpen" class="signature-modal ai-review-modal" role="dialog" aria-modal="true" :aria-label="zh('确认提交')">
+      <div class="signature-modal-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('AI 已填入草稿') }}</p>
+            <h2>{{ zh('确认提交服务记录') }}</h2>
+          </div>
+          <button class="ghost" type="button" @click="closeAiConfirmSubmit">
+            <PreviewIcon name="close" />{{ zh('再检查') }}
+          </button>
+        </header>
+        <div class="ai-submit-summary">
+          <p>{{ zh('页面必填项已通过校验。提交前请确认客户、时间、处理记录和服务结论无误。') }}</p>
+          <p v-if="aiDraftAppliedLabels.length">{{ zh('本次 AI 填入') }}：{{ zh(aiDraftAppliedLabels.join('、')) }}</p>
+          <p v-if="aiDraftWarnings.length">{{ zh('提示') }}：{{ zh(aiDraftWarnings.join('、')) }}</p>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" @click="closeAiConfirmSubmit">
+            <PreviewIcon name="edit" />{{ zh('返回修改') }}
+          </button>
+          <button class="primary" type="button" :disabled="saving" @click="confirmAiSubmit">
+            <PreviewIcon name="send" />{{ zh(saving ? '提交中' : '确认提交') }}
+          </button>
+        </footer>
+      </div>
+    </div>
+
     <button
       class="form-cancel-fab"
       :class="{ dragging: cancelFabDragging }"
@@ -3055,6 +3530,119 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 </template>
 
 <style scoped>
+.ai-voice-card {
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.ai-voice-card.unavailable {
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.ai-voice-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.ai-voice-status-row,
+.ai-voice-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-voice-status-row span,
+.ai-voice-footer span {
+  min-height: 28px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.ai-voice-status-row span.ready {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.ai-voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-transcript-field textarea {
+  min-height: 128px;
+}
+
+.ai-transcript-field small {
+  color: #2563eb;
+}
+
+.ai-draft-result,
+.ai-submit-summary {
+  display: grid;
+  gap: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.86);
+  padding: 14px;
+  color: #334155;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.ai-draft-result p,
+.ai-submit-summary p {
+  margin: 0;
+}
+
+.ai-review-modal .signature-modal-shell {
+  max-width: min(720px, calc(100vw - 28px));
+}
+
+.ai-conflict-list {
+  display: grid;
+  gap: 12px;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  padding: 4px;
+}
+
+.ai-conflict-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 14px;
+}
+
+.ai-conflict-item strong {
+  color: #0f172a;
+}
+
+.ai-conflict-item p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: #334155;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ai-conflict-item span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .device-model-autocomplete .autocomplete-wrapper {
   position: relative;
 }

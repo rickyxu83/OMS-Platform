@@ -55,6 +55,7 @@ const env = {
   amapKey: process.env.AMAP_KEY || '',
   ai: {
     workSummaryEnabled: process.env.AI_WORK_SUMMARY_ENABLED === 'true',
+    serviceDraftEnabled: process.env.AI_SERVICE_DRAFT_ENABLED === 'true',
     provider: process.env.AI_PROVIDER || 'custom',
     apiUrl: process.env.AI_API_URL || '',
     apiKey: process.env.AI_API_KEY || '',
