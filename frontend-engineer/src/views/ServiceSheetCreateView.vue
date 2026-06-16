@@ -3105,6 +3105,10 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           <span :class="{ ready: aiDraftAvailable }">{{ zh(aiDraftStatusLabel) }}</span>
           <span>{{ zh(speechSupported ? '浏览器语音识别可用' : '可手动输入文字') }}</span>
         </div>
+        <div class="ai-voice-guide">
+          <strong>{{ zh('按表单顺序说更稳') }}</strong>
+          <p>{{ zh('客户：镇江李长荣；联系人：朱佳清；服务类型：设备安装；到达：早上 9 点；路上：2 小时；回去：2 小时；工作内容：服务器下架、新服务器上架、整理线缆及开机配置。') }}</p>
+        </div>
         <div class="ai-voice-actions">
           <button
             class="locate"
@@ -3707,6 +3711,27 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.ai-voice-guide {
+  display: grid;
+  gap: 6px;
+  border-radius: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(239, 246, 255, 0.72);
+  padding: 12px 14px;
+  color: #1e3a8a;
+}
+
+.ai-voice-guide strong {
+  font-size: 0.86rem;
+}
+
+.ai-voice-guide p {
+  margin: 0;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.55;
 }
 
 .ai-transcript-field textarea {
