@@ -815,6 +815,17 @@ function installIssueDescription(source) {
   return `${installDeviceLabel(source)}安装`
 }
 
+function detectOnsiteServiceType(source) {
+  if (/例行巡检|巡检|健康检查|定期检查|例检/.test(source)) return 'inspect'
+  if (/现场培训|培训|讲解|指导|操作说明|使用说明/.test(source)) return 'training'
+  if (/故障处理|故障|排错|排障|维修|修复|损坏|坏了|告警|报错|无法|不通|断网|丢包|延迟|更换|替换|换(?:硬盘|内存|CPU|cpu|处理器|电源|风扇|网卡|主板|电池|光模块|光纤|网线)/.test(source)) {
+    return 'repair'
+  }
+  if (isDeviceInstallSource(source)) return 'install'
+  if (/其他事项|其他|协助|支持/.test(source)) return 'other'
+  return ''
+}
+
 function buildDeviceInstallWorkContent(source) {
   if (!isDeviceInstallSource(source)) return ''
   const label = installDeviceLabel(source)
@@ -825,6 +836,16 @@ function buildDeviceInstallWorkContent(source) {
   if (/配置|开机配置/.test(source)) parts.push('完成基础开机配置')
   parts.push('加电开机测试，检查硬件状态及设备运行情况')
   return parts.join('，')
+}
+
+function buildInspectionWorkContent(source) {
+  if (!/例行巡检|巡检|健康检查|定期检查|例检/.test(source)) return ''
+  return '按计划完成设备运行状态巡检，检查设备告警、硬件状态、网络连通性及基础运行情况，记录巡检结果'
+}
+
+function buildTrainingWorkContent(source) {
+  if (!/现场培训|培训|讲解|指导|操作说明|使用说明/.test(source)) return ''
+  return '现场向客户讲解系统功能、日常操作流程及注意事项，解答客户问题并确认客户掌握基本操作'
 }
 
 function buildRuleWorkContent(transcript, markedWork) {
@@ -838,6 +859,10 @@ function buildRuleWorkContent(transcript, markedWork) {
   }
   const installWork = buildDeviceInstallWorkContent(source)
   if (installWork) return installWork
+  const inspectionWork = buildInspectionWorkContent(source)
+  if (inspectionWork) return inspectionWork
+  const trainingWork = buildTrainingWorkContent(source)
+  if (trainingWork) return trainingWork
   const networkWork = buildNetworkWorkContent(source)
   if (networkWork) return networkWork
   const hardwareWork = buildHardwareWorkContent(source)
@@ -880,7 +905,7 @@ function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
   if (!existing) return true
   const current = String(existing || '').toLowerCase()
   const source = String(transcript || '').toLowerCase()
-  const criticalTerms = ['ftp', '客户端', '配置', '网络', '内网', '外网', '上网', '丢包', '延迟', '交换机', '路由器', '防火墙', 'AP', '端口', '光模块', '光纤', '网线', '链路', 'VLAN', 'DNS', 'DHCP', 'VPN', 'IP', '存储', '硬盘', '内存', 'cpu', 'CPU', '电源', '风扇', 'raid', 'RAID', 'hba', 'HBA', '网卡', '主板', '电池', '服务器', '下架', '上架', '线缆', '开机']
+  const criticalTerms = ['ftp', '客户端', '配置', '巡检', '培训', '网络', '内网', '外网', '上网', '丢包', '延迟', '交换机', '路由器', '防火墙', 'AP', '端口', '光模块', '光纤', '网线', '链路', 'VLAN', 'DNS', 'DHCP', 'VPN', 'IP', '存储', '硬盘', '内存', 'cpu', 'CPU', '电源', '风扇', 'raid', 'RAID', 'hba', 'HBA', '网卡', '主板', '电池', '服务器', '下架', '上架', '线缆', '开机']
   return criticalTerms.some((term) => source.includes(term) && !current.includes(term))
 }
 
@@ -894,12 +919,10 @@ function extractMarkedIssue(transcript) {
 function inferFieldsFromTranscript(fields, transcript, mode) {
   const source = String(transcript || '')
   const next = { ...fields }
-  const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
-  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池|网络|断网|不通|丢包|延迟|交换机|路由器|防火墙|无线AP|端口|光模块|光纤|网线|链路|VLAN|vlan|DNS|dns|DHCP|dhcp|VPN|vpn/.test(source)
+  const detectedServiceType = mode === 'onsite' ? detectOnsiteServiceType(source) : ''
 
-  if (mode === 'onsite' && !next.serviceType) {
-    if (looksInstall) next.serviceType = 'install'
-    else if (looksFault) next.serviceType = 'repair'
+  if (mode === 'onsite' && detectedServiceType) {
+    next.serviceType = detectedServiceType
   }
 
   const markedIssue = extractMarkedIssue(source)
@@ -907,7 +930,13 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
     next.issueDescription = markedIssue
   }
 
-  if (installIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /安装|上架|设备/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+  if (detectedServiceType === 'inspect' && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = '例行巡检'
+  } else if (detectedServiceType === 'training' && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = '现场培训'
+  } else if (detectedServiceType === 'other' && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = '其他事项'
+  } else if (installIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /安装|上架|设备/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = installIssueDescription(source)
   } else if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = 'FTP 服务故障'
