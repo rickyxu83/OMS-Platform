@@ -170,6 +170,7 @@ function extractArrivalTime(transcript) {
   const numericPatterns = [
     /([01]?\d|2[0-3])[:：](\d{1,2}).{0,8}(?:到|到达).{0,4}(?:现场|客户)?/,
     /(?:到|到达).{0,4}(?:现场|客户)?.{0,8}([01]?\d|2[0-3])[:：](\d{1,2})/,
+    /(?:早上|上午|今天)?\s*([01]?\d|2[0-3])[:：](\d{1,2}).{0,8}(?:的)?(?:路上|去程|来程).{0,8}(?:用|花|耗)/,
   ]
   for (const pattern of numericPatterns) {
     const match = source.match(pattern)
@@ -178,6 +179,7 @@ function extractArrivalTime(transcript) {
   const chinesePatterns = [
     /([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}(?:到|到达).{0,4}(?:现场|客户)?/,
     /(?:到|到达).{0,4}(?:现场|客户)?.{0,8}([一二两三四五六七八九十\d]{1,3})点(半)?/,
+    /(?:早上|上午|今天)?\s*([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}(?:的)?(?:路上|去程|来程).{0,8}(?:用|花|耗)/,
   ]
   for (const pattern of chinesePatterns) {
     const match = source.match(pattern)
