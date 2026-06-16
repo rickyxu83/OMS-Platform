@@ -281,16 +281,72 @@ function matchCustomerCandidate(text, customerCandidates) {
   }) || null
 }
 
+function matchContactCandidate(text, candidates) {
+  const source = normalizeCustomerMatchText(text)
+  if (!source) return null
+  const contacts = (candidates || []).flatMap((candidate) => candidate.contacts || [])
+  return contacts.find((contact) => {
+    const name = normalizeCustomerMatchText(contact.name)
+    return name.length >= 2 && source.includes(name)
+  }) || null
+}
+
 function applyCustomerCandidateInference(fields, transcript, customerCandidates) {
   const candidate = matchCustomerCandidate(`${fields.customerName || ''} ${transcript || ''}`, customerCandidates)
-  if (!candidate) return fields
+  const contact = matchContactCandidate(`${fields.contactName || ''} ${transcript || ''}`, candidate ? [candidate] : customerCandidates)
+  if (!candidate && !contact) return fields
   return {
     ...fields,
-    customerName: candidate.name || fields.customerName,
-    customerAddress: fields.customerAddress || candidate.address || '',
-    contactName: fields.contactName || candidate.contactName || candidate.contacts?.[0]?.name || '',
-    contactPhone: fields.contactPhone || candidate.contactPhone || candidate.contacts?.[0]?.phone || '',
+    customerName: candidate?.name || fields.customerName,
+    customerAddress: fields.customerAddress || candidate?.address || '',
+    contactName: fields.contactName || contact?.name || candidate?.contactName || candidate?.contacts?.[0]?.name || '',
+    contactPhone: fields.contactPhone || contact?.phone || candidate?.contactPhone || candidate?.contacts?.[0]?.phone || '',
   }
+}
+
+function extractMarkedWorkContent(transcript) {
+  const source = String(transcript || '')
+  const match = source.match(/(?:工作内容|服务内容|处理内容)(?:是|为|：|:)?(.+)$/)
+  if (!match) return ''
+  return trimText(match[1].replace(/^(就|为|是|：|:)+/, ''), FIELD_LIMITS.workContent)
+}
+
+function inferFieldsFromTranscript(fields, transcript, mode) {
+  const source = String(transcript || '')
+  const next = { ...fields }
+  const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
+  const looksFault = /故障|排错|故障原因|硬盘故障/.test(source)
+
+  if (mode === 'onsite' && !next.serviceType) {
+    if (looksInstall) next.serviceType = 'install'
+    else if (looksFault) next.serviceType = 'repair'
+  }
+
+  if (!next.issueDescription) {
+    if (looksInstall && /服务器/.test(source)) next.issueDescription = '服务器安装'
+    else if (looksInstall) next.issueDescription = '设备安装'
+    else if (/硬盘故障/.test(source)) next.issueDescription = '硬盘故障'
+    else if (/服务器故障/.test(source)) next.issueDescription = '服务器故障'
+  }
+
+  if (!next.workContent) {
+    const markedWork = extractMarkedWorkContent(source)
+    if (markedWork) next.workContent = markedWork
+    else if (looksInstall && /服务器/.test(source)) {
+      const actions = []
+      if (/下架/.test(source)) actions.push('服务器下架')
+      if (/上架/.test(source)) actions.push('新服务器上架')
+      if (/整理线缆|线缆/.test(source)) actions.push('整理线缆')
+      if (/开机配置|配置/.test(source)) actions.push('开机配置')
+      if (actions.length) next.workContent = actions.join('，')
+    }
+  }
+
+  if (!next.result && /(完成|刚刚完成|已经完成|处理好了|解决了)/.test(source)) {
+    next.result = 'resolved'
+  }
+
+  return next
 }
 
 function extractTextFromProviderResponse(data) {
@@ -528,7 +584,7 @@ async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft
     }
 
     const inferredFields = applyCustomerCandidateInference(
-      normalizeFields(parsed.fields, mode),
+      inferFieldsFromTranscript(normalizeFields(parsed.fields, mode), normalizedTranscript, mode),
       normalizedTranscript,
       customerCandidates,
     )

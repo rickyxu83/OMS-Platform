@@ -2383,7 +2383,12 @@ function splitAiFieldsByConflict(fields) {
     const current = normalizeAiText(currentAiFieldValue(field), field === 'workContent' ? 2000 : 600)
     const next = normalizeAiText(value, field === 'workContent' ? 2000 : 600)
     if (!next) continue
-    if (current && current !== next) {
+    const isDefaultCategory = field === 'serviceType' && currentServiceMode.value === 'onsite' && current === 'repair'
+    const isDefaultRemoteCategory = field === 'timesheetCategory' && currentServiceMode.value === 'remote' && current === '远程排障'
+    const isDefaultOfficeCategory = field === 'timesheetCategory' && currentServiceMode.value === 'office' && current === '方案准备'
+    const isDefaultResult = field === 'result' && current === 'resolved'
+    const canReplaceDefault = isDefaultCategory || isDefaultRemoteCategory || isDefaultOfficeCategory || isDefaultResult
+    if (current && current !== next && !canReplaceDefault) {
       conflicts.push({ field, label: aiFieldLabel(field), current, next })
     } else {
       autoFields[field] = next
