@@ -717,6 +717,82 @@ function buildHardwareWorkContent(source) {
   return parts.join('，')
 }
 
+const networkComponents = [
+  { label: '交换机端口', pattern: /交换机.{0,8}端口|端口.{0,8}交换机/ },
+  { label: '交换机', pattern: /交换机/ },
+  { label: '路由器', pattern: /路由器|网关设备/ },
+  { label: '防火墙', pattern: /防火墙/ },
+  { label: '无线 AP', pattern: /无线AP|AP|ap|无线接入点/ },
+  { label: 'VPN', pattern: /VPN|vpn/ },
+  { label: 'DNS', pattern: /DNS|dns|域名解析|解析/ },
+  { label: 'DHCP', pattern: /DHCP|dhcp|自动获取|获取不到地址/ },
+  { label: 'VLAN', pattern: /VLAN|vlan/ },
+  { label: 'IP 地址', pattern: /IP地址|ip地址|IP|ip|地址冲突/ },
+  { label: '光模块', pattern: /光模块|模块/ },
+  { label: '光纤', pattern: /光纤|尾纤/ },
+  { label: '网线', pattern: /网线|跳线/ },
+  { label: '网络链路', pattern: /链路|线路/ },
+]
+
+function detectNetworkComponent(source) {
+  return networkComponents.find((item) => item.pattern.test(source)) || null
+}
+
+function hasNetworkSymptom(source) {
+  return /网络|内网|外网|互联网|上网|断网|不通|中断|丢包|延迟|慢|不稳定|无法访问|无法连接|连不上|连接异常|端口.{0,6}(?:down|DOWN|不通|故障)|down|DOWN|告警|冲突|解析|DHCP|dhcp|VPN|vpn|VLAN|vlan|光模块|光纤|网线|链路|交换机|路由器|防火墙|无线AP|AP/.test(source)
+}
+
+function networkLabelWithSuffix(label, suffix) {
+  return /[A-Za-z]/.test(label) ? `${label} ${suffix}` : `${label}${suffix}`
+}
+
+function networkIssueDescription(source) {
+  if (!hasNetworkSymptom(source)) return ''
+  const component = detectNetworkComponent(source)
+  const label = component?.label || '网络'
+  if (/DNS|dns|域名解析|解析/.test(source)) return 'DNS 解析异常'
+  if (/DHCP|dhcp|自动获取|获取不到地址/.test(source)) return 'DHCP 地址获取异常'
+  if (/VPN|vpn/.test(source)) return 'VPN 连接异常'
+  if (/地址冲突/.test(source)) return 'IP 地址冲突'
+  if (/VLAN|vlan/.test(source)) return 'VLAN 配置异常'
+  if (/丢包/.test(source)) return '网络丢包'
+  if (/延迟|网络慢|访问慢|慢/.test(source)) return '网络延迟'
+  if (/无法上网|上不了网|外网不通|互联网不通/.test(source)) return '外网访问异常'
+  if (/断网|不通|中断|无法访问|无法连接|连不上|连接异常/.test(source)) return label === '网络' ? '网络连接异常' : networkLabelWithSuffix(label, '连接异常')
+  if (/告警|故障|损坏|坏|down|DOWN/.test(source)) return networkLabelWithSuffix(label, '故障')
+  return label === '网络' ? '网络异常' : networkLabelWithSuffix(label, '异常')
+}
+
+function buildNetworkWorkContent(source) {
+  const issue = networkIssueDescription(source)
+  if (!issue) return ''
+  if (/DNS|dns|域名解析|解析/.test(source)) {
+    return '检查 DNS 配置及域名解析结果，调整 DNS 配置，验证域名解析和业务访问恢复'
+  }
+  if (/DHCP|dhcp|自动获取|获取不到地址/.test(source)) {
+    return '检查 DHCP 服务状态及地址获取情况，调整网络配置，验证终端地址获取和网络访问恢复'
+  }
+  if (/VPN|vpn/.test(source)) {
+    return '检查 VPN 连接状态、账号及网络连通性，调整相关配置，验证 VPN 连接和业务访问恢复'
+  }
+  if (/VLAN|vlan|IP地址|ip地址|地址冲突|网关/.test(source)) {
+    return '检查终端 IP、网关、VLAN 及网络配置，修正异常配置，验证网络连通性恢复'
+  }
+  if (/光模块|光纤|尾纤|网线|跳线|链路|线路|端口|down|DOWN/.test(source)) {
+    const parts = ['检查网络链路、线缆及设备端口状态']
+    if (/光模块/.test(source) && /更换|替换|换/.test(source)) parts.push('更换异常光模块')
+    else if (/光纤|尾纤/.test(source) && /更换|替换|换/.test(source)) parts.push('更换异常光纤')
+    else if (/网线|跳线/.test(source) && /更换|替换|换/.test(source)) parts.push('更换异常网线')
+    else parts.push('处理链路或端口异常')
+    parts.push('验证端口状态和网络连通性恢复')
+    return parts.join('，')
+  }
+  if (/交换机|路由器|防火墙|无线AP|AP|ap/.test(source)) {
+    return '检查网络设备运行状态、端口状态及相关配置，处理异常配置或设备状态，验证网络连通性和业务访问恢复'
+  }
+  return '检查网络连通性、链路状态及相关配置，定位并处理异常点，验证网络访问恢复'
+}
+
 function buildRuleWorkContent(transcript, markedWork) {
   const source = String(transcript || '')
   if (/ftp/i.test(source)) {
@@ -726,6 +802,8 @@ function buildRuleWorkContent(transcript, markedWork) {
     if (/恢复|解决|完成|处理好/.test(source)) parts.push('验证 FTP 服务访问恢复')
     return parts.join('，')
   }
+  const networkWork = buildNetworkWorkContent(source)
+  if (networkWork) return networkWork
   const hardwareWork = buildHardwareWorkContent(source)
   if (hardwareWork) return hardwareWork
   if (/存储故障|硬盘坏|硬盘故障|硬盘损坏|更换硬盘/.test(source)) {
@@ -766,7 +844,7 @@ function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
   if (!existing) return true
   const current = String(existing || '').toLowerCase()
   const source = String(transcript || '').toLowerCase()
-  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '内存', 'cpu', 'CPU', '电源', '风扇', 'raid', 'RAID', 'hba', 'HBA', '网卡', '主板', '电池', '服务器', '下架', '上架', '线缆', '开机']
+  const criticalTerms = ['ftp', '客户端', '配置', '网络', '内网', '外网', '上网', '丢包', '延迟', '交换机', '路由器', '防火墙', 'AP', '端口', '光模块', '光纤', '网线', '链路', 'VLAN', 'DNS', 'DHCP', 'VPN', 'IP', '存储', '硬盘', '内存', 'cpu', 'CPU', '电源', '风扇', 'raid', 'RAID', 'hba', 'HBA', '网卡', '主板', '电池', '服务器', '下架', '上架', '线缆', '开机']
   return criticalTerms.some((term) => source.includes(term) && !current.includes(term))
 }
 
@@ -781,7 +859,7 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
   const source = String(transcript || '')
   const next = { ...fields }
   const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
-  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池/.test(source)
+  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池|网络|断网|不通|丢包|延迟|交换机|路由器|防火墙|无线AP|端口|光模块|光纤|网线|链路|VLAN|vlan|DNS|dns|DHCP|dhcp|VPN|vpn/.test(source)
 
   if (mode === 'onsite' && !next.serviceType) {
     if (looksInstall) next.serviceType = 'install'
@@ -795,6 +873,8 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
 
   if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = 'FTP 服务故障'
+  } else if (networkIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /网络|内网|外网|上网|断网|不通|丢包|延迟|交换机|路由器|防火墙|AP|端口|光模块|光纤|网线|链路|VLAN|vlan|DNS|dns|DHCP|dhcp|VPN|vpn|IP|ip|配置/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = networkIssueDescription(source)
   } else if (hardwareIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /更换|内存|硬盘|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = hardwareIssueDescription(source)
   } else if (/服务器.{0,8}硬盘损坏|硬盘损坏/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
