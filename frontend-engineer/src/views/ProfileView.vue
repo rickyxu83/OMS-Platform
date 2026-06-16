@@ -5,6 +5,7 @@ import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { saveUser } from '../services/auth'
+import { aiDraftEnabled, setAiDraftEnabled } from '../services/engineer-preferences'
 
 const { zh } = usePreviewI18n()
 const loading = ref(false)
@@ -310,6 +311,11 @@ async function removeAvatar() {
   }
 }
 
+function toggleAiDraftEnabled() {
+  setAiDraftEnabled(!aiDraftEnabled.value)
+  message.value = aiDraftEnabled.value ? 'AI 填单已开启' : 'AI 填单已关闭'
+}
+
 onMounted(load)
 </script>
 
@@ -367,6 +373,27 @@ onMounted(load)
     </section>
 
     <section class="profile-grid profile-settings-grid">
+      <article class="form-section profile-setting-card profile-ai-card">
+        <div class="profile-section-head">
+          <div>
+            <p>{{ zh('EXPERIMENTAL') }}</p>
+            <h2>{{ zh('AI 填单') }}</h2>
+          </div>
+          <span :class="{ done: aiDraftEnabled }">{{ zh(aiDraftEnabled ? '已开启' : '已关闭') }}</span>
+        </div>
+        <p class="profile-setting-copy">{{ zh('开启后，新建服务单页面会显示 AI 语音填写入口。关闭后，该区域会隐藏。') }}</p>
+        <button
+          class="preference-toggle"
+          type="button"
+          :aria-pressed="aiDraftEnabled ? 'true' : 'false'"
+          :class="{ active: aiDraftEnabled }"
+          @click="toggleAiDraftEnabled"
+        >
+          <span class="preference-toggle-track"><span class="preference-toggle-thumb" /></span>
+          <span>{{ zh(aiDraftEnabled ? '关闭 AI 填单' : '开启 AI 填单') }}</span>
+        </button>
+      </article>
+
       <form class="form-section profile-form profile-setting-card" :class="{ required: mustChangePassword }" @submit.prevent="changePassword">
         <div class="profile-section-head">
           <div>
