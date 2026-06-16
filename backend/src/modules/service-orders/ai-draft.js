@@ -793,12 +793,34 @@ function buildNetworkWorkContent(source) {
   return '检查网络连通性、链路状态及相关配置，定位并处理异常点，验证网络访问恢复'
 }
 
-function buildServerInstallWorkContent(source) {
-  if (!/服务器/.test(source) || !/安装|上架|新服务器|拆箱|理线|标签|加电|开机测试|开机配置/.test(source)) return ''
+const installDeviceTypes = [
+  { label: '服务器', pattern: /服务器|主机/ },
+  { label: '存储', pattern: /存储|磁盘阵列|阵列柜/ },
+  { label: '交换机', pattern: /交换机/ },
+  { label: '路由器', pattern: /路由器/ },
+  { label: '防火墙', pattern: /防火墙/ },
+  { label: '无线 AP', pattern: /无线AP|AP|ap|无线接入点/ },
+]
+
+function isDeviceInstallSource(source) {
+  return /安装|上架|新设备|新服务器|拆箱|理线|标签|加电|开机测试|开机配置/.test(source)
+}
+
+function installDeviceLabel(source) {
+  return (installDeviceTypes.find((item) => item.pattern.test(source)) || { label: '设备' }).label
+}
+
+function installIssueDescription(source) {
+  if (!isDeviceInstallSource(source)) return ''
+  return `${installDeviceLabel(source)}安装`
+}
+
+function buildDeviceInstallWorkContent(source) {
+  if (!isDeviceInstallSource(source)) return ''
+  const label = installDeviceLabel(source)
   const parts = []
-  if (/下架/.test(source)) parts.push('完成原服务器下架')
   parts.push('点检设备清单并核对设备外观及配件')
-  parts.push('拆箱后完成服务器上架固定')
+  parts.push(`拆箱后完成${label}上架固定`)
   parts.push('连接电源线、网络线缆并完成标签和理线')
   if (/配置|开机配置/.test(source)) parts.push('完成基础开机配置')
   parts.push('加电开机测试，检查硬件状态及设备运行情况')
@@ -814,10 +836,10 @@ function buildRuleWorkContent(transcript, markedWork) {
     if (/恢复|解决|完成|处理好/.test(source)) parts.push('验证 FTP 服务访问恢复')
     return parts.join('，')
   }
+  const installWork = buildDeviceInstallWorkContent(source)
+  if (installWork) return installWork
   const networkWork = buildNetworkWorkContent(source)
   if (networkWork) return networkWork
-  const serverInstallWork = buildServerInstallWorkContent(source)
-  if (serverInstallWork) return serverInstallWork
   const hardwareWork = buildHardwareWorkContent(source)
   if (hardwareWork) return hardwareWork
   if (/存储故障|硬盘坏|硬盘故障|硬盘损坏|更换硬盘/.test(source)) {
@@ -885,7 +907,9 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
     next.issueDescription = markedIssue
   }
 
-  if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+  if (installIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /安装|上架|设备/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = installIssueDescription(source)
+  } else if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = 'FTP 服务故障'
   } else if (networkIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /网络|内网|外网|上网|断网|不通|丢包|延迟|交换机|路由器|防火墙|AP|端口|光模块|光纤|网线|链路|VLAN|vlan|DNS|dns|DHCP|dhcp|VPN|vpn|IP|ip|配置/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = networkIssueDescription(source)
