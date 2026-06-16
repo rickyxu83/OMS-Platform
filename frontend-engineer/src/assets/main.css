@@ -1359,6 +1359,27 @@ h2 {
   letter-spacing: 0.12em;
 }
 
+.ai-voice-kicker {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ai-voice-kicker b {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: 1px solid rgb(37 99 235 / 16%);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .section-copy {
   margin: 0;
   color: #64748b;
@@ -4028,6 +4049,9 @@ h2 {
   .nearby-company-list button,
   .customer-company-options button,
   .contact-options button,
+  .preference-toggle,
+  .preference-toggle-track,
+  .preference-toggle-thumb,
   .engineer-bottom-nav a,
   .home-create-action,
   .shell-menu-icon,
@@ -4595,6 +4619,10 @@ h2 {
     flex-basis: 100%;
   }
 
+  .preference-toggle {
+    width: 100%;
+  }
+
   .signature-secondary-actions {
     grid-template-columns: 1fr;
   }
@@ -4611,6 +4639,78 @@ h2 {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 80%),
     0 18px 42px rgb(15 23 42 / 6%);
+}
+
+.profile-ai-card {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 18px;
+}
+
+.profile-setting-copy {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.preference-toggle {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0 16px 0 8px;
+  color: #475569;
+  background: #fff;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: left;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 80%),
+    0 10px 24px rgb(15 23 42 / 6%);
+}
+
+.preference-toggle.active {
+  border-color: rgb(37 99 235 / 24%);
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.preference-toggle-track {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 26px;
+  flex: 0 0 44px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background 180ms ease;
+}
+
+.preference-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 22%);
+  transition: transform 180ms ease;
+}
+
+.preference-toggle.active .preference-toggle-track {
+  background: #2563eb;
+}
+
+.preference-toggle.active .preference-toggle-thumb {
+  transform: translateX(18px);
 }
 
 .profile-section-head {

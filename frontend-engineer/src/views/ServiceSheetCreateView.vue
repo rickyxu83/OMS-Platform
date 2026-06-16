@@ -6,6 +6,7 @@ import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { currentUser } from '../services/auth'
+import { aiDraftEnabled } from '../services/engineer-preferences'
 import { readOfflineCacheMeta } from '../services/offline-cache'
 import { isOnline } from '../services/network'
 import {
@@ -2949,8 +2950,10 @@ function syncCancelFabPositionToViewport() {
 restoreCancelFabPosition()
 
 onMounted(async () => {
-  initSpeechRecognition()
-  loadAiDraftStatus()
+  if (aiDraftEnabled.value) {
+    initSpeechRecognition()
+    loadAiDraftStatus()
+  }
   refreshPendingSyncQueue()
   statusClockTimer = window.setInterval(() => {
     statusNowMs.value = Date.now()
@@ -2996,6 +2999,16 @@ onBeforeUnmount(() => {
   stopCancelFabDrag()
   unlockSignatureLandscape()
   window.dispatchEvent(new CustomEvent('rc-form-dirty-state', { detail: { dirty: false } }))
+})
+
+watch(aiDraftEnabled, (enabled) => {
+  if (enabled) {
+    initSpeechRecognition()
+    if (!aiDraftStatus.value.loaded) loadAiDraftStatus()
+    return
+  }
+  stopSpeechRecognition()
+  aiVoiceOpen.value = false
 })
 
 watch(
@@ -3092,10 +3105,13 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
       </div>
     </section>
 
-    <section class="quick-card ai-voice-card" :class="{ open: aiVoiceOpen, unavailable: aiDraftStatus.loaded && !aiDraftAvailable }">
+    <section v-if="aiDraftEnabled" class="quick-card ai-voice-card" :class="{ open: aiVoiceOpen, unavailable: aiDraftStatus.loaded && !aiDraftAvailable }">
       <div class="quick-card-head">
         <div>
-          <p class="section-kicker">{{ zh('AI VOICE') }}</p>
+          <p class="section-kicker ai-voice-kicker">
+            <span>{{ zh('AI VOICE') }}</span>
+            <b>{{ zh('实验功能') }}</b>
+          </p>
           <h2>{{ zh('语音填写') }}</h2>
           <p>{{ zh('说出客户、问题、处理过程和时间，AI 会整理成服务记录草稿。') }}</p>
         </div>
