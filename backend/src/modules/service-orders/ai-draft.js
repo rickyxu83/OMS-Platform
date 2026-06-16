@@ -424,16 +424,47 @@ function normalizeCustomerMatchText(value) {
 }
 
 function normalizePinyinMatchText(value) {
+  return pinyinSyllables(value).join('')
+}
+
+function pinyinSyllables(value) {
   const source = String(value || '').trim()
-  if (!source) return ''
+  if (!source) return []
   try {
     return pinyin(source, { toneType: 'none', type: 'array' })
-      .join('')
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '')
+      .map((item) => String(item || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      .filter(Boolean)
   } catch {
-    return ''
+    return []
   }
+}
+
+function normalizeFuzzyPinyinSyllable(syllable, loose = false) {
+  let next = String(syllable || '').toLowerCase()
+  next = next
+    .replace(/^zh/, 'z')
+    .replace(/^ch/, 'c')
+    .replace(/^sh/, 's')
+    .replace(/iang$/, 'ian')
+    .replace(/uang$/, 'uan')
+    .replace(/iong$/, 'ion')
+    .replace(/ang$/, 'an')
+    .replace(/eng$/, 'en')
+    .replace(/ing$/, 'in')
+    .replace(/ong$/, 'on')
+  if (loose) {
+    next = next
+      .replace(/^n/, 'l')
+      .replace(/^r/, 'l')
+      .replace(/^f/, 'h')
+  }
+  return next
+}
+
+function normalizeFuzzyPinyinMatchText(value, loose = false) {
+  return pinyinSyllables(value)
+    .map((syllable) => normalizeFuzzyPinyinSyllable(syllable, loose))
+    .join('')
 }
 
 function normalizeContactMatchText(value) {
@@ -461,10 +492,18 @@ function customerPinyinAliases(candidate) {
     .filter((alias) => alias.length >= 4)
 }
 
+function customerFuzzyPinyinAliases(candidate, loose = false) {
+  return customerAliases(candidate)
+    .map((alias) => normalizeFuzzyPinyinMatchText(alias, loose))
+    .filter((alias) => alias.length >= (loose ? 6 : 4))
+}
+
 function matchCustomerCandidate(text, customerCandidates) {
   const source = normalizeCustomerMatchText(text)
   const sourcePinyin = normalizePinyinMatchText(text)
-  if (!source && !sourcePinyin) return null
+  const sourceFuzzyPinyin = normalizeFuzzyPinyinMatchText(text)
+  const sourceLoosePinyin = normalizeFuzzyPinyinMatchText(text, true)
+  if (!source && !sourcePinyin && !sourceFuzzyPinyin) return null
   let best = null
   let bestScore = 0
   for (const candidate of customerCandidates || []) {
@@ -483,6 +522,16 @@ function matchCustomerCandidate(text, customerCandidates) {
         score += sourcePinyin.length * 4
       }
     }
+    for (const aliasPinyin of customerFuzzyPinyinAliases(candidate)) {
+      if (sourceFuzzyPinyin.includes(aliasPinyin)) {
+        score += aliasPinyin.length * 4
+      }
+    }
+    for (const aliasPinyin of customerFuzzyPinyinAliases(candidate, true)) {
+      if (sourceLoosePinyin.includes(aliasPinyin)) {
+        score += aliasPinyin.length * 2
+      }
+    }
     if (score > 0) score += Math.min(20, Number(candidate?.weight || 0))
     if (score > bestScore) {
       best = candidate
@@ -495,6 +544,8 @@ function matchCustomerCandidate(text, customerCandidates) {
 function customerCandidateRelevance(candidate, transcript) {
   const source = normalizeCustomerMatchText(transcript)
   const sourcePinyin = normalizePinyinMatchText(transcript)
+  const sourceFuzzyPinyin = normalizeFuzzyPinyinMatchText(transcript)
+  const sourceLoosePinyin = normalizeFuzzyPinyinMatchText(transcript, true)
   const contactSource = normalizeContactMatchText(transcript)
   let score = Number(candidate?.weight || 0)
   for (const alias of customerAliases(candidate)) {
@@ -502,6 +553,12 @@ function customerCandidateRelevance(candidate, transcript) {
   }
   for (const aliasPinyin of customerPinyinAliases(candidate)) {
     if (sourcePinyin.includes(aliasPinyin)) score += aliasPinyin.length * 12
+  }
+  for (const aliasPinyin of customerFuzzyPinyinAliases(candidate)) {
+    if (sourceFuzzyPinyin.includes(aliasPinyin)) score += aliasPinyin.length * 8
+  }
+  for (const aliasPinyin of customerFuzzyPinyinAliases(candidate, true)) {
+    if (sourceLoosePinyin.includes(aliasPinyin)) score += aliasPinyin.length * 4
   }
   const contacts = [
     ...(candidate.contactName ? [{ name: candidate.contactName, weight: 1 }] : []),
@@ -528,7 +585,9 @@ function selectPromptCustomerCandidates(customerCandidates, transcript) {
 function matchContactCandidate(text, candidates) {
   const source = normalizeContactMatchText(text)
   const sourcePinyin = normalizePinyinMatchText(text)
-  if (!source && !sourcePinyin) return null
+  const sourceFuzzyPinyin = normalizeFuzzyPinyinMatchText(text)
+  const sourceLoosePinyin = normalizeFuzzyPinyinMatchText(text, true)
+  if (!source && !sourcePinyin && !sourceFuzzyPinyin) return null
   let best = null
   let bestScore = 0
   for (const candidate of candidates || []) {
@@ -539,11 +598,17 @@ function matchContactCandidate(text, candidates) {
     for (const contact of contacts) {
       const name = normalizeContactMatchText(contact.name)
       const namePinyin = normalizePinyinMatchText(contact.name)
+      const nameFuzzyPinyin = normalizeFuzzyPinyinMatchText(contact.name)
+      const nameLoosePinyin = normalizeFuzzyPinyinMatchText(contact.name, true)
       const textMatched = name.length >= 2 && source.includes(name)
       const pinyinMatched = namePinyin.length >= 4 && sourcePinyin.includes(namePinyin)
-      if (!textMatched && !pinyinMatched) continue
+      const fuzzyPinyinMatched = nameFuzzyPinyin.length >= 4 && sourceFuzzyPinyin.includes(nameFuzzyPinyin)
+      const loosePinyinMatched = nameLoosePinyin.length >= 6 && sourceLoosePinyin.includes(nameLoosePinyin)
+      if (!textMatched && !pinyinMatched && !fuzzyPinyinMatched && !loosePinyinMatched) continue
       const score = (textMatched ? name.length * 20 : 0)
         + (pinyinMatched ? namePinyin.length * 5 : 0)
+        + (fuzzyPinyinMatched ? nameFuzzyPinyin.length * 3 : 0)
+        + (loosePinyinMatched ? nameLoosePinyin.length * 2 : 0)
         + Number(contact.weight || 0)
         + Number(candidate.weight || 0)
       if (score > bestScore) {
