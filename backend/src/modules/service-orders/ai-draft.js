@@ -677,6 +677,17 @@ function buildRuleWorkContent(transcript, markedWork) {
     else if (/更换硬盘/.test(source)) parts.push('更换硬盘')
     return parts.join('，')
   }
+  if (/内存坏|内存故障|内存损坏|更换内存|内存更换/.test(source)) {
+    const parts = []
+    parts.push(/服务器/.test(source) ? '检查服务器内存状态' : '检查内存状态')
+    if (/一根/.test(source)) parts.push('确认一根内存故障')
+    else if (/内存坏|内存故障|内存损坏/.test(source)) parts.push('确认内存故障')
+    if (/更换内存|内存更换/.test(source)) {
+      parts.push('更换故障内存')
+      parts.push('开机检查内存识别及系统运行状态')
+    }
+    return parts.join('，')
+  }
   if (/服务器/.test(source) && /下架|上架|线缆|开机配置|配置/.test(source)) {
     const actions = []
     if (/下架/.test(source)) actions.push('服务器下架')
@@ -693,13 +704,13 @@ function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
   if (!existing) return true
   const current = String(existing || '').toLowerCase()
   const source = String(transcript || '').toLowerCase()
-  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '服务器', '下架', '上架', '线缆', '开机']
+  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '内存', '服务器', '下架', '上架', '线缆', '开机']
   return criticalTerms.some((term) => source.includes(term) && !current.includes(term))
 }
 
 function extractMarkedIssue(transcript) {
   const source = String(transcript || '')
-  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|回家|工作内容|服务内容|用户|联系人|调查|排查|处理|过来|现在|我是|$)/)
+  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|回家|工作内容|服务内容|用户|联系人|调查|排查|处理|过来|现在|我是|我做|做了|更换|$)/)
   if (!match) return ''
   return trimText(match[1], 80)
 }
@@ -708,7 +719,7 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
   const source = String(transcript || '')
   const next = { ...fields }
   const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
-  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏/.test(source)
+  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏/.test(source)
 
   if (mode === 'onsite' && !next.serviceType) {
     if (looksInstall) next.serviceType = 'install'
@@ -724,6 +735,8 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
     next.issueDescription = 'FTP 服务故障'
   } else if (/服务器.{0,8}硬盘损坏|硬盘损坏/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = /服务器/.test(source) ? '服务器硬盘损坏' : '硬盘损坏'
+  } else if (/服务器.{0,8}内存(?:坏|故障|损坏)|内存(?:坏|故障|损坏)/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /内存|更换/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = /服务器/.test(source) ? '服务器内存故障' : '内存故障'
   } else if (/存储故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = '存储故障'
   } else if (/硬盘坏|硬盘故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
