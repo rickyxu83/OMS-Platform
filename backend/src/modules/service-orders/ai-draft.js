@@ -146,11 +146,16 @@ function parseDurationMinutes(text) {
 function extractTravelDuration(transcript, type) {
   const source = String(transcript || '')
   const keywords = type === 'return'
-    ? '(?:回程|返程|返回|回去|返抵)'
+    ? '(?:回程|回城|返程|返回|回去|返抵)'
     : '(?:路上|去程|来程|过去|到现场路上|到客户现场路上|单程)'
   const regex = new RegExp(`${keywords}.{0,8}?(半个?小时|半小时|[一二两三四五六七八九十\\d]+(?:\\.\\d+)?\\s*个?小时(?:[一二两三四五六七八九十\\d]+\\s*分钟)?|[一二两三四五六七八九十\\d]+\\s*分钟)`)
   const match = source.match(regex)
   return match ? parseDurationMinutes(match[1]) : null
+}
+
+function returnDurationSameAsOutbound(transcript) {
+  const source = String(transcript || '')
+  return /(?:回程|回城|返程|返回|回去|返抵).{0,10}?(?:也)?(?:一样|同样|相同)/.test(source)
 }
 
 function todayAt(hour, minute = 0) {
@@ -202,7 +207,7 @@ function applyTimeInference(fields, currentDraft, transcript, mode) {
     if (!hasValue('departureAt') && outboundMinutes && arrival) {
       next.departureAt = addMinutes(arrival, -outboundMinutes)
     }
-    const returnMinutes = extractTravelDuration(transcript, 'return')
+    const returnMinutes = extractTravelDuration(transcript, 'return') || (returnDurationSameAsOutbound(transcript) ? outboundMinutes : null)
     const finish = next.actualEndAt || currentDraft.actualEndAt
     if (!hasValue('returnAt') && returnMinutes && finish) {
       next.returnAt = addMinutes(finish, returnMinutes)
