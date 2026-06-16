@@ -793,6 +793,18 @@ function buildNetworkWorkContent(source) {
   return '检查网络连通性、链路状态及相关配置，定位并处理异常点，验证网络访问恢复'
 }
 
+function buildServerInstallWorkContent(source) {
+  if (!/服务器/.test(source) || !/安装|上架|新服务器|拆箱|理线|标签|加电|开机测试|开机配置/.test(source)) return ''
+  const parts = []
+  if (/下架/.test(source)) parts.push('完成原服务器下架')
+  parts.push('点检设备清单并核对设备外观及配件')
+  parts.push('拆箱后完成服务器上架固定')
+  parts.push('连接电源线、网络线缆并完成标签和理线')
+  if (/配置|开机配置/.test(source)) parts.push('完成基础开机配置')
+  parts.push('加电开机测试，检查硬件状态及设备运行情况')
+  return parts.join('，')
+}
+
 function buildRuleWorkContent(transcript, markedWork) {
   const source = String(transcript || '')
   if (/ftp/i.test(source)) {
@@ -804,6 +816,8 @@ function buildRuleWorkContent(transcript, markedWork) {
   }
   const networkWork = buildNetworkWorkContent(source)
   if (networkWork) return networkWork
+  const serverInstallWork = buildServerInstallWorkContent(source)
+  if (serverInstallWork) return serverInstallWork
   const hardwareWork = buildHardwareWorkContent(source)
   if (hardwareWork) return hardwareWork
   if (/存储故障|硬盘坏|硬盘故障|硬盘损坏|更换硬盘/.test(source)) {
