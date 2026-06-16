@@ -2,6 +2,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { effectiveSettings } = require('../settings/controller')
+const { pinyin } = require('pinyin-pro')
 
 const FIELD_LIMITS = {
   customerName: 120,
@@ -232,7 +233,13 @@ function transcriptIndicatesFinishedNow(transcript) {
 }
 
 function extractCompletionTime(transcript) {
-  return extractClockTimeAfterPrefix(transcript, ['现在(?:是)?', '完成(?:时间)?(?:是)?', '结束(?:时间)?(?:是)?'])
+  return extractClockTimeAfterPrefix(transcript, [
+    '现在(?:时间)?是',
+    '完成时间(?:是)?',
+    '结束时间(?:是)?',
+    '完成(?:于|在|是)',
+    '结束(?:于|在|是)',
+  ])
 }
 
 function applyTimeInference(fields, currentDraft, transcript, mode) {
@@ -416,6 +423,19 @@ function normalizeCustomerMatchText(value) {
     .trim()
 }
 
+function normalizePinyinMatchText(value) {
+  const source = String(value || '').trim()
+  if (!source) return ''
+  try {
+    return pinyin(source, { toneType: 'none', type: 'array' })
+      .join('')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+  } catch {
+    return ''
+  }
+}
+
 function normalizeContactMatchText(value) {
   return normalizeCustomerMatchText(value)
     .replace(/[家嘉]/g, '佳')
@@ -435,9 +455,16 @@ function customerAliases(candidate) {
   return [...aliases]
 }
 
+function customerPinyinAliases(candidate) {
+  return customerAliases(candidate)
+    .map((alias) => normalizePinyinMatchText(alias))
+    .filter((alias) => alias.length >= 4)
+}
+
 function matchCustomerCandidate(text, customerCandidates) {
   const source = normalizeCustomerMatchText(text)
-  if (!source) return null
+  const sourcePinyin = normalizePinyinMatchText(text)
+  if (!source && !sourcePinyin) return null
   let best = null
   let bestScore = 0
   for (const candidate of customerCandidates || []) {
@@ -447,6 +474,13 @@ function matchCustomerCandidate(text, customerCandidates) {
         score += alias.length * 10 + (alias.length === source.length ? 30 : 0)
       } else if (alias.length >= 3 && alias.includes(source)) {
         score += source.length * 8
+      }
+    }
+    for (const aliasPinyin of customerPinyinAliases(candidate)) {
+      if (sourcePinyin.includes(aliasPinyin)) {
+        score += aliasPinyin.length * 6
+      } else if (aliasPinyin.length >= 6 && aliasPinyin.includes(sourcePinyin)) {
+        score += sourcePinyin.length * 4
       }
     }
     if (score > 0) score += Math.min(20, Number(candidate?.weight || 0))
@@ -460,10 +494,14 @@ function matchCustomerCandidate(text, customerCandidates) {
 
 function customerCandidateRelevance(candidate, transcript) {
   const source = normalizeCustomerMatchText(transcript)
+  const sourcePinyin = normalizePinyinMatchText(transcript)
   const contactSource = normalizeContactMatchText(transcript)
   let score = Number(candidate?.weight || 0)
   for (const alias of customerAliases(candidate)) {
     if (alias.length >= 2 && source.includes(alias)) score += alias.length * 30
+  }
+  for (const aliasPinyin of customerPinyinAliases(candidate)) {
+    if (sourcePinyin.includes(aliasPinyin)) score += aliasPinyin.length * 12
   }
   const contacts = [
     ...(candidate.contactName ? [{ name: candidate.contactName, weight: 1 }] : []),
@@ -489,7 +527,8 @@ function selectPromptCustomerCandidates(customerCandidates, transcript) {
 
 function matchContactCandidate(text, candidates) {
   const source = normalizeContactMatchText(text)
-  if (!source) return null
+  const sourcePinyin = normalizePinyinMatchText(text)
+  if (!source && !sourcePinyin) return null
   let best = null
   let bestScore = 0
   for (const candidate of candidates || []) {
@@ -499,8 +538,14 @@ function matchContactCandidate(text, candidates) {
     ]
     for (const contact of contacts) {
       const name = normalizeContactMatchText(contact.name)
-      if (name.length < 2 || !source.includes(name)) continue
-      const score = name.length * 20 + Number(contact.weight || 0) + Number(candidate.weight || 0)
+      const namePinyin = normalizePinyinMatchText(contact.name)
+      const textMatched = name.length >= 2 && source.includes(name)
+      const pinyinMatched = namePinyin.length >= 4 && sourcePinyin.includes(namePinyin)
+      if (!textMatched && !pinyinMatched) continue
+      const score = (textMatched ? name.length * 20 : 0)
+        + (pinyinMatched ? namePinyin.length * 5 : 0)
+        + Number(contact.weight || 0)
+        + Number(candidate.weight || 0)
       if (score > bestScore) {
         best = { candidate, contact }
         bestScore = score
