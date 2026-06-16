@@ -1889,6 +1889,7 @@ async function aiSelfReportDraft(req, res) {
     transcript: req.body?.transcript,
     serviceMode: req.body?.serviceMode,
     currentDraft: req.body?.currentDraft,
+    engineerId: req.user.id,
   })
   res.json(result)
 }

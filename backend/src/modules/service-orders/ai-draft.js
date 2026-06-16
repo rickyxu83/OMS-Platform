@@ -1,4 +1,5 @@
 const env = require('../../config/env')
+const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { effectiveSettings } = require('../settings/controller')
 
@@ -273,6 +274,110 @@ function normalizeCustomerCandidates(currentDraft = {}) {
     .slice(0, 40)
 }
 
+function mergeCustomerCandidates(...candidateGroups) {
+  const merged = new Map()
+  for (const candidate of candidateGroups.flat()) {
+    if (!candidate?.name) continue
+    const key = candidate.id ? `id:${candidate.id}` : `name:${normalizeCustomerMatchText(candidate.name)}`
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, {
+        ...candidate,
+        contacts: [...(candidate.contacts || [])],
+      })
+      continue
+    }
+    const contacts = new Map()
+    for (const contact of [...(existing.contacts || []), ...(candidate.contacts || [])]) {
+      const contactKey = `${normalizeContactMatchText(contact.name)}:${trimText(contact.phone, 40)}`
+      if (contact.name && !contacts.has(contactKey)) contacts.set(contactKey, contact)
+    }
+    merged.set(key, {
+      ...existing,
+      ...candidate,
+      address: existing.address || candidate.address || '',
+      contactName: existing.contactName || candidate.contactName || '',
+      contactPhone: existing.contactPhone || candidate.contactPhone || '',
+      weight: Math.max(Number(existing.weight || 0), Number(candidate.weight || 0)),
+      contacts: [...contacts.values()].slice(0, 10),
+    })
+  }
+  return [...merged.values()]
+}
+
+async function loadDatabaseCustomerCandidates(engineerId) {
+  const rows = await query(
+    `SELECT c.id, c.name, c.address, c.map_address, c.contact_name, c.contact_phone,
+            COALESCE(soc.service_order_count, 0) AS service_order_count,
+            COALESCE(es.engineer_order_count, 0) AS engineer_order_count,
+            es.last_used_at
+       FROM customers c
+       LEFT JOIN (
+         SELECT customer_id, COUNT(*) AS service_order_count
+         FROM service_orders
+         WHERE status <> 'cancelled'
+         GROUP BY customer_id
+       ) soc ON soc.customer_id = c.id
+       LEFT JOIN (
+         SELECT so.customer_id, COUNT(*) AS engineer_order_count, MAX(COALESCE(so.submitted_at, so.created_at)) AS last_used_at
+         FROM service_orders so
+         WHERE so.status <> 'cancelled'
+           AND (
+             so.assigned_engineer_id = :engineerId
+             OR EXISTS (
+               SELECT 1
+               FROM service_order_engineers soe
+               WHERE soe.service_order_id = so.id
+                 AND soe.engineer_id = :engineerId
+             )
+           )
+         GROUP BY so.customer_id
+       ) es ON es.customer_id = c.id
+      ORDER BY COALESCE(es.last_used_at, c.updated_at, c.created_at) DESC,
+               COALESCE(es.engineer_order_count, 0) DESC,
+               COALESCE(soc.service_order_count, 0) DESC,
+               c.id DESC
+      LIMIT 1200`,
+    { engineerId: Number(engineerId || 0) || 0 },
+  )
+  if (!rows.length) return []
+
+  const params = {}
+  const placeholders = rows.map((row, index) => {
+    params[`customerId${index}`] = row.id
+    return `:customerId${index}`
+  })
+  const contactRows = await query(
+    `SELECT id, customer_id, name, phone, use_count, last_used_at
+       FROM customer_contacts
+      WHERE customer_id IN (${placeholders.join(',')})
+      ORDER BY customer_id ASC, use_count DESC, last_used_at DESC, id DESC`,
+    params,
+  )
+  const contactsByCustomer = contactRows.reduce((groups, row) => {
+    const list = groups.get(row.customer_id) || []
+    list.push({
+      name: trimText(row.name, 60),
+      phone: trimText(row.phone, 40),
+      weight: Number(row.use_count || 0),
+    })
+    groups.set(row.customer_id, list)
+    return groups
+  }, new Map())
+
+  return rows
+    .map((row) => ({
+      id: Number(row.id || 0) || null,
+      name: trimText(row.name, 120),
+      address: trimText(row.address || row.map_address, 180),
+      contactName: trimText(row.contact_name, 60),
+      contactPhone: trimText(row.contact_phone, 40),
+      weight: Math.min(500, Number(row.engineer_order_count || 0) * 40 + Number(row.service_order_count || 0) * 5),
+      contacts: contactsByCustomer.get(row.id) || [],
+    }))
+    .filter((candidate) => candidate.name)
+}
+
 function normalizeCustomerMatchText(value) {
   return String(value || '')
     .toLowerCase()
@@ -306,7 +411,7 @@ function matchCustomerCandidate(text, customerCandidates) {
   let best = null
   let bestScore = 0
   for (const candidate of customerCandidates || []) {
-    let score = Number(candidate?.weight || 0)
+    let score = 0
     for (const alias of customerAliases(candidate)) {
       if (alias.length >= 2 && source.includes(alias)) {
         score += alias.length * 10 + (alias.length === source.length ? 30 : 0)
@@ -314,6 +419,7 @@ function matchCustomerCandidate(text, customerCandidates) {
         score += source.length * 8
       }
     }
+    if (score > 0) score += Math.min(20, Number(candidate?.weight || 0))
     if (score > bestScore) {
       best = candidate
       bestScore = score
@@ -322,28 +428,86 @@ function matchCustomerCandidate(text, customerCandidates) {
   return bestScore > 0 ? best : null
 }
 
+function customerCandidateRelevance(candidate, transcript) {
+  const source = normalizeCustomerMatchText(transcript)
+  const contactSource = normalizeContactMatchText(transcript)
+  let score = Number(candidate?.weight || 0)
+  for (const alias of customerAliases(candidate)) {
+    if (alias.length >= 2 && source.includes(alias)) score += alias.length * 30
+  }
+  const contacts = [
+    ...(candidate.contactName ? [{ name: candidate.contactName, weight: 1 }] : []),
+    ...(candidate.contacts || []),
+  ]
+  for (const contact of contacts) {
+    const name = normalizeContactMatchText(contact.name)
+    if (name.length >= 2 && contactSource.includes(name)) score += name.length * 20 + Number(contact.weight || 0)
+  }
+  return score
+}
+
+function selectPromptCustomerCandidates(customerCandidates, transcript) {
+  return [...(customerCandidates || [])]
+    .map((candidate) => ({
+      ...candidate,
+      promptScore: customerCandidateRelevance(candidate, transcript),
+    }))
+    .sort((left, right) => Number(right.promptScore || 0) - Number(left.promptScore || 0))
+    .slice(0, 60)
+    .map(({ promptScore, ...candidate }) => candidate)
+}
+
 function matchContactCandidate(text, candidates) {
   const source = normalizeContactMatchText(text)
   if (!source) return null
-  const contacts = (candidates || []).flatMap((candidate) => candidate.contacts || [])
-  return contacts.find((contact) => {
-    const name = normalizeContactMatchText(contact.name)
-    return name.length >= 2 && source.includes(name)
-  }) || null
+  let best = null
+  let bestScore = 0
+  for (const candidate of candidates || []) {
+    const contacts = [
+      ...(candidate.contactName ? [{ name: candidate.contactName, phone: candidate.contactPhone, weight: 1 }] : []),
+      ...(candidate.contacts || []),
+    ]
+    for (const contact of contacts) {
+      const name = normalizeContactMatchText(contact.name)
+      if (name.length < 2 || !source.includes(name)) continue
+      const score = name.length * 20 + Number(contact.weight || 0) + Number(candidate.weight || 0)
+      if (score > bestScore) {
+        best = { candidate, contact }
+        bestScore = score
+      }
+    }
+  }
+  return best
 }
 
 function applyCustomerCandidateInference(fields, transcript, customerCandidates) {
   const candidate = matchCustomerCandidate(`${fields.customerName || ''} ${transcript || ''}`, customerCandidates)
-  const contact = matchContactCandidate(`${fields.contactName || ''} ${transcript || ''}`, candidate ? [candidate] : customerCandidates)
+  const contactMatch = matchContactCandidate(`${fields.contactName || ''} ${transcript || ''}`, candidate ? [candidate] : customerCandidates)
+  const effectiveCandidate = candidate || contactMatch?.candidate || null
+  const contact = contactMatch?.contact || null
   const useDefaultContact = /默认联系人/.test(`${fields.contactName || ''} ${transcript || ''}`)
-  if (!candidate && !contact) return fields
+  if (!effectiveCandidate && !contact) return fields
   return {
     ...fields,
-    customerName: candidate?.name || fields.customerName,
-    customerAddress: fields.customerAddress || candidate?.address || '',
-    contactName: useDefaultContact ? (candidate?.contactName || candidate?.contacts?.[0]?.name || '') : (fields.contactName || contact?.name || candidate?.contactName || candidate?.contacts?.[0]?.name || ''),
-    contactPhone: useDefaultContact ? (candidate?.contactPhone || candidate?.contacts?.[0]?.phone || '') : (fields.contactPhone || contact?.phone || candidate?.contactPhone || candidate?.contacts?.[0]?.phone || ''),
+    customerName: effectiveCandidate?.name || fields.customerName,
+    customerAddress: effectiveCandidate?.address || fields.customerAddress || '',
+    contactName: useDefaultContact ? (effectiveCandidate?.contactName || effectiveCandidate?.contacts?.[0]?.name || '') : (contact?.name || effectiveCandidate?.contactName || effectiveCandidate?.contacts?.[0]?.name || fields.contactName || ''),
+    contactPhone: useDefaultContact ? (effectiveCandidate?.contactPhone || effectiveCandidate?.contacts?.[0]?.phone || '') : (contact?.phone || effectiveCandidate?.contactPhone || effectiveCandidate?.contacts?.[0]?.phone || fields.contactPhone || ''),
   }
+}
+
+function removeUnknownCustomerFields(fields, currentDraft, transcript, customerCandidates) {
+  const currentCustomer = trimText(currentDraft.customerName, FIELD_LIMITS.customerName)
+  const matched = matchCustomerCandidate(`${fields.customerName || ''} ${transcript || ''}`, customerCandidates)
+    || matchContactCandidate(`${fields.contactName || ''} ${transcript || ''}`, customerCandidates)?.candidate
+  if (matched) return applyCustomerCandidateInference(fields, transcript, [matched])
+  if (currentCustomer) return fields
+  const next = { ...fields }
+  delete next.customerName
+  delete next.customerAddress
+  delete next.contactName
+  delete next.contactPhone
+  return next
 }
 
 function extractMarkedWorkContent(transcript) {
@@ -555,6 +719,8 @@ function buildPrompt({ transcript, serviceMode, currentDraft, customerCandidates
     '- 按字段触发词抽取：客户/我在/现在在 → customerName；用户/联系人 → contactName；问题/故障/需求 → issueDescription；工作内容/服务内容/处理内容 → workContent；到达/到现场 → actualStartAt；路上/去程 → departureAt 推算；回程/回去/返程/返抵 → returnAt 推算。',
     '- 如果 transcript 有“工作内容是/服务内容是/处理内容是”，workContent 必须尽量保留该触发词后面的原始动作，不要改写成泛泛总结。',
     '- 客户名称和联系人必须优先从 customerCandidates 选择原始库内名称；如果 transcript 中的名称疑似同音、近音或语音误识别，应使用候选原名。',
+    '- customerName、customerAddress、contactName、contactPhone 只能来自 currentDraft 或 customerCandidates；不能自行新建、补全或猜测库外客户。',
+    '- 如果 transcript 的客户/联系人无法匹配 customerCandidates，请让客户与联系人字段留空并加入 missingFields，不要输出一个新的客户。',
     '- 如果选中了 customerCandidates 中的客户，customerName 必须输出候选的完整 name；联系人也优先使用该候选 contacts/contactName 中的姓名和电话。',
     '- issueDescription 要短，只写故障/需求标题，通常 4 到 20 个汉字，例如“FTP 服务故障”；不要把现象和处理过程都塞进去。',
     '- workContent 要保留关键对象、现象、排查动作、原因和处理结果；不要把“FTP 服务、客户端无法访问、配置问题”等关键信息压缩丢失。',
@@ -644,7 +810,7 @@ async function callProvider(payload, aiSettings) {
   }
 }
 
-async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft }) {
+async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft, engineerId }) {
   const normalizedTranscript = trimText(normalizeTranscriptText(transcript), 6000)
   if (!normalizedTranscript) {
     throw badRequest('请先录入或粘贴语音转写内容')
@@ -661,14 +827,18 @@ async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft
 
   const mode = normalizeMode(serviceMode)
   const normalizedCurrentDraft = normalizeCurrentDraft(currentDraft)
-  const customerCandidates = normalizeCustomerCandidates(currentDraft)
+  const customerCandidates = mergeCustomerCandidates(
+    await loadDatabaseCustomerCandidates(engineerId),
+    normalizeCustomerCandidates(currentDraft),
+  )
+  const promptCustomerCandidates = selectPromptCustomerCandidates(customerCandidates, normalizedTranscript)
 
   try {
     const { data, text } = await callProvider({
       transcript: normalizedTranscript,
       serviceMode: mode,
       currentDraft: normalizedCurrentDraft,
-      customerCandidates,
+      customerCandidates: promptCustomerCandidates,
     }, aiSettings)
     const rawContent = extractTextFromProviderResponse(data) || text
     const parsed = parseJsonText(rawContent)
@@ -676,11 +846,11 @@ async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft
       throw badRequest('AI 未返回可解析的填单结果')
     }
 
-    const inferredFields = applyCustomerCandidateInference(
+    const inferredFields = removeUnknownCustomerFields(applyCustomerCandidateInference(
       inferFieldsFromTranscript(normalizeFields(parsed.fields, mode), normalizedTranscript, mode),
       normalizedTranscript,
       customerCandidates,
-    )
+    ), normalizedCurrentDraft, normalizedTranscript, customerCandidates)
     const fields = applyTimeInference(inferredFields, normalizedCurrentDraft, normalizedTranscript, mode)
     const warnings = normalizeStringArray(parsed.warnings)
     return {
