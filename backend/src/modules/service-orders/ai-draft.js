@@ -657,6 +657,66 @@ function extractMarkedWorkContent(transcript) {
   return trimText(match[1].replace(/^(就|为|是|：|:)+/, ''), FIELD_LIMITS.workContent)
 }
 
+const hardwareComponents = [
+  { label: '服务器电池', pattern: /服务器.{0,8}电池|电池.{0,8}服务器/ },
+  { label: '存储电池', pattern: /存储.{0,8}电池|电池.{0,8}存储|阵列柜.{0,8}电池|控制器.{0,8}电池|缓存电池|BBU|bbu/ },
+  { label: '内存', pattern: /内存|内存条/ },
+  { label: 'CPU', pattern: /CPU|cpu|处理器/ },
+  { label: '硬盘', pattern: /硬盘|磁盘/ },
+  { label: '电源', pattern: /电源|PSU|psu/ },
+  { label: '风扇', pattern: /风扇/ },
+  { label: 'RAID 卡', pattern: /RAID卡|raid卡|阵列卡|RAID|raid/ },
+  { label: 'HBA 卡', pattern: /HBA卡|hba卡|HBA|hba/ },
+  { label: '网卡', pattern: /网卡|网络适配器/ },
+  { label: '主板', pattern: /主板/ },
+  { label: '电池', pattern: /电池/ },
+]
+
+function detectHardwareComponent(source) {
+  return hardwareComponents.find((item) => item.pattern.test(source)) || null
+}
+
+function hardwareContextLabel(source, componentLabel) {
+  if (componentLabel === '电池') {
+    if (/存储|阵列柜|控制器|缓存/.test(source)) return '存储电池'
+    if (/服务器/.test(source)) return '服务器电池'
+  }
+  if (componentLabel === '硬盘' && /存储/.test(source)) return '存储硬盘'
+  return componentLabel
+}
+
+function hardwareIssueDescription(source) {
+  const component = detectHardwareComponent(source)
+  if (!component) return ''
+  const label = hardwareContextLabel(source, component.label)
+  const devicePrefix = /服务器/.test(source) && !/^服务器|^存储/.test(label) ? '服务器' : ''
+  return `${devicePrefix}${label}故障`
+}
+
+function buildHardwareWorkContent(source) {
+  const component = detectHardwareComponent(source)
+  if (!component) return ''
+  const label = hardwareContextLabel(source, component.label)
+  const deviceName = /^存储/.test(label) ? '存储' : /服务器/.test(source) ? '服务器' : '设备'
+  const parts = []
+  parts.push(`检查${label}状态`)
+  if (/一根/.test(source)) parts.push(`确认一根${label}故障`)
+  else if (/一块|一颗|一个/.test(source)) parts.push(`确认一个${label}故障`)
+  else if (/损坏|坏|故障|告警|报错/.test(source)) parts.push(`确认${label}故障`)
+  else parts.push(`确认${label}更换需求`)
+  if (/备件到|备件到了|到货/.test(source)) {
+    parts.push(`备件到货后更换故障${label}`)
+  } else if (/更换|替换|换/.test(source)) {
+    parts.push(`更换故障${label}`)
+  }
+  if (/存储|阵列|告警|电池/.test(source) || /^存储/.test(label)) {
+    parts.push(`检查${deviceName}告警状态及设备运行状态`)
+  } else {
+    parts.push(`开机检查${label}识别及系统运行状态`)
+  }
+  return parts.join('，')
+}
+
 function buildRuleWorkContent(transcript, markedWork) {
   const source = String(transcript || '')
   if (/ftp/i.test(source)) {
@@ -666,6 +726,8 @@ function buildRuleWorkContent(transcript, markedWork) {
     if (/恢复|解决|完成|处理好/.test(source)) parts.push('验证 FTP 服务访问恢复')
     return parts.join('，')
   }
+  const hardwareWork = buildHardwareWorkContent(source)
+  if (hardwareWork) return hardwareWork
   if (/存储故障|硬盘坏|硬盘故障|硬盘损坏|更换硬盘/.test(source)) {
     const parts = []
     if (/存储故障/.test(source)) parts.push('排查存储故障')
@@ -704,7 +766,7 @@ function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
   if (!existing) return true
   const current = String(existing || '').toLowerCase()
   const source = String(transcript || '').toLowerCase()
-  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '内存', '服务器', '下架', '上架', '线缆', '开机']
+  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '内存', 'cpu', 'CPU', '电源', '风扇', 'raid', 'RAID', 'hba', 'HBA', '网卡', '主板', '电池', '服务器', '下架', '上架', '线缆', '开机']
   return criticalTerms.some((term) => source.includes(term) && !current.includes(term))
 }
 
@@ -719,7 +781,7 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
   const source = String(transcript || '')
   const next = { ...fields }
   const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
-  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏/.test(source)
+  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏|内存故障|内存损坏|内存坏|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池/.test(source)
 
   if (mode === 'onsite' && !next.serviceType) {
     if (looksInstall) next.serviceType = 'install'
@@ -733,6 +795,8 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
 
   if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = 'FTP 服务故障'
+  } else if (hardwareIssueDescription(source) && (!next.issueDescription || next.issueDescription.length > 20 || /更换|内存|硬盘|CPU|cpu|处理器|电源|风扇|RAID|raid|阵列卡|HBA|hba|网卡|主板|电池/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = hardwareIssueDescription(source)
   } else if (/服务器.{0,8}硬盘损坏|硬盘损坏/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = /服务器/.test(source) ? '服务器硬盘损坏' : '硬盘损坏'
   } else if (/服务器.{0,8}内存(?:坏|故障|损坏)|内存(?:坏|故障|损坏)/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /内存|更换/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
