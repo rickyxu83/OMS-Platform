@@ -255,6 +255,44 @@ function normalizeCustomerCandidates(currentDraft = {}) {
     .slice(0, 40)
 }
 
+function normalizeCustomerMatchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/有限公司|股份有限公司|科技有限公司|技术有限公司|有限责任公司|公司/gu, '')
+    .replace(/[离理里]/g, '李')
+    .replace(/[\s　()（）【】\[\]《》<>.,，。;；:：'"“”‘’、/\\|-]/g, '')
+    .trim()
+}
+
+function customerAliases(candidate) {
+  const name = normalizeCustomerMatchText(candidate?.name)
+  const aliases = new Set()
+  if (name) aliases.add(name)
+  const withoutRegion = name.replace(/^(中国|江苏省|镇江市|镇江|苏州市|苏州|上海市|上海|北京市|北京)/u, '')
+  if (withoutRegion && withoutRegion.length >= 3) aliases.add(withoutRegion)
+  return [...aliases]
+}
+
+function matchCustomerCandidate(text, customerCandidates) {
+  const source = normalizeCustomerMatchText(text)
+  if (!source) return null
+  return (customerCandidates || []).find((candidate) => {
+    return customerAliases(candidate).some((alias) => alias.length >= 3 && (source.includes(alias) || alias.includes(source)))
+  }) || null
+}
+
+function applyCustomerCandidateInference(fields, transcript, customerCandidates) {
+  const candidate = matchCustomerCandidate(`${fields.customerName || ''} ${transcript || ''}`, customerCandidates)
+  if (!candidate) return fields
+  return {
+    ...fields,
+    customerName: candidate.name || fields.customerName,
+    customerAddress: fields.customerAddress || candidate.address || '',
+    contactName: fields.contactName || candidate.contactName || candidate.contacts?.[0]?.name || '',
+    contactPhone: fields.contactPhone || candidate.contactPhone || candidate.contacts?.[0]?.phone || '',
+  }
+}
+
 function extractTextFromProviderResponse(data) {
   if (typeof data?.choices?.[0]?.message?.content === 'string') return data.choices[0].message.content
   if (Array.isArray(data?.choices?.[0]?.message?.content)) {
@@ -489,7 +527,12 @@ async function generateSelfReportAiDraft({ transcript, serviceMode, currentDraft
       throw badRequest('AI 未返回可解析的填单结果')
     }
 
-    const fields = applyTimeInference(normalizeFields(parsed.fields, mode), normalizedCurrentDraft, normalizedTranscript, mode)
+    const inferredFields = applyCustomerCandidateInference(
+      normalizeFields(parsed.fields, mode),
+      normalizedTranscript,
+      customerCandidates,
+    )
+    const fields = applyTimeInference(inferredFields, normalizedCurrentDraft, normalizedTranscript, mode)
     const warnings = normalizeStringArray(parsed.warnings)
     return {
       fields,
