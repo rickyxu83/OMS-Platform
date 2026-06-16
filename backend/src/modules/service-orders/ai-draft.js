@@ -56,6 +56,9 @@ function normalizeTranscriptText(value) {
     .replace(/安装单词/g, '安装单子')
     .replace(/回城/g, '回程')
     .replace(/返地/g, '返抵')
+    .replace(/离长荣/g, '李长荣')
+    .replace(/两个件到了/g, '备件到了')
+    .replace(/两个件到/g, '备件到')
     .trim()
 }
 
@@ -162,6 +165,10 @@ function extractTravelDuration(transcript, type) {
   return match ? parseDurationMinutes(match[1]) : null
 }
 
+function transcriptMentionsReturnTrip(transcript) {
+  return /回程|回去|返程|返回|返抵/.test(String(transcript || ''))
+}
+
 function returnDurationSameAsOutbound(transcript) {
   const source = String(transcript || '')
   return /(?:回程|回城|返程|返回|回去|返抵).{0,10}?(?:也)?(?:一样|同样|相同)/.test(source)
@@ -177,18 +184,18 @@ function todayAt(hour, minute = 0) {
 function extractArrivalTime(transcript) {
   const source = String(transcript || '')
   const numericPatterns = [
-    /([01]?\d|2[0-3])[:：](\d{1,2}).{0,8}(?:到|到达).{0,4}(?:现场|客户)?/,
-    /(?:到|到达).{0,4}(?:现场|客户)?.{0,8}([01]?\d|2[0-3])[:：](\d{1,2})/,
-    /(?:早上|上午|今天)?\s*([01]?\d|2[0-3])[:：](\d{1,2}).{0,8}(?:的)?(?:路上|去程|来程).{0,8}(?:用|花|耗)/,
+    /(2[0-3]|[01]?\d)[:：](\d{1,2}).{0,8}?(?:到达|到).{0,4}(?:现场|客户)?/,
+    /(?:到达|到).{0,8}?(2[0-3]|[01]?\d)[:：](\d{1,2})/,
+    /(?:早上|上午|今天)?\s*(2[0-3]|[01]?\d)[:：](\d{1,2}).{0,8}?(?:的)?(?:路上|去程|来程).{0,8}?(?:用|花|耗)/,
   ]
   for (const pattern of numericPatterns) {
     const match = source.match(pattern)
     if (match) return todayAt(match[1], match[2])
   }
   const chinesePatterns = [
-    /([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}(?:到|到达).{0,4}(?:现场|客户)?/,
-    /(?:到|到达).{0,4}(?:现场|客户)?.{0,8}([一二两三四五六七八九十\d]{1,3})点(半)?/,
-    /(?:早上|上午|今天)?\s*([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}(?:的)?(?:路上|去程|来程).{0,8}(?:用|花|耗)/,
+    /([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}?(?:到达|到).{0,4}(?:现场|客户)?/,
+    /(?:到达|到).{0,8}?([一二两三四五六七八九十\d]{1,3})点(半)?/,
+    /(?:早上|上午|今天)?\s*([一二两三四五六七八九十\d]{1,3})点(半)?.{0,8}?(?:的)?(?:路上|去程|来程).{0,8}?(?:用|花|耗)/,
   ]
   for (const pattern of chinesePatterns) {
     const match = source.match(pattern)
@@ -205,20 +212,21 @@ function transcriptIndicatesFinishedNow(transcript) {
 function applyTimeInference(fields, currentDraft, transcript, mode) {
   const next = { ...fields }
   const hasValue = (field) => trimText(next[field] || currentDraft[field], FIELD_LIMITS[field] || 32)
-  if (!hasValue('actualStartAt')) {
-    const arrival = extractArrivalTime(transcript)
-    if (arrival) next.actualStartAt = arrival
+  const arrival = extractArrivalTime(transcript)
+  if (arrival && !currentDraft.actualStartAt) {
+    next.actualStartAt = arrival
   }
-  if (!hasValue('actualEndAt') && transcriptIndicatesFinishedNow(transcript)) {
+  const outboundMinutes = mode === 'onsite' ? extractTravelDuration(transcript, 'outbound') : null
+  const explicitReturnMinutes = mode === 'onsite' ? extractTravelDuration(transcript, 'return') : null
+  const returnMinutes = explicitReturnMinutes || (returnDurationSameAsOutbound(transcript) ? outboundMinutes : null)
+  if (!hasValue('actualEndAt') && (transcriptIndicatesFinishedNow(transcript) || transcriptMentionsReturnTrip(transcript))) {
     next.actualEndAt = currentLocalDateTime()
   }
   if (mode === 'onsite') {
-    const outboundMinutes = extractTravelDuration(transcript, 'outbound')
     const arrival = next.actualStartAt || currentDraft.actualStartAt
     if (!hasValue('departureAt') && outboundMinutes && arrival) {
       next.departureAt = addMinutes(arrival, -outboundMinutes)
     }
-    const returnMinutes = extractTravelDuration(transcript, 'return') || (returnDurationSameAsOutbound(transcript) ? outboundMinutes : null)
     const finish = next.actualEndAt || currentDraft.actualEndAt
     if (!hasValue('returnAt') && returnMinutes && finish) {
       next.returnAt = addMinutes(finish, returnMinutes)
@@ -257,6 +265,7 @@ function normalizeCustomerCandidates(currentDraft = {}) {
         address: trimText(candidate?.address || candidate?.mapAddress, 180),
         contactName: trimText(candidate?.contactName, 60),
         contactPhone: trimText(candidate?.contactPhone, 40),
+        weight: Number(candidate?.weight || 0) || 0,
         contacts,
       }
     })
@@ -273,29 +282,52 @@ function normalizeCustomerMatchText(value) {
     .trim()
 }
 
+function normalizeContactMatchText(value) {
+  return normalizeCustomerMatchText(value)
+    .replace(/[家嘉]/g, '佳')
+    .replace(/[庆青]/g, '清')
+}
+
 function customerAliases(candidate) {
   const name = normalizeCustomerMatchText(candidate?.name)
   const aliases = new Set()
   if (name) aliases.add(name)
   const withoutRegion = name.replace(/^(中国|江苏省|镇江市|镇江|苏州市|苏州|上海市|上海|北京市|北京)/u, '')
   if (withoutRegion && withoutRegion.length >= 3) aliases.add(withoutRegion)
+  const brand = withoutRegion.split(/科技|高性能|材料|电子|自动化|信息|股份|集团|有限/)[0]
+  if (brand && brand.length >= 2) aliases.add(brand)
+  if (name.includes('京隆')) aliases.add('金融科技')
   return [...aliases]
 }
 
 function matchCustomerCandidate(text, customerCandidates) {
   const source = normalizeCustomerMatchText(text)
   if (!source) return null
-  return (customerCandidates || []).find((candidate) => {
-    return customerAliases(candidate).some((alias) => alias.length >= 3 && (source.includes(alias) || alias.includes(source)))
-  }) || null
+  let best = null
+  let bestScore = 0
+  for (const candidate of customerCandidates || []) {
+    let score = Number(candidate?.weight || 0)
+    for (const alias of customerAliases(candidate)) {
+      if (alias.length >= 2 && source.includes(alias)) {
+        score += alias.length * 10 + (alias.length === source.length ? 30 : 0)
+      } else if (alias.length >= 3 && alias.includes(source)) {
+        score += source.length * 8
+      }
+    }
+    if (score > bestScore) {
+      best = candidate
+      bestScore = score
+    }
+  }
+  return bestScore > 0 ? best : null
 }
 
 function matchContactCandidate(text, candidates) {
-  const source = normalizeCustomerMatchText(text)
+  const source = normalizeContactMatchText(text)
   if (!source) return null
   const contacts = (candidates || []).flatMap((candidate) => candidate.contacts || [])
   return contacts.find((contact) => {
-    const name = normalizeCustomerMatchText(contact.name)
+    const name = normalizeContactMatchText(contact.name)
     return name.length >= 2 && source.includes(name)
   }) || null
 }
@@ -303,13 +335,14 @@ function matchContactCandidate(text, candidates) {
 function applyCustomerCandidateInference(fields, transcript, customerCandidates) {
   const candidate = matchCustomerCandidate(`${fields.customerName || ''} ${transcript || ''}`, customerCandidates)
   const contact = matchContactCandidate(`${fields.contactName || ''} ${transcript || ''}`, candidate ? [candidate] : customerCandidates)
+  const useDefaultContact = /默认联系人/.test(`${fields.contactName || ''} ${transcript || ''}`)
   if (!candidate && !contact) return fields
   return {
     ...fields,
     customerName: candidate?.name || fields.customerName,
     customerAddress: fields.customerAddress || candidate?.address || '',
-    contactName: fields.contactName || contact?.name || candidate?.contactName || candidate?.contacts?.[0]?.name || '',
-    contactPhone: fields.contactPhone || contact?.phone || candidate?.contactPhone || candidate?.contacts?.[0]?.phone || '',
+    contactName: useDefaultContact ? (candidate?.contactName || candidate?.contacts?.[0]?.name || '') : (fields.contactName || contact?.name || candidate?.contactName || candidate?.contacts?.[0]?.name || ''),
+    contactPhone: useDefaultContact ? (candidate?.contactPhone || candidate?.contacts?.[0]?.phone || '') : (fields.contactPhone || contact?.phone || candidate?.contactPhone || candidate?.contacts?.[0]?.phone || ''),
   }
 }
 
@@ -320,9 +353,47 @@ function extractMarkedWorkContent(transcript) {
   return trimText(match[1].replace(/^(就|为|是|：|:)+/, ''), FIELD_LIMITS.workContent)
 }
 
+function buildRuleWorkContent(transcript, markedWork) {
+  const source = String(transcript || '')
+  if (/ftp/i.test(source)) {
+    const parts = []
+    parts.push(/客户端无法访问|无法访问/.test(source) ? '排查 FTP 服务客户端无法访问问题' : '排查 FTP 服务故障')
+    if (/配置问题|配置/.test(source)) parts.push('确认由配置问题导致并调整配置')
+    if (/恢复|解决|完成|处理好/.test(source)) parts.push('验证 FTP 服务访问恢复')
+    return parts.join('，')
+  }
+  if (/存储故障|硬盘坏|硬盘故障|更换硬盘/.test(source)) {
+    const parts = []
+    if (/存储故障/.test(source)) parts.push('排查存储故障')
+    else parts.push('排查硬盘故障')
+    if (/硬盘坏|硬盘故障/.test(source)) parts.push('确认硬盘故障')
+    if (/备件到|备件到了|到货/.test(source)) parts.push('备件到货后更换硬盘')
+    else if (/更换硬盘/.test(source)) parts.push('更换硬盘')
+    return parts.join('，')
+  }
+  if (/服务器/.test(source) && /下架|上架|线缆|开机配置|配置/.test(source)) {
+    const actions = []
+    if (/下架/.test(source)) actions.push('服务器下架')
+    if (/上架/.test(source)) actions.push('新服务器上架')
+    if (/整理线缆|线缆/.test(source)) actions.push('整理线缆')
+    if (/开机配置|配置/.test(source)) actions.push('开机配置')
+    if (actions.length) return actions.join('，')
+  }
+  return markedWork
+}
+
+function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
+  if (!ruleWork) return false
+  if (!existing) return true
+  const current = String(existing || '').toLowerCase()
+  const source = String(transcript || '').toLowerCase()
+  const criticalTerms = ['ftp', '客户端', '配置', '存储', '硬盘', '服务器', '下架', '上架', '线缆', '开机']
+  return criticalTerms.some((term) => source.includes(term) && !current.includes(term))
+}
+
 function extractMarkedIssue(transcript) {
   const source = String(transcript || '')
-  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|工作内容|服务内容|用户|联系人|$)/)
+  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|工作内容|服务内容|用户|联系人|调查|排查|处理|我是|$)/)
   if (!match) return ''
   return trimText(match[1], 80)
 }
@@ -338,29 +409,27 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
     else if (looksFault) next.serviceType = 'repair'
   }
 
-  if (!next.issueDescription) {
-    const markedIssue = extractMarkedIssue(source)
-    if (markedIssue) next.issueDescription = markedIssue
+  const markedIssue = extractMarkedIssue(source)
+  if (markedIssue && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = markedIssue
   }
 
-  if (!next.issueDescription) {
+  if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = 'FTP 服务故障'
+  } else if (/存储故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = '存储故障'
+  } else if (/硬盘坏|硬盘故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = '硬盘故障'
+  } else if (!next.issueDescription) {
     if (looksInstall && /服务器/.test(source)) next.issueDescription = '服务器安装'
     else if (looksInstall) next.issueDescription = '设备安装'
-    else if (/硬盘故障/.test(source)) next.issueDescription = '硬盘故障'
     else if (/服务器故障/.test(source)) next.issueDescription = '服务器故障'
   }
 
-  if (!next.workContent) {
-    const markedWork = extractMarkedWorkContent(source)
-    if (markedWork) next.workContent = markedWork
-    else if (looksInstall && /服务器/.test(source)) {
-      const actions = []
-      if (/下架/.test(source)) actions.push('服务器下架')
-      if (/上架/.test(source)) actions.push('新服务器上架')
-      if (/整理线缆|线缆/.test(source)) actions.push('整理线缆')
-      if (/开机配置|配置/.test(source)) actions.push('开机配置')
-      if (actions.length) next.workContent = actions.join('，')
-    }
+  const markedWork = extractMarkedWorkContent(source)
+  const ruleWork = buildRuleWorkContent(source, markedWork)
+  if (shouldUseRuleWorkContent(next.workContent, ruleWork, source)) {
+    next.workContent = ruleWork
   }
 
   if (!next.result && /(完成|刚刚完成|已经完成|处理好了|解决了)/.test(source)) {
