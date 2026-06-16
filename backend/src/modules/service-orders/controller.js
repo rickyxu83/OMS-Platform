@@ -7,6 +7,7 @@ const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
+const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { nextCustomerCode } = require('../customers/controller')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
@@ -1883,6 +1884,19 @@ async function deleteSelfReportDraft(req, res) {
   res.status(204).end()
 }
 
+async function aiSelfReportDraft(req, res) {
+  const result = await generateSelfReportAiDraft({
+    transcript: req.body?.transcript,
+    serviceMode: req.body?.serviceMode,
+    currentDraft: req.body?.currentDraft,
+  })
+  res.json(result)
+}
+
+async function aiSelfReportDraftStatus(_req, res) {
+  res.json({ item: await selfReportAiDraftStatus() })
+}
+
 async function updateSelfReport(req, res) {
   const order = await getOrder(req.params.id)
   if (!order) {
@@ -2448,6 +2462,8 @@ module.exports = {
   createTimesheetManualEntry,
   deleteTimesheetManualEntry,
   create,
+  aiSelfReportDraft,
+  aiSelfReportDraftStatus,
   createSelfReport,
   updateSelfReport,
   detail,

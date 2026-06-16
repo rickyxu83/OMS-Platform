@@ -7,6 +7,7 @@ const HIDDEN_SECRET = '********'
 
 const settingKeys = [
   'ai.workSummaryEnabled',
+  'ai.serviceDraftEnabled',
   'ai.provider',
   'ai.apiUrl',
   'ai.apiKey',
@@ -45,6 +46,7 @@ async function effectiveSettings() {
   return {
     ai: {
       workSummaryEnabled: boolText(saved['ai.workSummaryEnabled'], env.ai.workSummaryEnabled),
+      serviceDraftEnabled: boolText(saved['ai.serviceDraftEnabled'], env.ai.serviceDraftEnabled),
       provider: saved['ai.provider'] ?? env.ai.provider,
       apiUrl: saved['ai.apiUrl'] ?? env.ai.apiUrl,
       apiKey: saved['ai.apiKey'] ?? env.ai.apiKey,
@@ -128,6 +130,7 @@ function normalizeAiSettings(bodyAi = {}, currentAi) {
   const apiKey = String(bodyAi.apiKey || '').trim()
   return {
     workSummaryEnabled: boolText(bodyAi.workSummaryEnabled, currentAi.workSummaryEnabled === 'true'),
+    serviceDraftEnabled: boolText(bodyAi.serviceDraftEnabled, currentAi.serviceDraftEnabled === 'true'),
     provider: String(bodyAi.provider || currentAi.provider || 'custom').trim(),
     apiUrl: String(bodyAi.apiUrl || currentAi.apiUrl || '').trim(),
     model: String(bodyAi.model || currentAi.model || '').trim(),
@@ -174,6 +177,7 @@ async function update(req, res) {
   if (body.ai) {
     const ai = normalizeAiSettings(body.ai, current.ai)
     next['ai.workSummaryEnabled'] = ai.workSummaryEnabled
+    next['ai.serviceDraftEnabled'] = ai.serviceDraftEnabled
     next['ai.provider'] = ai.provider
     next['ai.apiUrl'] = ai.apiUrl
     next['ai.model'] = ai.model
