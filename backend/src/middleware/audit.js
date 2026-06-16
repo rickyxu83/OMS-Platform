@@ -8,7 +8,7 @@ const actionByMethod = {
   DELETE: 'delete',
 }
 
-const sensitiveKeys = new Set(['password', 'customerSignature', 'token', 'transcript'])
+const sensitiveKeys = new Set(['password', 'customerSignature', 'token', 'transcript', 'currentDraft'])
 
 function safeBody(body) {
   if (!body || typeof body !== 'object') return null

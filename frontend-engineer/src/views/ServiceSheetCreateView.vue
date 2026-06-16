@@ -115,6 +115,7 @@ const aiDraftAppliedLabels = ref([])
 const aiDraftConflicts = ref([])
 const aiDraftPendingFields = ref(null)
 const aiDraftConfirmSubmitOpen = ref(false)
+const aiDraftCustomerCandidates = ref([])
 let customerSearchTimer = null
 let deviceModelSearchTimer = null
 let deviceModelReqId = 0
@@ -2007,7 +2008,7 @@ async function load() {
   retryableError.value = false
   try {
     const requests = [
-      api.get('/customers?mine=1&pageSize=10'),
+      api.get('/customers?mine=1&pageSize=50'),
       api.get('/service-orders?mine=1&pageSize=10&sortBy=createdAt&sortDir=desc'),
       api.get('/users/engineers'),
     ]
@@ -2118,6 +2119,107 @@ function normalizeAiText(value, maxLength = 2000) {
   return text.length > maxLength ? text.slice(0, maxLength) : text
 }
 
+function normalizeAiMatchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/有限公司|股份有限公司|科技有限公司|技术有限公司|有限责任公司|公司/gu, '')
+    .replace(/[\s　()（）【】\[\]《》<>.,，。;；:：'"“”‘’、/\\|-]/g, '')
+    .trim()
+}
+
+function customerCandidateFromCustomer(customer, weight = 0) {
+  const normalized = normalizeCustomer(customer || {})
+  const contacts = contactsForCustomer(normalized)
+  return {
+    ...normalized,
+    weight,
+    contacts,
+  }
+}
+
+function customerCandidateFromOrder(order, weight = 0) {
+  return customerCandidateFromCustomer(
+    {
+      ...normalizeCustomerFromOrder(order || {}),
+      contacts: order?.contacts || [],
+    },
+    weight,
+  )
+}
+
+function mergeAiCustomerCandidates(items) {
+  const merged = new Map()
+  for (const item of items) {
+    if (!item?.name) continue
+    const key = item.id ? `id:${item.id}` : `name:${normalizeAiMatchText(item.name)}`
+    const existing = merged.get(key)
+    if (!existing || Number(item.weight || 0) > Number(existing.weight || 0)) {
+      merged.set(key, item)
+    }
+  }
+  return [...merged.values()]
+}
+
+function scoreAiCustomerCandidate(candidate, transcript) {
+  const source = normalizeAiMatchText(transcript)
+  const name = normalizeAiMatchText(candidate.name)
+  const compact = normalizeAiMatchText(compactCustomerName(candidate.name))
+  let score = Number(candidate.weight || 0)
+  if (name && source.includes(name)) score += 120
+  if (compact && source.includes(compact)) score += 90
+  for (const contact of candidate.contacts || []) {
+    const contactName = normalizeAiMatchText(contact.name)
+    if (contactName && source.includes(contactName)) score += 40
+  }
+  score += Math.min(30, Number(candidate.serviceOrderCount || 0))
+  return score
+}
+
+async function loadAiCustomerCandidates(transcript) {
+  const localCandidates = mergeAiCustomerCandidates([
+    selectedCustomer.value ? customerCandidateFromCustomer(selectedCustomer.value, 150) : null,
+    ...recentOrders.value.map((order, index) => customerCandidateFromOrder(order, 90 - index)),
+    ...customers.value.map((customer, index) => customerCandidateFromCustomer(customer, 70 - index)),
+  ].filter(Boolean))
+
+  let remoteCandidates = []
+  try {
+    const data = await api.get('/customers?pageSize=200')
+    remoteCandidates = (data.items || []).map((customer, index) => customerCandidateFromCustomer(customer, 30 - Math.min(index, 30)))
+  } catch {
+    remoteCandidates = []
+  }
+
+  return mergeAiCustomerCandidates([...localCandidates, ...remoteCandidates])
+    .map((candidate) => ({
+      ...candidate,
+      weight: scoreAiCustomerCandidate(candidate, transcript),
+    }))
+    .sort((left, right) => Number(right.weight || 0) - Number(left.weight || 0))
+    .slice(0, 40)
+}
+
+function findAiCustomerCandidate(name) {
+  const target = normalizeAiMatchText(name)
+  if (!target) return null
+  return aiDraftCustomerCandidates.value.find((candidate) => {
+    const candidateName = normalizeAiMatchText(candidate.name)
+    const compact = normalizeAiMatchText(compactCustomerName(candidate.name))
+    return candidateName === target || compact === target || candidateName.includes(target) || (compact && target.includes(compact))
+  }) || null
+}
+
+function findAiContactCandidate(name) {
+  const target = normalizeAiMatchText(name)
+  if (!target) return null
+  const currentContacts = contactsForCustomer(activeCustomer.value)
+  const allContacts = [
+    ...currentContacts,
+    ...aiDraftCustomerCandidates.value.flatMap((candidate) => candidate.contacts || []),
+  ]
+  return allContacts.find((contact) => normalizeAiMatchText(contact.name) === target) || null
+}
+
 function aiFieldLabel(field) {
   const labels = {
     customerName: '客户名称',
@@ -2194,6 +2296,17 @@ function currentAiDraftContext() {
     actualStartAt: serviceDraft.value.actualStartAt || '',
     actualEndAt: serviceDraft.value.actualEndAt || '',
     returnAt: serviceDraft.value.returnAt || '',
+    customerCandidates: aiDraftCustomerCandidates.value.map((candidate) => ({
+      id: candidate.id || null,
+      name: candidate.name || '',
+      address: candidate.address || candidate.mapAddress || '',
+      contactName: candidate.contactName || '',
+      contactPhone: candidate.contactPhone || '',
+      contacts: (candidate.contacts || []).map((contact) => ({
+        name: contact.name || '',
+        phone: contact.phone || '',
+      })),
+    })),
   }
 }
 
@@ -2231,9 +2344,22 @@ function setCurrentUserWorkContent(value) {
 function applyAiField(field, value) {
   const text = normalizeAiText(value, field === 'workContent' ? 2000 : 600)
   if (!text) return false
-  if (field === 'customerName') updateCustomerField('name', text)
+  if (field === 'customerName') {
+    const candidate = findAiCustomerCandidate(text)
+    if (candidate) applyCustomer(candidate, candidate.id || '')
+    else updateCustomerField('name', text)
+  }
   else if (field === 'customerAddress') updateCustomerField('address', text)
-  else if (field === 'contactName') updateContactField('contactName', text)
+  else if (field === 'contactName') {
+    const contact = findAiContactCandidate(text)
+    if (contact) {
+      applyContactFields({ contactName: contact.name, contactPhone: contact.phone || activeCustomer.value.contactPhone || '' })
+      clearFieldError('contactName')
+      clearFieldError('contactPhone')
+    } else {
+      updateContactField('contactName', text)
+    }
+  }
   else if (field === 'contactPhone') updateContactField('contactPhone', text)
   else if (field === 'serviceType' || field === 'timesheetCategory') serviceDraft.value.serviceType = text
   else if (field === 'workContent') setCurrentUserWorkContent(text)
@@ -2338,6 +2464,7 @@ async function generateAiDraftFromTranscript() {
   aiDraftConflicts.value = []
   aiDraftPendingFields.value = null
   try {
+    aiDraftCustomerCandidates.value = await loadAiCustomerCandidates(transcript)
     const data = await api.post('/service-orders/self-report/ai-draft', {
       transcript,
       serviceMode: currentServiceMode.value,
