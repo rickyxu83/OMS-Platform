@@ -2123,6 +2123,9 @@ function normalizeAiMatchText(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/有限公司|股份有限公司|科技有限公司|技术有限公司|有限责任公司|公司/gu, '')
+    .replace(/[离理里]/g, '李')
+    .replace(/[家嘉]/g, '佳')
+    .replace(/[庆青]/g, '清')
     .replace(/[\s　()（）【】\[\]《》<>.,，。;；:：'"“”‘’、/\\|-]/g, '')
     .trim()
 }
@@ -2302,6 +2305,7 @@ function currentAiDraftContext() {
       address: candidate.address || candidate.mapAddress || '',
       contactName: candidate.contactName || '',
       contactPhone: candidate.contactPhone || '',
+      weight: Number(candidate.weight || 0) || 0,
       contacts: (candidate.contacts || []).map((contact) => ({
         name: contact.name || '',
         phone: contact.phone || '',
