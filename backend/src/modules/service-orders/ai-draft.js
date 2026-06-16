@@ -58,6 +58,7 @@ function normalizeTranscriptText(value) {
     .replace(/回城/g, '回程')
     .replace(/返地/g, '返抵')
     .replace(/离长荣/g, '李长荣')
+    .replace(/家财/g, '嘉财')
     .replace(/两个件到了/g, '备件到了')
     .replace(/两个件到/g, '备件到')
     .trim()
@@ -159,7 +160,7 @@ function parseDurationMinutes(text) {
 function extractTravelDuration(transcript, type) {
   const source = String(transcript || '')
   const keywords = type === 'return'
-    ? '(?:回程|回城|返程|返回|回去|返抵)'
+    ? '(?:回程|回城|返程|返回|回去|回家|返抵)'
     : '(?:路上|去程|来程|过去|到现场路上|到客户现场路上|单程)'
   const regex = new RegExp(`${keywords}.{0,8}?(半个?小时|半小时|[一二两三四五六七八九十\\d]+(?:\\.\\d+)?\\s*个?小时(?:[一二两三四五六七八九十\\d]+\\s*分钟)?|[一二两三四五六七八九十\\d]+\\s*分钟)`)
   const match = source.match(regex)
@@ -167,12 +168,12 @@ function extractTravelDuration(transcript, type) {
 }
 
 function transcriptMentionsReturnTrip(transcript) {
-  return /回程|回去|返程|返回|返抵/.test(String(transcript || ''))
+  return /回程|回去|回家|返程|返回|返抵/.test(String(transcript || ''))
 }
 
 function returnDurationSameAsOutbound(transcript) {
   const source = String(transcript || '')
-  return /(?:回程|回城|返程|返回|回去|返抵).{0,10}?(?:也)?(?:一样|同样|相同)/.test(source)
+  return /(?:回程|回城|返程|返回|回去|回家|返抵).{0,10}?(?:也)?(?:一样|同样|相同)/.test(source)
 }
 
 function todayAt(hour, minute = 0) {
@@ -180,6 +181,26 @@ function todayAt(hour, minute = 0) {
   parts.hour = Number(hour)
   parts.minute = Number(minute)
   return formatDateTime(parts)
+}
+
+function normalizeSpeechHour(hour, period = '') {
+  let value = chineseNumber(hour)
+  if (/下午|晚上/.test(period) && value >= 1 && value < 12) value += 12
+  if (/中午/.test(period) && value >= 1 && value < 11) value += 12
+  if (value === 24) value = 0
+  return value
+}
+
+function extractClockTimeAfterPrefix(transcript, prefixes) {
+  const source = String(transcript || '')
+  const prefix = `(?:${prefixes.join('|')})`
+  const numeric = new RegExp(`${prefix}.{0,8}?(凌晨|早上|上午|中午|下午|晚上)?\\s*(2[0-3]|[01]?\\d)[:：](\\d{1,2})`)
+  const numericMatch = source.match(numeric)
+  if (numericMatch) return todayAt(normalizeSpeechHour(numericMatch[2], numericMatch[1]), numericMatch[3])
+  const chinese = new RegExp(`${prefix}.{0,8}?(凌晨|早上|上午|中午|下午|晚上)?\\s*([一二两三四五六七八九十\\d]{1,3})点(半)?`)
+  const chineseMatch = source.match(chinese)
+  if (chineseMatch) return todayAt(normalizeSpeechHour(chineseMatch[2], chineseMatch[1]), chineseMatch[3] ? 30 : 0)
+  return ''
 }
 
 function extractArrivalTime(transcript) {
@@ -210,6 +231,10 @@ function transcriptIndicatesFinishedNow(transcript) {
   return /(现在|刚刚|已经|已).{0,8}(完成|做完|处理完|解决|结束)|完成了|处理好了|解决了/.test(source)
 }
 
+function extractCompletionTime(transcript) {
+  return extractClockTimeAfterPrefix(transcript, ['现在(?:是)?', '完成(?:时间)?(?:是)?', '结束(?:时间)?(?:是)?'])
+}
+
 function applyTimeInference(fields, currentDraft, transcript, mode) {
   const next = { ...fields }
   const hasValue = (field) => trimText(next[field] || currentDraft[field], FIELD_LIMITS[field] || 32)
@@ -220,7 +245,10 @@ function applyTimeInference(fields, currentDraft, transcript, mode) {
   const outboundMinutes = mode === 'onsite' ? extractTravelDuration(transcript, 'outbound') : null
   const explicitReturnMinutes = mode === 'onsite' ? extractTravelDuration(transcript, 'return') : null
   const returnMinutes = explicitReturnMinutes || (returnDurationSameAsOutbound(transcript) ? outboundMinutes : null)
-  if (!hasValue('actualEndAt') && (transcriptIndicatesFinishedNow(transcript) || transcriptMentionsReturnTrip(transcript))) {
+  const completionTime = extractCompletionTime(transcript)
+  if (!hasValue('actualEndAt') && completionTime) {
+    next.actualEndAt = completionTime
+  } else if (!hasValue('actualEndAt') && (transcriptIndicatesFinishedNow(transcript) || transcriptMentionsReturnTrip(transcript))) {
     next.actualEndAt = currentLocalDateTime()
   }
   if (mode === 'onsite') {
@@ -383,6 +411,7 @@ function normalizeCustomerMatchText(value) {
     .toLowerCase()
     .replace(/有限公司|股份有限公司|科技有限公司|技术有限公司|有限责任公司|公司/gu, '')
     .replace(/[离理里]/g, '李')
+    .replace(/家财/g, '嘉财')
     .replace(/[\s　()（）【】\[\]《》<>.,，。;；:：'"“”‘’、/\\|-]/g, '')
     .trim()
 }
@@ -402,6 +431,7 @@ function customerAliases(candidate) {
   const brand = withoutRegion.split(/科技|高性能|材料|电子|自动化|信息|股份|集团|有限/)[0]
   if (brand && brand.length >= 2) aliases.add(brand)
   if (name.includes('京隆')) aliases.add('金融科技')
+  if (name.includes('嘉财')) aliases.add('家财')
   return [...aliases]
 }
 
@@ -526,11 +556,13 @@ function buildRuleWorkContent(transcript, markedWork) {
     if (/恢复|解决|完成|处理好/.test(source)) parts.push('验证 FTP 服务访问恢复')
     return parts.join('，')
   }
-  if (/存储故障|硬盘坏|硬盘故障|更换硬盘/.test(source)) {
+  if (/存储故障|硬盘坏|硬盘故障|硬盘损坏|更换硬盘/.test(source)) {
     const parts = []
     if (/存储故障/.test(source)) parts.push('排查存储故障')
+    else if (/服务器/.test(source)) parts.push('排查服务器硬盘故障')
     else parts.push('排查硬盘故障')
-    if (/硬盘坏|硬盘故障/.test(source)) parts.push('确认硬盘故障')
+    if (/硬盘损坏/.test(source)) parts.push('确认硬盘损坏')
+    else if (/硬盘坏|硬盘故障/.test(source)) parts.push('确认硬盘故障')
     if (/备件到|备件到了|到货/.test(source)) parts.push('备件到货后更换硬盘')
     else if (/更换硬盘/.test(source)) parts.push('更换硬盘')
     return parts.join('，')
@@ -557,7 +589,7 @@ function shouldUseRuleWorkContent(existing, ruleWork, transcript) {
 
 function extractMarkedIssue(transcript) {
   const source = String(transcript || '')
-  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|工作内容|服务内容|用户|联系人|调查|排查|处理|我是|$)/)
+  const match = source.match(/(?:问题|故障|需求|故障原因)(?:是|为|：|:)(.{2,80}?)(?:现场|到达|路上|回程|回家|工作内容|服务内容|用户|联系人|调查|排查|处理|过来|现在|我是|$)/)
   if (!match) return ''
   return trimText(match[1], 80)
 }
@@ -566,7 +598,7 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
   const source = String(transcript || '')
   const next = { ...fields }
   const looksInstall = /安装|上架|新服务器上架|设备安装|安装的单|安装单|安装的单词|安装的单子/.test(source)
-  const looksFault = /故障|排错|故障原因|硬盘故障/.test(source)
+  const looksFault = /故障|排错|故障原因|硬盘故障|硬盘损坏|硬盘坏/.test(source)
 
   if (mode === 'onsite' && !next.serviceType) {
     if (looksInstall) next.serviceType = 'install'
@@ -580,6 +612,8 @@ function inferFieldsFromTranscript(fields, transcript, mode) {
 
   if (/ftp.{0,6}故障|FTP.{0,6}故障/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || /ftp|FTP|客户端|无法访问/.test(next.issueDescription) || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = 'FTP 服务故障'
+  } else if (/服务器.{0,8}硬盘损坏|硬盘损坏/.test(source) && (!next.issueDescription || next.issueDescription.length > 20 || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
+    next.issueDescription = /服务器/.test(source) ? '服务器硬盘损坏' : '硬盘损坏'
   } else if (/存储故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
     next.issueDescription = '存储故障'
   } else if (/硬盘坏|硬盘故障/.test(source) && (!next.issueDescription || ['设备安装', '服务器安装'].includes(next.issueDescription))) {
