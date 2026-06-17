@@ -7182,10 +7182,12 @@ body::after {
 .task-card .task-actions button.danger-lite,
 .task-actions .danger-lite,
 .ghost.danger-lite {
-  color: #be123c;
-  border-color: rgb(244 63 94 / 22%);
-  background: #fff1f2;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 74%);
+  color: #fff;
+  border-color: transparent;
+  background: #ef4444;
+  box-shadow:
+    0 8px 14px rgb(239 68 68 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card .task-actions button.danger-lite:hover,
@@ -7195,18 +7197,18 @@ body::after {
 .ghost.danger-lite:hover,
 .ghost.danger-lite:focus-visible {
   color: #fff;
-  border-color: rgb(225 29 72 / 62%);
-  background: #e11d48;
+  border-color: transparent;
+  background: #dc2626;
   box-shadow:
-    0 12px 24px rgb(225 29 72 / 18%),
-    inset 0 1px 0 rgb(255 255 255 / 18%);
+    0 12px 24px rgb(220 38 38 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 24%);
 }
 
 .task-card .task-actions button.danger-lite:active,
 .task-actions .danger-lite:active,
 .ghost.danger-lite:active {
   color: #fff;
-  background: #be123c;
+  background: #b91c1c;
   transform: translateY(1px);
 }
 
@@ -7307,9 +7309,9 @@ body::after {
 
 .task-card strong.task-status-success {
   color: #fff;
-  background: #14b8a6;
+  background: #22c55e;
   box-shadow:
-    0 8px 14px rgb(20 184 166 / 16%),
+    0 8px 14px rgb(34 197 94 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
@@ -7326,9 +7328,9 @@ body::after {
   color: #fff;
   border-color: transparent;
   border-radius: 10px;
-  background: #f59e0b;
+  background: #d97706;
   box-shadow:
-    0 8px 14px rgb(245 158 11 / 16%),
+    0 8px 14px rgb(217 119 6 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
