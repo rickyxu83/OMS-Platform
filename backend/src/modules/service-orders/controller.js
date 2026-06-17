@@ -34,6 +34,20 @@ const orderColumns = `
 
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
 
+async function hasInspectionDocument(orderId) {
+  await ensureFilePurposeColumn()
+  const rows = await query(
+    `SELECT id
+     FROM files
+     WHERE owner_type IN ('service_order', 'service_report')
+       AND owner_id = :orderId
+       AND purpose = 'inspection_document'
+     LIMIT 1`,
+    { orderId },
+  )
+  return Boolean(rows[0])
+}
+
 function splitSearchTerms(value) {
   return String(value || '')
     .trim()
@@ -2031,6 +2045,10 @@ async function updateSelfReport(req, res) {
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !customerSignature && !hasExistingSignature) missing.push('客户手写签名')
+  const isInspectionSubmit = effectiveServiceMode === 'onsite' && (serviceType === 'inspect' || order.service_type === 'inspect')
+  if (isInspectionSubmit && !(await hasInspectionDocument(req.params.id))) {
+    missing.push('巡检文档')
+  }
 
   if (missing.length) {
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
