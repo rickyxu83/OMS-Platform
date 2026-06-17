@@ -1119,14 +1119,15 @@ export function ServiceOrders() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {initialLoading ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">{t.list.empty}</div>
-          ) : (
-            <div className="space-y-3">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+            {initialLoading ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+            ) : (
+              <div className="space-y-3">
               <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
                 <div />
                 <div>Case ID / 客户</div>
@@ -1226,7 +1227,8 @@ export function ServiceOrders() {
                 );
               })}
             </div>
-          )}
+            )}
+          </div>
         </CardContent>
       </Card>
 
