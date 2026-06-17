@@ -6347,16 +6347,15 @@ body::after,
   background: rgb(255 255 255 / 92%);
 }
 
-.shell-glass-pill,
+.engineer-shell-controls.open .shell-glass-pill {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .environment-trigger,
 .environment-menu,
 .preview-controls {
-  border-color: var(--oms-admin-border);
-  background: var(--oms-admin-surface);
-  box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
-}
-
-.engineer-shell-controls.open .shell-glass-pill {
   border-color: var(--oms-admin-border);
   background: var(--oms-admin-surface);
   box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
