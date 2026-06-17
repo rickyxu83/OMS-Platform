@@ -694,16 +694,26 @@ export function ServiceOrders() {
     setExporting(true);
     setError("");
     try {
-      const params = buildListParams(1, 100);
-      params.delete("page");
-      params.delete("pageSize");
-      const blob = await api.download(`/service-orders/export-pdf-batch?${params.toString()}`);
+      let queryString: string;
+      if (selectedIds.length) {
+        // 有勾选：只导出选中的工单
+        queryString = `ids=${selectedIds.join(",")}`;
+      } else {
+        // 无勾选：按当前筛选导出全部匹配
+        const params = buildListParams(1, 100);
+        params.delete("page");
+        params.delete("pageSize");
+        queryString = params.toString();
+      }
+      const blob = await api.download(`/service-orders/export-pdf-batch?${queryString}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const customerPart = selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
       const datePart = `-至${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
-      link.download = `服务记录${customerPart}${datePart}.pdf`;
+      const namePart = selectedIds.length
+        ? `-已选${selectedIds.length}张`
+        : selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
+      link.download = `服务记录${namePart}${datePart}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -744,6 +754,11 @@ export function ServiceOrders() {
       if (!items.length) break;
       page += 1;
     } while (allItems.length < totalCount);
+    // 有勾选则只导出选中的工单，与 PDF 导出口径一致
+    if (selectedIds.length) {
+      const idSet = new Set(selectedIds.map((id) => String(id)));
+      return allItems.filter((item) => idSet.has(String(item.id)));
+    }
     return allItems;
   }
 
@@ -1157,7 +1172,9 @@ export function ServiceOrders() {
             </Button>
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
-            当前条件匹配 {total} 张工单；导出会包含所有匹配记录，不只当前页。
+            {selectedIds.length
+              ? `已勾选 ${selectedIds.length} 张；导出（Excel / PDF）仅包含勾选的工单。`
+              : `当前条件匹配 ${total} 张工单；未勾选时，导出会包含所有匹配记录，不只当前页。`}
           </div>
         </CardContent>
       </Card>

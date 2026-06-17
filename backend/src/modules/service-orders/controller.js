@@ -1860,11 +1860,28 @@ async function exportPdfBatch(req, res) {
   await ensureServiceOrderInspectionColumns()
   await ensureFilePurposeColumn()
   const { params, fromAndWhere, sortColumn, sortDirection } = buildListQueryParts(req)
+
+  // 勾选导出：传了 ids 就只导这些(仍受角色可见范围约束)；不传则按筛选导全部。
+  const selectedIds = String(req.query.ids || '')
+    .split(',')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0)
+    .slice(0, 500)
+  const queryParams = { ...params }
+  let where = fromAndWhere
+  if (selectedIds.length) {
+    const placeholders = selectedIds.map((id, index) => {
+      queryParams[`expId${index}`] = id
+      return `:expId${index}`
+    })
+    where += ` AND so.id IN (${placeholders.join(',')})`
+  }
+
   const rows = await query(
-    `SELECT so.id ${fromAndWhere}
+    `SELECT so.id ${where}
      ORDER BY ${sortColumn} ${sortDirection}, so.id DESC
      LIMIT 500`,
-    params,
+    queryParams,
   )
 
   const eligible = []
@@ -1875,7 +1892,9 @@ async function exportPdfBatch(req, res) {
   }
 
   if (!eligible.length) {
-    throw badRequest('当前筛选条件下没有可导出的服务记录（需已提交且非内勤）')
+    throw badRequest(selectedIds.length
+      ? '所选工单中没有可导出的服务记录（需已提交且非内勤）'
+      : '当前筛选条件下没有可导出的服务记录（需已提交且非内勤）')
   }
 
   const pdfFilename = `service-records-${shanghaiDateKey(0)}.pdf`
