@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,43 @@ interface Customer {
   updatedAt?: string;
   createdAt?: string;
   contacts?: Array<{ id?: string | number; name?: string; phone?: string }>;
+}
+
+interface CustomerDevice {
+  id: string | number;
+  name?: string;
+  model?: string;
+  serialNo?: string;
+  maintenanceType?: string;
+  warrantyUntil?: string;
+}
+
+interface CustomerSchedule {
+  id: string | number;
+  deviceNames?: string[];
+  targetEngineerName?: string;
+  cadence?: string;
+  nextRunAnchor?: string;
+  active?: boolean;
+}
+
+interface CustomerOrder {
+  id: string | number;
+  orderNo?: string;
+  displayStatus?: string;
+  workflowStatus?: string;
+  status?: string;
+  deviceName?: string;
+  serviceType?: string;
+  inspectionScheduleId?: string | number | null;
+  serviceAt?: string;
+  createdAt?: string;
+}
+
+interface CustomerInsight {
+  devices: CustomerDevice[];
+  schedules: CustomerSchedule[];
+  orders: CustomerOrder[];
 }
 
 interface GeoCandidate {
@@ -186,6 +223,21 @@ const I18N = {
       updatedAt: "更新时间",
       noContacts: "暂无联系人",
       noCoordinate: "暂无坐标",
+      assetOverview: "客户概况",
+      deviceList: "设备清单",
+      inspectionPlan: "巡检计划",
+      recentOrders: "最近工单",
+      deviceCount: "设备数量",
+      activeInspection: "启用巡检",
+      recentInspection: "巡检工单",
+      loadingInsight: "正在加载客户资产与巡检状态…",
+      noDevices: "暂无设备档案",
+      noInspection: "暂无巡检计划",
+      noRecentOrders: "暂无最近工单",
+      nextRun: "下次生成",
+      targetEngineer: "巡检人",
+      inspectionDevices: "巡检设备",
+      orderDevice: "设备",
     },
     errors: {
       loadFailed: "加载失败",
@@ -300,6 +352,21 @@ const I18N = {
       updatedAt: "更新時間",
       noContacts: "暫無聯絡人",
       noCoordinate: "暫無座標",
+      assetOverview: "客戶概況",
+      deviceList: "設備清單",
+      inspectionPlan: "巡檢計畫",
+      recentOrders: "最近工單",
+      deviceCount: "設備數量",
+      activeInspection: "啟用巡檢",
+      recentInspection: "巡檢工單",
+      loadingInsight: "正在載入客戶資產與巡檢狀態…",
+      noDevices: "暫無設備檔案",
+      noInspection: "暫無巡檢計畫",
+      noRecentOrders: "暫無最近工單",
+      nextRun: "下次生成",
+      targetEngineer: "巡檢人",
+      inspectionDevices: "巡檢設備",
+      orderDevice: "設備",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -342,6 +409,38 @@ const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warnin
   potential: "info",
 };
 
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  pending_confirmation: "待确认",
+  assigned: "已派发",
+  in_progress: "进行中",
+  submitted: "已结案",
+  approved: "已审核",
+  archived: "已归档",
+  cancelled: "已作废",
+  completed: "已完成",
+  rejected: "已退回",
+};
+
+const ORDER_STATUS_VARIANT: Record<string, "default" | "secondary" | "purple" | "warning" | "info" | "success" | "destructive" | "outline"> = {
+  pending_confirmation: "warning",
+  assigned: "info",
+  draft: "secondary",
+  in_progress: "purple",
+  submitted: "success",
+  approved: "success",
+  archived: "secondary",
+  cancelled: "destructive",
+};
+
+const CADENCE_LABELS: Record<string, string> = {
+  monthly: "每月",
+  bimonthly: "每两月",
+  "bi-monthly": "每两月",
+  quarterly: "每季度",
+  weekly: "每周",
+};
+
 const CUSTOMER_ADMIN_DELETE_ROLES = new Set([
   "admin",
   "assistant",
@@ -370,6 +469,15 @@ function interpolate(template: string, values: Record<string, string | number>) 
   return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ""));
 }
 
+function orderStatus(order: CustomerOrder) {
+  return order.workflowStatus || order.status || "";
+}
+
+function orderStatusLabel(order: CustomerOrder) {
+  const status = orderStatus(order);
+  return order.displayStatus || ORDER_STATUS_LABELS[status] || status || "-";
+}
+
 export function Customers() {
   const { lang } = useLanguage();
   const { user } = useAuth();
@@ -385,6 +493,9 @@ export function Customers() {
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [detailTarget, setDetailTarget] = useState<Customer | null>(null);
+  const [detailInsight, setDetailInsight] = useState<CustomerInsight | null>(null);
+  const [detailInsightLoading, setDetailInsightLoading] = useState(false);
+  const [detailInsightError, setDetailInsightError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -445,6 +556,46 @@ export function Customers() {
     const keyword = searchParams.get("keyword") || searchParams.get("city") || "";
     setSearchQuery(keyword);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!detailTarget?.id) {
+      setDetailInsight(null);
+      setDetailInsightError("");
+      setDetailInsightLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const customerId = detailTarget.id;
+    async function loadDetailInsight() {
+      setDetailInsightLoading(true);
+      setDetailInsightError("");
+      try {
+        const [deviceData, scheduleData, orderData] = await Promise.all([
+          api.get(`/customers/${customerId}/devices`),
+          api.get(`/inspection-schedules?customerId=${customerId}&pageSize=100`),
+          api.get(`/service-orders?customerId=${customerId}&pageSize=8&sortBy=createdAt&sortDir=desc`),
+        ]);
+        if (cancelled) return;
+        setDetailInsight({
+          devices: (deviceData?.items || []) as CustomerDevice[],
+          schedules: (scheduleData?.items || []) as CustomerSchedule[],
+          orders: (orderData?.items || []) as CustomerOrder[],
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setDetailInsight(null);
+        setDetailInsightError(e instanceof Error ? e.message : t.errors.loadFailed);
+      } finally {
+        if (!cancelled) setDetailInsightLoading(false);
+      }
+    }
+
+    loadDetailInsight();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailTarget?.id, t.errors.loadFailed]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -956,6 +1107,11 @@ export function Customers() {
             const contacts = detailTarget.contacts?.length
               ? detailTarget.contacts
               : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "" }]
+            const devices = detailInsight?.devices || [];
+            const schedules = detailInsight?.schedules || [];
+            const orders = detailInsight?.orders || [];
+            const activeSchedules = schedules.filter((schedule) => schedule.active);
+            const inspectionOrders = orders.filter((order) => order.inspectionScheduleId);
             return (
               <div className="space-y-4 py-2">
                 <div className="rounded-lg border bg-slate-50/60 p-4">
@@ -976,11 +1132,36 @@ export function Customers() {
                       <div className="mt-1 text-sm font-medium">{Number(detailTarget.serviceOrderCount || 0)}</div>
                     </div>
                     <div>
+                      <div className="text-xs text-muted-foreground">{t.dialog.deviceCount}</div>
+                      <div className="mt-1 text-sm font-medium">
+                        {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : devices.length}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t.dialog.activeInspection}</div>
+                      <div className="mt-1 text-sm font-medium">
+                        {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : activeSchedules.length}
+                      </div>
+                    </div>
+                    <div>
                       <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
                       <div className="mt-1 text-sm font-medium">{formatDate(detailTarget.updatedAt || detailTarget.createdAt)}</div>
                     </div>
                   </div>
                 </div>
+
+                {detailInsightLoading ? (
+                  <div className="rounded-lg border bg-slate-50 p-3 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                    {t.dialog.loadingInsight}
+                  </div>
+                ) : null}
+
+                {detailInsightError ? (
+                  <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-600">
+                    {detailInsightError}
+                  </div>
+                ) : null}
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="rounded-lg border p-4">
@@ -1012,6 +1193,97 @@ export function Customers() {
                           </div>
                         </div>
                       ) : t.dialog.noCoordinate}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Server className="h-4 w-4 text-muted-foreground" />
+                      {t.dialog.deviceList}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {devices.length ? devices.slice(0, 8).map((device) => (
+                        <div key={device.id} className="rounded-md bg-slate-50 px-3 py-2">
+                          <div className="truncate text-sm font-medium">{device.name || `#${device.id}`}</div>
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="text-sm text-muted-foreground">{t.dialog.noDevices}</div>
+                      )}
+                      {devices.length > 8 ? (
+                        <div className="text-xs text-muted-foreground">+{devices.length - 8}</div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+                      {t.dialog.inspectionPlan}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {schedules.length ? schedules.slice(0, 6).map((schedule) => (
+                        <div key={schedule.id} className="rounded-md bg-slate-50 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant={schedule.active ? "success" : "secondary"}>
+                              {schedule.active ? "启用" : "停用"}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{CADENCE_LABELS[schedule.cadence || ""] || schedule.cadence || "-"}</span>
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {t.dialog.nextRun}：{formatDate(schedule.nextRunAnchor)}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {t.dialog.targetEngineer}：{schedule.targetEngineerName || t.misc.unknown}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {t.dialog.inspectionDevices}：{schedule.deviceNames?.length ? schedule.deviceNames.slice(0, 3).join("、") : t.misc.unknown}
+                            {schedule.deviceNames && schedule.deviceNames.length > 3 ? ` +${schedule.deviceNames.length - 3}` : ""}
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="text-sm text-muted-foreground">{t.dialog.noInspection}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      {t.dialog.recentOrders}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {orders.length ? orders.slice(0, 6).map((order) => {
+                        const status = orderStatus(order);
+                        return (
+                          <div key={order.id} className="rounded-md bg-slate-50 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="truncate text-sm font-medium">{order.orderNo || `#${order.id}`}</div>
+                              <Badge variant={ORDER_STATUS_VARIANT[status] || "secondary"}>
+                                {orderStatusLabel(order)}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {t.dialog.orderDevice}：{order.deviceName || t.misc.unknown}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {formatDate(order.serviceAt || order.createdAt)}
+                              {order.inspectionScheduleId ? ` · ${t.dialog.recentInspection}` : ""}
+                            </div>
+                          </div>
+                        );
+                      }) : (
+                        <div className="text-sm text-muted-foreground">{t.dialog.noRecentOrders}</div>
+                      )}
+                      {inspectionOrders.length ? (
+                        <div className="text-xs text-muted-foreground">
+                          {t.dialog.recentInspection}：{inspectionOrders.map(orderStatusLabel).slice(0, 3).join("、")}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
