@@ -44,6 +44,43 @@ function normalizeSearchText(value) {
   return customerNameKey(value)
 }
 
+function normalizeAddressText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function addAddressCandidate(candidates, seen, value) {
+  const text = normalizeAddressText(value)
+  const key = normalizeSearchText(text)
+  if (!text || seen.has(key)) return
+  seen.add(key)
+  candidates.push(text)
+}
+
+function stripBuildingDetail(address) {
+  const text = normalizeAddressText(address)
+  const match = text.match(/^(.+?[0-9一二三四五六七八九十百千万零〇]+(?:号|號))(.+)$/)
+  if (!match) return ''
+
+  const [, base, suffix] = match
+  if (!/(幢|栋|棟|楼|樓|座|单元|單元|室|层|層|房|门|門)/.test(suffix)) return ''
+  return base
+}
+
+function buildGeocodeAddressCandidates(address) {
+  const candidates = []
+  const seen = new Set()
+  const text = normalizeAddressText(address)
+
+  addAddressCandidate(candidates, seen, text)
+  addAddressCandidate(candidates, seen, text.replace(/\s+/g, ''))
+
+  candidates.slice().forEach((candidate) => {
+    addAddressCandidate(candidates, seen, stripBuildingDetail(candidate))
+  })
+
+  return candidates
+}
+
 function toNumber(value) {
   if (value === undefined || value === null || value === '') return null
   const parsed = Number(value)
@@ -125,7 +162,12 @@ async function fetchAmapGeocode(address) {
   const settings = await effectiveSettings()
   const amapKey = settings.map?.amapRestKey || env.amapKey
   if (!amapKey) {
-    const fallback = fallbackPois.find((item) => `${item.name}${item.address}`.includes(address) || address.includes(item.address))
+    const keyword = normalizeSearchText(address)
+    const fallback = fallbackPois.find((item) => {
+      const target = normalizeSearchText(`${item.name}${item.address}`)
+      const itemAddress = normalizeSearchText(item.address)
+      return target.includes(keyword) || keyword.includes(itemAddress)
+    })
     return fallback || null
   }
 
@@ -286,7 +328,12 @@ async function geocodeAddress(req, res) {
   const address = String(req.query.address || '').trim()
   if (!address) throw badRequest('请先填写详细地址')
 
-  const item = await fetchAmapGeocode(address)
+  let item = null
+  for (const candidate of buildGeocodeAddressCandidates(address)) {
+    item = await fetchAmapGeocode(candidate)
+    if (item?.location) break
+  }
+
   if (!item?.location) {
     res.json({ item: null })
     return
