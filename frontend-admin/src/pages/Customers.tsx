@@ -123,6 +123,7 @@ const I18N = {
       deleting: "删除中…",
       saveNow: "立即创建",
       saving: "保存中…",
+      close: "关闭",
     },
     stats: {
       total: "客户总数",
@@ -177,6 +178,13 @@ const I18N = {
       deleteNoServiceCount: "系统会再次检查是否有关联设备或服务单。",
       deleteSuccess: "已删除客户：{name}",
       deleteForceSuccess: "已删除客户：{name}（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张服务单）",
+      detailTitle: "客户详情",
+      detailDescription: "客户基础信息、联系人、业务归属与地图坐标",
+      serviceOrderCount: "服务次数",
+      createdAt: "创建时间",
+      updatedAt: "更新时间",
+      noContacts: "暂无联系人",
+      noCoordinate: "暂无坐标",
     },
     errors: {
       loadFailed: "加载失败",
@@ -226,6 +234,7 @@ const I18N = {
       deleting: "刪除中…",
       saveNow: "立即建立",
       saving: "保存中…",
+      close: "關閉",
     },
     stats: {
       total: "客戶總數",
@@ -280,6 +289,13 @@ const I18N = {
       deleteNoServiceCount: "系統會再次檢查是否有關聯設備或服務單。",
       deleteSuccess: "已刪除客戶：{name}",
       deleteForceSuccess: "已刪除客戶：{name}（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張服務單）",
+      detailTitle: "客戶詳情",
+      detailDescription: "客戶基礎資訊、聯絡人、業務歸屬與地圖座標",
+      serviceOrderCount: "服務次數",
+      createdAt: "建立時間",
+      updatedAt: "更新時間",
+      noContacts: "暫無聯絡人",
+      noCoordinate: "暫無座標",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -362,6 +378,7 @@ export function Customers() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Customer | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -833,7 +850,19 @@ export function Customers() {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     return (
-                      <TableRow key={c.id}>
+                      <TableRow
+                        key={c.id}
+                        role="button"
+                        tabIndex={0}
+                        className="cursor-pointer"
+                        onClick={() => setDetailTarget(c)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setDetailTarget(c);
+                          }
+                        }}
+                      >
                         <TableCell className="font-medium">{c.code || t.misc.unknown}</TableCell>
                         <TableCell>
                           <div className="font-medium">{c.name || t.misc.unknown}</div>
@@ -857,11 +886,26 @@ export function Customers() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEdit(c);
+                              }}
+                            >
                               {t.actions.edit}
                             </Button>
                             {canForceDeleteCustomer ? (
-                              <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => openDelete(c)}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openDelete(c);
+                                }}
+                              >
                                 <Trash2 className="w-4 h-4" />
                                 {t.actions.delete}
                               </Button>
@@ -877,6 +921,108 @@ export function Customers() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
+        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t.dialog.detailTitle}</DialogTitle>
+            <DialogDescription>{t.dialog.detailDescription}</DialogDescription>
+          </DialogHeader>
+          {detailTarget ? (() => {
+            const lv = levelOf(detailTarget);
+            const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+            const contacts = detailTarget.contacts?.length
+              ? detailTarget.contacts
+              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "" }]
+            return (
+              <div className="space-y-4 py-2">
+                <div className="rounded-lg border bg-slate-50/60 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-lg font-semibold text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
+                    </div>
+                    <Badge variant={LEVEL_VARIANT[lv] || "secondary"} className="w-fit">{lvLabel}</Badge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t.list.salesperson}</div>
+                      <div className="mt-1 text-sm font-medium">{detailTarget.salesperson || t.misc.unknown}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t.dialog.serviceOrderCount}</div>
+                      <div className="mt-1 text-sm font-medium">{Number(detailTarget.serviceOrderCount || 0)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
+                      <div className="mt-1 text-sm font-medium">{formatDate(detailTarget.updatedAt || detailTarget.createdAt)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm font-medium">{t.dialog.contacts}</div>
+                    <div className="mt-3 space-y-2">
+                      {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
+                        <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
+                          <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
+                          <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                        </div>
+                      )) : (
+                        <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm font-medium">{t.dialog.address}</div>
+                    <div className="mt-3 text-sm text-slate-700">{detailTarget.address || t.misc.unknown}</div>
+                    <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                      {detailTarget.latitude != null && detailTarget.longitude != null ? (
+                        <div className="flex items-start gap-2">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          <div>
+                            <div>{detailTarget.mapPoiName || t.dialog.selectedCoordinate}</div>
+                            <div className="mt-1 font-mono">
+                              {Number(detailTarget.latitude).toFixed(6)}, {Number(detailTarget.longitude).toFixed(6)}
+                            </div>
+                          </div>
+                        </div>
+                      ) : t.dialog.noCoordinate}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 rounded-lg border p-4 text-sm md:grid-cols-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>
+                    <div className="mt-1">{formatDate(detailTarget.createdAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
+                    <div className="mt-1">{formatDate(detailTarget.updatedAt)}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })() : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+              {t.actions.close}
+            </Button>
+            {detailTarget ? (
+              <Button onClick={() => {
+                const target = detailTarget;
+                setDetailTarget(null);
+                openEdit(target);
+              }}>
+                {t.actions.edit}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
