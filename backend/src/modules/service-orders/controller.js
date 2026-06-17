@@ -9,6 +9,7 @@ const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { nextCustomerCode } = require('../customers/controller')
+const { ensureFilePurposeColumn } = require('../files/controller')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const signatureRoot = path.join(uploadRoot, 'signatures')
@@ -1734,6 +1735,7 @@ async function createSelfReport(req, res) {
 
 async function detail(req, res) {
   await ensureServiceOrderInspectionColumns()
+  await ensureFilePurposeColumn()
   let order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
@@ -1772,7 +1774,7 @@ async function detail(req, res) {
     { id: req.params.id },
   )
   const files = await query(
-    `SELECT id, owner_type, owner_id, original_name, mime_type, size, uploaded_by, created_at
+    `SELECT id, owner_type, owner_id, purpose, original_name, mime_type, size, uploaded_by, created_at
      FROM files
      WHERE owner_type IN ('service_order', 'service_report', 'signature') AND owner_id = :id
      ORDER BY id ASC`,
@@ -1806,6 +1808,7 @@ async function detail(req, res) {
         id: file.id,
         ownerType: file.owner_type,
         ownerId: file.owner_id,
+        purpose: file.purpose || 'general',
         originalName: file.original_name,
         mimeType: file.mime_type,
         size: file.size,

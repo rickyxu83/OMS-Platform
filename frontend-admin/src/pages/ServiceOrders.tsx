@@ -48,8 +48,21 @@ interface ServiceOrder {
   submittedAt?: string;
   reviewedAt?: string;
   reviewComment?: string;
+  files?: OrderFile[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface OrderFile {
+  id: string | number;
+  ownerType?: string;
+  ownerId?: string | number;
+  purpose?: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedBy?: string | number;
+  createdAt?: string;
 }
 
 interface EngineerOption {
@@ -302,6 +315,14 @@ function formatDateOnly(value?: string) {
   return String(value).replace("T", " ").slice(0, 10);
 }
 
+function formatFileSize(value?: number) {
+  const size = Number(value || 0);
+  if (!size) return "-";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function cleanDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
 }
@@ -434,6 +455,7 @@ export function ServiceOrders() {
   const [transitionOrder, setTransitionOrder] = useState<ServiceOrder | null>(null);
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
+  const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -503,12 +525,9 @@ export function ServiceOrders() {
   useEffect(() => {
     const orderId = searchParams.get("orderId");
     if (!orderId) return;
-    if (detailOrder && String(detailOrder.id) === orderId) return;
-
     const matched = orders.find((order) => String(order.id) === orderId);
-    if (matched) {
+    if (matched && (!detailOrder || String(detailOrder.id) !== orderId)) {
       setDetailOrder(matched);
-      return;
     }
 
     let cancelled = false;
@@ -525,7 +544,7 @@ export function ServiceOrders() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, orders, detailOrder, t.errors.loadFailed]);
+  }, [searchParams, orders, t.errors.loadFailed]);
 
   const filteredOrders = useMemo(() => {
     const terms = splitSearchTerms(debouncedSearch);
@@ -626,6 +645,38 @@ export function ServiceOrders() {
       next.delete("orderId");
       return next;
     });
+  }
+
+  async function openDetailOrder(order: ServiceOrder) {
+    setDetailOrder(order);
+    setError("");
+    try {
+      const data = await api.get(`/service-orders/${order.id}`);
+      setDetailOrder((data?.item || data) as ServiceOrder);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errors.loadFailed);
+    }
+  }
+
+  async function downloadOrderFile(file: OrderFile) {
+    if (!file?.id || downloadingFileId) return;
+    setDownloadingFileId(file.id);
+    setError("");
+    try {
+      const blob = await api.download(`/files/${file.id}`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.originalName || `attachment-${file.id}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "附件下载失败");
+    } finally {
+      setDownloadingFileId(null);
+    }
   }
 
   function buildListParams(page: number, pageSize: number) {
@@ -1155,7 +1206,7 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
-                          <Button variant="outline" size="sm" onClick={() => setDetailOrder(order)}>
+                          <Button variant="outline" size="sm" onClick={() => openDetailOrder(order)}>
                             详情
                           </Button>
                           {canConfirmInspection && (
@@ -1192,6 +1243,8 @@ export function ServiceOrders() {
             const typeLabel = t.type[detailOrder.serviceType as keyof typeof t.type] || detailOrder.serviceType || "-";
             const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
             const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
+            const inspectionDocuments = (detailOrder.files || []).filter((file) => file.purpose === "inspection_document");
+            const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
             return (
               <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
                 <div className="flex flex-wrap gap-2">
@@ -1221,6 +1274,52 @@ export function ServiceOrders() {
 
                 <DetailBlock label={t.detail.issueDescription} value={detailOrder.issueDescription} />
                 <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} />
+
+                {inspectionDocuments.length ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">巡检文档</div>
+                    <div className="mt-2 grid gap-2">
+                      {inspectionDocuments.map((file) => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
+                          disabled={downloadingFileId === file.id}
+                          onClick={() => downloadOrderFile(file)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{file.originalName || `巡检文档 #${file.id}`}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                          </span>
+                          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {attachments.length ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">附件</div>
+                    <div className="mt-2 grid gap-2">
+                      {attachments.map((file) => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
+                          disabled={downloadingFileId === file.id}
+                          onClick={() => downloadOrderFile(file)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{file.originalName || `附件 #${file.id}`}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                          </span>
+                          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {(detailOrder.reviewedAt || detailOrder.reviewComment) && (
                   <div className="rounded-md border bg-muted/30 p-3">
