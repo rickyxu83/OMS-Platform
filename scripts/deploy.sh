@@ -183,7 +183,7 @@ deploy_backend() {
   ssh "$SSH_TARGET" "set -e
     # 备份当前后端源码
     mkdir -p '${REMOTE_ROOT}/backups'
-    bak='${REMOTE_ROOT}/backups/backend-src-\$(date +%Y%m%d%H%M%S)'
+    bak="${REMOTE_ROOT}/backups/backend-src-\$(date +%Y%m%d%H%M%S)"
     mkdir -p \"\$bak\"
     if [ -d '${remote_dir}' ]; then cp -a '${remote_dir}' \"\$bak/current\"; fi
 
@@ -229,7 +229,7 @@ deploy_frontend() {
 
   ssh "$SSH_TARGET" "set -e
     mkdir -p '${REMOTE_ROOT}/backups'
-    bak='${REMOTE_ROOT}/backups/${name}-site-\$(date +%Y%m%d%H%M%S)'
+    bak="${REMOTE_ROOT}/backups/${name}-site-\$(date +%Y%m%d%H%M%S)"
     mkdir -p \"\$bak\"
     if [ -d '${remote_dir}' ]; then cp -a '${remote_dir}' \"\$bak/current\"; fi
     rm -rf '${remote_new}'
