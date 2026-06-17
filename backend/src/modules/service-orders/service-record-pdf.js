@@ -3,6 +3,8 @@ const PDFDocument = require('pdfkit')
 
 const FONT_CANDIDATES = [
   { path: process.env.PDF_CJK_FONT, family: process.env.PDF_CJK_FONT_FAMILY },
+  // Alpine font-noto-cjk 实际安装路径
+  { path: '/usr/share/fonts/noto/NotoSansCJK-Regular.ttc', family: 'NotoSansCJKsc-Regular' },
   { path: '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc', family: 'NotoSansCJKsc-Regular' },
   { path: '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc', family: 'NotoSansCJKtc-Regular' },
   { path: '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', family: 'NotoSansCJKsc-Regular' },
