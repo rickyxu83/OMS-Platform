@@ -45,6 +45,7 @@ const I18N = {
       saveEdit: "保存修改",
       saving: "保存中…",
       delete: "删除",
+      close: "关闭",
     },
     stats: {
       total: "维保方总数",
@@ -69,7 +70,9 @@ const I18N = {
     dialog: {
       createTitle: "新增维保方",
       editTitle: "编辑维保方",
+      detailTitle: "维保方详情",
       description: "填写维保方基础信息，提交后保存到系统",
+      detailDescription: "维保方基础信息、联系人与服务范围",
       name: "维保方名称 *",
       namePlaceholder: "例如 Dell EMC 原厂技术支持",
       contact: "联系人",
@@ -82,6 +85,8 @@ const I18N = {
       serviceScopePlaceholder: "例如 服务器、存储、网络设备",
       remark: "备注",
       remarkPlaceholder: "补充说明",
+      createdAt: "创建时间",
+      updatedAt: "最近更新",
     },
     errors: {
       loadFailed: "加载失败",
@@ -116,6 +121,7 @@ const I18N = {
       saveEdit: "保存修改",
       saving: "保存中…",
       delete: "刪除",
+      close: "關閉",
     },
     stats: {
       total: "維保方總數",
@@ -140,7 +146,9 @@ const I18N = {
     dialog: {
       createTitle: "新增維保方",
       editTitle: "編輯維保方",
+      detailTitle: "維保方詳情",
       description: "填寫維保方基礎資訊，提交後保存到系統",
+      detailDescription: "維保方基礎資訊、聯絡人與服務範圍",
       name: "維保方名稱 *",
       namePlaceholder: "例如 Dell EMC 原廠技術支援",
       contact: "聯絡人",
@@ -153,6 +161,8 @@ const I18N = {
       serviceScopePlaceholder: "例如 伺服器、儲存、網路設備",
       remark: "備註",
       remarkPlaceholder: "補充說明",
+      createdAt: "創建時間",
+      updatedAt: "最近更新",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -202,6 +212,7 @@ export function MaintenanceParties() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<Party | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -430,7 +441,17 @@ export function MaintenanceParties() {
                 return (
                   <div
                     key={p.id}
-                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
+                    role="button"
+                    tabIndex={0}
+                    className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
+                    onClick={() => setDetailTarget(p)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDetailTarget(p);
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-4 flex-1">
                       <Building2 className="w-5 h-5 text-primary" />
@@ -457,7 +478,7 @@ export function MaintenanceParties() {
                         <div className="text-sm">{formatDate(p.updatedAt)}</div>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
                       <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
                         {t.actions.edit}
                       </Button>
@@ -474,6 +495,82 @@ export function MaintenanceParties() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
+        <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[680px]">
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle>{t.dialog.detailTitle}</DialogTitle>
+            <DialogDescription>{t.dialog.detailDescription}</DialogDescription>
+          </DialogHeader>
+          {detailTarget ? (() => {
+            const typeLabel = t.types[detailTarget.partyType as keyof typeof t.types] || detailTarget.partyType || t.misc.unknown;
+            return (
+              <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+                <div className="space-y-5 py-2">
+                  <div className="rounded-lg border bg-slate-50/60 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {isOriginalManufacturer(detailTarget.partyType) ? t.filters.vendor : t.filters.partner}
+                        </div>
+                      </div>
+                      <Badge variant={TYPE_VARIANT[detailTarget.partyType || ""] || "secondary"}>{typeLabel}</Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.contact}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.contact || t.misc.unknown}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.phone}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.phone || t.misc.unknown}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(detailTarget.createdAt)}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(detailTarget.updatedAt)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-lg border p-4">
+                      <div className="text-sm font-medium">{t.dialog.serviceScope}</div>
+                      <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
+                        {detailTarget.serviceScope || t.misc.unknown}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="text-sm font-medium">{t.dialog.remark}</div>
+                      <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
+                        {detailTarget.remark || t.misc.unknown}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : null}
+          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+              {t.actions.close}
+            </Button>
+            {detailTarget ? (
+              <Button onClick={() => {
+                const target = detailTarget;
+                setDetailTarget(null);
+                openEdit(target);
+              }}>
+                {t.actions.edit}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[560px]">

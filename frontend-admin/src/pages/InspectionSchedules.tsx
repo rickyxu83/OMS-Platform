@@ -92,6 +92,7 @@ export function InspectionSchedules() {
   const [cadenceFilter, setCadenceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<Schedule | null>(null);
   const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [form, setForm] = useState({
@@ -486,7 +487,17 @@ export function InspectionSchedules() {
                 return (
                   <div
                     key={s.id}
-                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
+                    role="button"
+                    tabIndex={0}
+                    className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
+                    onClick={() => setDetailTarget(s)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDetailTarget(s);
+                      }
+                    }}
                   >
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
                       <div>
@@ -520,7 +531,7 @@ export function InspectionSchedules() {
                         <div className="text-xs text-muted-foreground">下次生成</div>
                         <div className="text-sm font-medium">{formatDate(s.nextRunAnchor)}</div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <Switch
                           checked={Boolean(s.active)}
                           onCheckedChange={() => toggleActive(s)}
@@ -532,10 +543,25 @@ export function InspectionSchedules() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEdit(s);
+                        }}
+                      >
                         编辑
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteSchedule(s)} disabled={saving}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteSchedule(s);
+                        }}
+                        disabled={saving}
+                      >
                         <Trash2 className="w-4 h-4 mr-1" />
                         删除
                       </Button>
@@ -548,6 +574,102 @@ export function InspectionSchedules() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
+        <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle>巡检计划详情</DialogTitle>
+            <DialogDescription>计划基本信息、巡检设备与执行节奏</DialogDescription>
+          </DialogHeader>
+          {detailTarget ? (() => {
+            const cadenceLabel = CADENCE_LABELS[detailTarget.cadence || ""] || detailTarget.cadence || "-";
+            const deviceNames = detailTarget.deviceNames || [];
+            return (
+              <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+                <div className="space-y-5 py-2">
+                  <div className="rounded-lg border bg-slate-50/60 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-lg font-semibold leading-7 text-slate-900">
+                          {detailTarget.name || detailTarget.customerName || `计划 #${detailTarget.id}`}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">{detailTarget.customerName || "-"}</div>
+                      </div>
+                      <Badge variant={detailTarget.active ? "success" : "secondary"}>
+                        {detailTarget.active ? "已启用" : "已停用"}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">巡检工程师</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.targetEngineerName || "未指定"}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">巡检周期</div>
+                        <div className="mt-1"><Badge variant={CADENCE_VARIANT[detailTarget.cadence || ""] || "outline"}>{cadenceLabel}</Badge></div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">下次生成</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(detailTarget.nextRunAnchor)}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">设备数量</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{deviceNames.length || detailTarget.deviceIds?.length || 0}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-lg border p-4">
+                      <div className="text-sm font-medium">巡检设备</div>
+                      <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {deviceNames.length ? deviceNames.map((name, index) => (
+                          <div key={`${name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium">
+                            {name || `设备 #${detailTarget.deviceIds?.[index] || index + 1}`}
+                          </div>
+                        )) : (
+                          <div className="text-sm text-muted-foreground">暂无设备</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="text-sm font-medium">计划信息</div>
+                      <div className="mt-3 grid gap-3 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">客户</div>
+                          <div className="mt-1">{detailTarget.customerName || "-"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">结束日期</div>
+                          <div className="mt-1">{formatDate(detailTarget.endDate)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">备注</div>
+                          <div className="mt-1 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2">{detailTarget.remark || "-"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : null}
+          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+              关闭
+            </Button>
+            {detailTarget ? (
+              <Button onClick={() => {
+                const target = detailTarget;
+                setDetailTarget(null);
+                openEdit(target);
+              }}>
+                编辑
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
