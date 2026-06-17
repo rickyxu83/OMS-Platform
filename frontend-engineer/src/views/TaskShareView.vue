@@ -42,6 +42,24 @@ function cleanText(value, fallback = '-') {
   return normalized || fallback
 }
 
+// 协作工单中“我无需单独填写”的占位标记，导出时需剔除。
+const collaborativeAckMarker = '⁣⁤⁣'
+
+function stripAckMarker(value) {
+  return String(value || '').split(collaborativeAckMarker).join('')
+}
+
+// 处理内容：优先按每位工程师的原始记录拼接，去掉协作确认占位、不加“姓名：”
+// 前缀，仅用换行区分；无 entries 时回退到合并字段。与后端 PDF 导出保持一致。
+function exportWorkContent(report) {
+  const entries = Array.isArray(report?.workEntries) ? report.workEntries : []
+  const filled = entries
+    .map((entry) => stripAckMarker(entry?.workContent || '').trim())
+    .filter(Boolean)
+  if (filled.length) return filled.join('\n')
+  return stripAckMarker(report?.workContent || '').trim()
+}
+
 function textWidthUnits(value) {
   return Array.from(value).reduce((total, char) => total + (char.charCodeAt(0) <= 255 ? 0.55 : 1), 0)
 }
@@ -240,7 +258,7 @@ const sheetSvg = computed(() => {
   const returned = formatDateTime(item.report.returnAt) || '—'
   const finishedDate = formatDateTime(item.report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
-  const workRecord = cleanText(item.report.workContent || item.serviceContent || item.issueDescription || '', '未填写处理记录')
+  const workRecord = exportWorkContent(item.report) || cleanText(item.serviceContent || item.issueDescription || '', '未填写处理记录')
   const titleText = isRemoteSheet.value ? '远程服务记录单' : '技术服务记录单'
   const secondLabel = '设备 / 系统'
   const secondValue = cleanText(item.deviceName || item.internalNote || item.productName || '', '未填写设备信息')
