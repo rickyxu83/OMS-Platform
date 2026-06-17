@@ -5666,6 +5666,27 @@ h2 {
     justify-content: center;
     font-size: 13px;
   }
+
+  .exit-confirm-shell {
+    align-self: center;
+    justify-self: center;
+    width: min(396px, calc(100vw - 28px));
+    max-height: calc(100vh - 28px);
+    overflow: auto;
+  }
+
+  .exit-confirm-shell .signature-modal-head p {
+    display: block;
+  }
+
+  .exit-confirm-shell .signature-modal-head h2 {
+    font-size: 22px;
+    line-height: 1.18;
+  }
+
+  .exit-confirm-shell .signature-modal-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* RC: keep buttons steady on hover. Cards and ambient page motion keep their own effects. */
@@ -5880,6 +5901,21 @@ h2 {
 .asset-card-list {
   display: grid;
   gap: 14px;
+}
+
+.asset-card-list {
+  height: 62vh;
+  min-height: 360px;
+  max-height: 680px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+
+.asset-card-list .empty-state {
+  align-self: center;
+  justify-self: center;
 }
 
 .asset-module-card {

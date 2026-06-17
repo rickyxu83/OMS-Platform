@@ -1045,8 +1045,9 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="border rounded-md">
-            <Table>
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+            <div className="border rounded-md">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[140px]">{t.list.code}</TableHead>
@@ -1143,7 +1144,8 @@ export function Customers() {
                   })
                 )}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
