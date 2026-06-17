@@ -1123,8 +1123,8 @@ export function Customers() {
       </Card>
 
       <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1000px]">
+          <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>{t.dialog.detailTitle}</DialogTitle>
             <DialogDescription>{t.dialog.detailDescription}</DialogDescription>
           </DialogHeader>
@@ -1140,195 +1140,210 @@ export function Customers() {
             const activeSchedules = schedules.filter((schedule) => schedule.active);
             const inspectionOrders = orders.filter((order) => order.inspectionScheduleId);
             return (
-              <div className="space-y-4 py-2">
-                <div className="rounded-lg border bg-slate-50/60 p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0">
-                      <div className="text-lg font-semibold text-slate-900">{detailTarget.name || t.misc.unknown}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
+              <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+                <div className="space-y-5 py-2">
+                  <div className="rounded-lg border bg-slate-50/60 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
+                      </div>
+                      <Badge variant={LEVEL_VARIANT[lv] || "secondary"} className="w-fit">{lvLabel}</Badge>
                     </div>
-                    <Badge variant={LEVEL_VARIANT[lv] || "secondary"} className="w-fit">{lvLabel}</Badge>
-                  </div>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t.list.salesperson}</div>
-                      <div className="mt-1 text-sm font-medium">{detailTarget.salesperson || t.misc.unknown}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t.dialog.serviceOrderCount}</div>
-                      <div className="mt-1 text-sm font-medium">{Number(detailTarget.serviceOrderCount || 0)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t.dialog.deviceCount}</div>
-                      <div className="mt-1 text-sm font-medium">
-                        {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : devices.length}
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.list.salesperson}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.salesperson || t.misc.unknown}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.serviceOrderCount}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{Number(detailTarget.serviceOrderCount || 0)}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.deviceCount}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : devices.length}
+                        </div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.activeInspection}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : activeSchedules.length}
+                        </div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(detailTarget.updatedAt || detailTarget.createdAt)}</div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t.dialog.activeInspection}</div>
-                      <div className="mt-1 text-sm font-medium">
-                        {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : activeSchedules.length}
+                  </div>
+
+                  {detailInsightLoading ? (
+                    <div className="rounded-lg border bg-slate-50 p-3 text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                      {t.dialog.loadingInsight}
+                    </div>
+                  ) : null}
+
+                  {detailInsightError ? (
+                    <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-600">
+                      {detailInsightError}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="rounded-lg border p-4">
+                          <div className="text-sm font-medium">{t.dialog.contacts}</div>
+                          <div className="mt-3 space-y-2">
+                            {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
+                              <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
+                                <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
+                                <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                              </div>
+                            )) : (
+                              <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border p-4">
+                          <div className="text-sm font-medium">{t.dialog.address}</div>
+                          <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
+                          <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                            {detailTarget.latitude != null && detailTarget.longitude != null ? (
+                              <div className="flex items-start gap-2">
+                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                <div className="min-w-0">
+                                  <div className="break-words">{detailTarget.mapPoiName || t.dialog.selectedCoordinate}</div>
+                                  <div className="mt-1 font-mono">
+                                    {Number(detailTarget.latitude).toFixed(6)}, {Number(detailTarget.longitude).toFixed(6)}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : t.dialog.noCoordinate}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
-                      <div className="mt-1 text-sm font-medium">{formatDate(detailTarget.updatedAt || detailTarget.createdAt)}</div>
-                    </div>
-                  </div>
-                </div>
 
-                {detailInsightLoading ? (
-                  <div className="rounded-lg border bg-slate-50 p-3 text-sm text-muted-foreground">
-                    <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
-                    {t.dialog.loadingInsight}
-                  </div>
-                ) : null}
-
-                {detailInsightError ? (
-                  <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-600">
-                    {detailInsightError}
-                  </div>
-                ) : null}
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border p-4">
-                    <div className="text-sm font-medium">{t.dialog.contacts}</div>
-                    <div className="mt-3 space-y-2">
-                      {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
-                        <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
-                          <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
-                          <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
-                        </div>
-                      )) : (
-                        <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="text-sm font-medium">{t.dialog.address}</div>
-                    <div className="mt-3 text-sm text-slate-700">{detailTarget.address || t.misc.unknown}</div>
-                    <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
-                      {detailTarget.latitude != null && detailTarget.longitude != null ? (
-                        <div className="flex items-start gap-2">
-                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                          <div>
-                            <div>{detailTarget.mapPoiName || t.dialog.selectedCoordinate}</div>
-                            <div className="mt-1 font-mono">
-                              {Number(detailTarget.latitude).toFixed(6)}, {Number(detailTarget.longitude).toFixed(6)}
-                            </div>
-                          </div>
-                        </div>
-                      ) : t.dialog.noCoordinate}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Server className="h-4 w-4 text-muted-foreground" />
-                      {t.dialog.deviceList}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {devices.length ? devices.slice(0, 8).map((device) => (
-                        <div key={device.id} className="rounded-md bg-slate-50 px-3 py-2">
-                          <div className="truncate text-sm font-medium">{device.name || `#${device.id}`}</div>
-                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
-                          </div>
-                        </div>
-                      )) : (
-                        <div className="text-sm text-muted-foreground">{t.dialog.noDevices}</div>
-                      )}
-                      {devices.length > 8 ? (
-                        <div className="text-xs text-muted-foreground">+{devices.length - 8}</div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                      {t.dialog.inspectionPlan}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {schedules.length ? schedules.slice(0, 6).map((schedule) => (
-                        <div key={schedule.id} className="rounded-md bg-slate-50 px-3 py-2">
+                      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                        <div className="rounded-lg border p-4">
                           <div className="flex items-center justify-between gap-2">
-                            <Badge variant={schedule.active ? "success" : "secondary"}>
-                              {schedule.active ? "启用" : "停用"}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{CADENCE_LABELS[schedule.cadence || ""] || schedule.cadence || "-"}</span>
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <Server className="h-4 w-4 text-muted-foreground" />
+                              {t.dialog.deviceList}
+                            </div>
+                            {devices.length ? <Badge variant="secondary">{devices.length}</Badge> : null}
                           </div>
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {t.dialog.nextRun}：{formatDate(schedule.nextRunAnchor)}
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {t.dialog.targetEngineer}：{schedule.targetEngineerName || t.misc.unknown}
-                          </div>
-                          <div className="mt-1 truncate text-xs text-muted-foreground">
-                            {t.dialog.inspectionDevices}：{schedule.deviceNames?.length ? schedule.deviceNames.slice(0, 3).join("、") : t.misc.unknown}
-                            {schedule.deviceNames && schedule.deviceNames.length > 3 ? ` +${schedule.deviceNames.length - 3}` : ""}
+                          <div className="mt-3 space-y-2">
+                            {devices.length ? devices.slice(0, 8).map((device) => (
+                              <div key={device.id} className="rounded-md bg-slate-50 px-3 py-2">
+                                <div className="truncate text-sm font-medium">{device.name || `#${device.id}`}</div>
+                                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
+                                </div>
+                              </div>
+                            )) : (
+                              <div className="text-sm text-muted-foreground">{t.dialog.noDevices}</div>
+                            )}
+                            {devices.length > 8 ? (
+                              <div className="text-xs text-muted-foreground">+{devices.length - 8}</div>
+                            ) : null}
                           </div>
                         </div>
-                      )) : (
-                        <div className="text-sm text-muted-foreground">{t.dialog.noInspection}</div>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      {t.dialog.recentOrders}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {orders.length ? orders.slice(0, 6).map((order) => {
-                        const status = orderStatus(order);
-                        return (
-                          <div key={order.id} className="rounded-md bg-slate-50 px-3 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="truncate text-sm font-medium">{order.orderNo || `#${order.id}`}</div>
-                              <Badge variant={ORDER_STATUS_VARIANT[status] || "secondary"}>
-                                {orderStatusLabel(order)}
-                              </Badge>
+                        <div className="rounded-lg border p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+                              {t.dialog.inspectionPlan}
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {t.dialog.orderDevice}：{order.deviceName || t.misc.unknown}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {formatDate(order.serviceAt || order.createdAt)}
-                              {order.inspectionScheduleId ? ` · ${t.dialog.recentInspection}` : ""}
-                            </div>
+                            {schedules.length ? <Badge variant="secondary">{schedules.length}</Badge> : null}
                           </div>
-                        );
-                      }) : (
-                        <div className="text-sm text-muted-foreground">{t.dialog.noRecentOrders}</div>
-                      )}
-                      {inspectionOrders.length ? (
-                        <div className="text-xs text-muted-foreground">
-                          {t.dialog.recentInspection}：{inspectionOrders.map(orderStatusLabel).slice(0, 3).join("、")}
+                          <div className="mt-3 space-y-2">
+                            {schedules.length ? schedules.slice(0, 6).map((schedule) => (
+                              <div key={schedule.id} className="rounded-md bg-slate-50 px-3 py-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <Badge variant={schedule.active ? "success" : "secondary"}>
+                                    {schedule.active ? "启用" : "停用"}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">{CADENCE_LABELS[schedule.cadence || ""] || schedule.cadence || "-"}</span>
+                                </div>
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  {t.dialog.nextRun}：{formatDate(schedule.nextRunAnchor)}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {t.dialog.targetEngineer}：{schedule.targetEngineerName || t.misc.unknown}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {t.dialog.inspectionDevices}：{schedule.deviceNames?.length ? schedule.deviceNames.slice(0, 3).join("、") : t.misc.unknown}
+                                  {schedule.deviceNames && schedule.deviceNames.length > 3 ? ` +${schedule.deviceNames.length - 3}` : ""}
+                                </div>
+                              </div>
+                            )) : (
+                              <div className="text-sm text-muted-foreground">{t.dialog.noInspection}</div>
+                            )}
+                          </div>
                         </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
+                      </div>
 
-                <div className="grid grid-cols-1 gap-3 rounded-lg border p-4 text-sm md:grid-cols-2">
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>
-                    <div className="mt-1">{formatDate(detailTarget.createdAt)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
-                    <div className="mt-1">{formatDate(detailTarget.updatedAt)}</div>
+                      <div className="grid grid-cols-1 gap-3 rounded-lg border p-4 text-sm md:grid-cols-2">
+                        <div>
+                          <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>
+                          <div className="mt-1">{formatDate(detailTarget.createdAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
+                          <div className="mt-1">{formatDate(detailTarget.updatedAt)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-4 lg:sticky lg:top-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          {t.dialog.recentOrders}
+                        </div>
+                        {orders.length ? <Badge variant="secondary">{orders.length}</Badge> : null}
+                      </div>
+                      <div className="mt-3 max-h-[460px] space-y-2 overflow-y-auto pr-1">
+                        {orders.length ? orders.slice(0, 6).map((order) => {
+                          const status = orderStatus(order);
+                          return (
+                            <div key={order.id} className="rounded-md bg-slate-50 px-3 py-2.5">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                                <div className="break-all text-sm font-semibold leading-5 text-slate-900">{order.orderNo || `#${order.id}`}</div>
+                                <Badge variant={ORDER_STATUS_VARIANT[status] || "secondary"}>
+                                  {orderStatusLabel(order)}
+                                </Badge>
+                              </div>
+                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                <div>{t.dialog.orderDevice}：{order.deviceName || t.misc.unknown}</div>
+                                <div>
+                                  {formatDate(order.serviceAt || order.createdAt)}
+                                  {order.inspectionScheduleId ? ` · ${t.dialog.recentInspection}` : ""}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }) : (
+                          <div className="text-sm text-muted-foreground">{t.dialog.noRecentOrders}</div>
+                        )}
+                        {inspectionOrders.length ? (
+                          <div className="text-xs text-muted-foreground">
+                            {t.dialog.recentInspection}：{inspectionOrders.map(orderStatusLabel).slice(0, 3).join("、")}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             )
           })() : null}
-          <DialogFooter>
+          <DialogFooter className="border-t bg-background px-6 py-4">
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
