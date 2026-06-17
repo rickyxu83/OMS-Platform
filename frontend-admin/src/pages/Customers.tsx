@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -226,6 +226,19 @@ const I18N = {
       assetOverview: "客户概况",
       deviceList: "设备清单",
       inspectionPlan: "巡检计划",
+      inspectionStatus: "巡检状态",
+      inspectionIncluded: "已纳入巡检",
+      inspectionDisabled: "巡检未启用",
+      inspectionNotIncluded: "未纳入巡检",
+      lastInspection: "最近巡检",
+      nextInspection: "下次巡检",
+      currentInspectionStatus: "当前状态",
+      plannedInspection: "计划中",
+      coveredDevices: "覆盖设备",
+      enabledInspectionPlans: "启用计划",
+      noInspectionRecord: "暂无巡检记录",
+      noActiveInspection: "暂无启用计划",
+      viewInspectionPlans: "查看巡检计划",
       recentOrders: "最近工单",
       deviceCount: "设备数量",
       activeInspection: "启用巡检",
@@ -357,6 +370,19 @@ const I18N = {
       assetOverview: "客戶概況",
       deviceList: "設備清單",
       inspectionPlan: "巡檢計畫",
+      inspectionStatus: "巡檢狀態",
+      inspectionIncluded: "已納入巡檢",
+      inspectionDisabled: "巡檢未啟用",
+      inspectionNotIncluded: "未納入巡檢",
+      lastInspection: "最近巡檢",
+      nextInspection: "下次巡檢",
+      currentInspectionStatus: "目前狀態",
+      plannedInspection: "計畫中",
+      coveredDevices: "覆蓋設備",
+      enabledInspectionPlans: "啟用計畫",
+      noInspectionRecord: "暫無巡檢記錄",
+      noActiveInspection: "暫無啟用計畫",
+      viewInspectionPlans: "查看巡檢計畫",
       recentOrders: "最近工單",
       deviceCount: "設備數量",
       activeInspection: "啟用巡檢",
@@ -578,7 +604,7 @@ export function Customers() {
         const [deviceData, scheduleData, orderData] = await Promise.all([
           api.get(`/customers/${customerId}/devices`),
           api.get(`/inspection-schedules?customerId=${customerId}&pageSize=100`),
-          api.get(`/service-orders?customerId=${customerId}&pageSize=8&sortBy=createdAt&sortDir=desc`),
+          api.get(`/service-orders?customerId=${customerId}&pageSize=20&sortBy=createdAt&sortDir=desc`),
         ]);
         if (cancelled) return;
         setDetailInsight({
@@ -1139,6 +1165,33 @@ export function Customers() {
             const orders = detailInsight?.orders || [];
             const activeSchedules = schedules.filter((schedule) => schedule.active);
             const inspectionOrders = orders.filter((order) => order.inspectionScheduleId);
+            const nextSchedule = activeSchedules
+              .filter((schedule) => schedule.nextRunAnchor)
+              .sort((a, b) => new Date(a.nextRunAnchor || "").getTime() - new Date(b.nextRunAnchor || "").getTime())[0] || activeSchedules[0];
+            const latestInspectionOrder = inspectionOrders[0];
+            const activeDeviceNames = activeSchedules.flatMap((schedule) => schedule.deviceNames || []);
+            const coveredDeviceCount = new Set(activeDeviceNames.filter(Boolean).map((name) => String(name))).size;
+            const inspectionOverallLabel = activeSchedules.length
+              ? t.dialog.inspectionIncluded
+              : schedules.length
+                ? t.dialog.inspectionDisabled
+                : t.dialog.inspectionNotIncluded;
+            const inspectionOverallVariant: "success" | "warning" | "secondary" = activeSchedules.length
+              ? "success"
+              : schedules.length
+                ? "warning"
+                : "secondary";
+            const currentInspectionStatus = latestInspectionOrder
+              ? orderStatusLabel(latestInspectionOrder)
+              : activeSchedules.length
+                ? t.dialog.plannedInspection
+                : t.dialog.noActiveInspection;
+            const currentInspectionVariant = latestInspectionOrder
+              ? ORDER_STATUS_VARIANT[orderStatus(latestInspectionOrder)] || "secondary"
+              : activeSchedules.length
+                ? "info"
+                : "secondary";
+            const inspectionPlanHref = `/inspection-schedules?customerId=${encodeURIComponent(String(detailTarget.id))}&keyword=${encodeURIComponent(detailTarget.name || "")}`;
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
@@ -1257,33 +1310,56 @@ export function Customers() {
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 text-sm font-medium">
                               <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                              {t.dialog.inspectionPlan}
+                              {t.dialog.inspectionStatus}
                             </div>
-                            {schedules.length ? <Badge variant="secondary">{schedules.length}</Badge> : null}
+                            <Badge variant={inspectionOverallVariant}>{inspectionOverallLabel}</Badge>
                           </div>
-                          <div className="mt-3 space-y-2">
-                            {schedules.length ? schedules.slice(0, 6).map((schedule) => (
-                              <div key={schedule.id} className="rounded-md bg-slate-50 px-3 py-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <Badge variant={schedule.active ? "success" : "secondary"}>
-                                    {schedule.active ? "启用" : "停用"}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">{CADENCE_LABELS[schedule.cadence || ""] || schedule.cadence || "-"}</span>
-                                </div>
-                                <div className="mt-2 text-xs text-muted-foreground">
-                                  {t.dialog.nextRun}：{formatDate(schedule.nextRunAnchor)}
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {t.dialog.targetEngineer}：{schedule.targetEngineerName || t.misc.unknown}
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {t.dialog.inspectionDevices}：{schedule.deviceNames?.length ? schedule.deviceNames.slice(0, 3).join("、") : t.misc.unknown}
-                                  {schedule.deviceNames && schedule.deviceNames.length > 3 ? ` +${schedule.deviceNames.length - 3}` : ""}
-                                </div>
+                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="rounded-md bg-slate-50 px-3 py-2.5">
+                              <div className="text-xs text-muted-foreground">{t.dialog.lastInspection}</div>
+                              <div className="mt-1 text-sm font-semibold text-slate-900">
+                                {latestInspectionOrder ? formatDate(latestInspectionOrder.serviceAt || latestInspectionOrder.createdAt) : t.dialog.noInspectionRecord}
                               </div>
-                            )) : (
-                              <div className="text-sm text-muted-foreground">{t.dialog.noInspection}</div>
-                            )}
+                              {latestInspectionOrder ? (
+                                <Badge className="mt-2" variant={ORDER_STATUS_VARIANT[orderStatus(latestInspectionOrder)] || "secondary"}>
+                                  {orderStatusLabel(latestInspectionOrder)}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="rounded-md bg-slate-50 px-3 py-2.5">
+                              <div className="text-xs text-muted-foreground">{t.dialog.nextInspection}</div>
+                              <div className="mt-1 text-sm font-semibold text-slate-900">
+                                {nextSchedule ? formatDate(nextSchedule.nextRunAnchor) : t.dialog.noActiveInspection}
+                              </div>
+                              {nextSchedule ? (
+                                <div className="mt-1 truncate text-xs text-muted-foreground">
+                                  {[CADENCE_LABELS[nextSchedule.cadence || ""] || nextSchedule.cadence, nextSchedule.targetEngineerName].filter(Boolean).join(" · ") || t.misc.unknown}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="rounded-md bg-slate-50 px-3 py-2.5">
+                              <div className="text-xs text-muted-foreground">{t.dialog.currentInspectionStatus}</div>
+                              <Badge className="mt-2" variant={currentInspectionVariant}>
+                                {currentInspectionStatus}
+                              </Badge>
+                            </div>
+                            <div className="rounded-md bg-slate-50 px-3 py-2.5">
+                              <div className="text-xs text-muted-foreground">{t.dialog.coveredDevices}</div>
+                              <div className="mt-1 text-sm font-semibold text-slate-900">
+                                {devices.length ? `${coveredDeviceCount}/${devices.length} 台` : coveredDeviceCount ? `${coveredDeviceCount} 台` : t.misc.unknown}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {activeSchedules.length} / {schedules.length} {t.dialog.enabledInspectionPlans}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-4 flex justify-end">
+                            <Button asChild variant="outline" size="sm">
+                              <Link to={inspectionPlanHref}>
+                                <ClipboardCheck className="h-4 w-4" />
+                                {t.dialog.viewInspectionPlans}
+                              </Link>
+                            </Button>
                           </div>
                         </div>
                       </div>
