@@ -184,12 +184,28 @@ export function InspectionSchedules() {
     return devices.filter((d) => String(d.customerId) === form.customerId);
   }, [devices, form.customerId]);
 
+  const selectedDeviceCount = form.deviceIds.length;
+
   function toggleDevice(deviceId: number) {
     setForm((prev) => ({
       ...prev,
       deviceIds: prev.deviceIds.includes(deviceId)
         ? prev.deviceIds.filter((id) => id !== deviceId)
         : [...prev.deviceIds, deviceId],
+    }));
+  }
+
+  function selectAllCustomerDevices() {
+    setForm((prev) => ({
+      ...prev,
+      deviceIds: customerDevices.map((d) => Number(d.id)),
+    }));
+  }
+
+  function clearSelectedDevices() {
+    setForm((prev) => ({
+      ...prev,
+      deviceIds: [],
     }));
   }
 
@@ -559,7 +575,20 @@ export function InspectionSchedules() {
                 </Select>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <Label>巡检设备（至少选一台）</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>巡检设备（至少选一台）</Label>
+                  {form.customerId && customerDevices.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>已选 {selectedDeviceCount} 台</span>
+                      <Button type="button" variant="ghost" size="sm" onClick={selectAllCustomerDevices}>
+                        全选
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={clearSelectedDevices}>
+                        清空
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 {!form.customerId ? (
                   <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                     请先选择客户
@@ -571,10 +600,21 @@ export function InspectionSchedules() {
                 ) : (
                   <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
                     {customerDevices.map((d) => {
-                      const checked = form.deviceIds.includes(Number(d.id));
+                      const deviceId = Number(d.id);
+                      const checked = form.deviceIds.includes(deviceId);
                       return (
-                        <label
+                        <div
                           key={d.id}
+                          role="checkbox"
+                          aria-checked={checked}
+                          tabIndex={0}
+                          onClick={() => toggleDevice(deviceId)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleDevice(deviceId);
+                            }
+                          }}
                           className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
                             checked
                               ? "border-primary bg-primary/5"
@@ -585,13 +625,14 @@ export function InspectionSchedules() {
                             type="checkbox"
                             className="h-4 w-4 accent-primary"
                             checked={checked}
-                            onChange={() => toggleDevice(Number(d.id))}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={() => toggleDevice(deviceId)}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="truncate text-sm font-medium">{d.name || `设备 #${d.id}`}</div>
                             <div className="text-xs text-muted-foreground">设备 #{d.id}</div>
                           </div>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
