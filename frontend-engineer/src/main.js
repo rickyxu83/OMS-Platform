@@ -4,7 +4,9 @@ import App from './App.vue'
 import router from './router'
 import './assets/main.css'
 import './services/network'
+import { ensureSessionTheme } from './services/session-theme'
 
+ensureSessionTheme()
 createApp(App).use(createPinia()).use(router).mount('#app')
 
 if ('serviceWorker' in navigator) {
