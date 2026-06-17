@@ -7282,18 +7282,18 @@ body::after {
 
 .task-card strong.task-status-draft {
   color: #fff;
-  background: #7c3aed;
+  background: #8b5cf6;
   box-shadow:
-    0 8px 14px rgb(124 58 237 / 16%),
+    0 8px 14px rgb(139 92 246 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card strong.task-status-progress,
 .task-card strong.task-status-info {
   color: #fff;
-  background: #7c3aed;
+  background: #3b82f6;
   box-shadow:
-    0 8px 14px rgb(124 58 237 / 16%),
+    0 8px 14px rgb(59 130 246 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
@@ -7307,9 +7307,9 @@ body::after {
 
 .task-card strong.task-status-success {
   color: #fff;
-  background: #10b981;
+  background: #14b8a6;
   box-shadow:
-    0 8px 14px rgb(16 185 129 / 16%),
+    0 8px 14px rgb(20 184 166 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
