@@ -83,7 +83,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜索工单编号、客户、工程师、描述...",
+      searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合...",
       statusPlaceholder: "状态筛选",
       all: "全部状态",
       allCustomers: "全部客户",
@@ -163,7 +163,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜尋工單編號、客戶、工程師、描述...",
+      searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合...",
       statusPlaceholder: "狀態篩選",
       all: "全部狀態",
       allCustomers: "全部客戶",
@@ -274,6 +274,22 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   office: "purple",
 };
 
+const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
+  install: "安装 install",
+  repair: "排障 维修 repair",
+  maintain: "保养 维护 maintain",
+  inspect: "巡检 巡检类 inspect",
+  training: "培训 training",
+  remote: "远程 远程支持 remote",
+  other: "其他 other",
+};
+
+const SERVICE_MODE_SEARCH_ALIASES: Record<string, string> = {
+  onsite: "现场 现场服务 onsite",
+  remote: "远程 远程服务 remote",
+  office: "内勤 内勤工作 office",
+};
+
 const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_112px_76px_128px]";
 
 function formatDateTime(value?: string) {
@@ -322,6 +338,15 @@ function textValue(value?: string, fallback = "-") {
 function compactText(value?: string, fallback = "-") {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text || fallback;
+}
+
+function splitSearchTerms(value: string) {
+  return value
+    .trim()
+    .split(/[\s,，、]+/)
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function engineerText(order: ServiceOrder, fallback: string) {
@@ -503,16 +528,32 @@ export function ServiceOrders() {
   }, [searchParams, orders, detailOrder, t.errors.loadFailed]);
 
   const filteredOrders = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) return orders;
+    const terms = splitSearchTerms(searchQuery);
+    if (!terms.length) return orders;
     return orders.filter((order) => {
-      const id = String(displayId(order)).toLowerCase();
-      const customer = String(order.customerName || "").toLowerCase();
-      const engineer = engineerText(order, "").toLowerCase();
-      const desc = String(order.issueDescription || "").toLowerCase();
-      return id.includes(keyword) || customer.includes(keyword) || engineer.includes(keyword) || desc.includes(keyword);
+      const workflowStatus = getWorkflowStatus(order);
+      const searchText = [
+        displayId(order),
+        order.customerName,
+        order.customerAddress,
+        order.deviceName,
+        engineerText(order, ""),
+        order.issueDescription,
+        order.internalNote,
+        order.timesheetCategory,
+        order.timesheetSalesperson,
+        order.serviceType,
+        t.type[order.serviceType as keyof typeof t.type],
+        SERVICE_TYPE_SEARCH_ALIASES[order.serviceType || ""],
+        order.serviceMode,
+        t.mode[order.serviceMode as keyof typeof t.mode],
+        SERVICE_MODE_SEARCH_ALIASES[order.serviceMode || ""],
+        workflowStatus,
+        t.status[workflowStatus as keyof typeof t.status],
+      ].filter(Boolean).join(" ").toLowerCase();
+      return terms.every((term) => searchText.includes(term));
     });
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, t.mode, t.status, t.type]);
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
