@@ -33,6 +33,73 @@ const orderColumns = `
 
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
 
+function splitSearchTerms(value) {
+  return String(value || '')
+    .trim()
+    .split(/[\s,，、]+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function serviceOrderSearchClause(index) {
+  const likeParam = `:likeKeyword${index}`
+  return `
+        (
+          so.order_no LIKE ${likeParam}
+          OR c.name LIKE ${likeParam}
+          OR c.address LIKE ${likeParam}
+          OR d.name LIKE ${likeParam}
+          OR so.issue_description LIKE ${likeParam}
+          OR so.internal_note LIKE ${likeParam}
+          OR so.timesheet_category LIKE ${likeParam}
+          OR so.timesheet_salesperson LIKE ${likeParam}
+          OR so.service_type LIKE ${likeParam}
+          OR so.service_mode LIKE ${likeParam}
+          OR so.status LIKE ${likeParam}
+          OR CASE so.service_type
+               WHEN 'install' THEN '安装 install'
+               WHEN 'repair' THEN '排障 维修 repair'
+               WHEN 'maintain' THEN '保养 维护 maintain'
+               WHEN 'inspect' THEN '巡检 巡检类 inspect'
+               WHEN 'training' THEN '培训 training'
+               WHEN 'remote' THEN '远程 远程支持 remote'
+               WHEN 'other' THEN '其他 other'
+               ELSE COALESCE(so.service_type, '')
+             END LIKE ${likeParam}
+          OR CASE so.service_mode
+               WHEN 'onsite' THEN '现场 现场服务 onsite'
+               WHEN 'remote' THEN '远程 远程服务 remote'
+               WHEN 'office' THEN '内勤 内勤工作 office'
+               ELSE COALESCE(so.service_mode, '')
+             END LIKE ${likeParam}
+          OR CASE so.status
+               WHEN 'draft' THEN '草稿 draft'
+               WHEN 'pending_confirmation' THEN '待确认 pending confirmation'
+               WHEN 'assigned' THEN '已派发 assigned'
+               WHEN 'in_progress' THEN '进行中 in progress'
+               WHEN 'submitted' THEN '已结案 submitted'
+               WHEN 'approved' THEN '已审核 approved'
+               WHEN 'archived' THEN '已归档 archived'
+               WHEN 'cancelled' THEN '已作废 cancelled'
+               WHEN 'completed' THEN '已完成 completed'
+               WHEN 'rejected' THEN '已退回 rejected'
+               ELSE COALESCE(so.status, '')
+             END LIKE ${likeParam}
+          OR u.real_name LIKE ${likeParam}
+          OR u.username LIKE ${likeParam}
+          OR target_u.real_name LIKE ${likeParam}
+          OR target_u.username LIKE ${likeParam}
+          OR EXISTS (
+            SELECT 1
+            FROM service_order_engineers keyword_soe
+            JOIN users keyword_u ON keyword_u.id = keyword_soe.engineer_id
+            WHERE keyword_soe.service_order_id = so.id
+              AND (keyword_u.real_name LIKE ${likeParam} OR keyword_u.username LIKE ${likeParam})
+          )
+        )`
+}
+
 function orderPayload(row) {
   const targetEngineerName = row.target_engineer_name || row.target_engineer_username
   return {
@@ -901,6 +968,14 @@ async function list(req, res) {
   }
   const sortColumn = sortColumns[sortBy] || sortColumns.createdAt
   const sortDirection = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+  const keywordTerms = splitSearchTerms(keyword)
+  const keywordWhereSql = keywordTerms.length
+    ? keywordTerms.map((_, index) => serviceOrderSearchClause(index)).join('\n        AND ')
+    : '1 = 1'
+  const keywordParams = keywordTerms.reduce((params, term, index) => {
+    params[`likeKeyword${index}`] = `%${term}%`
+    return params
+  }, {})
 
   const fromAndWhere = `
      FROM service_orders so
@@ -929,23 +1004,7 @@ async function list(req, res) {
           OR so.timesheet_salesperson = :salespersonUsernameScope
           OR c.salesperson = :salespersonUsernameScope
         )
-        AND (
-          :keyword = ''
-          OR so.order_no LIKE :likeKeyword
-          OR c.name LIKE :likeKeyword
-          OR so.issue_description LIKE :likeKeyword
-          OR u.real_name LIKE :likeKeyword
-          OR u.username LIKE :likeKeyword
-          OR target_u.real_name LIKE :likeKeyword
-          OR target_u.username LIKE :likeKeyword
-          OR EXISTS (
-            SELECT 1
-            FROM service_order_engineers keyword_soe
-            JOIN users keyword_u ON keyword_u.id = keyword_soe.engineer_id
-            WHERE keyword_soe.service_order_id = so.id
-              AND (keyword_u.real_name LIKE :likeKeyword OR keyword_u.username LIKE :likeKeyword)
-          )
-        )
+        AND (${keywordWhereSql})
   `
   const params = {
     status: status || null,
@@ -957,8 +1016,8 @@ async function list(req, res) {
     customer,
     startDate,
     endDate,
-    likeKeyword: `%${keyword}%`,
     likeCustomer: `%${customer}%`,
+    ...keywordParams,
   }
 
   const countRows = await query(`SELECT COUNT(*) AS total ${fromAndWhere}`, params)
