@@ -87,10 +87,32 @@ export async function request(path: string, options: RequestInit = {}) {
   return payload
 }
 
+export async function download(path: string): Promise<Blob> {
+  const headers = new Headers()
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const API_BASE = resolveApiBase()
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' })
+  } catch {
+    throw new Error('无法连接服务器')
+  }
+
+  if (response.status === 401) clearSession()
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText)
+    throw new Error(message || response.statusText)
+  }
+  return response.blob()
+}
+
 export const api = {
   get: (path: string) => request(path),
   post: (path: string, body?: any) => request(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   postForm: (path: string, body: FormData) => request(path, { method: 'POST', body }),
   put: (path: string, body?: any) => request(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
   delete: (path: string) => request(path, { method: 'DELETE' }),
+  download,
 }

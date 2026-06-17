@@ -15,6 +15,9 @@ const loading = ref(false)
 const error = ref('')
 const task = ref(null)
 const downloadingFileId = ref(null)
+const inspectionDocInput = ref(null)
+const inspectionDocFiles = ref([])
+const uploadingInspectionDocs = ref(false)
 
 const statusMap = { draft: '草稿', in_progress: '填写中', submitted: '已提交', cancelled: '已作废' }
 const canEdit = computed(() => ['draft', 'in_progress', 'submitted'].includes(task.value?.status || ''))
@@ -52,6 +55,8 @@ const inspectionLead = computed(() => {
   const device = deviceContext.value === '-' ? '待补充设备信息' : deviceContext.value
   return task.value?.issueDescription || `请按计划完成 ${device} 的例行巡检。`
 })
+const inspectionDocuments = computed(() => (task.value?.files || []).filter((file) => file.purpose === 'inspection_document'))
+const dispatchAttachments = computed(() => (task.value?.files || []).filter((file) => file.purpose !== 'inspection_document'))
 
 const engineers = computed(() => {
   const names = (task.value?.engineers || []).map((engineer) => engineer.realName).filter(Boolean)
@@ -94,6 +99,42 @@ async function downloadFile(file) {
     error.value = err.message || '附件下载失败'
   } finally {
     downloadingFileId.value = null
+  }
+}
+
+function chooseInspectionDocuments() {
+  if (uploadingInspectionDocs.value) return
+  inspectionDocInput.value?.click()
+}
+
+function onInspectionDocumentsSelected(event) {
+  inspectionDocFiles.value = Array.from(event.target.files || [])
+}
+
+function clearInspectionDocuments() {
+  inspectionDocFiles.value = []
+  if (inspectionDocInput.value) inspectionDocInput.value.value = ''
+}
+
+async function uploadInspectionDocuments() {
+  if (!isInspectionTask.value || !task.value?.id || !inspectionDocFiles.value.length || uploadingInspectionDocs.value) return
+  uploadingInspectionDocs.value = true
+  error.value = ''
+  try {
+    for (const file of inspectionDocFiles.value) {
+      const formData = new FormData()
+      formData.append('ownerType', 'service_order')
+      formData.append('ownerId', String(task.value.id))
+      formData.append('purpose', 'inspection_document')
+      formData.append('file', file)
+      await api.postForm('/files', formData)
+    }
+    clearInspectionDocuments()
+    await load()
+  } catch (err) {
+    error.value = err.message || '巡检文档上传失败'
+  } finally {
+    uploadingInspectionDocs.value = false
   }
 }
 
@@ -157,11 +198,55 @@ onMounted(load)
           <p>{{ zh(inspectionLead) }}</p>
         </article>
 
-        <article v-if="task.files?.length" class="form-section detail-card">
+        <article v-if="isInspectionTask" class="form-section detail-card inspection-document-card">
+          <h2>{{ zh('巡检文档') }}</h2>
+          <p class="muted compact">{{ zh('上传巡检报告、现场照片、检查表或客户确认资料，管理端可在工单详情中查看。') }}</p>
+          <input
+            ref="inspectionDocInput"
+            type="file"
+            multiple
+            hidden
+            @change="onInspectionDocumentsSelected"
+          />
+          <div class="inspection-document-actions">
+            <button class="ghost" type="button" :disabled="uploadingInspectionDocs" @click="chooseInspectionDocuments">
+              <PreviewIcon name="new" />{{ zh('选择文档') }}
+            </button>
+            <button class="primary" type="button" :disabled="uploadingInspectionDocs || !inspectionDocFiles.length" @click="uploadInspectionDocuments">
+              <PreviewIcon name="save" />{{ zh(uploadingInspectionDocs ? '上传中' : '上传巡检文档') }}
+            </button>
+          </div>
+          <div v-if="inspectionDocFiles.length" class="inspection-document-selection">
+            <div v-for="file in inspectionDocFiles" :key="`${file.name}-${file.size}`">
+              <strong>{{ file.name }}</strong>
+              <small>{{ formatFileSize(file.size) }}</small>
+            </div>
+            <button class="ghost" type="button" :disabled="uploadingInspectionDocs" @click="clearInspectionDocuments">{{ zh('清空') }}</button>
+          </div>
+          <div v-if="inspectionDocuments.length" class="attachment-list">
+            <button
+              v-for="file in inspectionDocuments"
+              :key="file.id"
+              class="attachment-item"
+              type="button"
+              :disabled="downloadingFileId === file.id"
+              @click="downloadFile(file)"
+            >
+              <span>
+                <strong>{{ file.originalName || `巡检文档 #${file.id}` }}</strong>
+                <small>{{ formatFileSize(file.size) }}</small>
+              </span>
+              <PreviewIcon name="download" />
+            </button>
+          </div>
+          <p v-else class="muted compact">{{ zh('暂无已上传巡检文档') }}</p>
+        </article>
+
+        <article v-if="dispatchAttachments.length" class="form-section detail-card">
           <h2>{{ zh('派单附件') }}</h2>
           <div class="attachment-list">
             <button
-              v-for="file in task.files"
+              v-for="file in dispatchAttachments"
               :key="file.id"
               class="attachment-item"
               type="button"

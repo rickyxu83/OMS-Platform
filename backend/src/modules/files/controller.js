@@ -31,6 +31,24 @@ const orderFileOwnerTypes = new Set(['service_order', 'service_report', 'signatu
 // 工程师不在组内，只能访问被指派的服务单
 const orderFileViewRoles = new Set(ROLE_GROUPS.serviceOrderView)
 const orderFileManageRoles = new Set(ROLE_GROUPS.serviceOrderOps)
+const filePurposes = new Set(['general', 'inspection_document'])
+let filePurposeColumnReady = false
+
+async function ensureFilePurposeColumn() {
+  if (filePurposeColumnReady) return
+  const rows = await query(
+    `SELECT 1
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'files'
+       AND column_name = 'purpose'
+     LIMIT 1`,
+  )
+  if (!rows[0]) {
+    await query("ALTER TABLE files ADD COLUMN purpose VARCHAR(64) NOT NULL DEFAULT 'general' AFTER owner_id")
+  }
+  filePurposeColumnReady = true
+}
 
 function normalizeOwnerType(ownerType) {
   return String(ownerType || '').trim()
@@ -39,6 +57,11 @@ function normalizeOwnerType(ownerType) {
 function normalizeOwnerId(ownerId) {
   const normalized = Number(ownerId)
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null
+}
+
+function normalizePurpose(purpose) {
+  const normalized = String(purpose || 'general').trim()
+  return filePurposes.has(normalized) ? normalized : 'general'
 }
 
 function cleanupUploadedFile(file) {
@@ -92,6 +115,7 @@ async function assertCanAccessFile(file, user, action) {
 async function upload(req, res) {
   const ownerType = normalizeOwnerType(req.body?.ownerType)
   const ownerId = normalizeOwnerId(req.body?.ownerId)
+  const purpose = normalizePurpose(req.body?.purpose)
   if (!req.file) {
     throw badRequest('文件不能为空')
   }
@@ -101,6 +125,7 @@ async function upload(req, res) {
   }
 
   try {
+    await ensureFilePurposeColumn()
     await assertCanAccessOwner(ownerType, ownerId, req.user, 'manage')
   } catch (error) {
     cleanupUploadedFile(req.file)
@@ -110,11 +135,12 @@ async function upload(req, res) {
   const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8')
 
   const result = await query(
-    `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
-     VALUES (:ownerType, :ownerId, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
+    `INSERT INTO files (owner_type, owner_id, purpose, original_name, storage_path, mime_type, size, uploaded_by)
+     VALUES (:ownerType, :ownerId, :purpose, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
     {
       ownerType,
       ownerId,
+      purpose,
       originalName,
       storagePath: req.file.path,
       mimeType: req.file.mimetype,
@@ -126,12 +152,14 @@ async function upload(req, res) {
   res.status(201).json({
     id: result.insertId,
     originalName,
+    purpose,
     mimeType: req.file.mimetype,
     size: req.file.size,
   })
 }
 
 async function download(req, res) {
+  await ensureFilePurposeColumn()
   const rows = await query('SELECT * FROM files WHERE id = :id LIMIT 1', { id: req.params.id })
   const file = rows[0]
   if (!file) {
@@ -147,6 +175,7 @@ async function download(req, res) {
 }
 
 async function remove(req, res) {
+  await ensureFilePurposeColumn()
   const rows = await query('SELECT * FROM files WHERE id = :id LIMIT 1', { id: req.params.id })
   const file = rows[0]
   if (!file) {
@@ -161,6 +190,7 @@ async function remove(req, res) {
 }
 
 module.exports = {
+  ensureFilePurposeColumn,
   uploadMiddleware,
   upload,
   download,

@@ -4197,6 +4197,45 @@ h2 {
   opacity: 0.64;
 }
 
+.inspection-document-card {
+  display: grid;
+  gap: 12px;
+}
+
+.inspection-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inspection-document-selection {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.inspection-document-selection > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.inspection-document-selection strong {
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspection-document-selection small {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .muted.compact {
   margin: 0;
 }
