@@ -4,6 +4,6 @@ const controller = require('./controller')
 const router = express.Router()
 
 router.get('/companies', controller.searchCompanies)
+router.get('/geocode', controller.geocodeAddress)
 
 module.exports = router
-

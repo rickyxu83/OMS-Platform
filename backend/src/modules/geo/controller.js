@@ -1,5 +1,6 @@
 const env = require('../../config/env')
 const { query } = require('../../config/db')
+const { badRequest } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
 const { effectiveSettings } = require('../settings/controller')
 
@@ -118,6 +119,37 @@ async function fetchAmapPois(params) {
   const data = await response.json()
   if (data.status !== '1') return []
   return (data.pois || []).map(normalizePoi)
+}
+
+async function fetchAmapGeocode(address) {
+  const settings = await effectiveSettings()
+  const amapKey = settings.map?.amapRestKey || env.amapKey
+  if (!amapKey) {
+    const fallback = fallbackPois.find((item) => `${item.name}${item.address}`.includes(address) || address.includes(item.address))
+    return fallback || null
+  }
+
+  const params = new URLSearchParams({
+    key: amapKey,
+    address,
+  })
+  const response = await fetch(`https://restapi.amap.com/v3/geocode/geo?${params.toString()}`)
+  const data = await response.json()
+  if (data.status !== '1' || !data.geocodes?.length) return null
+
+  const geocode = data.geocodes[0]
+  const formattedAddress = geocode.formatted_address || address
+  return {
+    id: geocode.adcode || formattedAddress,
+    name: formattedAddress,
+    address: formattedAddress,
+    location: geocode.location || '',
+    mapProvider: 'amap',
+    mapPoiId: geocode.adcode || '',
+    mapPoiName: formattedAddress,
+    mapAddress: formattedAddress,
+    source: 'geocode',
+  }
 }
 
 function mergePoiResults(...groups) {
@@ -250,6 +282,32 @@ async function searchCompanies(req, res) {
   res.json({ items: merged.slice(0, 12) })
 }
 
+async function geocodeAddress(req, res) {
+  const address = String(req.query.address || '').trim()
+  if (!address) throw badRequest('请先填写详细地址')
+
+  const item = await fetchAmapGeocode(address)
+  if (!item?.location) {
+    res.json({ item: null })
+    return
+  }
+
+  const [longitude, latitude] = String(item.location).split(',').map(Number)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    res.json({ item: null })
+    return
+  }
+
+  res.json({
+    item: {
+      ...item,
+      latitude,
+      longitude,
+    },
+  })
+}
+
 module.exports = {
   searchCompanies,
+  geocodeAddress,
 }
