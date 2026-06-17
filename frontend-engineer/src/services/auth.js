@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { clearOfflineCacheForCurrentSession } from './offline-cache'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from './safe-storage'
+import { ensureSessionTheme, resetSessionTheme } from './session-theme'
 
 const TOKEN_KEY = 'oms-platform-token'
 const USER_KEY = 'oms-platform-user'
@@ -39,6 +40,7 @@ export function getCurrentUser() {
 
 export function saveSession({ token, user }) {
   safeStorageSet(localStorage, TOKEN_KEY, token)
+  ensureSessionTheme({ force: true })
   if (user) {
     const storedUser = compactUser(user)
     safeStorageSet(localStorage, USER_KEY, JSON.stringify(storedUser))
@@ -77,6 +79,7 @@ export function clearSession() {
   clearOfflineCacheForCurrentSession()
   safeStorageRemove(localStorage, TOKEN_KEY)
   safeStorageRemove(localStorage, USER_KEY)
+  resetSessionTheme()
   currentUser.value = null
 }
 

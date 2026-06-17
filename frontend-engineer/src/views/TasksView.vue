@@ -40,7 +40,16 @@ const homeEntryMotionDone = ref(false)
 let actionToastTimer = null
 let homeMotionTimer = null
 
-const statusMap = { draft: '待填写', draft_local: '本机草稿', draft_sync: '账号草稿', in_progress: '填写中', submitted: '已提交', cancelled: '已作废' }
+const statusMap = {
+  draft: '草稿',
+  draft_local: '本机草稿',
+  draft_sync: '账号草稿',
+  assigned: '已派发',
+  in_progress: '填写中',
+  pending_confirmation: '待确认',
+  submitted: '已提交',
+  cancelled: '已作废',
+}
 const activeTasks = computed(() => tasks.value.filter((task) => task.status !== 'cancelled'))
 const allDisplayTasks = computed(() => [...localDraftTasks.value, ...activeTasks.value])
 const displayTasks = computed(() => allDisplayTasks.value.slice(0, visibleTaskLimit.value))
@@ -383,10 +392,21 @@ function taskDeviceContext(task) {
 
 function taskStatusLabel(task) {
   if (isInspectionTask(task)) {
-    const inspectionStatusMap = { draft: '待巡检', in_progress: '巡检中', submitted: '巡检已提交', cancelled: '已作废' }
+    const inspectionStatusMap = { draft: '待巡检', assigned: '待巡检', in_progress: '巡检中', submitted: '巡检已提交', cancelled: '已作废' }
     return inspectionStatusMap[task.status] || statusMap[task.status] || task.status || '待巡检'
   }
   return statusMap[task.status] || task.status || '待处理'
+}
+
+function taskStatusTone(task) {
+  const status = String(task.status || task.workflowStatus || '').trim()
+  if (status === 'cancelled') return 'danger'
+  if (status === 'submitted') return 'success'
+  if (status === 'pending_confirmation' || status === 'assigned') return 'warning'
+  if (status === 'in_progress') return 'progress'
+  if (status === 'draft' || status === 'draft_local' || status === 'draft_sync') return 'draft'
+  if (isInspectionTask(task)) return 'warning'
+  return 'info'
 }
 
 function serviceModeBadge(task) {
@@ -626,7 +646,7 @@ onBeforeUnmount(() => {
             <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
           </span>
           <span v-if="isInspectionTask(task)" class="inspection-badge">{{ zh('巡检任务') }}</span>
-          <strong :class="{ 'new-work-badge': needsMyWorkEntry(task) }">
+          <strong class="task-status-badge" :class="needsMyWorkEntry(task) ? 'new-work-badge' : `task-status-${taskStatusTone(task)}`">
             <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
             <template v-else>{{ zh(taskStatusLabel(task)) }}</template>
           </strong>
