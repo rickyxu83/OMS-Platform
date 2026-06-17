@@ -3082,10 +3082,10 @@ h2 {
 .engineer-bottom-nav a.router-link-exact-active,
 .engineer-bottom-nav a.active {
   color: #fff;
-  border: 1px solid rgb(37 99 235 / 18%);
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: 1px solid rgb(59 130 246 / 16%);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   box-shadow:
-    0 8px 18px rgb(37 99 235 / 22%),
+    0 6px 14px rgb(37 99 235 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
@@ -6396,8 +6396,8 @@ body::after,
 .language-toggle button.active,
 .shell-language button.active {
   color: #fff;
-  background: var(--oms-admin-primary);
-  box-shadow: 0 10px 20px rgb(124 58 237 / 16%);
+  background: #8b5cf6;
+  box-shadow: 0 8px 16px rgb(139 92 246 / 14%);
 }
 
 .shell-menu-icon:hover,
@@ -6451,10 +6451,10 @@ h2,
 .profile-form .primary,
 .submit-bar .primary {
   color: #fff;
-  border-color: rgb(124 58 237 / 28%);
-  background: var(--oms-admin-primary);
+  border-color: rgb(139 92 246 / 30%);
+  background: #8b5cf6;
   box-shadow:
-    0 12px 24px rgb(124 58 237 / 18%),
+    0 8px 18px rgb(139 92 246 / 13%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
@@ -6467,10 +6467,10 @@ h2,
 .task-card a:hover,
 .task-card a:focus-visible {
   color: #fff;
-  border-color: rgb(124 58 237 / 34%);
-  background: var(--oms-admin-primary-strong);
+  border-color: rgb(124 58 237 / 32%);
+  background: #7c3aed;
   box-shadow:
-    0 14px 28px rgb(124 58 237 / 22%),
+    0 11px 22px rgb(124 58 237 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 24%);
 }
 
@@ -6598,10 +6598,10 @@ h2,
 .quick-customer-card .locate,
 .service-sheet-shell .quick-customer-card .locate {
   color: #fff;
-  border-color: rgb(124 58 237 / 28%);
-  background: var(--oms-admin-primary);
+  border-color: rgb(139 92 246 / 30%);
+  background: #8b5cf6;
   box-shadow:
-    0 12px 24px rgb(124 58 237 / 18%),
+    0 8px 18px rgb(139 92 246 / 13%),
     inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
@@ -6653,7 +6653,7 @@ h2,
 .home-create-action:hover,
 .home-create-action:focus-visible {
   color: #fff;
-  background: var(--oms-admin-primary);
+  background: #8b5cf6;
 }
 
 .create-mode-option.onsite,
@@ -6793,7 +6793,7 @@ h2,
 .login-link.primary,
 .submit-bar .primary,
 .profile-form .primary {
-  background: var(--oms-admin-primary);
+  background: #8b5cf6;
 }
 
 /* Admin-style accent system: restrained multi-color cues for scanability. */
