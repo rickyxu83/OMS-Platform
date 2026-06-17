@@ -32,6 +32,7 @@ scripts/deploy.local.env
 .agents/
 .codex/
 .opencode/
+conversation-*.txt
 
 # Local archives/backups
 *.tgz
