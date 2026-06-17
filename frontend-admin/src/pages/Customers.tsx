@@ -1192,6 +1192,14 @@ export function Customers() {
                 ? "info"
                 : "secondary";
             const inspectionPlanHref = `/inspection-schedules?customerId=${encodeURIComponent(String(detailTarget.id))}&keyword=${encodeURIComponent(detailTarget.name || "")}`;
+            const serviceOrderHref = (order: CustomerOrder) => {
+              const params = new URLSearchParams({
+                customerId: String(detailTarget.id),
+                orderId: String(order.id),
+              });
+              if (order.orderNo) params.set("keyword", order.orderNo);
+              return `/service-orders?${params.toString()}`;
+            };
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
@@ -1388,9 +1396,13 @@ export function Customers() {
                         {orders.length ? orders.slice(0, 6).map((order) => {
                           const status = orderStatus(order);
                           return (
-                            <div key={order.id} className="rounded-md bg-slate-50 px-3 py-2.5">
+                            <Link
+                              key={order.id}
+                              to={serviceOrderHref(order)}
+                              className="block rounded-md bg-slate-50 px-3 py-2.5 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
+                            >
                               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                                <div className="break-all text-sm font-semibold leading-5 text-slate-900">{order.orderNo || `#${order.id}`}</div>
+                                <div className="break-all text-sm font-semibold leading-5 text-slate-900 hover:text-primary">{order.orderNo || `#${order.id}`}</div>
                                 <Badge variant={ORDER_STATUS_VARIANT[status] || "secondary"}>
                                   {orderStatusLabel(order)}
                                 </Badge>
@@ -1402,7 +1414,7 @@ export function Customers() {
                                   {order.inspectionScheduleId ? ` · ${t.dialog.recentInspection}` : ""}
                                 </div>
                               </div>
-                            </div>
+                            </Link>
                           );
                         }) : (
                           <div className="text-sm text-muted-foreground">{t.dialog.noRecentOrders}</div>

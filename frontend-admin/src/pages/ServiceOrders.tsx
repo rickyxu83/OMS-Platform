@@ -475,6 +475,33 @@ export function ServiceOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
 
+  useEffect(() => {
+    const orderId = searchParams.get("orderId");
+    if (!orderId) return;
+    if (detailOrder && String(detailOrder.id) === orderId) return;
+
+    const matched = orders.find((order) => String(order.id) === orderId);
+    if (matched) {
+      setDetailOrder(matched);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadOrderDetail() {
+      try {
+        const data = await api.get(`/service-orders/${orderId}`);
+        if (!cancelled) setDetailOrder((data?.item || data) as ServiceOrder);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : t.errors.loadFailed);
+      }
+    }
+
+    loadOrderDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, orders, detailOrder, t.errors.loadFailed]);
+
   const filteredOrders = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     if (!keyword) return orders;
@@ -545,6 +572,16 @@ export function ServiceOrders() {
     setStartDate("");
     setEndDate("");
     setSearchParams({});
+  }
+
+  function closeDetailOrder() {
+    setDetailOrder(null);
+    if (!searchParams.has("orderId")) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("orderId");
+      return next;
+    });
   }
 
   function buildListParams(page: number, pageSize: number) {
@@ -1095,7 +1132,7 @@ export function ServiceOrders() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => { if (!open) setDetailOrder(null); }}>
+      <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => { if (!open) closeDetailOrder(); }}>
         <DialogContent className="sm:max-w-[760px]">
           <DialogHeader>
             <DialogTitle>{detailOrder ? displayId(detailOrder) : "工单详情"}</DialogTitle>
@@ -1151,7 +1188,7 @@ export function ServiceOrders() {
             );
           })()}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailOrder(null)}>关闭</Button>
+            <Button variant="outline" onClick={closeDetailOrder}>关闭</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
