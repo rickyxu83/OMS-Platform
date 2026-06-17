@@ -116,6 +116,7 @@ const I18N = {
       retry: "重试",
       cancel: "取消",
       clear: "清除",
+      locateAddress: "按地址定位",
       addContact: "新增联系人",
       removeContact: "删除联系人",
       delete: "删除",
@@ -210,6 +211,8 @@ const I18N = {
       sourceMap: "地图",
       locateFallback: "无法获取定位，先按关键词搜索",
       locating: "正在获取定位并查找附近公司…",
+      addressRequired: "请先填写详细地址",
+      addressSearching: "正在按地址查找坐标：{keyword}",
       searchCompanyKeyword: "公司",
     },
     misc: {
@@ -227,6 +230,7 @@ const I18N = {
       retry: "重試",
       cancel: "取消",
       clear: "清除",
+      locateAddress: "按地址定位",
       addContact: "新增聯絡人",
       removeContact: "刪除聯絡人",
       delete: "刪除",
@@ -321,6 +325,8 @@ const I18N = {
       sourceMap: "地圖",
       locateFallback: "無法取得定位，先按關鍵字搜尋",
       locating: "正在取得定位並查找附近公司…",
+      addressRequired: "請先填寫詳細地址",
+      addressSearching: "正在按地址查找座標：{keyword}",
       searchCompanyKeyword: "公司",
     },
     misc: {
@@ -389,6 +395,7 @@ export function Customers() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [locationHint, setLocationHint] = useState("");
   const [locating, setLocating] = useState(false);
+  const [geoSearchMode, setGeoSearchMode] = useState<"name" | "address">("name");
   const [searchTimer, setSearchTimer] = useState<number | null>(null);
   const canForceDeleteCustomer = CUSTOMER_ADMIN_DELETE_ROLES.has(String(user?.role || ""));
 
@@ -566,6 +573,7 @@ export function Customers() {
       return;
     }
     setLocationHint(interpolate(t.geo.searching, { keyword }));
+    setGeoSearchMode("name");
     const timerId = window.setTimeout(() => {
       searchGeo({}, { keyword }).catch(() => undefined);
     }, 300);
@@ -585,7 +593,7 @@ export function Customers() {
 
       return {
         ...prev,
-        name: company.name || prev.name,
+        name: geoSearchMode === "address" ? prev.name : company.name || prev.name,
         address: company.address || prev.address,
         mapAddress: company.mapAddress || company.address || prev.mapAddress,
         latitude: company.latitude ?? prev.latitude ?? null,
@@ -604,12 +612,25 @@ export function Customers() {
     setShowCandidates(false);
   }
 
+  function locateByAddress() {
+    const keyword = form.address.trim();
+    if (!keyword) {
+      setLocationHint(t.geo.addressRequired);
+      return;
+    }
+    if (searchTimer) window.clearTimeout(searchTimer);
+    setGeoSearchMode("address");
+    setLocationHint(interpolate(t.geo.addressSearching, { keyword }));
+    searchGeo({}, { keyword }).catch(() => undefined);
+  }
+
   function locateNearMe() {
     if (locating) return;
     setLocating(true);
     const keyword = form.name.trim();
     if (keyword) {
       setLocationHint(interpolate(t.geo.searching, { keyword }));
+      setGeoSearchMode("name");
       searchGeo()
         .catch(() => undefined)
         .finally(() => setLocating(false));
@@ -617,6 +638,7 @@ export function Customers() {
     }
     const fallback = () => {
       setLocationHint(t.geo.locateFallback);
+      setGeoSearchMode("name");
       searchGeo({}, { keyword: t.geo.searchCompanyKeyword }).catch(() => undefined);
     };
     if (!navigator.geolocation) {
@@ -1162,12 +1184,28 @@ export function Customers() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="cust-address">{t.dialog.address}</Label>
-                <Input
-                  id="cust-address"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value, mapAddress: e.target.value })}
-                  placeholder={t.dialog.addressPlaceholder}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="cust-address"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value, mapAddress: e.target.value })}
+                    placeholder={t.dialog.addressPlaceholder}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={locateByAddress}
+                    disabled={geoLoading}
+                    className="shrink-0"
+                  >
+                    {geoLoading && geoSearchMode === "address" ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <MapPin className="w-4 h-4 mr-1" />
+                    )}
+                    {t.actions.locateAddress}
+                  </Button>
+                </div>
               </div>
             </div>
 
