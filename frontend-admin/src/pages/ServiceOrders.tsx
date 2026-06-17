@@ -703,7 +703,7 @@ export function ServiceOrders() {
       link.href = url;
       const customerPart = selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
       const datePart = `-至${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
-      link.download = `服务记录${customerPart}${datePart}.zip`;
+      link.download = `服务记录${customerPart}${datePart}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();

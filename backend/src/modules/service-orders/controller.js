@@ -1,6 +1,5 @@
 const fs = require('fs')
 const path = require('path')
-const archiver = require('archiver')
 const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
@@ -9,7 +8,7 @@ const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../uti
 const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
-const { buildServiceRecordPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
+const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
 
@@ -1879,35 +1878,10 @@ async function exportPdfBatch(req, res) {
     throw badRequest('当前筛选条件下没有可导出的服务记录（需已提交且非内勤）')
   }
 
-  const zipFilename = `service-records-${shanghaiDateKey(0)}.zip`
-  res.setHeader('Content-Type', 'application/zip')
-  res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}`)
-
-  const archive = archiver('zip', { zlib: { level: 6 } })
-  archive.on('error', (error) => {
-    if (!res.headersSent) {
-      throw error
-    } else {
-      console.error('[export-pdf-batch] archive error', error)
-    }
-  })
-  archive.pipe(res)
-
-  const usedNames = new Set()
-  for (const item of eligible) {
-    let name = serviceRecordPdfFilename(item)
-    if (usedNames.has(name)) {
-      const base = name.replace(/\.pdf$/, '')
-      let seq = 1
-      do {
-        seq += 1
-        name = `${base}-${seq}.pdf`
-      } while (usedNames.has(name))
-    }
-    usedNames.add(name)
-    archive.append(buildServiceRecordPdf(item), { name })
-  }
-  await archive.finalize()
+  const pdfFilename = `service-records-${shanghaiDateKey(0)}.pdf`
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `attachment; filename="${pdfFilename}"; filename*=UTF-8''${encodeURIComponent(pdfFilename)}`)
+  buildServiceRecordsPdf(eligible).pipe(res)
 }
 
 async function latestCustomerSignature(req, res) {

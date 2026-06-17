@@ -173,9 +173,7 @@ function drawSignatures(doc, fonts, item, { x, y, width, remote }) {
   }
 }
 
-function buildServiceRecordPdf(item) {
-  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${item.orderNo || item.id || 'service-record'} 技术服务记录单` } })
-  const fonts = registerFonts(doc)
+function drawServiceRecord(doc, fonts, item) {
   const remote = isRemoteSheet(item)
   const report = item.report || {}
   const primary = '#6b3fa0'
@@ -227,6 +225,25 @@ function buildServiceRecordPdf(item) {
   drawSignatures(doc, fonts, item, { x: 52, y: timelineY + 100, width: 491, remote })
   doc.font(fonts.regular).fontSize(8.5).fillColor('#64748b').text('说明：本 PDF 由技术服务电子化系统生成，供分享留底。', 58, 792, { width: 300 })
   doc.font(fonts.bold).fontSize(8.5).fillColor('#64748b').text(cleanText(item.orderNo || item.id, '-'), 375, 792, { width: 168, align: 'right' })
+}
+
+function buildServiceRecordPdf(item) {
+  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${item.orderNo || item.id || 'service-record'} 技术服务记录单` } })
+  const fonts = registerFonts(doc)
+  drawServiceRecord(doc, fonts, item)
+  doc.end()
+  return doc
+}
+
+// 批量导出：所有工单合成一个多页 PDF。字体只注册/子集化一次，
+// 相比逐单生成独立 PDF（每份都要重新解析 18.6MB 中文字体）快约一个数量级。
+function buildServiceRecordsPdf(items) {
+  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: '技术服务记录单（批量导出）' } })
+  const fonts = registerFonts(doc)
+  items.forEach((item, index) => {
+    if (index > 0) doc.addPage()
+    drawServiceRecord(doc, fonts, item)
+  })
   doc.end()
   return doc
 }
@@ -237,5 +254,6 @@ function serviceRecordPdfFilename(item) {
 
 module.exports = {
   buildServiceRecordPdf,
+  buildServiceRecordsPdf,
   serviceRecordPdfFilename,
 }
