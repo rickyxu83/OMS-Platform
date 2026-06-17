@@ -472,14 +472,15 @@ export function InspectionSchedules() {
           <CardTitle>巡检计划列表 ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">暂无巡检计划</div>
-          ) : (
-            <div className="space-y-3">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+            {loading ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无巡检计划</div>
+            ) : (
+              <div className="space-y-3">
               {filtered.map((s) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
                 return (
@@ -542,8 +543,9 @@ export function InspectionSchedules() {
                   </div>
                 );
               })}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
