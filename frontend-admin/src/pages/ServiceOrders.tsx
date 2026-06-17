@@ -1144,9 +1144,22 @@ export function ServiceOrders() {
                 const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
                 const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
                 return (
-                  <div key={order.id} className="rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
+                  <div
+                    key={order.id}
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30"
+                    onClick={() => openDetailOrder(order)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openDetailOrder(order);
+                      }
+                    }}
+                  >
                     <div className={`grid min-w-0 gap-3 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
-                      <div>
+                      <div onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
                           onCheckedChange={(checked) => {
@@ -1163,7 +1176,10 @@ export function ServiceOrders() {
                             type="button"
                             className="block max-w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
                             title={`按客户过滤：${textValue(order.customerName)}`}
-                            onClick={() => applyNameFilter(order.customerName)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              applyNameFilter(order.customerName);
+                            }}
                           >
                             {textValue(order.customerName)}
                           </button>
@@ -1182,7 +1198,10 @@ export function ServiceOrders() {
                             type="button"
                             className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
                             title={`按工程师过滤：${engineerText(order, t.detail.unnamedEngineer)}`}
-                            onClick={() => applyNameFilter(engineerText(order, ""))}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              applyNameFilter(engineerText(order, ""));
+                            }}
                             disabled={!engineerText(order, "")}
                           >
                             {engineerText(order, t.detail.unnamedEngineer)}
@@ -1207,17 +1226,30 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
-                          <Button variant="outline" size="sm" onClick={() => openDetailOrder(order)}>
-                            详情
-                          </Button>
                           {canConfirmInspection && (
-                            <Button variant="outline" size="sm" onClick={() => openConfirmInspection(order)} disabled={saving}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openConfirmInspection(order);
+                              }}
+                              disabled={saving}
+                            >
                               <CheckCircle className="w-4 h-4 mr-2" />
                               确认巡检
                             </Button>
                           )}
                           {canAssign && (
-                            <Button variant="outline" size="sm" onClick={() => openAssign(order)} disabled={saving}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openAssign(order);
+                              }}
+                              disabled={saving}
+                            >
                               派单 / 改派
                             </Button>
                           )}
