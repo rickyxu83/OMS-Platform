@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -90,7 +96,9 @@ const I18N = {
       refresh: "刷新",
       retry: "重试",
       reset: "重置",
-      export: "导出 Excel",
+      export: "导出",
+      exportExcel: "导出 Excel",
+      exportPdf: "导出 PDF",
       exporting: "导出中…",
       saving: "保存中…",
       cancel: "取消",
@@ -170,7 +178,9 @@ const I18N = {
       refresh: "刷新",
       retry: "重試",
       reset: "重置",
-      export: "匯出 Excel",
+      export: "匯出",
+      exportExcel: "匯出 Excel",
+      exportPdf: "匯出 PDF",
       exporting: "匯出中…",
       saving: "保存中…",
       cancel: "取消",
@@ -456,7 +466,6 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
-  const [exportingPdfId, setExportingPdfId] = useState<string | number | null>(null);
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -680,16 +689,21 @@ export function ServiceOrders() {
     }
   }
 
-  async function downloadOrderPdf(order: ServiceOrder) {
-    if (!order?.id || exportingPdfId) return;
-    setExportingPdfId(order.id);
+  async function exportOrdersPdf() {
+    if (exporting) return;
+    setExporting(true);
     setError("");
     try {
-      const blob = await api.download(`/service-orders/${order.id}/export-pdf`);
+      const params = buildListParams(1, 100);
+      params.delete("page");
+      params.delete("pageSize");
+      const blob = await api.download(`/service-orders/export-pdf-batch?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${displayId(order) || order.orderNo || order.id || "service-record"}.pdf`;
+      const customerPart = selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
+      const datePart = `-至${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
+      link.download = `服务记录${customerPart}${datePart}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -697,7 +711,7 @@ export function ServiceOrders() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF 导出失败");
     } finally {
-      setExportingPdfId(null);
+      setExporting(false);
     }
   }
 
@@ -1032,10 +1046,25 @@ export function ServiceOrders() {
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
-          <Button variant="outline" onClick={exportOrders} disabled={saving || exporting || loading}>
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-            {exporting ? t.actions.exporting : t.actions.export}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={saving || exporting || loading}>
+                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                {exporting ? t.actions.exporting : t.actions.export}
+                <ChevronDown className="w-4 h-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={exportOrders} disabled={exporting || loading}>
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                {t.actions.exportExcel}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={exportOrdersPdf} disabled={exporting || loading}>
+                <FileDown className="w-4 h-4 mr-2" />
+                {t.actions.exportPdf}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
             <Trash2 className="w-4 h-4 mr-2" />
             批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
@@ -1275,20 +1304,6 @@ export function ServiceOrders() {
                               派单 / 改派
                             </Button>
                           )}
-                          {order.serviceMode !== "office" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                downloadOrderPdf(order);
-                              }}
-                              disabled={exportingPdfId === order.id}
-                            >
-                              {exportingPdfId === order.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
-                              PDF
-                            </Button>
-                          )}
                         </div>
                     </div>
                   </div>
@@ -1404,12 +1419,6 @@ export function ServiceOrders() {
             );
           })()}
           <DialogFooter>
-            {detailOrder && detailOrder.serviceMode !== "office" && (
-              <Button variant="outline" onClick={() => downloadOrderPdf(detailOrder)} disabled={exportingPdfId === detailOrder.id}>
-                {exportingPdfId === detailOrder.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
-                导出 PDF
-              </Button>
-            )}
             <Button variant="outline" onClick={closeDetailOrder}>关闭</Button>
           </DialogFooter>
         </DialogContent>

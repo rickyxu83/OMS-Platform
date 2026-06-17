@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const archiver = require('archiver')
 const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
@@ -937,8 +938,7 @@ async function assertEngineerOwns(order, user) {
   throw forbidden('只能操作自己参与的服务单')
 }
 
-async function list(req, res) {
-  await ensureServiceOrderInspectionColumns()
+function buildListQueryParts(req) {
   const {
     status = null,
     customerId = null,
@@ -949,8 +949,6 @@ async function list(req, res) {
     endDate = '',
     sortBy = 'createdAt',
     sortDir = 'desc',
-    page = '1',
-    pageSize = '20',
   } = req.query
   const mineQuery = req.query.mine === '1'
   const isEngineer = req.user.role === 'engineer'
@@ -959,9 +957,6 @@ async function list(req, res) {
   const effectiveEngineerId = (mineQuery || isEngineer) ? req.user.id : canListBroadly ? engineerId || null : null
   const salespersonScope = req.user.role === 'sales' ? String(req.user.real_name || req.user.username || '').trim() : ''
   const salespersonUsernameScope = req.user.role === 'sales' ? String(req.user.username || '').trim() : ''
-  const normalizedPage = Math.max(1, Number(page) || 1)
-  const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 20))
-  const offset = (normalizedPage - 1) * normalizedPageSize
   let statusWhereSql = '1 = 1'
   if (status === 'draft') {
     statusWhereSql = "so.status IN ('draft', 'assigned', 'rejected')"
@@ -1035,6 +1030,16 @@ async function list(req, res) {
     likeCustomer: `%${customer}%`,
     ...keywordParams,
   }
+  return { params, fromAndWhere, sortColumn, sortDirection }
+}
+
+async function list(req, res) {
+  await ensureServiceOrderInspectionColumns()
+  const { page = '1', pageSize = '20' } = req.query
+  const normalizedPage = Math.max(1, Number(page) || 1)
+  const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 20))
+  const offset = (normalizedPage - 1) * normalizedPageSize
+  const { params, fromAndWhere, sortColumn, sortDirection } = buildListQueryParts(req)
 
   const countRows = await query(`SELECT COUNT(*) AS total ${fromAndWhere}`, params)
   const rows = await query(
@@ -1852,6 +1857,59 @@ async function exportPdf(req, res) {
   buildServiceRecordPdf(item).pipe(res)
 }
 
+async function exportPdfBatch(req, res) {
+  await ensureServiceOrderInspectionColumns()
+  await ensureFilePurposeColumn()
+  const { params, fromAndWhere, sortColumn, sortDirection } = buildListQueryParts(req)
+  const rows = await query(
+    `SELECT so.id ${fromAndWhere}
+     ORDER BY ${sortColumn} ${sortDirection}, so.id DESC
+     LIMIT 500`,
+    params,
+  )
+
+  const eligible = []
+  for (const row of rows) {
+    const item = await loadDetailItem(row.id, req.user)
+    if (item.serviceMode === 'office' || !item.report) continue
+    eligible.push(item)
+  }
+
+  if (!eligible.length) {
+    throw badRequest('当前筛选条件下没有可导出的服务记录（需已提交且非内勤）')
+  }
+
+  const zipFilename = `service-records-${shanghaiDateKey(0)}.zip`
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}`)
+
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  archive.on('error', (error) => {
+    if (!res.headersSent) {
+      throw error
+    } else {
+      console.error('[export-pdf-batch] archive error', error)
+    }
+  })
+  archive.pipe(res)
+
+  const usedNames = new Set()
+  for (const item of eligible) {
+    let name = serviceRecordPdfFilename(item)
+    if (usedNames.has(name)) {
+      const base = name.replace(/\.pdf$/, '')
+      let seq = 1
+      do {
+        seq += 1
+        name = `${base}-${seq}.pdf`
+      } while (usedNames.has(name))
+    }
+    usedNames.add(name)
+    archive.append(buildServiceRecordPdf(item), { name })
+  }
+  await archive.finalize()
+}
+
 async function latestCustomerSignature(req, res) {
   const customerId = Number(req.query.customerId || 0)
   const nameKey = customerNameKey(req.query.customerName || '')
@@ -2568,6 +2626,7 @@ module.exports = {
   updateSelfReport,
   detail,
   exportPdf,
+  exportPdfBatch,
   latestCustomerSignature,
   getSelfReportDraft,
   saveSelfReportDraft,
