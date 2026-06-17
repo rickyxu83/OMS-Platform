@@ -265,6 +265,8 @@ const I18N = {
       locating: "正在获取定位并查找附近公司…",
       addressRequired: "请先填写详细地址",
       addressSearching: "正在按地址查找坐标：{keyword}",
+      addressLocated: "已根据地址补全坐标：{lat}, {lng}",
+      addressLocateFailed: "未能解析该地址坐标，请补充省市区或更详细门牌号",
       searchCompanyKeyword: "公司",
     },
     misc: {
@@ -394,6 +396,8 @@ const I18N = {
       locating: "正在取得定位並查找附近公司…",
       addressRequired: "請先填寫詳細地址",
       addressSearching: "正在按地址查找座標：{keyword}",
+      addressLocated: "已根據地址補全座標：{lat}, {lng}",
+      addressLocateFailed: "未能解析該地址座標，請補充省市區或更詳細門牌號",
       searchCompanyKeyword: "公司",
     },
     misc: {
@@ -506,7 +510,7 @@ export function Customers() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [locationHint, setLocationHint] = useState("");
   const [locating, setLocating] = useState(false);
-  const [geoSearchMode, setGeoSearchMode] = useState<"name" | "address">("name");
+  const [addressLocating, setAddressLocating] = useState(false);
   const [searchTimer, setSearchTimer] = useState<number | null>(null);
   const canForceDeleteCustomer = CUSTOMER_ADMIN_DELETE_ROLES.has(String(user?.role || ""));
 
@@ -724,7 +728,6 @@ export function Customers() {
       return;
     }
     setLocationHint(interpolate(t.geo.searching, { keyword }));
-    setGeoSearchMode("name");
     const timerId = window.setTimeout(() => {
       searchGeo({}, { keyword }).catch(() => undefined);
     }, 300);
@@ -744,7 +747,7 @@ export function Customers() {
 
       return {
         ...prev,
-        name: geoSearchMode === "address" ? prev.name : company.name || prev.name,
+        name: company.name || prev.name,
         address: company.address || prev.address,
         mapAddress: company.mapAddress || company.address || prev.mapAddress,
         latitude: company.latitude ?? prev.latitude ?? null,
@@ -770,9 +773,35 @@ export function Customers() {
       return;
     }
     if (searchTimer) window.clearTimeout(searchTimer);
-    setGeoSearchMode("address");
+    setAddressLocating(true);
+    setCandidates([]);
+    setShowCandidates(false);
     setLocationHint(interpolate(t.geo.addressSearching, { keyword }));
-    searchGeo({}, { keyword }).catch(() => undefined);
+    api.get(`/geo/geocode?address=${encodeURIComponent(keyword)}`)
+      .then((data) => {
+        const item = data?.item;
+        if (!item?.latitude || !item?.longitude) {
+          setLocationHint(t.geo.addressLocateFailed);
+          return;
+        }
+        setForm((prev) => ({
+          ...prev,
+          latitude: Number(item.latitude),
+          longitude: Number(item.longitude),
+          mapProvider: item.mapProvider || "amap",
+          mapPoiId: item.mapPoiId || "",
+          mapPoiName: item.mapPoiName || item.mapAddress || prev.address,
+          mapAddress: item.mapAddress || prev.address,
+        }));
+        setLocationHint(interpolate(t.geo.addressLocated, {
+          lat: Number(item.latitude).toFixed(5),
+          lng: Number(item.longitude).toFixed(5),
+        }));
+      })
+      .catch((e) => {
+        setLocationHint(e instanceof Error ? e.message : t.errors.geoSearchFailed);
+      })
+      .finally(() => setAddressLocating(false));
   }
 
   function locateNearMe() {
@@ -781,7 +810,6 @@ export function Customers() {
     const keyword = form.name.trim();
     if (keyword) {
       setLocationHint(interpolate(t.geo.searching, { keyword }));
-      setGeoSearchMode("name");
       searchGeo()
         .catch(() => undefined)
         .finally(() => setLocating(false));
@@ -789,7 +817,6 @@ export function Customers() {
     }
     const fallback = () => {
       setLocationHint(t.geo.locateFallback);
-      setGeoSearchMode("name");
       searchGeo({}, { keyword: t.geo.searchCompanyKeyword }).catch(() => undefined);
     };
     if (!navigator.geolocation) {
@@ -1467,10 +1494,10 @@ export function Customers() {
                     type="button"
                     variant="outline"
                     onClick={locateByAddress}
-                    disabled={geoLoading}
+                    disabled={addressLocating}
                     className="shrink-0"
                   >
-                    {geoLoading && geoSearchMode === "address" ? (
+                    {addressLocating ? (
                       <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                     ) : (
                       <MapPin className="w-4 h-4 mr-1" />
