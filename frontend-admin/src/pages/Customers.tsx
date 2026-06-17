@@ -1343,7 +1343,7 @@ export function Customers() {
               </div>
             )
           })() : null}
-          <DialogFooter className="border-t bg-background px-6 py-4">
+          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
