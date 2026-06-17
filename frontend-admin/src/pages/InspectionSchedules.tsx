@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Loader2, Search, Trash2, Play } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,7 @@ function inputDate(value?: string) {
 }
 
 export function InspectionSchedules() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -85,7 +87,8 @@ export function InspectionSchedules() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
+  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
   const [cadenceFilter, setCadenceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -152,9 +155,15 @@ export function InspectionSchedules() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setSearchQuery(searchParams.get("keyword") || "");
+    setCustomerFilter(searchParams.get("customerId") || "all");
+  }, [searchParams]);
+
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     return schedules.filter((s) => {
+      if (customerFilter !== "all" && String(s.customerId) !== customerFilter) return false;
       if (cadenceFilter !== "all" && s.cadence !== cadenceFilter) return false;
       if (statusFilter === "active" && !s.active) return false;
       if (statusFilter === "disabled" && s.active) return false;
@@ -162,7 +171,7 @@ export function InspectionSchedules() {
       const searchText = [s.name, s.customerName, s.targetEngineerName, ...(s.deviceNames || [])].filter(Boolean).join(" ");
       return searchText.toLowerCase().includes(keyword);
     });
-  }, [schedules, searchQuery, cadenceFilter, statusFilter]);
+  }, [schedules, searchQuery, customerFilter, cadenceFilter, statusFilter]);
 
   const stats = useMemo(() => {
     const total = schedules.length;
@@ -408,6 +417,19 @@ export function InspectionSchedules() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <Select value={customerFilter} onValueChange={setCustomerFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="客户" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部客户</SelectItem>
+                {customers.map((customer) => (
+                  <SelectItem key={customer.id} value={String(customer.id)}>
+                    {customer.name || `客户 #${customer.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={cadenceFilter} onValueChange={setCadenceFilter}>
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="巡检周期" />
@@ -433,8 +455,10 @@ export function InspectionSchedules() {
               variant="outline"
               onClick={() => {
                 setSearchQuery("");
+                setCustomerFilter("all");
                 setCadenceFilter("all");
                 setStatusFilter("all");
+                setSearchParams({});
               }}
             >
               重置
