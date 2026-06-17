@@ -7281,33 +7281,44 @@ body::after {
 }
 
 .task-card strong.task-status-draft {
-  color: #4c1d95;
-  border-color: rgb(124 58 237 / 8%);
-  background: #f3efff;
-  box-shadow: none;
+  color: #fff;
+  background: #7c3aed;
+  box-shadow:
+    0 8px 14px rgb(124 58 237 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card strong.task-status-progress,
 .task-card strong.task-status-info {
   color: #fff;
   background: #7c3aed;
+  box-shadow:
+    0 8px 14px rgb(124 58 237 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card strong.task-status-warning {
   color: #fff;
   background: #f59e0b;
+  box-shadow:
+    0 8px 14px rgb(245 158 11 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card strong.task-status-success {
-  color: #047857;
-  border-color: rgb(16 185 129 / 12%);
-  background: #d1fae5;
-  box-shadow: none;
+  color: #fff;
+  background: #10b981;
+  box-shadow:
+    0 8px 14px rgb(16 185 129 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card strong.task-status-danger {
   color: #fff;
   background: #e11d48;
+  box-shadow:
+    0 8px 14px rgb(225 29 72 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
 }
 
 .task-card .inspection-badge {
