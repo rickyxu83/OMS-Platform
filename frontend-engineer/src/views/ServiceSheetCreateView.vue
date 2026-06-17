@@ -5,7 +5,8 @@ import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
-import { currentUser } from '../services/auth'
+import { resolveApiBase } from '../services/api-base'
+import { currentUser, getToken } from '../services/auth'
 import { aiDraftEnabled } from '../services/engineer-preferences'
 import { readOfflineCacheMeta } from '../services/offline-cache'
 import { isOnline } from '../services/network'
@@ -86,6 +87,11 @@ const serviceResultInput = ref(null)
 const collaborationWorkSection = ref(null)
 const actualStartInput = ref(null)
 const actualEndInput = ref(null)
+const inspectionDocumentSection = ref(null)
+const inspectionDocInput = ref(null)
+const inspectionDocFiles = ref([])
+const uploadingInspectionDocs = ref(false)
+const downloadingInspectionDocId = ref(null)
 const signatureSection = ref(null)
 const signatureCanvas = ref(null)
 const customerSignature = ref('')
@@ -694,6 +700,14 @@ const serviceCategoryOptions = computed(() =>
     : currentServiceMode.value === 'office'
       ? officeCategoryOptions
       : serviceTypeOptions,
+)
+const isInspectionOrder = computed(() =>
+  Boolean(route.params.id)
+    && currentServiceMode.value === 'onsite'
+    && (serviceDraft.value.serviceType === 'inspect' || editingTask.value?.serviceType === 'inspect'),
+)
+const inspectionDocuments = computed(() =>
+  (editingTask.value?.files || []).filter((file) => file.purpose === 'inspection_document'),
 )
 const draftStatusLabel = computed(() => {
   if (draftDirty.value) return `${draftCountdown.value} 秒后保存`
@@ -1633,6 +1647,115 @@ function clearFieldError(field) {
   }
 }
 
+function formatFileSize(value) {
+  const size = Number(value || 0)
+  if (!size) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function chooseInspectionDocuments() {
+  if (uploadingInspectionDocs.value) return
+  inspectionDocInput.value?.click()
+}
+
+function onInspectionDocumentsSelected(event) {
+  inspectionDocFiles.value = Array.from(event.target.files || [])
+  if (inspectionDocFiles.value.length) {
+    clearFieldError('inspectionDocument')
+  }
+}
+
+function clearInspectionDocuments() {
+  inspectionDocFiles.value = []
+  if (inspectionDocInput.value) inspectionDocInput.value.value = ''
+}
+
+function appendInspectionDocuments(files) {
+  if (!files.length) return
+  const currentFiles = Array.isArray(editingTask.value?.files) ? editingTask.value.files : []
+  editingTask.value = {
+    ...(editingTask.value || {}),
+    files: [...currentFiles, ...files],
+  }
+}
+
+async function uploadPendingInspectionDocuments() {
+  if (!inspectionDocFiles.value.length) return
+  if (!isInspectionOrder.value || !route.params.id) {
+    throw new Error('请先保存草稿，进入已派发巡检工单后上传巡检文档')
+  }
+  if (!isOnline.value) {
+    throw new Error('当前离线，巡检文档未上传，请联网后再提交')
+  }
+
+  uploadingInspectionDocs.value = true
+  const uploadedFiles = []
+  try {
+    for (const file of inspectionDocFiles.value) {
+      const formData = new FormData()
+      formData.append('ownerType', 'service_order')
+      formData.append('ownerId', String(route.params.id))
+      formData.append('purpose', 'inspection_document')
+      formData.append('file', file)
+      const uploaded = await api.postForm('/files', formData)
+      uploadedFiles.push({
+        ...uploaded,
+        ownerType: 'service_order',
+        ownerId: Number(route.params.id),
+        uploadedBy: currentUserId.value || null,
+        createdAt: new Date().toISOString(),
+      })
+    }
+    appendInspectionDocuments(uploadedFiles)
+    clearInspectionDocuments()
+    clearFieldError('inspectionDocument')
+  } finally {
+    uploadingInspectionDocs.value = false
+  }
+}
+
+async function uploadInspectionDocumentsNow() {
+  error.value = ''
+  retryableError.value = false
+  message.value = ''
+  try {
+    await uploadPendingInspectionDocuments()
+    message.value = '巡检文档已上传'
+  } catch (err) {
+    error.value = err?.message || '巡检文档上传失败'
+  }
+}
+
+async function downloadInspectionDocument(file) {
+  if (!file?.id || downloadingInspectionDocId.value) return
+  downloadingInspectionDocId.value = file.id
+  error.value = ''
+  retryableError.value = false
+  try {
+    const token = getToken()
+    const response = await fetch(`${resolveApiBase()}/files/${file.id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('巡检文档下载失败')
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.originalName || `inspection-document-${file.id}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    error.value = err?.message || '巡检文档下载失败'
+  } finally {
+    downloadingInspectionDocId.value = null
+  }
+}
+
 function activeRequiredTimeFieldKeys() {
   return [...travelTimeFields.value, ...closeoutTimeFields.value]
     .filter((field) => field[2])
@@ -1650,6 +1773,9 @@ function activeFieldErrorKeys() {
   }
   if (showDeviceField.value) {
     keys.push('deviceName')
+  }
+  if (isInspectionOrder.value) {
+    keys.push('inspectionDocument')
   }
   for (const key of activeRequiredTimeFieldKeys()) {
     if (!keys.includes(key)) keys.push(key)
@@ -2664,6 +2790,12 @@ async function submitServiceSheet() {
   message.value = ''
   const payload = buildSubmitPayload()
   try {
+    if (isInspectionOrder.value && inspectionDocFiles.value.length) {
+      await uploadPendingInspectionDocuments()
+    }
+    if (isInspectionOrder.value && !inspectionDocuments.value.length) {
+      throw new Error('请先上传巡检文档')
+    }
     if (!isOnline.value) {
       const queued = queueSelfReportSync({
         mode: route.params.id ? 'update' : 'create',
@@ -2696,6 +2828,12 @@ async function submitServiceSheet() {
     if (pendingSyncCount.value) syncPendingSelfReports().catch(() => {})
     returnToTasks()
   } catch (err) {
+    if (isInspectionOrder.value && isConnectivityError(err) && !inspectionDocuments.value.length) {
+      await persistDraft()
+      error.value = '巡检文档未上传，已保留草稿，请联网后再提交'
+      retryableError.value = true
+      return
+    }
     if (isConnectivityError(err)) {
       const queued = queueSelfReportSync({
         mode: route.params.id ? 'update' : 'create',
@@ -2724,6 +2862,7 @@ async function focusField(field) {
     result: serviceResultInput,
     actualStartAt: actualStartInput,
     actualEndAt: actualEndInput,
+    inspectionDocument: inspectionDocumentSection,
     customerSignature: signatureSection,
   }
   await nextTick()
@@ -2746,6 +2885,9 @@ async function validateRequiredFields() {
   if (!combinedWorkContent()) errors.workContent = currentServiceMode.value === 'remote' ? '请填写处理记录' : '请填写服务内容 / 现场处理记录'
   if (!String(serviceDraft.value.result || '').trim()) {
     errors.result = isOfficeMode.value ? '请选择完成状态' : currentServiceMode.value === 'remote' ? '请选择处理结果' : '请选择服务结论'
+  }
+  if (isInspectionOrder.value && !inspectionDocuments.value.length && !inspectionDocFiles.value.length) {
+    errors.inspectionDocument = '请上传巡检文档'
   }
   for (const [label, , required] of [...travelTimeFields.value, ...closeoutTimeFields.value]) {
     if (!required) continue
@@ -3512,10 +3654,71 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         </div>
       </article>
 
+      <article
+        v-if="isInspectionOrder"
+        ref="inspectionDocumentSection"
+        class="form-section inspection-document-card section-tone-service"
+        :class="{ 'has-error': fieldErrors.inspectionDocument }"
+      >
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">{{ zh('05 / 巡检附件') }}</p>
+            <h2>{{ zh('巡检文档') }}<b>*</b></h2>
+          </div>
+        </div>
+        <input
+          ref="inspectionDocInput"
+          type="file"
+          multiple
+          hidden
+          @change="onInspectionDocumentsSelected"
+        />
+        <div class="inspection-document-actions">
+          <button class="ghost" type="button" :disabled="uploadingInspectionDocs || saving" @click="chooseInspectionDocuments">
+            <PreviewIcon name="new" />{{ zh('选择文档') }}
+          </button>
+          <button
+            class="primary"
+            type="button"
+            :disabled="uploadingInspectionDocs || saving || !inspectionDocFiles.length"
+            @click="uploadInspectionDocumentsNow"
+          >
+            <PreviewIcon name="save" />{{ zh(uploadingInspectionDocs ? '上传中' : '上传巡检文档') }}
+          </button>
+        </div>
+        <div v-if="inspectionDocFiles.length" class="inspection-document-selection">
+          <div v-for="file in inspectionDocFiles" :key="`${file.name}-${file.size}-${file.lastModified}`">
+            <strong>{{ file.name }}</strong>
+            <small>{{ formatFileSize(file.size) }}</small>
+          </div>
+          <button class="ghost" type="button" :disabled="uploadingInspectionDocs || saving" @click="clearInspectionDocuments">
+            {{ zh('清空') }}
+          </button>
+        </div>
+        <small v-if="fieldErrors.inspectionDocument" class="field-error">{{ zh(fieldErrors.inspectionDocument) }}</small>
+        <div v-if="inspectionDocuments.length" class="attachment-list">
+          <button
+            v-for="file in inspectionDocuments"
+            :key="file.id"
+            class="attachment-item"
+            type="button"
+            :disabled="downloadingInspectionDocId === file.id"
+            @click="downloadInspectionDocument(file)"
+          >
+            <span>
+              <strong>{{ file.originalName || `巡检文档 #${file.id}` }}</strong>
+              <small>{{ formatFileSize(file.size) }}</small>
+            </span>
+            <PreviewIcon name="download" />
+          </button>
+        </div>
+        <p v-else class="muted compact">{{ zh('尚未上传巡检文档') }}</p>
+      </article>
+
       <article class="form-section closeout-time-section section-tone-time">
         <div class="section-heading">
           <div>
-            <p class="section-kicker">{{ zh(isRemoteLikeMode ? '05 / 结束服务' : '05 / 完成返程') }}</p>
+            <p class="section-kicker">{{ zh(isRemoteLikeMode ? '05 / 结束服务' : isInspectionOrder ? '06 / 完成返程' : '05 / 完成返程') }}</p>
             <h2>{{ zh(isRemoteLikeMode ? '结束时间' : '完成与返抵') }}</h2>
           </div>
         </div>
@@ -3543,7 +3746,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         <div class="signature-copy">
           <div class="section-heading compact">
             <div>
-              <p class="section-kicker">{{ zh('06 / 签名确认') }}</p>
+              <p class="section-kicker">{{ zh(isInspectionOrder ? '07 / 签名确认' : '06 / 签名确认') }}</p>
               <h2>{{ zh('客户签名') }}</h2>
             </div>
           </div>
@@ -3680,7 +3883,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         </div>
       </div>
       <button class="ghost" type="button" @click="saveDraft"><PreviewIcon name="save" />{{ zh('保存草稿') }}</button>
-      <button class="primary" :disabled="saving || loading" @click="submitServiceSheet"><PreviewIcon name="send" />{{ zh(submitButtonLabel) }}</button>
+      <button class="primary" :disabled="saving || loading || uploadingInspectionDocs" @click="submitServiceSheet"><PreviewIcon name="send" />{{ zh(submitButtonLabel) }}</button>
     </footer>
   </main>
 </template>
@@ -3688,6 +3891,11 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 <style scoped>
 .ai-voice-card {
   border-color: rgba(59, 130, 246, 0.2);
+}
+
+.inspection-document-card h2 b {
+  margin-left: 4px;
+  color: #dc2626;
 }
 
 .ai-voice-card.unavailable {
