@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -456,6 +456,7 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
+  const [exportingPdfId, setExportingPdfId] = useState<string | number | null>(null);
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -676,6 +677,27 @@ export function ServiceOrders() {
       setError(e instanceof Error ? e.message : "附件下载失败");
     } finally {
       setDownloadingFileId(null);
+    }
+  }
+
+  async function downloadOrderPdf(order: ServiceOrder) {
+    if (!order?.id || exportingPdfId) return;
+    setExportingPdfId(order.id);
+    setError("");
+    try {
+      const blob = await api.download(`/service-orders/${order.id}/export-pdf`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${displayId(order) || order.orderNo || order.id || "service-record"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF 导出失败");
+    } finally {
+      setExportingPdfId(null);
     }
   }
 
@@ -1253,6 +1275,20 @@ export function ServiceOrders() {
                               派单 / 改派
                             </Button>
                           )}
+                          {order.serviceMode !== "office" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                downloadOrderPdf(order);
+                              }}
+                              disabled={exportingPdfId === order.id}
+                            >
+                              {exportingPdfId === order.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
+                              PDF
+                            </Button>
+                          )}
                         </div>
                     </div>
                   </div>
@@ -1368,6 +1404,12 @@ export function ServiceOrders() {
             );
           })()}
           <DialogFooter>
+            {detailOrder && detailOrder.serviceMode !== "office" && (
+              <Button variant="outline" onClick={() => downloadOrderPdf(detailOrder)} disabled={exportingPdfId === detailOrder.id}>
+                {exportingPdfId === detailOrder.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
+                导出 PDF
+              </Button>
+            )}
             <Button variant="outline" onClick={closeDetailOrder}>关闭</Button>
           </DialogFooter>
         </DialogContent>

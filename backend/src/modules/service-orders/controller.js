@@ -8,6 +8,7 @@ const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../uti
 const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
+const { buildServiceRecordPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
 
@@ -1747,14 +1748,14 @@ async function createSelfReport(req, res) {
   res.status(201).json(created)
 }
 
-async function detail(req, res) {
+async function loadDetailItem(orderId, user) {
   await ensureServiceOrderInspectionColumns()
   await ensureFilePurposeColumn()
-  let order = await getOrder(req.params.id)
+  let order = await getOrder(orderId)
   if (!order) {
     throw notFound('服务单不存在')
   }
-  await assertEngineerOwns(order, req.user)
+  await assertEngineerOwns(order, user)
   order = (await attachEngineers([order]))[0]
 
   const reports = await query(
@@ -1763,11 +1764,11 @@ async function detail(req, res) {
      WHERE service_order_id = :id
      ORDER BY id DESC
      LIMIT 1`,
-    { id: req.params.id },
+    { id: orderId },
   )
   const hydratedReport = await hydrateReportSignature(reports[0])
-  const workEntriesByOrder = await loadWorkEntries([Number(req.params.id)])
-  const report = hydratedReport ? { ...hydratedReport, workEntries: workEntriesByOrder.get(Number(req.params.id)) || [] } : null
+  const workEntriesByOrder = await loadWorkEntries([Number(orderId)])
+  const report = hydratedReport ? { ...hydratedReport, workEntries: workEntriesByOrder.get(Number(orderId)) || [] } : null
   const contacts = await query(
     `SELECT cc.id, cc.customer_id, cc.name, cc.phone, cc.use_count, cc.last_used_at,
             COALESCE(ccu.use_count, 0) AS engineer_use_count,
@@ -1778,59 +1779,77 @@ async function detail(req, res) {
      WHERE cc.customer_id = :customerId
      ORDER BY engineer_use_count DESC, engineer_last_used_at DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC
      LIMIT 20`,
-    { customerId: order.customer_id, engineerId: req.user.id },
+    { customerId: order.customer_id, engineerId: user.id },
   )
   const parts = await query(
     `SELECT id, service_order_id, part_name, part_no, quantity, unit, remark, created_at, updated_at
      FROM service_parts
      WHERE service_order_id = :id
      ORDER BY id ASC`,
-    { id: req.params.id },
+    { id: orderId },
   )
   const files = await query(
     `SELECT id, owner_type, owner_id, purpose, original_name, mime_type, size, uploaded_by, created_at
      FROM files
      WHERE owner_type IN ('service_order', 'service_report', 'signature') AND owner_id = :id
      ORDER BY id ASC`,
-    { id: req.params.id },
+    { id: orderId },
   )
 
-  res.json({
-    item: {
-      ...orderPayload(order),
-      report: reportPayload(report),
-      contacts: contacts.map((contact) => ({
-        id: contact.id,
-        customerId: contact.customer_id,
-        name: contact.name,
-        phone: contact.phone,
-        useCount: contact.use_count,
-        lastUsedAt: contact.last_used_at,
-      })),
-      parts: parts.map((part) => ({
-        id: part.id,
-        serviceOrderId: part.service_order_id,
-        partName: part.part_name,
-        partNo: part.part_no,
-        quantity: part.quantity,
-        unit: part.unit,
-        remark: part.remark,
-        createdAt: part.created_at,
-        updatedAt: part.updated_at,
-      })),
-      files: files.map((file) => ({
-        id: file.id,
-        ownerType: file.owner_type,
-        ownerId: file.owner_id,
-        purpose: file.purpose || 'general',
-        originalName: file.original_name,
-        mimeType: file.mime_type,
-        size: file.size,
-        uploadedBy: file.uploaded_by,
-        createdAt: file.created_at,
-      })),
-    },
-  })
+  return {
+    ...orderPayload(order),
+    report: reportPayload(report),
+    contacts: contacts.map((contact) => ({
+      id: contact.id,
+      customerId: contact.customer_id,
+      name: contact.name,
+      phone: contact.phone,
+      useCount: contact.use_count,
+      lastUsedAt: contact.last_used_at,
+    })),
+    parts: parts.map((part) => ({
+      id: part.id,
+      serviceOrderId: part.service_order_id,
+      partName: part.part_name,
+      partNo: part.part_no,
+      quantity: part.quantity,
+      unit: part.unit,
+      remark: part.remark,
+      createdAt: part.created_at,
+      updatedAt: part.updated_at,
+    })),
+    files: files.map((file) => ({
+      id: file.id,
+      ownerType: file.owner_type,
+      ownerId: file.owner_id,
+      purpose: file.purpose || 'general',
+      originalName: file.original_name,
+      mimeType: file.mime_type,
+      size: file.size,
+      uploadedBy: file.uploaded_by,
+      createdAt: file.created_at,
+    })),
+  }
+}
+
+async function detail(req, res) {
+  const item = await loadDetailItem(req.params.id, req.user)
+  res.json({ item })
+}
+
+async function exportPdf(req, res) {
+  const item = await loadDetailItem(req.params.id, req.user)
+  if (item.serviceMode === 'office') {
+    throw badRequest('内勤记录不生成单独服务表，请在月报中统一导出')
+  }
+  if (!item.report) {
+    throw badRequest('请先填写并提交服务记录')
+  }
+
+  const filename = serviceRecordPdfFilename(item)
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+  buildServiceRecordPdf(item).pipe(res)
 }
 
 async function latestCustomerSignature(req, res) {
@@ -2548,6 +2567,7 @@ module.exports = {
   createSelfReport,
   updateSelfReport,
   detail,
+  exportPdf,
   latestCustomerSignature,
   getSelfReportDraft,
   saveSelfReportDraft,
