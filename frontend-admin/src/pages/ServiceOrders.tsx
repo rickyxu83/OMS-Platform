@@ -397,7 +397,7 @@ export function ServiceOrders() {
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
-  // 搜索词防抖:输入即时更新 UI(本地过滤),停顿 300ms 后才发起服务端请求
+  // 搜索词防抖:输入框即时响应,列表与服务端请求在停顿后一起更新,避免逐字改动列表高度
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
   // 请求序号守卫:慢请求的过期响应不再覆盖新结果
   const loadSeqRef = useRef(0);
@@ -528,7 +528,7 @@ export function ServiceOrders() {
   }, [searchParams, orders, detailOrder, t.errors.loadFailed]);
 
   const filteredOrders = useMemo(() => {
-    const terms = splitSearchTerms(searchQuery);
+    const terms = splitSearchTerms(debouncedSearch);
     if (!terms.length) return orders;
     return orders.filter((order) => {
       const workflowStatus = getWorkflowStatus(order);
@@ -553,7 +553,10 @@ export function ServiceOrders() {
       ].filter(Boolean).join(" ").toLowerCase();
       return terms.every((term) => searchText.includes(term));
     });
-  }, [orders, searchQuery, t.mode, t.status, t.type]);
+  }, [orders, debouncedSearch, t.mode, t.status, t.type]);
+
+  const initialLoading = loading && orders.length === 0;
+  const refreshing = loading && orders.length > 0;
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
@@ -984,7 +987,7 @@ export function ServiceOrders() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -1059,10 +1062,13 @@ export function ServiceOrders() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
+            {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t.list.loading} />}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {initialLoading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
             </div>
