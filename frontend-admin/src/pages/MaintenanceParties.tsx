@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Search, Building2, Loader2, Trash2, Pencil, Check } from "lucide-react";
+import { Plus, RefreshCw, Search, Building2, Loader2, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -426,6 +426,7 @@ export function MaintenanceParties() {
                 setTypeFilter("all");
               }}
             >
+              <RotateCcw className="w-4 h-4 mr-2" />
               {t.actions.reset}
             </Button>
           </div>
@@ -489,11 +490,11 @@ export function MaintenanceParties() {
                       </div>
                     </div>
                     <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
+                      <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
                         <Pencil className="w-4 h-4 mr-1" />
                         {t.actions.edit}
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
+                      <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         {t.actions.delete}
                       </Button>

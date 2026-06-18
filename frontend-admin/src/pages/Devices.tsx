@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -424,6 +424,7 @@ export function Devices() {
                 setMaintenanceFilter("all");
               }}
             >
+              <RotateCcw className="w-4 h-4 mr-2" />
               重置
             </Button>
           </div>
@@ -499,11 +500,11 @@ export function Devices() {
                       </div>
                     </div>
                     <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(device)}>
+                      <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
                         <Pencil className="w-4 h-4 mr-1" />
                         编辑
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
+                      <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         删除
                       </Button>

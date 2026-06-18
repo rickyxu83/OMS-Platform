@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1174,6 +1174,7 @@ export function ServiceOrders() {
               variant="outline"
               onClick={resetFilters}
             >
+              <RotateCcw className="w-4 h-4 mr-2" />
               {t.actions.reset}
             </Button>
           </div>
@@ -1306,6 +1307,7 @@ export function ServiceOrders() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 confirmInspection(order);
@@ -1320,6 +1322,7 @@ export function ServiceOrders() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 openAssign(order);
@@ -1336,6 +1339,7 @@ export function ServiceOrders() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                                   onClick={(event) => event.stopPropagation()}
                                   disabled={exporting}
                                 >

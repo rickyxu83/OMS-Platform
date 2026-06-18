@@ -1168,6 +1168,7 @@ export function Customers() {
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 openEdit(c);
@@ -1180,7 +1181,7 @@ export function Customers() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-red-600 hover:text-red-700"
+                                className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   openDelete(c);

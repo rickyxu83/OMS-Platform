@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield, Check } from "lucide-react";
+import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -325,6 +325,7 @@ export function Users() {
                 setStatusFilter("all");
               }}
             >
+              <RotateCcw className="w-4 h-4 mr-2" />
               重置
             </Button>
           </div>
@@ -390,6 +391,7 @@ export function Users() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                         onClick={() => openEdit(user)}
                         disabled={saving}
                       >
@@ -399,6 +401,7 @@ export function Users() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                         onClick={() => toggleStatus(user)}
                         disabled={saving || String(currentUser?.id) === String(user.id)}
                       >

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -549,6 +549,7 @@ export function InspectionSchedules() {
                 setSearchParams({});
               }}
             >
+              <RotateCcw className="w-4 h-4 mr-2" />
               重置
             </Button>
           </div>
@@ -632,6 +633,7 @@ export function InspectionSchedules() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                         onClick={() => {
                           openEdit(s);
                         }}
@@ -642,7 +644,7 @@ export function InspectionSchedules() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-red-600 hover:text-red-700"
+                        className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
                         onClick={() => {
                           deleteSchedule(s);
                         }}
