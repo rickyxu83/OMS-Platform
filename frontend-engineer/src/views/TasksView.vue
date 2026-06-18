@@ -398,17 +398,6 @@ function taskStatusLabel(task) {
   return statusMap[task.status] || task.status || '待处理'
 }
 
-function taskStatusTone(task) {
-  const status = String(task.status || task.workflowStatus || '').trim()
-  if (status === 'cancelled') return 'danger'
-  if (status === 'submitted') return 'success'
-  if (status === 'pending_confirmation' || status === 'assigned') return 'warning'
-  if (status === 'in_progress') return 'progress'
-  if (status === 'draft' || status === 'draft_local' || status === 'draft_sync') return 'draft'
-  if (isInspectionTask(task)) return 'warning'
-  return 'info'
-}
-
 function serviceModeBadge(task) {
   return serviceModeMap[normalizePreviewServiceMode(task)] || serviceModeMap.onsite
 }
@@ -646,7 +635,7 @@ onBeforeUnmount(() => {
             <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
           </span>
           <span v-if="isInspectionTask(task)" class="inspection-badge">{{ zh('巡检任务') }}</span>
-          <strong class="task-status-badge" :class="needsMyWorkEntry(task) ? 'new-work-badge' : `task-status-${taskStatusTone(task)}`">
+          <strong :class="{ 'new-work-badge': needsMyWorkEntry(task) }">
             <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
             <template v-else>{{ zh(taskStatusLabel(task)) }}</template>
           </strong>
