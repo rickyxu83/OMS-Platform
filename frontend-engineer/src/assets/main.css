@@ -3368,6 +3368,7 @@ h2 {
 
 .task-card {
   position: relative;
+  display: grid;
   overflow: hidden;
   /* 取消 .form-section 的 padding，内边距统一由 .task-swipe-body 承担，避免双重缩进导致内容错位 */
   padding: 0;
@@ -3665,10 +3666,9 @@ h2 {
 /* 露出的销毁操作区，固定在卡片右侧，由 body 左滑覆盖 */
 .task-swipe-action {
   --swipe-action-width: 112px;
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  grid-area: 1 / 1;
+  align-self: stretch;
+  justify-self: end;
   width: var(--swipe-action-width);
   display: grid;
   place-items: center;
@@ -3693,8 +3693,10 @@ h2 {
 .task-swipe-body {
   position: relative;
   z-index: 1;
+  grid-area: 1 / 1;
   display: grid;
   gap: 14px;
+  min-height: 100%;
   padding: 22px;
   /* 不透明背景，确保盖住下层红色销毁区，避免未滑动时漏红 */
   background:

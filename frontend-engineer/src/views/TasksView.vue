@@ -615,7 +615,8 @@ function onSwipeActionClick(task, event) {
   if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
   else openCancelRecord(task)
   swipeOpenId.value = null
-  applySwipeTransform(event.currentTarget?.closest?.('.task-swipe-body'), false)
+  const body = event.currentTarget?.closest?.('.task-card')?.querySelector?.('.task-swipe-body')
+  applySwipeTransform(body, false)
 }
 
 function onTaskCardKeydown(task, event) {
