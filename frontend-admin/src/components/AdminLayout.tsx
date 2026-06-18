@@ -356,7 +356,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
         
         {/* Top Bar */}
-        <header className="h-16 bg-card/80 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-6 flex-shrink-0">
+        <header className="h-[76px] bg-card/80 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
