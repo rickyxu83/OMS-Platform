@@ -3404,14 +3404,8 @@ h2 {
 }
 
 @media (min-width: 681px) {
-  .task-board {
-    perspective: 1100px;
-  }
-
   .task-card {
-    animation-name: app-unlock-in;
-    animation-duration: 680ms;
-    animation-timing-function: cubic-bezier(0.18, 0.82, 0.24, 1.18);
+    animation-name: card-rise-in;
   }
 }
 
@@ -3438,7 +3432,7 @@ h2 {
 .task-content {
   display: grid;
   gap: 14px;
-  padding-right: 128px;
+  padding-right: clamp(84px, 22vw, 128px);
 }
 
 .task-side-badges {
@@ -3453,6 +3447,13 @@ h2 {
 .task-card-main {
   display: grid;
   gap: 10px;
+  min-width: 0;
+}
+
+.task-card-main h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-card-main p {
@@ -3566,6 +3567,38 @@ h2 {
   background: #eff6ff;
   font-size: 12px;
   line-height: 1.25;
+}
+
+/* 状态语义色：淡底深字，轻量区分状态，与 06-16 基础胶囊风格保持一致 */
+.task-card strong.task-status-success {
+  color: #047857;
+  border-color: rgb(16 185 129 / 28%);
+  background: #ecfdf5;
+}
+
+.task-card strong.task-status-warning {
+  color: #b45309;
+  border-color: rgb(245 158 11 / 30%);
+  background: #fffbeb;
+}
+
+.task-card strong.task-status-danger {
+  color: #be123c;
+  border-color: rgb(244 63 94 / 24%);
+  background: #fff1f2;
+}
+
+.task-card strong.task-status-progress {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.task-card strong.task-status-draft,
+.task-card strong.task-status-info {
+  color: #4b5563;
+  border-color: rgb(107 114 128 / 24%);
+  background: #f3f4f6;
 }
 
 .new-work-badge {
@@ -3691,9 +3724,20 @@ h2 {
   z-index: 1;
 }
 
+/* 销毁类操作（作废记录/删除草稿）：默认中性灰、不抢主按钮焦点，hover 才显红提醒 */
 .task-actions .danger-lite {
-  color: #9f1239;
-  background: #ffe4e6;
+  color: #64748b;
+  background: #f1f5f9;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.task-actions .danger-lite:hover,
+.task-actions .danger-lite:focus-visible {
+  color: #be123c;
+  background: #fff1f2;
 }
 
 .task-card-local-draft .task-actions .danger-lite {
@@ -5433,7 +5477,7 @@ h2 {
   }
 
   .task-content {
-    padding-right: 122px;
+    padding-right: clamp(78px, 24vw, 108px);
   }
 
   .task-card h2 {
