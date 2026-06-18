@@ -3427,7 +3427,7 @@ h2 {
   display: grid;
   gap: 12px;
   min-width: 0;
-  /* 右侧给右上角胶囊留位；底部给桌面端 trash 入口留位 */
+  /* 右侧给右上角胶囊留位；底部给桌面端操作入口留位 */
   padding-right: clamp(84px, 22vw, 128px);
   padding-bottom: 8px;
 }
@@ -3663,23 +3663,37 @@ h2 {
 }
 
 /* ---- 卡片滑动结构 ---- */
-/* 露出的销毁操作区，固定在卡片右侧，由 body 左滑覆盖 */
-.task-swipe-action {
-  --swipe-action-width: 112px;
+/* 露出的操作区，固定在卡片右侧，由 body 左滑覆盖 */
+.task-swipe-actions {
+  --swipe-action-width: 168px;
   grid-area: 1 / 1;
   align-self: stretch;
   justify-self: end;
   width: var(--swipe-action-width);
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.task-swipe-action {
+  display: grid;
   place-items: center;
   gap: 4px;
   grid-auto-flow: row;
+  border: 0;
   color: #fff;
-  background: linear-gradient(135deg, #e11d48, #be123c);
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.02em;
   cursor: pointer;
+}
+
+.task-swipe-action-edit {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.task-swipe-action-danger {
+  background: linear-gradient(135deg, #e11d48, #be123c);
 }
 
 .task-swipe-action .preview-icon,
@@ -3689,7 +3703,7 @@ h2 {
   stroke-width: 2.2;
 }
 
-/* 可滑动的内容层：盖在操作区上，整卡点击进编辑 */
+/* 可滑动的内容层：盖在操作区上，整卡点击进预览 */
 .task-swipe-body {
   position: relative;
   z-index: 1;
@@ -3717,11 +3731,16 @@ h2 {
   outline-offset: -3px;
 }
 
-/* 桌面端（无触屏）：右下角紧凑 trash 入口，作为非滑动降级 */
-.task-desktop-action {
+.task-desktop-actions {
   position: absolute;
   right: 16px;
   bottom: 14px;
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* 桌面端（无触屏）：右下角紧凑操作入口，作为非滑动降级 */
+.task-desktop-action {
   display: inline-grid;
   place-items: center;
   width: 36px;
@@ -3746,12 +3765,21 @@ h2 {
 .task-desktop-action:hover,
 .task-desktop-action:focus-visible {
   color: #fff;
+}
+
+.task-desktop-action-edit:hover,
+.task-desktop-action-edit:focus-visible {
+  background: #2563eb;
+}
+
+.task-desktop-action-danger:hover,
+.task-desktop-action-danger:focus-visible {
   background: #be123c;
 }
 
 @media (hover: none) {
   /* 触屏设备隐藏桌面入口，统一靠滑动 */
-  .task-desktop-action {
+  .task-desktop-actions {
     display: none;
   }
 }

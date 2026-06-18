@@ -481,10 +481,22 @@ function refreshViewOnFocus() {
   refreshView({ silent: true })
 }
 
-function taskRoute(task) {
+function isDraftTask(task) {
+  return ['draft_local', 'draft_sync', 'draft'].includes(task.status)
+}
+
+function taskEditRoute(task) {
   if (task.localRoute) return task.localRoute
-  if (['draft_local', 'draft_sync'].includes(task.status)) return `/service-sheets/${task.id}/edit?resume=1`
-  return `/tasks/${task.id}`
+  if (!task.id) return '/service-sheets/new'
+  return `/service-sheets/${task.id}/edit${isDraftTask(task) ? '?resume=1' : ''}`
+}
+
+function taskPreviewRoute(task) {
+  const linkedOrderId = Number(task.linkedOrderId || 0)
+  if (linkedOrderId) return `/tasks/${linkedOrderId}`
+  const taskId = Number(task.id || 0)
+  if (taskId) return `/tasks/${task.id}`
+  return taskEditRoute(task)
 }
 
 function showActionToast(message) {
@@ -508,14 +520,18 @@ function closeTaskAction() {
 }
 
 function openTask(task) {
-  router.push(taskRoute(task))
+  router.push(taskPreviewRoute(task))
 }
 
-// ---- 卡片左滑露出销毁操作（仅触屏；桌面端用 .task-desktop-action 按钮）----
+function openEditTask(task) {
+  router.push(taskEditRoute(task))
+}
+
+// ---- 卡片左滑露出修改/销毁操作（仅触屏；桌面端用 .task-desktop-action 按钮）----
 // transform 完全由 JS 内联驱动，避免依赖响应式 class 的异步更新时序导致展开态闪烁/残留
 const swipeOpenId = ref(null)
 let swipeState = null
-const SWIPE_ACTION_WIDTH = 112 // 露出的销毁操作区宽度，需与 CSS --swipe-action-width 一致
+const SWIPE_ACTION_WIDTH = 168 // 露出的操作区宽度，需与 CSS --swipe-action-width 一致
 
 function applySwipeTransform(body, open) {
   if (!body) return
@@ -611,12 +627,21 @@ function onTaskCardClick(task, event) {
   openTask(task)
 }
 
-function onSwipeActionClick(task, event) {
-  if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
-  else openCancelRecord(task)
+function closeSwipeFromAction(event) {
   swipeOpenId.value = null
   const body = event.currentTarget?.closest?.('.task-card')?.querySelector?.('.task-swipe-body')
   applySwipeTransform(body, false)
+}
+
+function onSwipeEditClick(task, event) {
+  closeSwipeFromAction(event)
+  openEditTask(task)
+}
+
+function onSwipeActionClick(task, event) {
+  closeSwipeFromAction(event)
+  if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
+  else openCancelRecord(task)
 }
 
 function onTaskCardKeydown(task, event) {
@@ -738,12 +763,28 @@ onBeforeUnmount(() => {
         }"
         :style="{ '--stagger': `${Math.min(index, 12) * 64}ms` }"
       >
-        <!-- 滑动露出的销毁操作区（左滑出现） -->
-        <div class="task-swipe-action" @click.stop="onSwipeActionClick(task)">
-          <PreviewIcon name="trash" />
-          <span>{{ zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录') }}</span>
+        <!-- 滑动露出的操作区（左滑出现） -->
+        <div class="task-swipe-actions">
+          <button
+            type="button"
+            class="task-swipe-action task-swipe-action-edit"
+            :aria-label="zh('修改')"
+            @click.stop="onSwipeEditClick(task, $event)"
+          >
+            <PreviewIcon name="edit" />
+            <span>{{ zh('修改') }}</span>
+          </button>
+          <button
+            type="button"
+            class="task-swipe-action task-swipe-action-danger"
+            :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+            @click.stop="onSwipeActionClick(task, $event)"
+          >
+            <PreviewIcon name="trash" />
+            <span>{{ zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录') }}</span>
+          </button>
         </div>
-        <!-- 可滑动的内容层：整卡点击进编辑 -->
+        <!-- 可滑动的内容层：整卡点击进预览 -->
         <div
           class="task-swipe-body"
           :data-task-id="task.id"
@@ -775,15 +816,25 @@ onBeforeUnmount(() => {
               <p v-if="isInspectionTask(task)" class="task-inspection-context">{{ zh(inspectionContext(task)) }}</p>
             </div>
           </div>
-          <!-- 桌面端（无触屏）保留的非滑动销毁入口 -->
-          <button
-            type="button"
-            class="task-desktop-action"
-            :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
-            @click.stop="['draft_local', 'draft_sync'].includes(task.status) ? openDeleteDraft(task) : openCancelRecord(task)"
-          >
-            <PreviewIcon name="trash" />
-          </button>
+          <!-- 桌面端（无触屏）保留的非滑动操作入口 -->
+          <div class="task-desktop-actions">
+            <button
+              type="button"
+              class="task-desktop-action task-desktop-action-edit"
+              :aria-label="zh('修改')"
+              @click.stop="openEditTask(task)"
+            >
+              <PreviewIcon name="edit" />
+            </button>
+            <button
+              type="button"
+              class="task-desktop-action task-desktop-action-danger"
+              :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+              @click.stop="['draft_local', 'draft_sync'].includes(task.status) ? openDeleteDraft(task) : openCancelRecord(task)"
+            >
+              <PreviewIcon name="trash" />
+            </button>
+          </div>
         </div>
       </article>
       <p v-if="!allDisplayTasks.length && !loading" class="empty-state">{{ zh('暂无服务记录') }}</p>
