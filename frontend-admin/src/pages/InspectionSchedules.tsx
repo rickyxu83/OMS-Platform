@@ -95,11 +95,12 @@ export function InspectionSchedules() {
   const [detailTarget, setDetailTarget] = useState<Schedule | null>(null);
   const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
     customerId: "",
     deviceIds: [] as number[],
-    targetEngineerId: "",
+    targetEngineerIds: [] as string[],
     cadence: "monthly",
     nextRunAnchor: "",
     endDate: "",
@@ -194,7 +195,24 @@ export function InspectionSchedules() {
     return devices.filter((d) => String(d.customerId) === form.customerId);
   }, [devices, form.customerId]);
 
+  const selectedCustomer = useMemo(
+    () => customers.find((customer) => String(customer.id) === form.customerId) || null,
+    [customers, form.customerId],
+  );
+
+  const filteredCustomerOptions = useMemo(() => {
+    const keyword = customerSearch.trim().toLowerCase();
+    if (!keyword) return customers.slice(0, 80);
+    return customers
+      .filter((customer) => {
+        const text = [customer.name, customer.id].filter(Boolean).join(" ").toLowerCase();
+        return text.includes(keyword);
+      })
+      .slice(0, 80);
+  }, [customers, customerSearch]);
+
   const selectedDeviceCount = form.deviceIds.length;
+  const selectedEngineerCount = form.targetEngineerIds.length;
 
   function toggleDevice(deviceId: number) {
     setForm((prev) => ({
@@ -221,11 +239,12 @@ export function InspectionSchedules() {
 
   function openCreate() {
     setEditingId(null);
+    setCustomerSearch("");
     setForm({
       name: "",
       customerId: "",
       deviceIds: [],
-      targetEngineerId: "",
+      targetEngineerIds: [],
       cadence: "monthly",
       nextRunAnchor: "",
       endDate: "",
@@ -237,11 +256,12 @@ export function InspectionSchedules() {
 
   function openEdit(schedule: Schedule) {
     setEditingId(schedule.id);
+    setCustomerSearch(schedule.customerName || "");
     setForm({
       name: schedule.name || "",
       customerId: schedule.customerId ? String(schedule.customerId) : "",
       deviceIds: schedule.deviceIds || [],
-      targetEngineerId: schedule.targetEngineerId ? String(schedule.targetEngineerId) : "",
+      targetEngineerIds: schedule.targetEngineerId ? [String(schedule.targetEngineerId)] : [],
       cadence: schedule.cadence || "monthly",
       nextRunAnchor: inputDate(schedule.nextRunAnchor),
       endDate: inputDate(schedule.endDate),
@@ -252,7 +272,25 @@ export function InspectionSchedules() {
   }
 
   function updateCustomer(customerId: string) {
-    setForm({ ...form, customerId, deviceIds: [], targetEngineerId: "" });
+    setForm({ ...form, customerId, deviceIds: [] });
+    const customer = customers.find((c) => String(c.id) === customerId);
+    setCustomerSearch(customer?.name || "");
+  }
+
+  function updateCustomerSearch(value: string) {
+    setCustomerSearch(value);
+    if (selectedCustomer && value !== (selectedCustomer.name || `客户 #${selectedCustomer.id}`)) {
+      setForm((prev) => ({ ...prev, customerId: "", deviceIds: [] }));
+    }
+  }
+
+  function toggleEngineer(engineerId: string) {
+    setForm((prev) => ({
+      ...prev,
+      targetEngineerIds: prev.targetEngineerIds.includes(engineerId)
+        ? prev.targetEngineerIds.filter((id) => id !== engineerId)
+        : [...prev.targetEngineerIds, engineerId],
+    }));
   }
 
   async function submit() {
@@ -260,8 +298,12 @@ export function InspectionSchedules() {
       setError("请选择客户");
       return;
     }
-    if (!form.targetEngineerId) {
+    if (form.targetEngineerIds.length === 0) {
       setError("请选择巡检工程师");
+      return;
+    }
+    if (editingId && form.targetEngineerIds.length > 1) {
+      setError("编辑已有计划时只能选择一名巡检工程师；新增计划可多选");
       return;
     }
     if (form.deviceIds.length === 0) {
@@ -287,7 +329,7 @@ export function InspectionSchedules() {
         name: form.name.trim() || undefined,
         customerId: form.customerId,
         deviceIds: form.deviceIds,
-        targetEngineerId: form.targetEngineerId,
+        targetEngineerId: form.targetEngineerIds[0],
         cadence: form.cadence,
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
@@ -296,6 +338,17 @@ export function InspectionSchedules() {
       };
       if (editingId) {
         await api.put(`/inspection-schedules/${editingId}`, payload);
+      } else if (form.targetEngineerIds.length > 1) {
+        await api.post("/inspection-schedules/bulk", {
+          customerId: form.customerId,
+          assignments: form.targetEngineerIds.flatMap((targetEngineerId) =>
+            form.deviceIds.map((deviceId) => ({ deviceId, targetEngineerId })),
+          ),
+          cadence: form.cadence,
+          nextRunAnchor: form.nextRunAnchor,
+          endDate: form.endDate || null,
+          active: form.active,
+        });
       } else {
         await api.post("/inspection-schedules", payload);
       }
@@ -691,36 +744,111 @@ export function InspectionSchedules() {
               </div>
               <div className="space-y-2">
                 <Label>客户 *</Label>
-                <Select value={form.customerId} onValueChange={updateCustomer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择客户" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name || `客户 #${c.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={customerSearch}
+                  onChange={(event) => updateCustomerSearch(event.target.value)}
+                  placeholder="输入客户名称或选择客户"
+                />
+                <div className="max-h-48 overflow-y-auto rounded-md border border-border p-1">
+                  {filteredCustomerOptions.length ? (
+                    filteredCustomerOptions.map((c) => {
+                      const customerId = String(c.id);
+                      const selected = form.customerId === customerId;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
+                            selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
+                          }`}
+                          onClick={() => updateCustomer(customerId)}
+                        >
+                          <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
+                          {selected && <Badge variant="outline">已选</Badge>}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配客户</div>
+                  )}
+                </div>
+                {selectedCustomer && (
+                  <div className="text-xs text-muted-foreground">
+                    已选：{selectedCustomer.name || `客户 #${selectedCustomer.id}`}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
-                <Label>巡检工程师 *</Label>
-                <Select
-                  value={form.targetEngineerId}
-                  onValueChange={(v) => setForm({ ...form, targetEngineerId: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择工程师" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {engineers.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)}>
-                        {e.realName || e.username || `工程师 #${e.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>巡检工程师 *</Label>
+                  {!editingId && (
+                    <span className="text-xs text-muted-foreground">已选 {selectedEngineerCount} 人</span>
+                  )}
+                </div>
+                {editingId ? (
+                  <Select
+                    value={form.targetEngineerIds[0] || ""}
+                    onValueChange={(v) => setForm({ ...form, targetEngineerIds: [v] })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择工程师" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {engineers.map((e) => (
+                        <SelectItem key={e.id} value={String(e.id)}>
+                          {e.realName || e.username || `工程师 #${e.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
+                    {engineers.length ? (
+                      engineers.map((e) => {
+                        const engineerId = String(e.id);
+                        const checked = form.targetEngineerIds.includes(engineerId);
+                        return (
+                          <div
+                            key={e.id}
+                            role="checkbox"
+                            aria-checked={checked}
+                            tabIndex={0}
+                            onClick={() => toggleEngineer(engineerId)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleEngineer(engineerId);
+                              }
+                            }}
+                            className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                              checked
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/30"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary"
+                              checked={checked}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => toggleEngineer(engineerId)}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium">
+                                {e.realName || e.username || `工程师 #${e.id}`}
+                              </div>
+                              {e.username && e.realName && (
+                                <div className="text-xs text-muted-foreground">{e.username}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用工程师</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">
