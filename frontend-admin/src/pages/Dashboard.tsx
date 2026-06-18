@@ -571,8 +571,8 @@ export function Dashboard() {
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
                     <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto_auto_auto] items-center gap-3">
-                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.id}</span>
-                      <span className="min-w-0 truncate text-sm text-muted-foreground">{order.customer}</span>
+                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.customer}</span>
+                      <span className="min-w-0 truncate text-sm text-muted-foreground">{order.title}</span>
                       <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 shrink-0 whitespace-nowrap px-2 py-0 text-[10px] font-normal">
                         {order.statusLabel}
                       </Badge>
