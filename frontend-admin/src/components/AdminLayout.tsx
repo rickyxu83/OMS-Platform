@@ -227,7 +227,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const { lang, toggleLang } = useLanguage();
   const currentUser = user || { name: "", role: "" };
   const currentPage = location.pathname.replace(/^\//, "") || "dashboard";
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => (
+    typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
+  ));
   const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -240,6 +242,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 1024px)");
+    const syncSidebar = () => setSidebarOpen(media.matches);
+    syncSidebar();
+    media.addEventListener("change", syncSidebar);
+    return () => media.removeEventListener("change", syncSidebar);
   }, []);
 
   const handleLangToggle = () => {
@@ -273,13 +284,24 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )
     : allNavItems;
 
+  const mobileNavItems = allNavItems.filter((item) => (
+    ["dashboard", "service-orders", "inspection-schedules", "customers", "devices"].includes(item.path)
+  ));
+
+  const navigateTo = (path: string) => {
+    navigate(`/${path}`);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+      setSidebarOpen(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <aside
         className={`${
-          sidebarOpen ? "w-64" : "w-0"
-        } transition-all duration-300 bg-sidebar border-r border-sidebar-border flex-shrink-0 overflow-hidden`}
+          sidebarOpen ? "translate-x-0 lg:w-64" : "-translate-x-full lg:w-0 lg:translate-x-0"
+        } fixed inset-y-0 left-0 z-40 w-[82vw] max-w-[320px] transition-transform duration-300 bg-sidebar border-r border-sidebar-border flex-shrink-0 overflow-hidden shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none lg:transition-all`}
       >
         <div className="h-full flex flex-col">
           {/* Logo */}
@@ -316,7 +338,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       return (
                         <button
                           key={item.path}
-                          onClick={() => navigate(`/${item.path}`)}
+                          onClick={() => navigateTo(item.path)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 group ${
                             isActive
                               ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
@@ -348,6 +370,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </div>
         </div>
       </aside>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
+          aria-label="关闭导航菜单"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative overflow-hidden">
@@ -356,8 +386,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
         
         {/* Top Bar */}
-        <header className="h-[76px] bg-card/80 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-6 flex-shrink-0">
-          <div className="flex items-center gap-4">
+        <header className="h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-3 flex-shrink-0 lg:h-[76px] lg:px-6">
+          <div className="flex min-w-0 items-center gap-2 lg:gap-4">
             <Button
               variant="outline"
               size="icon"
@@ -367,14 +397,46 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
             </Button>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{strings.common.systemName}</span>
-              <span>/</span>
-              <span className="text-foreground font-medium">{strings.pages[currentPage] || currentPage}</span>
+            <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+              <span className="hidden sm:inline">{strings.common.systemName}</span>
+              <span className="hidden sm:inline">/</span>
+              <span className="truncate text-base font-semibold text-foreground sm:text-sm sm:font-medium">{strings.pages[currentPage] || currentPage}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5 lg:hidden">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setQuickNavOpen(true)}
+              className="h-8 w-8"
+              aria-label={strings.common.quickNav}
+            >
+              <Search className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLangToggle}
+              className="h-8 px-2 text-xs"
+            >
+              {strings.common.langShort}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+              aria-label="退出登录"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="hidden items-center gap-6 lg:flex">
             <div className="text-sm text-muted-foreground">
               {currentTime.toLocaleString(lang, {
                 year: "numeric",
@@ -443,9 +505,38 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto bg-transparent relative z-0">
+        <main className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-20 lg:pb-0">
           {children}
         </main>
+
+        {mobileNavItems.length > 0 && (
+          <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-2 pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md lg:hidden">
+            <div
+              className="grid gap-1"
+              style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
+            >
+              {mobileNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentPage === item.path;
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    onClick={() => navigateTo(item.path)}
+                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors ${
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="w-full truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
       </div>
 
       {/* Quick Navigation Dialog */}
@@ -468,7 +559,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   <button
                     key={item.path}
                     onClick={() => {
-                      navigate(`/${item.path}`);
+                      navigateTo(item.path);
                       setQuickNavOpen(false);
                       setSearchQuery("");
                     }}

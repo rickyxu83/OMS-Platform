@@ -228,7 +228,7 @@ export function AuditLogs() {
                 />
               </div>
               <Select value={actionFilter} onValueChange={setActionFilter}>
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="w-full md:w-[150px]">
                   <SelectValue placeholder="动作筛选" />
                 </SelectTrigger>
                 <SelectContent>

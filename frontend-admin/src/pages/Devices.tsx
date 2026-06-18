@@ -393,7 +393,7 @@ export function Devices() {
               />
             </div>
             <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="选择客户" />
               </SelectTrigger>
               <SelectContent>
@@ -406,7 +406,7 @@ export function Devices() {
               </SelectContent>
             </Select>
             <Select value={maintenanceFilter} onValueChange={setMaintenanceFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="维护类型" />
               </SelectTrigger>
               <SelectContent>

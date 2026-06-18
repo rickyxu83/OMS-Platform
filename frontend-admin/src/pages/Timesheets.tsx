@@ -358,8 +358,8 @@ export function Timesheets() {
           ) : items.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">暂无工时数据</div>
           ) : (
-            <div className="border rounded-md">
-              <Table>
+            <div className="overflow-x-auto rounded-md border">
+              <Table className="min-w-[720px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>工单</TableHead>

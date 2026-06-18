@@ -295,7 +295,7 @@ export function Users() {
               />
             </div>
             <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full md:w-[160px]">
                 <SelectValue placeholder="角色筛选" />
               </SelectTrigger>
               <SelectContent>
@@ -308,7 +308,7 @@ export function Users() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-full md:w-[140px]">
                 <SelectValue placeholder="状态筛选" />
               </SelectTrigger>
               <SelectContent>

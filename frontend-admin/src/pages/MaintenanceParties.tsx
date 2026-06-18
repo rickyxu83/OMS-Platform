@@ -410,7 +410,7 @@ export function MaintenanceParties() {
               />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder={t.filters.typePlaceholder} />
               </SelectTrigger>
               <SelectContent>

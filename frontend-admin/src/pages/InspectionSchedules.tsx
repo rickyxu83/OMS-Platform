@@ -506,7 +506,7 @@ export function InspectionSchedules() {
               />
             </div>
             <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="客户" />
               </SelectTrigger>
               <SelectContent>
@@ -519,7 +519,7 @@ export function InspectionSchedules() {
               </SelectContent>
             </Select>
             <Select value={cadenceFilter} onValueChange={setCadenceFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="巡检周期" />
               </SelectTrigger>
               <SelectContent>
@@ -530,7 +530,7 @@ export function InspectionSchedules() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="启用状态" />
               </SelectTrigger>
               <SelectContent>
