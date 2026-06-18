@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1173,6 +1173,7 @@ export function Customers() {
                                 openEdit(c);
                               }}
                             >
+                              <Pencil className="w-4 h-4 mr-1" />
                               {t.actions.edit}
                             </Button>
                             {canForceDeleteCustomer ? (
@@ -1495,6 +1496,7 @@ export function Customers() {
                 setDetailTarget(null);
                 openEdit(target);
               }}>
+                <Pencil className="w-4 h-4 mr-2" />
                 {t.actions.edit}
               </Button>
             ) : null}

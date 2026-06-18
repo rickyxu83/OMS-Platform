@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -500,6 +500,7 @@ export function Devices() {
                     </div>
                     <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
                       <Button variant="ghost" size="sm" onClick={() => openEdit(device)}>
+                        <Pencil className="w-4 h-4 mr-1" />
                         编辑
                       </Button>
                       <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
@@ -629,6 +630,7 @@ export function Devices() {
                 setDetailTarget(null);
                 openEdit(target);
               }}>
+                <Pencil className="w-4 h-4 mr-2" />
                 编辑
               </Button>
             ) : null}

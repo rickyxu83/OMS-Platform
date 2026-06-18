@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -686,15 +686,16 @@ export function ServiceOrders() {
     }
   }
 
-  async function exportOrdersPdf() {
+  async function exportOrdersPdf(orderIds: Array<ServiceOrder["id"]> = [], fileLabel?: string) {
     if (exporting) return;
     setExporting(true);
     setError("");
     try {
+      const effectiveIds = orderIds.length ? orderIds : selectedIds;
       let queryString: string;
-      if (selectedIds.length) {
+      if (effectiveIds.length) {
         // 有勾选：只导出选中的工单
-        queryString = `ids=${selectedIds.join(",")}`;
+        queryString = `ids=${effectiveIds.join(",")}`;
       } else {
         // 无勾选：按当前筛选导出全部匹配
         const params = buildListParams(1, 100);
@@ -707,8 +708,10 @@ export function ServiceOrders() {
       const link = document.createElement("a");
       link.href = url;
       const datePart = `-至${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
-      const namePart = selectedIds.length
-        ? `-已选${selectedIds.length}张`
+      const namePart = orderIds.length === 1
+        ? `-${safeFilenamePart(fileLabel || String(orderIds[0]))}`
+        : effectiveIds.length
+        ? `-已选${effectiveIds.length}张`
         : selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
       link.download = `服务记录${namePart}${datePart}.pdf`;
       document.body.appendChild(link);
@@ -738,7 +741,16 @@ export function ServiceOrders() {
     return params;
   }
 
-  async function fetchExportOrders() {
+  async function fetchExportOrders(orderIds: Array<ServiceOrder["id"]> = []) {
+    if (orderIds.length) {
+      const details = await Promise.all(
+        orderIds.map(async (id) => {
+          const data = await api.get(`/service-orders/${id}`);
+          return (data?.item || data) as ServiceOrder;
+        }),
+      );
+      return details.filter(Boolean);
+    }
     const pageSize = 100;
     let page = 1;
     let totalCount = 0;
@@ -759,11 +771,12 @@ export function ServiceOrders() {
     return allItems;
   }
 
-  async function exportOrders() {
+  async function exportOrders(orderIds: Array<ServiceOrder["id"]> = []) {
+    if (exporting) return;
     setExporting(true);
     setError("");
     try {
-      const items = await fetchExportOrders();
+      const items = await fetchExportOrders(orderIds);
       if (!items.length) {
         setError(t.errors.exportEmpty);
         return;
@@ -862,7 +875,9 @@ export function ServiceOrders() {
 
       const range = normalizedDateRange(startDate, endDate);
       const datePart = range.startDate || range.endDate ? `${range.startDate || "不限"}-至-${range.endDate || "不限"}` : new Date().toISOString().slice(0, 10);
-      const customerPart = selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
+      const customerPart = orderIds.length === 1
+        ? `-${safeFilenamePart(displayId(items[0]))}`
+        : selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
       const buffer = await workbook.xlsx.writeBuffer();
       saveAs(
         new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
@@ -1052,11 +1067,11 @@ export function ServiceOrders() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={exportOrders} disabled={exporting || loading}>
+              <DropdownMenuItem onSelect={() => exportOrders()} disabled={exporting || loading}>
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 {t.actions.exportExcel}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={exportOrdersPdf} disabled={exporting || loading}>
+              <DropdownMenuItem onSelect={() => exportOrdersPdf()} disabled={exporting || loading}>
                 <FileDown className="w-4 h-4 mr-2" />
                 {t.actions.exportPdf}
               </DropdownMenuItem>
@@ -1200,8 +1215,10 @@ export function ServiceOrders() {
               {filteredOrders.map((order) => {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
-                const canConfirmInspection = getWorkflowStatus(order) === "pending_confirmation" && order.serviceType === "inspect";
-                const canAssign = getWorkflowStatus(order) !== "cancelled" && getWorkflowStatus(order) !== "submitted";
+                const workflowStatus = getWorkflowStatus(order);
+                const canConfirmInspection = workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
+                const canAssign = workflowStatus !== "cancelled" && workflowStatus !== "submitted";
+                const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
                 return (
                   <div
                     key={order.id}
@@ -1309,8 +1326,35 @@ export function ServiceOrders() {
                               }}
                               disabled={saving}
                             >
+                              <Send className="w-4 h-4 mr-2" />
                               派单 / 改派
                             </Button>
+                          )}
+                          {canExport && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(event) => event.stopPropagation()}
+                                  disabled={exporting}
+                                >
+                                  {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                  {t.actions.export}
+                                  <ChevronDown className="w-4 h-4 ml-2" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                                <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
+                                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                                  {t.actions.exportExcel}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
+                                  <FileDown className="w-4 h-4 mr-2" />
+                                  {t.actions.exportPdf}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </div>
                     </div>
