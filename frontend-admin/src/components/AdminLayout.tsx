@@ -12,8 +12,8 @@ import {
   Shield,
   LogOut,
   Search,
-  Menu,
-  X,
+  PanelLeftClose,
+  PanelLeftOpen,
   Languages,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -359,11 +359,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <header className="h-16 bg-card/80 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-4">
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="h-8 w-8 border-border/70 bg-background/70 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
             >
-              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
             </Button>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{strings.common.systemName}</span>
