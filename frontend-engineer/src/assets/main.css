@@ -3425,6 +3425,7 @@ h2 {
 
 .task-content {
   display: grid;
+  align-content: start;
   gap: 12px;
   min-width: 0;
   /* 右侧给右上角胶囊留位；底部给桌面端操作入口留位 */
@@ -3709,6 +3710,8 @@ h2 {
   z-index: 1;
   grid-area: 1 / 1;
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 14px;
   min-height: 100%;
   padding: 22px;
