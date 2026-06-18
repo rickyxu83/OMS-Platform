@@ -537,23 +537,18 @@ export function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3 flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>{t.map.title}</CardTitle>
-              <CardDescription>{t.map.description}</CardDescription>
-            </div>
-
-          </CardHeader>
-          <CardContent className="flex-1 min-h-[400px] p-0">
-            <Amap
-              center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
-              points={mapPoints}
-              zoom={9}
-              height={420}
-            />
-          </CardContent>
-        </Card>
+        <section className="lg:col-span-3">
+          <div className="mb-4 px-1">
+            <h2 className="text-xl font-semibold tracking-tight">{t.map.title}</h2>
+            <p className="text-sm text-muted-foreground">{t.map.description}</p>
+          </div>
+          <Amap
+            center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
+            points={mapPoints}
+            zoom={9}
+            height={420}
+          />
+        </section>
 
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
