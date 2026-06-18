@@ -550,7 +550,7 @@ export function Dashboard() {
           />
         </section>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 lg:mt-16">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>{t.recent.title}</CardTitle>
