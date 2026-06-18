@@ -3678,7 +3678,8 @@ h2 {
   justify-content: center;
   border-radius: 8px;
   color: #fff;
-  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 10px 22px rgb(37 99 235 / 18%);
   font-weight: 800;
   transition:
     transform 140ms ease,
@@ -3689,6 +3690,7 @@ h2 {
 .task-card a:hover,
 .task-card a:focus-visible {
   filter: brightness(1.08);
+  box-shadow: 0 14px 28px rgb(37 99 235 / 24%);
 }
 
 .task-card .task-actions button {
