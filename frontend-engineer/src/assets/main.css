@@ -3369,6 +3369,8 @@ h2 {
 .task-card {
   position: relative;
   overflow: hidden;
+  /* 取消 .form-section 的 padding，内边距统一由 .task-swipe-body 承担，避免双重缩进导致内容错位 */
+  padding: 0;
   background:
     linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(248 251 255 / 92%)),
     rgb(255 255 255 / 96%);
