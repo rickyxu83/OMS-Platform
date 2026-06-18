@@ -224,11 +224,14 @@ export function MaintenanceParties() {
     remark: "",
   });
 
-  async function load() {
+  async function load(keyword = searchQuery, type = typeFilter) {
     setLoading(true);
     setError("");
     try {
-      const data = await api.get("/maintenance-parties");
+      const params = new URLSearchParams();
+      if (keyword.trim()) params.set("keyword", keyword.trim());
+      if (type !== "all") params.set("partyType", type);
+      const data = await api.get(`/maintenance-parties${params.toString() ? `?${params.toString()}` : ""}`);
       setParties((data?.items || []) as Party[]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
@@ -239,8 +242,12 @@ export function MaintenanceParties() {
   }
 
   useEffect(() => {
-    load();
-  }, [t.errors.loadFailed]);
+    const timerId = window.setTimeout(() => {
+      load(searchQuery, typeFilter);
+    }, searchQuery.trim() ? 250 : 0);
+    return () => window.clearTimeout(timerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, typeFilter, t.errors.loadFailed]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -356,7 +363,7 @@ export function MaintenanceParties() {
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
+          <Button variant="outline" onClick={() => load(searchQuery, typeFilter)}>
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
@@ -370,7 +377,7 @@ export function MaintenanceParties() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>{t.actions.retry}</Button>
+          <Button variant="ghost" size="sm" onClick={() => load(searchQuery, typeFilter)}>{t.actions.retry}</Button>
         </div>
       )}
 
@@ -397,6 +404,9 @@ export function MaintenanceParties() {
                 placeholder={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") load(searchQuery, typeFilter);
+                }}
               />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>

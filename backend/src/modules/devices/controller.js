@@ -65,7 +65,8 @@ function devicePayload(row) {
 }
 
 async function list(req, res) {
-  const { customerId = null, keyword = '' } = req.query
+  const { customerId = null } = req.query
+  const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
   const rows = await query(
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
@@ -75,7 +76,16 @@ async function list(req, res) {
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
      WHERE (:customerId IS NULL OR d.customer_id = :customerId)
-       AND (:keyword = '' OR d.name LIKE :likeKeyword OR d.model LIKE :likeKeyword OR d.serial_no LIKE :likeKeyword)
+       AND (
+         :keyword = ''
+         OR d.name LIKE :likeKeyword
+         OR d.model LIKE :likeKeyword
+         OR d.pn LIKE :likeKeyword
+         OR d.serial_no LIKE :likeKeyword
+         OR c.name LIKE :likeKeyword
+         OR d.location LIKE :likeKeyword
+         OR d.remark LIKE :likeKeyword
+       )
      ORDER BY d.id DESC
      LIMIT 200`,
     {

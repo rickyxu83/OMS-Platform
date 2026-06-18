@@ -551,16 +551,16 @@ export function Customers() {
     return options;
   }, [form.salesperson, salespeople]);
 
-  async function load() {
+  async function load(keyword = searchQuery) {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams({
-        pageSize: "100",
+        pageSize: "200",
         sortBy: "name",
         sortDir: "asc",
       });
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      if (keyword.trim()) params.set("keyword", keyword.trim());
       const data = await api.get(`/customers?${params.toString()}`);
       setCustomers((data?.items || []) as Customer[]);
     } catch (e) {
@@ -572,11 +572,6 @@ export function Customers() {
   }
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t.errors.loadFailed]);
-
-  useEffect(() => {
     api.get("/users/salespeople")
       .then((data) => setSalespeople((data?.items || []) as SalespersonOption[]))
       .catch(() => setSalespeople([]));
@@ -586,6 +581,14 @@ export function Customers() {
     const keyword = searchParams.get("keyword") || searchParams.get("city") || "";
     setSearchQuery(keyword);
   }, [searchParams]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      load(searchQuery);
+    }, searchQuery.trim() ? 250 : 0);
+    return () => window.clearTimeout(timerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, t.errors.loadFailed]);
 
   useEffect(() => {
     if (!detailTarget?.id) {
@@ -627,15 +630,7 @@ export function Customers() {
     };
   }, [detailTarget?.id, t.errors.loadFailed]);
 
-  const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) return customers;
-    return customers.filter((c) => {
-      return [c.name, c.code, c.contactName, c.contactPhone, c.address, c.salesperson]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(keyword));
-    });
-  }, [customers, searchQuery]);
+  const filtered = customers;
 
   const stats = useMemo(() => {
     const total = customers.length;
@@ -988,7 +983,7 @@ export function Customers() {
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
+          <Button variant="outline" onClick={() => load(searchQuery)}>
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
@@ -1002,7 +997,7 @@ export function Customers() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>{t.actions.retry}</Button>
+          <Button variant="ghost" size="sm" onClick={() => load(searchQuery)}>{t.actions.retry}</Button>
         </div>
       )}
 
@@ -1038,7 +1033,7 @@ export function Customers() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") load();
+                  if (e.key === "Enter") load(searchQuery);
                 }}
               />
             </div>

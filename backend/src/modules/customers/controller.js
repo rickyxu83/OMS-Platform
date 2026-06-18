@@ -436,7 +436,8 @@ async function forceDeleteCustomer(connection, customerId) {
 
 async function list(req, res) {
   await ensureCustomerLevelColumn()
-  const { keyword = '', salesperson = '', mine = '' } = req.query
+  const { salesperson = '', mine = '' } = req.query
+  const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
   const keywordKey = customerNameKey(keyword)
   const normalizedPageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 200))
   const mineQuery = mine === '1' || mine === 'true'

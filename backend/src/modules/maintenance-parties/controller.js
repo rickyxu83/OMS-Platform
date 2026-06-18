@@ -69,7 +69,8 @@ function partyPayload(row) {
 
 async function list(req, res) {
   await ensureMaintenancePartyColumns()
-  const { keyword = '', partyType = '' } = req.query
+  const { partyType = '' } = req.query
+  const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
   const normalizedPartyType = partyType ? normalizePartyType(partyType, '') : ''
   if (normalizedPartyType && !validPartyTypes.has(normalizedPartyType)) {
     throw badRequest('维护方类型不正确')

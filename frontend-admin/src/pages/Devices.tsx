@@ -137,12 +137,13 @@ export function Devices() {
     remark: "",
   });
 
-  async function load() {
+  async function load(keyword = searchQuery) {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams();
       if (customerFilter !== "all") params.set("customerId", customerFilter);
+      if (keyword.trim()) params.set("keyword", keyword.trim());
       const data = await api.get(`/devices${params.toString() ? `?${params}` : ""}`);
       setDevices((data?.items || []) as Device[]);
     } catch (e) {
@@ -174,14 +175,16 @@ export function Devices() {
   useEffect(() => {
     loadCustomers();
     loadParties();
-    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    load();
+    const timerId = window.setTimeout(() => {
+      load(searchQuery);
+    }, searchQuery.trim() ? 250 : 0);
+    return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerFilter]);
+  }, [customerFilter, searchQuery]);
 
   const filtered = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -343,7 +346,7 @@ export function Devices() {
           <p className="text-muted-foreground mt-1">管理客户设备和维护信息</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
+          <Button variant="outline" onClick={() => load(searchQuery)}>
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
@@ -357,7 +360,7 @@ export function Devices() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>重试</Button>
+          <Button variant="ghost" size="sm" onClick={() => load(searchQuery)}>重试</Button>
         </div>
       )}
 
@@ -384,6 +387,9 @@ export function Devices() {
                 placeholder="搜索设备名称、型号、序列号..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") load(searchQuery);
+                }}
               />
             </div>
             <Select value={customerFilter} onValueChange={setCustomerFilter}>
