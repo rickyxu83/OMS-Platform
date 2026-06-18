@@ -344,7 +344,7 @@ export function Dashboard() {
     { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
   ];
 
-  const recentOrders = orders.slice(0, 5).map((o) => {
+  const recentOrders = orders.slice(0, 7).map((o) => {
     const status = getWorkflowStatus(o);
     const customerName = typeof o.customer === "string" ? o.customer : o.customer?.name || o.customerName;
     return {
