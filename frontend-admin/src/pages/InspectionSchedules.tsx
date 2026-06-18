@@ -537,12 +537,16 @@ export function InspectionSchedules() {
               <div className="space-y-3">
               {filtered.map((s) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
+                const title = String(s.name || s.customerName || `计划 #${s.id}`).trim();
+                const customerName = String(s.customerName || "").trim();
+                const showCustomerName = Boolean(customerName && customerName !== title);
+                const deviceNames = s.deviceNames || [];
                 return (
                   <div
                     key={s.id}
                     role="button"
                     tabIndex={0}
-                    className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
+                    className="grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px_168px] lg:items-center"
                     onClick={() => setDetailTarget(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
@@ -552,55 +556,54 @@ export function InspectionSchedules() {
                       }
                     }}
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
-                      <div>
-                        <div className="font-medium">{s.name || s.customerName || `计划 #${s.id}`}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.customerName || "-"}
+                    <div className="min-w-0">
+                      <div className="text-base font-semibold leading-6 text-slate-900">
+                        {title}
+                      </div>
+                      {showCustomerName && (
+                        <div className="mt-1 truncate text-sm text-muted-foreground">
+                          {customerName}
                         </div>
-                        {s.deviceNames && s.deviceNames.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {s.deviceNames.slice(0, 3).map((name, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {name}
-                              </Badge>
-                            ))}
-                            {s.deviceNames.length > 3 && (
-                              <span className="text-xs text-muted-foreground">+{s.deviceNames.length - 3}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground">巡检人</div>
-                        <div className="text-sm font-medium">{s.targetEngineerName || "未指定"}</div>
-                      </div>
-                      <div>
-                        <Badge variant={CADENCE_VARIANT[s.cadence || ""] || "outline"}>
-                          {cadenceLabel}
-                        </Badge>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground">下次生成</div>
-                        <div className="text-sm font-medium">{formatDate(s.nextRunAnchor)}</div>
-                      </div>
-                      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                        <Switch
-                          checked={Boolean(s.active)}
-                          onCheckedChange={() => toggleActive(s)}
-                          disabled={saving}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {s.active ? "已启用" : "已停用"}
-                        </span>
-                      </div>
+                      )}
+                      {deviceNames.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="max-w-[220px] truncate text-xs">
+                            {deviceNames[0]}
+                          </Badge>
+                          {deviceNames.length > 1 && (
+                            <span className="text-xs font-medium text-muted-foreground">+{deviceNames.length - 1}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs text-muted-foreground">巡检人</div>
+                      <div className="mt-1 truncate text-sm font-semibold text-slate-900">{s.targetEngineerName || "未指定"}</div>
+                    </div>
+                    <div className="flex items-center">
+                      <Badge variant={CADENCE_VARIANT[s.cadence || ""] || "outline"}>
+                        {cadenceLabel}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">下次生成</div>
+                      <div className="mt-1 whitespace-nowrap text-sm font-semibold text-slate-900">{formatDate(s.nextRunAnchor)}</div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <Switch
+                        checked={Boolean(s.active)}
+                        onCheckedChange={() => toggleActive(s)}
+                        disabled={saving}
+                      />
+                      <span className="whitespace-nowrap text-sm text-muted-foreground">
+                        {s.active ? "已启用" : "已停用"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={() => {
                           openEdit(s);
                         }}
                       >
@@ -609,8 +612,7 @@ export function InspectionSchedules() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={() => {
                           deleteSchedule(s);
                         }}
                         disabled={saving}
