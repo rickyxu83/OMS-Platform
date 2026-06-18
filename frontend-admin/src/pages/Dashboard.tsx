@@ -550,7 +550,7 @@ export function Dashboard() {
           />
         </section>
 
-        <Card className="lg:col-span-2 lg:mt-16">
+        <Card className="lg:col-span-2 lg:mt-16 lg:h-[420px]">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>{t.recent.title}</CardTitle>
@@ -560,7 +560,7 @@ export function Dashboard() {
               {t.recent.viewAll}
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
@@ -568,11 +568,11 @@ export function Dashboard() {
             ) : recentOrders.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">{t.recent.empty}</div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {recentOrders.map((order) => (
                   <div
                     key={order.id}
-                    className="group relative flex items-center gap-3 p-3 -mx-3 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="group relative flex items-center gap-3 -mx-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer"
                     onClick={() => navigate("/service-orders")}
                   >
                     <div className={`h-2 w-2 shrink-0 rounded-full ${
@@ -583,7 +583,7 @@ export function Dashboard() {
                       <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
                       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
                       <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 shrink-0 whitespace-nowrap px-2 py-0 text-[10px] font-normal">
+                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal">
                         {order.statusLabel}
                       </Badge>
                     </div>
