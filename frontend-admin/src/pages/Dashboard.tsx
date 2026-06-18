@@ -271,6 +271,12 @@ const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" |
   completed: "success",
 };
 
+function recentStatusBadgeClass(status: string) {
+  const base = "h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal";
+  if (status === "draft") return `${base} border border-slate-300 bg-slate-200 text-slate-700`;
+  return base;
+}
+
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
 }
@@ -583,7 +589,7 @@ export function Dashboard() {
                       <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
                       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
                       <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal">
+                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className={recentStatusBadgeClass(order.status)}>
                         {order.statusLabel}
                       </Badge>
                     </div>
