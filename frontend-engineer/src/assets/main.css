@@ -3737,20 +3737,24 @@ h2 {
   z-index: 1;
 }
 
-/* 销毁类操作（作废记录/删除草稿）：默认中性灰、不抢主按钮焦点，hover 才显红提醒 */
+/* 销毁类操作（作废记录/删除草稿）：与左主按钮同款填充样式，深石板灰区分于背景，hover 显红提醒 */
 .task-actions .danger-lite {
-  color: #64748b;
-  background: #f1f5f9;
+  color: #fff;
+  background: linear-gradient(135deg, #64748b, #475569);
+  box-shadow: 0 6px 16px rgb(71 85 105 / 20%);
   transition:
     color 140ms ease,
     background 140ms ease,
-    border-color 140ms ease;
+    box-shadow 140ms ease,
+    filter 140ms ease;
 }
 
 .task-actions .danger-lite:hover,
 .task-actions .danger-lite:focus-visible {
-  color: #be123c;
-  background: #fff1f2;
+  color: #fff;
+  background: #be123c;
+  filter: none;
+  box-shadow: 0 10px 22px rgb(190 18 60 / 30%);
 }
 
 .task-card-local-draft .task-actions .danger-lite {
