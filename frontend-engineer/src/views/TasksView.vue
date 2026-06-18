@@ -426,9 +426,14 @@ function serviceModeBadge(task) {
 
 function serviceSummary(task) {
   // 类别（如“巡检/维修”）已由左上角服务模式胶囊体现，摘要里只保留设备/备注等实质信息，避免压缩信息空间
-  const summary = compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
+  const mode = normalizePreviewServiceMode(task)
+  const summary = compactSummaryText(
+    mode === 'office'
+      ? (task.internalNote || task.deviceName || task.productName || task.issueDescription || '')
+      : (task.issueDescription || task.internalNote || task.deviceName || task.productName || ''),
+  )
   if (summary) return summary
-  if (normalizePreviewServiceMode(task) === 'office') return '未填写工作内容'
+  if (mode === 'office') return '未填写工作内容'
   return '未填写服务需求'
 }
 
