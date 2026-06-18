@@ -1095,8 +1095,8 @@ export function ServiceOrders() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_220px_150px_150px_auto]">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-[1_1_280px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -1109,44 +1109,53 @@ export function ServiceOrders() {
                 }}
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder={t.filters.statusPlaceholder} />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder={t.filters.customerPlaceholder} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
-                {customers.map((customer) => (
-                  <SelectItem key={customer.id} value={String(customer.id)}>
-                    {customer.name || `客户 #${customer.id}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              aria-label={t.filters.startDate}
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-            <Input
-              aria-label={t.filters.endDate}
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+            <div className="min-w-[150px] flex-[1_1_170px]">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t.filters.statusPlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[220px] flex-[1_1_260px]">
+              <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t.filters.customerPlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={String(customer.id)}>
+                      {customer.name || `客户 #${customer.id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[145px] flex-[1_1_150px]">
+              <Input
+                aria-label={t.filters.startDate}
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[145px] flex-[1_1_150px]">
+              <Input
+                aria-label={t.filters.endDate}
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
             <Button
+              className="min-w-[96px] flex-[1_1_96px] sm:flex-none"
               variant="outline"
               onClick={resetFilters}
             >
