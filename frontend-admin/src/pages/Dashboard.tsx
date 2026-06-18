@@ -523,7 +523,7 @@ export function Dashboard() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -571,9 +571,10 @@ export function Dashboard() {
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
                     <div className="flex-1 space-y-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold tracking-tight truncate">{order.id}</span>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{order.date}</span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.id}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap">{order.date}</span>
+                        <span className="shrink-0 text-xs font-medium whitespace-nowrap">{order.engineer}</span>
                       </div>
                       <div className="text-sm text-muted-foreground line-clamp-1">{order.customer}</div>
                       <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -581,9 +582,6 @@ export function Dashboard() {
                           {order.statusLabel}
                         </Badge>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-medium">{order.engineer}</div>
                     </div>
                   </div>
                 ))}
