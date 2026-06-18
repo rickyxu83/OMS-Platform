@@ -91,6 +91,7 @@ interface GeoCandidate {
   customerId?: string | number;
   name: string;
   address?: string;
+  location?: string;
   contactName?: string;
   contactPhone?: string;
   contacts?: { name: string; phone?: string }[];
@@ -495,6 +496,19 @@ function normalizeCoordinate(value?: number | string | null) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function candidateCoordinates(candidate: GeoCandidate) {
+  const directLatitude = normalizeCoordinate(candidate.latitude);
+  const directLongitude = normalizeCoordinate(candidate.longitude);
+  if (directLatitude != null && directLongitude != null) {
+    return { latitude: directLatitude, longitude: directLongitude };
+  }
+
+  const [longitudeText, latitudeText] = String(candidate.location || "").split(",");
+  const latitude = normalizeCoordinate(latitudeText);
+  const longitude = normalizeCoordinate(longitudeText);
+  return latitude != null && longitude != null ? { latitude, longitude } : null;
+}
+
 function interpolate(template: string, values: Record<string, string | number>) {
   return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ""));
 }
@@ -756,6 +770,7 @@ export function Customers() {
   }
 
   function applyCandidate(company: GeoCandidate) {
+    const coordinates = candidateCoordinates(company);
     setForm((prev) => {
       const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "" }]
       if (company.contactName || company.contactPhone) {
@@ -771,8 +786,8 @@ export function Customers() {
         name: company.name || prev.name,
         address: company.address || prev.address,
         mapAddress: company.mapAddress || company.address || prev.mapAddress,
-        latitude: company.latitude ?? prev.latitude ?? null,
-        longitude: company.longitude ?? prev.longitude ?? null,
+        latitude: coordinates?.latitude ?? prev.latitude ?? null,
+        longitude: coordinates?.longitude ?? prev.longitude ?? null,
         mapProvider:
           company.mapProvider || (company.source === "map" ? "amap" : prev.mapProvider || ""),
         mapPoiId: company.mapPoiId || (company.source === "map" ? company.id : prev.mapPoiId || ""),
@@ -1045,7 +1060,6 @@ export function Customers() {
               <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">{t.list.code}</TableHead>
                   <TableHead>{t.list.name}</TableHead>
                   <TableHead>{t.list.contact}</TableHead>
                   <TableHead>{t.list.phone}</TableHead>
@@ -1057,13 +1071,13 @@ export function Customers() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" /> {t.list.loading}
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                       {t.list.empty}
                     </TableCell>
                   </TableRow>
@@ -1085,7 +1099,6 @@ export function Customers() {
                           }
                         }}
                       >
-                        <TableCell className="font-medium">{c.code || t.misc.unknown}</TableCell>
                         <TableCell>
                           <div className="font-medium">{c.name || t.misc.unknown}</div>
                           {c.salesperson && (
