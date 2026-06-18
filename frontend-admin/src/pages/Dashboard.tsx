@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
+import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -421,7 +421,7 @@ export function Dashboard() {
             搜索
           </Button>
           <Button onClick={openReportDialog} disabled={exporting}>
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
             {t.exportReport}
           </Button>
         </div>
@@ -557,6 +557,7 @@ export function Dashboard() {
               <CardDescription>{t.recent.description}</CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate("/service-orders")}>
+              <ArrowRight className="w-4 h-4 mr-1" />
               {t.recent.viewAll}
             </Button>
           </CardHeader>
@@ -631,7 +632,7 @@ export function Dashboard() {
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>

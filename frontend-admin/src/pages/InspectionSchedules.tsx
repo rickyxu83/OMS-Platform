@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1009,6 +1009,7 @@ export function InspectionSchedules() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : "保存计划"}
             </Button>
           </DialogFooter>

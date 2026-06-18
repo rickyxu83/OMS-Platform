@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield } from "lucide-react";
+import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -402,6 +402,11 @@ export function Users() {
                         onClick={() => toggleStatus(user)}
                         disabled={saving || String(currentUser?.id) === String(user.id)}
                       >
+                        {user.status === "active" ? (
+                          <UserX className="w-4 h-4 mr-1" />
+                        ) : (
+                          <UserCheck className="w-4 h-4 mr-1" />
+                        )}
                         {user.status === "active" ? "停用" : "启用"}
                       </Button>
                     </div>
@@ -498,6 +503,7 @@ export function Users() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingUserId ? "保存修改" : "立即创建"}
             </Button>
           </DialogFooter>

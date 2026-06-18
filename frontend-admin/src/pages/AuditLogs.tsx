@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw, Download, AlertTriangle, Loader2 } from "lucide-react";
+import { Search, RefreshCw, Download, AlertTriangle, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -279,6 +279,7 @@ export function AuditLogs() {
                   setRiskyOnly(false);
                 }}
               >
+                <RotateCcw className="w-4 h-4 mr-2" />
                 重置
               </Button>
             </div>

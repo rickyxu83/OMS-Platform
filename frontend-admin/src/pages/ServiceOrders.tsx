@@ -1304,7 +1304,7 @@ export function ServiceOrders() {
                         <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
                           {canConfirmInspection && (
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -1318,7 +1318,7 @@ export function ServiceOrders() {
                           )}
                           {canAssign && (
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -1334,7 +1334,7 @@ export function ServiceOrders() {
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
-                                  variant="outline"
+                                  variant="ghost"
                                   size="sm"
                                   onClick={(event) => event.stopPropagation()}
                                   disabled={exporting}
@@ -1596,7 +1596,10 @@ export function ServiceOrders() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={createOrder} disabled={saving}>{saving ? "创建中…" : "创建工单"}</Button>
+            <Button onClick={createOrder} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              {saving ? "创建中…" : "创建工单"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1662,7 +1665,10 @@ export function ServiceOrders() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={assignOrderToEngineer} disabled={saving}>{saving ? "派单中…" : "确认派单"}</Button>
+            <Button onClick={assignOrderToEngineer} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              {saving ? "派单中…" : "确认派单"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1696,7 +1702,10 @@ export function ServiceOrders() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransitionOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={transitionSelectedOrder} disabled={saving}>{saving ? "流转中…" : "确认流转"}</Button>
+            <Button onClick={transitionSelectedOrder} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {saving ? "流转中…" : "确认流转"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

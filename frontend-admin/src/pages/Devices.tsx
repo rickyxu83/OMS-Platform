@@ -811,6 +811,7 @@ export function Devices() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : "立即创建"}
             </Button>
           </DialogFooter>
