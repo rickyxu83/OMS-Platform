@@ -511,6 +511,94 @@ function openTask(task) {
   router.push(taskRoute(task))
 }
 
+// ---- 卡片左滑露出销毁操作（仅触屏；桌面端用 .task-desktop-action 按钮）----
+const swipeOpenId = ref(null)
+let swipeState = null
+const SWIPE_ACTION_WIDTH = 112 // 露出的销毁操作区宽度，需与 CSS --swipe-action-width 一致
+
+function onSwipePointerDown(task, event) {
+  // 仅对主指针（触屏/笔）启用滑动；鼠标点击交由 click 处理
+  if (event.pointerType === 'mouse') return
+  swipeState = {
+    taskId: task.id,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+    openAtStart: swipeOpenId.value === task.id,
+    dx: 0,
+  }
+}
+
+function onSwipePointerMove(event) {
+  if (!swipeState) return
+  const dx = event.clientX - swipeState.startX
+  const dy = event.clientY - swipeState.startY
+  // 水平位移明显大于垂直，才判定为左滑意图，避免吃掉纵向滚动
+  if (!swipeState.moved) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+    if (Math.abs(dy) > Math.abs(dx)) {
+      swipeState = null
+      return
+    }
+    swipeState.moved = true
+  }
+  swipeState.dx = dx
+  let translate = dx
+  if (swipeState.openAtStart) translate = -SWIPE_ACTION_WIDTH + dx
+  // 限制在 [-SWIPE_ACTION_WIDTH, 0]，阻尼
+  translate = Math.max(-SWIPE_ACTION_WIDTH, Math.min(0, translate))
+  const body = event.currentTarget
+  body.style.transition = 'none'
+  body.style.transform = `translateX(${translate}px)`
+}
+
+function onSwipePointerUp(event) {
+  if (!swipeState) return
+  const body = event.currentTarget
+  body.style.transition = ''
+  body.style.transform = ''
+  const moved = swipeState.moved
+  const dx = swipeState.dx
+  const wasOpen = swipeState.openAtStart
+  const taskId = swipeState.taskId
+  swipeState = null
+  if (!moved) return
+  // 滑过阈值则切换开合
+  const threshold = SWIPE_ACTION_WIDTH / 2
+  if (wasOpen) {
+    if (dx > threshold) swipeOpenId.value = null
+    else swipeOpenId.value = taskId
+  } else {
+    if (dx < -threshold) swipeOpenId.value = taskId
+    else swipeOpenId.value = null
+  }
+  // 标记本次为滑动，阻止后续 click 跳转
+  body.dataset.swiped = '1'
+  window.setTimeout(() => { delete body.dataset.swiped }, 0)
+}
+
+function onTaskCardClick(task, event) {
+  // 发生过滑动的 pointerup 之后会触发 click，这里拦掉
+  if (event.currentTarget?.dataset?.swiped === '1') {
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
+  // 点击时若其它卡片处于展开态，先收起，不跳转（避免误触）
+  if (swipeOpenId.value && swipeOpenId.value !== task.id) {
+    swipeOpenId.value = null
+    return
+  }
+  swipeOpenId.value = null
+  openTask(task)
+}
+
+function onSwipeActionClick(task) {
+  if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
+  else openCancelRecord(task)
+  swipeOpenId.value = null
+}
+
 function onTaskCardKeydown(task, event) {
   if (event.key !== 'Enter' && event.key !== ' ') return
   event.preventDefault()
@@ -623,51 +711,57 @@ onBeforeUnmount(() => {
         v-for="(task, index) in displayTasks"
         :key="task.id"
         class="form-section task-card"
-        :class="{ 'task-card-local-draft': ['draft_local', 'draft_sync'].includes(task.status), 'task-card-inspection': isInspectionTask(task) }"
+        :class="{
+          'task-card-local-draft': ['draft_local', 'draft_sync'].includes(task.status),
+          'task-card-inspection': isInspectionTask(task),
+          'swipe-open': swipeOpenId === task.id,
+        }"
         :style="{ '--stagger': `${Math.min(index, 12) * 64}ms` }"
-        role="link"
-        tabindex="0"
-        @click="openTask(task)"
-        @keydown="onTaskCardKeydown(task, $event)"
       >
-        <div class="task-side-badges">
-          <span class="service-mode-badge" :class="normalizePreviewServiceMode(task)">
-            <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
-          </span>
-          <strong :class="needsMyWorkEntry(task) ? 'new-work-badge' : ['task-status-badge', `task-status-${taskStatusTone(task)}`]">
-            <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
-            <template v-else>{{ zh(taskStatusLabel(task)) }}</template>
-          </strong>
+        <!-- 滑动露出的销毁操作区（左滑出现） -->
+        <div class="task-swipe-action" @click.stop="onSwipeActionClick(task)">
+          <PreviewIcon name="trash" />
+          <span>{{ zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录') }}</span>
         </div>
-        <div class="task-content">
-          <div class="task-card-head">
-            <span class="mono">{{ serviceDate(task) }}</span>
+        <!-- 可滑动的内容层：整卡点击进编辑 -->
+        <div
+          class="task-swipe-body"
+          role="link"
+          tabindex="0"
+          @click="onTaskCardClick(task, $event)"
+          @keydown="onTaskCardKeydown(task, $event)"
+          @pointerdown="onSwipePointerDown(task, $event)"
+          @pointermove="onSwipePointerMove($event)"
+          @pointerup="onSwipePointerUp($event)"
+          @pointercancel="onSwipePointerUp($event)"
+        >
+          <div class="task-side-badges">
+            <span class="service-mode-badge" :class="normalizePreviewServiceMode(task)">
+              <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
+            </span>
+            <strong :class="needsMyWorkEntry(task) ? 'new-work-badge' : ['task-status-badge', `task-status-${taskStatusTone(task)}`]">
+              <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
+              <template v-else>{{ zh(taskStatusLabel(task)) }}</template>
+            </strong>
           </div>
-          <div class="task-card-main">
-            <h2 :title="zh(task.customerName || taskCustomerTitle(task))">{{ zh(taskCustomerTitle(task)) }}</h2>
-            <p>{{ zh(serviceSummary(task)) }}</p>
-            <p v-if="isInspectionTask(task)" class="task-inspection-context">{{ zh(inspectionContext(task)) }}</p>
+          <div class="task-content">
+            <div class="task-card-head">
+              <span class="mono">{{ serviceDate(task) }}</span>
+            </div>
+            <div class="task-card-main">
+              <h2 :title="zh(task.customerName || taskCustomerTitle(task))">{{ zh(taskCustomerTitle(task)) }}</h2>
+              <p>{{ zh(serviceSummary(task)) }}</p>
+              <p v-if="isInspectionTask(task)" class="task-inspection-context">{{ zh(inspectionContext(task)) }}</p>
+            </div>
           </div>
-        </div>
-        <div class="task-actions" @click.stop>
-          <RouterLink :to="task.localRoute || `/service-sheets/${task.id}/edit?resume=1`" @click.stop>
-            <PreviewIcon name="edit" />{{ zh(['draft_local', 'draft_sync'].includes(task.status) ? '继续填写' : '修改记录') }}
-          </RouterLink>
+          <!-- 桌面端（无触屏）保留的非滑动销毁入口 -->
           <button
-            v-if="['draft_local', 'draft_sync'].includes(task.status)"
             type="button"
-            class="ghost danger-lite"
-            @click.stop="openDeleteDraft(task)"
+            class="task-desktop-action"
+            :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+            @click.stop="['draft_local', 'draft_sync'].includes(task.status) ? openDeleteDraft(task) : openCancelRecord(task)"
           >
-            <PreviewIcon name="trash" />{{ zh('删除草稿') }}
-          </button>
-          <button
-            v-else
-            type="button"
-            class="ghost danger-lite"
-            @click.stop="openCancelRecord(task)"
-          >
-            <PreviewIcon name="trash" />{{ zh('作废记录') }}
+            <PreviewIcon name="trash" />
           </button>
         </div>
       </article>
