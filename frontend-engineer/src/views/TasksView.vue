@@ -15,7 +15,7 @@ import {
   removeScopedDraftPayload,
   writeLocalSelfReportDraft,
 } from '../services/self-report-draft'
-import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
+import { normalizePreviewServiceMode } from '../services/service-mode'
 
 const { zh } = usePreviewI18n()
 const router = useRouter()
@@ -72,13 +72,6 @@ function compactSummaryText(value) {
   return text.length > 24 ? `${text.slice(0, 24)}…` : text
 }
 
-function taskCategoryLabel(task) {
-  const normalizedMode = normalizePreviewServiceMode(task)
-  if (normalizedMode === 'remote' || normalizedMode === 'office') {
-    return previewTimesheetCategoryLabel(normalizedMode, task.timesheetCategory || task.serviceCategory || task.serviceType)
-  }
-  return previewServiceTypeLabel(task.serviceType)
-}
 const localDraftPrefix = () => {
   const user = getCurrentUser()
   const userId = user?.id || 'anonymous'
@@ -415,13 +408,8 @@ function serviceModeBadge(task) {
 }
 
 function serviceSummary(task) {
-  const normalizedMode = normalizePreviewServiceMode(task)
-  const category = taskCategoryLabel(task)
-  const detail = compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
-  if (normalizedMode === 'office') {
-    return detail ? `${category} · ${detail}` : category
-  }
-  return detail ? `${category} · ${detail}` : category
+  // 类别（如“巡检/维修”）已由左上角服务模式胶囊体现，摘要里只保留设备/备注等实质信息，避免压缩信息空间
+  return compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
 }
 
 function inspectionContext(task) {
@@ -646,7 +634,6 @@ onBeforeUnmount(() => {
           <span class="service-mode-badge" :class="normalizePreviewServiceMode(task)">
             <PreviewIcon :name="serviceModeBadge(task).icon" />{{ zh(serviceModeBadge(task).label) }}
           </span>
-          <span v-if="isInspectionTask(task)" class="inspection-badge">{{ zh('巡检任务') }}</span>
           <strong :class="needsMyWorkEntry(task) ? 'new-work-badge' : ['task-status-badge', `task-status-${taskStatusTone(task)}`]">
             <template v-if="needsMyWorkEntry(task)"><i aria-hidden="true">!</i>{{ zh('New') }}</template>
             <template v-else>{{ zh(taskStatusLabel(task)) }}</template>

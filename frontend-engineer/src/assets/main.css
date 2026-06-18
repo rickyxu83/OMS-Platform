@@ -3426,12 +3426,17 @@ h2 {
 }
 
 .task-card-head {
+  position: absolute;
+  top: 16px;
+  left: 22px;
+  z-index: 2;
   grid-template-columns: minmax(0, 1fr);
 }
 
 .task-content {
   display: grid;
   gap: 14px;
+  padding-top: 22px;
   padding-right: clamp(84px, 22vw, 128px);
 }
 
@@ -3673,12 +3678,17 @@ h2 {
   justify-content: center;
   border-radius: 8px;
   color: #fff;
-  background: #2563eb;
+  background: linear-gradient(135deg, #502090, #431a78);
   font-weight: 800;
   transition:
     transform 140ms ease,
     box-shadow 140ms ease,
     filter 140ms ease;
+}
+
+.task-card a:hover,
+.task-card a:focus-visible {
+  filter: brightness(1.08);
 }
 
 .task-card .task-actions button {
@@ -5477,6 +5487,7 @@ h2 {
   }
 
   .task-content {
+    padding-top: 18px;
     padding-right: clamp(78px, 24vw, 108px);
   }
 
