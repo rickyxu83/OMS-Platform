@@ -3325,8 +3325,10 @@ h2 {
 }
 
 .task-board {
+  --task-card-height: 180px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: var(--task-card-height);
   gap: 16px;
 }
 
@@ -3369,6 +3371,8 @@ h2 {
 .task-card {
   position: relative;
   display: grid;
+  height: var(--task-card-height);
+  min-height: 0;
   overflow: hidden;
   /* 取消 .form-section 的 padding，内边距统一由 .task-swipe-body 承担，避免双重缩进导致内容错位 */
   padding: 0;
@@ -3458,7 +3462,7 @@ h2 {
 
 .task-card-main {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -3473,10 +3477,18 @@ h2 {
   line-height: 1.35;
 }
 
+.task-card-main > p:not(.task-card-hint) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .task-card-main .task-inspection-context {
   color: #0f766e;
   font-size: 13px;
   font-weight: 800;
+  -webkit-line-clamp: 1;
 }
 
 .task-card-hint {
@@ -3700,6 +3712,7 @@ h2 {
   align-self: stretch;
   justify-self: end;
   width: var(--swipe-action-width);
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
@@ -3743,6 +3756,8 @@ h2 {
   align-items: start;
   gap: 14px;
   min-height: 100%;
+  height: 100%;
+  overflow: hidden;
   padding: 22px;
   /* 不透明背景，确保盖住下层红色销毁区，避免未滑动时漏红 */
   background:
@@ -5549,6 +5564,14 @@ h2 {
 
   .task-card h2 {
     line-height: 1.18;
+  }
+
+  .task-board {
+    --task-card-height: 168px;
+  }
+
+  .task-card {
+    padding: 0;
   }
 
   .task-swipe-body {
