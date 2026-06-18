@@ -560,28 +560,24 @@ export function Dashboard() {
             ) : recentOrders.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">{t.recent.empty}</div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {recentOrders.map((order) => (
                   <div
                     key={order.id}
-                    className="group relative flex items-start gap-4 p-3 -mx-3 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="group relative flex items-center gap-3 p-3 -mx-3 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer"
                     onClick={() => navigate("/service-orders")}
                   >
-                    <div className={`mt-1 w-2 h-2 rounded-full ${
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
-                    <div className="flex-1 space-y-1 min-w-0">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.id}</span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap">{order.date}</span>
-                        <span className="shrink-0 text-xs font-medium whitespace-nowrap">{order.engineer}</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground line-clamp-1">{order.customer}</div>
-                      <div className="flex items-center gap-2 pt-1 flex-wrap">
-                        <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="text-[10px] h-5 py-0 px-2 font-normal">
-                          {order.statusLabel}
-                        </Badge>
-                      </div>
+                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto_auto_auto] items-center gap-3">
+                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.id}</span>
+                      <span className="min-w-0 truncate text-sm text-muted-foreground">{order.customer}</span>
+                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 shrink-0 whitespace-nowrap px-2 py-0 text-[10px] font-normal">
+                        {order.statusLabel}
+                      </Badge>
+                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
+                      <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
                     </div>
                   </div>
                 ))}
