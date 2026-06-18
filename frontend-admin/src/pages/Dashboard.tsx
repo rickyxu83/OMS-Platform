@@ -26,7 +26,9 @@ interface Order {
   workflowStatus?: string;
   status: string;
   customer?: { name?: string } | string;
+  customerName?: string;
   deviceName?: string;
+  issueDescription?: string;
   engineerName?: string;
   serviceMode?: string;
   createdAt?: string;
@@ -76,6 +78,16 @@ interface WorkSummaryResponse {
 function textValue(value: unknown, fallback = "-") {
   const text = value == null ? "" : String(value).trim();
   return text || fallback;
+}
+
+function shortCompanyName(value: unknown, fallback = "-") {
+  const name = textValue(value, fallback);
+  if (name === fallback) return name;
+  const compact = name
+    .replace(/[（(].*?[）)]/g, "")
+    .replace(/(有限责任公司|股份有限公司|集团有限公司|集团股份有限公司|有限公司|集团|公司)$/u, "")
+    .trim();
+  return compact || name;
 }
 
 function summaryList(items?: string[]) {
@@ -334,12 +346,13 @@ export function Dashboard() {
 
   const recentOrders = orders.slice(0, 5).map((o) => {
     const status = getWorkflowStatus(o);
+    const customerName = typeof o.customer === "string" ? o.customer : o.customer?.name || o.customerName;
     return {
       id: o.orderNo || `TK-${o.id}`,
-      customer: typeof o.customer === "string" ? o.customer : o.customer?.name || o.deviceName || t.recent.unnamedCustomer,
+      customer: shortCompanyName(customerName, t.recent.unnamedCustomer),
       status,
       statusLabel: normalizeStatus(status, t.status),
-      title: o.displayTitle || o.deviceName || t.recent.serviceRecord,
+      title: o.issueDescription || o.displayTitle || o.deviceName || t.recent.serviceRecord,
       engineer: o.engineerName || t.recent.unnamedEngineer,
       date: o.createdAt ? o.createdAt.split(" ")[0] : "",
     };
@@ -570,14 +583,14 @@ export function Dashboard() {
                     <div className={`h-2 w-2 shrink-0 rounded-full ${
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
-                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto_auto_auto] items-center gap-3">
-                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{order.customer}</span>
-                      <span className="min-w-0 truncate text-sm text-muted-foreground">{order.title}</span>
+                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_auto_auto_auto] items-center gap-3">
+                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight" title={order.customer}>{order.customer}</span>
+                      <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
+                      <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
                       <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 shrink-0 whitespace-nowrap px-2 py-0 text-[10px] font-normal">
                         {order.statusLabel}
                       </Badge>
-                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
-                      <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
                     </div>
                   </div>
                 ))}
