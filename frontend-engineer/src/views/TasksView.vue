@@ -157,7 +157,7 @@ function createDraftRouteByMode(mode, draftId = '') {
 }
 
 function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = null, remoteDraft = false, updatedAt = '', createdAt = '', payload, mode, draftId = '' }) {
-  if (!payload) return
+  if (!payload || payload.__draftDeleted) return
   const customer = payload.selectedCustomer || {}
   const serviceDraft = payload.serviceDraft || {}
   const normalizedDraftId = String(draftId || payload.__draftId || '').trim()
@@ -257,6 +257,20 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
         const remoteDraft = await fetchRemoteSelfReportDraft(orderId)
         if (!remoteDraft?.payload) return
         const payload = remoteDraft.payload
+        if (payload.__draftDeleted) {
+          const localDraft = readLocalSelfReportDraft(orderId)
+          const localUpdatedAt = toDraftTimestamp(localDraft?.data?.__draftClientUpdatedAt || localDraft?.updatedAt)
+          const deletedAt = toDraftTimestamp(payload.__draftDeletedAt || remoteDraft.clientUpdatedAt || remoteDraft.updatedAt)
+          if (deletedAt >= localUpdatedAt) {
+            removeLocalSelfReportDraft(orderId)
+            for (let index = drafts.length - 1; index >= 0; index -= 1) {
+              if (!drafts[index].remoteDraft && Number(drafts[index].linkedOrderId) === orderId) {
+                drafts.splice(index, 1)
+              }
+            }
+          }
+          return
+        }
         pushDraftCard(drafts, {
           keyPrefix: `remote-draft:${orderId}`,
           storageKey: '',
@@ -281,8 +295,11 @@ async function clearResolvedLocalDrafts() {
   if (!tasks.value.length) return
 
   const existingTaskIds = new Set(tasks.value.map((task) => Number(task.id)).filter(Boolean))
+  const taskById = new Map(tasks.value.map((task) => [Number(task.id), task]))
   let removed = false
+  const removedEditOrderIds = new Set()
   const removedCreateDrafts = []
+  const editDraftsToCheck = []
 
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
     const key = localStorage.key(index)
@@ -290,19 +307,33 @@ async function clearResolvedLocalDrafts() {
     const isLegacyDraft = key?.startsWith(localDraftPrefix()) || key?.startsWith(accountDraftPrefix()) || key?.startsWith(legacyDraftPrefix())
     if (!isScopedDraft && !isLegacyDraft) continue
     const routeInfo = parseDraftRoute(key)
-    if (routeInfo.orderId) continue
+    if (routeInfo.orderId) {
+      const task = taskById.get(Number(routeInfo.orderId))
+      if (task) {
+        if (!isEditableDraftStatus(task.status)) {
+          localStorage.removeItem(key)
+          removed = true
+          removedEditOrderIds.add(Number(routeInfo.orderId))
+        }
+      } else {
+        editDraftsToCheck.push({ key, orderId: Number(routeInfo.orderId) })
+      }
+      continue
+    }
 
     try {
       const parsed = JSON.parse(localStorage.getItem(key) || '{}')
+      let keyRemoved = false
       const nextPayload = listCreateDraftBuckets(parsed?.data).reduce((payload, item) => {
         const submittedOrderId = Number(item.payload?.__submittedOrderId || 0)
         if (!submittedOrderId || !existingTaskIds.has(submittedOrderId)) return payload
         removed = true
+        keyRemoved = true
         removedCreateDrafts.push({ mode: item.mode, draftId: item.draftId })
         return removeScopedDraftPayload(payload, null, item.mode, item.draftId)
       }, parsed?.data || null)
 
-      if (!removed) continue
+      if (!keyRemoved) continue
       if (nextPayload) writeLocalSelfReportDraft(null, nextPayload)
       else removeLocalSelfReportDraft(null)
     } catch {
@@ -310,6 +341,25 @@ async function clearResolvedLocalDrafts() {
     }
   }
 
+  await Promise.all(
+    editDraftsToCheck.map(async ({ key, orderId }) => {
+      if (!orderId) return
+      try {
+        const data = await api.get(`/service-orders/${orderId}`)
+        const item = data?.item || data
+        if (!item || isEditableDraftStatus(item.status)) return
+        localStorage.removeItem(key)
+        removed = true
+        removedEditOrderIds.add(orderId)
+      } catch {
+        // Keep local drafts when the order detail cannot be confirmed, especially offline.
+      }
+    }),
+  )
+
+  for (const orderId of removedEditOrderIds) {
+    await clearSelfReportDraft(orderId).catch(() => {})
+  }
   for (const draft of removedCreateDrafts) {
     await clearSelfReportDraft(null, draft.mode, draft.draftId).catch(() => {})
   }
@@ -449,6 +499,10 @@ function taskStatusTone(task) {
   if (status === 'draft' || status === 'draft_local' || status === 'draft_sync') return 'draft'
   if (isInspectionTask(task)) return 'warning'
   return 'info'
+}
+
+function isEditableDraftStatus(status) {
+  return ['draft', 'assigned', 'in_progress', 'rejected'].includes(String(status || '').trim())
 }
 
 function serviceModeBadge(task) {
