@@ -97,6 +97,8 @@ export function InspectionSchedules() {
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
+  const [engineerSearch, setEngineerSearch] = useState("");
+  const [engineerOptionsOpen, setEngineerOptionsOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
     customerId: "",
@@ -212,6 +214,29 @@ export function InspectionSchedules() {
       .slice(0, 80);
   }, [customers, customerSearch]);
 
+  const filteredEngineerOptions = useMemo(() => {
+    const keyword = engineerSearch.trim().toLowerCase();
+    if (!keyword) return engineers.slice(0, 80);
+    return engineers
+      .filter((engineer) => {
+        const text = [engineer.realName, engineer.username, engineer.id].filter(Boolean).join(" ").toLowerCase();
+        return text.includes(keyword);
+      })
+      .slice(0, 80);
+  }, [engineers, engineerSearch]);
+
+  const selectedEngineers = useMemo(
+    () => form.targetEngineerIds
+      .map((id) => engineers.find((engineer) => String(engineer.id) === id))
+      .filter(Boolean) as Engineer[],
+    [engineers, form.targetEngineerIds],
+  );
+
+  const selectedEngineerSummary = selectedEngineers
+    .map((engineer) => engineer.realName || engineer.username || `工程师 #${engineer.id}`)
+    .slice(0, 3)
+    .join("、");
+
   const selectedDeviceCount = form.deviceIds.length;
   const selectedEngineerCount = form.targetEngineerIds.length;
 
@@ -242,6 +267,8 @@ export function InspectionSchedules() {
     setEditingId(null);
     setCustomerSearch("");
     setCustomerOptionsOpen(false);
+    setEngineerSearch("");
+    setEngineerOptionsOpen(false);
     setForm({
       name: "",
       customerId: "",
@@ -260,6 +287,8 @@ export function InspectionSchedules() {
     setEditingId(schedule.id);
     setCustomerSearch(schedule.customerName || "");
     setCustomerOptionsOpen(false);
+    setEngineerSearch("");
+    setEngineerOptionsOpen(false);
     setForm({
       name: schedule.name || "",
       customerId: schedule.customerId ? String(schedule.customerId) : "",
@@ -290,6 +319,8 @@ export function InspectionSchedules() {
   }
 
   function toggleEngineer(engineerId: string) {
+    setEngineerSearch("");
+    setEngineerOptionsOpen(true);
     setForm((prev) => ({
       ...prev,
       targetEngineerIds: prev.targetEngineerIds.includes(engineerId)
@@ -783,57 +814,80 @@ export function InspectionSchedules() {
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
+              <div
+                className="relative space-y-2"
+                onBlur={(event) => {
+                  const nextTarget = event.relatedTarget as Node | null;
+                  if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+                  setEngineerOptionsOpen(false);
+                }}
+              >
                 <div className="flex items-center justify-between gap-3">
                   <Label>巡检工程师 *</Label>
                   <span className="text-xs text-muted-foreground">已选 {selectedEngineerCount} 人</span>
                 </div>
-                <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
-                  {engineers.length ? (
-                    engineers.map((e) => {
-                      const engineerId = String(e.id);
-                      const checked = form.targetEngineerIds.includes(engineerId);
-                      return (
-                        <div
-                          key={e.id}
-                          role="checkbox"
-                          aria-checked={checked}
-                          tabIndex={0}
-                          onClick={() => toggleEngineer(engineerId)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleEngineer(engineerId);
-                            }
-                          }}
-                          className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
-                            checked
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-muted-foreground/30"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-primary"
-                            checked={checked}
-                            onClick={(event) => event.stopPropagation()}
-                            onChange={() => toggleEngineer(engineerId)}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium">
-                              {e.realName || e.username || `工程师 #${e.id}`}
+                <Input
+                  value={engineerSearch}
+                  onChange={(event) => {
+                    setEngineerSearch(event.target.value);
+                    setEngineerOptionsOpen(true);
+                  }}
+                  onFocus={() => setEngineerOptionsOpen(true)}
+                  placeholder={selectedEngineerCount ? "继续输入筛选工程师" : "输入工程师姓名或选择工程师"}
+                />
+                {engineerOptionsOpen && (
+                  <div className="absolute left-0 right-0 z-50 max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-lg">
+                    {filteredEngineerOptions.length ? (
+                      filteredEngineerOptions.map((e) => {
+                        const engineerId = String(e.id);
+                        const checked = form.targetEngineerIds.includes(engineerId);
+                        return (
+                          <div
+                            key={e.id}
+                            role="checkbox"
+                            aria-checked={checked}
+                            tabIndex={0}
+                            onClick={() => toggleEngineer(engineerId)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleEngineer(engineerId);
+                              }
+                            }}
+                            className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                              checked
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/30"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary"
+                              checked={checked}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => toggleEngineer(engineerId)}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium">
+                                {e.realName || e.username || `工程师 #${e.id}`}
+                              </div>
+                              {e.username && e.realName && (
+                                <div className="text-xs text-muted-foreground">{e.username}</div>
+                              )}
                             </div>
-                            {e.username && e.realName && (
-                              <div className="text-xs text-muted-foreground">{e.username}</div>
-                            )}
                           </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用工程师</div>
-                  )}
-                </div>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配工程师</div>
+                    )}
+                  </div>
+                )}
+                {selectedEngineerCount > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    已选：{selectedEngineerSummary}{selectedEngineerCount > 3 ? ` +${selectedEngineerCount - 3}` : ""}
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">

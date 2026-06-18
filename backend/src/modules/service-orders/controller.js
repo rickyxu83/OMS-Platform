@@ -2483,12 +2483,12 @@ async function confirmInspectionOrder(req, res) {
     throw badRequest('仅巡检计划生成的工单可以走确认派发')
   }
 
-  const engineerId = Number(req.body?.engineerId || order.target_engineer_id || 0)
+  const engineerId = Number(order.target_engineer_id || 0)
   if (!engineerId) {
-    throw badRequest('请选择派发工程师')
+    throw badRequest('巡检工单缺少目标工程师，请使用派单 / 改派设置')
   }
-  const plannedStartAt = String(req.body?.plannedStartAt || order.planned_start_at || `${order.inspection_occurrence_date} 09:00:00`).trim()
-  const plannedEndAt = String(req.body?.plannedEndAt || order.planned_end_at || '').trim() || null
+  const plannedStartAt = String(order.planned_start_at || `${order.inspection_occurrence_date} 09:00:00`).trim()
+  const plannedEndAt = String(order.planned_end_at || '').trim() || null
 
   await transaction(async (connection) => {
     await ensureServiceOrderInspectionColumns(connection)

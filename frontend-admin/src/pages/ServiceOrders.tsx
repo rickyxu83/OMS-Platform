@@ -454,9 +454,6 @@ export function ServiceOrders() {
     issueDescription: "",
     internalNote: "",
   });
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmOrder, setConfirmOrder] = useState<ServiceOrder | null>(null);
-  const [confirmForm, setConfirmForm] = useState({ engineerId: "", plannedStartAt: "", plannedEndAt: "" });
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignOrder, setAssignOrder] = useState<ServiceOrder | null>(null);
   const [assignForm, setAssignForm] = useState({ engineerIds: [] as string[], plannedStartAt: "", plannedEndAt: "", note: "" });
@@ -912,27 +909,12 @@ export function ServiceOrders() {
     }
   }
 
-  function openConfirmInspection(order: ServiceOrder) {
-    setConfirmOrder(order);
-    setConfirmForm({ engineerId: "", plannedStartAt: "", plannedEndAt: "" });
-    setConfirmOpen(true);
-  }
-
-  async function confirmInspection() {
-    if (!confirmOrder?.id || !confirmForm.engineerId) {
-      setError("请选择派发工程师");
-      return;
-    }
+  async function confirmInspection(order: ServiceOrder) {
+    if (!order.id) return;
     setSaving(true);
     setError("");
     try {
-      await api.post(`/service-orders/${confirmOrder.id}/confirm-inspection`, {
-        engineerId: Number(confirmForm.engineerId),
-        plannedStartAt: confirmForm.plannedStartAt || undefined,
-        plannedEndAt: confirmForm.plannedEndAt || undefined,
-      });
-      setConfirmOpen(false);
-      setConfirmOrder(null);
+      await api.post(`/service-orders/${order.id}/confirm-inspection`, {});
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "确认巡检失败");
@@ -1300,7 +1282,7 @@ export function ServiceOrders() {
                               size="sm"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                openConfirmInspection(order);
+                                confirmInspection(order);
                               }}
                               disabled={saving}
                             >
@@ -1562,42 +1544,6 @@ export function ServiceOrders() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={createOrder} disabled={saving}>{saving ? "创建中…" : "创建工单"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>确认巡检并派发</DialogTitle>
-            <DialogDescription>确认后该巡检工单会变为已派发，工程师端可看到任务。</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>派发工程师 *</Label>
-              <Select value={confirmForm.engineerId} onValueChange={(v) => setConfirmForm({ ...confirmForm, engineerId: v })}>
-                <SelectTrigger><SelectValue placeholder="选择工程师" /></SelectTrigger>
-                <SelectContent>
-                  {engineers.map((engineer) => (
-                    <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.realName || engineer.username || `工程师 #${engineer.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>计划开始</Label>
-                <Input type="datetime-local" value={confirmForm.plannedStartAt} onChange={(e) => setConfirmForm({ ...confirmForm, plannedStartAt: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>计划结束</Label>
-                <Input type="datetime-local" value={confirmForm.plannedEndAt} onChange={(e) => setConfirmForm({ ...confirmForm, plannedEndAt: e.target.value })} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={confirmInspection} disabled={saving}>{saving ? "确认中…" : "确认派发"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
