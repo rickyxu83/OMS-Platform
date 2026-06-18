@@ -3696,7 +3696,10 @@ h2 {
   display: grid;
   gap: 14px;
   padding: 22px;
-  background: inherit;
+  /* 不透明背景，确保盖住下层红色销毁区，避免未滑动时漏红 */
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(248 251 255 / 92%)),
+    #ffffff;
   cursor: pointer;
   transform: translateX(0);
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
