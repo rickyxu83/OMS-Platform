@@ -3423,6 +3423,20 @@ h2 {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.task-time {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.task-time small {
+  color: #475569;
+  font: inherit;
+  font-weight: 950;
+}
+
 .task-content {
   display: grid;
   align-content: start;
@@ -3463,6 +3477,21 @@ h2 {
   color: #0f766e;
   font-size: 13px;
   font-weight: 800;
+}
+
+.task-card-hint {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid rgb(191 219 254 / 86%);
+  border-radius: 999px;
+  padding: 0 9px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .service-mode-badge {
@@ -3756,6 +3785,11 @@ h2 {
   transition:
     color 140ms ease,
     background 140ms ease;
+}
+
+.task-desktop-action-danger {
+  color: #be123c;
+  background: #fff1f2;
 }
 
 .task-desktop-action .preview-icon,

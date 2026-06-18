@@ -375,8 +375,25 @@ function handleScrollLoadMore() {
   if (distanceToBottom < 420) loadMoreTasks()
 }
 
-function serviceDate(task) {
-  return String(task.report?.actualStartAt || task.serviceAt || task.submittedAt || task.createdAt || '').replace('T', ' ').slice(5, 16) || '-'
+function formatCardTime(value) {
+  return String(value || '').replace('T', ' ').slice(5, 16) || '-'
+}
+
+function taskDateMeta(task) {
+  const status = String(task.status || '').trim()
+  if (isDraftTask(task)) {
+    return { label: '更新', value: formatCardTime(task.updatedAt || task.clientUpdatedAt || task.createdAt) }
+  }
+  if (status === 'submitted') {
+    return { label: '提交', value: formatCardTime(task.submittedAt || task.updatedAt || task.report?.actualStartAt || task.serviceAt || task.createdAt) }
+  }
+  if (task.plannedAt || task.scheduledAt || task.serviceAt) {
+    return { label: '预约', value: formatCardTime(task.plannedAt || task.scheduledAt || task.serviceAt) }
+  }
+  if (task.report?.actualStartAt) {
+    return { label: '服务', value: formatCardTime(task.report.actualStartAt) }
+  }
+  return { label: '创建', value: formatCardTime(task.createdAt || task.updatedAt) }
 }
 
 function taskDeviceContext(task) {
@@ -409,13 +426,35 @@ function serviceModeBadge(task) {
 
 function serviceSummary(task) {
   // 类别（如“巡检/维修”）已由左上角服务模式胶囊体现，摘要里只保留设备/备注等实质信息，避免压缩信息空间
-  return compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
+  const summary = compactSummaryText(task.deviceName || task.internalNote || task.productName || task.issueDescription || '')
+  if (summary) return summary
+  if (normalizePreviewServiceMode(task) === 'office') return '未填写工作内容'
+  return '未填写服务需求'
 }
 
 function inspectionContext(task) {
   if (!isInspectionTask(task)) return ''
-  const parts = [taskDeviceContext(task), compactSummaryText(task.issueDescription || '')].filter(Boolean)
-  return parts.length ? `巡检对象：${parts.join(' · ')}` : '巡检对象：待补充设备信息'
+  const device = taskDeviceContext(task)
+  return device ? `巡检：${device}` : '巡检：待补充设备信息'
+}
+
+function submittedResultHint(task) {
+  const raw = String(task.report?.result || task.result || '').trim().toLowerCase()
+  if (['resolved', 'done', 'completed', 'complete', 'finished', 'success'].includes(raw)) return '已完成'
+  if (['unresolved', 'not_resolved', 'incomplete', 'failed'].includes(raw)) return '未完成'
+  if (['follow_up_required', 'pending', 'processing', 'in_progress', 'follow_up'].includes(raw)) return '待跟进'
+  if (task.report?.customerConfirmName || task.contactName) return '客户已确认'
+  return ''
+}
+
+function taskCardHint(task) {
+  if (isDraftTask(task)) return '继续填写服务表'
+  if (String(task.status || '') === 'submitted') return submittedResultHint(task)
+  return ''
+}
+
+function showDesktopDangerAction(task) {
+  return String(task.status || '') !== 'submitted'
 }
 
 function taskCustomerTitle(task) {
@@ -769,6 +808,7 @@ onBeforeUnmount(() => {
             type="button"
             class="task-swipe-action task-swipe-action-edit"
             :aria-label="zh('修改')"
+            :title="zh('修改')"
             @click.stop="onSwipeEditClick(task, $event)"
           >
             <PreviewIcon name="edit" />
@@ -778,6 +818,7 @@ onBeforeUnmount(() => {
             type="button"
             class="task-swipe-action task-swipe-action-danger"
             :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+            :title="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
             @click.stop="onSwipeActionClick(task, $event)"
           >
             <PreviewIcon name="trash" />
@@ -808,12 +849,16 @@ onBeforeUnmount(() => {
           </div>
           <div class="task-content">
             <div class="task-card-head">
-              <span class="mono">{{ serviceDate(task) }}</span>
+              <span class="mono task-time">
+                <small>{{ zh(taskDateMeta(task).label) }}</small>
+                {{ taskDateMeta(task).value }}
+              </span>
             </div>
             <div class="task-card-main">
               <h2 :title="zh(task.customerName || taskCustomerTitle(task))">{{ zh(taskCustomerTitle(task)) }}</h2>
               <p>{{ zh(serviceSummary(task)) }}</p>
               <p v-if="isInspectionTask(task)" class="task-inspection-context">{{ zh(inspectionContext(task)) }}</p>
+              <p v-if="taskCardHint(task)" class="task-card-hint">{{ zh(taskCardHint(task)) }}</p>
             </div>
           </div>
           <!-- 桌面端（无触屏）保留的非滑动操作入口 -->
@@ -822,14 +867,17 @@ onBeforeUnmount(() => {
               type="button"
               class="task-desktop-action task-desktop-action-edit"
               :aria-label="zh('修改')"
+              :title="zh('修改')"
               @click.stop="openEditTask(task)"
             >
               <PreviewIcon name="edit" />
             </button>
             <button
+              v-if="showDesktopDangerAction(task)"
               type="button"
               class="task-desktop-action task-desktop-action-danger"
               :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+              :title="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
               @click.stop="['draft_local', 'draft_sync'].includes(task.status) ? openDeleteDraft(task) : openCancelRecord(task)"
             >
               <PreviewIcon name="trash" />
