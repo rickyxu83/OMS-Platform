@@ -340,6 +340,7 @@ export function InspectionSchedules() {
         await api.put(`/inspection-schedules/${editingId}`, payload);
       } else if (form.targetEngineerIds.length > 1) {
         await api.post("/inspection-schedules/bulk", {
+          name: form.name.trim() || undefined,
           customerId: form.customerId,
           assignments: form.targetEngineerIds.flatMap((targetEngineerId) =>
             form.deviceIds.map((deviceId) => ({ deviceId, targetEngineerId })),
@@ -537,7 +538,8 @@ export function InspectionSchedules() {
               <div className="space-y-3">
               {filtered.map((s) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
-                const title = String(s.name || s.customerName || `计划 #${s.id}`).trim();
+                const planName = String(s.name || "").trim();
+                const title = planName || String(s.customerName || `计划 #${s.id}`).trim();
                 const customerName = String(s.customerName || "").trim();
                 const showCustomerName = Boolean(customerName && customerName !== title);
                 const deviceNames = s.deviceNames || [];

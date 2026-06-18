@@ -185,6 +185,7 @@ CREATE TABLE service_order_engineers (
 
 CREATE TABLE inspection_schedules (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(160) NULL,
   customer_id BIGINT UNSIGNED NOT NULL,
   device_id BIGINT UNSIGNED NOT NULL,
   target_engineer_id BIGINT UNSIGNED NOT NULL,

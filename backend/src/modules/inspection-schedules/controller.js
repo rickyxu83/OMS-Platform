@@ -8,7 +8,7 @@ let inspectionSchedulesTableReady = false
 let inspectionOrderColumnsReady = false
 
 const scheduleColumns = `
-  s.id, s.customer_id, c.name AS customer_name,
+  s.id, s.name, s.customer_id, c.name AS customer_name,
   s.target_engineer_id, u.real_name AS target_engineer_name, u.username AS target_engineer_username,
   s.cadence, s.next_run_anchor, s.active, s.end_date, s.next_order_status,
   s.created_by, creator.real_name AS created_by_name, s.updated_by, updater.real_name AS updated_by_name,
@@ -18,6 +18,7 @@ const scheduleColumns = `
 function schedulePayload(row, devices = []) {
   return {
     id: row.id,
+    name: row.name,
     customerId: row.customer_id,
     customerName: row.customer_name,
     targetEngineerId: row.target_engineer_id,
@@ -78,6 +79,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
   await execute(
     `CREATE TABLE IF NOT EXISTS inspection_schedules (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      name VARCHAR(160) NULL,
       customer_id BIGINT UNSIGNED NOT NULL,
       device_id BIGINT UNSIGNED NULL,
       target_engineer_id BIGINT UNSIGNED NOT NULL,
@@ -110,9 +112,27 @@ async function ensureInspectionSchedulesTable(connection = null) {
   if (String(deviceNullable).toUpperCase() !== 'YES') {
     await execute('ALTER TABLE inspection_schedules MODIFY COLUMN device_id BIGINT UNSIGNED NULL')
   }
+  const [nameRows] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'inspection_schedules'
+       AND column_name = 'name'
+     LIMIT 1`,
+  )
+  if (!nameRows?.[0]) {
+    await execute('ALTER TABLE inspection_schedules ADD COLUMN name VARCHAR(160) NULL AFTER id')
+  }
   if (!connection) {
     inspectionSchedulesTableReady = true
   }
+}
+
+function normalizeScheduleName(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  if (text.length > 160) throw badRequest('计划名称不能超过 160 个字符')
+  return text
 }
 
 function normalizeDate(value, fieldName, required = true) {
@@ -580,7 +600,7 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const { customerId, deviceIds = [], targetEngineerId, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const { name = '', customerId, deviceIds = [], targetEngineerId, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
   const normalizedEngineerId = Number(targetEngineerId || 0)
   if (!normalizedCustomerId || !normalizedEngineerId) {
@@ -592,6 +612,7 @@ async function create(req, res) {
   if (deviceIds.length > 200) {
     throw badRequest('巡检设备数量不能超过 200 台')
   }
+  const normalizedName = normalizeScheduleName(name)
   const normalizedDeviceIds = [...new Set(deviceIds.map((id) => Number(id)).filter(Boolean))]
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
@@ -618,14 +639,15 @@ async function create(req, res) {
       })
       const [result] = await connection.execute(
         `INSERT INTO inspection_schedules (
-          customer_id, target_engineer_id, cadence, next_run_anchor,
+          name, customer_id, target_engineer_id, cadence, next_run_anchor,
           active, end_date, next_order_status, created_by
         )
         VALUES (
-          :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
+          :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
           :active, :endDate, 'pending_confirmation', :createdBy
         )`,
         {
+          name: normalizedName,
           customerId: normalizedCustomerId,
           targetEngineerId: normalizedEngineerId,
           cadence: normalizedCadence,
@@ -654,11 +676,12 @@ async function create(req, res) {
 }
 
 async function createBulk(req, res) {
-  const { customerId, assignments = [], cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const { name = '', customerId, assignments = [], cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
   if (!normalizedCustomerId) throw badRequest('客户不能为空')
   if (!Array.isArray(assignments) || assignments.length === 0) throw badRequest('请至少指定一台设备')
 
+  const normalizedName = normalizeScheduleName(name)
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
   const normalizedEndDate = normalizeDate(endDate, '结束日期', false)
@@ -694,14 +717,15 @@ async function createBulk(req, res) {
         })
         const [result] = await connection.execute(
           `INSERT INTO inspection_schedules (
-            customer_id, target_engineer_id, cadence, next_run_anchor,
+            name, customer_id, target_engineer_id, cadence, next_run_anchor,
             active, end_date, next_order_status, created_by
           )
           VALUES (
-            :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
+            :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
             :active, :endDate, 'pending_confirmation', :createdBy
           )`,
           {
+            name: normalizedName,
             customerId: normalizedCustomerId,
             targetEngineerId: group.targetEngineerId,
             cadence: normalizedCadence,
@@ -768,6 +792,7 @@ async function update(req, res) {
   const normalizedCadence = body.cadence !== undefined ? normalizeCadence(body.cadence) : existing.cadence
   const normalizedNextRunAnchor = body.nextRunAnchor !== undefined ? normalizeDate(body.nextRunAnchor, '下次运行锚点') : existing.next_run_anchor
   const normalizedEndDate = body.endDate !== undefined ? normalizeDate(body.endDate, '结束日期', false) : existing.end_date
+  const normalizedName = body.name !== undefined ? normalizeScheduleName(body.name) : existing.name
   if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
   const normalizedActive = normalizeActive(body.active, Boolean(existing.active))
 
@@ -790,7 +815,8 @@ async function update(req, res) {
       })
       await connection.execute(
         `UPDATE inspection_schedules
-         SET customer_id = :customerId,
+         SET name = :name,
+             customer_id = :customerId,
              target_engineer_id = :targetEngineerId,
              cadence = :cadence,
              next_run_anchor = :nextRunAnchor,
@@ -801,6 +827,7 @@ async function update(req, res) {
          WHERE id = :id`,
         {
           id: req.params.id,
+          name: normalizedName,
           customerId: normalizedCustomerId,
           targetEngineerId: normalizedEngineerId,
           cadence: normalizedCadence,
