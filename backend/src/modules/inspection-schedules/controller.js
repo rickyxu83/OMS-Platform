@@ -294,9 +294,7 @@ async function createInspectionOrder(connection, schedule, occurrenceDate, devic
     {
       orderNo,
       customerId: schedule.customer_id,
-      issueDescription: deviceNameText
-        ? `巡检计划自动生成：${schedule.customer_name} / ${deviceNameText}，周期 ${schedule.cadence}`
-        : `巡检计划自动生成：${schedule.customer_name}，周期 ${schedule.cadence}`,
+      issueDescription: '设备巡检',
       plannedStartAt: occurrenceStartAt,
       plannedEndAt: occurrenceEndAt,
       internalNote: deviceNameText

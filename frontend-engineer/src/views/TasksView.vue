@@ -129,7 +129,21 @@ function mergeDraftCards(items) {
   for (const item of items) {
     const key = item.draftId || item.localRoute || `${item.linkedOrderId || 'new'}:${item.status}`
     const existing = merged.get(key)
-    if (!existing || toDraftTimestamp(item.updatedAt) >= toDraftTimestamp(existing.updatedAt)) {
+    if (!existing) {
+      merged.set(key, item)
+      continue
+    }
+    if (item.remoteDraft !== existing.remoteDraft) {
+      const itemClientTime = toDraftTimestamp(item.draftClientUpdatedAt || item.updatedAt)
+      const existingClientTime = toDraftTimestamp(existing.draftClientUpdatedAt || existing.updatedAt)
+      if (item.remoteDraft && itemClientTime >= existingClientTime) {
+        merged.set(key, item)
+      } else if (!item.remoteDraft && itemClientTime > existingClientTime) {
+        merged.set(key, item)
+      }
+      continue
+    }
+    if (toDraftTimestamp(item.updatedAt) >= toDraftTimestamp(existing.updatedAt)) {
       merged.set(key, item)
     }
   }
@@ -157,6 +171,7 @@ function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = nul
     remoteDraft,
     draftId: normalizedDraftId,
     draftMode: mode,
+    draftClientUpdatedAt: payload.__draftClientUpdatedAt || updatedAt,
     customerName: customer.name || '',
     deviceName: serviceDraft.deviceName || payload.officeDraft?.deviceName || '',
     issueDescription: serviceDraft.issueDescription || payload.remoteDraft?.issueDescription || payload.onsiteDraft?.issueDescription || '',
@@ -173,7 +188,7 @@ function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = nul
   })
 }
 
-async function loadLocalDraftTasks() {
+async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
   const drafts = []
 
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -235,6 +250,30 @@ async function loadLocalDraftTasks() {
     // Remote draft lookup is best-effort so the list still works offline.
   }
 
+  const uniqueRemoteOrderIds = [...new Set(remoteOrderIds.map((id) => Number(id || 0)).filter(Boolean))]
+  await Promise.all(
+    uniqueRemoteOrderIds.map(async (orderId) => {
+      try {
+        const remoteDraft = await fetchRemoteSelfReportDraft(orderId)
+        if (!remoteDraft?.payload) return
+        const payload = remoteDraft.payload
+        pushDraftCard(drafts, {
+          keyPrefix: `remote-draft:${orderId}`,
+          storageKey: '',
+          linkedOrderId: orderId,
+          remoteDraft: true,
+          updatedAt: remoteDraft.clientUpdatedAt || remoteDraft.updatedAt || '',
+          createdAt: remoteDraft.createdAt || remoteDraft.updatedAt || '',
+          payload,
+          mode: payload.formMode || payload.serviceDraft?.serviceMode || 'onsite',
+          draftId: payload.__draftId || '',
+        })
+      } catch {
+        // Per-order account drafts are optional; keep the task list usable if one lookup fails.
+      }
+    }),
+  )
+
   localDraftTasks.value = mergeDraftCards(drafts)
 }
 
@@ -243,7 +282,6 @@ async function clearResolvedLocalDrafts() {
 
   const existingTaskIds = new Set(tasks.value.map((task) => Number(task.id)).filter(Boolean))
   let removed = false
-  const removedEditOrderIds = new Set()
   const removedCreateDrafts = []
 
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
@@ -252,12 +290,7 @@ async function clearResolvedLocalDrafts() {
     const isLegacyDraft = key?.startsWith(localDraftPrefix()) || key?.startsWith(accountDraftPrefix()) || key?.startsWith(legacyDraftPrefix())
     if (!isScopedDraft && !isLegacyDraft) continue
     const routeInfo = parseDraftRoute(key)
-    if (routeInfo.orderId && existingTaskIds.has(Number(routeInfo.orderId))) {
-      localStorage.removeItem(key)
-      removed = true
-      removedEditOrderIds.add(Number(routeInfo.orderId))
-      continue
-    }
+    if (routeInfo.orderId) continue
 
     try {
       const parsed = JSON.parse(localStorage.getItem(key) || '{}')
@@ -277,13 +310,10 @@ async function clearResolvedLocalDrafts() {
     }
   }
 
-  for (const orderId of removedEditOrderIds) {
-    await clearSelfReportDraft(orderId).catch(() => {})
-  }
   for (const draft of removedCreateDrafts) {
     await clearSelfReportDraft(null, draft.mode, draft.draftId).catch(() => {})
   }
-  if (removed) await loadLocalDraftTasks()
+  if (removed) await loadLocalDraftTasks({ remoteOrderIds: tasks.value.map((task) => task.id) })
 }
 
 function mergeTasks(nextItems) {
@@ -331,6 +361,7 @@ async function loadWithMode({ append = false, silent = false, expandVisible = tr
       tasks.value = nextItems
     }
     await clearResolvedLocalDrafts()
+    await loadLocalDraftTasks({ remoteOrderIds: tasks.value.map((task) => task.id) })
     if (!append) {
       await fillInitialTaskBatch()
     }
@@ -489,7 +520,7 @@ function compactCustomerTitle(name) {
 }
 
 function refreshView({ silent = false } = {}) {
-  loadLocalDraftTasks().catch(() => {})
+  loadLocalDraftTasks({ remoteOrderIds: tasks.value.map((task) => task.id) }).catch(() => {})
   loadWithMode({ silent })
 }
 
@@ -706,14 +737,14 @@ const taskActionTitle = computed(() => {
 
 const taskActionLead = computed(() => {
   if (pendingTaskAction.value?.type === 'cancel_record') return '作废后这条服务记录将不再参与正常流转'
-  return '这份本机草稿删除后将无法恢复'
+  return '这份草稿删除后将无法恢复'
 })
 
 const taskActionBody = computed(() => {
   if (pendingTaskAction.value?.type === 'cancel_record') {
     return '确认后这条记录会标记为已作废，并从正常服务记录列表中移除。'
   }
-  return '删除后，这张“继续填写”的本机草稿卡片会从服务记录列表中移除。'
+  return '删除后，这张“继续填写”的草稿卡片会从服务记录列表中移除。'
 })
 
 const taskActionConfirmLabel = computed(() => {
@@ -741,7 +772,7 @@ async function confirmTaskAction() {
       action.task.draftId || '',
     )
     pendingTaskAction.value = null
-    loadLocalDraftTasks().catch(() => {})
+    loadLocalDraftTasks({ remoteOrderIds: tasks.value.map((task) => task.id) }).catch(() => {})
     showActionToast('已删除草稿')
     return
   }

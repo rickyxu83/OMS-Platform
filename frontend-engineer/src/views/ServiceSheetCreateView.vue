@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
@@ -1000,7 +1000,7 @@ async function persistDraft({ silent = true, waitForRemote = false } = {}) {
   statusNowMs.value = Date.now()
   draftSavedAtMs.value = statusNowMs.value
   draftSavedAt.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  if (isOnline.value || waitForRemote) {
+  if (isOnline.value) {
     if (waitForRemote) {
       await syncDraftToRemote(payload, clientUpdatedAt)
     } else {
@@ -3141,6 +3141,17 @@ onBeforeUnmount(() => {
   stopCancelFabDrag()
   unlockSignatureLandscape()
   window.dispatchEvent(new CustomEvent('rc-form-dirty-state', { detail: { dirty: false } }))
+})
+
+onBeforeRouteLeave(async () => {
+  if (saving.value || loading.value || draftHydrating.value) return true
+  if (!draftDirty.value) return true
+  try {
+    await persistDraft({ waitForRemote: isOnline.value })
+  } catch {
+    // Navigation should not be trapped by a best-effort draft sync; local draft is written first.
+  }
+  return true
 })
 
 watch(aiDraftEnabled, (enabled) => {
