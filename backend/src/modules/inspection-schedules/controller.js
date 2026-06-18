@@ -777,7 +777,14 @@ async function update(req, res) {
 
   const body = req.body || {}
   const normalizedCustomerId = body.customerId !== undefined ? Number(body.customerId || 0) : Number(existing.customer_id)
-  const normalizedEngineerId = body.targetEngineerId !== undefined ? Number(body.targetEngineerId || 0) : Number(existing.target_engineer_id)
+  const normalizedEngineerIds = Array.isArray(body.targetEngineerIds)
+    ? [...new Set(body.targetEngineerIds.map((id) => Number(id)).filter(Boolean))]
+    : null
+  if (normalizedEngineerIds && normalizedEngineerIds.length === 0) {
+    throw badRequest('客户和目标工程师不能为空')
+  }
+  const normalizedEngineerId = normalizedEngineerIds?.[0]
+    || (body.targetEngineerId !== undefined ? Number(body.targetEngineerId || 0) : Number(existing.target_engineer_id))
   if (!normalizedCustomerId || !normalizedEngineerId) {
     throw badRequest('客户和目标工程师不能为空')
   }
@@ -795,24 +802,37 @@ async function update(req, res) {
   const normalizedName = body.name !== undefined ? normalizeScheduleName(body.name) : existing.name
   if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
   const normalizedActive = normalizeActive(body.active, Boolean(existing.active))
+  const engineerIdsForWrite = normalizedEngineerIds || [normalizedEngineerId]
+  const deviceIdsForWrite = normalizedDeviceIds || [...new Set((existing._devices || []).map((d) => Number(d.device_id)).filter(Boolean))]
 
   try {
     await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
-      if (normalizedDeviceIds) {
-        for (const deviceId of normalizedDeviceIds) {
-          await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, deviceId)
-        }
+      if (deviceIdsForWrite.length === 0) {
+        throw badRequest('请至少指定一台巡检设备')
       }
-      await assertActiveEngineer(connection, normalizedEngineerId)
+      for (const deviceId of deviceIdsForWrite) {
+        await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, deviceId)
+      }
+      for (const engineerId of engineerIdsForWrite) {
+        await assertActiveEngineer(connection, engineerId)
+      }
       await assertNoDuplicateActive(connection, {
         id: req.params.id,
         customerId: normalizedCustomerId,
-        targetEngineerId: normalizedEngineerId,
+        targetEngineerId: engineerIdsForWrite[0],
         cadence: normalizedCadence,
         active: normalizedActive,
       })
+      for (const engineerId of engineerIdsForWrite.slice(1)) {
+        await assertNoDuplicateActive(connection, {
+          customerId: normalizedCustomerId,
+          targetEngineerId: engineerId,
+          cadence: normalizedCadence,
+          active: normalizedActive,
+        })
+      }
       await connection.execute(
         `UPDATE inspection_schedules
          SET name = :name,
@@ -829,7 +849,7 @@ async function update(req, res) {
           id: req.params.id,
           name: normalizedName,
           customerId: normalizedCustomerId,
-          targetEngineerId: normalizedEngineerId,
+          targetEngineerId: engineerIdsForWrite[0],
           cadence: normalizedCadence,
           nextRunAnchor: normalizedNextRunAnchor,
           active: normalizedActive ? 1 : 0,
@@ -843,6 +863,36 @@ async function update(req, res) {
           await connection.execute(
             `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
             { scheduleId: req.params.id, deviceId },
+          )
+        }
+      }
+      for (const engineerId of engineerIdsForWrite.slice(1)) {
+        const [result] = await connection.execute(
+          `INSERT INTO inspection_schedules (
+            name, customer_id, target_engineer_id, cadence, next_run_anchor,
+            active, end_date, next_order_status, created_by, updated_by
+          )
+          VALUES (
+            :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
+            :active, :endDate, 'pending_confirmation', :createdBy, :updatedBy
+          )`,
+          {
+            name: normalizedName,
+            customerId: normalizedCustomerId,
+            targetEngineerId: engineerId,
+            cadence: normalizedCadence,
+            nextRunAnchor: normalizedNextRunAnchor,
+            active: normalizedActive ? 1 : 0,
+            endDate: normalizedEndDate,
+            createdBy: req.user.id,
+            updatedBy: req.user.id,
+          },
+        )
+        const scheduleId = result.insertId
+        for (const deviceId of deviceIdsForWrite) {
+          await connection.execute(
+            `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
+            { scheduleId, deviceId },
           )
         }
       }

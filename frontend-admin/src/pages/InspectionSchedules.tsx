@@ -96,6 +96,7 @@ export function InspectionSchedules() {
   const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
     customerId: "",
@@ -240,6 +241,7 @@ export function InspectionSchedules() {
   function openCreate() {
     setEditingId(null);
     setCustomerSearch("");
+    setCustomerOptionsOpen(false);
     setForm({
       name: "",
       customerId: "",
@@ -257,6 +259,7 @@ export function InspectionSchedules() {
   function openEdit(schedule: Schedule) {
     setEditingId(schedule.id);
     setCustomerSearch(schedule.customerName || "");
+    setCustomerOptionsOpen(false);
     setForm({
       name: schedule.name || "",
       customerId: schedule.customerId ? String(schedule.customerId) : "",
@@ -275,10 +278,12 @@ export function InspectionSchedules() {
     setForm({ ...form, customerId, deviceIds: [] });
     const customer = customers.find((c) => String(c.id) === customerId);
     setCustomerSearch(customer?.name || "");
+    setCustomerOptionsOpen(false);
   }
 
   function updateCustomerSearch(value: string) {
     setCustomerSearch(value);
+    setCustomerOptionsOpen(true);
     if (selectedCustomer && value !== (selectedCustomer.name || `客户 #${selectedCustomer.id}`)) {
       setForm((prev) => ({ ...prev, customerId: "", deviceIds: [] }));
     }
@@ -300,10 +305,6 @@ export function InspectionSchedules() {
     }
     if (form.targetEngineerIds.length === 0) {
       setError("请选择巡检工程师");
-      return;
-    }
-    if (editingId && form.targetEngineerIds.length > 1) {
-      setError("编辑已有计划时只能选择一名巡检工程师；新增计划可多选");
       return;
     }
     if (form.deviceIds.length === 0) {
@@ -330,6 +331,7 @@ export function InspectionSchedules() {
         customerId: form.customerId,
         deviceIds: form.deviceIds,
         targetEngineerId: form.targetEngineerIds[0],
+        targetEngineerIds: form.targetEngineerIds,
         cadence: form.cadence,
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
@@ -539,9 +541,8 @@ export function InspectionSchedules() {
               {filtered.map((s) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
                 const planName = String(s.name || "").trim();
-                const title = planName || String(s.customerName || `计划 #${s.id}`).trim();
                 const customerName = String(s.customerName || "").trim();
-                const showCustomerName = Boolean(customerName && customerName !== title);
+                const title = planName || customerName || `计划 #${s.id}`;
                 const deviceNames = s.deviceNames || [];
                 return (
                   <div
@@ -562,11 +563,6 @@ export function InspectionSchedules() {
                       <div className="text-base font-semibold leading-6 text-slate-900">
                         {title}
                       </div>
-                      {showCustomerName && (
-                        <div className="mt-1 truncate text-sm text-muted-foreground">
-                          {customerName}
-                        </div>
-                      )}
                       {deviceNames.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <Badge variant="outline" className="max-w-[220px] truncate text-xs">
@@ -650,7 +646,6 @@ export function InspectionSchedules() {
                         <div className="text-lg font-semibold leading-7 text-slate-900">
                           {detailTarget.name || detailTarget.customerName || `计划 #${detailTarget.id}`}
                         </div>
-                        <div className="mt-1 text-sm text-muted-foreground">{detailTarget.customerName || "-"}</div>
                       </div>
                       <Badge variant={detailTarget.active ? "success" : "secondary"}>
                         {detailTarget.active ? "已启用" : "已停用"}
@@ -693,10 +688,6 @@ export function InspectionSchedules() {
                       <div className="text-sm font-medium">计划信息</div>
                       <div className="mt-3 grid gap-3 text-sm">
                         <div>
-                          <div className="text-xs text-muted-foreground">客户</div>
-                          <div className="mt-1">{detailTarget.customerName || "-"}</div>
-                        </div>
-                        <div>
                           <div className="text-xs text-muted-foreground">结束日期</div>
                           <div className="mt-1">{formatDate(detailTarget.endDate)}</div>
                         </div>
@@ -733,7 +724,7 @@ export function InspectionSchedules() {
           <DialogHeader>
             <DialogTitle>{editingId ? "编辑巡检计划" : "新增巡检计划"}</DialogTitle>
             <DialogDescription>
-              选择客户、指派工程师，并勾选该工程师需要巡检的设备
+              选择客户、指派工程师，并勾选需要巡检的设备
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -746,36 +737,46 @@ export function InspectionSchedules() {
                   placeholder="例如 苏州园区月度巡检"
                 />
               </div>
-              <div className="space-y-2">
+              <div
+                className="relative space-y-2"
+                onBlur={(event) => {
+                  const nextTarget = event.relatedTarget as Node | null;
+                  if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+                  setCustomerOptionsOpen(false);
+                }}
+              >
                 <Label>客户 *</Label>
                 <Input
                   value={customerSearch}
                   onChange={(event) => updateCustomerSearch(event.target.value)}
+                  onFocus={() => setCustomerOptionsOpen(true)}
                   placeholder="输入客户名称或选择客户"
                 />
-                <div className="max-h-48 overflow-y-auto rounded-md border border-border p-1">
-                  {filteredCustomerOptions.length ? (
-                    filteredCustomerOptions.map((c) => {
-                      const customerId = String(c.id);
-                      const selected = form.customerId === customerId;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
-                            selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
-                          }`}
-                          onClick={() => updateCustomer(customerId)}
-                        >
-                          <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
-                          {selected && <Badge variant="outline">已选</Badge>}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配客户</div>
-                  )}
-                </div>
+                {customerOptionsOpen && (
+                  <div className="absolute left-0 right-0 z-50 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-1 shadow-lg">
+                    {filteredCustomerOptions.length ? (
+                      filteredCustomerOptions.map((c) => {
+                        const customerId = String(c.id);
+                        const selected = form.customerId === customerId;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
+                              selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
+                            }`}
+                            onClick={() => updateCustomer(customerId)}
+                          >
+                            <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
+                            {selected && <Badge variant="outline">已选</Badge>}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配客户</div>
+                    )}
+                  </div>
+                )}
                 {selectedCustomer && (
                   <div className="text-xs text-muted-foreground">
                     已选：{selectedCustomer.name || `客户 #${selectedCustomer.id}`}
@@ -785,74 +786,54 @@ export function InspectionSchedules() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>巡检工程师 *</Label>
-                  {!editingId && (
-                    <span className="text-xs text-muted-foreground">已选 {selectedEngineerCount} 人</span>
+                  <span className="text-xs text-muted-foreground">已选 {selectedEngineerCount} 人</span>
+                </div>
+                <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
+                  {engineers.length ? (
+                    engineers.map((e) => {
+                      const engineerId = String(e.id);
+                      const checked = form.targetEngineerIds.includes(engineerId);
+                      return (
+                        <div
+                          key={e.id}
+                          role="checkbox"
+                          aria-checked={checked}
+                          tabIndex={0}
+                          onClick={() => toggleEngineer(engineerId)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleEngineer(engineerId);
+                            }
+                          }}
+                          className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                            checked
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-muted-foreground/30"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={checked}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={() => toggleEngineer(engineerId)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">
+                              {e.realName || e.username || `工程师 #${e.id}`}
+                            </div>
+                            {e.username && e.realName && (
+                              <div className="text-xs text-muted-foreground">{e.username}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用工程师</div>
                   )}
                 </div>
-                {editingId ? (
-                  <Select
-                    value={form.targetEngineerIds[0] || ""}
-                    onValueChange={(v) => setForm({ ...form, targetEngineerIds: [v] })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择工程师" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {engineers.map((e) => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.realName || e.username || `工程师 #${e.id}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
-                    {engineers.length ? (
-                      engineers.map((e) => {
-                        const engineerId = String(e.id);
-                        const checked = form.targetEngineerIds.includes(engineerId);
-                        return (
-                          <div
-                            key={e.id}
-                            role="checkbox"
-                            aria-checked={checked}
-                            tabIndex={0}
-                            onClick={() => toggleEngineer(engineerId)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                toggleEngineer(engineerId);
-                              }
-                            }}
-                            className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
-                              checked
-                                ? "border-primary bg-primary/5"
-                                : "border-border hover:border-muted-foreground/30"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-primary"
-                              checked={checked}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={() => toggleEngineer(engineerId)}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">
-                                {e.realName || e.username || `工程师 #${e.id}`}
-                              </div>
-                              {e.username && e.realName && (
-                                <div className="text-xs text-muted-foreground">{e.username}</div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用工程师</div>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="md:col-span-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">
