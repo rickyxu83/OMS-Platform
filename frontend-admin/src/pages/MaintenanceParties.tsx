@@ -492,7 +492,7 @@ export function MaintenanceParties() {
                       <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
                         {t.actions.edit}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteParty(p)} disabled={saving}>
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         {t.actions.delete}
                       </Button>

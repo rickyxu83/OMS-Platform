@@ -502,7 +502,7 @@ export function Devices() {
                       <Button variant="ghost" size="sm" onClick={() => openEdit(device)}>
                         编辑
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteDevice(device)} disabled={saving}>
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         删除
                       </Button>

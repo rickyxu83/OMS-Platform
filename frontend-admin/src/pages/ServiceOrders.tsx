@@ -1062,7 +1062,7 @@ export function ServiceOrders() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
+          <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
             <Trash2 className="w-4 h-4 mr-2" />
             批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
           </Button>
