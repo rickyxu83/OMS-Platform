@@ -3425,6 +3425,7 @@ h2 {
 .task-content {
   display: grid;
   gap: 12px;
+  min-width: 0;
   /* 右侧给右上角胶囊留位；底部给桌面端 trash 入口留位 */
   padding-right: clamp(84px, 22vw, 128px);
   padding-bottom: 8px;
