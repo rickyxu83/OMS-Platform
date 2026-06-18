@@ -259,8 +259,8 @@ const I18N = {
   },
 } as const;
 
-const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
-  draft: "secondary",
+const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
+  draft: "draft",
   assigned: "warning",
   in_progress: "purple",
   submitted: "success",
@@ -270,12 +270,6 @@ const STATUS_BADGE_VARIANT: Record<string, "warning" | "secondary" | "success" |
   cancelled: "destructive",
   completed: "success",
 };
-
-function recentStatusBadgeClass(status: string) {
-  const base = "h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal";
-  if (status === "draft") return `${base} border border-slate-300 bg-slate-200 text-slate-700`;
-  return base;
-}
 
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
@@ -589,7 +583,7 @@ export function Dashboard() {
                       <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
                       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
                       <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className={recentStatusBadgeClass(order.status)}>
+                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal">
                         {order.statusLabel}
                       </Badge>
                     </div>

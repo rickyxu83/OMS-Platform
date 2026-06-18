@@ -255,8 +255,8 @@ const I18N = {
   },
 } as const;
 
-const STATUS_BADGE_VARIANT: Record<string, "secondary" | "purple" | "success" | "warning" | "destructive"> = {
-  draft: "secondary",
+const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "success" | "warning" | "destructive"> = {
+  draft: "draft",
   assigned: "warning",
   in_progress: "purple",
   pending_confirmation: "warning",

@@ -453,10 +453,10 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   rejected: "已退回",
 };
 
-const ORDER_STATUS_VARIANT: Record<string, "default" | "secondary" | "purple" | "warning" | "info" | "success" | "destructive" | "outline"> = {
+const ORDER_STATUS_VARIANT: Record<string, "default" | "draft" | "secondary" | "purple" | "warning" | "info" | "success" | "destructive" | "outline"> = {
   pending_confirmation: "warning",
   assigned: "info",
-  draft: "secondary",
+  draft: "draft",
   in_progress: "purple",
   submitted: "success",
   approved: "success",
