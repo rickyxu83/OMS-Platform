@@ -3446,9 +3446,11 @@ h2 {
   align-content: start;
   gap: 12px;
   min-width: 0;
-  /* 右侧给右上角胶囊留位；底部给桌面端操作入口留位 */
+  max-height: calc(100% - 38px);
+  overflow: hidden;
+  /* 右侧给右上角胶囊留位；底部给统一状态条与桌面端操作入口留位 */
   padding-right: clamp(84px, 22vw, 128px);
-  padding-bottom: 8px;
+  padding-bottom: 34px;
 }
 
 .task-side-badges {
@@ -3492,10 +3494,15 @@ h2 {
 }
 
 .task-card-hint {
+  position: absolute;
+  left: 22px;
+  bottom: 18px;
   display: inline-flex;
   width: fit-content;
+  max-width: calc(100% - 122px);
   min-height: 24px;
   align-items: center;
+  overflow: hidden;
   border: 1px solid rgb(191 219 254 / 86%);
   border-radius: 999px;
   padding: 0 9px;
@@ -3504,6 +3511,8 @@ h2 {
   font-size: 12px;
   font-weight: 900;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .service-mode-badge {
@@ -5581,6 +5590,13 @@ h2 {
 
   .task-content {
     padding-right: clamp(78px, 24vw, 108px);
+    padding-bottom: 32px;
+  }
+
+  .task-card-hint {
+    left: 16px;
+    bottom: 14px;
+    max-width: calc(100% - 32px);
   }
 
   .submit-bar {
