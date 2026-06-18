@@ -512,9 +512,23 @@ function openTask(task) {
 }
 
 // ---- 卡片左滑露出销毁操作（仅触屏；桌面端用 .task-desktop-action 按钮）----
+// transform 完全由 JS 内联驱动，避免依赖响应式 class 的异步更新时序导致展开态闪烁/残留
 const swipeOpenId = ref(null)
 let swipeState = null
 const SWIPE_ACTION_WIDTH = 112 // 露出的销毁操作区宽度，需与 CSS --swipe-action-width 一致
+
+function applySwipeTransform(body, open) {
+  if (!body) return
+  body.style.transition = 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1)'
+  body.style.transform = open ? `translateX(${-SWIPE_ACTION_WIDTH}px)` : 'translateX(0)'
+}
+
+function closeAllSwipe(exceptId = null) {
+  if (swipeOpenId.value && swipeOpenId.value !== exceptId) {
+    const prev = document.querySelector(`.task-swipe-body[data-task-id="${swipeOpenId.value}"]`)
+    applySwipeTransform(prev, false)
+  }
+}
 
 function onSwipePointerDown(task, event) {
   // 仅对主指针（触屏/笔）启用滑动；鼠标点击交由 click 处理
@@ -545,7 +559,7 @@ function onSwipePointerMove(event) {
   swipeState.dx = dx
   let translate = dx
   if (swipeState.openAtStart) translate = -SWIPE_ACTION_WIDTH + dx
-  // 限制在 [-SWIPE_ACTION_WIDTH, 0]，阻尼
+  // 限制在 [-SWIPE_ACTION_WIDTH, 0]
   translate = Math.max(-SWIPE_ACTION_WIDTH, Math.min(0, translate))
   const body = event.currentTarget
   body.style.transition = 'none'
@@ -555,23 +569,21 @@ function onSwipePointerMove(event) {
 function onSwipePointerUp(event) {
   if (!swipeState) return
   const body = event.currentTarget
-  body.style.transition = ''
-  body.style.transform = ''
   const moved = swipeState.moved
   const dx = swipeState.dx
   const wasOpen = swipeState.openAtStart
   const taskId = swipeState.taskId
   swipeState = null
   if (!moved) return
-  // 滑过阈值则切换开合
   const threshold = SWIPE_ACTION_WIDTH / 2
-  if (wasOpen) {
-    if (dx > threshold) swipeOpenId.value = null
-    else swipeOpenId.value = taskId
-  } else {
-    if (dx < -threshold) swipeOpenId.value = taskId
-    else swipeOpenId.value = null
-  }
+  let shouldOpen
+  if (wasOpen) shouldOpen = !(dx > threshold)
+  else shouldOpen = dx < -threshold
+  // 先收起其它已展开的卡片
+  closeAllSwipe(taskId)
+  swipeOpenId.value = shouldOpen ? taskId : null
+  // 内联设到最终位，带过渡
+  applySwipeTransform(body, shouldOpen)
   // 标记本次为滑动，阻止后续 click 跳转
   body.dataset.swiped = '1'
   window.setTimeout(() => { delete body.dataset.swiped }, 0)
@@ -584,19 +596,26 @@ function onTaskCardClick(task, event) {
     event.stopPropagation()
     return
   }
-  // 点击时若其它卡片处于展开态，先收起，不跳转（避免误触）
-  if (swipeOpenId.value && swipeOpenId.value !== task.id) {
+  // 点击时若本卡处于展开态，先收起，不跳转
+  if (swipeOpenId.value === task.id) {
+    swipeOpenId.value = null
+    applySwipeTransform(event.currentTarget, false)
+    return
+  }
+  // 其它卡片展开则收起，不跳转
+  if (swipeOpenId.value) {
+    closeAllSwipe()
     swipeOpenId.value = null
     return
   }
-  swipeOpenId.value = null
   openTask(task)
 }
 
-function onSwipeActionClick(task) {
+function onSwipeActionClick(task, event) {
   if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
   else openCancelRecord(task)
   swipeOpenId.value = null
+  applySwipeTransform(event.currentTarget?.closest?.('.task-swipe-body'), false)
 }
 
 function onTaskCardKeydown(task, event) {
@@ -726,6 +745,7 @@ onBeforeUnmount(() => {
         <!-- 可滑动的内容层：整卡点击进编辑 -->
         <div
           class="task-swipe-body"
+          :data-task-id="task.id"
           role="link"
           tabindex="0"
           @click="onTaskCardClick(task, $event)"

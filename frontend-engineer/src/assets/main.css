@@ -3704,7 +3704,7 @@ h2 {
 }
 
 .task-card.swipe-open .task-swipe-body {
-  transform: translateX(calc(var(--swipe-action-width, 112px) * -1));
+  /* 展开态的 transform 由 JS 内联设置，这里仅保留占位，避免与内联值冲突 */
 }
 
 .task-swipe-body:focus-visible {
