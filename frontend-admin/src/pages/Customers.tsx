@@ -532,6 +532,7 @@ export function Customers() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
+  const [levelFilter, setLevelFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -644,7 +645,10 @@ export function Customers() {
     };
   }, [detailTarget?.id, t.errors.loadFailed]);
 
-  const filtered = customers;
+  const filtered = useMemo(
+    () => (levelFilter === "all" ? customers : customers.filter((customer) => levelOf(customer) === levelFilter)),
+    [customers, levelFilter],
+  );
 
   const stats = useMemo(() => {
     const total = customers.length;
@@ -656,6 +660,14 @@ export function Customers() {
       { label: t.stats.serviceCount, value: serviceCount },
     ];
   }, [customers, t.stats]);
+
+  const levelFilterLabel = levelFilter === "all"
+    ? ""
+    : t.levels[levelFilter as keyof typeof t.levels] || levelFilter;
+
+  function toggleLevelFilter(level: string) {
+    setLevelFilter((current) => (current === level ? "all" : level));
+  }
 
   function openCreate() {
     setSuccessMessage("");
@@ -1039,7 +1051,21 @@ export function Customers() {
       <Card>
         <CardHeader className="pb-0">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <CardTitle>{t.list.title}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>{t.list.title}</CardTitle>
+              {levelFilterLabel ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setLevelFilter("all")}
+                >
+                  {levelFilterLabel}
+                  <span className="text-muted-foreground">×</span>
+                </Button>
+              ) : null}
+            </div>
             <div className="relative w-full md:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -1114,7 +1140,25 @@ export function Customers() {
                         <TableCell>{c.contactName || t.misc.unknown}</TableCell>
                         <TableCell>{c.contactPhone || c.phone || t.misc.unknown}</TableCell>
                         <TableCell>
-                          <Badge variant={LEVEL_VARIANT[lv] || "secondary"}>{lvLabel}</Badge>
+                          <Badge
+                            role="button"
+                            tabIndex={0}
+                            variant={LEVEL_VARIANT[lv] || "secondary"}
+                            className={`cursor-pointer ${levelFilter === lv ? "ring-2 ring-primary/30" : ""}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleLevelFilter(lv);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                toggleLevelFilter(lv);
+                              }
+                            }}
+                          >
+                            {lvLabel}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground max-w-[300px] truncate">
                           {c.address || t.misc.unknown}

@@ -578,7 +578,7 @@ export function Dashboard() {
                     <div className={`h-2 w-2 shrink-0 rounded-full ${
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
-                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_auto_auto_auto] items-center gap-3">
+                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
                       <span className="min-w-0 truncate text-sm font-semibold tracking-tight" title={order.customer}>{order.customer}</span>
                       <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
                       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
