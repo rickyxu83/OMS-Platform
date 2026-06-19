@@ -13,7 +13,10 @@ function goUnifiedLogin() {
 }
 
 onMounted(() => {
-  window.location.replace(unifiedLoginUrl('/'))
+  const target = new URL(unifiedLoginUrl('/'), window.location.origin)
+  if (target.href !== window.location.href) {
+    window.location.replace(target.href)
+  }
 })
 </script>
 

@@ -1,6 +1,7 @@
 const express = require('express')
 const controller = require('./controller')
 const { requireRoles } = require('../../middleware/auth')
+const { aiSummaryLimiter } = require('../../middleware/rate-limit')
 const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
@@ -8,8 +9,17 @@ const router = express.Router()
 const opsRoles = ROLE_GROUPS.serviceOrderOps
 const viewRoles = ROLE_GROUPS.serviceOrderView
 const engineerRoles = ROLE_GROUPS.serviceOrderEngineer
+
+function limitWhenWorkSummaryRequested(req, res, next) {
+  if (String(req.query.includeWorkSummary || '') === '1') {
+    aiSummaryLimiter(req, res, next)
+    return
+  }
+  next()
+}
+
 router.get('/stats/overview', requireRoles(...viewRoles), controller.statsOverview)
-router.get('/timesheet/monthly', requireRoles(...engineerRoles, ...viewRoles), controller.timesheetMonthly)
+router.get('/timesheet/monthly', requireRoles(...engineerRoles, ...viewRoles), limitWhenWorkSummaryRequested, controller.timesheetMonthly)
 router.post('/timesheet/manual-entries', requireRoles(...engineerRoles), controller.createTimesheetManualEntry)
 router.delete('/timesheet/manual-entries/:id', requireRoles(...engineerRoles), controller.deleteTimesheetManualEntry)
 router.get('/customer-signature/latest', requireRoles(...engineerRoles), controller.latestCustomerSignature)
@@ -23,7 +33,7 @@ router.post('/', requireRoles(...opsRoles), controller.create)
 router.post('/:id/confirm-inspection', requireRoles(...opsRoles), controller.confirmInspectionOrder)
 router.post('/:id/assign', requireRoles(...opsRoles), controller.assign)
 router.post('/:id/transition', requireRoles(...opsRoles), controller.transition)
-router.post('/self-report/ai-draft', requireRoles(...engineerRoles), controller.aiSelfReportDraft)
+router.post('/self-report/ai-draft', requireRoles(...engineerRoles), aiSummaryLimiter, controller.aiSelfReportDraft)
 router.post('/self-report', requireRoles(...engineerRoles), controller.createSelfReport)
 router.get('/:id/export-pdf', requireRoles(...engineerRoles, ...viewRoles), controller.exportPdf)
 router.get('/export-pdf-batch', requireRoles(...viewRoles), controller.exportPdfBatch)

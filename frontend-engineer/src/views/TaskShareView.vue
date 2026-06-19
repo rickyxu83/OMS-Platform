@@ -355,7 +355,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const data = await api.get(`/service-orders/${route.params.id}`)
+    const data = await api.get(`/service-orders/${route.params.id}?mine=1`)
     task.value = data.item
     logoDataUrl.value = await imageToDataUrl(`${import.meta.env.BASE_URL}export-logo.png`).catch(() => '')
     if (normalizePreviewServiceMode(data.item || {}) === 'office') {

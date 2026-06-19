@@ -1432,6 +1432,7 @@ function applyCustomerSignature(dataUrl) {
 async function useLatestCustomerSignature() {
   const customer = activeCustomer.value
   const params = new URLSearchParams()
+  params.set('mine', '1')
   if (customer.id) params.set('customerId', customer.id)
   if (customer.name) params.set('customerName', customer.name)
   if (!params.toString()) {
@@ -1698,6 +1699,7 @@ async function uploadPendingInspectionDocuments() {
       formData.append('ownerType', 'service_order')
       formData.append('ownerId', String(route.params.id))
       formData.append('purpose', 'inspection_document')
+      formData.append('mine', '1')
       formData.append('file', file)
       const uploaded = await api.postForm('/files', formData)
       uploadedFiles.push({
@@ -1735,7 +1737,7 @@ async function downloadInspectionDocument(file) {
   retryableError.value = false
   try {
     const token = getToken()
-    const response = await fetch(`${resolveApiBase()}/files/${file.id}`, {
+    const response = await fetch(`${resolveApiBase()}/files/${file.id}?mine=1`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
     })
@@ -2139,7 +2141,7 @@ async function load() {
       api.get('/service-orders?mine=1&pageSize=10&sortBy=createdAt&sortDir=desc'),
       api.get('/users/engineers'),
     ]
-    if (route.params.id) requests.push(api.get(`/service-orders/${route.params.id}`))
+    if (route.params.id) requests.push(api.get(`/service-orders/${route.params.id}?mine=1`))
     const [customerData, orderData, engineerData, detailData] = await Promise.all(requests)
     customers.value = customerData.items || []
     recentOrders.value = orderData.items || []

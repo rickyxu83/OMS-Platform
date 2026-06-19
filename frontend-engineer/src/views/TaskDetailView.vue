@@ -81,7 +81,7 @@ async function downloadFile(file) {
   error.value = ''
   try {
     const token = getToken()
-    const response = await fetch(`${resolveApiBase()}/files/${file.id}`, {
+    const response = await fetch(`${resolveApiBase()}/files/${file.id}?mine=1`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
     })
@@ -126,6 +126,7 @@ async function uploadInspectionDocuments() {
       formData.append('ownerType', 'service_order')
       formData.append('ownerId', String(task.value.id))
       formData.append('purpose', 'inspection_document')
+      formData.append('mine', '1')
       formData.append('file', file)
       await api.postForm('/files', formData)
     }
@@ -142,7 +143,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const data = await api.get(`/service-orders/${route.params.id}`)
+    const data = await api.get(`/service-orders/${route.params.id}?mine=1`)
     task.value = data.item
   } catch (err) {
     error.value = err.message

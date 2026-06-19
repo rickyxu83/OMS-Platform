@@ -11,6 +11,7 @@ const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-dra
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
+const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const signatureRoot = path.join(uploadRoot, 'signatures')
@@ -22,6 +23,7 @@ let serviceOrderInspectionColumnsReady = false
 
 const orderColumns = `
   so.id, so.order_no, so.customer_id, c.name AS customer_name, c.address AS customer_address,
+  c.salesperson AS customer_salesperson,
   c.contact_name, c.contact_phone, so.device_id, d.name AS device_name,
   so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
@@ -34,6 +36,7 @@ const orderColumns = `
 `
 
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
+const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
 
 async function hasInspectionDocument(orderId) {
   await ensureFilePurposeColumn()
@@ -918,12 +921,34 @@ async function attachReports(rows) {
   return rows.map((row) => ({ ...row, report: reportMap.get(Number(row.id)) || null }))
 }
 
-async function engineerCanAccess(orderId, user) {
-  if (user.role !== 'engineer') return true
+function isMineRequest(req) {
+  return ['1', 'true', 'yes'].includes(String(req.query?.mine || '').toLowerCase())
+}
+
+function userIdentityValues(user) {
+  return [user?.real_name, user?.username].map((value) => String(value || '').trim()).filter(Boolean)
+}
+
+function salespersonMatchesOrder(order, user) {
+  const identities = new Set(userIdentityValues(user))
+  if (!identities.size) return false
+  return identities.has(String(order.timesheet_salesperson || '').trim())
+    || identities.has(String(order.customer_salesperson || '').trim())
+}
+
+async function participantCanAccess(orderId, user) {
   const rows = await query(
     `SELECT 1
-     FROM service_order_engineers
-     WHERE service_order_id = :orderId AND engineer_id = :engineerId
+     FROM service_orders so
+     WHERE so.id = :orderId
+       AND (
+         so.assigned_engineer_id = :engineerId
+         OR EXISTS (
+           SELECT 1
+           FROM service_order_engineers soe
+           WHERE soe.service_order_id = so.id AND soe.engineer_id = :engineerId
+         )
+       )
      LIMIT 1`,
     { orderId, engineerId: user.id },
   )
@@ -931,10 +956,21 @@ async function engineerCanAccess(orderId, user) {
 }
 
 async function assertEngineerOwns(order, user) {
-  if (user.role !== 'engineer') return
-  if (order.assigned_engineer_id === user.id) return
-  if (await engineerCanAccess(order.id, user)) return
+  if (!engineerScopedRoles.has(user.role)) return
+  if (Number(order.assigned_engineer_id) === Number(user.id)) return
+  if (await participantCanAccess(order.id, user)) return
   throw forbidden('只能操作自己参与的服务单')
+}
+
+async function assertCanViewOrder(order, user, options = {}) {
+  if (user.role === 'sales') {
+    if (salespersonMatchesOrder(order, user)) return
+    throw forbidden('无权访问该服务单')
+  }
+
+  if (user.role === 'engineer' || (options.mine && engineerScopedRoles.has(user.role))) {
+    await assertEngineerOwns(order, user)
+  }
 }
 
 function buildListQueryParts(req) {
@@ -949,7 +985,7 @@ function buildListQueryParts(req) {
     sortBy = 'createdAt',
     sortDir = 'desc',
   } = req.query
-  const mineQuery = req.query.mine === '1'
+  const mineQuery = isMineRequest(req)
   const isEngineer = req.user.role === 'engineer'
   const isBroadRole = broadListRoles.has(req.user.role)
   const canListBroadly = isBroadRole && !mineQuery
@@ -1060,23 +1096,42 @@ async function list(req, res) {
 }
 
 async function statsOverview(req, res) {
+  const salespersonScope = req.user.role === 'sales' ? String(req.user.real_name || req.user.username || '').trim() : ''
+  const salespersonUsernameScope = req.user.role === 'sales' ? String(req.user.username || '').trim() : ''
+  const salesScopeSql = salespersonScope
+    ? `AND (
+         so.timesheet_salesperson = :salespersonScope
+         OR c.salesperson = :salespersonScope
+         OR so.timesheet_salesperson = :salespersonUsernameScope
+         OR c.salesperson = :salespersonUsernameScope
+       )`
+    : ''
+  const salesScopeParams = { salespersonScope, salespersonUsernameScope }
+
   const [summaryRows, trendRows, recentRows] = await Promise.all([
     query(
       `SELECT
-         SUM(DATE(COALESCE(submitted_at, created_at)) = CURDATE()) AS todayTotal,
-         SUM(DATE_FORMAT(COALESCE(submitted_at, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')) AS monthTotal,
+         SUM(DATE(COALESCE(so.submitted_at, so.created_at)) = CURDATE()) AS todayTotal,
+         SUM(DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')) AS monthTotal,
          COUNT(DISTINCT CASE
-           WHEN DATE_FORMAT(COALESCE(submitted_at, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
-           THEN customer_id
+           WHEN DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+           THEN so.customer_id
          END) AS monthCustomers
-       FROM service_orders`,
+       FROM service_orders so
+       JOIN customers c ON c.id = so.customer_id
+       WHERE 1 = 1
+       ${salesScopeSql}`,
+      salesScopeParams,
     ),
     query(
-      `SELECT DATE(COALESCE(submitted_at, created_at)) AS service_date, COUNT(*) AS total
-       FROM service_orders
-       WHERE DATE(COALESCE(submitted_at, created_at)) >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+      `SELECT DATE(COALESCE(so.submitted_at, so.created_at)) AS service_date, COUNT(*) AS total
+       FROM service_orders so
+       JOIN customers c ON c.id = so.customer_id
+       WHERE DATE(COALESCE(so.submitted_at, so.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+       ${salesScopeSql}
        GROUP BY service_date
        ORDER BY service_date ASC`,
+      salesScopeParams,
     ),
     query(
       `SELECT ${orderColumns}
@@ -1086,8 +1141,11 @@ async function statsOverview(req, res) {
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
        LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
+       WHERE 1 = 1
+       ${salesScopeSql}
        ORDER BY so.id DESC
        LIMIT 8`,
+      salesScopeParams,
     ),
   ])
 
@@ -1095,7 +1153,10 @@ async function statsOverview(req, res) {
     `SELECT COUNT(*) AS total
      FROM service_order_engineers soe
      JOIN service_orders so ON so.id = soe.service_order_id
-     WHERE DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')`,
+     JOIN customers c ON c.id = so.customer_id
+     WHERE DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+     ${salesScopeSql}`,
+    salesScopeParams,
   )
 
   const trendMap = new Map(trendRows.map((row) => [String(row.service_date).slice(0, 10), Number(row.total)]))
@@ -1125,7 +1186,9 @@ async function timesheetMonthly(req, res) {
   await ensureServiceOrderInspectionColumns()
   await ensureTimesheetManualEntriesTable()
   const { month, startDate, endDate, label } = timesheetDateRange(req.query)
-  const requestedEngineerId = req.user.role === 'engineer' ? req.user.id : req.query.engineerId || ''
+  const requestedEngineerId = req.user.role === 'engineer' || (isMineRequest(req) && engineerScopedRoles.has(req.user.role))
+    ? req.user.id
+    : req.query.engineerId || ''
   const filterEngineerId = requestedEngineerId && requestedEngineerId !== 'all' ? Number(requestedEngineerId) : null
   const engineerFilterSql = filterEngineerId ? 'AND participants.engineer_id = :engineerId' : ''
 
@@ -1752,14 +1815,14 @@ async function createSelfReport(req, res) {
   res.status(201).json(created)
 }
 
-async function loadDetailItem(orderId, user) {
+async function loadDetailItem(orderId, user, options = {}) {
   await ensureServiceOrderInspectionColumns()
   await ensureFilePurposeColumn()
   let order = await getOrder(orderId)
   if (!order) {
     throw notFound('服务单不存在')
   }
-  await assertEngineerOwns(order, user)
+  await assertCanViewOrder(order, user, options)
   order = (await attachEngineers([order]))[0]
 
   const reports = await query(
@@ -1837,12 +1900,12 @@ async function loadDetailItem(orderId, user) {
 }
 
 async function detail(req, res) {
-  const item = await loadDetailItem(req.params.id, req.user)
+  const item = await loadDetailItem(req.params.id, req.user, { mine: isMineRequest(req) })
   res.json({ item })
 }
 
 async function exportPdf(req, res) {
-  const item = await loadDetailItem(req.params.id, req.user)
+  const item = await loadDetailItem(req.params.id, req.user, { mine: isMineRequest(req) })
   if (item.serviceMode === 'office') {
     throw badRequest('内勤记录不生成单独服务表，请在月报中统一导出')
   }
@@ -1886,7 +1949,7 @@ async function exportPdfBatch(req, res) {
 
   const eligible = []
   for (const row of rows) {
-    const item = await loadDetailItem(row.id, req.user)
+    const item = await loadDetailItem(row.id, req.user, { mine: isMineRequest(req) })
     if (item.serviceMode === 'office' || !item.report) continue
     eligible.push(item)
   }
@@ -1907,7 +1970,7 @@ async function latestCustomerSignature(req, res) {
   const customerId = Number(req.query.customerId || 0)
   const nameKey = customerNameKey(req.query.customerName || '')
   const filters = []
-  const params = {}
+  const params = { engineerId: req.user.id }
 
   if (customerId) {
     filters.push('so.customer_id = :customerId')
@@ -1928,6 +1991,14 @@ async function latestCustomerSignature(req, res) {
      JOIN customers c ON c.id = so.customer_id
      WHERE (sr.customer_signature_file_id IS NOT NULL OR sr.customer_signature IS NOT NULL)
        AND (${filters.join(' OR ')})
+       AND (
+         so.assigned_engineer_id = :engineerId
+         OR EXISTS (
+           SELECT 1
+           FROM service_order_engineers soe
+           WHERE soe.service_order_id = so.id AND soe.engineer_id = :engineerId
+         )
+       )
      ORDER BY COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,

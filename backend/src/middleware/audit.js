@@ -8,14 +8,27 @@ const actionByMethod = {
   DELETE: 'delete',
 }
 
-const sensitiveKeys = new Set(['password', 'customerSignature', 'token', 'transcript', 'currentDraft'])
+const sensitiveKeyPattern = /(password|secret|token|api[_-]?key|authorization|cookie|signature|transcript|currentdraft)/i
 
-function safeBody(body) {
-  if (!body || typeof body !== 'object') return null
-  return Object.entries(body).reduce((value, [key, item]) => {
-    value[key] = sensitiveKeys.has(key) ? '[redacted]' : item
-    return value
+function isSensitiveKey(key) {
+  return sensitiveKeyPattern.test(String(key || ''))
+}
+
+function redactValue(value, depth = 0) {
+  if (value === null || value === undefined) return value
+  if (depth > 8) return '[redacted]'
+  if (Array.isArray(value)) return value.map((item) => redactValue(item, depth + 1))
+  if (typeof value !== 'object') return value
+
+  return Object.entries(value).reduce((redacted, [key, item]) => {
+    redacted[key] = isSensitiveKey(key) ? '[redacted]' : redactValue(item, depth + 1)
+    return redacted
   }, {})
+}
+
+function safePayload(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  return redactValue(payload)
 }
 
 function auditTarget(req) {
@@ -41,8 +54,8 @@ function auditLogger(req, res, next) {
       statusCode: res.statusCode,
       ip: req.ip,
       durationMs: Date.now() - startedAt,
-      query: req.query || {},
-      body: req.method === 'GET' ? undefined : safeBody(req.body),
+      query: safePayload(req.query) || {},
+      body: req.method === 'GET' ? undefined : safePayload(req.body),
     }
 
     query(

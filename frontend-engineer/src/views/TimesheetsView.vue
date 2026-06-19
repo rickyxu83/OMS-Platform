@@ -53,7 +53,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    preview.value = await api.get(`/service-orders/timesheet/monthly?startDate=${startDate.value}&endDate=${endDate.value}`)
+    preview.value = await api.get(`/service-orders/timesheet/monthly?mine=1&startDate=${startDate.value}&endDate=${endDate.value}`)
   } catch (err) {
     error.value = err.message
   } finally {
