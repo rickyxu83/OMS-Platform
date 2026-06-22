@@ -218,6 +218,11 @@ function officialWebsiteHref(value?: string) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+function telHref(value?: string) {
+  const normalized = String(value || "").trim().replace(/[\s()-]/g, "");
+  return normalized ? `tel:${normalized}` : "";
+}
+
 export function MaintenanceParties() {
   const { lang } = useLanguage();
   const t = I18N[lang];
@@ -293,6 +298,20 @@ export function MaintenanceParties() {
 
   const allFilteredPartiesSelected = filtered.length > 0
     && filtered.every((party) => selectedPartyIds.includes(String(party.id)));
+
+  function renderPhoneLink(phone?: string, stopPropagation = false) {
+    const href = telHref(phone);
+    if (!href) return t.misc.unknown;
+    return (
+      <a
+        className="text-primary hover:underline"
+        href={href}
+        onClick={stopPropagation ? (event) => event.stopPropagation() : undefined}
+      >
+        {phone}
+      </a>
+    );
+  }
 
   useEffect(() => {
     const visibleIds = new Set(filtered.map((party) => String(party.id)));
@@ -575,8 +594,8 @@ export function MaintenanceParties() {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {isOriginalManufacturer(p.partyType)
-                            ? `${t.dialog.phone}：${p.phone || t.misc.unknown}`
-                            : `${t.dialog.contact}：${p.contact || t.misc.unknown} · ${t.dialog.phone}：${p.phone || t.misc.unknown}`}
+                            ? <>{t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>
+                            : <>{t.dialog.contact}：{p.contact || t.misc.unknown} · {t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>}
                         </div>
                         {p.officialWebsite && (
                           <div className="text-xs text-muted-foreground mt-1">
@@ -647,7 +666,7 @@ export function MaintenanceParties() {
                       ) : null}
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.phone}</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.phone || t.misc.unknown}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{renderPhoneLink(detailTarget.phone)}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>

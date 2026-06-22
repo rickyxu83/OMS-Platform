@@ -72,6 +72,11 @@ function officialWebsiteHref(value) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
 
+function telHref(phone) {
+  const normalized = String(phone || '').trim().replace(/[\s()-]/g, '')
+  return normalized ? `tel:${normalized}` : ''
+}
+
 async function loadParties() {
   loading.value = true
   error.value = ''
@@ -219,8 +224,8 @@ onMounted(() => {
           <button class="ghost" type="button" @click.stop="openEdit(party)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <div class="asset-contact-list">
-          <span v-if="isOriginalManufacturer(party.partyType)"><PreviewIcon name="contact" />{{ zh('联系电话') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
-          <span v-else><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
+          <span v-if="isOriginalManufacturer(party.partyType)"><PreviewIcon name="contact" />{{ zh('联系电话') }}<b><a v-if="party.phone" :href="telHref(party.phone)" @click.stop>{{ party.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b></span>
+          <span v-else><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b><a v-if="party.phone" :href="telHref(party.phone)" @click.stop>{{ party.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b></span>
         </div>
         <p v-if="party.officialWebsite" class="asset-record-line">
           <PreviewIcon name="maintenance" />

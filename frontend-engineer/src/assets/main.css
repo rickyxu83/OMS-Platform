@@ -6251,6 +6251,17 @@ h2 {
   color: #0f172a;
 }
 
+.asset-contact-list a[href^="tel:"],
+.asset-detail-kv a[href^="tel:"] {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.asset-contact-list a[href^="tel:"]:hover,
+.asset-detail-kv a[href^="tel:"]:hover {
+  text-decoration: underline;
+}
+
 .asset-meta-row {
   gap: 8px;
 }

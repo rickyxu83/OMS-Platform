@@ -33,6 +33,11 @@ function officialWebsiteHref(value) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
 
+function telHref(phone) {
+  const normalized = String(phone || '').trim().replace(/[\s()-]/g, '')
+  return normalized ? `tel:${normalized}` : ''
+}
+
 function displayDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 10) : '未维护'
 }
@@ -94,7 +99,7 @@ onMounted(() => {
         </header>
         <div class="asset-detail-kv">
           <p><span>{{ zh('联系人') }}</span><b>{{ zh(party.contact || '未维护') }}</b></p>
-          <p><span>{{ zh('联系电话') }}</span><b>{{ party.phone || zh('未维护') }}</b></p>
+          <p><span>{{ zh('联系电话') }}</span><b><a v-if="party.phone" :href="telHref(party.phone)">{{ party.phone }}</a><template v-else>{{ zh('未维护') }}</template></b></p>
           <p v-if="party.officialWebsite">
             <span>{{ zh('官网地址') }}</span>
             <b><a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer">{{ zh(party.officialWebsite) }}</a></b>
