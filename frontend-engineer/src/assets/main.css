@@ -6124,11 +6124,39 @@ h2 {
 
 .asset-select,
 .asset-editor-form input,
+.asset-editor-form select,
+.asset-contact-row input {
+  height: 44px;
+}
+
+.asset-editor-form textarea {
+  min-height: 44px;
+}
+
+.asset-select,
+.asset-editor-form input,
 .asset-editor-form textarea,
 .asset-editor-form select,
 .asset-contact-row input {
   min-height: 44px;
   padding: 10px 12px;
+  line-height: 22px;
+}
+
+.asset-select,
+.asset-editor-form select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 18px,
+    calc(100% - 13px) 18px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
 }
 
 .asset-record-card {
