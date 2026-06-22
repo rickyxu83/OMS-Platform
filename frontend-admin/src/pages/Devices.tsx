@@ -37,6 +37,27 @@ interface Device {
   warrantyUntil?: string;
   createdAt?: string;
   updatedAt?: string;
+  partHistory?: DevicePartHistory[];
+}
+
+interface DevicePartHistory {
+  id: string | number;
+  serviceOrderId?: string | number;
+  orderNo?: string;
+  serviceMode?: string;
+  serviceType?: string;
+  actionType?: string;
+  partName?: string;
+  partNo?: string;
+  quantity?: string | number;
+  unit?: string;
+  remark?: string;
+  issueDescription?: string;
+  workContent?: string;
+  engineerName?: string;
+  serviceAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Customer {
@@ -121,6 +142,35 @@ function deviceDisplayName(device?: Device | null) {
   return device.model || device.name || device.serialNo || `设备 #${device.id}`;
 }
 
+function partActionLabel(value?: string) {
+  if (value === "replacement") return "配件更换";
+  if (value === "installation") return "配件安装";
+  return "配件记录";
+}
+
+function serviceTypeLabel(value?: string) {
+  const labels: Record<string, string> = {
+    install: "现场安装",
+    repair: "故障处理",
+    maintain: "保养维护",
+    inspect: "例行巡检",
+    training: "现场培训",
+    other: "其他事项",
+  };
+  return labels[value || ""] || value || "服务单";
+}
+
+function partQuantityText(item: DevicePartHistory) {
+  const quantity = Number(item.quantity || 0);
+  const text = Number.isFinite(quantity) && quantity > 0 ? String(quantity).replace(/\.00$/, "") : "";
+  return [text, item.unit].filter(Boolean).join("") || "1";
+}
+
+function compactText(value?: string, maxLength = 120) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
   const merged = new Map<string, Customer>();
   [...current, ...incoming].forEach((customer) => {
@@ -140,6 +190,7 @@ export function Devices() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerFilter, setCustomerFilter] = useState("all");
@@ -348,6 +399,20 @@ export function Devices() {
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
     setDialogOpen(true);
+  }
+
+  async function openDetail(device: Device) {
+    setDetailTarget(device);
+    if (!device.id) return;
+    setDetailLoading(true);
+    try {
+      const data = await api.get(`/devices/${device.id}`);
+      setDetailTarget((data?.item || device) as Device);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载设备详情失败");
+    } finally {
+      setDetailLoading(false);
+    }
   }
 
   async function submit() {
@@ -642,12 +707,12 @@ export function Devices() {
                     role="button"
                     tabIndex={0}
                     className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
-                    onClick={() => setDetailTarget(device)}
+                    onClick={() => openDetail(device)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setDetailTarget(device);
+                        openDetail(device);
                       }
                     }}
                   >
@@ -717,15 +782,23 @@ export function Devices() {
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>设备详情</DialogTitle>
-            <DialogDescription>设备基础信息、客户归属与维保状态</DialogDescription>
+            <DialogDescription>设备基础信息、客户归属、维保状态与配件历史</DialogDescription>
           </DialogHeader>
           {detailTarget ? (() => {
             const maintenanceType = canonicalMaintenanceType(detailTarget.maintenanceType);
             const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
             const statusLabel = DEVICE_STATUS_LABELS[detailTarget.status || ""] || detailTarget.status || "在用";
+            const partHistory = Array.isArray(detailTarget.partHistory) ? detailTarget.partHistory : [];
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
+                  {detailLoading ? (
+                    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      正在加载完整设备详情…
+                    </div>
+                  ) : null}
+
                   <div className="rounded-lg border bg-slate-50/60 p-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
@@ -815,6 +888,53 @@ export function Devices() {
                     <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
                       {detailTarget.remark || "-"}
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">安装与更换记录</div>
+                        <div className="mt-1 text-xs text-muted-foreground">来自工程师服务单中关联到这台设备的配件安装、配件更换记录</div>
+                      </div>
+                      <Badge variant="secondary">{partHistory.length} 条</Badge>
+                    </div>
+                    {partHistory.length ? (
+                      <div className="mt-3 grid gap-3">
+                        {partHistory.map((item) => (
+                          <div key={item.id} className="rounded-md border bg-slate-50/60 p-3">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant={item.actionType === "replacement" ? "warning" : item.actionType === "installation" ? "success" : "secondary"}>
+                                    {partActionLabel(item.actionType)}
+                                  </Badge>
+                                  <span className="font-medium text-slate-900">{item.partName || "未命名配件"}</span>
+                                </div>
+                                <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                                  {formatDate(item.serviceAt || item.createdAt)}
+                                  {item.orderNo ? ` · ${item.orderNo}` : ""}
+                                  {item.engineerName ? ` · ${item.engineerName}` : ""}
+                                </div>
+                                <div className="text-sm leading-6 text-muted-foreground">
+                                  {serviceTypeLabel(item.serviceType)}
+                                  {item.partNo ? ` · PN ${item.partNo}` : ""}
+                                  {item.quantity ? ` · 数量 ${partQuantityText(item)}` : ""}
+                                </div>
+                                {item.remark || item.issueDescription || item.workContent ? (
+                                  <div className="mt-2 rounded bg-white/80 px-3 py-2 text-sm leading-6 text-slate-700">
+                                    {compactText(item.remark || item.issueDescription || item.workContent)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                        暂无配件安装或更换记录
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
