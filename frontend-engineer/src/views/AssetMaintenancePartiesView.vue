@@ -25,6 +25,10 @@ const typeLabels = {
   our: '合作维保方',
 }
 
+function isOriginalManufacturer(type) {
+  return type === 'original_manufacturer' || type === 'vendor_contact' || type === 'vendor'
+}
+
 const filteredParties = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
   return parties.value.filter((item) => {
@@ -36,12 +40,23 @@ const filteredParties = computed(() => {
   })
 })
 
+const stats = computed(() => {
+  const total = parties.value.length
+  const vendor = parties.value.filter((item) => isOriginalManufacturer(item.partyType)).length
+  const partner = parties.value.filter((item) => !isOriginalManufacturer(item.partyType)).length
+  return [
+    { label: '维保方总数', value: total },
+    { label: '原厂联系人', value: vendor },
+    { label: '合作维保方', value: partner },
+  ]
+})
+
 function emptyForm() {
   return {
     name: '',
     contact: '',
     phone: '',
-    partyType: 'original_manufacturer',
+    partyType: 'our_maintenance',
     serviceScope: '',
     remark: '',
   }
@@ -79,7 +94,7 @@ function openEdit(party) {
     name: party.name || '',
     contact: party.contact || '',
     phone: party.phone || '',
-    partyType: party.partyType || 'original_manufacturer',
+    partyType: party.partyType || 'our_maintenance',
     serviceScope: party.serviceScope || '',
     remark: party.remark || '',
   }
@@ -91,21 +106,40 @@ function closeDialog() {
   dialogOpen.value = false
 }
 
+function onPartyTypeChange() {
+  if (isOriginalManufacturer(form.value.partyType)) {
+    form.value.contact = ''
+  }
+}
+
+function resetFilters() {
+  searchQuery.value = ''
+  typeFilter.value = ''
+  loadParties()
+}
+
 async function saveParty() {
   if (!form.value.name.trim()) {
     error.value = '请输入维保方名称'
     return
+  }
+  if (form.value.phone.trim()) {
+    const phoneRe = /^[0-9+()\-\s]{7,32}$/
+    if (!phoneRe.test(form.value.phone.trim())) {
+      error.value = '联系电话格式不正确'
+      return
+    }
   }
   saving.value = true
   error.value = ''
   try {
     const payload = {
       name: form.value.name.trim(),
-      contact: form.value.contact.trim(),
-      phone: form.value.phone.trim(),
+      contact: isOriginalManufacturer(form.value.partyType) ? undefined : form.value.contact.trim() || undefined,
+      phone: form.value.phone.trim() || undefined,
       partyType: form.value.partyType,
-      serviceScope: form.value.serviceScope.trim(),
-      remark: form.value.remark.trim(),
+      serviceScope: form.value.serviceScope.trim() || undefined,
+      remark: form.value.remark.trim() || undefined,
     }
     if (editingId.value) await api.put(`/maintenance-parties/${editingId.value}`, payload)
     else await api.post('/maintenance-parties', payload)
@@ -145,8 +179,16 @@ onMounted(() => {
         <option value="original_manufacturer">{{ zh('原厂联系人') }}</option>
         <option value="our_maintenance">{{ zh('合作维保方') }}</option>
       </select>
+      <button class="ghost" type="button" @click="resetFilters"><PreviewIcon name="refresh" />{{ zh('重置') }}</button>
       <button class="ghost" type="button" :disabled="loading" @click="loadParties"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
       <button class="primary" type="button" @click="openCreate"><PreviewIcon name="new" />{{ zh('新增维保方') }}</button>
+    </section>
+
+    <section class="asset-stats-row">
+      <div v-for="stat in stats" :key="stat.label" class="asset-stat-card">
+        <span class="asset-stat-value">{{ stat.value }}</span>
+        <span class="asset-stat-label">{{ zh(stat.label) }}</span>
+      </div>
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
@@ -190,12 +232,12 @@ onMounted(() => {
         <div class="asset-editor-form">
           <label>{{ zh('维保方名称') }}<input v-model="form.name" type="text" /></label>
           <label>{{ zh('类型') }}
-            <select v-model="form.partyType">
+            <select v-model="form.partyType" @change="onPartyTypeChange">
               <option value="original_manufacturer">{{ zh('原厂联系人') }}</option>
               <option value="our_maintenance">{{ zh('合作维保方') }}</option>
             </select>
           </label>
-          <label>{{ zh('联系人') }}<input v-model="form.contact" type="text" /></label>
+          <label v-if="!isOriginalManufacturer(form.partyType)">{{ zh('联系人') }}<input v-model="form.contact" type="text" /></label>
           <label>{{ zh('联系电话') }}<input v-model="form.phone" type="tel" /></label>
           <label>{{ zh('服务范围') }}<input v-model="form.serviceScope" type="text" :placeholder="zh('例如服务器、存储、网络设备')" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="3"></textarea></label>
