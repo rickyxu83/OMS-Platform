@@ -27,11 +27,24 @@ interface Order {
   status: string;
   customer?: { name?: string } | string;
   customerName?: string;
+  customerAddress?: string;
+  contactName?: string;
+  contactPhone?: string;
   deviceName?: string;
   issueDescription?: string;
+  internalNote?: string;
   engineerName?: string;
+  engineers?: Array<{ id?: string | number; realName?: string; name?: string; username?: string }>;
+  serviceType?: string;
   serviceMode?: string;
+  timesheetCategory?: string;
+  timesheetSalesperson?: string;
+  priority?: string;
+  plannedStartAt?: string;
+  plannedEndAt?: string;
+  submittedAt?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 interface CustomerPoint {
@@ -191,6 +204,30 @@ const I18N = {
       unnamedCustomer: "—",
       serviceRecord: "服务记录",
       unnamedEngineer: "—",
+      previewTitle: "工单预览",
+      previewLoading: "正在加载工单详情…",
+      previewFailed: "工单详情加载失败",
+      openFull: "查看完整工单",
+      close: "关闭",
+    },
+    detail: {
+      customerName: "客户名称",
+      contactName: "联系人",
+      contactPhone: "联系电话",
+      customerAddress: "客户地址",
+      deviceName: "设备",
+      engineer: "工程师",
+      planTime: "计划时间",
+      createdAt: "创建时间",
+      submittedAt: "结案时间",
+      updatedAt: "更新时间",
+      salesperson: "业务人员",
+      timesheetCategory: "工时类别",
+      issueDescription: "详细描述",
+      internalNote: "内部备注",
+      unnamedContact: "未维护联系人",
+      unnamedEngineer: "未指定",
+      unnamedDevice: "未指定设备",
     },
     errors: {
       loadFailed: "加载失败",
@@ -205,6 +242,26 @@ const I18N = {
       archived: "已归档",
       cancelled: "已作废",
       completed: "已完成",
+    },
+    type: {
+      install: "安装",
+      repair: "排障",
+      maintain: "保养",
+      inspect: "巡检",
+      training: "培训",
+      remote: "远程支持",
+      other: "其他",
+    },
+    mode: {
+      onsite: "现场服务",
+      remote: "远程服务",
+      office: "内勤工作",
+    },
+    priority: {
+      low: "低",
+      normal: "普通",
+      high: "高",
+      urgent: "紧急",
     },
   },
   "zh-TW": {
@@ -241,6 +298,30 @@ const I18N = {
       unnamedCustomer: "—",
       serviceRecord: "服務記錄",
       unnamedEngineer: "—",
+      previewTitle: "工單預覽",
+      previewLoading: "正在載入工單詳情…",
+      previewFailed: "工單詳情載入失敗",
+      openFull: "查看完整工單",
+      close: "關閉",
+    },
+    detail: {
+      customerName: "客戶名稱",
+      contactName: "聯絡人",
+      contactPhone: "聯絡電話",
+      customerAddress: "客戶地址",
+      deviceName: "設備",
+      engineer: "工程師",
+      planTime: "計畫時間",
+      createdAt: "建立時間",
+      submittedAt: "結案時間",
+      updatedAt: "更新時間",
+      salesperson: "業務人員",
+      timesheetCategory: "工時類別",
+      issueDescription: "詳細描述",
+      internalNote: "內部備註",
+      unnamedContact: "未維護聯絡人",
+      unnamedEngineer: "未指定",
+      unnamedDevice: "未指定設備",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -255,6 +336,26 @@ const I18N = {
       archived: "已歸檔",
       cancelled: "已作廢",
       completed: "已完成",
+    },
+    type: {
+      install: "安裝",
+      repair: "排障",
+      maintain: "保養",
+      inspect: "巡檢",
+      training: "培訓",
+      remote: "遠端支援",
+      other: "其他",
+    },
+    mode: {
+      onsite: "現場服務",
+      remote: "遠端服務",
+      office: "內勤工作",
+    },
+    priority: {
+      low: "低",
+      normal: "普通",
+      high: "高",
+      urgent: "緊急",
     },
   },
 } as const;
@@ -271,12 +372,83 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "
   completed: "success",
 };
 
+const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purple" | "secondary"> = {
+  install: "success",
+  repair: "warning",
+  maintain: "info",
+  inspect: "purple",
+  training: "info",
+  remote: "info",
+  other: "secondary",
+};
+
+const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
+  onsite: "success",
+  remote: "info",
+  office: "purple",
+};
+
+const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
+  low: "secondary",
+  normal: "secondary",
+  high: "warning",
+  urgent: "destructive",
+};
+
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
 }
 
 function getWorkflowStatus(order: Order) {
   return order.workflowStatus || order.status;
+}
+
+function displayOrderId(order: Order) {
+  return order.orderNo || order.displayId || `SR-${order.id}`;
+}
+
+function compactText(value?: string, fallback = "-") {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text || fallback;
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+  return String(value).replace("T", " ").slice(0, 16);
+}
+
+function formatDateRange(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
+  return formatDateTime(start || end);
+}
+
+function engineerText(order: Order, fallback: string) {
+  const names = (order.engineers || [])
+    .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
+    .filter(Boolean);
+  if (names.length) return names.join("、");
+  return order.engineerName || fallback;
+}
+
+function PreviewField({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 break-words text-sm leading-6">{textValue(value)}</div>
+    </div>
+  );
+}
+
+function PreviewBlock({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6">
+        {compactText(value)}
+      </div>
+    </div>
+  );
 }
 
 export function Dashboard() {
@@ -296,6 +468,9 @@ export function Dashboard() {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportHint, setReportHint] = useState("");
+  const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -348,7 +523,9 @@ export function Dashboard() {
     const status = getWorkflowStatus(o);
     const customerName = typeof o.customer === "string" ? o.customer : o.customer?.name || o.customerName;
     return {
-      id: o.orderNo || `TK-${o.id}`,
+      key: String(o.id),
+      source: o,
+      id: displayOrderId(o),
       customer: shortCompanyName(customerName, t.recent.unnamedCustomer),
       status,
       statusLabel: normalizeStatus(status, t.status),
@@ -394,6 +571,34 @@ export function Dashboard() {
     } finally {
       setExporting(false);
     }
+  }
+
+  async function openOrderPreview(order: Order) {
+    if (!order?.id) return;
+    setPreviewOrder(order);
+    setPreviewError("");
+    setPreviewLoading(true);
+    try {
+      const data = await api.get(`/service-orders/${order.id}`);
+      setPreviewOrder((data?.item || data) as Order);
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : t.recent.previewFailed);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closeOrderPreview() {
+    setPreviewOrder(null);
+    setPreviewError("");
+    setPreviewLoading(false);
+  }
+
+  function openFullOrder() {
+    if (!previewOrder?.id) return;
+    const orderId = String(previewOrder.id);
+    closeOrderPreview();
+    navigate(`/service-orders?orderId=${encodeURIComponent(orderId)}`);
   }
 
   return (
@@ -572,9 +777,17 @@ export function Dashboard() {
               <div className="space-y-1.5">
                 {recentOrders.map((order) => (
                   <div
-                    key={order.id}
+                    key={order.key}
+                    role="button"
+                    tabIndex={0}
                     className="group relative flex items-center gap-3 -mx-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => navigate("/service-orders")}
+                    onClick={() => openOrderPreview(order.source)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openOrderPreview(order.source);
+                      }
+                    }}
                   >
                     <div className={`h-2 w-2 shrink-0 rounded-full ${
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
@@ -595,6 +808,77 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>
+        <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle>{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
+            <DialogDescription>
+              {previewOrder ? `${textValue(previewOrder.customerName)} · ${compactText(previewOrder.issueDescription, "")}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+            {previewLoading ? (
+              <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                {t.recent.previewLoading}
+              </div>
+            ) : null}
+            {previewError ? (
+              <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {previewError}
+              </div>
+            ) : null}
+            {previewOrder ? (() => {
+              const status = getWorkflowStatus(previewOrder);
+              const statusLabel = previewOrder.displayStatus || normalizeStatus(status, t.status);
+              const typeLabel = t.type[previewOrder.serviceType as keyof typeof t.type] || previewOrder.serviceType || "-";
+              const modeLabel = t.mode[previewOrder.serviceMode as keyof typeof t.mode] || previewOrder.serviceMode || "-";
+              const priorityLabel = t.priority[previewOrder.priority as keyof typeof t.priority] || previewOrder.priority || "-";
+              return (
+                <div className="space-y-5 py-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
+                    <Badge variant={TYPE_BADGE_VARIANT[previewOrder.serviceType || ""] || "outline"}>{typeLabel}</Badge>
+                    <Badge variant={MODE_BADGE_VARIANT[previewOrder.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                    <Badge variant={PRIORITY_BADGE_VARIANT[previewOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <PreviewField label={t.detail.customerName} value={previewOrder.customerName} />
+                    <PreviewField label={t.detail.contactName} value={previewOrder.contactName || t.detail.unnamedContact} />
+                    <PreviewField label={t.detail.contactPhone} value={previewOrder.contactPhone} />
+                    <PreviewField label={t.detail.customerAddress} value={previewOrder.customerAddress} />
+                    <PreviewField label={t.detail.deviceName} value={previewOrder.deviceName || t.detail.unnamedDevice} />
+                    <PreviewField label={t.detail.engineer} value={engineerText(previewOrder, t.detail.unnamedEngineer)} />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <PreviewField label={t.detail.planTime} value={formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt)} />
+                    <PreviewField label={t.detail.createdAt} value={formatDateTime(previewOrder.createdAt)} />
+                    <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
+                    <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />
+                    <PreviewField label={t.detail.salesperson} value={previewOrder.timesheetSalesperson} />
+                    <PreviewField label={t.detail.timesheetCategory} value={previewOrder.timesheetCategory} />
+                  </div>
+
+                  <PreviewBlock label={t.detail.issueDescription} value={previewOrder.issueDescription} />
+                  <PreviewBlock label={t.detail.internalNote} value={previewOrder.internalNote} />
+                </div>
+              );
+            })() : null}
+          </div>
+          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
+            <Button variant="outline" onClick={closeOrderPreview}>
+              {t.recent.close}
+            </Button>
+            <Button onClick={openFullOrder} disabled={!previewOrder?.id}>
+              <ArrowRight className="w-4 h-4 mr-2" />
+              {t.recent.openFull}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
         <DialogContent>
