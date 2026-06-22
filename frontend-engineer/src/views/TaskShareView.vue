@@ -86,7 +86,7 @@ function textLines(value, x, y, maxChars, maxLines, lineHeight = 30, maxWidth = 
   }
   return lines
     .slice(0, maxLines)
-    .map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" font-size="${size}" font-weight="600">${escapeXml(line)}</text>`)
+    .map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" font-family="Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="${size}" font-weight="600" fill="#1f2937">${escapeXml(line)}</text>`)
     .join('')
 }
 
