@@ -2807,6 +2807,11 @@ async function submitServiceSheet() {
       : await api.post('/service-orders/self-report', payload)
     const submittedLabel = result?.orderNo || editingTask.value?.orderNo || result?.id || route.params.id || '服务记录'
     message.value = `服务记录已提交：${submittedLabel}`
+    window.clearTimeout(draftTimer)
+    window.clearTimeout(draftSyncTimer)
+    window.clearInterval(draftCountdownTimer)
+    draftDirty.value = false
+    draftCountdown.value = 0
     try {
       if (route.params.id) {
         await clearSelfReportDraft(draftTargetOrderId(), createDraftRouteMode(), createDraftRouteId())
@@ -2818,8 +2823,6 @@ async function submitServiceSheet() {
     }
     draftSavedAt.value = ''
     draftSavedAtMs.value = 0
-    draftDirty.value = false
-    draftCountdown.value = 0
     if (pendingSyncCount.value) syncPendingSelfReports().catch(() => {})
     returnToTasks()
   } catch (err) {

@@ -217,7 +217,7 @@ async function migrateLocalDraftEntries(entries) {
       const clientUpdatedAt = draftClientUpdatedAt(entry)
       try {
         const remoteDraft = await fetchRemoteSelfReportDraft(orderId).catch(() => null)
-        if (remoteDraft?.payload?.__draftDeleted && deletedDraftTime(remoteDraft) >= toDraftTimestamp(clientUpdatedAt)) {
+        if (remoteDraft?.payload?.__draftDeleted) {
           localStorage.removeItem(entry.key)
           hiddenLocalKeys.add(entry.key)
           return
@@ -355,15 +355,10 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
         if (!remoteDraft?.payload) return
         const payload = remoteDraft.payload
         if (payload.__draftDeleted) {
-          const localDraft = readLocalSelfReportDraft(orderId)
-          const localUpdatedAt = toDraftTimestamp(localDraft?.data?.__draftClientUpdatedAt || localDraft?.updatedAt)
-          const deletedAt = toDraftTimestamp(payload.__draftDeletedAt || remoteDraft.clientUpdatedAt || remoteDraft.updatedAt)
-          if (deletedAt >= localUpdatedAt) {
-            removeLocalSelfReportDraft(orderId)
-            for (let index = drafts.length - 1; index >= 0; index -= 1) {
-              if (!drafts[index].remoteDraft && Number(drafts[index].linkedOrderId) === orderId) {
-                drafts.splice(index, 1)
-              }
+          removeLocalSelfReportDraft(orderId)
+          for (let index = drafts.length - 1; index >= 0; index -= 1) {
+            if (!drafts[index].remoteDraft && Number(drafts[index].linkedOrderId) === orderId) {
+              drafts.splice(index, 1)
             }
           }
           return
