@@ -21,6 +21,14 @@ const dialogOpen = ref(false)
 const deleteTarget = ref(null)
 const editingId = ref(null)
 const form = ref(emptyForm())
+const locating = ref(false)
+const addressLocating = ref(false)
+const geoLoading = ref(false)
+const candidates = ref([])
+const showCandidates = ref(false)
+const locationHint = ref('')
+
+let geoSearchTimer = null
 
 const filteredCustomers = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -36,6 +44,8 @@ const filteredCustomers = computed(() => {
   ].filter(Boolean).some((value) => String(value).toLowerCase().includes(keyword)))
 })
 
+const hasCoordinates = computed(() => Number.isFinite(Number(form.value.latitude)) && Number.isFinite(Number(form.value.longitude)))
+
 function emptyForm() {
   return {
     name: '',
@@ -46,6 +56,12 @@ function emptyForm() {
     salesperson: '',
     level: 'normal',
     remark: '',
+    latitude: null,
+    longitude: null,
+    mapProvider: '',
+    mapPoiId: '',
+    mapPoiName: '',
+    mapAddress: '',
     contacts: [{ name: '', phone: '' }],
   }
 }
@@ -86,6 +102,9 @@ function openCreate() {
   successMessage.value = ''
   editingId.value = null
   form.value = emptyForm()
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = ''
   dialogOpen.value = true
 }
 
@@ -102,8 +121,19 @@ function openEdit(customer) {
     salesperson: customer.salesperson || '',
     level: customer.level || 'normal',
     remark: customer.remark || '',
+    latitude: normalizeCoordinate(customer.latitude),
+    longitude: normalizeCoordinate(customer.longitude),
+    mapProvider: customer.mapProvider || '',
+    mapPoiId: customer.mapPoiId || '',
+    mapPoiName: customer.mapPoiName || '',
+    mapAddress: customer.mapAddress || '',
     contacts: contacts.length ? contacts.map((contact) => ({ id: contact.id, name: contact.name || '', phone: contact.phone || '' })) : [{ name: '', phone: '' }],
   }
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = hasCoordinates.value
+    ? `已维护坐标：${Number(form.value.latitude).toFixed(5)}, ${Number(form.value.longitude).toFixed(5)}`
+    : ''
   dialogOpen.value = true
 }
 
@@ -137,6 +167,167 @@ function removeContact(index) {
   form.value.contacts.splice(index, 1)
 }
 
+function normalizeCoordinate(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function candidateCoordinates(candidate) {
+  const directLatitude = normalizeCoordinate(candidate.latitude)
+  const directLongitude = normalizeCoordinate(candidate.longitude)
+  if (directLatitude != null && directLongitude != null) {
+    return { latitude: directLatitude, longitude: directLongitude }
+  }
+
+  const [longitudeText, latitudeText] = String(candidate.location || '').split(',')
+  const latitude = normalizeCoordinate(latitudeText)
+  const longitude = normalizeCoordinate(longitudeText)
+  return latitude != null && longitude != null ? { latitude, longitude } : null
+}
+
+function currentPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({ latitude: null, longitude: null })
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      () => resolve({ latitude: null, longitude: null }),
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 },
+    )
+  })
+}
+
+async function searchGeo(coords = {}, options = {}) {
+  const keyword = String(options.keyword ?? form.value.name ?? '').trim()
+  const params = new URLSearchParams()
+  if (keyword) params.set('keyword', keyword)
+  if (coords.latitude && coords.longitude) {
+    params.set('latitude', String(coords.latitude))
+    params.set('longitude', String(coords.longitude))
+  }
+
+  geoLoading.value = true
+  try {
+    const data = await api.get(`/geo/companies?${params.toString()}`)
+    const items = options.nearbyOnly
+      ? (data?.items || []).filter((item) => item.source !== 'customer')
+      : data?.items || []
+    candidates.value = items
+    showCandidates.value = true
+    locationHint.value = items.length
+      ? `已找到 ${items.length} 个候选，点击可带入客户名称、地址和坐标。`
+      : '没有找到候选，可继续手动填写。'
+  } catch (err) {
+    locationHint.value = err.message || '地图搜索失败'
+    candidates.value = []
+  } finally {
+    geoLoading.value = false
+  }
+}
+
+function scheduleGeoSearch(value) {
+  window.clearTimeout(geoSearchTimer)
+  const keyword = String(value || '').trim()
+  if (!keyword) {
+    candidates.value = []
+    showCandidates.value = false
+    locationHint.value = ''
+    return
+  }
+  locationHint.value = `正在搜索“${keyword}”相关客户...`
+  geoSearchTimer = window.setTimeout(() => {
+    searchGeo({}, { keyword }).catch(() => undefined)
+  }, 300)
+}
+
+async function locateNearMe() {
+  if (locating.value) return
+  locating.value = true
+  try {
+    const keyword = form.value.name.trim()
+    if (keyword) {
+      await searchGeo({}, { keyword })
+      return
+    }
+    const position = await currentPosition()
+    await searchGeo(position, { keyword: '', nearbyOnly: true })
+  } finally {
+    locating.value = false
+  }
+}
+
+async function locateByAddress() {
+  const keyword = form.value.address.trim()
+  if (!keyword) {
+    locationHint.value = '请输入客户地址'
+    return
+  }
+  window.clearTimeout(geoSearchTimer)
+  addressLocating.value = true
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = `正在按地址定位“${keyword}”...`
+  try {
+    const data = await api.get(`/geo/geocode?address=${encodeURIComponent(keyword)}`)
+    const item = data?.item
+    if (!item?.latitude || !item?.longitude) {
+      locationHint.value = '未能解析该地址坐标'
+      return
+    }
+    form.value.latitude = normalizeCoordinate(item.latitude)
+    form.value.longitude = normalizeCoordinate(item.longitude)
+    form.value.mapProvider = item.mapProvider || 'amap'
+    form.value.mapPoiId = item.mapPoiId || ''
+    form.value.mapPoiName = item.mapPoiName || item.mapAddress || form.value.address
+    form.value.mapAddress = item.mapAddress || form.value.address
+    locationHint.value = `已定位：${Number(form.value.latitude).toFixed(5)}, ${Number(form.value.longitude).toFixed(5)}`
+  } catch (err) {
+    locationHint.value = err.message || '地址定位失败'
+  } finally {
+    addressLocating.value = false
+  }
+}
+
+function applyCandidate(company) {
+  const coordinates = candidateCoordinates(company)
+  const currentContacts = form.value.contacts.length ? [...form.value.contacts] : [{ name: '', phone: '' }]
+  if (company.contactName || company.contactPhone) {
+    currentContacts[0] = {
+      ...currentContacts[0],
+      name: company.contactName || currentContacts[0].name,
+      phone: company.contactPhone || currentContacts[0].phone,
+    }
+  }
+  form.value = {
+    ...form.value,
+    name: company.name || form.value.name,
+    address: company.address || form.value.address,
+    mapAddress: company.mapAddress || company.address || form.value.mapAddress,
+    latitude: coordinates?.latitude ?? form.value.latitude ?? null,
+    longitude: coordinates?.longitude ?? form.value.longitude ?? null,
+    mapProvider: company.mapProvider || (company.source === 'map' ? 'amap' : form.value.mapProvider || ''),
+    mapPoiId: company.mapPoiId || (company.source === 'map' ? String(company.id || '') : form.value.mapPoiId || ''),
+    mapPoiName: company.mapPoiName || company.name || form.value.mapPoiName,
+    contacts: currentContacts,
+  }
+  locationHint.value = `已选择：${company.name || '地图候选'}`
+  showCandidates.value = false
+}
+
+function clearMapSelection() {
+  form.value.latitude = null
+  form.value.longitude = null
+  form.value.mapProvider = ''
+  form.value.mapPoiId = ''
+  form.value.mapPoiName = ''
+  form.value.mapAddress = ''
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = '已清除定位信息'
+}
+
 async function saveCustomer() {
   if (!form.value.name.trim()) {
     error.value = '请输入客户名称'
@@ -153,6 +344,12 @@ async function saveCustomer() {
       name: form.value.name.trim(),
       code: form.value.code.trim() || undefined,
       address: form.value.address.trim() || undefined,
+      latitude: form.value.latitude,
+      longitude: form.value.longitude,
+      mapProvider: form.value.mapProvider || null,
+      mapPoiId: form.value.mapPoiId || null,
+      mapPoiName: form.value.mapPoiName || null,
+      mapAddress: form.value.mapAddress || null,
       contactName: form.value.contactName.trim() || firstContact.name || undefined,
       contactPhone: form.value.contactPhone.trim() || firstContact.phone || undefined,
       contacts,
@@ -272,9 +469,40 @@ onMounted(() => {
           </div>
         </header>
         <div class="asset-editor-form">
-          <label>{{ zh('客户名称') }}<input v-model="form.name" type="text" /></label>
+          <label class="asset-editor-wide">{{ zh('客户名称') }}
+            <div class="asset-inline-control">
+              <input
+                v-model="form.name"
+                type="text"
+                :placeholder="zh('输入客户名称或地图关键词')"
+                autocomplete="off"
+                @input="scheduleGeoSearch(form.name)"
+                @focus="showCandidates = candidates.length > 0"
+              />
+              <button class="ghost asset-inline-button" type="button" :disabled="locating" @click="locateNearMe">
+                <PreviewIcon name="pin" />{{ zh(locating ? '定位中...' : '定位查找') }}
+              </button>
+            </div>
+          </label>
+          <div v-if="showCandidates && candidates.length" class="asset-candidate-list asset-editor-wide">
+            <button v-for="candidate in candidates" :key="`${candidate.source || 'candidate'}-${candidate.id || candidate.name}`" type="button" @click="applyCandidate(candidate)">
+              <strong>{{ zh(candidate.name || '未命名地点') }}</strong>
+              <span>{{ zh(candidate.address || candidate.mapAddress || '未维护地址') }}</span>
+              <small>{{ zh(candidate.source === 'customer' ? '系统客户' : '地图结果') }}</small>
+            </button>
+          </div>
+          <p v-if="locationHint" class="asset-location-hint asset-editor-wide">
+            <PreviewIcon v-if="geoLoading" name="refresh" />{{ zh(locationHint) }}
+          </p>
           <label>{{ zh('客户编码') }}<input v-model="form.code" type="text" :placeholder="zh('留空自动生成或沿用')" /></label>
-          <label>{{ zh('客户地址') }}<textarea v-model="form.address" rows="2"></textarea></label>
+          <label class="asset-editor-wide">{{ zh('客户地址') }}
+            <div class="asset-inline-control">
+              <textarea v-model="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="form.mapAddress = form.address"></textarea>
+              <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
+                <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中...' : '按地址定位') }}
+              </button>
+            </div>
+          </label>
           <label>{{ zh('默认联系人') }}<input v-model="form.contactName" type="text" /></label>
           <label>{{ zh('默认电话') }}<input v-model="form.contactPhone" type="tel" /></label>
           <label>{{ zh('业务归属') }}<input v-model="form.salesperson" type="text" /></label>
@@ -287,6 +515,17 @@ onMounted(() => {
             </select>
           </label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
+          <section v-if="hasCoordinates" class="asset-editor-nested asset-editor-wide">
+            <div class="asset-map-meta">
+              <PreviewIcon name="pin" />
+              <div>
+                <strong>{{ zh(form.mapPoiName || '已维护坐标') }}</strong>
+                <span>{{ zh(form.mapAddress || form.address || '未维护地图地址') }}</span>
+                <code>{{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}{{ form.mapPoiId ? ` · POI ${form.mapPoiId}` : '' }}</code>
+              </div>
+              <button class="ghost" type="button" @click="clearMapSelection">{{ zh('清除') }}</button>
+            </div>
+          </section>
           <section class="asset-editor-nested">
             <div class="asset-editor-nested-head">
               <strong>{{ zh('联系人列表') }}</strong>

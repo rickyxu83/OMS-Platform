@@ -230,17 +230,17 @@ onMounted(() => {
           </div>
         </header>
         <div class="asset-editor-form">
-          <label>{{ zh('维保方名称') }}<input v-model="form.name" type="text" /></label>
+          <label>{{ zh('维保方名称 *') }}<input v-model="form.name" type="text" :placeholder="zh('例如 Dell EMC 原厂技术支持')" /></label>
           <label>{{ zh('类型') }}
             <select v-model="form.partyType" @change="onPartyTypeChange">
               <option value="original_manufacturer">{{ zh('原厂联系人') }}</option>
               <option value="our_maintenance">{{ zh('合作维保方') }}</option>
             </select>
           </label>
-          <label v-if="!isOriginalManufacturer(form.partyType)">{{ zh('联系人') }}<input v-model="form.contact" type="text" /></label>
-          <label>{{ zh('联系电话') }}<input v-model="form.phone" type="tel" /></label>
+          <label v-if="!isOriginalManufacturer(form.partyType)">{{ zh('联系人') }}<input v-model="form.contact" type="text" :placeholder="zh('联系人姓名')" /></label>
+          <label>{{ zh('联系电话') }}<input v-model="form.phone" type="tel" :placeholder="zh('支持数字、加号、括号、横线、空格，长度 7-32')" /></label>
           <label>{{ zh('服务范围') }}<input v-model="form.serviceScope" type="text" :placeholder="zh('例如服务器、存储、网络设备')" /></label>
-          <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="3"></textarea></label>
+          <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="3" :placeholder="zh('补充说明')"></textarea></label>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>

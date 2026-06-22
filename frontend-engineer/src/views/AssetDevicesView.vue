@@ -19,6 +19,14 @@ const customerFilter = ref('')
 const dialogOpen = ref(false)
 const editingId = ref(null)
 const form = ref(emptyForm())
+const customerInput = ref('')
+const customerDropdownOpen = ref(false)
+const customerSearchLoading = ref(false)
+const modelSuggestions = ref([])
+const modelLoading = ref(false)
+
+let customerSearchTimer = null
+let modelSearchTimer = null
 
 const maintenanceLabels = {
   none: '无维护',
@@ -56,6 +64,34 @@ const filteredDevices = computed(() => {
   })
 })
 
+const selectedCustomer = computed(() => customers.value.find((item) => String(item.id) === String(form.value.customerId)) || null)
+
+const dialogCustomerOptions = computed(() => {
+  const keyword = normalizeCustomerSearchText(customerInput.value)
+  const selectedId = String(form.value.customerId || '')
+  const matches = customers.value
+    .filter((customer) => {
+      if (!keyword) return true
+      return normalizeCustomerSearchText(customerLabel(customer)).includes(keyword) || String(customer.id).includes(keyword)
+    })
+    .sort((left, right) => {
+      if (selectedId && String(left.id) === selectedId) return -1
+      if (selectedId && String(right.id) === selectedId) return 1
+      const leftLabel = normalizeCustomerSearchText(customerLabel(left))
+      const rightLabel = normalizeCustomerSearchText(customerLabel(right))
+      const leftStarts = keyword && leftLabel.startsWith(keyword) ? 0 : 1
+      const rightStarts = keyword && rightLabel.startsWith(keyword) ? 0 : 1
+      if (leftStarts !== rightStarts) return leftStarts - rightStarts
+      return customerLabel(left).localeCompare(customerLabel(right), 'zh-Hans-CN')
+    })
+    .slice(0, 60)
+
+  if (selectedCustomer.value && !matches.some((customer) => String(customer.id) === String(selectedCustomer.value.id))) {
+    return [selectedCustomer.value, ...matches].slice(0, 60)
+  }
+  return matches
+})
+
 function emptyForm() {
   return {
     customerId: '',
@@ -69,9 +105,33 @@ function emptyForm() {
     maintenanceEnd: '',
     location: '',
     status: 'active',
-    warrantyUntil: '',
     remark: '',
   }
+}
+
+function customerLabel(customer) {
+  if (!customer) return ''
+  return customer.name || `客户 #${customer.id}`
+}
+
+function normalizeCustomerSearchText(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, '')
+}
+
+function mergeCustomers(current, incoming) {
+  const merged = new Map()
+  ;[...current, ...incoming].forEach((customer) => {
+    if (!customer?.id) return
+    const key = String(customer.id)
+    merged.set(key, { ...(merged.get(key) || {}), ...customer })
+  })
+  return [...merged.values()]
+}
+
+function selectedCustomerLabel(customerId, fallback = '') {
+  if (!customerId) return ''
+  const customer = customers.value.find((item) => String(item.id) === String(customerId))
+  return customerLabel(customer) || fallback || `客户 #${customerId}`
 }
 
 function inputDate(value) {
@@ -114,6 +174,9 @@ async function loadDevices() {
 function openCreate() {
   editingId.value = null
   form.value = { ...emptyForm(), customerId: customerFilter.value || '' }
+  customerInput.value = selectedCustomerLabel(form.value.customerId)
+  customerDropdownOpen.value = false
+  modelSuggestions.value = []
   dialogOpen.value = true
 }
 
@@ -131,9 +194,11 @@ function openEdit(device) {
     maintenanceEnd: inputDate(device.maintenanceEnd),
     location: device.location || '',
     status: device.status || 'active',
-    warrantyUntil: inputDate(device.warrantyUntil),
     remark: device.remark || '',
   }
+  customerInput.value = selectedCustomerLabel(device.customerId, device.customerName)
+  customerDropdownOpen.value = false
+  modelSuggestions.value = []
   dialogOpen.value = true
 }
 
@@ -143,8 +208,22 @@ function closeDialog() {
 }
 
 async function saveDevice() {
-  if (!form.value.customerId || !form.value.name.trim()) {
-    error.value = '请选择客户并填写设备名称'
+  let effectiveCustomerId = form.value.customerId
+  if (!effectiveCustomerId && customerInput.value.trim()) {
+    const normalizedInput = normalizeCustomerSearchText(customerInput.value)
+    const exact = customers.value.find((customer) => (
+      normalizeCustomerSearchText(customerLabel(customer)) === normalizedInput
+      || String(customer.id) === customerInput.value.trim()
+    ))
+    if (exact) effectiveCustomerId = String(exact.id)
+  }
+  if (!effectiveCustomerId) {
+    error.value = '请选择客户'
+    customerDropdownOpen.value = true
+    return
+  }
+  if (!form.value.name.trim()) {
+    error.value = '请输入设备名称'
     return
   }
   saving.value = true
@@ -152,7 +231,7 @@ async function saveDevice() {
   try {
     const type = canonicalMaintenanceType(form.value.maintenanceType)
     const payload = {
-      customerId: form.value.customerId,
+      customerId: effectiveCustomerId,
       name: form.value.name.trim(),
       model: form.value.model.trim() || undefined,
       pn: form.value.pn.trim() || undefined,
@@ -163,7 +242,6 @@ async function saveDevice() {
       maintenanceEnd: form.value.maintenanceEnd || undefined,
       location: form.value.location.trim() || undefined,
       status: form.value.status,
-      warrantyUntil: form.value.warrantyUntil || undefined,
       remark: form.value.remark.trim() || undefined,
     }
     if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
@@ -175,6 +253,72 @@ async function saveDevice() {
   } finally {
     saving.value = false
   }
+}
+
+function scheduleCustomerSearch(value) {
+  window.clearTimeout(customerSearchTimer)
+  const keyword = String(value || '').trim()
+  if (!keyword) {
+    customerSearchLoading.value = false
+    return
+  }
+  customerSearchTimer = window.setTimeout(async () => {
+    customerSearchLoading.value = true
+    try {
+      const data = await api.get(`/customers?pageSize=50&keyword=${encodeURIComponent(keyword)}`)
+      customers.value = mergeCustomers(customers.value, data?.items || [])
+    } catch {
+      // Keep locally loaded customers usable when search fails.
+    } finally {
+      customerSearchLoading.value = false
+    }
+  }, 220)
+}
+
+function applyCustomer(customer) {
+  form.value.customerId = String(customer.id)
+  customerInput.value = customerLabel(customer)
+  customerDropdownOpen.value = false
+}
+
+function closeCustomerDropdownSoon() {
+  window.setTimeout(() => {
+    customerDropdownOpen.value = false
+  }, 120)
+}
+
+function onCustomerInput() {
+  customerDropdownOpen.value = true
+  if (!selectedCustomer.value || normalizeCustomerSearchText(customerInput.value) !== normalizeCustomerSearchText(customerLabel(selectedCustomer.value))) {
+    form.value.customerId = ''
+  }
+  scheduleCustomerSearch(customerInput.value)
+}
+
+function scheduleModelSearch(value) {
+  window.clearTimeout(modelSearchTimer)
+  const keyword = String(value || '').trim()
+  if (keyword.length < 2) {
+    modelSuggestions.value = []
+    return
+  }
+  modelSearchTimer = window.setTimeout(async () => {
+    modelLoading.value = true
+    try {
+      const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`)
+      modelSuggestions.value = data?.items || []
+    } catch {
+      modelSuggestions.value = []
+    } finally {
+      modelLoading.value = false
+    }
+  }, 250)
+}
+
+function applyModelSuggestion(suggestion) {
+  form.value.model = suggestion.canonicalModel || suggestion.officialName || form.value.model
+  form.value.pn = suggestion.partNumber || form.value.pn
+  modelSuggestions.value = []
 }
 
 onMounted(async () => {
@@ -253,14 +397,59 @@ onMounted(async () => {
           </div>
         </header>
         <div class="asset-editor-form">
-          <label>{{ zh('所属客户') }}
-            <select v-model="form.customerId">
-              <option value="">{{ zh('请选择客户') }}</option>
-              <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
-            </select>
+          <label class="asset-editor-wide">{{ zh('客户 *') }}
+            <div class="asset-combo-field">
+              <input
+                v-model="customerInput"
+                type="text"
+                :placeholder="zh('输入客户名称关键词搜索')"
+                autocomplete="off"
+                @focus="customerDropdownOpen = true"
+                @blur="closeCustomerDropdownSoon"
+                @input="onCustomerInput"
+              />
+              <div v-if="customerDropdownOpen" class="asset-dropdown">
+                <div v-if="customerSearchLoading" class="asset-dropdown-status">{{ zh('搜索客户中...') }}</div>
+                <button
+                  v-for="customer in dialogCustomerOptions"
+                  :key="customer.id"
+                  type="button"
+                  @mousedown.prevent
+                  @click="applyCustomer(customer)"
+                >
+                  <strong>{{ zh(customerLabel(customer)) }}</strong>
+                  <span>{{ zh(`客户 #${customer.id}`) }}</span>
+                </button>
+                <div v-if="!customerSearchLoading && !dialogCustomerOptions.length" class="asset-dropdown-status">
+                  {{ zh('未找到匹配客户，请调整关键词') }}
+                </div>
+              </div>
+            </div>
           </label>
-          <label>{{ zh('设备名称') }}<input v-model="form.name" type="text" /></label>
-          <label>{{ zh('型号') }}<input v-model="form.model" type="text" /></label>
+          <label>{{ zh('设备名称 *') }}<input v-model="form.name" type="text" :placeholder="zh('例如 精密空调-01')" /></label>
+          <label>{{ zh('设备型号') }}
+            <div class="asset-combo-field">
+              <input
+                v-model="form.model"
+                type="text"
+                :placeholder="zh('例如 PowerEdge R740')"
+                autocomplete="off"
+                @input="scheduleModelSearch(form.model)"
+              />
+              <div v-if="modelLoading || modelSuggestions.length" class="asset-dropdown">
+                <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中...') }}</div>
+                <button
+                  v-for="(suggestion, index) in modelSuggestions"
+                  :key="`${suggestion.canonicalModel || suggestion.officialName}-${suggestion.partNumber}-${index}`"
+                  type="button"
+                  @click="applyModelSuggestion(suggestion)"
+                >
+                  <strong>{{ zh(suggestion.canonicalModel || suggestion.officialName || '标准型号') }}</strong>
+                  <span>{{ zh([suggestion.brand || suggestion.vendor, suggestion.partNumber, suggestion.category].filter(Boolean).join(' · ') || '标准型号') }}</span>
+                </button>
+              </div>
+            </div>
+          </label>
           <label>{{ zh('PN') }}<input v-model="form.pn" type="text" /></label>
           <label>{{ zh('序列号') }}<input v-model="form.serialNo" type="text" /></label>
           <label>{{ zh('维保类型') }}
@@ -287,7 +476,6 @@ onMounted(async () => {
               <option value="scrapped">{{ zh('已报废') }}</option>
             </select>
           </label>
-          <label>{{ zh('质保到期') }}<input v-model="form.warrantyUntil" type="date" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
         </div>
         <footer class="signature-modal-actions">
