@@ -1942,7 +1942,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   const reports = await query(
     `SELECT *
      FROM service_reports
-     WHERE sp.service_order_id = :id
+     WHERE service_order_id = :id
      ORDER BY id DESC
      LIMIT 1`,
     { id: orderId },
