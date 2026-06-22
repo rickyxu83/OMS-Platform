@@ -623,11 +623,13 @@ export function MaintenanceParties() {
                       </div>
                       <Badge variant={TYPE_VARIANT[detailTarget.partyType || ""] || "secondary"}>{typeLabel}</Badge>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
-                        <div className="text-xs text-muted-foreground">{t.dialog.contact}</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.contact || t.misc.unknown}</div>
-                      </div>
+                    <div className={`mt-4 grid grid-cols-2 gap-3 ${isOriginalManufacturer(detailTarget.partyType) ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
+                      {!isOriginalManufacturer(detailTarget.partyType) ? (
+                        <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                          <div className="text-xs text-muted-foreground">{t.dialog.contact}</div>
+                          <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.contact || t.misc.unknown}</div>
+                        </div>
+                      ) : null}
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.phone}</div>
                         <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.phone || t.misc.unknown}</div>

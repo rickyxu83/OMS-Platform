@@ -213,7 +213,8 @@ onMounted(() => {
           <button class="ghost" type="button" @click.stop="openEdit(party)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <div class="asset-contact-list">
-          <span><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
+          <span v-if="isOriginalManufacturer(party.partyType)"><PreviewIcon name="contact" />{{ zh('联系电话') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
+          <span v-else><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
         </div>
         <p class="asset-record-line"><PreviewIcon name="maintenance" />{{ zh(party.serviceScope || '未维护服务范围') }}</p>
         <p v-if="party.remark" class="asset-record-note">{{ zh(party.remark) }}</p>
