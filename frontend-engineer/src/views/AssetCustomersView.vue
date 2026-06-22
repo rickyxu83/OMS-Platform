@@ -50,6 +50,13 @@ function emptyForm() {
   }
 }
 
+const LEVEL_LABELS = {
+  key: '重点客户',
+  normal: '普通客户',
+  potential: '潜在客户',
+  vip: 'VIP 客户',
+}
+
 function contactsFor(customer) {
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : []
   if (contacts.length) return contacts
@@ -139,19 +146,19 @@ async function saveCustomer() {
   error.value = ''
   try {
     const contacts = form.value.contacts
-      .map((contact) => ({ id: contact.id, name: contact.name.trim(), phone: contact.phone.trim() }))
-      .filter((contact) => contact.name || contact.phone)
-    const firstContact = contacts[0] || { name: form.value.contactName.trim(), phone: form.value.contactPhone.trim() }
+      .map((contact) => ({ id: contact.id, name: contact.name.trim(), phone: contact.phone.trim() || undefined }))
+      .filter((contact) => contact.name)
+    const firstContact = contacts[0] || { name: form.value.contactName.trim() || undefined, phone: form.value.contactPhone.trim() || undefined }
     const payload = {
       name: form.value.name.trim(),
-      code: form.value.code.trim(),
-      address: form.value.address.trim(),
-      contactName: form.value.contactName.trim() || firstContact.name || '',
-      contactPhone: form.value.contactPhone.trim() || firstContact.phone || '',
+      code: form.value.code.trim() || undefined,
+      address: form.value.address.trim() || undefined,
+      contactName: form.value.contactName.trim() || firstContact.name || undefined,
+      contactPhone: form.value.contactPhone.trim() || firstContact.phone || undefined,
       contacts,
-      salesperson: form.value.salesperson.trim(),
+      salesperson: form.value.salesperson.trim() || undefined,
       level: form.value.level,
-      remark: form.value.remark.trim(),
+      remark: form.value.remark.trim() || undefined,
     }
     if (editingId.value) await api.put(`/customers/${editingId.value}`, payload)
     else await api.post('/customers', payload)
@@ -271,6 +278,14 @@ onMounted(() => {
           <label>{{ zh('默认联系人') }}<input v-model="form.contactName" type="text" /></label>
           <label>{{ zh('默认电话') }}<input v-model="form.contactPhone" type="tel" /></label>
           <label>{{ zh('业务归属') }}<input v-model="form.salesperson" type="text" /></label>
+          <label>{{ zh('客户等级') }}
+            <select v-model="form.level">
+              <option value="key">{{ zh('重点客户') }}</option>
+              <option value="normal">{{ zh('普通客户') }}</option>
+              <option value="potential">{{ zh('潜在客户') }}</option>
+              <option value="vip">{{ zh('VIP 客户') }}</option>
+            </select>
+          </label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
           <section class="asset-editor-nested">
             <div class="asset-editor-nested-head">
