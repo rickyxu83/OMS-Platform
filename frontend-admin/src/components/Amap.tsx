@@ -293,8 +293,8 @@ export function Amap({
           zoom,
           center: [center.lng, center.lat],
           mapStyle: "amap://styles/light",
-          features: ["bg", "road", "building"],
-          showLabel: false,
+          features: ["bg", "point", "road", "building"],
+          showLabel: true,
           viewMode: "2D",
         });
         mapRef.current = map;
@@ -392,7 +392,7 @@ export function Amap({
 
     if (validPoints.length > 0) {
       try {
-        map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING]);
+        map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING], zoom);
         renderFlights();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 900);

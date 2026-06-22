@@ -756,7 +756,7 @@ export function Dashboard() {
           <Amap
             center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
             points={mapPoints}
-            zoom={9}
+            zoom={8}
             height={420}
           />
         </section>
