@@ -6309,7 +6309,14 @@ h2 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .signature-modal:has(.asset-editor-shell) {
+    place-items: center;
+    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  }
+
   .asset-editor-shell {
+    align-self: center;
+    justify-self: center;
     width: min(840px, calc(100vw - 48px));
     max-height: min(86vh, 820px);
     padding: 18px;
@@ -6344,6 +6351,8 @@ h2 {
   }
 
   .asset-editor-shell .signature-modal-actions {
+    display: flex;
+    justify-content: flex-end;
     position: sticky;
     bottom: -18px;
     margin: 8px -18px -18px;
