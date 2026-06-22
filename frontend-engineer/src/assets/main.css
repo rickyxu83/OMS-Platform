@@ -6308,9 +6308,134 @@ h2 {
   .asset-module-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .asset-editor-shell {
+    width: min(840px, calc(100vw - 48px));
+    max-height: min(86vh, 820px);
+    padding: 18px;
+  }
+
+  .asset-editor-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 14px;
+  }
+
+  .asset-inline-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .asset-inline-button {
+    min-width: 132px;
+  }
+
+  .asset-editor-nested {
+    grid-column: 1 / -1;
+  }
+
+  .asset-contact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .asset-contact-row .ghost {
+    min-width: 44px;
+  }
+
+  .asset-editor-shell .signature-modal-actions {
+    position: sticky;
+    bottom: -18px;
+    margin: 8px -18px -18px;
+    padding: 12px 18px 0;
+    border-top: 1px solid rgb(148 163 184 / 16%);
+    background: linear-gradient(180deg, rgb(248 251 255 / 72%), rgb(248 251 255 / 98%) 42%);
+  }
 }
 
 @media (max-width: 680px) {
+  .signature-modal:has(.asset-editor-shell) {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .asset-editor-shell {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    overflow: hidden;
+    border-radius: 0;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+
+  .asset-editor-shell .signature-modal-head {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgb(148 163 184 / 16%);
+  }
+
+  .asset-editor-shell .signature-modal-head h2 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .asset-editor-shell .asset-editor-form {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 2px 18px;
+    overscroll-behavior: contain;
+  }
+
+  .asset-editor-form {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-inline-control {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-inline-button,
+  .asset-map-meta .ghost {
+    width: 100%;
+  }
+
+  .asset-dropdown {
+    position: static;
+    max-height: 210px;
+    margin-top: 8px;
+    box-shadow: inset 0 0 0 1px rgb(148 163 184 / 8%);
+  }
+
+  .asset-candidate-list button,
+  .asset-dropdown button {
+    padding: 12px;
+  }
+
+  .asset-map-meta {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .asset-map-meta .ghost {
+    grid-column: 1 / -1;
+  }
+
+  .asset-editor-shell .signature-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgb(148 163 184 / 16%);
+  }
+
+  .asset-editor-shell .signature-modal-actions button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+  }
+
   .asset-topbar {
     gap: 12px;
   }
