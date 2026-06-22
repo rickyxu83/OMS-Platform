@@ -644,6 +644,24 @@ function showDesktopDangerAction(task) {
   return String(task.status || '') !== 'submitted'
 }
 
+function isStoredDraftTask(task) {
+  return ['draft_local', 'draft_sync'].includes(String(task.status || ''))
+}
+
+function isPersistedDraftTask(task) {
+  const workflowStatus = String(task.workflowStatus || '').trim()
+  return Boolean(Number(task.id || 0))
+    && (workflowStatus ? ['draft', 'assigned', 'rejected'].includes(workflowStatus) : String(task.status || '') === 'draft')
+}
+
+function canDeleteDraftTask(task) {
+  return isStoredDraftTask(task) || isPersistedDraftTask(task)
+}
+
+function dangerActionLabel(task) {
+  return canDeleteDraftTask(task) ? '删除草稿' : '作废记录'
+}
+
 function taskCustomerTitle(task) {
   const name = String(task.customerName || '').trim()
   if (name) return compactCustomerTitle(name)
@@ -866,7 +884,7 @@ function onSwipeEditClick(task, event) {
 
 function onSwipeActionClick(task, event) {
   closeSwipeFromAction(event)
-  if (['draft_local', 'draft_sync'].includes(task.status)) openDeleteDraft(task)
+  if (canDeleteDraftTask(task)) openDeleteDraft(task)
   else openCancelRecord(task)
 }
 
@@ -912,19 +930,27 @@ async function confirmTaskAction() {
   const action = pendingTaskAction.value
   if (!action) return
   if (action.type === 'delete_draft') {
-    if (action.task.storageKey) {
-      if (action.task.linkedOrderId) {
-        localStorage.removeItem(action.task.storageKey)
+    if (isStoredDraftTask(action.task)) {
+      if (action.task.storageKey) {
+        if (action.task.linkedOrderId) {
+          localStorage.removeItem(action.task.storageKey)
+        }
       }
+      await clearSelfReportDraft(
+        action.task.linkedOrderId || null,
+        action.task.draftMode || action.task.serviceMode || 'onsite',
+        action.task.draftId || '',
+      )
+    } else if (isPersistedDraftTask(action.task)) {
+      await api.delete(`/service-orders/${action.task.id}`)
+      await clearSelfReportDraft(action.task.id).catch(() => {})
+      tasks.value = tasks.value.filter((task) => Number(task.id) !== Number(action.task.id))
+      totalTasks.value = Math.max(0, totalTasks.value - 1)
     }
-    await clearSelfReportDraft(
-      action.task.linkedOrderId || null,
-      action.task.draftMode || action.task.serviceMode || 'onsite',
-      action.task.draftId || '',
-    )
     pendingTaskAction.value = null
     loadLocalDraftTasks({ remoteOrderIds: tasks.value.map((task) => task.id) }).catch(() => {})
     showActionToast('已删除草稿')
+    refreshView({ silent: true })
     return
   }
   await api.post(`/service-orders/${action.task.id}/cancel`, {})
@@ -1004,12 +1030,12 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="task-swipe-action task-swipe-action-danger"
-            :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
-            :title="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
+            :aria-label="zh(dangerActionLabel(task))"
+            :title="zh(dangerActionLabel(task))"
             @click.stop="onSwipeActionClick(task, $event)"
           >
             <PreviewIcon name="trash" />
-            <span>{{ zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录') }}</span>
+            <span>{{ zh(dangerActionLabel(task)) }}</span>
           </button>
         </div>
         <!-- 可滑动的内容层：整卡点击进预览 -->
@@ -1063,9 +1089,9 @@ onBeforeUnmount(() => {
               v-if="showDesktopDangerAction(task)"
               type="button"
               class="task-desktop-action task-desktop-action-danger"
-              :aria-label="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
-              :title="zh(['draft_local', 'draft_sync'].includes(task.status) ? '删除草稿' : '作废记录')"
-              @click.stop="['draft_local', 'draft_sync'].includes(task.status) ? openDeleteDraft(task) : openCancelRecord(task)"
+              :aria-label="zh(dangerActionLabel(task))"
+              :title="zh(dangerActionLabel(task))"
+              @click.stop="canDeleteDraftTask(task) ? openDeleteDraft(task) : openCancelRecord(task)"
             >
               <PreviewIcon name="trash" />
             </button>

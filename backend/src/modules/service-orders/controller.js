@@ -2633,6 +2633,50 @@ async function cancelByEngineer(req, res) {
   res.status(204).end()
 }
 
+async function remove(req, res) {
+  const order = await getOrder(req.params.id)
+  if (!order) {
+    throw notFound('服务单不存在')
+  }
+
+  if (!['draft', 'assigned', 'rejected'].includes(order.status)) {
+    throw badRequest('仅未提交的草稿服务单可以删除')
+  }
+  if (engineerScopedRoles.has(req.user.role)) {
+    await assertEngineerOwns(order, req.user)
+  }
+
+  await transaction(async (connection) => {
+    await ensureServiceReportWorkEntriesTable(connection)
+    await ensureSelfReportDraftsTable(connection)
+    await connection.execute('DELETE FROM service_report_work_entries WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute(
+      `DELETE FROM files
+       WHERE (owner_type = 'service_order' AND owner_id = :id)
+          OR (owner_type = 'service_report' AND owner_id = :id)
+          OR (owner_type = 'signature' AND owner_id = :id)`,
+      { id: req.params.id },
+    )
+    await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute('DELETE FROM service_order_engineers WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute(
+      `DELETE FROM self_report_drafts
+       WHERE draft_scope = 'edit'
+         AND service_order_id = :id`,
+      { id: req.params.id },
+    )
+    await connection.execute('DELETE FROM service_orders WHERE id = :id', { id: req.params.id })
+    await writeAudit(connection, req.user.id, req.params.id, 'delete', {
+      orderNo: order.order_no,
+      previousStatus: order.status,
+      source: engineerScopedRoles.has(req.user.role) ? 'engineer' : 'ops',
+    })
+  })
+
+  res.status(204).end()
+}
+
 async function bulkDelete(req, res) {
   const ids = Array.isArray(req.body?.ids)
     ? [...new Set(req.body.ids.map((id) => Number(id)).filter(Boolean))]
@@ -2696,6 +2740,7 @@ module.exports = {
   saveSelfReportDraft,
   deleteSelfReportDraft,
   cancelByEngineer,
+  remove,
   assign,
   transition,
   confirmInspectionOrder,

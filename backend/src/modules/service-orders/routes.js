@@ -41,5 +41,6 @@ router.get('/:id', controller.detail)
 router.post('/:id/cancel', requireRoles(...engineerRoles), controller.cancelByEngineer)
 router.put('/:id/self-report', requireRoles(...engineerRoles), controller.updateSelfReport)
 router.put('/:id', requireRoles(...opsRoles), controller.update)
+router.delete('/:id', requireRoles(...engineerRoles, ...opsRoles), controller.remove)
 
 module.exports = router
