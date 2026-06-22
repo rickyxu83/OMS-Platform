@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -158,10 +159,12 @@ const I18N = {
       addContact: "新增联系人",
       removeContact: "删除联系人",
       delete: "删除",
+      batchDelete: "批量删除",
       forceDelete: "强制删除",
       deleting: "删除中…",
       saveNow: "立即创建",
       saving: "保存中…",
+      clearSelection: "清空选择",
       close: "关闭",
     },
     stats: {
@@ -182,6 +185,7 @@ const I18N = {
       address: "地址",
       salesperson: "业务",
       action: "操作",
+      selectAllCurrent: "全选当前列表",
     },
     dialog: {
       title: "新增客户",
@@ -217,6 +221,8 @@ const I18N = {
       deleteNoServiceCount: "系统会再次检查是否有关联设备或服务单。",
       deleteSuccess: "已删除客户：{name}",
       deleteForceSuccess: "已删除客户：{name}（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张服务单）",
+      bulkDeleteConfirm: "确认强制删除选中的 {count} 个客户？会一并删除关联设备、服务单、巡检计划和联系人，操作不可恢复。",
+      bulkDeleteSuccess: "已删除 {count} 个客户（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张服务单）",
       detailTitle: "客户详情",
       detailDescription: "客户基础信息、联系人、业务归属与地图坐标",
       serviceOrderCount: "服务次数",
@@ -257,6 +263,7 @@ const I18N = {
       loadFailed: "加载失败",
       createFailed: "新增失败",
       deleteFailed: "删除失败",
+      bulkDeleteFailed: "批量删除失败",
       nameRequired: "请输入客户名称",
       geoSearchFailed: "搜索失败",
     },
@@ -302,10 +309,12 @@ const I18N = {
       addContact: "新增聯絡人",
       removeContact: "刪除聯絡人",
       delete: "刪除",
+      batchDelete: "批量刪除",
       forceDelete: "強制刪除",
       deleting: "刪除中…",
       saveNow: "立即建立",
       saving: "保存中…",
+      clearSelection: "清空選擇",
       close: "關閉",
     },
     stats: {
@@ -326,6 +335,7 @@ const I18N = {
       address: "地址",
       salesperson: "業務",
       action: "操作",
+      selectAllCurrent: "全選目前列表",
     },
     dialog: {
       title: "新增客戶",
@@ -361,6 +371,8 @@ const I18N = {
       deleteNoServiceCount: "系統會再次檢查是否有關聯設備或服務單。",
       deleteSuccess: "已刪除客戶：{name}",
       deleteForceSuccess: "已刪除客戶：{name}（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張服務單）",
+      bulkDeleteConfirm: "確認強制刪除選中的 {count} 個客戶？會一併刪除關聯設備、服務單、巡檢計畫和聯絡人，操作不可恢復。",
+      bulkDeleteSuccess: "已刪除 {count} 個客戶（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張服務單）",
       detailTitle: "客戶詳情",
       detailDescription: "客戶基礎資訊、聯絡人、業務歸屬與地圖座標",
       serviceOrderCount: "服務次數",
@@ -401,6 +413,7 @@ const I18N = {
       loadFailed: "載入失敗",
       createFailed: "新增失敗",
       deleteFailed: "刪除失敗",
+      bulkDeleteFailed: "批量刪除失敗",
       nameRequired: "請輸入客戶名稱",
       geoSearchFailed: "搜尋失敗",
     },
@@ -537,6 +550,7 @@ export function Customers() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [detailTarget, setDetailTarget] = useState<Customer | null>(null);
   const [detailInsight, setDetailInsight] = useState<CustomerInsight | null>(null);
   const [detailInsightLoading, setDetailInsightLoading] = useState(false);
@@ -650,6 +664,22 @@ export function Customers() {
     [customers, levelFilter],
   );
 
+  const allFilteredCustomersSelected = canForceDeleteCustomer
+    && filtered.length > 0
+    && filtered.every((customer) => selectedCustomerIds.includes(String(customer.id)));
+
+  useEffect(() => {
+    if (!canForceDeleteCustomer) {
+      setSelectedCustomerIds([]);
+      return;
+    }
+    const visibleIds = new Set(filtered.map((customer) => String(customer.id)));
+    setSelectedCustomerIds((ids) => {
+      const next = ids.filter((id) => visibleIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [filtered, canForceDeleteCustomer]);
+
   const stats = useMemo(() => {
     const total = customers.length;
     const key = customers.filter((c) => levelOf(c) === "key" || levelOf(c) === "vip").length;
@@ -667,6 +697,23 @@ export function Customers() {
 
   function toggleLevelFilter(level: string) {
     setLevelFilter((current) => (current === level ? "all" : level));
+  }
+
+  function toggleCustomerSelection(customerId: string | number, checked: boolean | "indeterminate") {
+    const id = String(customerId);
+    setSelectedCustomerIds((ids) => {
+      if (checked === true) return ids.includes(id) ? ids : [...ids, id];
+      return ids.filter((item) => item !== id);
+    });
+  }
+
+  function toggleAllFilteredCustomers(checked: boolean | "indeterminate") {
+    const ids = filtered.map((customer) => String(customer.id));
+    setSelectedCustomerIds((current) => {
+      if (checked === true) return Array.from(new Set([...current, ...ids]));
+      const visible = new Set(ids);
+      return current.filter((id) => !visible.has(id));
+    });
   }
 
   function openCreate() {
@@ -957,6 +1004,41 @@ export function Customers() {
     }
   }
 
+  async function confirmBulkDelete() {
+    if (!selectedCustomerIds.length || !canForceDeleteCustomer) return;
+    if (!window.confirm(interpolate(t.dialog.bulkDeleteConfirm, { count: selectedCustomerIds.length }))) return;
+    setDeleting(true);
+    setError("");
+    setSuccessMessage("");
+    setDeleteError("");
+    try {
+      let deletedCount = 0;
+      let deviceCount = 0;
+      let serviceOrderCount = 0;
+      for (const id of selectedCustomerIds) {
+        const data = await api.delete(`/customers/${id}?force=1`);
+        deletedCount += 1;
+        deviceCount += Number(data?.deviceCount || 0);
+        serviceOrderCount += Number(data?.serviceOrderCount || 0);
+      }
+      if (detailTarget && selectedCustomerIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      setSelectedCustomerIds([]);
+      await load();
+      setSuccessMessage(interpolate(t.dialog.bulkDeleteSuccess, {
+        count: deletedCount,
+        deviceCount,
+        serviceOrderCount,
+      }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t.errors.bulkDeleteFailed;
+      setDeleteError(msg);
+      setError(msg);
+      await load();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function submit() {
     if (!form.name.trim()) {
       setError(t.errors.nameRequired);
@@ -1081,11 +1163,41 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
+          {canForceDeleteCustomer ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-slate-50/70 px-3 py-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allFilteredCustomersSelected}
+                  onCheckedChange={toggleAllFilteredCustomers}
+                  disabled={deleting || filtered.length === 0}
+                  aria-label={t.list.selectAllCurrent}
+                />
+                {t.list.selectAllCurrent}
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedCustomerIds.length ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting}>
+                    {t.actions.clearSelection}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={confirmBulkDelete}
+                  disabled={deleting || !selectedCustomerIds.length}
+                >
+                  {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                  {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[760px]">
               <TableHeader>
                 <TableRow>
+                  {canForceDeleteCustomer ? <TableHead className="w-10" /> : null}
                   <TableHead>{t.list.name}</TableHead>
                   <TableHead>{t.list.contact}</TableHead>
                   <TableHead>{t.list.phone}</TableHead>
@@ -1097,13 +1209,13 @@ export function Customers() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={canForceDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" /> {t.list.loading}
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={canForceDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
                       {t.list.empty}
                     </TableCell>
                   </TableRow>
@@ -1111,6 +1223,7 @@ export function Customers() {
                   filtered.map((c) => {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+                    const selected = selectedCustomerIds.includes(String(c.id));
                     return (
                       <TableRow
                         key={c.id}
@@ -1119,12 +1232,23 @@ export function Customers() {
                         className="cursor-pointer"
                         onClick={() => setDetailTarget(c)}
                         onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             setDetailTarget(c);
                           }
                         }}
                       >
+                        {canForceDeleteCustomer ? (
+                          <TableCell onClick={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
+                              disabled={deleting}
+                              aria-label={`选择客户 ${c.name || c.id}`}
+                            />
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           <div className="font-medium">{c.name || t.misc.unknown}</div>
                           {c.salesperson && (

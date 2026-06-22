@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -146,6 +147,7 @@ export function Devices() {
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [customerSearchTimer, setCustomerSearchTimer] = useState<number | null>(null);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     customerId: "",
     name: "",
@@ -232,6 +234,34 @@ export function Devices() {
       { label: "原厂维护", value: vendor },
     ];
   }, [filtered]);
+
+  const allFilteredDevicesSelected = filtered.length > 0
+    && filtered.every((device) => selectedDeviceIds.includes(String(device.id)));
+
+  useEffect(() => {
+    const visibleIds = new Set(filtered.map((device) => String(device.id)));
+    setSelectedDeviceIds((ids) => {
+      const next = ids.filter((id) => visibleIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [filtered]);
+
+  function toggleDeviceSelection(deviceId: string | number, checked: boolean | "indeterminate") {
+    const id = String(deviceId);
+    setSelectedDeviceIds((ids) => {
+      if (checked === true) return ids.includes(id) ? ids : [...ids, id];
+      return ids.filter((item) => item !== id);
+    });
+  }
+
+  function toggleAllFilteredDevices(checked: boolean | "indeterminate") {
+    const ids = filtered.map((device) => String(device.id));
+    setSelectedDeviceIds((current) => {
+      if (checked === true) return Array.from(new Set([...current, ...ids]));
+      const visible = new Set(ids);
+      return current.filter((id) => !visible.has(id));
+    });
+  }
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => String(customer.id) === String(form.customerId)) || null,
@@ -442,6 +472,26 @@ export function Devices() {
     }
   }
 
+  async function bulkDeleteDevices() {
+    if (!selectedDeviceIds.length) return;
+    if (!window.confirm(`确认删除选中的 ${selectedDeviceIds.length} 台设备？已有工单或巡检计划引用的设备不能删除，失败项会保留。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      for (const id of selectedDeviceIds) {
+        await api.delete(`/devices/${id}`);
+      }
+      if (detailTarget && selectedDeviceIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      setSelectedDeviceIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "批量删除失败");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -537,7 +587,34 @@ export function Devices() {
 
       <Card>
         <CardHeader>
-          <CardTitle>设备列表 ({filtered.length})</CardTitle>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle>设备列表 ({filtered.length})</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allFilteredDevicesSelected}
+                  onCheckedChange={toggleAllFilteredDevices}
+                  disabled={saving || filtered.length === 0}
+                  aria-label="全选当前设备列表"
+                />
+                全选当前列表
+              </label>
+              {selectedDeviceIds.length ? (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDeviceIds([])} disabled={saving}>
+                  清空选择
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700"
+                onClick={bulkDeleteDevices}
+                disabled={saving || !selectedDeviceIds.length}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
@@ -553,6 +630,7 @@ export function Devices() {
                 const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
                 const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
                 const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
+                const selected = selectedDeviceIds.includes(String(device.id));
                 return (
                   <div
                     key={device.id}
@@ -568,8 +646,16 @@ export function Devices() {
                       }
                     }}
                   >
-                    <div className="flex min-w-0 flex-1 items-center gap-4">
-                      <Server className="w-5 h-5 text-primary mr-3" />
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
+                          disabled={saving}
+                          aria-label={`选择设备 ${device.name || device.model || device.id}`}
+                        />
+                      </div>
+                      <Server className="w-5 h-5 text-primary" />
                       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
                         <div>
                           <div className="font-medium">{device.name || device.model || `设备 #${device.id}`}</div>

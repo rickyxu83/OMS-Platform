@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -45,6 +46,8 @@ const I18N = {
       saveEdit: "保存修改",
       saving: "保存中…",
       delete: "删除",
+      batchDelete: "批量删除",
+      clearSelection: "清空选择",
       close: "关闭",
     },
     stats: {
@@ -66,6 +69,7 @@ const I18N = {
       updatedAt: "最近更新",
       contactLine: "联系人：{contact} · 电话：{phone}",
       serviceScope: "服务范围：{scope}",
+      selectAllCurrent: "全选当前列表",
     },
     dialog: {
       createTitle: "新增维保方",
@@ -94,6 +98,7 @@ const I18N = {
       nameRequired: "请输入维保方名称",
       phoneInvalid: "联系电话格式不正确",
       deleteFailed: "删除失败",
+      bulkDeleteFailed: "批量删除失败",
     },
     types: {
       vendor_contact: "原厂联系人",
@@ -121,6 +126,8 @@ const I18N = {
       saveEdit: "保存修改",
       saving: "保存中…",
       delete: "刪除",
+      batchDelete: "批量刪除",
+      clearSelection: "清空選擇",
       close: "關閉",
     },
     stats: {
@@ -142,6 +149,7 @@ const I18N = {
       updatedAt: "最近更新",
       contactLine: "聯絡人：{contact} · 電話：{phone}",
       serviceScope: "服務範圍：{scope}",
+      selectAllCurrent: "全選目前列表",
     },
     dialog: {
       createTitle: "新增維保方",
@@ -170,6 +178,7 @@ const I18N = {
       nameRequired: "請輸入維保方名稱",
       phoneInvalid: "聯絡電話格式不正確",
       deleteFailed: "刪除失敗",
+      bulkDeleteFailed: "批量刪除失敗",
     },
     types: {
       vendor_contact: "原廠聯絡人",
@@ -215,6 +224,7 @@ export function MaintenanceParties() {
   const [detailTarget, setDetailTarget] = useState<Party | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedPartyIds, setSelectedPartyIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     name: "",
     contact: "",
@@ -274,6 +284,34 @@ export function MaintenanceParties() {
       { label: t.stats.partner, value: partner },
     ];
   }, [parties, t.stats]);
+
+  const allFilteredPartiesSelected = filtered.length > 0
+    && filtered.every((party) => selectedPartyIds.includes(String(party.id)));
+
+  useEffect(() => {
+    const visibleIds = new Set(filtered.map((party) => String(party.id)));
+    setSelectedPartyIds((ids) => {
+      const next = ids.filter((id) => visibleIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [filtered]);
+
+  function togglePartySelection(partyId: string | number, checked: boolean | "indeterminate") {
+    const id = String(partyId);
+    setSelectedPartyIds((ids) => {
+      if (checked === true) return ids.includes(id) ? ids : [...ids, id];
+      return ids.filter((item) => item !== id);
+    });
+  }
+
+  function toggleAllFilteredParties(checked: boolean | "indeterminate") {
+    const ids = filtered.map((party) => String(party.id));
+    setSelectedPartyIds((current) => {
+      if (checked === true) return Array.from(new Set([...current, ...ids]));
+      const visible = new Set(ids);
+      return current.filter((id) => !visible.has(id));
+    });
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -350,6 +388,26 @@ export function MaintenanceParties() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.deleteFailed);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function bulkDeleteParties() {
+    if (!selectedPartyIds.length) return;
+    if (!window.confirm(`确认删除选中的 ${selectedPartyIds.length} 个维保方？`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      for (const id of selectedPartyIds) {
+        await api.delete(`/maintenance-parties/${id}`);
+      }
+      if (detailTarget && selectedPartyIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      setSelectedPartyIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errors.bulkDeleteFailed);
+      await load();
     } finally {
       setSaving(false);
     }
@@ -435,7 +493,34 @@ export function MaintenanceParties() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allFilteredPartiesSelected}
+                  onCheckedChange={toggleAllFilteredParties}
+                  disabled={saving || filtered.length === 0}
+                  aria-label={t.list.selectAllCurrent}
+                />
+                {t.list.selectAllCurrent}
+              </label>
+              {selectedPartyIds.length ? (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPartyIds([])} disabled={saving}>
+                  {t.actions.clearSelection}
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700"
+                onClick={bulkDeleteParties}
+                disabled={saving || !selectedPartyIds.length}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {t.actions.batchDelete}{selectedPartyIds.length ? ` (${selectedPartyIds.length})` : ""}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
@@ -449,6 +534,7 @@ export function MaintenanceParties() {
               <div className="space-y-3">
               {filtered.map((p) => {
                 const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
+                const selected = selectedPartyIds.includes(String(p.id));
                 return (
                   <div
                     key={p.id}
@@ -465,6 +551,14 @@ export function MaintenanceParties() {
                     }}
                   >
                     <div className="flex items-center gap-4 flex-1">
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
+                          disabled={saving}
+                          aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
+                        />
+                      </div>
                       <Building2 className="w-5 h-5 text-primary" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">

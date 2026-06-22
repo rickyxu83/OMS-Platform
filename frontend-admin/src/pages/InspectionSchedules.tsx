@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -99,6 +100,7 @@ export function InspectionSchedules() {
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [engineerSearch, setEngineerSearch] = useState("");
   const [engineerOptionsOpen, setEngineerOptionsOpen] = useState(false);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     name: "",
     customerId: "",
@@ -192,6 +194,34 @@ export function InspectionSchedules() {
       { label: "14天内待生成", value: dueSoon },
     ];
   }, [schedules]);
+
+  const allFilteredSchedulesSelected = filtered.length > 0
+    && filtered.every((schedule) => selectedScheduleIds.includes(String(schedule.id)));
+
+  useEffect(() => {
+    const visibleIds = new Set(filtered.map((schedule) => String(schedule.id)));
+    setSelectedScheduleIds((ids) => {
+      const next = ids.filter((id) => visibleIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [filtered]);
+
+  function toggleScheduleSelection(scheduleId: string | number, checked: boolean | "indeterminate") {
+    const id = String(scheduleId);
+    setSelectedScheduleIds((ids) => {
+      if (checked === true) return ids.includes(id) ? ids : [...ids, id];
+      return ids.filter((item) => item !== id);
+    });
+  }
+
+  function toggleAllFilteredSchedules(checked: boolean | "indeterminate") {
+    const ids = filtered.map((schedule) => String(schedule.id));
+    setSelectedScheduleIds((current) => {
+      if (checked === true) return Array.from(new Set([...current, ...ids]));
+      const visible = new Set(ids);
+      return current.filter((id) => !visible.has(id));
+    });
+  }
 
   const customerDevices = useMemo(() => {
     if (!form.customerId) return devices;
@@ -444,6 +474,26 @@ export function InspectionSchedules() {
     }
   }
 
+  async function bulkDeleteSchedules() {
+    if (!selectedScheduleIds.length) return;
+    if (!window.confirm(`确认删除选中的 ${selectedScheduleIds.length} 个巡检计划？历史工单不会被删除。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      for (const id of selectedScheduleIds) {
+        await api.delete(`/inspection-schedules/${id}`);
+      }
+      if (detailTarget && selectedScheduleIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      setSelectedScheduleIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "批量删除失败");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -558,7 +608,34 @@ export function InspectionSchedules() {
 
       <Card>
         <CardHeader>
-          <CardTitle>巡检计划列表 ({filtered.length})</CardTitle>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle>巡检计划列表 ({filtered.length})</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allFilteredSchedulesSelected}
+                  onCheckedChange={toggleAllFilteredSchedules}
+                  disabled={saving || filtered.length === 0}
+                  aria-label="全选当前巡检计划列表"
+                />
+                全选当前列表
+              </label>
+              {selectedScheduleIds.length ? (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedScheduleIds([])} disabled={saving}>
+                  清空选择
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700"
+                onClick={bulkDeleteSchedules}
+                disabled={saving || !selectedScheduleIds.length}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                批量删除{selectedScheduleIds.length ? ` (${selectedScheduleIds.length})` : ""}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
@@ -576,12 +653,13 @@ export function InspectionSchedules() {
                 const customerName = String(s.customerName || "").trim();
                 const title = planName || customerName || `计划 #${s.id}`;
                 const deviceNames = s.deviceNames || [];
+                const selected = selectedScheduleIds.includes(String(s.id));
                 return (
                   <div
                     key={s.id}
                     role="button"
                     tabIndex={0}
-                    className="grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px_168px] lg:items-center"
+                    className="grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px] lg:items-center"
                     onClick={() => setDetailTarget(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
@@ -591,6 +669,14 @@ export function InspectionSchedules() {
                       }
                     }}
                   >
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Checkbox
+                        checked={selected}
+                        onCheckedChange={(checked) => toggleScheduleSelection(s.id, checked)}
+                        disabled={saving}
+                        aria-label={`选择巡检计划 ${title}`}
+                      />
+                    </div>
                     <div className="min-w-0">
                       <div className="text-base font-semibold leading-6 text-slate-900">
                         {title}

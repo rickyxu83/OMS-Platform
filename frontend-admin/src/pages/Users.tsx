@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -81,6 +82,7 @@ export function Users() {
   const [permData, setPermData] = useState<Record<string, { label: string; permissions: { key: string; label: string }[] }> | null>(null);
   const [loadingPerms, setLoadingPerms] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | number | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     username: "",
     realName: "",
@@ -136,6 +138,39 @@ export function Users() {
       { label: "系统管理员", value: admin },
     ];
   }, [users]);
+
+  const selectableFilteredUserIds = useMemo(() => (
+    filtered
+      .filter((user) => user.status === "active" && String(currentUser?.id) !== String(user.id))
+      .map((user) => String(user.id))
+  ), [filtered, currentUser?.id]);
+
+  const allFilteredUsersSelected = selectableFilteredUserIds.length > 0
+    && selectableFilteredUserIds.every((id) => selectedUserIds.includes(id));
+
+  useEffect(() => {
+    const selectableIds = new Set(selectableFilteredUserIds);
+    setSelectedUserIds((ids) => {
+      const next = ids.filter((id) => selectableIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [selectableFilteredUserIds]);
+
+  function toggleUserSelection(userId: string | number, checked: boolean | "indeterminate") {
+    const id = String(userId);
+    setSelectedUserIds((ids) => {
+      if (checked === true) return ids.includes(id) ? ids : [...ids, id];
+      return ids.filter((item) => item !== id);
+    });
+  }
+
+  function toggleAllFilteredUsers(checked: boolean | "indeterminate") {
+    setSelectedUserIds((current) => {
+      if (checked === true) return Array.from(new Set([...current, ...selectableFilteredUserIds]));
+      const visible = new Set(selectableFilteredUserIds);
+      return current.filter((id) => !visible.has(id));
+    });
+  }
 
   function openCreate() {
     setEditingUserId(null);
@@ -225,6 +260,26 @@ export function Users() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "操作失败";
       setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function bulkDisableUsers() {
+    const ids = selectedUserIds.filter((id) => selectableFilteredUserIds.includes(id));
+    if (!ids.length) return;
+    if (!window.confirm(`确认停用选中的 ${ids.length} 名成员？当前登录账号不会被停用。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      for (const id of ids) {
+        await api.delete(`/users/${id}`);
+      }
+      setSelectedUserIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "批量停用失败");
+      await load();
     } finally {
       setSaving(false);
     }
@@ -334,7 +389,34 @@ export function Users() {
 
       <Card>
         <CardHeader>
-          <CardTitle>成员列表 ({filtered.length})</CardTitle>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle>成员列表 ({filtered.length})</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allFilteredUsersSelected}
+                  onCheckedChange={toggleAllFilteredUsers}
+                  disabled={saving || selectableFilteredUserIds.length === 0}
+                  aria-label="全选当前可停用成员"
+                />
+                全选当前可停用成员
+              </label>
+              {selectedUserIds.length ? (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedUserIds([])} disabled={saving}>
+                  清空选择
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700"
+                onClick={bulkDisableUsers}
+                disabled={saving || !selectedUserIds.length}
+              >
+                <UserX className="w-4 h-4 mr-2" />
+                批量停用{selectedUserIds.length ? ` (${selectedUserIds.length})` : ""}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
@@ -348,12 +430,20 @@ export function Users() {
               <div className="space-y-3">
               {filtered.map((user) => {
                 const roleLabel = ROLE_LABELS[user.role || ""] || user.role || "-";
+                const selectable = user.status === "active" && String(currentUser?.id) !== String(user.id);
+                const selected = selectedUserIds.includes(String(user.id));
                 return (
                   <div
                     key={user.id}
                     className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1">
+                      <Checkbox
+                        checked={selected}
+                        onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
+                        disabled={saving || !selectable}
+                        aria-label={`选择成员 ${displayName(user)}`}
+                      />
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         {user.status === "active" ? (
                           <UserCheck className="w-5 h-5 text-primary" />

@@ -581,6 +581,9 @@ export function ServiceOrders() {
     });
   }, [orders, debouncedSearch, t.mode, t.status, t.type]);
 
+  const allFilteredOrdersSelected = filteredOrders.length > 0
+    && filteredOrders.every((order) => selectedIds.some((id) => String(id) === String(order.id)));
+
   const initialLoading = loading && orders.length === 0;
   const refreshing = loading && orders.length > 0;
 
@@ -651,6 +654,28 @@ export function ServiceOrders() {
       const next = new URLSearchParams(prev);
       next.delete("orderId");
       return next;
+    });
+  }
+
+  function toggleOrderSelection(orderId: string | number, checked: boolean | "indeterminate") {
+    setSelectedIds((ids) => {
+      if (checked === true) {
+        return ids.some((id) => String(id) === String(orderId)) ? ids : [...ids, orderId];
+      }
+      return ids.filter((id) => String(id) !== String(orderId));
+    });
+  }
+
+  function toggleAllFilteredOrders(checked: boolean | "indeterminate") {
+    const ids = filteredOrders.map((order) => order.id);
+    setSelectedIds((current) => {
+      if (checked === true) {
+        const merged = new Map<string, string | number>();
+        [...current, ...ids].forEach((id) => merged.set(String(id), id));
+        return [...merged.values()];
+      }
+      const visible = new Set(ids.map((id) => String(id)));
+      return current.filter((id) => !visible.has(String(id)));
     });
   }
 
@@ -1178,10 +1203,21 @@ export function ServiceOrders() {
               {t.actions.reset}
             </Button>
           </div>
-          <div className="mt-3 text-xs text-muted-foreground">
-            {selectedIds.length
-              ? `已勾选 ${selectedIds.length} 张；导出（Excel / PDF）仅包含勾选的工单。`
-              : `当前条件匹配 ${total} 张工单；未勾选时，导出会包含所有匹配记录，不只当前页。`}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={allFilteredOrdersSelected}
+                onCheckedChange={toggleAllFilteredOrders}
+                disabled={saving || filteredOrders.length === 0}
+                aria-label="全选当前服务表列表"
+              />
+              全选当前列表
+            </label>
+            <span>
+              {selectedIds.length
+                ? `已勾选 ${selectedIds.length} 张；导出（Excel / PDF）仅包含勾选的工单。`
+                : `当前条件匹配 ${total} 张工单；未勾选时，导出会包含所有匹配记录，不只当前页。`}
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -1239,11 +1275,7 @@ export function ServiceOrders() {
                       <div onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
-                          onCheckedChange={(checked) => {
-                            setSelectedIds((ids) => checked
-                              ? [...ids, order.id]
-                              : ids.filter((id) => String(id) !== String(order.id)));
-                          }}
+                          onCheckedChange={(checked) => toggleOrderSelection(order.id, checked)}
                         />
                       </div>
 
