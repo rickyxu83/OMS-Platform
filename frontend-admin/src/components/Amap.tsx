@@ -34,7 +34,8 @@ interface AmapProps {
 }
 
 let amapLoaderPromise: Promise<any> | null = null;
-let amapConfigPromise: Promise<AmapRuntimeConfig> | null = null;
+let amapLoadedKey = "";
+let amapLoadedSecurityJsCode = "";
 const MAX_FLIGHT_LINES = 80;
 
 interface AmapRuntimeConfig {
@@ -43,8 +44,7 @@ interface AmapRuntimeConfig {
 }
 
 async function loadAmapConfig(): Promise<AmapRuntimeConfig> {
-  if (amapConfigPromise) return amapConfigPromise;
-  amapConfigPromise = api.get("/settings/public-map")
+  return api.get("/settings/public-map")
     .then((data) => ({
       jsapiKey: String(data?.item?.amapJsapiKey || ENV_AMAP_JSAPI_KEY || "").trim(),
       securityJsCode: String(data?.item?.amapSecurityJsCode || ENV_AMAP_SECURITY_JS_CODE || "").trim(),
@@ -53,25 +53,70 @@ async function loadAmapConfig(): Promise<AmapRuntimeConfig> {
       jsapiKey: ENV_AMAP_JSAPI_KEY,
       securityJsCode: ENV_AMAP_SECURITY_JS_CODE,
     }));
-  return amapConfigPromise;
 }
 
 function loadAMapScript(config: AmapRuntimeConfig): Promise<any> {
   if (typeof window === "undefined") return Promise.reject(new Error("AMap 需在浏览器环境"));
-  if ((window as any).AMap?.Map) return Promise.resolve((window as any).AMap);
+  const existing = document.querySelector('script[data-amap-jsapi="true"]') as HTMLScriptElement | null;
+  const existingMatches = Boolean(
+    existing
+    && existing.dataset.amapKey === config.jsapiKey
+    && existing.dataset.amapSecurityJsCode === config.securityJsCode,
+  );
+  if (
+    (window as any).AMap?.Map
+    && (
+      existingMatches
+      || (amapLoadedKey === config.jsapiKey && amapLoadedSecurityJsCode === config.securityJsCode)
+    )
+  ) {
+    amapLoadedKey = config.jsapiKey;
+    amapLoadedSecurityJsCode = config.securityJsCode;
+    if (existing) existing.dataset.amapLoaded = "true";
+    return Promise.resolve((window as any).AMap);
+  }
   if (amapLoaderPromise) return amapLoaderPromise;
   if (!config.jsapiKey || !config.securityJsCode) {
     return Promise.reject(new Error("未配置 AMap JSAPI 密钥或安全密钥"));
   }
   (window as any)._AMapSecurityConfig = { securityJsCode: config.securityJsCode };
   amapLoaderPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-amap-jsapi="true"]') as HTMLScriptElement | null;
-    if (existing && existing.dataset.amapKey === config.jsapiKey) {
-      existing.addEventListener("load", () => resolve((window as any).AMap), { once: true });
-      existing.addEventListener("error", () => reject(new Error("AMap JSAPI 加载失败")), { once: true });
-      return;
-    } else if (existing) {
+    const finish = (AMap: any) => {
+      amapLoaderPromise = null;
+      amapLoadedKey = config.jsapiKey;
+      amapLoadedSecurityJsCode = config.securityJsCode;
+      resolve(AMap);
+    };
+    const fail = (message: string) => {
+      amapLoaderPromise = null;
+      reject(new Error(message));
+    };
+    if (existingMatches && existing) {
+      if (existing.dataset.amapLoaded === "true" && (window as any).AMap?.Map) {
+        finish((window as any).AMap);
+        return;
+      }
+      if (existing.dataset.amapError === "true") {
+        existing.remove();
+      } else if (existing.dataset.amapLoading === "true") {
+        existing.addEventListener("load", () => {
+          existing.dataset.amapLoaded = "true";
+          delete existing.dataset.amapLoading;
+          finish((window as any).AMap);
+        }, { once: true });
+        existing.addEventListener("error", () => fail("AMap JSAPI 加载失败：浏览器未能下载高德脚本"), { once: true });
+        return;
+      } else if ((window as any).AMap?.Map) {
+        existing.dataset.amapLoaded = "true";
+        finish((window as any).AMap);
+        return;
+      } else {
+        existing.remove();
+      }
+    }
+    if (!existingMatches && existing) {
       existing.remove();
+      try { delete (window as any).AMap; } catch {}
     }
     const script = document.createElement("script");
     script.type = "text/javascript";
@@ -79,9 +124,23 @@ function loadAMapScript(config: AmapRuntimeConfig): Promise<any> {
     script.defer = true;
     script.dataset.amapJsapi = "true";
     script.dataset.amapKey = config.jsapiKey;
+    script.dataset.amapSecurityJsCode = config.securityJsCode;
+    script.dataset.amapLoading = "true";
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(config.jsapiKey)}`;
-    script.onload = () => resolve((window as any).AMap);
-    script.onerror = () => reject(new Error("AMap JSAPI 加载失败"));
+    script.onload = () => {
+      delete script.dataset.amapLoading;
+      if (!(window as any).AMap?.Map) {
+        fail("AMap JSAPI 已加载但未初始化");
+        return;
+      }
+      script.dataset.amapLoaded = "true";
+      finish((window as any).AMap);
+    };
+    script.onerror = () => {
+      delete script.dataset.amapLoading;
+      script.dataset.amapError = "true";
+      fail("AMap JSAPI 加载失败：浏览器未能下载高德脚本");
+    };
     document.head.appendChild(script);
   }).catch((err) => {
     amapLoaderPromise = null;

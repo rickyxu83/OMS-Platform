@@ -2431,14 +2431,7 @@ function currentAiDraftContext() {
     customerCandidates: aiDraftCustomerCandidates.value.map((candidate) => ({
       id: candidate.id || null,
       name: candidate.name || '',
-      address: candidate.address || candidate.mapAddress || '',
-      contactName: candidate.contactName || '',
-      contactPhone: candidate.contactPhone || '',
       weight: Number(candidate.weight || 0) || 0,
-      contacts: (candidate.contacts || []).map((contact) => ({
-        name: contact.name || '',
-        phone: contact.phone || '',
-      })),
     })),
   }
 }
