@@ -43,44 +43,50 @@ function cleanText(value, fallback = '-') {
   return normalized || fallback
 }
 
-function textWidthUnits(value) {
-  return Array.from(value).reduce((total, char) => total + (char.charCodeAt(0) <= 255 ? 0.55 : 1), 0)
+let textMeasureContext = null
+
+function measureSvgTextWidth(value, size = 16) {
+  if (!textMeasureContext && typeof document !== 'undefined') {
+    textMeasureContext = document.createElement('canvas').getContext('2d')
+  }
+  if (!textMeasureContext) {
+    return Array.from(String(value || '')).reduce((total, char) => total + (char.charCodeAt(0) <= 255 ? 8 : 16), 0)
+  }
+  textMeasureContext.font = `600 ${size}px "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif`
+  return textMeasureContext.measureText(String(value || '')).width
 }
 
-function splitByWidth(value, maxUnits) {
+function splitByWidth(value, maxWidth, size = 16) {
   const chunks = []
   let line = ''
-  let units = 0
 
   for (const char of Array.from(String(value || ''))) {
-    const charUnits = textWidthUnits(char)
-    if (line && units + charUnits > maxUnits) {
+    const next = line + char
+    if (line && measureSvgTextWidth(next, size) > maxWidth) {
       chunks.push(line)
       line = char
-      units = charUnits
       continue
     }
-    line += char
-    units += charUnits
+    line = next
   }
 
   if (line) chunks.push(line)
   return chunks
 }
 
-function textLines(value, x, y, maxChars, maxLines, lineHeight = 30) {
+function textLines(value, x, y, maxChars, maxLines, lineHeight = 30, maxWidth = maxChars * 11, size = 16) {
   const lines = []
   for (const rawLine of String(value || '').split(/\n/)) {
     const line = rawLine.trim()
     if (!line) {
       lines.push('')
     } else {
-      lines.push(...splitByWidth(line, maxChars))
+      lines.push(...splitByWidth(line, maxWidth, size))
     }
   }
   return lines
     .slice(0, maxLines)
-    .map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" font-size="16">${escapeXml(line)}</text>`)
+    .map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" font-size="${size}" font-weight="600">${escapeXml(line)}</text>`)
     .join('')
 }
 
@@ -328,8 +334,8 @@ const sheetSvg = computed(() => {
     <rect x="68" y="204" width="390" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="204" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="233" class="label">Case号</text><text x="208" y="233" class="value">${escapeXml(cleanText(item.orderNo || item.id || '', '-'))}</text>
     <rect x="458" y="204" width="292" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="458" y="204" width="102" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="474" y="233" class="label">填写日期</text><text x="578" y="233" class="value">${escapeXml(cleanText(finishedDate, '-'))}</text>
     <rect x="68" y="250" width="682" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="250" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="279" class="label">地址</text><text x="208" y="279" class="value">${escapeXml(cleanText(item.customerAddress, isRemoteSheet.value ? '远程服务未填写地址' : '-'))}</text>
-    <rect x="68" y="${summaryY}" width="682" height="108" rx="12" fill="#f8fafc" stroke="#d6dee8"/><text x="92" y="${summaryY + 34}" font-size="15.5" font-weight="700" fill="#0f172a">${summaryLabel}</text>${textLines(summaryText, 92, summaryTextY, 66, 2, 30)}
-    <rect x="68" y="${recordBoxY}" width="682" height="${recordBoxHeight}" rx="12" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="${recordBoxY}" width="138" height="${recordBoxHeight}" rx="12" fill="#f8fafc" stroke="#d6dee8"/><rect x="196" y="${recordBoxY}" width="10" height="${recordBoxHeight}" fill="#f8fafc"/><text x="88" y="${recordBoxY + 36}" font-size="15.5" font-weight="700" fill="#0f172a">${recordLabel}</text>${recordGuidesSvg}${textLines(workRecord, 226, recordContentStartY, 41, recordMaxLines, recordLineHeight)}<line x1="206" y1="${resultDividerY}" x2="726" y2="${resultDividerY}" stroke="${sheetLine}" stroke-width="1.4"/><text x="88" y="${resultStatusY}" font-size="14" font-weight="700" fill="${sheetPrimary}">${resultLabel}</text><text x="226" y="${resultStatusY}" class="value">${escapeXml(resultStatus)}</text>${resultGuidesSvg}${resultDescription ? textLines(resultDescription, 226, resultDetailY, 41, resultMaxLines, 26) : `<text x="226" y="${resultDetailY}" class="small">已记录本次服务结果，可直接分享留底。</text>`}
+    <rect x="68" y="${summaryY}" width="682" height="108" rx="12" fill="#f8fafc" stroke="#d6dee8"/><text x="92" y="${summaryY + 34}" font-size="15.5" font-weight="700" fill="#0f172a">${summaryLabel}</text>${textLines(summaryText, 92, summaryTextY, 66, 2, 30, 620)}
+    <rect x="68" y="${recordBoxY}" width="682" height="${recordBoxHeight}" rx="12" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="${recordBoxY}" width="138" height="${recordBoxHeight}" rx="12" fill="#f8fafc" stroke="#d6dee8"/><rect x="196" y="${recordBoxY}" width="10" height="${recordBoxHeight}" fill="#f8fafc"/><text x="88" y="${recordBoxY + 36}" font-size="15.5" font-weight="700" fill="#0f172a">${recordLabel}</text>${recordGuidesSvg}${textLines(workRecord, 226, recordContentStartY, 41, recordMaxLines, recordLineHeight, 470)}<line x1="206" y1="${resultDividerY}" x2="726" y2="${resultDividerY}" stroke="${sheetLine}" stroke-width="1.4"/><text x="88" y="${resultStatusY}" font-size="14" font-weight="700" fill="${sheetPrimary}">${resultLabel}</text><text x="226" y="${resultStatusY}" class="value">${escapeXml(resultStatus)}</text>${resultGuidesSvg}${resultDescription ? textLines(resultDescription, 226, resultDetailY, 41, resultMaxLines, 26, 470) : `<text x="226" y="${resultDetailY}" class="small">已记录本次服务结果，可直接分享留底。</text>`}
     ${timeSummary}
     ${signatureSection}
     <text x="78" y="${footerY}" class="small">• 说明：本图片由技术服务电子化系统生成，供分享留底。</text><text x="750" y="${footerY}" text-anchor="end" font-size="12" font-weight="600" fill="#64748b">${escapeXml(cleanText(item.orderNo || item.id || '', '-'))}</text>
