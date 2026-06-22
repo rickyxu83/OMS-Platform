@@ -24,6 +24,12 @@ function maintenanceTypeLabel(value) {
   return labels[value || 'none'] || value || '未维护'
 }
 
+function officialWebsiteHref(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
 function warrantyDate(item) {
   return item?.maintenanceEnd || item?.warrantyUntil || ''
 }
@@ -116,7 +122,10 @@ onMounted(() => {
           <p><span>{{ zh('维保方') }}</span><b>{{ zh(device.maintenancePartyName || party?.name || '未关联维保厂商') }}</b></p>
           <p><span>{{ zh('联系人') }}</span><b>{{ zh(party?.contact || '未维护') }}</b></p>
           <p><span>{{ zh('联系电话') }}</span><b>{{ party?.phone || device.maintenancePartyPhone || zh('未维护') }}</b></p>
-          <p v-if="party?.serviceScope"><span>{{ zh('服务范围') }}</span><b>{{ zh(party.serviceScope) }}</b></p>
+          <p v-if="party?.officialWebsite">
+            <span>{{ zh('官网地址') }}</span>
+            <b><a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer">{{ zh(party.officialWebsite) }}</a></b>
+          </p>
         </div>
       </article>
     </section>

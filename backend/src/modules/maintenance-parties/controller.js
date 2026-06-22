@@ -18,17 +18,31 @@ async function ensureMaintenancePartyColumns() {
          FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'maintenance_parties'
-           AND COLUMN_NAME IN ('contact', 'service_scope', 'remark')`,
+           AND COLUMN_NAME IN ('contact', 'official_website', 'service_scope', 'remark')`,
       )
       const existing = new Set(rows.map((row) => row.columnName))
       if (!existing.has('contact')) {
         await query('ALTER TABLE maintenance_parties ADD COLUMN contact VARCHAR(100) NULL AFTER phone')
       }
-      if (!existing.has('service_scope')) {
-        await query('ALTER TABLE maintenance_parties ADD COLUMN service_scope VARCHAR(255) NULL AFTER contact')
+      if (existing.has('service_scope') && !existing.has('official_website')) {
+        await query('ALTER TABLE maintenance_parties CHANGE COLUMN service_scope official_website VARCHAR(255) NULL')
+        existing.delete('service_scope')
+        existing.add('official_website')
+      }
+      if (!existing.has('official_website')) {
+        await query('ALTER TABLE maintenance_parties ADD COLUMN official_website VARCHAR(255) NULL AFTER contact')
+        existing.add('official_website')
+      }
+      if (existing.has('service_scope')) {
+        await query(
+          `UPDATE maintenance_parties
+           SET official_website = COALESCE(NULLIF(official_website, ''), service_scope)
+           WHERE service_scope IS NOT NULL AND service_scope <> ''`,
+        )
+        await query('ALTER TABLE maintenance_parties DROP COLUMN service_scope')
       }
       if (!existing.has('remark')) {
-        await query('ALTER TABLE maintenance_parties ADD COLUMN remark TEXT NULL AFTER service_scope')
+        await query('ALTER TABLE maintenance_parties ADD COLUMN remark TEXT NULL AFTER official_website')
       }
     })()
   }
@@ -60,7 +74,7 @@ function partyPayload(row) {
     name: row.name,
     contact: row.contact,
     phone: row.phone,
-    serviceScope: row.service_scope,
+    officialWebsite: row.official_website,
     remark: row.remark,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -76,7 +90,7 @@ async function list(req, res) {
     throw badRequest('维护方类型不正确')
   }
   const rows = await query(
-    `SELECT id, party_type, name, contact, phone, service_scope, remark, created_at, updated_at
+    `SELECT id, party_type, name, contact, phone, official_website, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE (:partyType = '' OR party_type = :partyType)
        AND (
@@ -84,7 +98,7 @@ async function list(req, res) {
          OR name LIKE :likeKeyword
          OR contact LIKE :likeKeyword
          OR phone LIKE :likeKeyword
-         OR service_scope LIKE :likeKeyword
+         OR official_website LIKE :likeKeyword
          OR remark LIKE :likeKeyword
        )
      ORDER BY id DESC
@@ -105,7 +119,7 @@ async function create(req, res) {
   const name = normalizeText(req.body?.name)
   const contact = normalizeText(req.body?.contact) || null
   const phone = validatePhone(req.body?.phone)
-  const serviceScope = normalizeText(req.body?.serviceScope) || null
+  const officialWebsite = normalizeText(req.body?.officialWebsite ?? req.body?.serviceScope) || null
   const remark = normalizeText(req.body?.remark) || null
 
   if (!validPartyTypes.has(partyType)) {
@@ -116,9 +130,9 @@ async function create(req, res) {
   }
 
   const result = await query(
-    `INSERT INTO maintenance_parties (party_type, name, contact, phone, service_scope, remark)
-     VALUES (:partyType, :name, :contact, :phone, :serviceScope, :remark)`,
-    { partyType, name, contact, phone, serviceScope, remark },
+    `INSERT INTO maintenance_parties (party_type, name, contact, phone, official_website, remark)
+     VALUES (:partyType, :name, :contact, :phone, :officialWebsite, :remark)`,
+    { partyType, name, contact, phone, officialWebsite, remark },
   )
 
   res.status(201).json({ id: result.insertId })
@@ -127,7 +141,7 @@ async function create(req, res) {
 async function detail(req, res) {
   await ensureMaintenancePartyColumns()
   const rows = await query(
-    `SELECT id, party_type, name, contact, phone, service_scope, remark, created_at, updated_at
+    `SELECT id, party_type, name, contact, phone, official_website, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE id = :id
      LIMIT 1`,
@@ -152,14 +166,15 @@ async function update(req, res) {
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
   const hasContact = Object.prototype.hasOwnProperty.call(req.body || {}, 'contact')
   const hasPhone = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')
-  const hasServiceScope = Object.prototype.hasOwnProperty.call(req.body || {}, 'serviceScope')
+  const hasOfficialWebsite = Object.prototype.hasOwnProperty.call(req.body || {}, 'officialWebsite')
+    || Object.prototype.hasOwnProperty.call(req.body || {}, 'serviceScope')
   const hasRemark = Object.prototype.hasOwnProperty.call(req.body || {}, 'remark')
 
   const partyType = hasPartyType ? normalizePartyType(req.body.partyType, '') : null
   const name = hasName ? normalizeText(req.body.name) : null
   const contact = hasContact ? normalizeText(req.body.contact) || null : null
   const phone = hasPhone ? validatePhone(req.body.phone) : null
-  const serviceScope = hasServiceScope ? normalizeText(req.body.serviceScope) || null : null
+  const officialWebsite = hasOfficialWebsite ? normalizeText(req.body.officialWebsite ?? req.body.serviceScope) || null : null
   const remark = hasRemark ? normalizeText(req.body.remark) || null : null
 
   if (hasPartyType && !validPartyTypes.has(partyType)) {
@@ -175,7 +190,7 @@ async function update(req, res) {
          name = COALESCE(:name, name),
          contact = CASE WHEN :hasContact THEN :contact ELSE contact END,
          phone = CASE WHEN :hasPhone THEN :phone ELSE phone END,
-         service_scope = CASE WHEN :hasServiceScope THEN :serviceScope ELSE service_scope END,
+         official_website = CASE WHEN :hasOfficialWebsite THEN :officialWebsite ELSE official_website END,
          remark = CASE WHEN :hasRemark THEN :remark ELSE remark END
      WHERE id = :id`,
     {
@@ -186,8 +201,8 @@ async function update(req, res) {
       contact: hasContact ? contact : null,
       hasPhone,
       phone: hasPhone ? phone : null,
-      hasServiceScope,
-      serviceScope: hasServiceScope ? serviceScope : null,
+      hasOfficialWebsite,
+      officialWebsite: hasOfficialWebsite ? officialWebsite : null,
       hasRemark,
       remark: hasRemark ? remark : null,
     },

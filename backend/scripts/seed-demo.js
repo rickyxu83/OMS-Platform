@@ -114,12 +114,12 @@ const customerExtraContacts = {
 
 // ─── Maintenance Parties (维保厂商) ──────────────────────────────────────────
 const maintenanceParties = [
-  ['original_manufacturer', 'Dell 技术支持中心', '400-886-6585'],
-  ['original_manufacturer', 'Huawei 企业服务热线', '400-822-9999'],
-  ['original_manufacturer', 'Fortinet 技术支持', '400-600-5255'],
-  ['original_manufacturer', 'VMware 技术支持', '400-816-0688'],
-  ['our_maintenance', 'OMs 自维保团队（上海）', '021-88888888'],
-  ['our_maintenance', 'OMs 自维保团队（苏州）', '0512-88888888'],
+  ['original_manufacturer', 'Dell 技术支持中心', '400-886-6585', 'https://www.dell.com/support/home/zh-cn'],
+  ['original_manufacturer', 'Huawei 企业服务热线', '400-822-9999', 'https://support.huawei.com/enterprise/zh/'],
+  ['original_manufacturer', 'Fortinet 技术支持', '400-600-5255', 'https://www.fortinet.com/cn/support'],
+  ['original_manufacturer', 'VMware 技术支持', '400-816-0688', 'https://www.vmware.com/cn/support.html'],
+  ['our_maintenance', 'OMs 自维保团队（上海）', '021-88888888', null],
+  ['our_maintenance', 'OMs 自维保团队（苏州）', '0512-88888888', null],
 ]
 
 // ─── Devices (expanded per customer with warranty / maintenance info) ───────
@@ -484,12 +484,12 @@ async function main() {
     }
 
     // ── Maintenance Parties ──
-    for (const [partyType, name, phone] of maintenanceParties) {
+    for (const [partyType, name, phone, officialWebsite] of maintenanceParties) {
       await connection.execute(
-        `INSERT INTO maintenance_parties (party_type, name, phone)
-         VALUES (:partyType, :name, :phone)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone)`,
-        { partyType, name, phone },
+        `INSERT INTO maintenance_parties (party_type, name, phone, official_website)
+         VALUES (:partyType, :name, :phone, :officialWebsite)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone), official_website = VALUES(official_website)`,
+        { partyType, name, phone, officialWebsite },
       )
     }
 

@@ -27,6 +27,12 @@ function partyTypeLabel(value) {
   return labels[value] || value || '未分类'
 }
 
+function officialWebsiteHref(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
 function displayDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 10) : '未维护'
 }
@@ -89,7 +95,10 @@ onMounted(() => {
         <div class="asset-detail-kv">
           <p><span>{{ zh('联系人') }}</span><b>{{ zh(party.contact || '未维护') }}</b></p>
           <p><span>{{ zh('联系电话') }}</span><b>{{ party.phone || zh('未维护') }}</b></p>
-          <p v-if="party.serviceScope"><span>{{ zh('服务范围') }}</span><b>{{ zh(party.serviceScope) }}</b></p>
+          <p v-if="party.officialWebsite">
+            <span>{{ zh('官网地址') }}</span>
+            <b><a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer">{{ zh(party.officialWebsite) }}</a></b>
+          </p>
           <p><span>{{ zh('备注') }}</span><b>{{ zh(party.remark || '未维护') }}</b></p>
         </div>
       </article>

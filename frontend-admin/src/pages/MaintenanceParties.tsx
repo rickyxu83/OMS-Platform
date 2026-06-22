@@ -25,7 +25,7 @@ interface Party {
   phone?: string;
   contact?: string;
   partyType?: string;
-  serviceScope?: string;
+  officialWebsite?: string;
   remark?: string;
   updatedAt?: string;
   createdAt?: string;
@@ -56,7 +56,7 @@ const I18N = {
       partner: "合作维保方",
     },
     filters: {
-      searchPlaceholder: "搜索名称、电话、服务范围...",
+      searchPlaceholder: "搜索名称、电话、官网地址...",
       typePlaceholder: "类型筛选",
       all: "全部类型",
       vendor: "原厂联系人",
@@ -68,7 +68,7 @@ const I18N = {
       empty: "暂无维保方资料",
       updatedAt: "最近更新",
       contactLine: "联系人：{contact} · 电话：{phone}",
-      serviceScope: "服务范围：{scope}",
+      officialWebsite: "官网地址：{url}",
       selectAllCurrent: "全选当前列表",
     },
     dialog: {
@@ -76,7 +76,7 @@ const I18N = {
       editTitle: "编辑维保方",
       detailTitle: "维保方详情",
       description: "填写维保方基础信息，提交后保存到系统",
-      detailDescription: "维保方基础信息、联系人与服务范围",
+      detailDescription: "维保方基础信息、联系人与官网地址",
       name: "维保方名称 *",
       namePlaceholder: "例如 Dell EMC 原厂技术支持",
       contact: "联系人",
@@ -85,8 +85,8 @@ const I18N = {
       phonePlaceholder: "支持数字、加号、括号、横线、空格，长度 7-32",
       type: "类型",
       typePlaceholder: "选择类型",
-      serviceScope: "服务范围",
-      serviceScopePlaceholder: "例如 服务器、存储、网络设备",
+      officialWebsite: "官网地址",
+      officialWebsitePlaceholder: "例如 https://www.example.com",
       remark: "备注",
       remarkPlaceholder: "补充说明",
       createdAt: "创建时间",
@@ -136,7 +136,7 @@ const I18N = {
       partner: "合作維保方",
     },
     filters: {
-      searchPlaceholder: "搜尋名稱、電話、服務範圍...",
+      searchPlaceholder: "搜尋名稱、電話、官網地址...",
       typePlaceholder: "類型篩選",
       all: "全部類型",
       vendor: "原廠聯絡人",
@@ -148,7 +148,7 @@ const I18N = {
       empty: "暫無維保方資料",
       updatedAt: "最近更新",
       contactLine: "聯絡人：{contact} · 電話：{phone}",
-      serviceScope: "服務範圍：{scope}",
+      officialWebsite: "官網地址：{url}",
       selectAllCurrent: "全選目前列表",
     },
     dialog: {
@@ -156,7 +156,7 @@ const I18N = {
       editTitle: "編輯維保方",
       detailTitle: "維保方詳情",
       description: "填寫維保方基礎資訊，提交後保存到系統",
-      detailDescription: "維保方基礎資訊、聯絡人與服務範圍",
+      detailDescription: "維保方基礎資訊、聯絡人與官網地址",
       name: "維保方名稱 *",
       namePlaceholder: "例如 Dell EMC 原廠技術支援",
       contact: "聯絡人",
@@ -165,8 +165,8 @@ const I18N = {
       phonePlaceholder: "支援數字、加號、括號、橫線、空格，長度 7-32",
       type: "類型",
       typePlaceholder: "選擇類型",
-      serviceScope: "服務範圍",
-      serviceScopePlaceholder: "例如 伺服器、儲存、網路設備",
+      officialWebsite: "官網地址",
+      officialWebsitePlaceholder: "例如 https://www.example.com",
       remark: "備註",
       remarkPlaceholder: "補充說明",
       createdAt: "創建時間",
@@ -212,6 +212,12 @@ function isOriginalManufacturer(type?: string) {
   return type === "original_manufacturer" || type === "vendor_contact" || type === "vendor";
 }
 
+function officialWebsiteHref(value?: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export function MaintenanceParties() {
   const { lang } = useLanguage();
   const t = I18N[lang];
@@ -230,7 +236,7 @@ export function MaintenanceParties() {
     contact: "",
     phone: "",
     partyType: "our_maintenance",
-    serviceScope: "",
+    officialWebsite: "",
     remark: "",
   });
 
@@ -264,7 +270,7 @@ export function MaintenanceParties() {
     return parties.filter((p) => {
       if (typeFilter !== "all" && p.partyType !== typeFilter) return false;
       if (!keyword) return true;
-      return [p.name, p.phone, p.contact, p.serviceScope]
+      return [p.name, p.phone, p.contact, p.officialWebsite]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -320,7 +326,7 @@ export function MaintenanceParties() {
       contact: "",
       phone: "",
       partyType: "our_maintenance",
-      serviceScope: "",
+      officialWebsite: "",
       remark: "",
     });
     setDialogOpen(true);
@@ -333,7 +339,7 @@ export function MaintenanceParties() {
       contact: party.contact || "",
       phone: party.phone || "",
       partyType: party.partyType || "our_maintenance",
-      serviceScope: party.serviceScope || "",
+      officialWebsite: party.officialWebsite || "",
       remark: party.remark || "",
     });
     setDialogOpen(true);
@@ -359,7 +365,7 @@ export function MaintenanceParties() {
         contact: isOriginalManufacturer(form.partyType) ? undefined : form.contact.trim() || undefined,
         phone: form.phone.trim() || undefined,
         partyType: form.partyType,
-        serviceScope: form.serviceScope.trim() || undefined,
+        officialWebsite: form.officialWebsite.trim() || undefined,
         remark: form.remark.trim() || undefined,
       };
       if (editingId) {
@@ -572,9 +578,18 @@ export function MaintenanceParties() {
                             ? `${t.dialog.phone}：${p.phone || t.misc.unknown}`
                             : `${t.dialog.contact}：${p.contact || t.misc.unknown} · ${t.dialog.phone}：${p.phone || t.misc.unknown}`}
                         </div>
-                        {p.serviceScope && (
+                        {p.officialWebsite && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            {`${t.dialog.serviceScope}：${p.serviceScope}`}
+                            {`${t.dialog.officialWebsite}：`}
+                            <a
+                              className="text-primary hover:underline break-all"
+                              href={officialWebsiteHref(p.officialWebsite)}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {p.officialWebsite}
+                            </a>
                           </div>
                         )}
                       </div>
@@ -646,11 +661,18 @@ export function MaintenanceParties() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    {detailTarget.serviceScope ? (
+                    {detailTarget.officialWebsite ? (
                       <div className="rounded-lg border p-4">
-                        <div className="text-sm font-medium">{t.dialog.serviceScope}</div>
+                        <div className="text-sm font-medium">{t.dialog.officialWebsite}</div>
                         <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
-                          {detailTarget.serviceScope}
+                          <a
+                            className="text-primary hover:underline break-all"
+                            href={officialWebsiteHref(detailTarget.officialWebsite)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {detailTarget.officialWebsite}
+                          </a>
                         </div>
                       </div>
                     ) : null}
@@ -734,11 +756,11 @@ export function MaintenanceParties() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{t.dialog.serviceScope}</Label>
+              <Label>{t.dialog.officialWebsite}</Label>
               <Input
-                value={form.serviceScope}
-                onChange={(e) => setForm({ ...form, serviceScope: e.target.value })}
-                placeholder={t.dialog.serviceScopePlaceholder}
+                value={form.officialWebsite}
+                onChange={(e) => setForm({ ...form, officialWebsite: e.target.value })}
+                placeholder={t.dialog.officialWebsitePlaceholder}
               />
             </div>
             <div className="space-y-2">

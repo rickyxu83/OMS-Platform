@@ -64,7 +64,10 @@ async function ensureMaintenancePartiesTable(connection) {
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         party_type ENUM('original_manufacturer', 'our_maintenance') NOT NULL,
         name VARCHAR(128) NOT NULL,
+        contact VARCHAR(100) NULL,
         phone VARCHAR(32) NULL,
+        official_website VARCHAR(255) NULL,
+        remark TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -86,6 +89,27 @@ async function ensureMaintenancePartiesTable(connection) {
     `ALTER TABLE maintenance_parties
      MODIFY party_type ENUM('original_manufacturer', 'our_maintenance') NOT NULL`,
   )
+
+  if (!(await columnExists(connection, 'maintenance_parties', 'contact'))) {
+    await connection.execute('ALTER TABLE maintenance_parties ADD COLUMN contact VARCHAR(100) NULL AFTER phone')
+  }
+  if ((await columnExists(connection, 'maintenance_parties', 'service_scope')) && !(await columnExists(connection, 'maintenance_parties', 'official_website'))) {
+    await connection.execute('ALTER TABLE maintenance_parties CHANGE COLUMN service_scope official_website VARCHAR(255) NULL')
+  }
+  if (!(await columnExists(connection, 'maintenance_parties', 'official_website'))) {
+    await connection.execute('ALTER TABLE maintenance_parties ADD COLUMN official_website VARCHAR(255) NULL AFTER contact')
+  }
+  if (await columnExists(connection, 'maintenance_parties', 'service_scope')) {
+    await connection.execute(
+      `UPDATE maintenance_parties
+       SET official_website = COALESCE(NULLIF(official_website, ''), service_scope)
+       WHERE service_scope IS NOT NULL AND service_scope <> ''`,
+    )
+    await connection.execute('ALTER TABLE maintenance_parties DROP COLUMN service_scope')
+  }
+  if (!(await columnExists(connection, 'maintenance_parties', 'remark'))) {
+    await connection.execute('ALTER TABLE maintenance_parties ADD COLUMN remark TEXT NULL AFTER official_website')
+  }
 
   if (!(await indexExists(connection, 'maintenance_parties', 'uk_maintenance_parties_name_phone_type'))) {
     await connection.execute('ALTER TABLE maintenance_parties ADD UNIQUE KEY uk_maintenance_parties_name_phone_type (name, phone, party_type)')

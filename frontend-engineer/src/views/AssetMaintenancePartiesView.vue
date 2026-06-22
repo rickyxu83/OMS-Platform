@@ -34,7 +34,7 @@ const filteredParties = computed(() => {
   return parties.value.filter((item) => {
     if (typeFilter.value && item.partyType !== typeFilter.value) return false
     if (!keyword) return true
-    return [item.name, item.contact, item.phone, item.serviceScope, item.remark]
+    return [item.name, item.contact, item.phone, item.officialWebsite, item.remark]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(keyword))
   })
@@ -57,13 +57,19 @@ function emptyForm() {
     contact: '',
     phone: '',
     partyType: 'our_maintenance',
-    serviceScope: '',
+    officialWebsite: '',
     remark: '',
   }
 }
 
 function partyTypeLabel(value) {
   return typeLabels[value] || value || '未分类'
+}
+
+function officialWebsiteHref(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
 
 async function loadParties() {
@@ -95,7 +101,7 @@ function openEdit(party) {
     contact: party.contact || '',
     phone: party.phone || '',
     partyType: party.partyType || 'our_maintenance',
-    serviceScope: party.serviceScope || '',
+    officialWebsite: party.officialWebsite || '',
     remark: party.remark || '',
   }
   dialogOpen.value = true
@@ -138,7 +144,7 @@ async function saveParty() {
       contact: isOriginalManufacturer(form.value.partyType) ? undefined : form.value.contact.trim() || undefined,
       phone: form.value.phone.trim() || undefined,
       partyType: form.value.partyType,
-      serviceScope: form.value.serviceScope.trim() || undefined,
+      officialWebsite: form.value.officialWebsite.trim() || undefined,
       remark: form.value.remark.trim() || undefined,
     }
     if (editingId.value) await api.put(`/maintenance-parties/${editingId.value}`, payload)
@@ -162,7 +168,7 @@ onMounted(() => {
     <header class="topbar asset-topbar">
       <div>
         <BrandEyebrow text="客户与资产 / 维保方目录" title="维保方目录" />
-        <p class="asset-page-lead">{{ zh('维护原厂联系人、合作维保方电话和服务范围。') }}</p>
+        <p class="asset-page-lead">{{ zh('维护原厂联系人、合作维保方电话和官网地址。') }}</p>
         <div class="asset-inline-nav">
           <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
         </div>
@@ -172,7 +178,7 @@ onMounted(() => {
     <section class="asset-toolbar">
       <label class="asset-search-box">
         <PreviewIcon name="eye" />
-        <input v-model="searchQuery" type="search" :placeholder="zh('搜索厂商、联系人、电话、范围')" @keydown.enter="loadParties" />
+        <input v-model="searchQuery" type="search" :placeholder="zh('搜索厂商、联系人、电话、官网地址')" @keydown.enter="loadParties" />
       </label>
       <select v-model="typeFilter" class="asset-select" @change="loadParties">
         <option value="">{{ zh('全部类型') }}</option>
@@ -216,7 +222,10 @@ onMounted(() => {
           <span v-if="isOriginalManufacturer(party.partyType)"><PreviewIcon name="contact" />{{ zh('联系电话') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
           <span v-else><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b>{{ party.phone || zh('未维护电话') }}</b></span>
         </div>
-        <p v-if="party.serviceScope" class="asset-record-line"><PreviewIcon name="maintenance" />{{ zh(party.serviceScope) }}</p>
+        <p v-if="party.officialWebsite" class="asset-record-line">
+          <PreviewIcon name="maintenance" />
+          <a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer" @click.stop>{{ zh(party.officialWebsite) }}</a>
+        </p>
         <p v-if="party.remark" class="asset-record-note">{{ zh(party.remark) }}</p>
       </article>
       <p v-if="!loading && !filteredParties.length" class="empty-state">{{ zh('暂无维保方资料') }}</p>
@@ -240,7 +249,7 @@ onMounted(() => {
           </label>
           <label v-if="!isOriginalManufacturer(form.partyType)">{{ zh('联系人') }}<input v-model="form.contact" type="text" :placeholder="zh('联系人姓名')" /></label>
           <label>{{ zh('联系电话') }}<input v-model="form.phone" type="tel" :placeholder="zh('支持数字、加号、括号、横线、空格，长度 7-32')" /></label>
-          <label>{{ zh('服务范围') }}<input v-model="form.serviceScope" type="text" :placeholder="zh('例如服务器、存储、网络设备')" /></label>
+          <label>{{ zh('官网地址') }}<input v-model="form.officialWebsite" type="url" :placeholder="zh('例如 https://www.example.com')" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="3" :placeholder="zh('补充说明')"></textarea></label>
         </div>
         <footer class="signature-modal-actions">
