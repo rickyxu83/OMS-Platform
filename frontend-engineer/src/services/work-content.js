@@ -75,3 +75,34 @@ export function displayReportWorkContent(report, item = {}) {
   if (common || filled.length) return [common, ...filled].filter(Boolean).join('\n')
   return stripKnownWorkLabels(report?.workContent || '', labels)
 }
+
+function servicePartActionLabel(value) {
+  if (value === 'replacement') return '配件更换'
+  if (value === 'installation') return '配件安装'
+  return '配件记录'
+}
+
+function servicePartQuantity(part) {
+  const quantityText = String(part?.quantity ?? '').trim()
+  const numeric = Number(quantityText)
+  const quantity = quantityText && Number.isFinite(numeric) ? String(numeric) : quantityText
+  return [quantity, String(part?.unit || '').trim()].filter(Boolean).join('')
+}
+
+export function displayServiceParts(parts = []) {
+  if (!Array.isArray(parts)) return ''
+  return parts
+    .map((part) => {
+      const action = servicePartActionLabel(part?.actionType || part?.action_type)
+      const name = String(part?.partName || part?.part_name || '').trim()
+      const details = [
+        part?.deviceName || part?.device_name ? `设备 ${part.deviceName || part.device_name}` : '',
+        part?.partNo || part?.part_no ? `PN ${part.partNo || part.part_no}` : '',
+        servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : '',
+        part?.remark ? String(part.remark).trim() : '',
+      ].filter(Boolean)
+      return `${action} ${name || '未命名配件'}${details.length ? `（${details.join('，')}）` : ''}`
+    })
+    .filter(Boolean)
+    .join('\n')
+}

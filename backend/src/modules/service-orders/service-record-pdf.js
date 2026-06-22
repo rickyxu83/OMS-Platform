@@ -167,6 +167,35 @@ function exportWorkContent(report, item) {
   return stripKnownWorkLabels(report?.workContent || '', labels)
 }
 
+function servicePartActionLabel(value) {
+  if (value === 'replacement') return '配件更换'
+  if (value === 'installation') return '配件安装'
+  return '配件记录'
+}
+
+function servicePartQuantity(part) {
+  const quantityText = String(part?.quantity ?? '').trim()
+  const numeric = Number(quantityText)
+  const quantity = quantityText && Number.isFinite(numeric) ? String(numeric) : quantityText
+  return [quantity, String(part?.unit || '').trim()].filter(Boolean).join('')
+}
+
+function servicePartsContent(parts = []) {
+  if (!Array.isArray(parts)) return ''
+  return parts
+    .map((part) => {
+      const details = [
+        part.deviceName || part.device_name ? `设备 ${part.deviceName || part.device_name}` : '',
+        part.partNo || part.part_no ? `PN ${part.partNo || part.part_no}` : '',
+        servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : '',
+        part.remark ? String(part.remark).trim() : '',
+      ].filter(Boolean)
+      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || '未命名配件'}${details.length ? `（${details.join('，')}）` : ''}`
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
 function dataUrlToImageBuffer(dataUrl) {
   const match = String(dataUrl || '').match(/^data:image\/(?:png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/)
   if (!match) return null
@@ -306,7 +335,9 @@ function drawSheet(doc, fonts, item, logoImage) {
   const returned = formatDateTime(report.returnAt) || '—'
   const finishedDate = formatDateTime(report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
-  const workRecord = exportWorkContent(report, item) || '未填写处理记录'
+  const workContent = exportWorkContent(report, item) || '未填写处理记录'
+  const partContent = servicePartsContent(item.parts)
+  const workRecord = [workContent, partContent ? `配件记录：\n${partContent}` : ''].filter(Boolean).join('\n')
   const titleText = remote ? '远程服务记录单' : '技术服务记录单'
   const recordLabel = remote ? '工作内容' : '服务内容'
   const resultLabel = remote ? '处理结果' : '服务结论'

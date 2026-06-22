@@ -54,9 +54,43 @@ interface ServiceOrder {
   submittedAt?: string;
   reviewedAt?: string;
   reviewComment?: string;
+  report?: ServiceReport | null;
+  parts?: ServicePart[];
   files?: OrderFile[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface ServiceReport {
+  workContent?: string;
+  workEntries?: ServiceReportWorkEntry[];
+  result?: string;
+  resultDescription?: string;
+}
+
+interface ServiceReportWorkEntry {
+  engineerId?: string | number;
+  engineerName?: string;
+  engineer_name?: string;
+  engineerUsername?: string;
+  engineer_username?: string;
+  workContent?: string;
+  work_content?: string;
+}
+
+interface ServicePart {
+  id?: string | number;
+  deviceName?: string;
+  device_name?: string;
+  actionType?: string;
+  action_type?: string;
+  partName?: string;
+  part_name?: string;
+  partNo?: string;
+  part_no?: string;
+  quantity?: string | number;
+  unit?: string;
+  remark?: string;
 }
 
 interface OrderFile {
@@ -375,6 +409,105 @@ function textValue(value?: string, fallback = "-") {
 function compactText(value?: string, fallback = "-") {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text || fallback;
+}
+
+const COLLAB_ACK_MARKER = "⁣⁤⁣";
+const COMMON_WORK_LABELS = new Set(["共同内容", "共同处理", "公共内容"]);
+
+function stripCollaborativeAckMarker(value?: string) {
+  return String(value || "").split(COLLAB_ACK_MARKER).join("");
+}
+
+function normalizeWorkLabel(value?: string) {
+  return String(value || "").replace(/\s/g, "").trim();
+}
+
+function workContentLabels(order: ServiceOrder) {
+  const labels = new Set([...COMMON_WORK_LABELS, "工程师"]);
+  (order.engineers || []).forEach((engineer) => {
+    [engineer.realName, engineer.name, engineer.username].forEach((value) => {
+      const label = normalizeWorkLabel(value);
+      if (label) labels.add(label);
+    });
+  });
+  (order.report?.workEntries || []).forEach((entry) => {
+    [entry.engineerName, entry.engineer_name, entry.engineerUsername, entry.engineer_username].forEach((value) => {
+      const label = normalizeWorkLabel(value);
+      if (label) labels.add(label);
+    });
+  });
+  return labels;
+}
+
+function extractCommonWorkContent(value: string | undefined, labels: Set<string>) {
+  const lines = stripCollaborativeAckMarker(value).split(/\r?\n/);
+  const kept: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/);
+    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : "";
+    if (headingMatch && COMMON_WORK_LABELS.has(label)) {
+      collecting = true;
+      if (headingMatch[2]) kept.push(headingMatch[2]);
+      continue;
+    }
+    if (headingMatch && collecting && labels.has(label)) collecting = false;
+    if (collecting) kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
+
+function stripKnownWorkLabels(value: string | undefined, labels: Set<string>) {
+  const lines: string[] = [];
+  for (const line of stripCollaborativeAckMarker(value).split(/\r?\n/)) {
+    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/);
+    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : "";
+    if (headingMatch && labels.has(label)) {
+      if (headingMatch[2]) lines.push(headingMatch[2]);
+      continue;
+    }
+    lines.push(line);
+  }
+  return lines.join("\n").trim();
+}
+
+function displayReportWorkContent(order: ServiceOrder) {
+  const labels = workContentLabels(order);
+  const common = extractCommonWorkContent(order.report?.workContent, labels);
+  const filled = (order.report?.workEntries || [])
+    .map((entry) => stripCollaborativeAckMarker(entry.workContent || entry.work_content).trim())
+    .filter(Boolean);
+  if (common || filled.length) return [common, ...filled].filter(Boolean).join("\n");
+  return stripKnownWorkLabels(order.report?.workContent, labels);
+}
+
+function servicePartActionLabel(value?: string) {
+  if (value === "replacement") return "配件更换";
+  if (value === "installation") return "配件安装";
+  return "配件记录";
+}
+
+function servicePartQuantity(part: ServicePart) {
+  const quantityText = String(part.quantity ?? "").trim();
+  const numeric = Number(quantityText);
+  const quantity = quantityText && Number.isFinite(numeric) ? String(numeric) : quantityText;
+  return [quantity, String(part.unit || "").trim()].filter(Boolean).join("");
+}
+
+function displayServiceParts(parts?: ServicePart[]) {
+  if (!Array.isArray(parts)) return "";
+  return parts
+    .map((part) => {
+      const details = [
+        part.deviceName || part.device_name ? `设备 ${part.deviceName || part.device_name}` : "",
+        part.partNo || part.part_no ? `PN ${part.partNo || part.part_no}` : "",
+        servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : "",
+        part.remark ? String(part.remark).trim() : "",
+      ].filter(Boolean);
+      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名配件"}${details.length ? `（${details.join("，")}）` : ""}`;
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 function splitSearchTerms(value: string) {
@@ -773,14 +906,24 @@ export function ServiceOrders() {
   }
 
   async function fetchExportOrders(orderIds: Array<ServiceOrder["id"]> = []) {
+    const fetchOrderDetails = async (ids: Array<ServiceOrder["id"]>) => {
+      const chunks: Array<Array<ServiceOrder["id"]>> = [];
+      for (let index = 0; index < ids.length; index += 8) chunks.push(ids.slice(index, index + 8));
+      const details: ServiceOrder[] = [];
+      for (const chunk of chunks) {
+        const chunkDetails = await Promise.all(
+          chunk.map(async (id) => {
+            const data = await api.get(`/service-orders/${id}`);
+            return (data?.item || data) as ServiceOrder;
+          }),
+        );
+        details.push(...chunkDetails.filter(Boolean));
+      }
+      return details;
+    };
+
     if (orderIds.length) {
-      const details = await Promise.all(
-        orderIds.map(async (id) => {
-          const data = await api.get(`/service-orders/${id}`);
-          return (data?.item || data) as ServiceOrder;
-        }),
-      );
-      return details.filter(Boolean);
+      return fetchOrderDetails(orderIds);
     }
     const pageSize = 100;
     let page = 1;
@@ -797,9 +940,9 @@ export function ServiceOrders() {
     // 有勾选则只导出选中的工单，与 PDF 导出口径一致
     if (selectedIds.length) {
       const idSet = new Set(selectedIds.map((id) => String(id)));
-      return allItems.filter((item) => idSet.has(String(item.id)));
+      return fetchOrderDetails(allItems.filter((item) => idSet.has(String(item.id))).map((item) => item.id));
     }
-    return allItems;
+    return fetchOrderDetails(allItems.map((item) => item.id));
   }
 
   async function exportOrders(orderIds: Array<ServiceOrder["id"]> = []) {
@@ -842,6 +985,8 @@ export function ServiceOrders() {
         { header: "创建时间", key: "createdAt", width: 18 },
         { header: "更新时间", key: "updatedAt", width: 18 },
         { header: "问题描述", key: "issueDescription", width: 42 },
+        { header: "处理记录", key: "workContent", width: 50 },
+        { header: "配件记录", key: "partRecords", width: 44 },
         { header: "内部备注", key: "internalNote", width: 28 },
       ];
 
@@ -863,6 +1008,8 @@ export function ServiceOrders() {
           createdAt: formatDateTime(order.createdAt),
           updatedAt: formatDateTime(order.updatedAt),
           issueDescription: compactText(order.issueDescription, ""),
+          workContent: displayReportWorkContent(order),
+          partRecords: displayServiceParts(order.parts),
           internalNote: compactText(order.internalNote, ""),
         });
       });
@@ -896,7 +1043,7 @@ export function ServiceOrders() {
           cell.alignment = {
             vertical: "middle",
             horizontal: [11, 12, 14, 15].includes(colNumber) ? "center" : "left",
-            wrapText: [5, 16, 17].includes(colNumber),
+            wrapText: [5, 16, 17, 18, 19].includes(colNumber),
           };
           if (rowNumber % 2 === 0) {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAFC" } };

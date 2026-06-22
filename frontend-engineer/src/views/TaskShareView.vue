@@ -6,7 +6,7 @@ import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
-import { displayReportWorkContent } from '../services/work-content'
+import { displayReportWorkContent, displayServiceParts } from '../services/work-content'
 
 const { zh } = usePreviewI18n()
 const route = useRoute()
@@ -241,7 +241,9 @@ const sheetSvg = computed(() => {
   const returned = formatDateTime(item.report.returnAt) || '—'
   const finishedDate = formatDateTime(item.report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
-  const workRecord = displayReportWorkContent(item.report, item) || cleanText(item.serviceContent || item.issueDescription || '', '未填写处理记录')
+  const workContent = displayReportWorkContent(item.report, item) || cleanText(item.serviceContent || item.issueDescription || '', '未填写处理记录')
+  const partsContent = displayServiceParts(item.parts)
+  const workRecord = [workContent, partsContent ? `配件记录：\n${partsContent}` : ''].filter(Boolean).join('\n')
   const titleText = isRemoteSheet.value ? '远程服务记录单' : '技术服务记录单'
   const secondLabel = '设备 / 系统'
   const secondValue = cleanText(item.deviceName || item.internalNote || item.productName || '', '未填写设备信息')
