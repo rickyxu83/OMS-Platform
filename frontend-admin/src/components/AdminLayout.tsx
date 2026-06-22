@@ -27,7 +27,7 @@ import {
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
-import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, goToWorkspace } from "@/config/app";
+import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 
@@ -235,7 +235,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
-  const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
+  const appVersion = APP_VERSION;
   const canSwitchEngineer = Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
 

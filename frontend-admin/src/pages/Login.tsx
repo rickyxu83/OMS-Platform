@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
+import { APP_VERSION, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -87,7 +87,7 @@ export function Login() {
   };
 
   const t = i18n[lang];
-  const appVersion = (import.meta as any).env.VITE_APP_VERSION || (import.meta as any).env.VITE_APP_BUILD_VERSION || "dev";
+  const appVersion = APP_VERSION;
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
 
   const enterWorkspace = (workspaceKey: string) => {

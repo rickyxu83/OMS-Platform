@@ -106,6 +106,26 @@ function canonicalMaintenanceType(value?: string) {
   return MAINTENANCE_TYPE_ALIASES[type] || type;
 }
 
+function customerLabel(customer?: Customer | null) {
+  if (!customer) return "";
+  return customer.name || `客户 #${customer.id}`;
+}
+
+function normalizeCustomerSearchText(value?: string | number) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function mergeCustomers(current: Customer[], incoming: Customer[]) {
+  const merged = new Map<string, Customer>();
+  [...current, ...incoming].forEach((customer) => {
+    if (!customer?.id) return;
+    const key = String(customer.id);
+    const existing = merged.get(key);
+    merged.set(key, { ...existing, ...customer });
+  });
+  return [...merged.values()];
+}
+
 export function Devices() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -122,6 +142,10 @@ export function Devices() {
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const [modelTimer, setModelTimer] = useState<number | null>(null);
+  const [customerInput, setCustomerInput] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [customerSearchTimer, setCustomerSearchTimer] = useState<number | null>(null);
   const [form, setForm] = useState({
     customerId: "",
     name: "",
@@ -209,10 +233,48 @@ export function Devices() {
     ];
   }, [filtered]);
 
+  const selectedCustomer = useMemo(
+    () => customers.find((customer) => String(customer.id) === String(form.customerId)) || null,
+    [customers, form.customerId],
+  );
+
+  const dialogCustomerOptions = useMemo(() => {
+    const keyword = normalizeCustomerSearchText(customerInput);
+    const selectedId = form.customerId ? String(form.customerId) : "";
+    const matches = customers
+      .filter((customer) => {
+        if (!keyword) return true;
+        return normalizeCustomerSearchText(`${customerLabel(customer)} ${customer.id}`).includes(keyword);
+      })
+      .sort((left, right) => {
+        if (selectedId && String(left.id) === selectedId) return -1;
+        if (selectedId && String(right.id) === selectedId) return 1;
+        const leftLabel = normalizeCustomerSearchText(customerLabel(left));
+        const rightLabel = normalizeCustomerSearchText(customerLabel(right));
+        const leftStarts = keyword && leftLabel.startsWith(keyword) ? 0 : 1;
+        const rightStarts = keyword && rightLabel.startsWith(keyword) ? 0 : 1;
+        if (leftStarts !== rightStarts) return leftStarts - rightStarts;
+        return customerLabel(left).localeCompare(customerLabel(right), "zh-Hans-CN");
+      })
+      .slice(0, 60);
+
+    if (selectedCustomer && !matches.some((customer) => String(customer.id) === String(selectedCustomer.id))) {
+      return [selectedCustomer, ...matches].slice(0, 60);
+    }
+    return matches;
+  }, [customers, customerInput, form.customerId, selectedCustomer]);
+
+  function selectedCustomerLabel(customerId: string | number | undefined, fallback?: string) {
+    if (!customerId) return "";
+    const customer = customers.find((item) => String(item.id) === String(customerId));
+    return customerLabel(customer) || fallback || `客户 #${customerId}`;
+  }
+
   function openCreate() {
     setEditingId(null);
+    const defaultCustomerId = customerFilter !== "all" ? customerFilter : "";
     setForm({
-      customerId: customerFilter !== "all" ? customerFilter : "",
+      customerId: defaultCustomerId,
       name: "",
       model: "",
       pn: "",
@@ -225,6 +287,8 @@ export function Devices() {
       status: "active",
       remark: "",
     });
+    setCustomerInput(selectedCustomerLabel(defaultCustomerId));
+    setCustomerDropdownOpen(false);
     setModelSuggestions([]);
     setDialogOpen(true);
   }
@@ -245,13 +309,26 @@ export function Devices() {
       status: device.status || "active",
       remark: device.remark || "",
     });
+    setCustomerInput(selectedCustomerLabel(device.customerId, device.customerName));
+    setCustomerDropdownOpen(false);
     setModelSuggestions([]);
     setDialogOpen(true);
   }
 
   async function submit() {
-    if (!form.customerId) {
+    let effectiveCustomerId = form.customerId;
+    if (!effectiveCustomerId && customerInput.trim()) {
+      const normalizedInput = normalizeCustomerSearchText(customerInput);
+      const exact = customers.find((customer) => (
+        normalizeCustomerSearchText(customerLabel(customer)) === normalizedInput
+        || String(customer.id) === customerInput.trim()
+      ));
+      if (exact) effectiveCustomerId = String(exact.id);
+    }
+
+    if (!effectiveCustomerId) {
       setError("请选择客户");
+      setCustomerDropdownOpen(true);
       return;
     }
     if (!form.name.trim()) {
@@ -262,7 +339,7 @@ export function Devices() {
     setError("");
     try {
       const payload: Record<string, unknown> = {
-        customerId: form.customerId,
+        customerId: effectiveCustomerId,
         name: form.name.trim(),
         model: form.model.trim() || undefined,
         pn: form.pn.trim() || undefined,
@@ -289,6 +366,33 @@ export function Devices() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function scheduleCustomerSearch(value: string) {
+    if (customerSearchTimer) window.clearTimeout(customerSearchTimer);
+    const keyword = value.trim();
+    if (!keyword) {
+      setCustomerSearchLoading(false);
+      return;
+    }
+    const timerId = window.setTimeout(async () => {
+      setCustomerSearchLoading(true);
+      try {
+        const data = await api.get(`/customers?pageSize=50&keyword=${encodeURIComponent(keyword)}`);
+        setCustomers((prev) => mergeCustomers(prev, (data?.items || []) as Customer[]));
+      } catch {
+        // Keep local matches usable when remote customer search is unavailable.
+      } finally {
+        setCustomerSearchLoading(false);
+      }
+    }, 220);
+    setCustomerSearchTimer(timerId);
+  }
+
+  function applyCustomer(customer: Customer) {
+    setForm((prev) => ({ ...prev, customerId: String(customer.id) }));
+    setCustomerInput(customerLabel(customer));
+    setCustomerDropdownOpen(false);
   }
 
   function scheduleModelSearch(value: string) {
@@ -640,7 +744,10 @@ export function Devices() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{editingId ? "编辑设备" : "新增设备"}</DialogTitle>
             <DialogDescription>
@@ -651,18 +758,55 @@ export function Devices() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2 md:col-span-2">
                 <Label>客户 *</Label>
-                <Select value={form.customerId} onValueChange={(v) => setForm({ ...form, customerId: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择客户" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name || `客户 #${c.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative">
+                  <Input
+                    value={customerInput}
+                    onFocus={() => setCustomerDropdownOpen(true)}
+                    onBlur={() => window.setTimeout(() => setCustomerDropdownOpen(false), 120)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setCustomerInput(value);
+                      setCustomerDropdownOpen(true);
+                      if (!selectedCustomer || normalizeCustomerSearchText(value) !== normalizeCustomerSearchText(customerLabel(selectedCustomer))) {
+                        setForm((prev) => ({ ...prev, customerId: "" }));
+                      }
+                      scheduleCustomerSearch(value);
+                    }}
+                    placeholder="输入客户名称关键词搜索"
+                  />
+                  {customerDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-64 overflow-auto">
+                      {customerSearchLoading ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" /> 搜索客户中…
+                        </div>
+                      ) : null}
+                      {dialogCustomerOptions.map((customer) => {
+                        const selected = String(customer.id) === String(form.customerId);
+                        return (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => applyCustomer(customer)}
+                          >
+                            <Check className={`w-4 h-4 ${selected ? "text-primary" : "text-transparent"}`} />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{customerLabel(customer)}</span>
+                              <span className="block text-xs text-muted-foreground">客户 #{customer.id}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {!customerSearchLoading && !dialogCustomerOptions.length ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          未找到匹配客户，请调整关键词
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>设备名称 *</Label>
