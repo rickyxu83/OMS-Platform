@@ -2241,7 +2241,7 @@ async function load() {
             workContent: stripCollaborativeAckMarker(entry.workContent || ''),
           }))
         : []
-      const legacyWork = loadedWorkEntries.length ? { entries: [], commonWorkContent: '' } : parseLegacyWorkEntries(report.workContent, detailData.item)
+      const legacyWork = parseLegacyWorkEntries(report.workContent, detailData.item)
       const effectiveWorkEntries = loadedWorkEntries.length ? loadedWorkEntries : legacyWork.entries
       const currentWorkEntry = effectiveWorkEntries.find((entry) => Number(entry.engineerId) === currentUserId.value)
       selectedCoEngineerIds.value = collaborativeCoEngineerIds(detailData.item, effectiveWorkEntries)

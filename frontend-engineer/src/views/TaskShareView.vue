@@ -49,14 +49,35 @@ function stripAckMarker(value) {
   return String(value || '').split(collaborativeAckMarker).join('')
 }
 
-// 处理内容：优先按每位工程师的原始记录拼接，去掉协作确认占位、不加“姓名：”
-// 前缀，仅用换行区分；无 entries 时回退到合并字段。与后端 PDF 导出保持一致。
+function extractCommonWorkContent(value) {
+  const lines = stripAckMarker(value).split(/\r?\n/)
+  const collected = []
+  let collecting = false
+  for (const line of lines) {
+    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/)
+    const label = headingMatch ? headingMatch[1].replace(/\s/g, '') : ''
+    const isCommon = ['共同内容', '共同处理', '公共内容'].includes(label)
+    if (headingMatch && isCommon) {
+      collecting = true
+      if (headingMatch[2]) collected.push(headingMatch[2])
+      continue
+    }
+    if (headingMatch && collecting) break
+    if (collecting) collected.push(line)
+  }
+  return collected.join('\n').trim()
+}
+
+// 处理内容：优先按每位工程师的原始记录拼接，并补上“共同内容”。
+// 去掉协作确认占位、不加工程师姓名前缀，仅用换行区分；无 entries 时回退到合并字段。
 function exportWorkContent(report) {
   const entries = Array.isArray(report?.workEntries) ? report.workEntries : []
+  const common = extractCommonWorkContent(report?.workContent || '')
   const filled = entries
     .map((entry) => stripAckMarker(entry?.workContent || '').trim())
     .filter(Boolean)
-  if (filled.length) return filled.join('\n')
+  if (filled.length) return [common ? `共同内容：\n${common}` : '', ...filled].filter(Boolean).join('\n')
+  if (common) return `共同内容：\n${common}`
   return stripAckMarker(report?.workContent || '').trim()
 }
 
