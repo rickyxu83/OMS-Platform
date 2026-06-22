@@ -328,6 +328,26 @@ function clearMapSelection() {
   locationHint.value = '已清除定位信息'
 }
 
+function updateCustomerName(value) {
+  form.value.name = value
+  form.value.mapPoiId = ''
+  form.value.mapPoiName = ''
+  scheduleGeoSearch(value)
+}
+
+function updateCustomerAddress(value) {
+  form.value.address = value
+  form.value.latitude = null
+  form.value.longitude = null
+  form.value.mapProvider = ''
+  form.value.mapPoiId = ''
+  form.value.mapPoiName = ''
+  form.value.mapAddress = value
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = value.trim() ? '地址已手动修改，定位信息已清除，可按地址重新定位。' : ''
+}
+
 async function saveCustomer() {
   if (!form.value.name.trim()) {
     error.value = '请输入客户名称'
@@ -476,7 +496,7 @@ onMounted(() => {
                 type="text"
                 :placeholder="zh('输入客户名称或地图关键词')"
                 autocomplete="off"
-                @input="scheduleGeoSearch(form.name)"
+                @input="updateCustomerName($event.target.value)"
                 @focus="showCandidates = candidates.length > 0"
               />
               <button class="ghost asset-inline-button" type="button" :disabled="locating" @click="locateNearMe">
@@ -497,7 +517,7 @@ onMounted(() => {
           <label>{{ zh('客户编码') }}<input v-model="form.code" type="text" :placeholder="zh('留空自动生成或沿用')" /></label>
           <label class="asset-editor-wide">{{ zh('客户地址') }}
             <div class="asset-inline-control">
-              <textarea v-model="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="form.mapAddress = form.address"></textarea>
+              <textarea :value="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)"></textarea>
               <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
                 <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中...' : '按地址定位') }}
               </button>

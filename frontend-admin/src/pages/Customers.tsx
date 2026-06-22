@@ -780,6 +780,32 @@ export function Customers() {
     setLocationHint(t.geo.noCoordinate);
   }
 
+  function updateCustomerName(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      name: value,
+      mapPoiId: "",
+      mapPoiName: "",
+    }));
+    scheduleGeoSearch(value);
+  }
+
+  function updateCustomerAddress(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      address: value,
+      latitude: null,
+      longitude: null,
+      mapProvider: "",
+      mapPoiId: "",
+      mapPoiName: "",
+      mapAddress: value,
+    }));
+    setCandidates([]);
+    setShowCandidates(false);
+    setLocationHint(value.trim() ? t.geo.noCoordinate : "");
+  }
+
   async function searchGeo(
     coords: { latitude?: number; longitude?: number } = {},
     options: { keyword?: string; nearbyOnly?: boolean } = {},
@@ -1647,10 +1673,7 @@ export function Customers() {
                     id="cust-name"
                     className="pl-9"
                     value={form.name}
-                    onChange={(e) => {
-                      setForm({ ...form, name: e.target.value });
-                      scheduleGeoSearch(e.target.value);
-                    }}
+                    onChange={(e) => updateCustomerName(e.target.value)}
                     onFocus={() => { if (candidates.length) setShowCandidates(true); }}
                     placeholder={t.dialog.namePlaceholder}
                     autoComplete="off"
@@ -1771,7 +1794,7 @@ export function Customers() {
                   <Input
                     id="cust-address"
                     value={form.address}
-                    onChange={(e) => setForm({ ...form, address: e.target.value, mapAddress: e.target.value })}
+                    onChange={(e) => updateCustomerAddress(e.target.value)}
                     placeholder={t.dialog.addressPlaceholder}
                   />
                   <Button
