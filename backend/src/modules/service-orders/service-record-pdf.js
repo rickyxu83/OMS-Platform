@@ -92,43 +92,79 @@ function engineerNames(item) {
   return names.join('、') || item.engineerName || ''
 }
 
-// 协作工单中“我无需单独填写”的占位标记，导出时需剔除。
 const COLLAB_ACK_MARKER = '⁣⁤⁣'
+const COMMON_WORK_LABELS = new Set(['共同内容', '共同处理', '公共内容'])
 
 function stripAckMarker(value) {
   return String(value || '').split(COLLAB_ACK_MARKER).join('')
 }
 
-function extractCommonWorkContent(value) {
+function normalizeWorkLabel(value) {
+  return String(value || '').replace(/\s/g, '').trim()
+}
+
+function addWorkLabel(labels, value) {
+  const label = normalizeWorkLabel(value)
+  if (label) labels.add(label)
+}
+
+function workContentLabels(report = {}, item = {}) {
+  const labels = new Set([...COMMON_WORK_LABELS, '工程师'])
+  ;(item.engineers || []).forEach((engineer) => {
+    addWorkLabel(labels, engineer.realName)
+    addWorkLabel(labels, engineer.name)
+    addWorkLabel(labels, engineer.username)
+  })
+  ;(report.workEntries || []).forEach((entry) => {
+    addWorkLabel(labels, entry.engineerName)
+    addWorkLabel(labels, entry.engineer_name)
+    addWorkLabel(labels, entry.engineerUsername)
+    addWorkLabel(labels, entry.engineer_username)
+  })
+  return labels
+}
+
+function extractCommonWorkContent(value, labels) {
   const lines = stripAckMarker(value).split(/\r?\n/)
-  const collected = []
+  const kept = []
   let collecting = false
   for (const line of lines) {
     const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/)
-    const label = headingMatch ? headingMatch[1].replace(/\s/g, '') : ''
-    const isCommon = ['共同内容', '共同处理', '公共内容'].includes(label)
-    if (headingMatch && isCommon) {
+    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : ''
+    if (headingMatch && COMMON_WORK_LABELS.has(label)) {
       collecting = true
-      if (headingMatch[2]) collected.push(headingMatch[2])
+      if (headingMatch[2]) kept.push(headingMatch[2])
       continue
     }
-    if (headingMatch && collecting) break
-    if (collecting) collected.push(line)
+    if (headingMatch && collecting && labels.has(label)) collecting = false
+    if (collecting) kept.push(line)
   }
-  return collected.join('\n').trim()
+  return kept.join('\n').trim()
 }
 
-// 处理内容：优先按每位工程师的原始记录(report.workEntries)拼接，并补上“共同内容”。
-// 去掉协作确认占位、不加工程师姓名前缀，仅用换行区分；无 entries 时回退到合并字段。
-function exportWorkContent(report) {
+function stripKnownWorkLabels(value, labels) {
+  const lines = []
+  for (const line of stripAckMarker(value).split(/\r?\n/)) {
+    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/)
+    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : ''
+    if (headingMatch && labels.has(label)) {
+      if (headingMatch[2]) lines.push(headingMatch[2])
+      continue
+    }
+    lines.push(line)
+  }
+  return lines.join('\n').trim()
+}
+
+function exportWorkContent(report, item) {
+  const labels = workContentLabels(report || {}, item || {})
+  const common = extractCommonWorkContent(report?.workContent || '', labels)
   const entries = Array.isArray(report?.workEntries) ? report.workEntries : []
-  const common = extractCommonWorkContent(report?.workContent || '')
   const filled = entries
     .map((entry) => stripAckMarker(entry?.workContent || entry?.work_content || '').trim())
     .filter(Boolean)
-  if (filled.length) return [common ? `共同内容：\n${common}` : '', ...filled].filter(Boolean).join('\n')
-  if (common) return `共同内容：\n${common}`
-  return stripAckMarker(report?.workContent || '').trim()
+  if (common || filled.length) return [common, ...filled].filter(Boolean).join('\n')
+  return stripKnownWorkLabels(report?.workContent || '', labels)
 }
 
 function dataUrlToImageBuffer(dataUrl) {
@@ -270,7 +306,7 @@ function drawSheet(doc, fonts, item, logoImage) {
   const returned = formatDateTime(report.returnAt) || '—'
   const finishedDate = formatDateTime(report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
-  const workRecord = exportWorkContent(report) || '未填写处理记录'
+  const workRecord = exportWorkContent(report, item) || '未填写处理记录'
   const titleText = remote ? '远程服务记录单' : '技术服务记录单'
   const recordLabel = remote ? '工作内容' : '服务内容'
   const resultLabel = remote ? '处理结果' : '服务结论'

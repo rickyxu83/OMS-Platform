@@ -4300,6 +4300,78 @@ h2 {
   gap: 10px;
 }
 
+.report-work-content {
+  white-space: pre-line;
+}
+
+.service-part-detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.service-part-detail-item {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.service-part-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.service-part-detail-head strong {
+  min-width: 0;
+  color: #0f172a;
+  font-weight: 850;
+}
+
+.service-part-detail-head span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #6b3fa0;
+  background: #f6f1fb;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.service-part-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.service-part-detail-grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.service-part-detail-grid dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.service-part-detail-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.service-part-detail-remark {
+  margin: 0;
+  white-space: pre-line;
+}
+
 .attachment-list {
   display: grid;
   gap: 10px;
@@ -5431,6 +5503,10 @@ h2 {
   }
 
   .collaboration-work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .service-part-detail-grid {
     grid-template-columns: 1fr;
   }
 

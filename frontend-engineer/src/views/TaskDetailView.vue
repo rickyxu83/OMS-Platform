@@ -8,6 +8,7 @@ import { api } from '../services/api'
 import { resolveApiBase } from '../services/api-base'
 import { getToken } from '../services/auth'
 import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
+import { displayReportWorkContent } from '../services/work-content'
 
 const { zh } = usePreviewI18n()
 const route = useRoute()
@@ -57,6 +58,8 @@ const inspectionLead = computed(() => {
 })
 const inspectionDocuments = computed(() => (task.value?.files || []).filter((file) => file.purpose === 'inspection_document'))
 const dispatchAttachments = computed(() => (task.value?.files || []).filter((file) => file.purpose !== 'inspection_document'))
+const serviceParts = computed(() => (Array.isArray(task.value?.parts) ? task.value.parts : []))
+const reportWorkContent = computed(() => displayReportWorkContent(task.value?.report, task.value || {}))
 
 const engineers = computed(() => {
   const names = (task.value?.engineers || []).map((engineer) => engineer.realName).filter(Boolean)
@@ -73,6 +76,20 @@ function formatFileSize(value) {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function partActionLabel(value) {
+  if (value === 'replacement') return '配件更换'
+  if (value === 'installation') return '配件安装'
+  return '配件记录'
+}
+
+function formatPartQuantity(part) {
+  const quantityText = String(part?.quantity ?? '').trim()
+  const numeric = Number(quantityText)
+  const quantity = quantityText && Number.isFinite(numeric) ? String(numeric) : quantityText
+  const unit = String(part?.unit || '').trim()
+  return [quantity, unit].filter(Boolean).join(' ') || '-'
 }
 
 async function downloadFile(file) {
@@ -199,6 +216,33 @@ onMounted(load)
           <p>{{ zh(inspectionLead) }}</p>
         </article>
 
+        <article v-if="serviceParts.length" class="form-section detail-card">
+          <h2>{{ zh('配件记录') }}</h2>
+          <div class="service-part-detail-list">
+            <div v-for="part in serviceParts" :key="part.id || `${part.partName}-${part.partNo}`" class="service-part-detail-item">
+              <div class="service-part-detail-head">
+                <strong>{{ zh(part.partName || '未命名配件') }}</strong>
+                <span>{{ zh(partActionLabel(part.actionType)) }}</span>
+              </div>
+              <dl class="service-part-detail-grid">
+                <div>
+                  <dt>{{ zh('关联设备') }}</dt>
+                  <dd>{{ zh(part.deviceName || task.deviceName || '-') }}</dd>
+                </div>
+                <div>
+                  <dt>{{ zh('PN') }}</dt>
+                  <dd>{{ zh(part.partNo || '-') }}</dd>
+                </div>
+                <div>
+                  <dt>{{ zh('数量') }}</dt>
+                  <dd>{{ zh(formatPartQuantity(part)) }}</dd>
+                </div>
+              </dl>
+              <p v-if="part.remark" class="service-part-detail-remark">{{ zh(part.remark) }}</p>
+            </div>
+          </div>
+        </article>
+
         <article v-if="isInspectionTask" class="form-section detail-card inspection-document-card">
           <h2>{{ zh('巡检文档') }}</h2>
           <p class="muted compact">{{ zh('上传巡检报告、现场照片、检查表或客户确认资料，管理端可在工单详情中查看。') }}</p>
@@ -268,7 +312,7 @@ onMounted(load)
           <div v-if="task.report" class="report-stack">
             <p><strong>{{ zh('服务结论') }}：</strong>{{ zh(resultLabel) }}</p>
             <p><strong>{{ zh('客户确认') }}：</strong>{{ zh(task.report.customerConfirmName || task.contactName || '-') }}</p>
-            <p>{{ zh(task.report.workContent || '暂无处理过程') }}</p>
+            <p class="report-work-content">{{ zh(reportWorkContent || '暂无处理过程') }}</p>
           </div>
           <p v-else class="muted compact">
             {{ zh(normalizedServiceMode === 'office' ? '内勤记录不生成单独服务表，请在月报中统一导出。' : '该服务记录还没有提交服务表。') }}
