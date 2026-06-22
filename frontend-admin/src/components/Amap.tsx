@@ -37,6 +37,7 @@ let amapLoaderPromise: Promise<any> | null = null;
 let amapLoadedKey = "";
 let amapLoadedSecurityJsCode = "";
 const MAX_FLIGHT_LINES = 80;
+const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
 
 interface AmapRuntimeConfig {
   jsapiKey: string;
@@ -156,13 +157,36 @@ function getTier(count: number): "peak" | "high" | "active" | "quiet" {
   return "quiet";
 }
 
-function buildMarkerEl(point: AmapPoint, onClick?: (p: AmapPoint) => void): HTMLElement {
+function setMarkerDelay(el: HTMLElement, index: number) {
+  const delay = Math.min(index, 18) * 18;
+  el.style.setProperty("--ops-map-marker-delay", `${delay}ms`);
+  el.style.setProperty("--ops-map-label-delay", `${delay + 120}ms`);
+}
+
+function buildOfficeMarkerEl() {
+  const el = document.createElement("div");
+  el.className = "ops-map-marker ops-map-marker-office";
+  setMarkerDelay(el, 0);
+
+  const dot = document.createElement("span");
+  dot.className = "ops-map-marker-office-dot";
+  el.appendChild(dot);
+
+  const label = document.createElement("span");
+  label.className = "ops-map-marker-office-label";
+  label.textContent = "中心";
+  el.appendChild(label);
+  return el;
+}
+
+function buildMarkerEl(point: AmapPoint, onClick?: (p: AmapPoint) => void, index = 0): HTMLElement {
   const tier = point.level || getTier(point.annualServices || 0);
   const el = document.createElement("button");
   el.type = "button";
   el.className = `ops-map-marker ops-map-marker-tier-${tier}`;
   el.setAttribute("aria-label", `${point.name}，年服务 ${point.annualServices || 0} 次`);
   el.dataset.id = String(point.id);
+  setMarkerDelay(el, index + 1);
 
   const dot = document.createElement("span");
   dot.className = "ops-map-marker-dot";
@@ -242,6 +266,7 @@ export function Amap({
   onPointClick,
   className = "",
 }: AmapProps) {
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -268,6 +293,8 @@ export function Amap({
           zoom,
           center: [center.lng, center.lat],
           mapStyle: "amap://styles/light",
+          features: ["bg", "road", "building"],
+          showLabel: false,
           viewMode: "2D",
         });
         mapRef.current = map;
@@ -291,20 +318,25 @@ export function Amap({
   useEffect(() => {
     if (state !== "ready" || !mapRef.current) return;
     const AMap = (window as any).AMap;
-    markersRef.current.forEach((m) => { mapRef.current.remove(m); });
+    const map = mapRef.current;
+    const shell = shellRef.current;
+    shell?.classList.remove("ops-map-settled");
+    shell?.classList.add("ops-map-preparing");
+
+    markersRef.current.forEach((m) => { map.remove(m); });
     markersRef.current = [];
 
     const centerMarker = new AMap.Marker({
       position: [center.lng, center.lat],
-      content: '<div class="ops-map-marker ops-map-marker-office"><span class="ops-map-marker-office-dot"></span><span class="ops-map-marker-office-label">中心</span></div>',
+      content: buildOfficeMarkerEl(),
       offset: new AMap.Pixel(-15, -15),
       zIndex: 200,
     });
-    mapRef.current.add(centerMarker);
+    map.add(centerMarker);
     markersRef.current.push(centerMarker);
 
     const validPoints = points.filter((p) => p.lng && p.lat);
-    validPoints.forEach((p) => {
+    validPoints.forEach((p, index) => {
       const marker = new AMap.Marker({
         position: [p.lng, p.lat],
         content: buildMarkerEl(p, (clicked) => {
@@ -319,37 +351,63 @@ export function Amap({
                 <div style="margin-top:4px;color:#7c3aed">年服务 ${clicked.annualServices || 0} 次</div>
               </div>`;
             infoWindowRef.current.setContent(html);
-            infoWindowRef.current.open(mapRef.current, [clicked.lng, clicked.lat]);
+            infoWindowRef.current.open(map, [clicked.lng, clicked.lat]);
           }
-        }),
+        }, index),
         offset: new AMap.Pixel(-10, -10),
         zIndex: 100,
       });
-      mapRef.current.add(marker);
+      map.add(marker);
       markersRef.current.push(marker);
     });
 
-    const renderFlights = () => window.requestAnimationFrame(() => {
-      renderFlightOverlay(overlayRef.current, mapRef.current, center, validPoints);
-    });
+    let flightFrame = 0;
+    let settleTimer = 0;
+    let settled = false;
+    const renderFlights = () => {
+      if (flightFrame) return;
+      flightFrame = window.requestAnimationFrame(() => {
+        flightFrame = 0;
+        renderFlightOverlay(overlayRef.current, map, center, validPoints);
+      });
+    };
+    const settleMap = () => {
+      if (settled) return;
+      settled = true;
+      shell?.classList.remove("ops-map-preparing");
+      shell?.classList.add("ops-map-settled");
+      renderFlights();
+    };
+    const settleAfterViewportChange = () => {
+      renderFlights();
+      if (settleTimer) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settleMap, 120);
+    };
+
     renderFlights();
-    mapRef.current.on("mapmove", renderFlights);
-    mapRef.current.on("moveend", renderFlights);
-    mapRef.current.on("zoomchange", renderFlights);
-    mapRef.current.on("zoomend", renderFlights);
+    map.on("mapmove", renderFlights);
+    map.on("moveend", settleAfterViewportChange);
+    map.on("zoomchange", renderFlights);
+    map.on("zoomend", settleAfterViewportChange);
 
     if (validPoints.length > 0) {
       try {
-        mapRef.current.setFitView(markersRef.current, false, [60, 60, 60, 60]);
+        map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING]);
         renderFlights();
       } catch {}
+      settleTimer = window.setTimeout(settleMap, 900);
+    } else {
+      settleTimer = window.setTimeout(settleMap, 160);
     }
 
     return () => {
-      mapRef.current?.off("mapmove", renderFlights);
-      mapRef.current?.off("moveend", renderFlights);
-      mapRef.current?.off("zoomchange", renderFlights);
-      mapRef.current?.off("zoomend", renderFlights);
+      map.off("mapmove", renderFlights);
+      map.off("moveend", settleAfterViewportChange);
+      map.off("zoomchange", renderFlights);
+      map.off("zoomend", settleAfterViewportChange);
+      if (flightFrame) window.cancelAnimationFrame(flightFrame);
+      if (settleTimer) window.clearTimeout(settleTimer);
+      shell?.classList.remove("ops-map-preparing", "ops-map-settled");
       if (overlayRef.current) overlayRef.current.innerHTML = "";
     };
   }, [state, points, center.lng, center.lat, center.name, zoom, onPointClick]);
@@ -359,7 +417,7 @@ export function Amap({
   }
 
   return (
-    <div className={`relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
+    <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
       {state === "loading" && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-muted-foreground text-sm">
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> 地图加载中…
@@ -373,17 +431,21 @@ export function Amap({
 }
 
 const AMAP_MARKER_CSS = `
-.ops-map-marker { appearance: none; box-sizing: border-box; position: relative; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 999px; padding: 0; background: transparent; cursor: pointer; overflow: visible; }
+.ops-map-marker { appearance: none; box-sizing: border-box; position: relative; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 999px; padding: 0; background: transparent; cursor: pointer; overflow: visible; opacity: 0; transform: translateY(5px) scale(0.86); transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1); transition-delay: var(--ops-map-marker-delay, 0ms); will-change: opacity, transform; }
+.ops-map-settled .ops-map-marker { opacity: 1; transform: translateY(0) scale(1); }
 .ops-map-marker-dot { position: relative; z-index: 1; display: block; width: 11px; height: 11px; flex: 0 0 auto; border-radius: 999px; border: 2px solid rgba(255,255,255,0.9); background: radial-gradient(circle at 35% 35%, #fbf7ff 0, #ddc4ff 18%, #8b5cf6 56%, #6d28d9 100%); box-shadow: 0 0 0 3px rgba(139,92,246,0.12), 0 10px 22px rgba(107,56,212,0.22); }
-.ops-map-marker-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: white; font-size: 9px; font-weight: 700; line-height: 1; z-index: 2; pointer-events: none; }
+.ops-map-marker-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.86); color: white; font-size: 9px; font-weight: 700; line-height: 1; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.22s ease, transform 0.28s ease; transition-delay: var(--ops-map-label-delay, 120ms); }
+.ops-map-settled .ops-map-marker-label { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .ops-map-marker-tier-peak .ops-map-marker-dot { width: 18px; height: 18px; }
 .ops-map-marker-tier-high .ops-map-marker-dot { width: 15px; height: 15px; }
 .ops-map-marker-tier-quiet .ops-map-marker-dot { width: 8px; height: 8px; }
 .ops-map-marker:hover .ops-map-marker-dot { transform: scale(1.2); transition: transform 0.15s ease; }
 .ops-map-marker-office { width: 30px; height: 30px; }
 .ops-map-marker-office-dot { display: block; width: 30px; height: 30px; border-radius: 999px; border: 3px solid white; background: radial-gradient(circle at 35% 35%, #ffffff 0, #d3e4fe 22%, #6b38d4 64%, #361268 100%); box-shadow: 0 0 0 8px rgba(107,56,212,0.14), 0 0 0 18px rgba(107,56,212,0.06), 0 18px 36px rgba(54,18,104,0.28); }
-.ops-map-marker-office-label { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.7); border-radius: 999px; padding: 3px 8px; color: white; background: rgba(27,12,59,0.94); font-size: 10px; white-space: nowrap; }
-.ops-map-flight-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
+.ops-map-marker-office-label { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%) translateY(3px); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.7); border-radius: 999px; padding: 3px 8px; color: white; background: rgba(27,12,59,0.94); font-size: 10px; white-space: nowrap; opacity: 0; transition: opacity 0.24s ease, transform 0.28s ease; transition-delay: var(--ops-map-label-delay, 120ms); }
+.ops-map-settled .ops-map-marker-office-label { opacity: 1; transform: translateX(-50%) translateY(0); }
+.ops-map-flight-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity 0.45s ease 0.08s; }
+.ops-map-settled .ops-map-flight-overlay { opacity: 1; }
 .ops-map-flight-svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .ops-map-flight-line { fill: none; stroke: rgba(217,119,6,0.32); stroke-width: 1.9; stroke-linecap: round; }
 .ops-map-flight-line-peak { stroke: rgba(245,158,11,0.46); stroke-width: 2.4; }
