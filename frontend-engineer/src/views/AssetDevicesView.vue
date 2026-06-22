@@ -23,7 +23,26 @@ const form = ref(emptyForm())
 const maintenanceLabels = {
   none: '无维护',
   original_manufacturer: '原厂维护',
+  vendor: '原厂维护',
   our_maintenance: '我方维护',
+  our: '我方维护',
+}
+
+const MAINTENANCE_TYPE_ALIASES = {
+  vendor: 'original_manufacturer',
+  our: 'our_maintenance',
+}
+
+const DEVICE_STATUS_LABELS = {
+  active: '在用',
+  inactive: '停用',
+  maintenance: '维护中',
+  scrapped: '已报废',
+}
+
+function canonicalMaintenanceType(value) {
+  const type = String(value || 'none').trim() || 'none'
+  return MAINTENANCE_TYPE_ALIASES[type] || type
 }
 
 const filteredDevices = computed(() => {
@@ -49,6 +68,7 @@ function emptyForm() {
     maintenanceStart: '',
     maintenanceEnd: '',
     location: '',
+    status: 'active',
     warrantyUntil: '',
     remark: '',
   }
@@ -105,11 +125,12 @@ function openEdit(device) {
     model: device.model || '',
     pn: device.pn || '',
     serialNo: device.serialNo || '',
-    maintenanceType: device.maintenanceType || 'none',
+    maintenanceType: canonicalMaintenanceType(device.maintenanceType),
     maintenancePartyId: device.maintenancePartyId ? String(device.maintenancePartyId) : '',
     maintenanceStart: inputDate(device.maintenanceStart),
     maintenanceEnd: inputDate(device.maintenanceEnd),
     location: device.location || '',
+    status: device.status || 'active',
     warrantyUntil: inputDate(device.warrantyUntil),
     remark: device.remark || '',
   }
@@ -129,19 +150,21 @@ async function saveDevice() {
   saving.value = true
   error.value = ''
   try {
+    const type = canonicalMaintenanceType(form.value.maintenanceType)
     const payload = {
       customerId: form.value.customerId,
       name: form.value.name.trim(),
-      model: form.value.model.trim(),
-      pn: form.value.pn.trim(),
-      serialNo: form.value.serialNo.trim(),
-      maintenanceType: form.value.maintenanceType,
-      maintenancePartyId: form.value.maintenanceType === 'none' ? '' : form.value.maintenancePartyId,
-      maintenanceStart: form.value.maintenanceStart,
-      maintenanceEnd: form.value.maintenanceEnd,
-      location: form.value.location.trim(),
-      warrantyUntil: form.value.warrantyUntil,
-      remark: form.value.remark.trim(),
+      model: form.value.model.trim() || undefined,
+      pn: form.value.pn.trim() || undefined,
+      serialNo: form.value.serialNo.trim() || undefined,
+      maintenanceType: type,
+      maintenancePartyId: type === 'none' ? null : (form.value.maintenancePartyId || null),
+      maintenanceStart: form.value.maintenanceStart || undefined,
+      maintenanceEnd: form.value.maintenanceEnd || undefined,
+      location: form.value.location.trim() || undefined,
+      status: form.value.status,
+      warrantyUntil: form.value.warrantyUntil || undefined,
+      remark: form.value.remark.trim() || undefined,
     }
     if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
     else await api.post('/devices', payload)
@@ -247,8 +270,8 @@ onMounted(async () => {
               <option value="our_maintenance">{{ zh('我方维护') }}</option>
             </select>
           </label>
-          <label v-if="form.maintenanceType !== 'none'">{{ zh('维保方') }}
-            <select v-model="form.maintenancePartyId">
+          <label>{{ zh('维保方') }}
+            <select v-model="form.maintenancePartyId" :disabled="form.maintenanceType === 'none'">
               <option value="">{{ zh('请选择维保方') }}</option>
               <option v-for="party in parties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
             </select>
@@ -256,6 +279,14 @@ onMounted(async () => {
           <label>{{ zh('维保开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
           <label>{{ zh('维保结束') }}<input v-model="form.maintenanceEnd" type="date" /></label>
           <label>{{ zh('设备位置') }}<input v-model="form.location" type="text" /></label>
+          <label>{{ zh('设备状态') }}
+            <select v-model="form.status">
+              <option value="active">{{ zh('在用') }}</option>
+              <option value="inactive">{{ zh('停用') }}</option>
+              <option value="maintenance">{{ zh('维护中') }}</option>
+              <option value="scrapped">{{ zh('已报废') }}</option>
+            </select>
+          </label>
           <label>{{ zh('质保到期') }}<input v-model="form.warrantyUntil" type="date" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
         </div>
