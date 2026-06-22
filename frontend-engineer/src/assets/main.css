@@ -6386,6 +6386,11 @@ h2 {
   justify-content: space-between;
 }
 
+.asset-call-link {
+  min-width: 74px;
+  white-space: nowrap;
+}
+
 @media (min-width: 760px) {
   .asset-module-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6428,6 +6433,10 @@ h2 {
   .asset-contact-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .asset-contact-row-has-call {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   }
 
   .asset-contact-row .ghost {

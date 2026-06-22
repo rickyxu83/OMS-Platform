@@ -82,6 +82,11 @@ function contactsFor(customer) {
   return []
 }
 
+function telHref(phone) {
+  const normalized = String(phone || '').trim().replace(/[\s()-]/g, '')
+  return normalized ? `tel:${normalized}` : ''
+}
+
 async function loadCustomers() {
   loading.value = true
   error.value = ''
@@ -472,7 +477,7 @@ onMounted(() => {
         <p class="asset-record-line"><PreviewIcon name="pin" />{{ zh(customer.address || '未维护地址') }}</p>
         <div class="asset-contact-list">
           <span v-for="contact in contactsFor(customer)" :key="`${customer.id}-${contact.id || contact.name}`">
-            <PreviewIcon name="contact" />{{ zh(contact.name || '联系人') }}<b>{{ contact.phone || zh('未维护电话') }}</b>
+            <PreviewIcon name="contact" />{{ zh(contact.name || '联系人') }}<b><a v-if="telHref(contact.phone)" :href="telHref(contact.phone)" @click.stop>{{ contact.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b>
           </span>
           <span v-if="!contactsFor(customer).length"><PreviewIcon name="contact" />{{ zh('未维护联系人') }}</span>
         </div>
@@ -551,9 +556,10 @@ onMounted(() => {
               <strong>{{ zh('联系人列表') }}</strong>
               <button class="ghost" type="button" @click="addContact"><PreviewIcon name="new" />{{ zh('新增') }}</button>
             </div>
-            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row">
+            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row" :class="{ 'asset-contact-row-has-call': telHref(contact.phone) }">
               <input v-model="contact.name" type="text" :placeholder="zh('联系人')" />
               <input v-model="contact.phone" type="tel" :placeholder="zh('电话')" />
+              <a v-if="telHref(contact.phone)" class="ghost asset-call-link" :href="telHref(contact.phone)" @click.stop><PreviewIcon name="contact" />{{ zh('拨号') }}</a>
               <button class="ghost danger-lite" type="button" @click="removeContact(index)"><PreviewIcon name="trash" /></button>
             </div>
           </section>

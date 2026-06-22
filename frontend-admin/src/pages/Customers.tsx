@@ -504,6 +504,11 @@ function formatDate(value?: string) {
   return String(value).replace("T", " ").slice(0, 10);
 }
 
+function telHref(value?: string) {
+  const normalized = String(value || "").trim().replace(/[\s()-]/g, "");
+  return normalized ? `tel:${normalized}` : "";
+}
+
 function normalizeCoordinate(value?: number | string | null) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
@@ -667,6 +672,20 @@ export function Customers() {
   const allFilteredCustomersSelected = canForceDeleteCustomer
     && filtered.length > 0
     && filtered.every((customer) => selectedCustomerIds.includes(String(customer.id)));
+
+  function renderPhoneLink(phone?: string, stopPropagation = false) {
+    const href = telHref(phone);
+    if (!href) return t.misc.unknown;
+    return (
+      <a
+        className="text-primary hover:underline"
+        href={href}
+        onClick={stopPropagation ? (event) => event.stopPropagation() : undefined}
+      >
+        {phone}
+      </a>
+    );
+  }
 
   useEffect(() => {
     if (!canForceDeleteCustomer) {
@@ -1288,7 +1307,7 @@ export function Customers() {
                           ) : null}
                         </TableCell>
                         <TableCell>{c.contactName || t.misc.unknown}</TableCell>
-                        <TableCell>{c.contactPhone || c.phone || t.misc.unknown}</TableCell>
+                        <TableCell>{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
                         <TableCell>
                           <Badge
                             role="button"
@@ -1467,7 +1486,7 @@ export function Customers() {
                             {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
                               <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
                                 <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
-                                <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                                <div className="text-xs text-muted-foreground">{renderPhoneLink(contact.phone)}</div>
                               </div>
                             )) : (
                               <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
