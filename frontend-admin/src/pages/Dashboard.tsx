@@ -810,14 +810,17 @@ export function Dashboard() {
       </div>
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>
-        <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
+        <DialogContent
+          className="flex h-[min(92vh,720px)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[760px]"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
             <DialogDescription>
               {previewOrder ? `${textValue(previewOrder.customerName)} · ${compactText(previewOrder.issueDescription, "")}` : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
             {previewLoading ? (
               <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                 <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
