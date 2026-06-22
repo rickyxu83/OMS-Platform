@@ -596,9 +596,15 @@ export function Dashboard() {
 
   function openFullOrder() {
     if (!previewOrder?.id) return;
-    const orderId = String(previewOrder.id);
+    const keyword = (
+      previewOrder.orderNo
+      || previewOrder.displayId
+      || previewOrder.customerName
+      || previewOrder.issueDescription
+      || String(previewOrder.id)
+    );
     closeOrderPreview();
-    navigate(`/service-orders?orderId=${encodeURIComponent(orderId)}`);
+    navigate(`/service-orders?keyword=${encodeURIComponent(keyword)}`);
   }
 
   return (
