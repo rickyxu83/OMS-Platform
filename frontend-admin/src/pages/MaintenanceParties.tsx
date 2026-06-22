@@ -646,12 +646,14 @@ export function MaintenanceParties() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-lg border p-4">
-                      <div className="text-sm font-medium">{t.dialog.serviceScope}</div>
-                      <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
-                        {detailTarget.serviceScope || t.misc.unknown}
+                    {detailTarget.serviceScope ? (
+                      <div className="rounded-lg border p-4">
+                        <div className="text-sm font-medium">{t.dialog.serviceScope}</div>
+                        <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
+                          {detailTarget.serviceScope}
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                     <div className="rounded-lg border p-4">
                       <div className="text-sm font-medium">{t.dialog.remark}</div>
                       <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">

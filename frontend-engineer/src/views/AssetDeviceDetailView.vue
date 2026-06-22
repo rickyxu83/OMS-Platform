@@ -116,7 +116,7 @@ onMounted(() => {
           <p><span>{{ zh('维保方') }}</span><b>{{ zh(device.maintenancePartyName || party?.name || '未关联维保厂商') }}</b></p>
           <p><span>{{ zh('联系人') }}</span><b>{{ zh(party?.contact || '未维护') }}</b></p>
           <p><span>{{ zh('联系电话') }}</span><b>{{ party?.phone || device.maintenancePartyPhone || zh('未维护') }}</b></p>
-          <p><span>{{ zh('服务范围') }}</span><b>{{ zh(party?.serviceScope || '未维护') }}</b></p>
+          <p v-if="party?.serviceScope"><span>{{ zh('服务范围') }}</span><b>{{ zh(party.serviceScope) }}</b></p>
         </div>
       </article>
     </section>
