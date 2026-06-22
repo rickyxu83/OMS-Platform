@@ -578,14 +578,22 @@ const mapFallbackCompanies = [
 const isRemoteLikeMode = computed(() => ['remote', 'office'].includes(currentServiceMode.value))
 const isOfficeMode = computed(() => currentServiceMode.value === 'office')
 const showExistingDevicePicker = computed(() => currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'repair')
+
+function isRemoteCoordinationPartService(mode = currentServiceMode.value, category = serviceDraft.value.serviceType) {
+  return mode === 'remote' && previewTimesheetCategoryValue('remote', category) === '协调'
+}
+
 const showServicePartSection = computed(() =>
-  currentServiceMode.value === 'onsite' && ['repair', 'install'].includes(serviceDraft.value.serviceType),
+  (currentServiceMode.value === 'onsite' && ['repair', 'install'].includes(serviceDraft.value.serviceType))
+    || isRemoteCoordinationPartService(),
 )
 const servicePartSectionTitle = computed(() => (serviceDraft.value.serviceType === 'install' ? '配件安装' : '配件更换'))
 const servicePartSectionHint = computed(() =>
   serviceDraft.value.serviceType === 'install'
     ? '记录本次安装到现有设备上的配件。'
-    : '记录本次故障处理中更换到现有设备上的配件。',
+    : isRemoteCoordinationPartService()
+      ? '记录远程协调客户自行更换或安排更换的配件。'
+      : '记录本次故障处理中更换到现有设备上的配件。',
 )
 const internalRecordDefaults = computed(() => {
   const user = currentUser.value || {}
@@ -627,12 +635,14 @@ const deviceFieldPlaceholder = computed(() => {
   return '输入本次对应设备、系统或项目名称'
 })
 function currentPartActionType() {
+  if (isRemoteCoordinationPartService()) return 'replacement'
   if (currentServiceMode.value !== 'onsite') return 'general'
   if (serviceDraft.value.serviceType === 'install') return 'installation'
   if (serviceDraft.value.serviceType === 'repair') return 'replacement'
   return 'general'
 }
-function defaultServicePartActionType(serviceType) {
+function defaultServicePartActionType(serviceMode, serviceType, timesheetCategory = '') {
+  if (isRemoteCoordinationPartService(serviceMode, timesheetCategory || serviceType)) return 'replacement'
   if (serviceType === 'install') return 'installation'
   if (serviceType === 'repair') return 'replacement'
   return 'general'
@@ -2255,7 +2265,7 @@ async function load() {
       selectedDeviceId.value = detailData.item.serviceType === 'repair' ? String(detailData.item.deviceId || '') : ''
       servicePartList.value = (detailData.item.parts || []).map((part) => cloneServicePartDraft({
         deviceId: part.deviceId || '',
-        actionType: part.actionType || defaultServicePartActionType(detailData.item.serviceType),
+        actionType: part.actionType || defaultServicePartActionType(normalizedMode, detailData.item.serviceType, detailData.item.timesheetCategory),
         partName: part.partName || '',
         partNo: part.partNo || '',
         quantity: part.quantity || 1,

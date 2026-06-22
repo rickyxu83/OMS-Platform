@@ -261,35 +261,31 @@ function text(doc, fonts, content, x, baselineY, opts = {}) {
   }
 }
 
-function textWidthUnits(value) {
-  return Array.from(value).reduce((total, char) => total + (char.charCodeAt(0) <= 255 ? 0.55 : 1), 0)
-}
-
-function splitByWidth(value, maxUnits) {
+function splitByPdfWidth(doc, fonts, value, maxWidth, size) {
   const chunks = []
   let line = ''
-  let units = 0
+  const maxWidthS = maxWidth * SCALE
+  doc.font(fonts.bold).fontSize(size * SCALE)
   for (const char of Array.from(String(value || ''))) {
-    const charUnits = textWidthUnits(char)
-    if (line && units + charUnits > maxUnits) {
+    const next = line + char
+    if (line && doc.widthOfString(next) > maxWidthS) {
       chunks.push(line)
       line = char
-      units = charUnits
       continue
     }
-    line += char
-    units += charUnits
+    line = next
   }
   if (line) chunks.push(line)
   return chunks
 }
 
-function textLines(doc, fonts, value, x, baselineY, { maxChars, maxLines, lineHeight = 30, size = 16, color = '#1f2937' }) {
+function textLines(doc, fonts, value, x, baselineY, { maxChars, maxWidth, maxLines, lineHeight = 30, size = 16, color = '#1f2937' }) {
   const lines = []
+  const width = maxWidth || maxChars * 12
   for (const rawLine of String(value || '').split(/\n/)) {
     const line = rawLine.trim()
     if (!line) lines.push('')
-    else lines.push(...splitByWidth(line, maxChars))
+    else lines.push(...splitByPdfWidth(doc, fonts, line, width, size))
   }
   lines.slice(0, maxLines).forEach((line, index) => {
     if (!line) return
@@ -404,7 +400,7 @@ function drawSheet(doc, fonts, item, logoImage) {
   // 问题描述
   fillRect(doc, 68, summaryY, 682, 108, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
   text(doc, fonts, '问题描述', 92, summaryY + 34, { size: 15.5, color: '#0f172a' })
-  textLines(doc, fonts, summaryText, 92, summaryTextY, { maxChars: 66, maxLines: 2, lineHeight: 30 })
+  textLines(doc, fonts, summaryText, 92, summaryTextY, { maxWidth: 634, maxChars: 66, maxLines: 2, lineHeight: 30 })
 
   // 服务内容 / 工作内容 + 服务结论 / 处理结果
   fillRect(doc, 68, recordBoxY, 682, recordBoxHeight, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })
@@ -412,13 +408,13 @@ function drawSheet(doc, fonts, item, logoImage) {
   fillRect(doc, 196, recordBoxY, 10, recordBoxHeight, { fill: '#f8fafc' })
   text(doc, fonts, recordLabel, 88, recordBoxY + 36, { size: 15.5, color: '#0f172a' })
   recordGuideLines.forEach((offset) => strokeLine(doc, 226, recordBoxY + offset, 726, recordBoxY + offset, { stroke: '#e2e8f0', width: 1 }))
-  textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
+  textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
   strokeLine(doc, 206, resultDividerY, 726, resultDividerY, { stroke: line, width: 1.4 })
   text(doc, fonts, resultLabel, 88, resultStatusY, { size: 14, color: primary })
   text(doc, fonts, resultStatus, 226, resultStatusY, { size: 15, color: '#0f172a' })
   resultGuideLines.forEach((offset) => strokeLine(doc, 226, resultDividerY + offset, 726, resultDividerY + offset, { stroke: '#e2e8f0', width: 1 }))
   if (resultDescription) {
-    textLines(doc, fonts, resultDescription, 226, resultDetailY, { maxChars: 41, maxLines: resultMaxLines, lineHeight: 26 })
+    textLines(doc, fonts, resultDescription, 226, resultDetailY, { maxWidth: 500, maxChars: 41, maxLines: resultMaxLines, lineHeight: 26 })
   } else {
     text(doc, fonts, '已记录本次服务结果，可直接分享留底。', 226, resultDetailY, { size: 13, color: '#334155' })
   }

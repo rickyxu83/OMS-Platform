@@ -1512,7 +1512,9 @@ async function saveServiceParts(connection, orderId, parts, { customerId, fallba
   }
 }
 
-function defaultPartActionType(serviceMode, serviceType) {
+function defaultPartActionType(serviceMode, serviceType, timesheetCategory = '') {
+  const remoteCategory = String(timesheetCategory || '').trim()
+  if (serviceMode === 'remote' && ['协调', '远程协调', '沟通协调'].includes(remoteCategory)) return 'replacement'
   if (serviceMode !== 'onsite') return 'general'
   if (serviceType === 'repair') return 'replacement'
   if (serviceType === 'install') return 'installation'
@@ -1907,7 +1909,7 @@ async function createSelfReport(req, res) {
 
     await saveServiceParts(connection, orderResult.insertId, parts, {
       customerId: effectiveCustomerId,
-      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType),
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
       fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
     })
 
@@ -2487,7 +2489,7 @@ async function updateSelfReport(req, res) {
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await saveServiceParts(connection, req.params.id, parts, {
       customerId: order.customer_id,
-      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType),
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
       fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
     })
 
