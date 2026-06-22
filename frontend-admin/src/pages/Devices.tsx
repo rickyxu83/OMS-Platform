@@ -116,6 +116,11 @@ function normalizeCustomerSearchText(value?: string | number) {
   return String(value || "").toLowerCase().replace(/\s+/g, "");
 }
 
+function deviceDisplayName(device?: Device | null) {
+  if (!device) return "";
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`;
+}
+
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
   const merged = new Map<string, Customer>();
   [...current, ...incoming].forEach((customer) => {
@@ -361,8 +366,8 @@ export function Devices() {
       setCustomerDropdownOpen(true);
       return;
     }
-    if (!form.name.trim()) {
-      setError("请输入设备名称");
+    if (!form.model.trim()) {
+      setError("请输入设备型号");
       return;
     }
     setSaving(true);
@@ -370,8 +375,8 @@ export function Devices() {
     try {
       const payload: Record<string, unknown> = {
         customerId: effectiveCustomerId,
-        name: form.name.trim(),
-        model: form.model.trim() || undefined,
+        name: form.name.trim() || null,
+        model: form.model.trim(),
         pn: form.pn.trim() || undefined,
         serialNo: form.serialNo.trim() || undefined,
         maintenanceType: canonicalMaintenanceType(form.maintenanceType),
@@ -457,7 +462,7 @@ export function Devices() {
 
   async function deleteDevice(device: Device) {
     if (!device.id) return;
-    const label = device.name || device.model || `#${device.id}`;
+    const label = deviceDisplayName(device);
     if (!window.confirm(`确认删除设备「${label}」？已有工单或巡检计划引用的设备不能删除。`)) return;
     setSaving(true);
     setError("");
@@ -652,13 +657,13 @@ export function Devices() {
                           checked={selected}
                           onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
                           disabled={saving}
-                          aria-label={`选择设备 ${device.name || device.model || device.id}`}
+                          aria-label={`选择设备 ${deviceDisplayName(device)}`}
                         />
                       </div>
                       <Server className="w-5 h-5 text-primary" />
                       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
                         <div>
-                          <div className="font-medium">{device.name || device.model || `设备 #${device.id}`}</div>
+                          <div className="font-medium">{deviceDisplayName(device)}</div>
                           <div className="text-sm text-muted-foreground">{device.customerName || "-"}</div>
                         </div>
                         <div>
@@ -725,7 +730,7 @@ export function Devices() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
                         <div className="text-lg font-semibold leading-7 text-slate-900">
-                          {detailTarget.name || detailTarget.model || `设备 #${detailTarget.id}`}
+                          {deviceDisplayName(detailTarget)}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.customerName || "-"}</div>
                       </div>
@@ -761,6 +766,10 @@ export function Devices() {
                         <div>
                           <div className="text-xs text-muted-foreground">客户</div>
                           <div className="mt-1">{detailTarget.customerName || "-"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">主机名</div>
+                          <div className="mt-1">{detailTarget.name || "-"}</div>
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">安装位置</div>
@@ -895,15 +904,15 @@ export function Devices() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>设备名称 *</Label>
+                <Label>主机名</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="例如 精密空调-01"
+                  placeholder="例如 sz5eap01，可不填"
                 />
               </div>
               <div className="space-y-2 relative">
-                <Label>设备型号</Label>
+                <Label>设备型号 *</Label>
                 <Input
                   value={form.model}
                   onChange={(e) => {

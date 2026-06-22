@@ -85,7 +85,13 @@ interface CustomerOption {
 interface DeviceOption {
   id: string | number;
   name?: string;
+  model?: string;
+  serialNo?: string;
   customerId?: string | number;
+}
+
+function deviceOptionLabel(device: DeviceOption) {
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`;
 }
 
 const I18N = {
@@ -1537,7 +1543,7 @@ export function ServiceOrders() {
                 <SelectContent>
                   <SelectItem value="none">不指定设备</SelectItem>
                   {deviceOptions.map((device) => (
-                    <SelectItem key={device.id} value={String(device.id)}>{device.name || `设备 #${device.id}`}</SelectItem>
+                    <SelectItem key={device.id} value={String(device.id)}>{deviceOptionLabel(device)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

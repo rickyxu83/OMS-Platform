@@ -20,11 +20,13 @@ fs.mkdirSync(signatureRoot, { recursive: true })
 let serviceReportTravelColumnsReady = false
 let selfReportDraftsTableReady = false
 let serviceOrderInspectionColumnsReady = false
+let servicePartsColumnsReady = false
 
 const orderColumns = `
   so.id, so.order_no, so.customer_id, c.name AS customer_name, c.address AS customer_address,
   c.salesperson AS customer_salesperson,
-  c.contact_name, c.contact_phone, so.device_id, d.name AS device_name,
+  c.contact_name, c.contact_phone, so.device_id,
+  COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
   so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
   u.real_name AS engineer_name, so.inspection_schedule_id, so.inspection_occurrence_date,
@@ -69,6 +71,8 @@ function serviceOrderSearchClause(index) {
           OR c.name LIKE ${likeParam}
           OR c.address LIKE ${likeParam}
           OR d.name LIKE ${likeParam}
+          OR d.model LIKE ${likeParam}
+          OR d.serial_no LIKE ${likeParam}
           OR so.issue_description LIKE ${likeParam}
           OR so.internal_note LIKE ${likeParam}
           OR so.timesheet_category LIKE ${likeParam}
@@ -315,6 +319,11 @@ function normalizeReportResult(value) {
   return ['resolved', 'unresolved', 'follow_up_required'].includes(result) ? result : null
 }
 
+function normalizePartActionType(value, fallback = 'general') {
+  const actionType = String(value || fallback || 'general').trim()
+  return ['replacement', 'installation', 'general'].includes(actionType) ? actionType : 'general'
+}
+
 async function ensureTimesheetManualEntriesTable(connection = null) {
   const executor = connection || { execute: query }
   await executor.execute(
@@ -391,6 +400,60 @@ async function ensureSelfReportDraftsTable(connection = null) {
   )
   if (!connection) {
     selfReportDraftsTableReady = true
+  }
+}
+
+async function ensureServicePartsColumns(connection = null) {
+  if (!connection && servicePartsColumnsReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
+    `CREATE TABLE IF NOT EXISTS service_parts (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NULL,
+      action_type ENUM('general', 'replacement', 'installation') NOT NULL DEFAULT 'general',
+      part_name VARCHAR(128) NOT NULL,
+      part_no VARCHAR(128) NULL,
+      quantity DECIMAL(10, 2) NOT NULL DEFAULT 1,
+      unit VARCHAR(32) NULL,
+      remark VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_service_parts_order_id (service_order_id),
+      KEY idx_service_parts_device_id (device_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  const [columnRows] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_parts'
+       AND column_name IN ('device_id', 'action_type')`,
+  )
+  const columns = new Set(columnRows.map((row) => row.columnName || row.column_name))
+  if (!columns.has('device_id')) {
+    await execute('ALTER TABLE service_parts ADD COLUMN device_id BIGINT UNSIGNED NULL AFTER service_order_id')
+  }
+  if (!columns.has('action_type')) {
+    await execute(
+      "ALTER TABLE service_parts ADD COLUMN action_type ENUM('general', 'replacement', 'installation') NOT NULL DEFAULT 'general' AFTER device_id",
+    )
+  }
+
+  const [indexRows] = await execute(
+    `SELECT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_parts'
+       AND index_name = 'idx_service_parts_device_id'`,
+  )
+  if (!indexRows.length) {
+    await execute('ALTER TABLE service_parts ADD KEY idx_service_parts_device_id (device_id)')
+  }
+
+  if (!connection) {
+    servicePartsColumnsReady = true
   }
 }
 
@@ -1003,7 +1066,7 @@ function buildListQueryParts(req) {
   const sortColumns = {
     orderNo: 'so.order_no',
     customerName: 'c.name',
-    deviceName: 'd.name',
+    deviceName: "COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, ''))",
     serviceType: 'so.service_type',
     priority: 'so.priority',
     engineerName: 'u.real_name',
@@ -1196,7 +1259,8 @@ async function timesheetMonthly(req, res) {
     `SELECT
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
        so.issue_description, so.internal_note, so.planned_start_at,
-       so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name AS device_name,
+       so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson,
+       COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
        sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
        work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
@@ -1399,6 +1463,60 @@ async function assertDeviceBelongsToCustomer(connection, deviceId, customerId) {
   if (!rows[0]) {
     throw badRequest('设备不属于所选客户')
   }
+}
+
+function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fallbackDeviceId = null } = {}) {
+  if (!Array.isArray(parts)) return []
+  return parts
+    .map((part) => {
+      const partName = String(part?.partName || part?.part_name || '').trim()
+      if (!partName) return null
+      const deviceId = Number(part?.deviceId || part?.device_id || fallbackDeviceId || 0) || null
+      return {
+        deviceId,
+        actionType: normalizePartActionType(part?.actionType || part?.action_type, fallbackActionType),
+        partName,
+        partNo: String(part?.partNo || part?.part_no || '').trim() || null,
+        quantity: Number(part?.quantity || 1) || 1,
+        unit: String(part?.unit || '').trim() || null,
+        remark: String(part?.remark || '').trim() || null,
+      }
+    })
+    .filter(Boolean)
+}
+
+async function saveServiceParts(connection, orderId, parts, { customerId, fallbackActionType = 'general', fallbackDeviceId = null } = {}) {
+  await ensureServicePartsColumns(connection)
+  const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId })
+  for (const part of normalizedParts) {
+    if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
+      throw badRequest('请选择配件关联设备')
+    }
+    if (part.deviceId) {
+      await assertDeviceBelongsToCustomer(connection, part.deviceId, customerId)
+    }
+    await connection.execute(
+      `INSERT INTO service_parts (service_order_id, device_id, action_type, part_name, part_no, quantity, unit, remark)
+       VALUES (:orderId, :deviceId, :actionType, :partName, :partNo, :quantity, :unit, :remark)`,
+      {
+        orderId,
+        deviceId: part.deviceId,
+        actionType: part.actionType,
+        partName: part.partName,
+        partNo: part.partNo,
+        quantity: part.quantity,
+        unit: part.unit,
+        remark: part.remark,
+      },
+    )
+  }
+}
+
+function defaultPartActionType(serviceMode, serviceType) {
+  if (serviceMode !== 'onsite') return 'general'
+  if (serviceType === 'repair') return 'replacement'
+  if (serviceType === 'install') return 'installation'
+  return 'general'
 }
 
 async function create(req, res) {
@@ -1677,21 +1795,26 @@ async function createSelfReport(req, res) {
     await recordCustomerContact(connection, effectiveCustomerId, contactName, contactPhone, req.user.id)
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
-    let effectiveDeviceId = shouldManageInstallDevice ? deviceId || null : null
+    let effectiveDeviceId = Number(deviceId || 0) || null
     if (effectiveDeviceId) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
     const hasInstallDeviceFields = shouldManageInstallDevice
       && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
-    const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
-    if (shouldManageInstallDevice && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    const effectiveDeviceName = String(deviceName || '').trim() || null
+    const effectiveDeviceModel = String(deviceModel || '').trim() || null
+    const hasInstallDevicePayload = Boolean(effectiveDeviceName) || hasInstallDeviceFields
+    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
+      throw badRequest('安装设备型号不能为空')
+    }
+    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload) {
       const [deviceResult] = await connection.execute(
         `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark)
          VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark)`,
         {
           customerId: effectiveCustomerId,
           deviceName: effectiveDeviceName,
-          deviceModel: deviceModel || null,
+          deviceModel: effectiveDeviceModel,
           devicePn: devicePn || null,
           deviceSerialNo: deviceSerialNo || null,
           deviceRemark: deviceRemark || null,
@@ -1738,7 +1861,7 @@ async function createSelfReport(req, res) {
       },
     )
 
-    if (!deviceId && effectiveDeviceId) {
+    if (shouldManageInstallDevice && !deviceId && effectiveDeviceId) {
       await connection.execute(
         `UPDATE devices
          SET installation_source_service_order_id = COALESCE(installation_source_service_order_id, :serviceOrderId)
@@ -1782,21 +1905,11 @@ async function createSelfReport(req, res) {
       },
     )
 
-    for (const part of parts) {
-      if (!part.partName) continue
-      await connection.execute(
-        `INSERT INTO service_parts (service_order_id, part_name, part_no, quantity, unit, remark)
-         VALUES (:orderId, :partName, :partNo, :quantity, :unit, :remark)`,
-        {
-          orderId: orderResult.insertId,
-          partName: part.partName,
-          partNo: part.partNo || null,
-          quantity: part.quantity || 1,
-          unit: part.unit || null,
-          remark: part.remark || null,
-        },
-      )
-    }
+    await saveServiceParts(connection, orderResult.insertId, parts, {
+      customerId: effectiveCustomerId,
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType),
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
+    })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
     await connection.execute(
@@ -1817,6 +1930,7 @@ async function createSelfReport(req, res) {
 
 async function loadDetailItem(orderId, user, options = {}) {
   await ensureServiceOrderInspectionColumns()
+  await ensureServicePartsColumns()
   await ensureFilePurposeColumn()
   let order = await getOrder(orderId)
   if (!order) {
@@ -1828,7 +1942,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   const reports = await query(
     `SELECT *
      FROM service_reports
-     WHERE service_order_id = :id
+     WHERE sp.service_order_id = :id
      ORDER BY id DESC
      LIMIT 1`,
     { id: orderId },
@@ -1849,10 +1963,13 @@ async function loadDetailItem(orderId, user, options = {}) {
     { customerId: order.customer_id, engineerId: user.id },
   )
   const parts = await query(
-    `SELECT id, service_order_id, part_name, part_no, quantity, unit, remark, created_at, updated_at
-     FROM service_parts
+    `SELECT sp.id, sp.service_order_id, sp.device_id, sp.action_type, sp.part_name, sp.part_no,
+            sp.quantity, sp.unit, sp.remark, sp.created_at, sp.updated_at,
+            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
+     FROM service_parts sp
+     LEFT JOIN devices d ON d.id = sp.device_id
      WHERE service_order_id = :id
-     ORDER BY id ASC`,
+     ORDER BY sp.id ASC`,
     { id: orderId },
   )
   const files = await query(
@@ -1877,6 +1994,9 @@ async function loadDetailItem(orderId, user, options = {}) {
     parts: parts.map((part) => ({
       id: part.id,
       serviceOrderId: part.service_order_id,
+      deviceId: part.device_id,
+      deviceName: part.device_name,
+      actionType: part.action_type || 'general',
       partName: part.part_name,
       partNo: part.part_no,
       quantity: part.quantity,
@@ -2239,14 +2359,22 @@ async function updateSelfReport(req, res) {
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
     let effectiveDeviceId = shouldManageInstallDevice
       ? (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
-      : order.device_id || null
+      : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
     if (effectiveDeviceId) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, order.customer_id)
     }
     const hasInstallDeviceFields = shouldManageInstallDevice
       && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
-    const effectiveDeviceName = String(deviceName || deviceModel || devicePn || deviceSerialNo || '现场安装设备').trim()
-    if (shouldManageInstallDevice && !effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    const effectiveDeviceName = String(deviceName || '').trim() || null
+    const effectiveDeviceModel = String(deviceModel || '').trim() || null
+    const hasInstallDevicePayload = Boolean(effectiveDeviceName) || hasInstallDeviceFields
+    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
+      throw badRequest('安装设备型号不能为空')
+    }
+    if (shouldManageInstallDevice && effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
+      throw badRequest('安装设备型号不能为空')
+    }
+    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload) {
       const [deviceResult] = await connection.execute(
         `INSERT INTO devices (
            customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
@@ -2255,7 +2383,7 @@ async function updateSelfReport(req, res) {
         {
           customerId: order.customer_id,
           deviceName: effectiveDeviceName,
-          deviceModel: deviceModel || null,
+          deviceModel: effectiveDeviceModel,
           devicePn: devicePn || null,
           deviceSerialNo: deviceSerialNo || null,
           deviceRemark: deviceRemark || null,
@@ -2263,7 +2391,7 @@ async function updateSelfReport(req, res) {
         },
       )
       effectiveDeviceId = deviceResult.insertId
-    } else if (shouldManageInstallDevice && effectiveDeviceId && (deviceName || hasInstallDeviceFields)) {
+    } else if (shouldManageInstallDevice && effectiveDeviceId && hasInstallDevicePayload) {
       await connection.execute(
         `UPDATE devices
          SET name = :deviceName,
@@ -2275,7 +2403,7 @@ async function updateSelfReport(req, res) {
         {
           deviceId: effectiveDeviceId,
           deviceName: effectiveDeviceName,
-          deviceModel: deviceModel || null,
+          deviceModel: effectiveDeviceModel,
           devicePn: devicePn || null,
           deviceSerialNo: deviceSerialNo || null,
           deviceRemark: deviceRemark || null,
@@ -2357,21 +2485,11 @@ async function updateSelfReport(req, res) {
     )
 
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
-    for (const part of parts) {
-      if (!part.partName) continue
-      await connection.execute(
-        `INSERT INTO service_parts (service_order_id, part_name, part_no, quantity, unit, remark)
-         VALUES (:id, :partName, :partNo, :quantity, :unit, :remark)`,
-        {
-          id: req.params.id,
-          partName: part.partName,
-          partNo: part.partNo || null,
-          quantity: part.quantity || 1,
-          unit: part.unit || null,
-          remark: part.remark || null,
-        },
-      )
-    }
+    await saveServiceParts(connection, req.params.id, parts, {
+      customerId: order.customer_id,
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType),
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
+    })
 
     await recordCustomerContact(connection, order.customer_id, contactName || customerConfirmName, contactPhone, req.user.id)
     await writeAudit(connection, req.user.id, req.params.id, 'self_report_update')

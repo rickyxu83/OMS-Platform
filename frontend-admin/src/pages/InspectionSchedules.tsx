@@ -44,7 +44,13 @@ interface Customer {
 interface Device {
   id: string | number;
   name?: string;
+  model?: string;
+  serialNo?: string;
   customerId?: string | number;
+}
+
+function deviceLabel(device: Device) {
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`;
 }
 
 interface Engineer {
@@ -1035,7 +1041,7 @@ export function InspectionSchedules() {
                             onChange={() => toggleDevice(deviceId)}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="truncate text-sm font-medium">{d.name || `设备 #${d.id}`}</div>
+                            <div className="truncate text-sm font-medium">{deviceLabel(d)}</div>
                             <div className="text-xs text-muted-foreground">设备 #{d.id}</div>
                           </div>
                         </div>

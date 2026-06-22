@@ -95,8 +95,8 @@ CREATE TABLE maintenance_parties (
 CREATE TABLE devices (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   customer_id BIGINT UNSIGNED NOT NULL,
-  name VARCHAR(128) NOT NULL,
-  model VARCHAR(128) NULL,
+  name VARCHAR(128) NULL,
+  model VARCHAR(128) NOT NULL,
   pn VARCHAR(128) NULL,
   serial_no VARCHAR(128) NULL,
   remark TEXT NULL,
@@ -266,6 +266,8 @@ CREATE TABLE self_report_drafts (
 CREATE TABLE service_parts (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   service_order_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NULL,
+  action_type ENUM('general', 'replacement', 'installation') NOT NULL DEFAULT 'general',
   part_name VARCHAR(128) NOT NULL,
   part_no VARCHAR(128) NULL,
   quantity DECIMAL(10, 2) NOT NULL DEFAULT 1,
@@ -275,7 +277,9 @@ CREATE TABLE service_parts (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_service_parts_order_id (service_order_id),
-  CONSTRAINT fk_service_parts_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id)
+  KEY idx_service_parts_device_id (device_id),
+  CONSTRAINT fk_service_parts_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+  CONSTRAINT fk_service_parts_device_id FOREIGN KEY (device_id) REFERENCES devices (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE timesheet_manual_entries (

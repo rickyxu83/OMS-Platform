@@ -15,6 +15,8 @@ const error = ref('')
 
 const deviceId = computed(() => route.params.id)
 const maintenancePhone = computed(() => party.value?.phone || device.value?.maintenancePartyPhone || '')
+const deviceTitle = computed(() => device.value?.model || device.value?.name || device.value?.serialNo || '设备详情')
+const partHistory = computed(() => Array.isArray(device.value?.partHistory) ? device.value.partHistory : [])
 
 function displayDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 10) : '未维护'
@@ -34,6 +36,35 @@ function officialWebsiteHref(value) {
 function telHref(phone) {
   const normalized = String(phone || '').trim().replace(/[\s()-]/g, '')
   return normalized ? `tel:${normalized}` : ''
+}
+
+function actionTypeLabel(value) {
+  if (value === 'replacement') return '配件更换'
+  if (value === 'installation') return '配件安装'
+  return '配件记录'
+}
+
+function serviceTypeLabel(value) {
+  const labels = {
+    install: '现场安装',
+    repair: '故障处理',
+    maintain: '保养维护',
+    inspect: '例行巡检',
+    training: '现场培训',
+    other: '其他事项',
+  }
+  return labels[value] || value || '服务单'
+}
+
+function partQuantityText(item) {
+  const quantity = Number(item?.quantity || 0)
+  const text = Number.isFinite(quantity) && quantity > 0 ? String(quantity).replace(/\.00$/, '') : ''
+  return [text, item?.unit].filter(Boolean).join('') || '1'
+}
+
+function compactText(value, maxLength = 90) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
 }
 
 function warrantyDate(item) {
@@ -81,7 +112,7 @@ onMounted(() => {
   <main class="engineer-shell asset-shell">
     <header class="topbar asset-topbar">
       <div>
-        <BrandEyebrow text="客户与资产 / 设备详情" :title="device?.name || '设备详情'" />
+        <BrandEyebrow text="客户与资产 / 设备详情" :title="deviceTitle" />
         <p class="asset-page-lead">{{ zh('查看设备维保状态，以及故障时应联系的维保厂商。') }}</p>
         <div class="asset-inline-nav">
           <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
@@ -100,12 +131,13 @@ onMounted(() => {
         <header>
           <div>
             <span class="asset-record-kicker" :class="`asset-warranty-${warrantyStatus(device).className}`">{{ zh(warrantyStatus(device).label) }}</span>
-            <h2>{{ zh(device.name || '未命名设备') }}</h2>
+            <h2>{{ zh(deviceTitle) }}</h2>
           </div>
         </header>
 
         <div class="asset-detail-kv">
           <p><span>{{ zh('所属客户') }}</span><b>{{ zh(device.customerName || '未关联客户') }}</b></p>
+          <p><span>{{ zh('主机名') }}</span><b>{{ zh(device.name || '未维护') }}</b></p>
           <p><span>{{ zh('型号') }}</span><b>{{ zh(device.model || '未维护') }}</b></p>
           <p><span>{{ zh('PN') }}</span><b>{{ device.pn || zh('未维护') }}</b></p>
           <p><span>{{ zh('序列号') }}</span><b>{{ device.serialNo || zh('未维护') }}</b></p>
@@ -133,6 +165,43 @@ onMounted(() => {
             <b><a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer">{{ zh(party.officialWebsite) }}</a></b>
           </p>
         </div>
+      </article>
+    </section>
+
+    <section v-if="!loading && device" class="asset-detail-grid asset-part-history-grid">
+      <article class="asset-record-card asset-detail-card asset-part-history-card">
+        <header>
+          <div>
+            <span class="asset-record-kicker">{{ zh('配件历史') }}</span>
+            <h2>{{ zh('安装与更换记录') }}</h2>
+          </div>
+        </header>
+
+        <div v-if="partHistory.length" class="asset-part-history-list">
+          <div v-for="item in partHistory" :key="item.id" class="asset-part-history-item">
+            <div class="asset-part-history-main">
+              <span class="asset-record-kicker">{{ zh(actionTypeLabel(item.actionType)) }}</span>
+              <strong>{{ zh(item.partName || '未命名配件') }}</strong>
+              <p>
+                {{ zh(displayDate(item.serviceAt || item.createdAt)) }}
+                <template v-if="item.orderNo"> · {{ item.orderNo }}</template>
+                <template v-if="item.engineerName"> · {{ zh(item.engineerName) }}</template>
+              </p>
+              <p class="asset-part-history-meta">
+                {{ zh(serviceTypeLabel(item.serviceType)) }}
+                <template v-if="item.partNo"> · PN {{ item.partNo }}</template>
+                <template v-if="item.quantity"> · {{ zh('数量') }} {{ partQuantityText(item) }}</template>
+              </p>
+              <p v-if="item.remark || item.issueDescription || item.workContent" class="asset-part-history-summary">
+                {{ zh(compactText(item.remark || item.issueDescription || item.workContent)) }}
+              </p>
+            </div>
+            <RouterLink v-if="item.serviceOrderId" class="ghost asset-refresh" :to="`/tasks/${item.serviceOrderId}`">
+              <PreviewIcon name="service" />{{ zh('服务单') }}
+            </RouterLink>
+          </div>
+        </div>
+        <p v-else class="muted">{{ zh('暂无配件安装或更换记录') }}</p>
       </article>
     </section>
   </main>

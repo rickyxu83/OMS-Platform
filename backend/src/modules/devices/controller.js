@@ -2,6 +2,8 @@ const { query } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
 
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
+let deviceIdentityColumnsReady = false
+let devicePartHistoryColumnsReady = false
 
 function maintenancePartyPayload(row) {
   if (!row.maintenance_party_id) return null
@@ -37,6 +39,78 @@ async function ensureMaintenancePartyExists(maintenancePartyId) {
 function normalizeDate(value) {
   const text = String(value || '').trim()
   return text || null
+}
+
+function normalizeText(value) {
+  const text = String(value || '').trim()
+  return text || null
+}
+
+async function ensureDeviceIdentityColumns() {
+  if (deviceIdentityColumnsReady) return
+
+  const rows = await query(
+    `SELECT column_name, is_nullable
+     FROM information_schema.COLUMNS
+     WHERE table_schema = DATABASE()
+       AND table_name = 'devices'
+       AND column_name IN ('name')`,
+  )
+  const nameColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'name')
+  if (nameColumn && String(nameColumn.is_nullable || '').toUpperCase() !== 'YES') {
+    await query('ALTER TABLE devices MODIFY COLUMN name VARCHAR(128) NULL')
+  }
+
+  deviceIdentityColumnsReady = true
+}
+
+async function ensureDevicePartHistoryColumns() {
+  if (devicePartHistoryColumnsReady) return
+  await query(
+    `CREATE TABLE IF NOT EXISTS service_parts (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NULL,
+      action_type ENUM('general', 'replacement', 'installation') NOT NULL DEFAULT 'general',
+      part_name VARCHAR(128) NOT NULL,
+      part_no VARCHAR(128) NULL,
+      quantity DECIMAL(10, 2) NOT NULL DEFAULT 1,
+      unit VARCHAR(32) NULL,
+      remark VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_service_parts_order_id (service_order_id),
+      KEY idx_service_parts_device_id (device_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  const rows = await query(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_parts'
+       AND column_name IN ('device_id', 'action_type')`,
+  )
+  const columns = new Set(rows.map((row) => row.columnName || row.column_name))
+  if (!columns.has('device_id')) {
+    await query('ALTER TABLE service_parts ADD COLUMN device_id BIGINT UNSIGNED NULL AFTER service_order_id')
+  }
+  if (!columns.has('action_type')) {
+    await query(
+      "ALTER TABLE service_parts ADD COLUMN action_type ENUM('general', 'replacement', 'installation') NOT NULL DEFAULT 'general' AFTER device_id",
+    )
+  }
+  const indexRows = await query(
+    `SELECT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_parts'
+       AND index_name = 'idx_service_parts_device_id'`,
+  )
+  if (!indexRows.length) {
+    await query('ALTER TABLE service_parts ADD KEY idx_service_parts_device_id (device_id)')
+  }
+  devicePartHistoryColumnsReady = true
 }
 
 function devicePayload(row) {
@@ -99,6 +173,7 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
+  await ensureDeviceIdentityColumns()
   const {
     customerId,
     name,
@@ -113,9 +188,11 @@ async function create(req, res) {
     location,
     warrantyUntil,
   } = req.body || {}
-  if (!customerId || !name) {
-    throw badRequest('客户和设备名称不能为空')
+  const normalizedModel = normalizeText(model)
+  if (!customerId || !normalizedModel) {
+    throw badRequest('客户和设备型号不能为空')
   }
+  const normalizedName = normalizeText(name)
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)
   await ensureMaintenancePartyExists(normalizedMaintenancePartyId)
@@ -131,8 +208,8 @@ async function create(req, res) {
      )`,
     {
       customerId,
-      name,
-      model: model || null,
+      name: normalizedName,
+      model: normalizedModel,
       pn: pn || null,
       serialNo: serialNo || null,
       remark: remark || null,
@@ -149,6 +226,7 @@ async function create(req, res) {
 }
 
 async function detail(req, res) {
+  await ensureDevicePartHistoryColumns()
   const rows = await query(
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
@@ -166,10 +244,50 @@ async function detail(req, res) {
     throw notFound('设备不存在')
   }
 
-  res.json({ item: devicePayload(rows[0]) })
+  const partRows = await query(
+    `SELECT sp.id, sp.service_order_id, sp.device_id, sp.action_type, sp.part_name, sp.part_no,
+            sp.quantity, sp.unit, sp.remark, sp.created_at, sp.updated_at,
+            so.order_no, so.service_mode, so.service_type, so.issue_description,
+            so.submitted_at, so.created_at AS order_created_at,
+            sr.work_content, u.real_name AS engineer_name, u.username AS engineer_username
+     FROM service_parts sp
+     JOIN service_orders so ON so.id = sp.service_order_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     LEFT JOIN users u ON u.id = so.assigned_engineer_id
+     WHERE sp.device_id = :id
+     ORDER BY COALESCE(so.submitted_at, sp.created_at) DESC, sp.id DESC
+     LIMIT 100`,
+    { id: req.params.id },
+  )
+
+  res.json({
+    item: {
+      ...devicePayload(rows[0]),
+      partHistory: partRows.map((part) => ({
+        id: part.id,
+        serviceOrderId: part.service_order_id,
+        orderNo: part.order_no,
+        serviceMode: part.service_mode,
+        serviceType: part.service_type,
+        actionType: part.action_type || 'general',
+        partName: part.part_name,
+        partNo: part.part_no,
+        quantity: part.quantity,
+        unit: part.unit,
+        remark: part.remark,
+        issueDescription: part.issue_description,
+        workContent: part.work_content,
+        engineerName: part.engineer_name || part.engineer_username,
+        serviceAt: part.submitted_at || part.order_created_at || part.created_at,
+        createdAt: part.created_at,
+        updatedAt: part.updated_at,
+      })),
+    },
+  })
 }
 
 async function update(req, res) {
+  await ensureDeviceIdentityColumns()
   const {
     customerId,
     name,
@@ -184,6 +302,12 @@ async function update(req, res) {
     location,
     warrantyUntil,
   } = req.body || {}
+  const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
+  const normalizedName = hasName ? normalizeText(name) : null
+  const normalizedModel = normalizeText(model)
+  if (!normalizedModel) {
+    throw badRequest('设备型号不能为空')
+  }
   const existing = await query('SELECT id FROM devices WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('设备不存在')
@@ -195,7 +319,7 @@ async function update(req, res) {
   await query(
     `UPDATE devices
      SET customer_id = COALESCE(:customerId, customer_id),
-         name = COALESCE(:name, name),
+         name = CASE WHEN :hasName = 1 THEN :name ELSE name END,
          model = :model,
          pn = :pn,
          serial_no = :serialNo,
@@ -210,8 +334,9 @@ async function update(req, res) {
     {
       id: req.params.id,
       customerId: customerId || null,
-      name: name || null,
-      model: model || null,
+      hasName: hasName ? 1 : 0,
+      name: normalizedName,
+      model: normalizedModel,
       pn: pn || null,
       serialNo: serialNo || null,
       remark: remark || null,
@@ -233,14 +358,17 @@ async function remove(req, res) {
     throw notFound('设备不存在')
   }
 
-  const [serviceOrders, schedules] = await Promise.all([
+  await ensureDevicePartHistoryColumns()
+  const [serviceOrders, schedules, serviceParts] = await Promise.all([
     query('SELECT COUNT(*) AS total FROM service_orders WHERE device_id = :id', { id: req.params.id }),
     query('SELECT COUNT(*) AS total FROM inspection_schedules WHERE device_id = :id', { id: req.params.id }),
+    query('SELECT COUNT(*) AS total FROM service_parts WHERE device_id = :id', { id: req.params.id }),
   ])
   const serviceOrderCount = Number(serviceOrders[0]?.total || 0)
   const scheduleCount = Number(schedules[0]?.total || 0)
-  if (serviceOrderCount || scheduleCount) {
-    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划引用，不能删除`)
+  const servicePartCount = Number(serviceParts[0]?.total || 0)
+  if (serviceOrderCount || scheduleCount || servicePartCount) {
+    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划、${servicePartCount} 条配件记录引用，不能删除`)
   }
 
   await query('DELETE FROM devices WHERE id = :id', { id: req.params.id })

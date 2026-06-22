@@ -158,7 +158,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
       (d) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.customer_name || '-')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || d.name || d.serial_no || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.serial_no || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(d.maintenance_end || '').slice(0, 10))}</td>

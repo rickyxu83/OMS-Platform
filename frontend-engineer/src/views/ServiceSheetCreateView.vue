@@ -51,6 +51,10 @@ const recentOrders = ref([])
 const editingTask = ref(null)
 const selectedHistoryId = ref('')
 const selectedCustomer = ref(null)
+const customerDevices = ref([])
+const loadingCustomerDevices = ref(false)
+const selectedDeviceId = ref('')
+const servicePartList = ref([])
 const installDeviceList = ref([createInstallDeviceDraft()])
 const activeInstallDeviceIndex = ref(0)
 function addInstallDevice() {
@@ -63,6 +67,32 @@ function removeInstallDevice(index) {
 }
 function setActiveDeviceIndex(index) {
   activeInstallDeviceIndex.value = index
+}
+function createServicePartDraft(actionType = '') {
+  return {
+    deviceId: selectedDeviceId.value || '',
+    actionType: actionType || currentPartActionType(),
+    partName: '',
+    partNo: '',
+    quantity: 1,
+    unit: '个',
+    remark: '',
+  }
+}
+function cloneServicePartDraft(draft = {}) {
+  return {
+    ...createServicePartDraft(draft.actionType),
+    ...(draft || {}),
+    deviceId: draft?.deviceId ? String(draft.deviceId) : '',
+    quantity: draft?.quantity || 1,
+  }
+}
+function addServicePart() {
+  servicePartList.value.push(createServicePartDraft())
+}
+function removeServicePart(index) {
+  servicePartList.value.splice(index, 1)
+  clearFieldError('serviceParts')
 }
 const deviceModelSuggestions = ref([])
 const selectedSuggestionIndex = ref(-1)
@@ -85,6 +115,7 @@ const issueDescriptionInput = ref(null)
 const serviceRecordInput = ref(null)
 const serviceResultInput = ref(null)
 const collaborationWorkSection = ref(null)
+const servicePartsSection = ref(null)
 const actualStartInput = ref(null)
 const actualEndInput = ref(null)
 const inspectionDocumentSection = ref(null)
@@ -315,6 +346,13 @@ function currentInstallDeviceView() {
   }
 }
 
+function currentServicePartView() {
+  return {
+    selectedDeviceId: selectedDeviceId.value || '',
+    servicePartList: servicePartList.value.map(part => cloneServicePartDraft(part)),
+  }
+}
+
 function updateActiveDraftField(field, value) {
   if (field === 'serviceMode') {
     formMode.value = serviceModeOptions.some((option) => option.value === value) ? value : 'onsite'
@@ -389,6 +427,7 @@ function pageDraftStateSnapshot() {
   return {
     selectedCustomer: selectedCustomer.value ? { ...selectedCustomer.value } : null,
     selectedHistoryId: selectedHistoryId.value,
+    selectedDeviceId: selectedDeviceId.value,
     selectedCoEngineerIds: [...selectedCoEngineerIds.value],
     serviceDraft: currentModeServiceDraftView(),
     formMode: formMode.value,
@@ -404,6 +443,7 @@ function pageDraftStateSnapshot() {
       ...officeDraft.value,
     },
     installDeviceState: currentInstallDeviceView(),
+    servicePartState: currentServicePartView(),
     customerSignature: customerSignature.value,
     __draftClientUpdatedAt: lastDraftClientUpdatedAt.value || new Date().toISOString(),
   }
@@ -432,6 +472,8 @@ function applyDraftState(state = {}, { fallbackMode = 'onsite' } = {}) {
   formMode.value = nextMode
   selectedCustomer.value = state.selectedCustomer || null
   selectedHistoryId.value = state.selectedHistoryId || ''
+  selectedDeviceId.value = state.selectedDeviceId || state.servicePartState?.selectedDeviceId || ''
+  servicePartList.value = (state.servicePartState?.servicePartList || []).map(part => cloneServicePartDraft(part))
   installDeviceList.value = (state.installDeviceState?.installDeviceList || [createInstallDeviceDraft()]).map(d => cloneInstallDeviceDraft(d))
   selectedCoEngineerIds.value = Array.isArray(state.selectedCoEngineerIds)
     ? state.selectedCoEngineerIds.map(Number)
@@ -535,6 +577,16 @@ const mapFallbackCompanies = [
 
 const isRemoteLikeMode = computed(() => ['remote', 'office'].includes(currentServiceMode.value))
 const isOfficeMode = computed(() => currentServiceMode.value === 'office')
+const showExistingDevicePicker = computed(() => currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'repair')
+const showServicePartSection = computed(() =>
+  currentServiceMode.value === 'onsite' && ['repair', 'install'].includes(serviceDraft.value.serviceType),
+)
+const servicePartSectionTitle = computed(() => (serviceDraft.value.serviceType === 'install' ? '配件安装' : '配件更换'))
+const servicePartSectionHint = computed(() =>
+  serviceDraft.value.serviceType === 'install'
+    ? '记录本次安装到现有设备上的配件。'
+    : '记录本次故障处理中更换到现有设备上的配件。',
+)
 const internalRecordDefaults = computed(() => {
   const user = currentUser.value || {}
   return {
@@ -574,6 +626,33 @@ const deviceFieldPlaceholder = computed(() => {
   if (currentServiceMode.value === 'remote') return '输入本次对应专案或产品名称'
   return '输入本次对应设备、系统或项目名称'
 })
+function currentPartActionType() {
+  if (currentServiceMode.value !== 'onsite') return 'general'
+  if (serviceDraft.value.serviceType === 'install') return 'installation'
+  if (serviceDraft.value.serviceType === 'repair') return 'replacement'
+  return 'general'
+}
+function defaultServicePartActionType(serviceType) {
+  if (serviceType === 'install') return 'installation'
+  if (serviceType === 'repair') return 'replacement'
+  return 'general'
+}
+function deviceDisplayName(device = {}) {
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`
+}
+function deviceMetaText(device = {}) {
+  return [device.name, device.pn ? `PN ${device.pn}` : '', device.serialNo ? `SN ${device.serialNo}` : '', device.location]
+    .filter(Boolean)
+    .join(' · ')
+}
+function servicePartHasContent(part = {}) {
+  return [part.deviceId, part.partName, part.partNo, part.quantity, part.unit, part.remark]
+    .some((value) => String(value ?? '').trim())
+}
+function activeServiceParts() {
+  if (!showServicePartSection.value) return []
+  return servicePartList.value.filter(servicePartHasContent)
+}
 const serviceCategoryLabel = computed(() => {
   if (currentServiceMode.value === 'office') return '内勤类别'
   return currentServiceMode.value === 'remote' ? '远程类别' : '服务类别'
@@ -739,6 +818,7 @@ function draftSnapshot() {
   return {
     selectedCustomer: selectedCustomer.value ? { ...selectedCustomer.value } : null,
     selectedHistoryId: selectedHistoryId.value,
+    selectedDeviceId: selectedDeviceId.value,
     selectedCoEngineerIds: [...selectedCoEngineerIds.value],
     serviceDraft: currentModeServiceDraftView(),
     formMode: formMode.value,
@@ -754,6 +834,7 @@ function draftSnapshot() {
       ...officeDraft.value,
     },
     installDeviceState: currentInstallDeviceView(),
+    servicePartState: currentServicePartView(),
     customerSignature: customerSignature.value,
     __draftId: isNewDraft ? createDraftId.value : '',
     __draftCreatedAt: isNewDraft ? undefined : '',
@@ -832,6 +913,8 @@ async function restoreDraftIfPresent() {
   draftHydrating.value = true
   selectedCustomer.value = preferredDraft.payload.selectedCustomer || null
   selectedHistoryId.value = preferredDraft.payload.selectedHistoryId || ''
+  selectedDeviceId.value = preferredDraft.payload.selectedDeviceId || preferredDraft.payload.servicePartState?.selectedDeviceId || ''
+  servicePartList.value = (preferredDraft.payload.servicePartState?.servicePartList || []).map(part => cloneServicePartDraft(part))
   installDeviceList.value = (preferredDraft.payload.installDeviceState?.installDeviceList || [createInstallDeviceDraft()]).map(d => cloneInstallDeviceDraft(d))
   selectedCoEngineerIds.value = Array.isArray(preferredDraft.payload.selectedCoEngineerIds)
     ? preferredDraft.payload.selectedCoEngineerIds.map(Number)
@@ -1600,6 +1683,43 @@ function applyCustomer(customer, sourceId = '') {
   if (customerChanged && currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
     resetInstallDeviceSelection()
   }
+  if (customerChanged) {
+    selectedDeviceId.value = ''
+    servicePartList.value = servicePartList.value.map((part) => ({ ...part, deviceId: '' }))
+  }
+}
+
+async function loadCustomerDevices(customerId) {
+  const id = Number(customerId || 0)
+  if (!id) {
+    customerDevices.value = []
+    selectedDeviceId.value = ''
+    servicePartList.value = servicePartList.value.map((part) => ({ ...part, deviceId: '' }))
+    return
+  }
+  loadingCustomerDevices.value = true
+  try {
+    const data = await api.get(`/customers/${id}/devices`)
+    customerDevices.value = data?.items || []
+    const validDeviceIds = new Set(customerDevices.value.map((device) => String(device.id)))
+    if (selectedDeviceId.value && !validDeviceIds.has(String(selectedDeviceId.value))) {
+      selectedDeviceId.value = ''
+    }
+    servicePartList.value = servicePartList.value.map((part) => (
+      part.deviceId && !validDeviceIds.has(String(part.deviceId)) ? { ...part, deviceId: '' } : part
+    ))
+  } catch {
+    customerDevices.value = []
+  } finally {
+    loadingCustomerDevices.value = false
+  }
+}
+
+function applySelectedDeviceToEmptyParts() {
+  if (!selectedDeviceId.value) return
+  servicePartList.value = servicePartList.value.map((part) => (
+    part.deviceId ? part : { ...part, deviceId: selectedDeviceId.value }
+  ))
 }
 
 function clearFieldError(field) {
@@ -1739,6 +1859,9 @@ function activeFieldErrorKeys() {
   }
   if (isInspectionOrder.value) {
     keys.push('inspectionDocument')
+  }
+  if (showServicePartSection.value) {
+    keys.push('serviceParts')
   }
   for (const key of activeRequiredTimeFieldKeys()) {
     if (!keys.includes(key)) keys.push(key)
@@ -2129,6 +2252,16 @@ async function load() {
         },
         detailData.item.id,
       )
+      selectedDeviceId.value = detailData.item.serviceType === 'repair' ? String(detailData.item.deviceId || '') : ''
+      servicePartList.value = (detailData.item.parts || []).map((part) => cloneServicePartDraft({
+        deviceId: part.deviceId || '',
+        actionType: part.actionType || defaultServicePartActionType(detailData.item.serviceType),
+        partName: part.partName || '',
+        partNo: part.partNo || '',
+        quantity: part.quantity || 1,
+        unit: part.unit || '个',
+        remark: part.remark || '',
+      }))
       formMode.value = normalizedMode
       onsiteDraft.value = createOnsiteDraft()
       remoteDraft.value = createRemoteDraft()
@@ -2669,6 +2802,7 @@ function buildSubmitPayload() {
     ? String(serviceDraft.value.deviceName || '').trim()
     : (issueSummary || [customerName, serviceModeDocumentLabel(currentServiceMode.value)].filter(Boolean).join(' / '))
   const isInstallOrder = effectiveServiceMode === 'onsite' && serviceDraft.value.serviceType === 'install'
+  const isRepairOrder = effectiveServiceMode === 'onsite' && serviceDraft.value.serviceType === 'repair'
   const installDevices = isInstallOrder
     ? installDeviceList.value
         .filter(d => d.model || d.pn || d.serialNo || d.remark)
@@ -2679,6 +2813,15 @@ function buildSubmitPayload() {
           deviceRemark: String(d.remark || '').trim() || null,
         }))
     : []
+  const parts = activeServiceParts().map((part) => ({
+    deviceId: Number(part.deviceId || selectedDeviceId.value || 0) || null,
+    actionType: currentPartActionType(),
+    partName: String(part.partName || '').trim(),
+    partNo: String(part.partNo || '').trim() || null,
+    quantity: Number(part.quantity || 1) || 1,
+    unit: String(part.unit || '').trim() || null,
+    remark: String(part.remark || '').trim() || null,
+  }))
   // First device is also mapped to legacy single fields for backward compat
   const firstDevice = installDevices[0] || {}
   const payload = {
@@ -2713,12 +2856,16 @@ function buildSubmitPayload() {
     actualEndAt: submitDateTimeValue(serviceDraft.value.actualEndAt),
     returnAt: submitDateTimeValue(serviceDraft.value.returnAt),
     customerSignature: effectiveServiceMode === 'remote' ? '' : customerSignature.value,
+    parts,
   }
   if (isInstallOrder) {
     payload.deviceModel = firstDevice.deviceModel
     payload.devicePn = firstDevice.devicePn
     payload.deviceSerialNo = firstDevice.deviceSerialNo
     payload.deviceRemark = firstDevice.deviceRemark
+  }
+  if (isRepairOrder) {
+    payload.deviceId = selectedDeviceId.value ? Number(selectedDeviceId.value) : null
   }
   return payload
 }
@@ -2818,6 +2965,7 @@ async function focusField(field) {
     contactPhone: phoneInput,
     issueDescription: issueDescriptionInput,
     workContent: isCollaborativeService.value ? collaborationWorkSection : serviceRecordInput,
+    serviceParts: servicePartsSection,
     result: serviceResultInput,
     actualStartAt: actualStartInput,
     actualEndAt: actualEndInput,
@@ -2839,6 +2987,22 @@ async function validateRequiredFields() {
   if (!isOfficeMode.value && !String(customer.contactPhone || '').trim()) errors.contactPhone = '请填写联系电话'
   if (showDeviceField.value && !String(serviceDraft.value.deviceName || '').trim()) {
     errors.deviceName = `请填写${deviceFieldLabel.value}`
+  }
+  if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
+    const hasInstallDeviceWithoutModel = installDeviceList.value.some((device) => (
+      [device.model, device.pn, device.serialNo, device.remark].some((value) => String(value || '').trim())
+      && !String(device.model || '').trim()
+    ))
+    if (hasInstallDeviceWithoutModel) errors.installDeviceModel = '请填写安装设备型号'
+  }
+  if (showServicePartSection.value) {
+    const invalidPart = servicePartList.value.find((part) => {
+      if (!servicePartHasContent(part)) return false
+      return !String(part.deviceId || '').trim()
+        || !String(part.partName || '').trim()
+        || Number(part.quantity || 0) <= 0
+    })
+    if (invalidPart) errors.serviceParts = `请补全${servicePartSectionTitle.value}的设备、配件名称和数量`
   }
   if (!isOfficeMode.value && !String(serviceDraft.value.issueDescription || '').trim()) errors.issueDescription = '请填写问题描述'
   if (!combinedWorkContent()) errors.workContent = currentServiceMode.value === 'remote' ? '请填写处理记录' : '请填写服务内容 / 现场处理记录'
@@ -3124,9 +3288,29 @@ watch(aiDraftEnabled, (enabled) => {
 })
 
 watch(
-  [selectedCustomer, selectedHistoryId, selectedCoEngineerIds, formMode, onsiteDraft, remoteDraft, officeDraft, customerSignature],
+  [selectedCustomer, selectedHistoryId, selectedDeviceId, selectedCoEngineerIds, formMode, onsiteDraft, remoteDraft, officeDraft, installDeviceList, servicePartList, customerSignature],
   () => scheduleDraftSave(),
   { deep: true },
+)
+
+watch(
+  () => selectedCustomer.value?.id,
+  (customerId) => {
+    loadCustomerDevices(customerId)
+  },
+)
+
+watch(selectedDeviceId, () => {
+  applySelectedDeviceToEmptyParts()
+})
+
+watch(
+  () => `${currentServiceMode.value}:${serviceDraft.value.serviceType}`,
+  () => {
+    const actionType = currentPartActionType()
+    servicePartList.value = servicePartList.value.map((part) => ({ ...part, actionType }))
+    clearInactiveFieldErrors()
+  },
 )
 
 watch(
@@ -3406,6 +3590,18 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               </option>
             </select>
           </label>
+          <label v-if="showExistingDevicePicker" class="field select-field">
+            <span>{{ zh('关联设备') }}</span>
+            <select v-model="selectedDeviceId" :disabled="loadingCustomerDevices || !customerDevices.length" @change="applySelectedDeviceToEmptyParts">
+              <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备...' : customerDevices.length ? '不关联设备' : '该客户暂无设备') }}</option>
+              <option v-for="device in customerDevices" :key="device.id" :value="String(device.id)">
+                {{ zh(deviceDisplayName(device)) }}
+              </option>
+            </select>
+            <small v-if="selectedDeviceId">
+              {{ zh(deviceMetaText(customerDevices.find((device) => String(device.id) === String(selectedDeviceId))) || '已选择关联设备') }}
+            </small>
+          </label>
           <div v-if="!isOfficeMode" ref="coEngineerField" class="field co-engineer-field">
             <span>{{ zh('协同工程师') }}</span>
             <button
@@ -3564,7 +3760,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
             </div>
             <div class="field-grid">
               <label class="field device-model-autocomplete">
-                <span>{{ zh('设备型号 / Model') }}</span>
+                <span>{{ zh('设备型号 / Model *') }}</span>
                 <div class="autocomplete-wrapper">
                   <input
                     v-model.trim="device.model"
@@ -3604,6 +3800,67 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               </label>
             </div>
           </div>
+          <small v-if="fieldErrors.installDeviceModel" class="field-error">{{ zh(fieldErrors.installDeviceModel) }}</small>
+        </div>
+
+        <div
+          v-if="showServicePartSection"
+          ref="servicePartsSection"
+          class="install-device-card service-part-card"
+          :class="{ 'has-error': fieldErrors.serviceParts }"
+        >
+          <div class="card-row">
+            <div>
+              <span class="field-label">{{ zh(servicePartSectionTitle) }}</span>
+              <small class="collaboration-hint">{{ zh(servicePartSectionHint) }}</small>
+            </div>
+            <button type="button" class="btn-add-row" @click="addServicePart">＋ {{ zh('添加配件') }}</button>
+          </div>
+          <div v-if="!servicePartList.length" class="empty-service-parts">
+            {{ zh('本次没有配件可留空。') }}
+          </div>
+          <div
+            v-for="(part, partIdx) in servicePartList"
+            :key="partIdx"
+            class="install-device-row service-part-row"
+          >
+            <div class="install-device-row-head">
+              <span class="install-device-row-label">{{ zh(servicePartSectionTitle) }} {{ partIdx + 1 }}</span>
+              <button type="button" class="btn-remove-row" @click="removeServicePart(partIdx)">✕</button>
+            </div>
+            <div class="field-grid">
+              <label class="field select-field">
+                <span>{{ zh('关联设备') }}<b>*</b></span>
+                <select v-model="part.deviceId" :disabled="loadingCustomerDevices || !customerDevices.length" @change="clearFieldError('serviceParts')">
+                  <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备...' : customerDevices.length ? '选择设备' : '该客户暂无设备') }}</option>
+                  <option v-for="device in customerDevices" :key="device.id" :value="String(device.id)">
+                    {{ zh(deviceDisplayName(device)) }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span>{{ zh('配件名称') }}<b>*</b></span>
+                <input v-model.trim="part.partName" :placeholder="zh('例如：内存、硬盘、电源模块')" @input="clearFieldError('serviceParts')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('部件号 / PN') }}</span>
+                <input v-model.trim="part.partNo" :placeholder="zh('输入配件 PN')" @input="clearFieldError('serviceParts')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('数量') }}<b>*</b></span>
+                <input v-model.number="part.quantity" type="number" min="0.01" step="1" @input="clearFieldError('serviceParts')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('单位') }}</span>
+                <input v-model.trim="part.unit" :placeholder="zh('个 / 条 / 块')" @input="clearFieldError('serviceParts')" />
+              </label>
+              <label class="field">
+                <span>{{ zh('备注') }}</span>
+                <input v-model.trim="part.remark" :placeholder="zh('故障槽位、新旧件说明等')" @input="clearFieldError('serviceParts')" />
+              </label>
+            </div>
+          </div>
+          <small v-if="fieldErrors.serviceParts" class="field-error">{{ zh(fieldErrors.serviceParts) }}</small>
         </div>
 
         <div class="field-grid">
@@ -4076,6 +4333,18 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 .install-device-card .btn-add-row:hover {
   background: #eff6ff;
   color: #2563eb;
+}
+
+.service-part-card.has-error {
+  border-color: rgba(220, 38, 38, 0.42);
+  background: #fffafa;
+}
+
+.empty-service-parts {
+  border-top: 1px solid #e2e6ed;
+  padding: 12px 0 2px;
+  color: #667085;
+  font-size: 13px;
 }
 
 .install-device-row {

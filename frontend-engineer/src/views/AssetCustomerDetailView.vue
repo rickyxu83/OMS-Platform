@@ -53,11 +53,6 @@ function contactsFor(item) {
   return []
 }
 
-function telHref(phone) {
-  const normalized = String(phone || '').trim().replace(/[\s()-]/g, '')
-  return normalized ? `tel:${normalized}` : ''
-}
-
 function fillForm(item) {
   const contacts = contactsFor(item)
   form.value = {
@@ -86,6 +81,11 @@ function displayDate(value) {
 function maintenanceTypeLabel(value) {
   const labels = { none: '无维护', original_manufacturer: '原厂维护', vendor: '原厂维护', our_maintenance: '我方维护', our: '我方维护' }
   return labels[value || 'none'] || value || '未维护'
+}
+
+function deviceDisplayName(device) {
+  if (!device) return ''
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`
 }
 
 function warrantyDate(device) {
@@ -340,10 +340,9 @@ onMounted(() => {
               <strong>{{ zh('联系人及电话') }}</strong>
               <button class="ghost" type="button" @click="addContact"><PreviewIcon name="new" />{{ zh('新增') }}</button>
             </div>
-            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row" :class="{ 'asset-contact-row-has-call': telHref(contact.phone) }">
+            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row">
               <input v-model="contact.name" type="text" :placeholder="zh('联系人')" />
               <input v-model="contact.phone" type="tel" :placeholder="zh('电话')" />
-              <a v-if="telHref(contact.phone)" class="ghost asset-call-link" :href="telHref(contact.phone)" @click.stop><PreviewIcon name="contact" />{{ zh('拨号') }}</a>
               <button class="ghost danger-lite" type="button" @click="removeContact(index)"><PreviewIcon name="trash" /></button>
             </div>
           </section>
@@ -363,7 +362,7 @@ onMounted(() => {
           <RouterLink v-for="device in devices" :key="device.id" class="asset-linked-device-card" :to="`/assets/devices/${device.id}`">
             <div>
               <span class="asset-record-kicker" :class="`asset-warranty-${warrantyStatus(device).className}`">{{ zh(warrantyStatus(device).label) }}</span>
-              <h3>{{ zh(device.name || '未命名设备') }}</h3>
+              <h3>{{ zh(deviceDisplayName(device)) }}</h3>
               <p>{{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}</p>
             </div>
             <div class="asset-linked-maintenance">

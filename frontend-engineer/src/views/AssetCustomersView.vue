@@ -556,10 +556,9 @@ onMounted(() => {
               <strong>{{ zh('联系人列表') }}</strong>
               <button class="ghost" type="button" @click="addContact"><PreviewIcon name="new" />{{ zh('新增') }}</button>
             </div>
-            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row" :class="{ 'asset-contact-row-has-call': telHref(contact.phone) }">
+            <div v-for="(contact, index) in form.contacts" :key="index" class="asset-contact-row">
               <input v-model="contact.name" type="text" :placeholder="zh('联系人')" />
               <input v-model="contact.phone" type="tel" :placeholder="zh('电话')" />
-              <a v-if="telHref(contact.phone)" class="ghost asset-call-link" :href="telHref(contact.phone)" @click.stop><PreviewIcon name="contact" />{{ zh('拨号') }}</a>
               <button class="ghost danger-lite" type="button" @click="removeContact(index)"><PreviewIcon name="trash" /></button>
             </div>
           </section>

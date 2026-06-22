@@ -42,6 +42,11 @@ function displayDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 10) : '未维护'
 }
 
+function deviceDisplayName(device) {
+  if (!device) return ''
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`
+}
+
 function warrantyStatus(device) {
   if (!device || device.maintenanceType === 'none') return { label: '无维护', className: 'neutral' }
   const date = device.maintenanceEnd || device.warrantyUntil || ''
@@ -119,7 +124,7 @@ onMounted(() => {
           <RouterLink v-for="device in devices" :key="device.id" class="asset-linked-device-card" :to="`/assets/devices/${device.id}`">
             <div>
               <span class="asset-record-kicker" :class="`asset-warranty-${warrantyStatus(device).className}`">{{ zh(warrantyStatus(device).label) }}</span>
-              <h3>{{ zh(device.name || '未命名设备') }}</h3>
+              <h3>{{ zh(deviceDisplayName(device)) }}</h3>
               <p>{{ zh(device.customerName || '未关联客户') }} · SN: {{ device.serialNo || zh('未维护') }}</p>
             </div>
             <div class="asset-linked-maintenance">

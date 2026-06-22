@@ -57,7 +57,8 @@ async function loadScheduleDevices(scheduleIds, connection = null) {
     return `:id${i}`
   })
   const rows = await execute(
-    `SELECT sd.schedule_id, sd.device_id, d.name AS device_name
+    `SELECT sd.schedule_id, sd.device_id,
+            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
      FROM inspection_schedule_devices sd
      LEFT JOIN devices d ON d.id = sd.device_id
      WHERE sd.schedule_id IN (${placeholders.join(',')})`,
@@ -333,7 +334,9 @@ async function createInspectionOrder(connection, schedule, occurrenceDate, devic
 async function loadInspectionOrderForMail(orderId) {
   const rows = await query(
     `SELECT so.id, so.order_no, so.customer_id, c.name AS customer_name,
-            so.device_id, d.name AS device_name, so.issue_description,
+            so.device_id,
+            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+            so.issue_description,
             so.planned_start_at, so.planned_end_at
      FROM service_orders so
      JOIN customers c ON c.id = so.customer_id

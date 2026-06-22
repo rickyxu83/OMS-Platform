@@ -33,6 +33,19 @@ async function columnExists(connection, tableName, columnName) {
   return Number(rows[0].total) > 0
 }
 
+async function columnIsNullable(connection, tableName, columnName) {
+  const [rows] = await connection.execute(
+    `SELECT IS_NULLABLE AS is_nullable
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = :tableName
+       AND COLUMN_NAME = :columnName
+     LIMIT 1`,
+    { tableName, columnName },
+  )
+  return String(rows[0]?.is_nullable || '').toUpperCase() === 'YES'
+}
+
 async function indexExists(connection, tableName, indexName) {
   const [rows] = await connection.execute(
     `SELECT COUNT(*) AS total
@@ -121,6 +134,12 @@ async function ensureMaintenancePartiesTable(connection) {
 }
 
 async function ensureDeviceColumns(connection) {
+  if (await columnExists(connection, 'devices', 'name')) {
+    if (!(await columnIsNullable(connection, 'devices', 'name'))) {
+      await connection.execute('ALTER TABLE devices MODIFY COLUMN name VARCHAR(128) NULL')
+    }
+  }
+
   if (await columnExists(connection, 'devices', 'maintenance_start_at')) {
     await connection.execute('ALTER TABLE devices CHANGE COLUMN maintenance_start_at maintenance_start DATE NULL')
   }

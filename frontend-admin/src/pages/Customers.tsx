@@ -59,6 +59,10 @@ interface CustomerDevice {
   warrantyUntil?: string;
 }
 
+function customerDeviceLabel(device: CustomerDevice) {
+  return device.model || device.name || device.serialNo || `#${device.id}`;
+}
+
 interface CustomerSchedule {
   id: string | number;
   deviceNames?: string[];
@@ -1525,7 +1529,7 @@ export function Customers() {
                           <div className="mt-3 space-y-2">
                             {devices.length ? devices.slice(0, 8).map((device) => (
                               <div key={device.id} className="rounded-md bg-slate-50 px-3 py-2">
-                                <div className="truncate text-sm font-medium">{device.name || `#${device.id}`}</div>
+                                <div className="truncate text-sm font-medium">{customerDeviceLabel(device)}</div>
                                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                                   {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
                                 </div>

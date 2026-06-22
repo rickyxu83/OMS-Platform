@@ -53,6 +53,11 @@ function canonicalMaintenanceType(value) {
   return MAINTENANCE_TYPE_ALIASES[type] || type
 }
 
+function deviceDisplayName(device) {
+  if (!device) return ''
+  return device.model || device.name || device.serialNo || `设备 #${device.id}`
+}
+
 const filteredDevices = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
   return devices.value.filter((item) => {
@@ -222,8 +227,8 @@ async function saveDevice() {
     customerDropdownOpen.value = true
     return
   }
-  if (!form.value.name.trim()) {
-    error.value = '请输入设备名称'
+  if (!form.value.model.trim()) {
+    error.value = '请输入设备型号'
     return
   }
   saving.value = true
@@ -232,8 +237,8 @@ async function saveDevice() {
     const type = canonicalMaintenanceType(form.value.maintenanceType)
     const payload = {
       customerId: effectiveCustomerId,
-      name: form.value.name.trim(),
-      model: form.value.model.trim() || undefined,
+      name: form.value.name.trim() || null,
+      model: form.value.model.trim(),
       pn: form.value.pn.trim() || undefined,
       serialNo: form.value.serialNo.trim() || undefined,
       maintenanceType: type,
@@ -374,7 +379,7 @@ onMounted(async () => {
         <header>
           <div>
             <span class="asset-record-kicker">{{ zh(device.customerName || '未关联客户') }}</span>
-            <h2>{{ zh(device.name || '未命名设备') }}</h2>
+            <h2>{{ zh(deviceDisplayName(device)) }}</h2>
           </div>
           <button class="ghost" type="button" @click.stop="openEdit(device)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
@@ -426,8 +431,8 @@ onMounted(async () => {
               </div>
             </div>
           </label>
-          <label>{{ zh('设备名称 *') }}<input v-model="form.name" type="text" :placeholder="zh('例如 精密空调-01')" /></label>
-          <label>{{ zh('设备型号') }}
+          <label>{{ zh('主机名') }}<input v-model="form.name" type="text" :placeholder="zh('例如 sz5eap01，可不填')" /></label>
+          <label>{{ zh('设备型号 *') }}
             <div class="asset-combo-field">
               <input
                 v-model="form.model"
@@ -450,25 +455,25 @@ onMounted(async () => {
               </div>
             </div>
           </label>
-          <label>{{ zh('PN') }}<input v-model="form.pn" type="text" /></label>
-          <label>{{ zh('序列号') }}<input v-model="form.serialNo" type="text" /></label>
-          <label>{{ zh('维保类型') }}
+          <label>{{ zh('部件号 PN') }}<input v-model="form.pn" type="text" :placeholder="zh('部件号')" /></label>
+          <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号')" /></label>
+          <label>{{ zh('维护类型') }}
             <select v-model="form.maintenanceType">
               <option value="none">{{ zh('无维护') }}</option>
-              <option value="original_manufacturer">{{ zh('原厂维护') }}</option>
               <option value="our_maintenance">{{ zh('我方维护') }}</option>
+              <option value="original_manufacturer">{{ zh('原厂维护') }}</option>
             </select>
           </label>
           <label>{{ zh('维保方') }}
             <select v-model="form.maintenancePartyId" :disabled="form.maintenanceType === 'none'">
-              <option value="">{{ zh('请选择维保方') }}</option>
+              <option value="">{{ zh(form.maintenanceType === 'none' ? '无维护' : '选择维保方') }}</option>
               <option v-for="party in parties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
             </select>
           </label>
-          <label>{{ zh('维保开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
-          <label>{{ zh('维保结束') }}<input v-model="form.maintenanceEnd" type="date" /></label>
-          <label>{{ zh('设备位置') }}<input v-model="form.location" type="text" /></label>
-          <label>{{ zh('设备状态') }}
+          <label>{{ zh('维护开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
+          <label>{{ zh('维护截止') }}<input v-model="form.maintenanceEnd" type="date" /></label>
+          <label>{{ zh('位置') }}<input v-model="form.location" type="text" :placeholder="zh('安装位置')" /></label>
+          <label>{{ zh('状态') }}
             <select v-model="form.status">
               <option value="active">{{ zh('在用') }}</option>
               <option value="inactive">{{ zh('停用') }}</option>
@@ -476,7 +481,7 @@ onMounted(async () => {
               <option value="scrapped">{{ zh('已报废') }}</option>
             </select>
           </label>
-          <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
+          <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2" :placeholder="zh('补充说明')"></textarea></label>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>

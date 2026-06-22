@@ -864,7 +864,7 @@ async function merge(req, res) {
 
 async function devices(req, res) {
   const rows = await query(
-    `SELECT d.id, d.customer_id, d.name, d.model, d.serial_no, d.remark, d.maintenance_type,
+    `SELECT d.id, d.customer_id, d.name, d.model, d.pn, d.serial_no, d.remark, d.maintenance_type,
             d.maintenance_party_id, mp.name AS maintenance_party_name, mp.phone AS maintenance_party_phone,
             d.maintenance_start, d.maintenance_end, d.installation_source_service_order_id, d.location,
             d.warranty_until, d.created_at, d.updated_at
@@ -881,6 +881,7 @@ async function devices(req, res) {
       customerId: row.customer_id,
       name: row.name,
       model: row.model,
+      pn: row.pn,
       serialNo: row.serial_no,
       remark: row.remark,
       maintenanceType: row.maintenance_type,
