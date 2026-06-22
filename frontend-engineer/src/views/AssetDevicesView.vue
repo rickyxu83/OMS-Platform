@@ -388,7 +388,7 @@ onMounted(async () => {
       <p v-if="!loading && !filteredDevices.length" class="empty-state">{{ zh('暂无设备资产') }}</p>
     </section>
 
-    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑设备' : '新增设备')">
+    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑设备' : '新增设备')" @click.self="closeDialog">
       <div class="signature-modal-shell asset-editor-shell">
         <header class="signature-modal-head">
           <div>

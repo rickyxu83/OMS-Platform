@@ -460,7 +460,7 @@ onMounted(() => {
       <p v-if="!loading && !filteredCustomers.length" class="empty-state">{{ zh('暂无客户档案') }}</p>
     </section>
 
-    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑客户' : '新增客户')">
+    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑客户' : '新增客户')" @click.self="closeDialog">
       <div class="signature-modal-shell asset-editor-shell">
         <header class="signature-modal-head">
           <div>

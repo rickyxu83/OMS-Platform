@@ -221,7 +221,7 @@ onMounted(() => {
       <p v-if="!loading && !filteredParties.length" class="empty-state">{{ zh('暂无维保方资料') }}</p>
     </section>
 
-    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑维保方' : '新增维保方')">
+    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑维保方' : '新增维保方')" @click.self="closeDialog">
       <div class="signature-modal-shell asset-editor-shell">
         <header class="signature-modal-head">
           <div>
