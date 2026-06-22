@@ -160,6 +160,7 @@ function createDraftRouteByMode(mode, draftId = '') {
 
 function pushDraftCard(drafts, { keyPrefix, storageKey = '', linkedOrderId = null, remoteDraft = false, updatedAt = '', createdAt = '', payload, mode, draftId = '' }) {
   if (!payload || payload.__draftDeleted) return
+  if (!linkedOrderId && isSubmittedCreateDraftPayload(payload)) return
   const customer = payload.selectedCustomer || {}
   const serviceDraft = payload.serviceDraft || {}
   const normalizedDraftId = String(draftId || payload.__draftId || '').trim()
@@ -203,6 +204,10 @@ function withDraftClientUpdatedAt(payload, clientUpdatedAt) {
 
 function deletedDraftTime(remoteDraft) {
   return toDraftTimestamp(remoteDraft?.payload?.__draftDeletedAt || remoteDraft?.clientUpdatedAt || remoteDraft?.updatedAt)
+}
+
+function isSubmittedCreateDraftPayload(payload) {
+  return Boolean(payload?.__submittedBridge) || Number(payload?.__submittedOrderId || 0) > 0
 }
 
 async function migrateLocalDraftEntries(entries) {
@@ -270,7 +275,7 @@ async function migrateLocalDraftEntries(entries) {
 
 async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
   const drafts = []
-  const localEntries = []
+  let localEntries = []
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index)
@@ -300,6 +305,16 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
     }
   }
 
+  const submittedCreateEntries = localEntries.filter((entry) => !entry.routeInfo.orderId && isSubmittedCreateDraftPayload(entry.payload))
+  if (submittedCreateEntries.length) {
+    localEntries = localEntries.filter((entry) => entry.routeInfo.orderId || !isSubmittedCreateDraftPayload(entry.payload))
+    await Promise.all(
+      submittedCreateEntries.map((entry) =>
+        clearSelfReportDraft(null, entry.mode, entry.draftId).catch(() => {}),
+      ),
+    )
+  }
+
   const { hiddenLocalKeys, migratedOrderIds } = await migrateLocalDraftEntries(localEntries)
   localEntries.forEach((entry) => {
     if (hiddenLocalKeys.has(entry.key)) return
@@ -327,7 +342,12 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
         await clearSelfReportDraft(null)
       }
     } else if (remoteCreateDraft?.payload) {
+      const submittedRemoteDrafts = []
       remoteBuckets.forEach(({ mode, payload, draftId, createdAt, updatedAt }) => {
+        if (isSubmittedCreateDraftPayload(payload)) {
+          submittedRemoteDrafts.push({ mode, draftId })
+          return
+        }
         pushDraftCard(drafts, {
           keyPrefix: 'remote-draft:new',
           storageKey: '',
@@ -340,6 +360,13 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
           draftId,
         })
       })
+      if (submittedRemoteDrafts.length) {
+        await Promise.all(
+          submittedRemoteDrafts.map((draft) =>
+            clearSelfReportDraft(null, draft.mode, draft.draftId).catch(() => {}),
+          ),
+        )
+      }
     }
   } catch {
     // Remote draft lookup is best-effort so the list still works offline.

@@ -783,45 +783,6 @@ async function syncDraftToRemote(payload, clientUpdatedAt) {
   await saveRemoteSelfReportDraft(null, mergedPayload, clientUpdatedAt)
 }
 
-async function preserveSubmittedCreateDraftBridge(orderId) {
-  const submittedOrderId = Number(orderId || 0)
-  if (submittedOrderId <= 0 || draftTargetOrderId()) return
-
-  const scopedMode = createDraftRouteMode()
-  const scopedDraftId = createDraftRouteId()
-  const clientUpdatedAt = new Date().toISOString()
-  const basePayload = currentDraftPayload() || draftSnapshot()
-  if (!basePayload) return
-
-  const bridgePayload = {
-    ...basePayload,
-    __draftClientUpdatedAt: clientUpdatedAt,
-    __submittedOrderId: submittedOrderId,
-    __submittedBridge: true,
-  }
-
-  const existingLocalDraft = readLocalSelfReportDraft(null)
-  writeLocalSelfReportDraft(
-    null,
-    mergeScopedDraftPayload(existingLocalDraft?.data, null, scopedMode, bridgePayload, clientUpdatedAt, scopedDraftId),
-  )
-
-  if (!isOnline.value) return
-
-  const existingRemoteDraft = await fetchRemoteSelfReportDraft(null).catch(() => null)
-  const mergedRemotePayload = mergeScopedDraftPayload(
-    existingRemoteDraft?.payload,
-    null,
-    scopedMode,
-    bridgePayload,
-    clientUpdatedAt,
-    scopedDraftId,
-  )
-  if (mergedRemotePayload) {
-    await saveRemoteSelfReportDraft(null, mergedRemotePayload, clientUpdatedAt)
-  }
-}
-
 function currentDraftPayload() {
   const orderId = draftTargetOrderId()
   const scopedMode = createDraftRouteMode()
@@ -2815,8 +2776,8 @@ async function submitServiceSheet() {
     try {
       if (route.params.id) {
         await clearSelfReportDraft(draftTargetOrderId(), createDraftRouteMode(), createDraftRouteId())
-      } else if (result?.id) {
-        await preserveSubmittedCreateDraftBridge(result.id)
+      } else {
+        await clearSelfReportDraft(null, createDraftRouteMode(), createDraftRouteId())
       }
     } catch (cleanupError) {
       console.warn('[service-sheet] submitted, but draft cleanup failed', cleanupError)
