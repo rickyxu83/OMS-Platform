@@ -1529,6 +1529,11 @@ h2 {
   z-index: 1;
 }
 
+.customer-contact-section:has(.customer-company-options, .contact-options),
+.service-info-section:has(.co-engineer-menu) {
+  z-index: 80;
+}
+
 .contact-options {
   position: absolute;
   z-index: 40;
@@ -1860,7 +1865,7 @@ h2 {
 }
 
 .work-detail-section.has-device-model-dropdown {
-  z-index: 8;
+  z-index: 80;
 }
 
 .service-info-section,
@@ -1885,13 +1890,17 @@ h2 {
   z-index: 2;
 }
 
+.install-device-card:has(.autocomplete-dropdown) {
+  z-index: 90;
+}
+
 .install-device-row {
   position: relative;
   z-index: 1;
 }
 
 .install-device-row:has(.autocomplete-dropdown) {
-  z-index: 9;
+  z-index: 100;
 }
 
 .issue-summary-field textarea,
@@ -3370,8 +3379,9 @@ h2 {
 }
 
 .task-card-main p {
+  margin: 0;
   color: #64748b;
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 .task-card-main > p:not(.task-card-hint) {
@@ -3379,6 +3389,7 @@ h2 {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  padding-bottom: 1px;
 }
 
 .task-card-main .task-inspection-context {

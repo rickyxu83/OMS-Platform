@@ -4344,6 +4344,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 
 .device-model-autocomplete .autocomplete-wrapper {
   position: relative;
+  z-index: 120;
 }
 
 .device-model-autocomplete .autocomplete-dropdown {
@@ -4351,11 +4352,11 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 200;
   background: #fff;
   border: 1px solid #d0d5dd;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
   max-height: 240px;
   overflow-y: auto;
   list-style: none;
