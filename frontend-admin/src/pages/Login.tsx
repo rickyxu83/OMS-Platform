@@ -54,6 +54,7 @@ export function Login() {
       usernamePlaceholder: "请输入账号",
       passwordPlaceholder: "请输入密码",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司 版权所有",
+      icpNotice: "浙ICP备2026045692号",
       licenseNotice: "OMS Platform 平台已开源发布，遵循 GNU General Public License v3.0 (GPL-3.0)。",
       sourceNotice: "源码及许可证信息请访问：",
     },
@@ -81,6 +82,7 @@ export function Login() {
       usernamePlaceholder: "請輸入帳號",
       passwordPlaceholder: "請輸入密碼",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司 版權所有",
+      icpNotice: "浙ICP备2026045692号",
       licenseNotice: "OMS Platform 平台已開源發布，遵循 GNU General Public License v3.0 (GPL-3.0)。",
       sourceNotice: "原始碼及授權資訊請訪問：",
     },
@@ -324,6 +326,11 @@ export function Login() {
 
       <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-xs leading-relaxed text-gray-500 sm:bottom-4">
         <p>{t.copyrightNotice}</p>
+        <p>
+          <a className="underline-offset-2 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+            {t.icpNotice}
+          </a>
+        </p>
         <p>{t.licenseNotice}</p>
         <p>
           {t.sourceNotice}
