@@ -1,6 +1,7 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./internal')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
@@ -492,6 +493,7 @@ async function list(req, res) {
         GROUP BY so.customer_id
       ) es ON es.customer_id = c.id
      WHERE (:salesperson = '' OR c.salesperson = :salesperson)
+       AND NOT (c.name = :internalCustomerName OR c.name_key = :internalCustomerNameKey)
        ${engineerCustomerWhere}
        AND (
          :keyword = ''
@@ -508,7 +510,15 @@ async function list(req, res) {
        )
      ORDER BY ${orderBy}
      LIMIT ${normalizedPageSize}`,
-    { keyword, salesperson, effectiveEngineerId, likeKeyword: `%${keyword}%`, likeKeywordKey: `%${keywordKey}%` },
+    {
+      keyword,
+      salesperson,
+      effectiveEngineerId,
+      likeKeyword: `%${keyword}%`,
+      likeKeywordKey: `%${keywordKey}%`,
+      internalCustomerName: INTERNAL_CUSTOMER_NAME,
+      internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+    },
   )
 
   await cleanupDuplicateContacts(rows.map((row) => row.id))

@@ -2,6 +2,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { effectiveSettings } = require('../settings/controller')
+const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
 const { pinyin } = require('pinyin-pro')
 
 const FIELD_LIMITS = {
@@ -377,12 +378,17 @@ async function loadDatabaseCustomerCandidates(engineerId) {
            )
          GROUP BY so.customer_id
        ) es ON es.customer_id = c.id
+      WHERE NOT (c.name = :internalCustomerName OR c.name_key = :internalCustomerNameKey)
       ORDER BY COALESCE(es.last_used_at, c.updated_at, c.created_at) DESC,
                COALESCE(es.engineer_order_count, 0) DESC,
                COALESCE(soc.service_order_count, 0) DESC,
                c.id DESC
       LIMIT 1200`,
-    { engineerId: Number(engineerId || 0) || 0 },
+    {
+      engineerId: Number(engineerId || 0) || 0,
+      internalCustomerName: INTERNAL_CUSTOMER_NAME,
+      internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+    },
   )
   if (!rows.length) return []
 

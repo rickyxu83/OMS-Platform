@@ -777,8 +777,15 @@ async function writeAudit(connection, actorId, targetId, action, detail = {}) {
   )
 }
 
+function normalizeCustomerContactPhone(phone) {
+  const text = String(phone || '').trim()
+  if (!text || text.includes('@')) return ''
+  return text
+}
+
 async function recordCustomerContact(connection, customerId, name, phone = null, engineerId = null) {
   if (!customerId || !name) return
+  const normalizedPhone = normalizeCustomerContactPhone(phone)
 
   const [existingRows] = await connection.execute(
     `SELECT id, use_count
@@ -793,12 +800,12 @@ async function recordCustomerContact(connection, customerId, name, phone = null,
     const duplicateUseCount = existingRows.slice(1).reduce((total, row) => total + Number(row.use_count || 0), 0)
     await connection.execute(
       `UPDATE customer_contacts
-       SET phone = :phone,
+       SET phone = COALESCE(:phone, phone),
            use_count = use_count + :duplicateUseCount + 1,
            last_used_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = :id`,
-      { id: keeper.id, phone: phone || null, duplicateUseCount },
+      { id: keeper.id, phone: normalizedPhone || null, duplicateUseCount },
     )
     if (duplicateIds.length) {
       await mergeDuplicateCustomerContacts(connection, keeper.id, duplicateIds)
@@ -815,7 +822,7 @@ async function recordCustomerContact(connection, customerId, name, phone = null,
     {
       customerId,
       name,
-      phone: phone || null,
+      phone: normalizedPhone || null,
     },
   )
   if (engineerId && result.insertId) {
@@ -1673,12 +1680,15 @@ async function createSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const shouldSyncCustomerProfile = effectiveServiceMode !== 'office'
+  const customerProfileContactName = shouldSyncCustomerProfile ? contactName : null
+  const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
   const normalizedResult = normalizeReportResult(result)
   const missing = []
   if (!customerId && !customerName) missing.push('客户名称')
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
-  if (!contactName) missing.push('客户联系人')
-  if (!contactPhone) missing.push('联系人电话')
+  if (effectiveServiceMode !== 'office' && !contactName) missing.push('客户联系人')
+  if (effectiveServiceMode !== 'office' && !contactPhone) missing.push('联系人电话')
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
@@ -1723,21 +1733,21 @@ async function createSelfReport(req, res) {
            WHERE id = :customerId`,
           {
             customerId: effectiveCustomerId,
-            customerAddress: customerAddress || null,
-            contactName: contactName || null,
-            contactPhone: contactPhone || null,
-            customerLatitude: customerLatitude || null,
-            customerLongitude: customerLongitude || null,
-            customerMapProvider: customerMapProvider || null,
-            customerMapPoiId: customerMapPoiId || null,
-            customerMapPoiName: customerMapPoiName || null,
-            customerMapAddress: customerMapAddress || null,
+            customerAddress: shouldSyncCustomerProfile ? customerAddress || null : null,
+            contactName: customerProfileContactName || null,
+            contactPhone: customerProfileContactPhone || null,
+            customerLatitude: shouldSyncCustomerProfile ? customerLatitude || null : null,
+            customerLongitude: shouldSyncCustomerProfile ? customerLongitude || null : null,
+            customerMapProvider: shouldSyncCustomerProfile ? customerMapProvider || null : null,
+            customerMapPoiId: shouldSyncCustomerProfile ? customerMapPoiId || null : null,
+            customerMapPoiName: shouldSyncCustomerProfile ? customerMapPoiName || null : null,
+            customerMapAddress: shouldSyncCustomerProfile ? customerMapAddress || null : null,
           },
         )
       } else {
         const customerCode = await nextCustomerCode(connection)
         const [customerResult] = await connection.execute(
-        `INSERT INTO customers (
+          `INSERT INTO customers (
            name, name_key, code, address, contact_name, contact_phone, latitude, longitude,
            map_provider, map_poi_id, map_poi_name, map_address
          )
@@ -1749,15 +1759,15 @@ async function createSelfReport(req, res) {
             customerName,
             nameKey,
             customerCode,
-            customerAddress: customerAddress || null,
-            contactName: contactName || null,
-            contactPhone: contactPhone || null,
-            customerLatitude: customerLatitude || null,
-            customerLongitude: customerLongitude || null,
-            customerMapProvider: customerMapProvider || null,
-            customerMapPoiId: customerMapPoiId || null,
-            customerMapPoiName: customerMapPoiName || null,
-            customerMapAddress: customerMapAddress || null,
+            customerAddress: shouldSyncCustomerProfile ? customerAddress || null : null,
+            contactName: customerProfileContactName || null,
+            contactPhone: customerProfileContactPhone || null,
+            customerLatitude: shouldSyncCustomerProfile ? customerLatitude || null : null,
+            customerLongitude: shouldSyncCustomerProfile ? customerLongitude || null : null,
+            customerMapProvider: shouldSyncCustomerProfile ? customerMapProvider || null : null,
+            customerMapPoiId: shouldSyncCustomerProfile ? customerMapPoiId || null : null,
+            customerMapPoiName: shouldSyncCustomerProfile ? customerMapPoiName || null : null,
+            customerMapAddress: shouldSyncCustomerProfile ? customerMapAddress || null : null,
           },
         )
         effectiveCustomerId = customerResult.insertId
@@ -1779,22 +1789,24 @@ async function createSelfReport(req, res) {
          WHERE id = :customerId`,
         {
           customerId: effectiveCustomerId,
-          customerName: customerName || null,
-          customerNameKey: customerName ? customerNameKey(customerName) : null,
-          customerAddress: customerAddress || null,
-          contactName: contactName || null,
-          contactPhone: contactPhone || null,
-          customerLatitude: customerLatitude || null,
-          customerLongitude: customerLongitude || null,
-          customerMapProvider: customerMapProvider || null,
-          customerMapPoiId: customerMapPoiId || null,
-          customerMapPoiName: customerMapPoiName || null,
-          customerMapAddress: customerMapAddress || null,
+          customerName: shouldSyncCustomerProfile ? customerName || null : null,
+          customerNameKey: shouldSyncCustomerProfile && customerName ? customerNameKey(customerName) : null,
+          customerAddress: shouldSyncCustomerProfile ? customerAddress || null : null,
+          contactName: customerProfileContactName || null,
+          contactPhone: customerProfileContactPhone || null,
+          customerLatitude: shouldSyncCustomerProfile ? customerLatitude || null : null,
+          customerLongitude: shouldSyncCustomerProfile ? customerLongitude || null : null,
+          customerMapProvider: shouldSyncCustomerProfile ? customerMapProvider || null : null,
+          customerMapPoiId: shouldSyncCustomerProfile ? customerMapPoiId || null : null,
+          customerMapPoiName: shouldSyncCustomerProfile ? customerMapPoiName || null : null,
+          customerMapAddress: shouldSyncCustomerProfile ? customerMapAddress || null : null,
         },
       )
     }
 
-    await recordCustomerContact(connection, effectiveCustomerId, contactName, contactPhone, req.user.id)
+    if (effectiveServiceMode !== 'office') {
+      await recordCustomerContact(connection, effectiveCustomerId, contactName, contactPhone, req.user.id)
+    }
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
     let effectiveDeviceId = Number(deviceId || 0) || null
@@ -2284,6 +2296,8 @@ async function updateSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const shouldSyncCustomerProfile = effectiveServiceMode !== 'office'
+  const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
   const normalizedResult = normalizeReportResult(result)
   const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
   const existingSignature = await query(
@@ -2298,8 +2312,8 @@ async function updateSelfReport(req, res) {
   const missing = []
   if (!customerName) missing.push('客户名称')
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
-  if (!contactName && !customerConfirmName) missing.push('客户联系人')
-  if (!contactPhone) missing.push('联系人电话')
+  if (effectiveServiceMode !== 'office' && !contactName && !customerConfirmName) missing.push('客户联系人')
+  if (effectiveServiceMode !== 'office' && !contactPhone) missing.push('联系人电话')
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
@@ -2328,35 +2342,37 @@ async function updateSelfReport(req, res) {
 
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
-    await connection.execute(
-      `UPDATE customers
-       SET name = :customerName,
-           name_key = :customerNameKey,
-           address = :customerAddress,
-           contact_name = :contactName,
-           contact_phone = :contactPhone,
-           latitude = COALESCE(:customerLatitude, latitude),
-           longitude = COALESCE(:customerLongitude, longitude),
-           map_provider = COALESCE(:customerMapProvider, map_provider),
-           map_poi_id = COALESCE(:customerMapPoiId, map_poi_id),
-           map_poi_name = COALESCE(:customerMapPoiName, map_poi_name),
-           map_address = COALESCE(:customerMapAddress, map_address)
-       WHERE id = :customerId`,
-      {
-        customerId: order.customer_id,
-        customerName,
-        customerNameKey: customerNameKey(customerName),
-        customerAddress: customerAddress || null,
-        contactName: contactName || customerConfirmName || null,
-        contactPhone: contactPhone || null,
-        customerLatitude: customerLatitude || null,
-        customerLongitude: customerLongitude || null,
-        customerMapProvider: customerMapProvider || null,
-        customerMapPoiId: customerMapPoiId || null,
-        customerMapPoiName: customerMapPoiName || null,
-        customerMapAddress: customerMapAddress || null,
-      },
-    )
+    if (shouldSyncCustomerProfile) {
+      await connection.execute(
+        `UPDATE customers
+         SET name = :customerName,
+             name_key = :customerNameKey,
+             address = :customerAddress,
+             contact_name = :contactName,
+             contact_phone = :contactPhone,
+             latitude = COALESCE(:customerLatitude, latitude),
+             longitude = COALESCE(:customerLongitude, longitude),
+             map_provider = COALESCE(:customerMapProvider, map_provider),
+             map_poi_id = COALESCE(:customerMapPoiId, map_poi_id),
+             map_poi_name = COALESCE(:customerMapPoiName, map_poi_name),
+             map_address = COALESCE(:customerMapAddress, map_address)
+         WHERE id = :customerId`,
+        {
+          customerId: order.customer_id,
+          customerName,
+          customerNameKey: customerNameKey(customerName),
+          customerAddress: customerAddress || null,
+          contactName: contactName || customerConfirmName || null,
+          contactPhone: customerProfileContactPhone || null,
+          customerLatitude: customerLatitude || null,
+          customerLongitude: customerLongitude || null,
+          customerMapProvider: customerMapProvider || null,
+          customerMapPoiId: customerMapPoiId || null,
+          customerMapPoiName: customerMapPoiName || null,
+          customerMapAddress: customerMapAddress || null,
+        },
+      )
+    }
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
     let effectiveDeviceId = shouldManageInstallDevice
@@ -2493,7 +2509,9 @@ async function updateSelfReport(req, res) {
       fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
     })
 
-    await recordCustomerContact(connection, order.customer_id, contactName || customerConfirmName, contactPhone, req.user.id)
+    if (effectiveServiceMode !== 'office') {
+      await recordCustomerContact(connection, order.customer_id, contactName || customerConfirmName, contactPhone, req.user.id)
+    }
     await writeAudit(connection, req.user.id, req.params.id, 'self_report_update')
     await connection.execute(
       `DELETE FROM self_report_drafts

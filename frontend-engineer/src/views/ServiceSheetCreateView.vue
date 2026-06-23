@@ -604,7 +604,7 @@ const internalRecordDefaults = computed(() => {
     customerName: '敦阳科技（内勤）',
     customerAddress: '',
     contactName: user.realName || user.username || '内勤工程师',
-    contactPhone: user.phone || user.mobile || user.username || '内部记录',
+    contactPhone: user.phone || user.mobile || '',
   }
 })
 const pageEyebrow = computed(() => {

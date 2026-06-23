@@ -2,6 +2,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
 const { effectiveSettings } = require('../settings/controller')
 
 const fallbackPois = [
@@ -255,18 +256,29 @@ async function searchCompanies(req, res) {
          ELSE POW(latitude - :latitude, 2) + POW(longitude - :longitude, 2)
        END AS distance_score
      FROM customers
-     WHERE :keyword = ''
-       OR name LIKE :likeKeyword
-       OR name_key LIKE :likeKeywordKey
-       OR address LIKE :likeKeyword
-       OR contact_name LIKE :likeKeyword
-       OR salesperson LIKE :likeKeyword
-       OR remark LIKE :likeKeyword
-       OR map_poi_name LIKE :likeKeyword
-       OR map_address LIKE :likeKeyword
+     WHERE NOT (name = :internalCustomerName OR name_key = :internalCustomerNameKey)
+       AND (
+         :keyword = ''
+         OR name LIKE :likeKeyword
+         OR name_key LIKE :likeKeywordKey
+         OR address LIKE :likeKeyword
+         OR contact_name LIKE :likeKeyword
+         OR salesperson LIKE :likeKeyword
+         OR remark LIKE :likeKeyword
+         OR map_poi_name LIKE :likeKeyword
+         OR map_address LIKE :likeKeyword
+       )
      ORDER BY distance_score ASC, updated_at DESC
      LIMIT 8`,
-    { keyword, likeKeyword, likeKeywordKey, latitude: lat, longitude: lng },
+    {
+      keyword,
+      likeKeyword,
+      likeKeywordKey,
+      latitude: lat,
+      longitude: lng,
+      internalCustomerName: INTERNAL_CUSTOMER_NAME,
+      internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+    },
   )
 
   const contactRows = customers.length
