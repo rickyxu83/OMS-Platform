@@ -331,18 +331,17 @@ export function Login() {
       </div>
 
       <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-[11px] leading-relaxed tracking-wider sm:bottom-4">
-        <p className="text-gray-400">
-          <span className="mr-1.5 text-gray-300">◇</span>
+        <p className="text-gray-600">
           {t.copyrightNotice}
-          <span className="mx-1.5 text-gray-200">│</span>
-          <a className="text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+          <span className="mx-1.5 text-gray-300">│</span>
+          <a className="text-gray-400 underline-offset-2 hover:text-gray-600 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
             {t.icpNotice}
           </a>
         </p>
         <p className="text-gray-400">
           {t.licenseLine}
-          <span className="mx-1.5 text-gray-200">│</span>
-          <a className="text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
+          <span className="mx-1.5 text-gray-300">│</span>
+          <a className="text-gray-400 underline-offset-2 hover:text-gray-600 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
             github.com/rickyxu83/OMS-Platform
           </a>
         </p>
