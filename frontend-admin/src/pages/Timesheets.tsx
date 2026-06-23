@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 
 interface TimesheetItem {
@@ -42,6 +43,18 @@ interface EngineerOption {
   id: string | number;
   realName?: string;
   username?: string;
+}
+
+interface SalespersonOption {
+  id: string | number;
+  realName?: string;
+  username?: string;
+  role?: string;
+}
+
+interface CustomerOption {
+  id: string | number;
+  name?: string;
 }
 
 function formatDate(value?: string) {
@@ -195,15 +208,22 @@ function defaultMonthRange() {
 }
 
 export function Timesheets() {
+  const { user } = useAuth();
   const defaults = useMemo(() => defaultMonthRange(), []);
   const [startDate, setStartDate] = useState(defaults.first);
   const [endDate, setEndDate] = useState(defaults.last);
   const [engineerId, setEngineerId] = useState("all");
+  const [salesperson, setSalesperson] = useState("all");
+  const [customerId, setCustomerId] = useState("all");
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
+  const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [items, setItems] = useState<TimesheetItem[]>([]);
   const [label, setLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const userRole = String(user?.role || "");
+  const canSelectSalesperson = userRole !== "sales";
 
   async function load() {
     setLoading(true);
@@ -214,6 +234,8 @@ export function Timesheets() {
         endDate,
         engineerId,
       });
+      if (canSelectSalesperson && salesperson !== "all") params.set("salesperson", salesperson);
+      if (customerId !== "all") params.set("customerId", customerId);
       const data = await api.get(`/service-orders/timesheet/monthly?${params.toString()}`);
       const list = (data?.items || []) as TimesheetItem[];
       setItems(list);
@@ -226,23 +248,26 @@ export function Timesheets() {
     }
   }
 
-  async function loadEngineers() {
-    try {
-      const data = await api.get("/users/engineers");
-      setEngineers((data?.items || []) as EngineerOption[]);
-    } catch {
-      setEngineers([]);
-    }
+  async function loadOptions() {
+    const [engineerData, customerData, salespersonData] = await Promise.all([
+      api.get("/users/engineers").catch(() => ({ items: [] })),
+      api.get("/customers?pageSize=200").catch(() => ({ items: [] })),
+      canSelectSalesperson ? api.get("/users/salespeople").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    ]);
+    setEngineers((engineerData?.items || []) as EngineerOption[]);
+    setCustomers((customerData?.items || []) as CustomerOption[]);
+    setSalespeople((salespersonData?.items || []) as SalespersonOption[]);
   }
 
   useEffect(() => {
-    loadEngineers();
-  }, []);
+    loadOptions().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSelectSalesperson]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, engineerId]);
+  }, [startDate, endDate, engineerId, salesperson, customerId, canSelectSalesperson]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -290,7 +315,7 @@ export function Timesheets() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <div className="space-y-2">
               <Label htmlFor="start-date">开始日期</Label>
               <Input
@@ -309,7 +334,7 @@ export function Timesheets() {
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
-            <div className="space-y-2 flex-1 min-w-[180px]">
+            <div className="space-y-2">
               <Label>工程师</Label>
               <Select value={engineerId} onValueChange={setEngineerId}>
                 <SelectTrigger>
@@ -320,6 +345,45 @@ export function Timesheets() {
                   {engineers.map((e) => (
                     <SelectItem key={e.id} value={String(e.id)}>
                       {e.realName || e.username || `工程师 #${e.id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {canSelectSalesperson && (
+              <div className="space-y-2">
+                <Label>对应销售</Label>
+                <Select value={salesperson} onValueChange={setSalesperson}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择销售" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部销售</SelectItem>
+                    <SelectItem value="__unassigned">未关联销售</SelectItem>
+                    {salespeople.map((sales) => {
+                      const name = (sales.realName || sales.username || "").trim();
+                      if (!name) return null;
+                      return (
+                        <SelectItem key={sales.id} value={name}>
+                          {name}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>客户</Label>
+              <Select value={customerId} onValueChange={setCustomerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择客户" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部客户</SelectItem>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={String(customer.id)}>
+                      {customer.name || `客户 #${customer.id}`}
                     </SelectItem>
                   ))}
                 </SelectContent>

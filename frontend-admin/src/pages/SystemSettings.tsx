@@ -342,7 +342,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <div className="font-medium">SSL/TLS</div>
-                  <div className="text-sm text-muted-foreground">465 通常开启，587 通常关闭。</div>
+                  <div className="text-sm text-muted-foreground">163 企业邮箱建议使用 smtp.qiye.163.com:465 并开启；密码填写客户端授权码。</div>
                 </div>
                 <Switch
                   checked={form.mail.secure}
@@ -367,7 +367,7 @@ export function SystemSettings() {
                   type="password"
                   value={form.mail.password}
                   onChange={(e) => setForm({ ...form, mail: { ...form.mail, password: e.target.value } })}
-                  placeholder="保存后会以星号显示"
+                  placeholder="填写邮箱客户端授权码，保存后会以星号显示"
                 />
               </div>
 

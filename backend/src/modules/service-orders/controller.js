@@ -1230,6 +1230,10 @@ async function statsOverview(req, res) {
 async function timesheetMonthly(req, res) {
   await ensureServiceOrderInspectionColumns()
   await ensureTimesheetManualEntriesTable()
+  const includeWorkSummary = String(req.query.includeWorkSummary || '') === '1'
+  if (includeWorkSummary && req.user.role === 'assistant') {
+    throw forbidden('助理无权生成 AI 运营总结')
+  }
   const { month, startDate, endDate, label } = timesheetDateRange(req.query)
   const requestedEngineerId = req.user.role === 'engineer' || (isMineRequest(req) && engineerScopedRoles.has(req.user.role))
     ? req.user.id
@@ -1237,6 +1241,16 @@ async function timesheetMonthly(req, res) {
   const filterEngineerId = requestedEngineerId && requestedEngineerId !== 'all' ? Number(requestedEngineerId) : null
   const engineerFilterSql = filterEngineerId ? 'AND participants.engineer_id = :engineerId' : ''
   const salesScope = buildSalesCustomerScope(req.user, 'c')
+  const requestedCustomerId = String(req.query.customerId || '').trim()
+  const filterCustomerId = requestedCustomerId && requestedCustomerId !== 'all' ? Number(requestedCustomerId) : null
+  const customerFilterSql = filterCustomerId ? 'AND so.customer_id = :customerId' : ''
+  const requestedSalesperson = String(req.query.salesperson || '').trim()
+  const filterSalesperson = req.user.role === 'sales' || requestedSalesperson === 'all' ? '' : requestedSalesperson
+  const salespersonFilterSql = filterSalesperson
+    ? filterSalesperson === '__unassigned'
+      ? "AND (c.salesperson IS NULL OR c.salesperson = '')"
+      : 'AND c.salesperson = :salesperson'
+    : ''
 
   const rows = await query(
     `SELECT
@@ -1270,16 +1284,21 @@ async function timesheetMonthly(req, res) {
        AND DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate
        AND so.status <> 'cancelled'
        ${engineerFilterSql}
+       ${customerFilterSql}
+       ${salespersonFilterSql}
        ${salesScope.sql}
      ORDER BY u.real_name, COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at), so.id`,
     {
       engineerId: filterEngineerId,
+      customerId: filterCustomerId,
+      salesperson: filterSalesperson,
       startDate,
       endDate,
       ...salesScope.params,
     },
   )
-  const manualRows = req.user.role === 'sales'
+  const shouldExcludeManualRows = req.user.role === 'sales' || Boolean(filterCustomerId || filterSalesperson)
+  const manualRows = shouldExcludeManualRows
     ? []
     : await query(
         `SELECT tme.id, tme.engineer_id, tme.entry_date, tme.category, tme.customer_project,
@@ -1368,10 +1387,15 @@ async function timesheetMonthly(req, res) {
     endDate,
     label,
     engineerName: toTraditional(filterEngineerId ? rows[0]?.engineer_name || manualRows[0]?.engineer_name || req.user.real_name || req.user.username : '全部工程師'),
+    filters: {
+      customerId: filterCustomerId || null,
+      salesperson: filterSalesperson || '',
+      engineerId: filterEngineerId || null,
+    },
     items,
   }
 
-  if (String(req.query.includeWorkSummary || '') === '1') {
+  if (includeWorkSummary) {
     response.workSummary = await generateTimesheetWorkSummary(response)
   }
 

@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Amap } from "@/components/Amap";
+import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 
@@ -86,6 +88,23 @@ interface WorkSummaryResponse {
     inputTokens?: number | null;
     outputTokens?: number | null;
   };
+}
+
+interface EngineerOption {
+  id: string | number;
+  realName?: string;
+  username?: string;
+}
+
+interface SalespersonOption {
+  id: string | number;
+  realName?: string;
+  username?: string;
+}
+
+interface CustomerOption {
+  id: string | number;
+  name?: string;
 }
 
 function textValue(value: unknown, fallback = "-") {
@@ -180,6 +199,13 @@ const I18N = {
       description: "选择统计日期，使用 AI 根据工单生成运营总结并显示在当前页面。",
       startDate: "开始日期",
       endDate: "结束日期",
+      salesperson: "对应销售",
+      engineer: "工程师",
+      customer: "客户",
+      allSalespeople: "全部销售",
+      unassignedSalesperson: "未关联销售",
+      allEngineers: "全部工程师",
+      allCustomers: "全部客户",
       cancel: "取消",
       submit: "生成总结",
       invalidRange: "开始日期不能晚于结束日期",
@@ -274,6 +300,13 @@ const I18N = {
       description: "選擇統計日期，使用 AI 根據服務記錄生成營運總結並顯示在目前頁面。",
       startDate: "開始日期",
       endDate: "結束日期",
+      salesperson: "對應銷售",
+      engineer: "工程師",
+      customer: "客戶",
+      allSalespeople: "全部銷售",
+      unassignedSalesperson: "未關聯銷售",
+      allEngineers: "全部工程師",
+      allCustomers: "全部客戶",
       cancel: "取消",
       submit: "生成總結",
       invalidRange: "開始日期不能晚於結束日期",
@@ -454,7 +487,11 @@ function PreviewBlock({ label, value }: { label: string; value?: string }) {
 export function Dashboard() {
   const navigate = useNavigate();
   const { lang } = useLanguage();
+  const { user } = useAuth();
   const t = I18N[lang];
+  const userRole = String(user?.role || "");
+  const canUseWorkSummary = userRole !== "assistant";
+  const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales";
   const [summary, setSummary] = useState<Summary>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -467,6 +504,12 @@ export function Dashboard() {
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
+  const [reportEngineerId, setReportEngineerId] = useState("all");
+  const [reportSalesperson, setReportSalesperson] = useState("all");
+  const [reportCustomerId, setReportCustomerId] = useState("all");
+  const [reportEngineers, setReportEngineers] = useState<EngineerOption[]>([]);
+  const [reportSalespeople, setReportSalespeople] = useState<SalespersonOption[]>([]);
+  const [reportCustomers, setReportCustomers] = useState<CustomerOption[]>([]);
   const [reportHint, setReportHint] = useState("");
   const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -488,6 +531,7 @@ export function Dashboard() {
         const items = (stats?.recent || orderRes?.items || []) as Order[];
         setOrders(items);
         const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
+        setReportCustomers((Array.isArray(rawCustomers) ? rawCustomers : []) as CustomerOption[]);
         setMapPoints(
           (Array.isArray(rawCustomers) ? rawCustomers : [])
             .map((c: any) => ({
@@ -511,6 +555,19 @@ export function Dashboard() {
     load();
     return () => { cancelled = true; };
   }, [t.errors.loadFailed]);
+
+  useEffect(() => {
+    if (!canUseWorkSummary) return;
+    Promise.all([
+      api.get("/users/engineers").catch(() => ({ items: [] })),
+      canSelectReportSalesperson ? api.get("/users/salespeople").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+      api.get("/customers?pageSize=200").catch(() => ({ items: [] })),
+    ]).then(([engineerData, salespersonData, customerData]) => {
+      setReportEngineers((engineerData?.items || []) as EngineerOption[]);
+      setReportSalespeople((salespersonData?.items || []) as SalespersonOption[]);
+      setReportCustomers((customerData?.items || []) as CustomerOption[]);
+    }).catch(() => undefined);
+  }, [canSelectReportSalesperson, canUseWorkSummary]);
 
   const stats = [
     { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
@@ -560,7 +617,15 @@ export function Dashboard() {
     setExporting(true);
     setError("");
     try {
-      const data = await api.get(`/service-orders/timesheet/monthly?startDate=${reportStartDate}&endDate=${reportEndDate}&engineerId=all&includeWorkSummary=1`);
+      const params = new URLSearchParams({
+        startDate: reportStartDate,
+        endDate: reportEndDate,
+        engineerId: reportEngineerId,
+        includeWorkSummary: "1",
+      });
+      if (canSelectReportSalesperson && reportSalesperson !== "all") params.set("salesperson", reportSalesperson);
+      if (reportCustomerId !== "all") params.set("customerId", reportCustomerId);
+      const data = await api.get(`/service-orders/timesheet/monthly?${params.toString()}`);
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
       setWorkSummary((data?.workSummary || null) as WorkSummaryResponse | null);
       setWorkSummaryRange(rangeLabel);
@@ -631,10 +696,12 @@ export function Dashboard() {
             <Search className="w-4 h-4 mr-2" />
             搜索
           </Button>
-          <Button onClick={openReportDialog} disabled={exporting}>
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-            {t.exportReport}
-          </Button>
+          {canUseWorkSummary && (
+            <Button onClick={openReportDialog} disabled={exporting}>
+              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              {t.exportReport}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -670,7 +737,7 @@ export function Dashboard() {
         })}
       </div>
 
-      {workSummary && (
+      {canUseWorkSummary && workSummary && (
         <Card className="border-purple-100 bg-purple-50/40">
           <CardHeader>
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -890,7 +957,7 @@ export function Dashboard() {
       </Dialog>
 
       <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle>{t.reportDialog.title}</DialogTitle>
             <DialogDescription>{t.reportDialog.description}</DialogDescription>
@@ -917,6 +984,63 @@ export function Dashboard() {
                   value={reportEndDate}
                   onChange={(e) => setReportEndDate(e.target.value)}
                 />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {canSelectReportSalesperson && (
+                <label className="space-y-2 text-sm font-medium">
+                  <span>{t.reportDialog.salesperson}</span>
+                  <Select value={reportSalesperson} onValueChange={setReportSalesperson}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t.reportDialog.allSalespeople} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t.reportDialog.allSalespeople}</SelectItem>
+                      <SelectItem value="__unassigned">{t.reportDialog.unassignedSalesperson}</SelectItem>
+                      {reportSalespeople.map((sales) => {
+                        const name = (sales.realName || sales.username || "").trim();
+                        if (!name) return null;
+                        return (
+                          <SelectItem key={sales.id} value={name}>
+                            {name}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </label>
+              )}
+              <label className="space-y-2 text-sm font-medium">
+                <span>{t.reportDialog.engineer}</span>
+                <Select value={reportEngineerId} onValueChange={setReportEngineerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t.reportDialog.allEngineers} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.reportDialog.allEngineers}</SelectItem>
+                    {reportEngineers.map((engineer) => (
+                      <SelectItem key={engineer.id} value={String(engineer.id)}>
+                        {engineer.realName || engineer.username || `#${engineer.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>{t.reportDialog.customer}</span>
+                <Select value={reportCustomerId} onValueChange={setReportCustomerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t.reportDialog.allCustomers} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t.reportDialog.allCustomers}</SelectItem>
+                    {reportCustomers.map((customer) => (
+                      <SelectItem key={customer.id} value={String(customer.id)}>
+                        {customer.name || `#${customer.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
           </div>
