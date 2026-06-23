@@ -1602,14 +1602,22 @@ function cancelCustomerLibrarySearch() {
   customerSearchReqId += 1
 }
 
+function canSearchCustomerKeyword(keyword) {
+  const text = String(keyword || '').trim()
+  if (!text) return false
+  if (/[\u3400-\u9fff]/u.test(text)) return true
+  return text.length >= 2
+}
+
 function scheduleCustomerLibrarySearch(value) {
   const keyword = String(value || '').trim()
   window.clearTimeout(customerSearchTimer)
   const requestId = ++customerSearchReqId
 
-  if (keyword.length < 2) {
+  if (!canSearchCustomerKeyword(keyword)) {
     nearbyCompanies.value = []
     showNearbyCompanies.value = false
+    locationHint.value = keyword ? '继续输入客户名称，可自动匹配系统客户。' : ''
     return
   }
 
