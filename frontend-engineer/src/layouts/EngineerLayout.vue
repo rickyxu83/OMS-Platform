@@ -71,7 +71,7 @@ const navItems = [
     to: '/assets',
     names: ['assets', 'asset-customers', 'asset-customer-detail', 'asset-devices', 'asset-device-detail', 'asset-maintenance-parties', 'asset-maintenance-party-detail'],
   },
-  { label: '新建服务记录', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
+  { label: '新增服务记录', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
   { label: '月报', icon: 'calendar', to: '/timesheet', names: ['timesheet', 'timesheets'] },
   { label: '我的', icon: 'user', to: '/profile', names: ['profile'] },
 ]
@@ -95,8 +95,8 @@ const guideSteps = [
   },
   {
     selector: '.home-create-action',
-    title: '新建服务记录',
-    body: '点右下角“+”可以新建现场服务、远程服务或内勤记录。手机上点一下默认新建现场服务，长按可选择类型。',
+    title: '新增服务记录',
+    body: '点右下角“+”可以新增现场服务、远程服务或内勤记录。手机上点一下默认新增现场服务，长按可选择类型。',
   },
   {
     selector: '.profile-hero-card',
@@ -114,7 +114,7 @@ const guideSteps = [
     selector: '.signature-card',
     route: '/profile',
     title: '个人手写签名',
-    body: '签名会用于服务表导出。可以预览、重新签名，确认无误后保存。',
+    body: '签名会用于服务记录导出。可以预览、重新签名，确认无误后保存。',
   },
   {
     selector: '.quick-action-row .locate',
@@ -645,8 +645,8 @@ watch(shouldAutoOpenFirstLoginGuide, (required) => {
     :class="{ dragging: createFabDragging, open: createModePickerOpen }"
     :style="createModePanelStyle"
     type="button"
-    :aria-label="zh('新建服务记录')"
-    :title="zh('新建服务记录')"
+    :aria-label="zh('新增服务记录')"
+    :title="zh('新增服务记录')"
     @pointerdown="startCreateFabDrag"
     @click="openCreateSheet"
   >

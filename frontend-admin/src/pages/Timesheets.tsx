@@ -69,7 +69,7 @@ function getWorkHours(item: TimesheetItem) {
 }
 
 function getSourceLabel(source?: string) {
-  return source === "service_order" ? "服务记录" : source === "manual" ? "手工记录" : source || "-";
+  return source === "service_order" ? "工单" : source === "manual" ? "手工记录" : source || "-";
 }
 
 async function downloadEngineerWorkbook(filename: string, label: string, items: TimesheetItem[]) {
@@ -251,7 +251,7 @@ export function Timesheets() {
     const manual = items.filter((i) => i.source === "manual").length;
     return [
       { label: "已加载记录", value: total },
-      { label: "服务记录", value: service },
+      { label: "工单", value: service },
       { label: "手工记录", value: manual },
       { label: "总工时", value: `${totalHours.toFixed(1)}h` },
     ];
@@ -353,7 +353,7 @@ export function Timesheets() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">暂无工时数据</div>
@@ -384,7 +384,7 @@ export function Timesheets() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.source === "service_order" ? "info" : "secondary"}>
-                          {item.source === "service_order" ? "服务记录" : item.source === "manual" ? "手工记录" : item.source || "-"}
+                          {item.source === "service_order" ? "工单" : item.source === "manual" ? "手工记录" : item.source || "-"}
                         </Badge>
                       </TableCell>
                     </TableRow>

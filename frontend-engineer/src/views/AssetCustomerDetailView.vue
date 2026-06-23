@@ -79,7 +79,7 @@ function displayDate(value) {
 }
 
 function maintenanceTypeLabel(value) {
-  const labels = { none: '无维护', original_manufacturer: '原厂维护', vendor: '原厂维护', our_maintenance: '我方维护', our: '我方维护' }
+  const labels = { none: '无维保', original_manufacturer: '原厂维保', vendor: '原厂维保', our_maintenance: '我方维保', our: '我方维保' }
   return labels[value || 'none'] || value || '未维护'
 }
 
@@ -93,7 +93,7 @@ function warrantyDate(device) {
 }
 
 function warrantyStatus(device) {
-  if (!device || device.maintenanceType === 'none') return { label: '无维护', className: 'neutral' }
+  if (!device || device.maintenanceType === 'none') return { label: '无维保', className: 'neutral' }
   const date = warrantyDate(device)
   if (!date) return { label: '未维护到期', className: 'warning' }
   const end = new Date(String(date).slice(0, 10)).getTime()
@@ -302,7 +302,7 @@ onMounted(() => {
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="loadDetail">{{ zh('重试') }}</button></p>
     <p v-if="saveMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(saveMessage) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入客户详情…') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在加载客户详情…') }}</p>
 
     <section v-if="!loading" class="asset-detail-grid">
       <article class="asset-record-card asset-detail-card">

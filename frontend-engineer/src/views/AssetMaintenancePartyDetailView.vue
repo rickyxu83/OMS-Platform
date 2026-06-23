@@ -48,7 +48,7 @@ function deviceDisplayName(device) {
 }
 
 function warrantyStatus(device) {
-  if (!device || device.maintenanceType === 'none') return { label: '无维护', className: 'neutral' }
+  if (!device || device.maintenanceType === 'none') return { label: '无维保', className: 'neutral' }
   const date = device.maintenanceEnd || device.warrantyUntil || ''
   if (!date) return { label: '未维护到期', className: 'warning' }
   const end = new Date(String(date).slice(0, 10)).getTime()
@@ -92,7 +92,7 @@ onMounted(() => {
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="loadDetail">{{ zh('重试') }}</button></p>
-    <p v-if="loading" class="muted">{{ zh('正在载入维保方详情…') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在加载维保方详情…') }}</p>
 
     <section v-if="!loading && party" class="asset-detail-grid">
       <article class="asset-record-card asset-detail-card">

@@ -145,10 +145,10 @@ const I18N = {
     },
     filters: {
       searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合…",
-      statusPlaceholder: "状态筛选",
+      statusPlaceholder: "全部状态",
       all: "全部状态",
       allCustomers: "全部客户",
-      customerPlaceholder: "客户筛选",
+      customerPlaceholder: "全部客户",
       startDate: "开始日期",
       endDate: "结束日期",
     },
@@ -160,8 +160,8 @@ const I18N = {
     },
     list: {
       title: "工单列表",
-      loading: "加载中…",
-      empty: "暂无工单数据",
+      loading: "正在加载…",
+      empty: "暂无工单",
     },
     detail: {
       orderNo: "工单编号",
@@ -222,15 +222,15 @@ const I18N = {
       exportExcel: "匯出 Excel",
       exportPdf: "匯出 PDF",
       exporting: "匯出中…",
-      saving: "保存中…",
+      saving: "儲存中…",
       cancel: "取消",
     },
     filters: {
       searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合…",
-      statusPlaceholder: "狀態篩選",
+      statusPlaceholder: "全部狀態",
       all: "全部狀態",
       allCustomers: "全部客戶",
-      customerPlaceholder: "客戶篩選",
+      customerPlaceholder: "全部客戶",
       startDate: "開始日期",
       endDate: "結束日期",
     },
@@ -242,8 +242,8 @@ const I18N = {
     },
     list: {
       title: "工單列表",
-      loading: "載入中…",
-      empty: "暫無工單資料",
+      loading: "正在載入…",
+      empty: "暫無工單",
     },
     detail: {
       orderNo: "工單編號",
@@ -263,7 +263,7 @@ const I18N = {
     },
     errors: {
       loadFailed: "載入失敗",
-      saveFailed: "保存失敗",
+      saveFailed: "儲存失敗",
       exportFailed: "匯出失敗",
       exportEmpty: "當前篩選條件下暫無可匯出的工單",
     },
@@ -1261,7 +1261,7 @@ export function ServiceOrders() {
           </Button>
           <Button onClick={openCreateOrder} disabled={saving}>
             <Plus className="w-4 h-4 mr-2" />
-            新建工单
+            新增工单
           </Button>
         </div>
       </div>
@@ -1668,7 +1668,7 @@ export function ServiceOrders() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>新建工单</DialogTitle>
+            <DialogTitle>新增工单</DialogTitle>
             <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">

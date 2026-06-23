@@ -81,7 +81,7 @@ onMounted(() => {
       <div>
         <span class="asset-hero-kicker">{{ zh('资料维护') }}</span>
         <h2>{{ zh('客户、设备、维保方集中管理') }}</h2>
-        <p>{{ zh('在填写服务表前后，都可以在这里补全客户联系人、设备资产和维保方电话。') }}</p>
+        <p>{{ zh('在填写服务记录前后，都可以在这里补全客户联系人、设备资产和维保方电话。') }}</p>
       </div>
       <PreviewIcon name="assets" />
     </section>

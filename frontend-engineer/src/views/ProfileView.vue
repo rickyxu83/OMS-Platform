@@ -381,7 +381,7 @@ onMounted(load)
           </div>
           <span :class="{ done: aiDraftEnabled }">{{ zh(aiDraftEnabled ? '已开启' : '已关闭') }}</span>
         </div>
-        <p class="profile-setting-copy">{{ zh('开启后，新建服务记录页面会显示 AI 语音填写入口。关闭后，该区域会隐藏。') }}</p>
+        <p class="profile-setting-copy">{{ zh('开启后，新增服务记录页面会显示 AI 语音填写入口。关闭后，该区域会隐藏。') }}</p>
         <button
           class="preference-toggle"
           type="button"

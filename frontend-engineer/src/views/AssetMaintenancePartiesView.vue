@@ -203,7 +203,7 @@ onMounted(() => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入维保方目录…') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在加载维保方目录…') }}</p>
 
     <section class="asset-card-list">
       <article

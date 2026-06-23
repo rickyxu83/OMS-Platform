@@ -563,7 +563,7 @@ export function InspectionSchedules() {
             </div>
             <Select value={customerFilter} onValueChange={setCustomerFilter}>
               <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="客户" />
+                <SelectValue placeholder="全部客户" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部客户</SelectItem>
@@ -587,7 +587,7 @@ export function InspectionSchedules() {
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-[150px]">
-                <SelectValue placeholder="启用状态" />
+                <SelectValue placeholder="全部状态" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
@@ -647,7 +647,7 @@ export function InspectionSchedules() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无巡检计划</div>
@@ -901,7 +901,7 @@ export function InspectionSchedules() {
                         );
                       })
                     ) : (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配客户</div>
+                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配客户</div>
                     )}
                   </div>
                 )}
@@ -976,7 +976,7 @@ export function InspectionSchedules() {
                         );
                       })
                     ) : (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配工程师</div>
+                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配工程师</div>
                     )}
                   </div>
                 )}

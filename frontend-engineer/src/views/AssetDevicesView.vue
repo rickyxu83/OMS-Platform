@@ -29,11 +29,11 @@ let customerSearchTimer = null
 let modelSearchTimer = null
 
 const maintenanceLabels = {
-  none: '无维护',
-  original_manufacturer: '原厂维护',
-  vendor: '原厂维护',
-  our_maintenance: '我方维护',
-  our: '我方维护',
+  none: '无维保',
+  original_manufacturer: '原厂维保',
+  vendor: '原厂维保',
+  our_maintenance: '我方维保',
+  our: '我方维保',
 }
 
 const MAINTENANCE_TYPE_ALIASES = {
@@ -44,7 +44,7 @@ const MAINTENANCE_TYPE_ALIASES = {
 const DEVICE_STATUS_LABELS = {
   active: '在用',
   inactive: '停用',
-  maintenance: '维护中',
+  maintenance: '维保中',
   scrapped: '已报废',
 }
 
@@ -363,7 +363,7 @@ onMounted(async () => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入设备资产…') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在加载设备资产…') }}</p>
 
     <section class="asset-card-list">
       <article
@@ -457,27 +457,27 @@ onMounted(async () => {
           </label>
           <label>{{ zh('部件号 PN') }}<input v-model="form.pn" type="text" :placeholder="zh('部件号')" /></label>
           <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号')" /></label>
-          <label>{{ zh('维护类型') }}
+          <label>{{ zh('维保类型') }}
             <select v-model="form.maintenanceType">
-              <option value="none">{{ zh('无维护') }}</option>
-              <option value="our_maintenance">{{ zh('我方维护') }}</option>
-              <option value="original_manufacturer">{{ zh('原厂维护') }}</option>
+              <option value="none">{{ zh('无维保') }}</option>
+              <option value="our_maintenance">{{ zh('我方维保') }}</option>
+              <option value="original_manufacturer">{{ zh('原厂维保') }}</option>
             </select>
           </label>
           <label>{{ zh('维保方') }}
             <select v-model="form.maintenancePartyId" :disabled="form.maintenanceType === 'none'">
-              <option value="">{{ zh(form.maintenanceType === 'none' ? '无维护' : '选择维保方') }}</option>
+              <option value="">{{ zh(form.maintenanceType === 'none' ? '无维保' : '选择维保方') }}</option>
               <option v-for="party in parties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
             </select>
           </label>
-          <label>{{ zh('维护开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
-          <label>{{ zh('维护截止') }}<input v-model="form.maintenanceEnd" type="date" /></label>
+          <label>{{ zh('维保开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
+          <label>{{ zh('维保截止') }}<input v-model="form.maintenanceEnd" type="date" /></label>
           <label>{{ zh('位置') }}<input v-model="form.location" type="text" :placeholder="zh('安装位置')" /></label>
           <label>{{ zh('状态') }}
             <select v-model="form.status">
               <option value="active">{{ zh('在用') }}</option>
               <option value="inactive">{{ zh('停用') }}</option>
-              <option value="maintenance">{{ zh('维护中') }}</option>
+              <option value="maintenance">{{ zh('维保中') }}</option>
               <option value="scrapped">{{ zh('已报废') }}</option>
             </select>
           </label>

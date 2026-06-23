@@ -32,7 +32,7 @@ function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: stri
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        {lang === "zh-TW" ? "載入中…" : "加载中…"}
+        {lang === "zh-TW" ? "正在載入…" : "正在加载…"}
       </div>
     )
   }
@@ -52,7 +52,7 @@ function PageLoading() {
   const { lang } = useLanguage()
   return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-      {lang === "zh-TW" ? "載入中…" : "加载中…"}
+      {lang === "zh-TW" ? "正在載入…" : "正在加载…"}
     </div>
   )
 }

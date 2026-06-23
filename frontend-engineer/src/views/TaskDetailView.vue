@@ -315,7 +315,7 @@ onMounted(load)
             <p class="report-work-content">{{ zh(reportWorkContent || '暂无处理过程') }}</p>
           </div>
           <p v-else class="muted compact">
-            {{ zh(normalizedServiceMode === 'office' ? '内勤记录不生成单独服务表，请在月报中统一导出。' : '该服务记录还没有提交服务表。') }}
+            {{ zh(normalizedServiceMode === 'office' ? '内勤记录不生成单独服务记录，请在月报中统一导出。' : '该服务记录还没有提交处理内容。') }}
           </p>
         </article>
       </section>

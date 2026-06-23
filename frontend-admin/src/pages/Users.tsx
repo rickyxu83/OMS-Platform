@@ -351,7 +351,7 @@ export function Users() {
             </div>
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger className="w-full md:w-[160px]">
-                <SelectValue placeholder="角色筛选" />
+                <SelectValue placeholder="全部角色" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部角色</SelectItem>
@@ -364,7 +364,7 @@ export function Users() {
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-[140px]">
-                <SelectValue placeholder="状态筛选" />
+                <SelectValue placeholder="全部状态" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
@@ -422,7 +422,7 @@ export function Users() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无用户</div>
@@ -597,7 +597,7 @@ export function Users() {
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-              {saving ? "保存中…" : editingUserId ? "保存修改" : "立即创建"}
+              {saving ? "保存中…" : editingUserId ? "保存修改" : "保存"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -613,7 +613,7 @@ export function Users() {
           </DialogHeader>
           {loadingPerms ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
             </div>
           ) : permData ? (
             <div className="overflow-x-auto">

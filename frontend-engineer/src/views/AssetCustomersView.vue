@@ -451,7 +451,7 @@ onMounted(() => {
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
     <p v-if="successMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(successMessage) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入客户档案…') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在加载客户档案…') }}</p>
 
     <section class="asset-card-list">
       <article

@@ -229,7 +229,7 @@ export function AuditLogs() {
               </div>
               <Select value={actionFilter} onValueChange={setActionFilter}>
                 <SelectTrigger className="w-full md:w-[150px]">
-                  <SelectValue placeholder="动作筛选" />
+                  <SelectValue placeholder="全部动作" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部动作</SelectItem>
@@ -297,7 +297,7 @@ export function AuditLogs() {
             <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
               {loading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无审计记录</div>

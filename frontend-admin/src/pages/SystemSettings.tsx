@@ -226,7 +226,7 @@ export function SystemSettings() {
         <Card>
           <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            加载中…
+            正在加载…
           </CardContent>
         </Card>
       ) : (

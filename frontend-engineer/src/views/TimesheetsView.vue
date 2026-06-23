@@ -104,7 +104,7 @@ onMounted(load)
     <section class="form-section timesheet-filter">
       <label class="field"><span>{{ zh('开始日期') }}</span><input v-model="startDate" type="date" /></label>
       <label class="field"><span>{{ zh('结束日期') }}</span><input v-model="endDate" type="date" /></label>
-      <button class="locate" type="button" :disabled="loading" @click="load"><PreviewIcon name="refresh" />{{ zh(loading ? '加载中' : '刷新预览') }}</button>
+      <button class="locate" type="button" :disabled="loading" @click="load"><PreviewIcon name="refresh" />{{ zh(loading ? '正在加载' : '刷新预览') }}</button>
       <button class="primary" type="button" :disabled="loading || !detailRows.length" @click="exportCsv"><PreviewIcon name="download" />{{ zh('导出月报') }}</button>
     </section>
 

@@ -3519,7 +3519,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
                 <strong>{{ zh(company.name) }}</strong>
                 <span>{{ zh(company.source === 'customer' ? '系统客户' : '地图结果') }} · {{ zh(company.address || company.mapAddress || '暂无地址') }}</span>
               </button>
-              <em v-if="!nearbyCompanies.length">{{ zh('暂无匹配客户') }}</em>
+              <em v-if="!nearbyCompanies.length">{{ zh('未找到匹配客户') }}</em>
             </div>
             <small v-if="fieldErrors.name" class="field-error">{{ zh(fieldErrors.name) }}</small>
           </label>

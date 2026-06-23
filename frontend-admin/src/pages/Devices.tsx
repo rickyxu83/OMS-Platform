@@ -79,11 +79,11 @@ interface ModelSuggestion {
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
-  none: "无维护",
-  vendor: "原厂维护",
-  our: "我方维护",
-  original_manufacturer: "原厂维护",
-  our_maintenance: "我方维护",
+  none: "无维保",
+  vendor: "原厂维保",
+  our: "我方维保",
+  original_manufacturer: "原厂维保",
+  our_maintenance: "我方维保",
 };
 
 const MAINTENANCE_TYPE_BADGE: Record<string, "default" | "secondary" | "info" | "purple"> = {
@@ -102,7 +102,7 @@ const MAINTENANCE_TYPE_ALIASES: Record<string, string> = {
 const DEVICE_STATUS_LABELS: Record<string, string> = {
   active: "在用",
   inactive: "停用",
-  maintenance: "维护中",
+  maintenance: "维保中",
   scrapped: "已报废",
 };
 
@@ -286,8 +286,8 @@ export function Devices() {
     const vendor = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "original_manufacturer").length;
     return [
       { label: "设备总数", value: total },
-      { label: "我方维护", value: ours },
-      { label: "原厂维护", value: vendor },
+      { label: "我方维保", value: ours },
+      { label: "原厂维保", value: vendor },
     ];
   }, [filtered]);
 
@@ -567,7 +567,7 @@ export function Devices() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">设备资产</h1>
-          <p className="text-muted-foreground mt-1">管理客户设备和维护信息</p>
+          <p className="text-muted-foreground mt-1">管理客户设备和维保信息</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => load(searchQuery)}>
@@ -618,7 +618,7 @@ export function Devices() {
             </div>
             <Select value={customerFilter} onValueChange={setCustomerFilter}>
               <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="选择客户" />
+                <SelectValue placeholder="全部客户" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部客户</SelectItem>
@@ -631,13 +631,13 @@ export function Devices() {
             </Select>
             <Select value={maintenanceFilter} onValueChange={setMaintenanceFilter}>
               <SelectTrigger className="w-full md:w-[150px]">
-                <SelectValue placeholder="维护类型" />
+                <SelectValue placeholder="维保类型" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部类型</SelectItem>
-                <SelectItem value="our_maintenance">我方维护</SelectItem>
-                <SelectItem value="original_manufacturer">原厂维护</SelectItem>
-                <SelectItem value="none">无维护</SelectItem>
+                <SelectItem value="our_maintenance">我方维保</SelectItem>
+                <SelectItem value="original_manufacturer">原厂维保</SelectItem>
+                <SelectItem value="none">无维保</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -690,10 +690,10 @@ export function Devices() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中…
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无匹配设备</div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
             ) : (
               <div className="space-y-2">
               {filtered.map((device) => {
@@ -862,7 +862,7 @@ export function Devices() {
                       <div className="text-sm font-medium">维保信息</div>
                       <div className="mt-3 grid gap-3 text-sm">
                         <div>
-                          <div className="text-xs text-muted-foreground">维护类型</div>
+                          <div className="text-xs text-muted-foreground">维保类型</div>
                           <div className="mt-1"><Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>{typeLabel}</Badge></div>
                         </div>
                         <div>
@@ -870,7 +870,7 @@ export function Devices() {
                           <div className="mt-1">{detailTarget.maintenancePartyName || "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs text-muted-foreground">维护周期</div>
+                          <div className="text-xs text-muted-foreground">维保周期</div>
                           <div className="mt-1">
                             {formatDate(detailTarget.maintenanceStart)} 至 {formatDate(detailTarget.maintenanceEnd)}
                           </div>
@@ -1083,18 +1083,18 @@ export function Devices() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>维护类型</Label>
+                <Label>维保类型</Label>
                 <Select
                   value={form.maintenanceType}
                   onValueChange={(v) => setForm({ ...form, maintenanceType: v, maintenancePartyId: v === "none" ? "" : form.maintenancePartyId })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择维护类型" />
+                    <SelectValue placeholder="选择维保类型" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">无维护</SelectItem>
-                    <SelectItem value="our_maintenance">我方维护</SelectItem>
-                    <SelectItem value="original_manufacturer">原厂维护</SelectItem>
+                    <SelectItem value="none">无维保</SelectItem>
+                    <SelectItem value="our_maintenance">我方维保</SelectItem>
+                    <SelectItem value="original_manufacturer">原厂维保</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1106,7 +1106,7 @@ export function Devices() {
                   disabled={form.maintenanceType === "none"}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={form.maintenanceType === "none" ? "无维护" : "选择维保方"} />
+                    <SelectValue placeholder={form.maintenanceType === "none" ? "无维保" : "选择维保方"} />
                   </SelectTrigger>
                   <SelectContent>
                     {parties.map((p) => (
@@ -1118,7 +1118,7 @@ export function Devices() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>维护开始</Label>
+                <Label>维保开始</Label>
                 <Input
                   type="date"
                   value={form.maintenanceStart}
@@ -1126,7 +1126,7 @@ export function Devices() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>维护截止</Label>
+                <Label>维保截止</Label>
                 <Input
                   type="date"
                   value={form.maintenanceEnd}
@@ -1150,7 +1150,7 @@ export function Devices() {
                   <SelectContent>
                     <SelectItem value="active">在用</SelectItem>
                     <SelectItem value="inactive">停用</SelectItem>
-                    <SelectItem value="maintenance">维护中</SelectItem>
+                    <SelectItem value="maintenance">维保中</SelectItem>
                     <SelectItem value="scrapped">已报废</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1172,7 +1172,7 @@ export function Devices() {
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-              {saving ? "保存中…" : editingId ? "保存修改" : "立即创建"}
+              {saving ? "保存中…" : editingId ? "保存修改" : "保存"}
             </Button>
           </DialogFooter>
         </DialogContent>

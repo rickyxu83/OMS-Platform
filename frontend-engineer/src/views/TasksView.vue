@@ -657,7 +657,7 @@ function submittedResultHint(task) {
 }
 
 function taskCardHint(task) {
-  if (isDraftTask(task)) return '继续填写服务表'
+  if (isDraftTask(task)) return '继续填写服务记录'
   if (String(task.status || '') === 'submitted') return submittedResultHint(task)
   return ''
 }
@@ -1021,7 +1021,7 @@ onBeforeUnmount(() => {
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
-    <p v-else-if="loading && !displayTasks.length" class="muted">{{ zh('正在载入服务记录…') }}</p>
+    <p v-else-if="loading && !displayTasks.length" class="muted">{{ zh('正在加载服务记录…') }}</p>
 
     <div v-if="actionToast" class="floating-toast">{{ zh(actionToast) }}</div>
 

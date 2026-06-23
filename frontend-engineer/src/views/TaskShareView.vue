@@ -250,7 +250,7 @@ const sheetSvg = computed(() => {
   const workContent = displayReportWorkContent(item.report, item) || cleanText(item.serviceContent || item.issueDescription || '', '未填写处理记录')
   const partsContent = displayServiceParts(item.parts)
   const workRecord = [workContent, partsContent ? `配件记录：\n${partsContent}` : ''].filter(Boolean).join('\n')
-  const titleText = isRemoteSheet.value ? '远程服务记录单' : '技术服务记录单'
+  const titleText = isRemoteSheet.value ? '远程服务记录' : '技术服务记录'
   const secondLabel = '设备 / 系统'
   const secondValue = cleanText(item.deviceName || item.internalNote || item.productName || '', '未填写设备信息')
   const summaryLabel = '问题描述'
@@ -350,7 +350,7 @@ async function load() {
     task.value = data.item
     logoDataUrl.value = await imageToDataUrl(`${import.meta.env.BASE_URL}export-logo.png`).catch(() => '')
     if (normalizePreviewServiceMode(data.item || {}) === 'office') {
-      error.value = '内勤记录不生成单独服务表，请在月报中统一导出'
+      error.value = '内勤记录不生成单独服务记录，请在月报中统一导出'
       return
     }
     if (!data.item?.report) error.value = '请先填写并提交服务记录'
@@ -380,8 +380,8 @@ async function shareSheet() {
       const file = new File([previewBlob.value], `${task.value.orderNo || 'service-record'}.png`, { type: 'image/png' })
       if (!navigator.canShare || navigator.canShare({ files: [file] })) {
         await navigator.share({
-          title: `${task.value?.customerName || ''} 技术服务表`,
-          text: `${task.value?.orderNo || ''} 技术服务表高清图片`,
+          title: `${task.value?.customerName || ''} 技术服务记录`,
+          text: `${task.value?.orderNo || ''} 技术服务记录高清图片`,
           files: [file],
         })
         return
@@ -389,8 +389,8 @@ async function shareSheet() {
     }
     if (navigator.share) {
       await navigator.share({
-        title: `${task.value?.customerName || ''} 技术服务表`,
-        text: `${task.value?.orderNo || ''} 技术服务表高清图片已生成，可下载留底。`,
+        title: `${task.value?.customerName || ''} 技术服务记录`,
+        text: `${task.value?.orderNo || ''} 技术服务记录高清图片已生成，可下载留底。`,
         url: window.location.href,
       })
     } else {
@@ -419,7 +419,7 @@ onMounted(load)
   <main class="engineer-shell share-shell">
     <header class="topbar">
       <div>
-        <BrandEyebrow text="工程师工作台 / 分享服务表" title="分享服务表" />
+        <BrandEyebrow text="工程师工作台 / 分享服务记录" title="分享服务记录" />
       </div>
       <RouterLink class="ghost top-link" :to="`/tasks/${route.params.id}`"><PreviewIcon name="eye" />{{ zh('返回详情') }}</RouterLink>
     </header>
@@ -439,7 +439,7 @@ onMounted(load)
         </div>
       </div>
       <div class="paper-preview">
-        <img v-if="previewUrl" :src="previewUrl" alt="技术服务表预览" />
+        <img v-if="previewUrl" :src="previewUrl" alt="技术服务记录预览" />
       </div>
     </article>
   </main>
