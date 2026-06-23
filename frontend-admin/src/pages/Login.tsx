@@ -334,14 +334,14 @@ export function Login() {
         <p className="text-gray-600">
           {t.copyrightNotice}
           <span className="mx-1.5 text-gray-300">│</span>
-          <a className="text-gray-400 underline-offset-2 hover:text-gray-600 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+          <a className="text-gray-600 underline-offset-2 hover:text-gray-600 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
             {t.icpNotice}
           </a>
         </p>
-        <p className="text-gray-400">
+        <p className="text-gray-600">
           {t.licenseLine}
           <span className="mx-1.5 text-gray-300">│</span>
-          <a className="text-gray-400 underline-offset-2 hover:text-gray-600 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
+          <a className="text-gray-600 underline-offset-2 hover:text-gray-600 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
             github.com/rickyxu83/OMS-Platform
           </a>
         </p>
