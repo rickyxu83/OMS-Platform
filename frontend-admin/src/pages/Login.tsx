@@ -340,7 +340,7 @@ export function Login() {
         </p>
         <p className="text-gray-600">
           {t.licenseLine}
-          <span className="mx-1.5 text-red-400">❤</span>
+          <span className="mx-1 text-sm text-red-500">❤</span>
           <a className="text-gray-600 underline-offset-2 hover:text-gray-600 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
             github.com/rickyxu83/OMS-Platform
           </a>
