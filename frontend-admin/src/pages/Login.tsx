@@ -53,9 +53,9 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "请输入账号",
       passwordPlaceholder: "请输入密码",
-      copyrightNotice: "© 2026 敦阳（宁波）科技有限公司 版权所有",
+      copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseNotice: "OMS Platform 平台已开源发布，遵循 GNU General Public License v3.0 (GPL-3.0)。",
+      licenseNotice: "OMS Platform 平台以 GPL-3.0 开源发布",
       sourceNotice: "源码及许可证信息请访问：",
     },
     "zh-TW": {
@@ -81,9 +81,9 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "請輸入帳號",
       passwordPlaceholder: "請輸入密碼",
-      copyrightNotice: "© 2026 敦陽（寧波）科技有限公司 版權所有",
+      copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseNotice: "OMS Platform 平台已開源發布，遵循 GNU General Public License v3.0 (GPL-3.0)。",
+      licenseNotice: "OMS Platform 平台以 GPL-3.0 開源發布",
       sourceNotice: "原始碼及授權資訊請訪問：",
     },
   };
