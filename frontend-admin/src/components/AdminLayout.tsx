@@ -311,11 +311,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <img src={logoSrc} alt="" aria-hidden="true" />
               </div>
               <div>
-                <span className="font-bold text-base leading-tight block text-sidebar-foreground tracking-tight">
+                <span className="font-bold text-base leading-tight block text-sidebar-foreground">
                   <span className="block">{strings.brand.title}</span>
                   <span className="block">{strings.brand.subtitle}</span>
                 </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">{strings.common.systemName}</span>
+                <span className="text-xs text-muted-foreground uppercase font-semibold">{strings.common.systemName}</span>
               </div>
             </div>
           </div>
@@ -364,15 +364,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {/* Sidebar Footer - Version Info */}
           <div className="p-4 border-t border-sidebar-border/50 bg-sidebar-accent/10">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{strings.brand.version}</span>
-              <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
+              <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
+              <Badge variant="outline" className="text-xs h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
             </div>
             <div className="mt-2 px-2">
               <a
                 href="https://beian.miit.gov.cn/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground underline-offset-2 hover:underline"
+                className="text-xs text-muted-foreground/60 hover:text-muted-foreground underline-offset-2 hover:underline"
               >
                 浙ICP备2026045692号
               </a>
@@ -533,7 +533,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors ${
+                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 text-xs font-medium transition-colors ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"

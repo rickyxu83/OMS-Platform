@@ -320,8 +320,8 @@ export function Login() {
             )}
 
             <div className="mt-5 flex items-center justify-center gap-2 border-t border-white/60 pt-4">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{t.version}</span>
-              <Badge variant="outline" className="h-4 border-gray-300 px-1.5 py-0 font-mono text-[10px] opacity-50">
+              <span className="text-xs font-bold uppercase text-gray-400">{t.version}</span>
+              <Badge variant="outline" className="h-4 border-gray-300 px-1.5 py-0 font-mono text-xs opacity-50">
                 {appVersion}
               </Badge>
             </div>
@@ -330,7 +330,7 @@ export function Login() {
         </div>
       </div>
 
-      <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-[11px] leading-relaxed tracking-wider sm:bottom-4">
+      <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-xs leading-relaxed sm:bottom-4">
         <p className="text-gray-600">
           {t.copyrightNotice}
           <span className="mx-1.5 text-gray-300">│</span>

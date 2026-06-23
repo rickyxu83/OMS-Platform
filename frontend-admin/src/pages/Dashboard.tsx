@@ -611,14 +611,14 @@ export function Dashboard() {
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{t.title}</h1>
+          <h1 className="text-3xl font-semibold">{t.title}</h1>
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+          <div className="relative min-w-0 flex-1 md:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              className="pl-9 w-64 bg-card"
+              className="w-full bg-card pl-9 md:w-64"
               placeholder={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -750,7 +750,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
         <section className="lg:col-span-3">
           <div className="mb-4 px-1">
-            <h2 className="text-xl font-semibold tracking-tight">{t.map.title}</h2>
+            <h2 className="text-xl font-semibold">{t.map.title}</h2>
             <p className="text-sm text-muted-foreground">{t.map.description}</p>
           </div>
           <Amap
@@ -799,11 +799,11 @@ export function Dashboard() {
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
                     <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
-                      <span className="min-w-0 truncate text-sm font-semibold tracking-tight" title={order.customer}>{order.customer}</span>
+                      <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
                       <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{order.date}</span>
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
                       <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-[10px] font-normal">
+                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
                         {order.statusLabel}
                       </Badge>
                     </div>

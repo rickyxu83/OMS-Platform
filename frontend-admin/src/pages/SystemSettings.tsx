@@ -200,10 +200,10 @@ export function SystemSettings() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">系统设置</h1>
+          <h1 className="text-3xl font-semibold">系统设置</h1>
           <p className="mt-1 text-muted-foreground">配置 AI 总结、地图服务和派单邮件通知</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={load} disabled={loading || saving}>
             <RefreshCw className="mr-2 h-4 w-4" />
             刷新

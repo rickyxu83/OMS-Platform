@@ -4163,7 +4163,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   display: inline-flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 0.82rem;
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -4189,13 +4189,13 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 }
 
 .ai-voice-guide strong {
-  font-size: 0.86rem;
+  font-size: var(--type-body);
 }
 
 .ai-voice-guide p {
   margin: 0;
   color: #334155;
-  font-size: 0.88rem;
+  font-size: var(--type-body);
   line-height: 1.55;
 }
 
@@ -4216,7 +4216,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   background: rgba(248, 250, 252, 0.86);
   padding: 14px;
   color: #334155;
-  font-size: 0.92rem;
+  font-size: var(--type-body);
   line-height: 1.6;
 }
 
@@ -4261,7 +4261,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 
 .ai-conflict-item span {
   color: #64748b;
-  font-size: 0.78rem;
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -4303,12 +4303,12 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 }
 
 .device-model-autocomplete .autocomplete-dropdown li strong {
-  font-size: 14px;
+  font-size: var(--type-body);
   color: #1d2939;
 }
 
 .device-model-autocomplete .autocomplete-dropdown li small {
-  font-size: 12px;
+  font-size: var(--type-caption);
   color: #667085;
 }
 
@@ -4330,7 +4330,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 .install-device-card .btn-add-row {
   flex-shrink: 0;
   padding: 6px 14px;
-  font-size: 13px;
+  font-size: var(--type-muted);
   font-weight: 500;
   color: #3b82f6;
   background: transparent;
@@ -4354,7 +4354,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   border-top: 1px solid #e2e6ed;
   padding: 12px 0 2px;
   color: #667085;
-  font-size: 13px;
+  font-size: var(--type-muted);
 }
 
 .install-device-row {
@@ -4375,7 +4375,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
 }
 
 .install-device-row-label {
-  font-size: 13px;
+  font-size: var(--type-muted);
   font-weight: 600;
   color: #344054;
 }
@@ -4386,7 +4386,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--type-muted);
   color: #98a2b3;
   background: transparent;
   border: 0;

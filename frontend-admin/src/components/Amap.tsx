@@ -343,8 +343,8 @@ export function Amap({
           if (onPointClick) onPointClick(clicked);
           if (infoWindowRef.current) {
             const html = `
-              <div style="padding:8px 12px;font-size:12px;line-height:1.6;min-width:200px">
-                <div style="font-weight:600;font-size:13px;color:#0b1c30">${clicked.name}</div>
+              <div style="padding:8px 12px;font-size:var(--type-caption);line-height:1.6;min-width:200px">
+                <div style="font-weight:600;font-size:var(--type-body);color:#0b1c30">${clicked.name}</div>
                 ${clicked.address ? `<div style="color:#717182;margin-top:2px">${clicked.address}</div>` : ""}
                 ${clicked.contact ? `<div style="margin-top:4px">联系人：${clicked.contact}</div>` : ""}
                 ${clicked.phone ? `<div>电话：${clicked.phone}</div>` : ""}
@@ -442,7 +442,7 @@ const AMAP_MARKER_CSS = `
 .ops-map-marker:hover .ops-map-marker-dot { transform: scale(1.2); transition: transform 0.15s ease; }
 .ops-map-marker-office { width: 30px; height: 30px; }
 .ops-map-marker-office-dot { display: block; width: 30px; height: 30px; border-radius: 999px; border: 3px solid white; background: radial-gradient(circle at 35% 35%, #ffffff 0, #d3e4fe 22%, #6b38d4 64%, #361268 100%); box-shadow: 0 0 0 8px rgba(107,56,212,0.14), 0 0 0 18px rgba(107,56,212,0.06), 0 18px 36px rgba(54,18,104,0.28); }
-.ops-map-marker-office-label { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%) translateY(3px); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.7); border-radius: 999px; padding: 3px 8px; color: white; background: rgba(27,12,59,0.94); font-size: 10px; white-space: nowrap; opacity: 0; transition: opacity 0.24s ease, transform 0.28s ease; transition-delay: var(--ops-map-label-delay, 120ms); }
+.ops-map-marker-office-label { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%) translateY(3px); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.7); border-radius: 999px; padding: 3px 8px; color: white; background: rgba(27,12,59,0.94); font-size: var(--type-caption); white-space: nowrap; opacity: 0; transition: opacity 0.24s ease, transform 0.28s ease; transition-delay: var(--ops-map-label-delay, 120ms); }
 .ops-map-settled .ops-map-marker-office-label { opacity: 1; transform: translateX(-50%) translateY(0); }
 .ops-map-flight-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity 0.45s ease 0.08s; }
 .ops-map-settled .ops-map-flight-overlay { opacity: 1; }
@@ -487,7 +487,7 @@ function FallbackMap({ center, points, onPointClick, message, height, className 
 
   return (
     <div className={`relative rounded-xl overflow-hidden border border-slate-200 ${className}`} style={{ height, background: "radial-gradient(circle at 50% 50%, rgba(233,221,255,0.8), transparent 26%), linear-gradient(135deg, #eef3ff 0%, #f7f3ff 48%, #edf5ff 100%)" }}>
-      <div className="absolute top-2 left-2 right-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg text-[10px] text-muted-foreground border border-slate-200/60 shadow-sm flex items-center gap-2">
+      <div className="absolute top-2 left-2 right-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg text-xs text-muted-foreground border border-slate-200/60 shadow-sm flex items-center gap-2">
         <MapPin className="w-3 h-3 text-primary" />
         {message || "AMap 未配置，显示以苏州办事处为中心的客户坐标层"}
       </div>
@@ -528,7 +528,7 @@ function FallbackMap({ center, points, onPointClick, message, height, className 
                   : "radial-gradient(circle at 35% 35%, #fbf7ff 0, #ddc4ff 18%, #8b5cf6 56%, #6d28d9 100%)",
               }}
             />
-            <span className="absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            <span className="absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
               {p.name}
             </span>
           </button>

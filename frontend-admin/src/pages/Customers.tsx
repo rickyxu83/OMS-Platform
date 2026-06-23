@@ -1137,10 +1137,10 @@ export function Customers() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{t.title}</h1>
+          <h1 className="text-3xl font-semibold">{t.title}</h1>
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => load(searchQuery)}>
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
@@ -1304,7 +1304,7 @@ export function Customers() {
                             <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
                           )}
                           {c.latitude && c.longitude ? (
-                            <div className="text-[10px] text-emerald-600 mt-0.5 flex items-center gap-1">
+                            <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
                               <MapPin className="w-3 h-3" />
                               {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
                             </div>
@@ -1689,7 +1689,7 @@ export function Customers() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="cust-name">{t.dialog.name}</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -1731,9 +1731,9 @@ export function Customers() {
                         <div className="font-medium text-sm truncate flex items-center gap-2">
                           {c.name}
                           {c.source === "customer" ? (
-                            <Badge variant="secondary" className="text-[10px] h-4 px-1">{t.dialog.badgeSystem}</Badge>
+                            <Badge variant="secondary" className="text-xs h-4 px-1">{t.dialog.badgeSystem}</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1">{t.dialog.badgeMap}</Badge>
+                            <Badge variant="outline" className="text-xs h-4 px-1">{t.dialog.badgeMap}</Badge>
                           )}
                         </div>
                         {c.address ? (
@@ -1813,7 +1813,7 @@ export function Customers() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="cust-address">{t.dialog.address}</Label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Input
                     id="cust-address"
                     value={form.address}
@@ -1889,7 +1889,7 @@ export function Customers() {
                   <div className="text-muted-foreground">
                     {form.mapAddress || form.address}
                   </div>
-                  <div className="font-mono text-[11px] text-slate-500">
+                  <div className="font-mono text-xs text-slate-500">
                     {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
                     {form.mapPoiId ? ` · POI ${form.mapPoiId}` : ""}
                   </div>
