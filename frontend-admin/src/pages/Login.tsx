@@ -61,8 +61,7 @@ export function Login() {
       passwordPlaceholder: "请输入密码",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseNotice: "OMS Platform 平台以 GPL-3.0 开源发布",
-      sourceNotice: "源码及许可证信息请访问：",
+      licenseLine: "以 GPL-3.0 开源",
     },
     "zh-TW": {
       title: "OMS Platform",
@@ -89,8 +88,7 @@ export function Login() {
       passwordPlaceholder: "請輸入密碼",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseNotice: "OMS Platform 平台以 GPL-3.0 開源發布",
-      sourceNotice: "原始碼及授權資訊請訪問：",
+      licenseLine: "以 GPL-3.0 開源",
     },
   };
 
@@ -333,17 +331,18 @@ export function Login() {
       </div>
 
       <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-xs leading-relaxed text-gray-500 sm:bottom-4">
-        <p>{t.copyrightNotice}</p>
         <p>
+          {t.copyrightNotice}
+          <span className="mx-1.5 text-gray-300">·</span>
           <a className="underline-offset-2 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
             {t.icpNotice}
           </a>
         </p>
-        <p>{t.licenseNotice}</p>
         <p>
-          {t.sourceNotice}
+          {t.licenseLine}
+          <span className="mx-1.5 text-gray-300">·</span>
           <a className="underline-offset-2 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
-            https://github.com/rickyxu83/OMS-Platform
+            github.com/rickyxu83/OMS-Platform
           </a>
         </p>
       </div>
