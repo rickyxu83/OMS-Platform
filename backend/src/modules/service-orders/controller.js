@@ -37,7 +37,7 @@ const orderColumns = `
   so.archived_at, so.created_at, so.updated_at
 `
 
-const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor'])
+const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor'])
 const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
 
 async function hasInspectionDocument(orderId) {

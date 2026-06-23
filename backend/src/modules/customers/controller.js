@@ -3,7 +3,7 @@ const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
-const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'assistant', 'dispatcher', 'supervisor', 'engineering_supervisor', 'sales_supervisor', 'sales'])
+const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
 let ensureCustomerLevelColumnPromise = null
 
 async function ensureCustomerLevelColumn() {

@@ -68,7 +68,7 @@ function startScheduler() {
         }
       } else {
         adminRows = await query(
-          `SELECT email FROM users WHERE email IS NOT NULL AND email <> '' AND role IN ('admin', 'supervisor')`,
+          `SELECT email FROM users WHERE email IS NOT NULL AND email <> '' AND role IN ('admin', 'operations_director')`,
         )
       }
 

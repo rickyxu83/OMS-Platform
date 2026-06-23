@@ -3,7 +3,7 @@ import { api, saveSession, clearSession, getCurrentUser, getToken, isLoggedIn } 
 import type { WorkspaceOption } from '@/config/app'
 
 const ADMIN_ACCESS_ROLES = [
-  'admin', 'assistant', 'dispatcher', 'supervisor',
+  'admin', 'assistant', 'dispatcher', 'operations_director',
   'engineering_supervisor', 'sales_supervisor', 'sales',
 ]
 

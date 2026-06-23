@@ -88,7 +88,7 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 |---|---|---|
 | `engineer`（工程师） | 只看自己工单 | 不能登录 |
 | `engineering_supervisor`（工程主管） | 传 `mine=1` → 只看自己工单 | 可见全部工单（派单管理） |
-| `supervisor`（主管） | 不能登录 | 可见全部工单 |
+| `operations_director`（运营负责人） | 不能登录 | 可见全部工单 |
 | `admin`（管理员） | 不能登录 | 全部权限 |
 
 工程师端 `TasksView` 请求时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。

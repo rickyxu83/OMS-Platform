@@ -200,6 +200,18 @@ deploy_backend() {
     docker compose build backend
     docker compose up -d backend
     echo '  ✓ 后端容器已重建并重启'
+
+    for i in 1 2 3 4 5; do
+      if docker compose exec -T backend npm run ensure-user-role-enum; then
+        echo '  ✓ 用户角色枚举已确认'
+        break
+      fi
+      if [ \"\$i\" = 5 ]; then
+        echo '  ✗ 用户角色枚举迁移失败'
+        exit 1
+      fi
+      sleep 3
+    done
   "
 
   rm -f "$archive"
