@@ -106,6 +106,8 @@ const nearbyCompanies = ref([])
 const showNearbyCompanies = ref(false)
 const fieldErrors = ref({})
 const customerNameInput = ref(null)
+const customerNameField = ref(null)
+const nearbyCompanyList = ref(null)
 const customerContactSection = ref(null)
 const customerAddressInput = ref(null)
 const contactInput = ref(null)
@@ -154,7 +156,6 @@ const aiDraftConflicts = ref([])
 const aiDraftPendingFields = ref(null)
 const aiDraftConfirmSubmitOpen = ref(false)
 const aiDraftCustomerCandidates = ref([])
-let customerSearchTimer = null
 let deviceModelSearchTimer = null
 let deviceModelReqId = 0
 let draftTimer = null
@@ -1301,10 +1302,22 @@ function hideCoEngineerOptionsSoon() {
 }
 
 function handleDocumentPointerDown(event) {
+  const target = event.target
+  if (!target) return
+
   const container = coEngineerField.value
-  if (!container || !showCoEngineerOptions.value) return
-  if (!container.contains(event.target)) {
+  if (showCoEngineerOptions.value && container && !container.contains(target)) {
     showCoEngineerOptions.value = false
+  }
+
+  const nameField = customerNameField.value
+  const nearbyList = nearbyCompanyList.value
+  if (
+    showNearbyCompanies.value
+    && !nameField?.contains(target)
+    && !nearbyList?.contains(target)
+  ) {
+    showNearbyCompanies.value = false
   }
 }
 
@@ -1915,8 +1928,10 @@ function updateCustomerField(field, value) {
     selectedCustomer.value.contactName = ''
     selectedCustomer.value.contactPhone = ''
     selectedCustomer.value.contacts = []
+    nearbyCompanies.value = []
+    showNearbyCompanies.value = false
+    locationHint.value = String(value || '').trim() ? '客户名称已手动修改，可重新定位查找。' : ''
     clearSignature()
-    scheduleCustomerLookup(value)
   }
   if (field === 'name' || field === 'address') {
     if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
@@ -2036,25 +2051,6 @@ async function searchNearbyCompanies(coords = {}, options = {}) {
   locationHint.value = nearbyCompanies.value.length
     ? `已找到 ${nearbyCompanies.value.length} 个候选，点击可带入客户名称和地址。`
     : '没有找到候选，可继续使用常用客户或手动填写。'
-}
-
-function scheduleCustomerLookup(value) {
-  const keyword = String(value || '').trim()
-  window.clearTimeout(customerSearchTimer)
-  if (!keyword) {
-    nearbyCompanies.value = []
-    showNearbyCompanies.value = false
-    locationHint.value = ''
-    return
-  }
-  customerSearchTimer = window.setTimeout(async () => {
-    locationHint.value = `正在搜索“${keyword}”相关客户…`
-    try {
-      await searchNearbyCompanies({}, { keyword })
-    } catch (err) {
-      locationHint.value = err.message || '客户搜索失败'
-    }
-  }, 300)
 }
 
 function normalizeDeviceModelSuggestion(item, fallbackIndex = 0) {
@@ -3261,7 +3257,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopSpeechRecognition()
-  window.clearTimeout(customerSearchTimer)
   window.clearTimeout(deviceModelSearchTimer)
   window.clearTimeout(draftTimer)
   window.clearTimeout(draftSyncTimer)
@@ -3397,7 +3392,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         <button class="ghost refresh-customer-button" type="button" :title="zh('重新同步客户、历史服务和工程师资料')" @click="load"><PreviewIcon name="refresh" />{{ zh('同步资料') }}</button>
       </div>
       <p v-if="locationHint" class="location-hint">{{ zh(locationHint) }}</p>
-      <div v-if="showNearbyCompanies && !showCustomerNameOptions" class="nearby-company-list">
+      <div v-if="showNearbyCompanies && !showCustomerNameOptions" ref="nearbyCompanyList" class="nearby-company-list">
         <button
           v-for="company in nearbyCompanies"
           :key="company.id"
@@ -3497,7 +3492,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           </div>
         </div>
         <div class="field-grid">
-          <label class="field customer-name-field" :class="{ 'has-error': fieldErrors.name }">
+          <label ref="customerNameField" class="field customer-name-field" :class="{ 'has-error': fieldErrors.name }">
             <span>{{ zh(customerNameLabel) }}<b v-if="!isOfficeMode">*</b></span>
             <input
               ref="customerNameInput"
@@ -3505,7 +3500,6 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               :value="zh(activeCustomer.name || '')"
               :placeholder="zh(isOfficeMode ? '内勤工作可留空；如有关联客户也可填写' : '输入客户名称，或留空定位附近公司')"
               autocomplete="off"
-              @focus="showNearbyCompanies = Boolean(activeCustomer.name && nearbyCompanies.length)"
               @input="updateCustomerField('name', $event.target.value)"
               @blur="hideNearbyCompaniesSoon"
             />

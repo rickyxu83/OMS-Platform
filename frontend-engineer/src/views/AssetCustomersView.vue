@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
@@ -27,8 +27,8 @@ const geoLoading = ref(false)
 const candidates = ref([])
 const showCandidates = ref(false)
 const locationHint = ref('')
-
-let geoSearchTimer = null
+const customerNameField = ref(null)
+const customerCandidateList = ref(null)
 
 const filteredCustomers = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -232,21 +232,6 @@ async function searchGeo(coords = {}, options = {}) {
   }
 }
 
-function scheduleGeoSearch(value) {
-  window.clearTimeout(geoSearchTimer)
-  const keyword = String(value || '').trim()
-  if (!keyword) {
-    candidates.value = []
-    showCandidates.value = false
-    locationHint.value = ''
-    return
-  }
-  locationHint.value = `正在搜索“${keyword}”相关客户…`
-  geoSearchTimer = window.setTimeout(() => {
-    searchGeo({}, { keyword }).catch(() => undefined)
-  }, 300)
-}
-
 async function locateNearMe() {
   if (locating.value) return
   locating.value = true
@@ -269,7 +254,6 @@ async function locateByAddress() {
     locationHint.value = '请输入客户地址'
     return
   }
-  window.clearTimeout(geoSearchTimer)
   addressLocating.value = true
   candidates.value = []
   showCandidates.value = false
@@ -337,7 +321,9 @@ function updateCustomerName(value) {
   form.value.name = value
   form.value.mapPoiId = ''
   form.value.mapPoiName = ''
-  scheduleGeoSearch(value)
+  candidates.value = []
+  showCandidates.value = false
+  locationHint.value = String(value || '').trim() ? '客户名称已手动修改，可重新定位查找。' : ''
 }
 
 function updateCustomerAddress(value) {
@@ -422,9 +408,22 @@ function consumeDeleteSuccessQuery() {
   router.replace({ path: route.path, query: nextQuery })
 }
 
+function handleDocumentPointerDown(event) {
+  if (!showCandidates.value) return
+  const target = event.target
+  if (!target) return
+  if (customerNameField.value?.contains(target) || customerCandidateList.value?.contains(target)) return
+  showCandidates.value = false
+}
+
 onMounted(() => {
   consumeDeleteSuccessQuery()
   loadCustomers()
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 </script>
 
@@ -494,7 +493,7 @@ onMounted(() => {
           </div>
         </header>
         <div class="asset-editor-form">
-          <label class="asset-editor-wide">{{ zh('客户名称') }}
+          <label ref="customerNameField" class="asset-editor-wide">{{ zh('客户名称') }}
             <div class="asset-inline-control">
               <input
                 v-model="form.name"
@@ -502,14 +501,13 @@ onMounted(() => {
                 :placeholder="zh('输入客户名称或地图关键词')"
                 autocomplete="off"
                 @input="updateCustomerName($event.target.value)"
-                @focus="showCandidates = candidates.length > 0"
               />
               <button class="ghost asset-inline-button" type="button" :disabled="locating" @click="locateNearMe">
                 <PreviewIcon name="pin" />{{ zh(locating ? '定位中…' : '定位查找') }}
               </button>
             </div>
           </label>
-          <div v-if="showCandidates && candidates.length" class="asset-candidate-list asset-editor-wide">
+          <div v-if="showCandidates && candidates.length" ref="customerCandidateList" class="asset-candidate-list asset-editor-wide">
             <button v-for="candidate in candidates" :key="`${candidate.source || 'candidate'}-${candidate.id || candidate.name}`" type="button" @click="applyCandidate(candidate)">
               <strong>{{ zh(candidate.name || '未命名地点') }}</strong>
               <span>{{ zh(candidate.address || candidate.mapAddress || '未维护地址') }}</span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -575,7 +575,7 @@ export function Customers() {
   const [locationHint, setLocationHint] = useState("");
   const [locating, setLocating] = useState(false);
   const [addressLocating, setAddressLocating] = useState(false);
-  const [searchTimer, setSearchTimer] = useState<number | null>(null);
+  const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const canForceDeleteCustomer = CUSTOMER_ADMIN_DELETE_ROLES.has(String(user?.role || ""));
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
@@ -619,6 +619,20 @@ export function Customers() {
     const keyword = searchParams.get("keyword") || searchParams.get("city") || "";
     setSearchQuery(keyword);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!dialogOpen || !showCandidates) return undefined;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (customerCandidateRef.current?.contains(target)) return;
+      setShowCandidates(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [dialogOpen, showCandidates]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -810,7 +824,9 @@ export function Customers() {
       mapPoiId: "",
       mapPoiName: "",
     }));
-    scheduleGeoSearch(value);
+    setCandidates([]);
+    setShowCandidates(false);
+    setLocationHint(value.trim() ? t.geo.noCoordinate : "");
   }
 
   function updateCustomerAddress(value: string) {
@@ -861,22 +877,6 @@ export function Customers() {
     }
   }
 
-  function scheduleGeoSearch(value: string) {
-    if (searchTimer) window.clearTimeout(searchTimer);
-    const keyword = value.trim();
-    if (!keyword) {
-      setCandidates([]);
-      setShowCandidates(false);
-      setLocationHint("");
-      return;
-    }
-    setLocationHint(interpolate(t.geo.searching, { keyword }));
-    const timerId = window.setTimeout(() => {
-      searchGeo({}, { keyword }).catch(() => undefined);
-    }, 300);
-    setSearchTimer(timerId);
-  }
-
   function applyCandidate(company: GeoCandidate) {
     const coordinates = candidateCoordinates(company);
     setForm((prev) => {
@@ -916,7 +916,6 @@ export function Customers() {
       setLocationHint(t.geo.addressRequired);
       return;
     }
-    if (searchTimer) window.clearTimeout(searchTimer);
     setAddressLocating(true);
     setCandidates([]);
     setShowCandidates(false);
@@ -1687,7 +1686,7 @@ export function Customers() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
+            <div ref={customerCandidateRef} className="space-y-2">
               <Label htmlFor="cust-name">{t.dialog.name}</Label>
               <div className="flex flex-wrap gap-2">
                 <div className="relative flex-1">
@@ -1697,7 +1696,6 @@ export function Customers() {
                     className="pl-9"
                     value={form.name}
                     onChange={(e) => updateCustomerName(e.target.value)}
-                    onFocus={() => { if (candidates.length) setShowCandidates(true); }}
                     placeholder={t.dialog.namePlaceholder}
                     autoComplete="off"
                   />
