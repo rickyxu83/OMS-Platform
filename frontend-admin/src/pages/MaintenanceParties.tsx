@@ -275,7 +275,7 @@ export function MaintenanceParties() {
     return parties.filter((p) => {
       if (typeFilter !== "all" && p.partyType !== typeFilter) return false;
       if (!keyword) return true;
-      return [p.name, p.phone, p.contact, p.officialWebsite]
+      return [p.name, p.phone, p.contact, p.officialWebsite, p.remark]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -597,6 +597,11 @@ export function MaintenanceParties() {
                             ? <>{t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>
                             : <>{t.dialog.contact}：{p.contact || t.misc.unknown} · {t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>}
                         </div>
+                        {p.remark ? (
+                          <div className="mt-1 max-w-[520px] truncate text-xs text-muted-foreground" title={p.remark}>
+                            {t.dialog.remark}：{p.remark}
+                          </div>
+                        ) : null}
                         {p.officialWebsite && (
                           <div className="text-xs text-muted-foreground mt-1">
                             {`${t.dialog.officialWebsite}：`}
@@ -739,6 +744,21 @@ export function MaintenanceParties() {
                 placeholder={t.dialog.namePlaceholder}
               />
             </div>
+            <div className="space-y-2">
+              <Label>{t.dialog.type}</Label>
+              <Select
+                value={form.partyType}
+                onValueChange={(v) => setForm({ ...form, partyType: v, contact: isOriginalManufacturer(v) ? "" : form.contact })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t.dialog.typePlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="original_manufacturer">{t.filters.vendor}</SelectItem>
+                  <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {!isOriginalManufacturer(form.partyType) && (
                 <div className="space-y-2">
@@ -758,21 +778,6 @@ export function MaintenanceParties() {
                   placeholder={t.dialog.phonePlaceholder}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>{t.dialog.type}</Label>
-              <Select
-                value={form.partyType}
-                onValueChange={(v) => setForm({ ...form, partyType: v, contact: isOriginalManufacturer(v) ? "" : form.contact })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t.dialog.typePlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="original_manufacturer">{t.filters.vendor}</SelectItem>
-                  <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label>{t.dialog.officialWebsite}</Label>
