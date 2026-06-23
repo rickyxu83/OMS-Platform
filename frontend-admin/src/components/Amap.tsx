@@ -38,6 +38,9 @@ let amapLoadedKey = "";
 let amapLoadedSecurityJsCode = "";
 const MAX_FLIGHT_LINES = 80;
 const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
+const CUSTOMER_FIT_MAX_ZOOM = 15;
+const SINGLE_CUSTOMER_ZOOM = 15;
+const SAME_AREA_THRESHOLD = 0.0008;
 
 interface AmapRuntimeConfig {
   jsapiKey: string;
@@ -161,6 +164,31 @@ function setMarkerDelay(el: HTMLElement, index: number) {
   const delay = Math.min(index, 18) * 18;
   el.style.setProperty("--ops-map-marker-delay", `${delay}ms`);
   el.style.setProperty("--ops-map-label-delay", `${delay + 120}ms`);
+}
+
+function isValidCoordinate(point: Pick<AmapPoint, "lng" | "lat">) {
+  return Number.isFinite(Number(point.lng)) && Number.isFinite(Number(point.lat));
+}
+
+function getPointCenter(points: Pick<AmapPoint, "lng" | "lat">[]) {
+  const total = points.reduce((acc, point) => ({
+    lng: acc.lng + Number(point.lng),
+    lat: acc.lat + Number(point.lat),
+  }), { lng: 0, lat: 0 });
+  return {
+    lng: total.lng / points.length,
+    lat: total.lat / points.length,
+  };
+}
+
+function pointsAreInSameArea(points: Pick<AmapPoint, "lng" | "lat">[]) {
+  if (points.length <= 1) return true;
+  const lngs = points.map((p) => Number(p.lng));
+  const lats = points.map((p) => Number(p.lat));
+  return (
+    Math.max(...lngs) - Math.min(...lngs) < SAME_AREA_THRESHOLD
+    && Math.max(...lats) - Math.min(...lats) < SAME_AREA_THRESHOLD
+  );
 }
 
 function buildOfficeMarkerEl() {
@@ -335,7 +363,8 @@ export function Amap({
     map.add(centerMarker);
     markersRef.current.push(centerMarker);
 
-    const validPoints = points.filter((p) => p.lng && p.lat);
+    const validPoints = points.filter(isValidCoordinate);
+    const customerMarkers: any[] = [];
     validPoints.forEach((p, index) => {
       const marker = new AMap.Marker({
         position: [p.lng, p.lat],
@@ -359,6 +388,7 @@ export function Amap({
       });
       map.add(marker);
       markersRef.current.push(marker);
+      customerMarkers.push(marker);
     });
 
     let flightFrame = 0;
@@ -392,7 +422,12 @@ export function Amap({
 
     if (validPoints.length > 0) {
       try {
-        map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING], zoom);
+        if (pointsAreInSameArea(validPoints)) {
+          const targetCenter = getPointCenter(validPoints);
+          map.setZoomAndCenter(Math.max(zoom, SINGLE_CUSTOMER_ZOOM), [targetCenter.lng, targetCenter.lat]);
+        } else {
+          map.setFitView(customerMarkers, false, [...FIT_VIEW_PADDING], CUSTOMER_FIT_MAX_ZOOM);
+        }
         renderFlights();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 900);
@@ -471,10 +506,12 @@ interface FallbackProps {
 }
 
 function FallbackMap({ center, points, onPointClick, message, height, className }: FallbackProps) {
-  const validPoints = points.filter((p) => p.lng && p.lat);
-  const all = [{ ...center, id: center.lng + center.lat, name: center.name || "中心", annualServices: 0, level: "peak" as const }, ...validPoints];
-  const lngs = all.map((p) => p.lng);
-  const lats = all.map((p) => p.lat);
+  const validPoints = points.filter(isValidCoordinate);
+  const centerPoint = { ...center, id: `center-${center.lng}-${center.lat}`, name: center.name || "中心", annualServices: 0, level: "peak" as const };
+  const all = [centerPoint, ...validPoints];
+  const viewportPoints = validPoints.length > 0 ? validPoints : [centerPoint];
+  const lngs = viewportPoints.map((p) => p.lng);
+  const lats = viewportPoints.map((p) => p.lat);
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const lngSpan = Math.max(maxLng - minLng, 0.01);
@@ -506,7 +543,7 @@ function FallbackMap({ center, points, onPointClick, message, height, className 
       </svg>
       {all.map((p) => {
         const pos = project(p.lng, p.lat);
-        const isCenter = p.id === center.lng + center.lat;
+        const isCenter = p.id === centerPoint.id;
         const tier = p.level || getTier(p.annualServices || 0);
         const size = tier === "peak" ? 24 : tier === "high" ? 18 : tier === "active" ? 12 : 8;
         return (
