@@ -158,6 +158,8 @@ const aiDraftConfirmSubmitOpen = ref(false)
 const aiDraftCustomerCandidates = ref([])
 let deviceModelSearchTimer = null
 let deviceModelReqId = 0
+let customerSearchTimer = null
+let customerSearchReqId = 0
 let draftTimer = null
 let draftSyncTimer = null
 let draftCountdownTimer = null
@@ -1551,6 +1553,85 @@ function findCustomerProfile(customer) {
   return customers.value.find((item) => sameCustomer(item, customer)) || null
 }
 
+function customerMatchesKeyword(customer, keyword) {
+  const text = String(keyword || '').trim().toLowerCase()
+  if (!text) return false
+  return [
+    customer.name,
+    customer.code,
+    customer.address,
+    customer.mapAddress,
+    customer.contactName,
+    customer.contactPhone,
+    ...(Array.isArray(customer.contacts) ? customer.contacts.flatMap((contact) => [contact.name, contact.phone]) : []),
+  ].filter(Boolean).some((value) => String(value).toLowerCase().includes(text))
+}
+
+function customerSearchCandidate(customer) {
+  const normalized = normalizeCustomer(customer || {})
+  return {
+    ...normalized,
+    id: normalized.id || customer.id,
+    customerId: normalized.id || customer.id,
+    code: customer.code || '',
+    source: 'customer',
+  }
+}
+
+function mergeCustomerCache(items) {
+  if (!items.length) return
+  const byKey = new Map(customers.value.map((customer) => [String(customer.id || customer.name || ''), customer]))
+  items.forEach((item) => {
+    const key = String(item.id || item.name || '')
+    if (!key) return
+    byKey.set(key, { ...(byKey.get(key) || {}), ...item })
+  })
+  customers.value = [...byKey.values()]
+}
+
+function showCustomerSearchCandidates(items, keyword) {
+  nearbyCompanies.value = items.map(customerSearchCandidate)
+  showNearbyCompanies.value = true
+  locationHint.value = items.length
+    ? `找到 ${items.length} 个系统客户，点击可带入客户资料。`
+    : `未找到“${keyword}”相关系统客户，可继续手动填写或点击定位查找。`
+}
+
+function cancelCustomerLibrarySearch() {
+  window.clearTimeout(customerSearchTimer)
+  customerSearchReqId += 1
+}
+
+function scheduleCustomerLibrarySearch(value) {
+  const keyword = String(value || '').trim()
+  window.clearTimeout(customerSearchTimer)
+  const requestId = ++customerSearchReqId
+
+  if (keyword.length < 2) {
+    nearbyCompanies.value = []
+    showNearbyCompanies.value = false
+    return
+  }
+
+  const localMatches = customers.value
+    .filter((customer) => customerMatchesKeyword(customer, keyword))
+    .slice(0, 10)
+  if (localMatches.length) showCustomerSearchCandidates(localMatches, keyword)
+
+  customerSearchTimer = window.setTimeout(async () => {
+    try {
+      const data = await api.get(`/customers?pageSize=20&keyword=${encodeURIComponent(keyword)}`)
+      if (requestId !== customerSearchReqId) return
+      const items = data?.items || []
+      mergeCustomerCache(items)
+      showCustomerSearchCandidates(items, keyword)
+    } catch {
+      if (requestId !== customerSearchReqId) return
+      showCustomerSearchCandidates(localMatches, keyword)
+    }
+  }, 250)
+}
+
 function mergeContacts(...contactGroups) {
   const contacts = new Map()
   contactGroups.flat().forEach((contact) => {
@@ -1928,9 +2009,8 @@ function updateCustomerField(field, value) {
     selectedCustomer.value.contactName = ''
     selectedCustomer.value.contactPhone = ''
     selectedCustomer.value.contacts = []
-    nearbyCompanies.value = []
-    showNearbyCompanies.value = false
-    locationHint.value = String(value || '').trim() ? '客户名称已手动修改，可重新定位查找。' : ''
+    locationHint.value = String(value || '').trim() ? '正在匹配系统客户…' : ''
+    scheduleCustomerLibrarySearch(value)
     clearSignature()
   }
   if (field === 'name' || field === 'address') {
@@ -2138,6 +2218,7 @@ function onDeviceModelKeydown(event) {
 
 async function locateNearbyCompanies() {
   if (locating.value) return
+  cancelCustomerLibrarySearch()
   locating.value = true
   clearFieldError('name')
   clearFieldError('address')
@@ -2197,6 +2278,7 @@ async function locateNearbyCompanies() {
 }
 
 function applyNearbyCompany(company) {
+  cancelCustomerLibrarySearch()
   applyCustomer({
     id: company.customerId || company.id,
     name: company.name,
@@ -3258,6 +3340,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopSpeechRecognition()
   window.clearTimeout(deviceModelSearchTimer)
+  window.clearTimeout(customerSearchTimer)
   window.clearTimeout(draftTimer)
   window.clearTimeout(draftSyncTimer)
   window.clearInterval(draftCountdownTimer)
