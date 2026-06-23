@@ -1,5 +1,14 @@
 const { query } = require('../../config/db')
 
+function parseDetailJson(value) {
+  if (!value || typeof value !== 'string') return value || null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
 function auditPayload(row) {
   return {
     id: row.id,
@@ -9,7 +18,7 @@ function auditPayload(row) {
     targetType: row.target_type,
     targetId: row.target_id,
     action: row.action,
-    detail: row.detail_json,
+    detail: parseDetailJson(row.detail_json),
     createdAt: row.created_at,
   }
 }
