@@ -92,7 +92,7 @@ onMounted(() => {
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="loadDetail">{{ zh('重试') }}</button></p>
-    <p v-if="loading" class="muted">{{ zh('正在载入维保方详情...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入维保方详情…') }}</p>
 
     <section v-if="!loading && party" class="asset-detail-grid">
       <article class="asset-record-card asset-detail-card">

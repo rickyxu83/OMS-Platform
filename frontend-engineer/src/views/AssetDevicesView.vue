@@ -363,7 +363,7 @@ onMounted(async () => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入设备资产...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入设备资产…') }}</p>
 
     <section class="asset-card-list">
       <article
@@ -414,7 +414,7 @@ onMounted(async () => {
                 @input="onCustomerInput"
               />
               <div v-if="customerDropdownOpen" class="asset-dropdown">
-                <div v-if="customerSearchLoading" class="asset-dropdown-status">{{ zh('搜索客户中...') }}</div>
+                <div v-if="customerSearchLoading" class="asset-dropdown-status">{{ zh('搜索客户中…') }}</div>
                 <button
                   v-for="customer in dialogCustomerOptions"
                   :key="customer.id"
@@ -442,7 +442,7 @@ onMounted(async () => {
                 @input="scheduleModelSearch(form.model)"
               />
               <div v-if="modelLoading || modelSuggestions.length" class="asset-dropdown">
-                <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中...') }}</div>
+                <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
                 <button
                   v-for="(suggestion, index) in modelSuggestions"
                   :key="`${suggestion.canonicalModel || suggestion.officialName}-${suggestion.partNumber}-${index}`"
@@ -485,7 +485,7 @@ onMounted(async () => {
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
-          <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}</button>
+          <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '保存') }}</button>
         </footer>
       </div>
     </div>

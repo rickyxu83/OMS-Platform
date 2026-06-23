@@ -331,7 +331,7 @@ const sheetSvg = computed(() => {
     <line x1="68" y1="135" x2="750" y2="135" stroke="${sheetLine}"/>
     <rect x="68" y="158" width="390" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="158" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="187" class="label">客户名称</text><text x="208" y="187" class="value">${escapeXml(cleanText(item.customerName))}</text>
     <rect x="458" y="158" width="292" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="458" y="158" width="102" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="474" y="187" class="label">联系人</text><text x="578" y="187" class="value">${escapeXml(contactDisplay(item))}</text>
-    <rect x="68" y="204" width="390" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="204" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="233" class="label">Case号</text><text x="208" y="233" class="value">${escapeXml(cleanText(item.orderNo || item.id || '', '-'))}</text>
+    <rect x="68" y="204" width="390" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="204" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="233" class="label">Case 号</text><text x="208" y="233" class="value">${escapeXml(cleanText(item.orderNo || item.id || '', '-'))}</text>
     <rect x="458" y="204" width="292" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="458" y="204" width="102" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="474" y="233" class="label">填写日期</text><text x="578" y="233" class="value">${escapeXml(cleanText(finishedDate, '-'))}</text>
     <rect x="68" y="250" width="682" height="46" fill="#ffffff" stroke="#d6dee8"/><rect x="68" y="250" width="122" height="46" fill="#f8fafc" stroke="#d6dee8"/><text x="84" y="279" class="label">地址</text><text x="208" y="279" class="value">${escapeXml(cleanText(item.customerAddress, isRemoteSheet.value ? '远程服务未填写地址' : '-'))}</text>
     <rect x="68" y="${summaryY}" width="682" height="108" rx="12" fill="#f8fafc" stroke="#d6dee8"/><text x="92" y="${summaryY + 34}" font-size="15.5" font-weight="700" fill="#0f172a">${summaryLabel}</text>${textLines(summaryText, 92, summaryTextY, 66, 2, 30, 620)}
@@ -425,7 +425,7 @@ onMounted(load)
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
-    <p v-else-if="loading" class="muted">{{ zh('正在生成分享预览...') }}</p>
+    <p v-else-if="loading" class="muted">{{ zh('正在生成分享预览…') }}</p>
 
     <article v-if="task?.report && supportsSingleSheet" class="form-section share-panel">
       <div class="share-head">

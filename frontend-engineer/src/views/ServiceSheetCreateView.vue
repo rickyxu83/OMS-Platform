@@ -507,9 +507,9 @@ const routeMode = computed(() => {
 })
 
 function serviceModeDocumentLabel(mode) {
-  if (mode === 'remote') return '远程服务单'
+  if (mode === 'remote') return '远程服务记录'
   if (mode === 'office') return '内勤记录'
-  return '现场服务单'
+  return '现场服务记录'
 }
 
 const serviceTypeOptions = [
@@ -612,7 +612,7 @@ const pageTitle = computed(() => {
 })
 const remoteModeBannerText = computed(() =>
   currentServiceMode.value === 'remote'
-    ? '当前为远程服务单：无需出发、到场与客户手写签名，按远程处理过程填写即可。'
+    ? '当前为远程服务记录：无需出发、到场与客户手写签名，按远程处理过程填写即可。'
     : '',
 )
 const customerQuickTitle = computed(() => (isOfficeMode.value ? '关联客户（可选）' : '客户快速带入'))
@@ -813,7 +813,7 @@ const queueStatusLabel = computed(() => {
 })
 const aiDraftAvailable = computed(() => aiDraftStatus.value.enabled && aiDraftStatus.value.configured)
 const aiDraftStatusLabel = computed(() => {
-  if (!aiDraftStatus.value.loaded) return '正在检查 AI 填单配置...'
+  if (!aiDraftStatus.value.loaded) return '正在检查 AI 填单配置…'
   if (!aiDraftStatus.value.enabled) return 'AI 语音填单未启用'
   if (!aiDraftStatus.value.configured) return 'AI API 尚未配置完整'
   return '可用'
@@ -2048,7 +2048,7 @@ function scheduleCustomerLookup(value) {
     return
   }
   customerSearchTimer = window.setTimeout(async () => {
-    locationHint.value = `正在搜索“${keyword}”相关客户...`
+    locationHint.value = `正在搜索“${keyword}”相关客户…`
     try {
       await searchNearbyCompanies({}, { keyword })
     } catch (err) {
@@ -2151,7 +2151,7 @@ async function locateNearbyCompanies() {
   const keyword = String(activeCustomer.value.name || '').trim()
 
   if (keyword) {
-    locationHint.value = `正在搜索“${keyword}”相关客户...`
+    locationHint.value = `正在搜索“${keyword}”相关客户…`
     try {
       await searchNearbyCompanies()
     } catch (err) {
@@ -2162,7 +2162,7 @@ async function locateNearbyCompanies() {
     return
   }
 
-  locationHint.value = '正在获取定位并查找附近公司...'
+  locationHint.value = '正在获取定位并查找附近公司…'
 
   const fallback = async () => {
     locationHint.value = '无法获取定位，先展示地图公司候选；允许定位后会按附近排序。'
@@ -3365,7 +3365,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
       <button v-if="retryableError" type="button" @click="load">{{ zh('重试') }}</button>
     </p>
     <p v-if="message" class="form-success">{{ zh(message) }}</p>
-    <p v-else-if="loading" class="muted">{{ zh('正在加载客户与历史服务记录...') }}</p>
+    <p v-else-if="loading" class="muted">{{ zh('正在加载客户与历史服务记录…') }}</p>
 
     <section class="quick-card quick-customer-card">
       <div class="quick-card-head">
@@ -3466,7 +3466,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           <p v-if="aiDraftWarnings.length">{{ zh('提示') }}：{{ zh(aiDraftWarnings.join('、')) }}</p>
         </div>
         <div class="ai-voice-footer">
-          <span>{{ zh(speechListening ? '正在听写...' : speechTranscriptPreview ? '转写内容可继续编辑' : '尚未录入内容') }}</span>
+          <span>{{ zh(speechListening ? '正在听写…' : speechTranscriptPreview ? '转写内容可继续编辑' : '尚未录入内容') }}</span>
           <button
             class="primary"
             type="button"
@@ -3484,7 +3484,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         <div class="section-heading compact">
           <div>
             <p class="section-kicker">{{ zh('REMOTE MODE') }}</p>
-            <h2>{{ zh('远程服务单') }}</h2>
+            <h2>{{ zh('远程服务记录') }}</h2>
             <p class="section-copy">{{ zh(remoteModeBannerText) }}</p>
           </div>
         </div>
@@ -3603,7 +3603,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           <label v-if="showExistingDevicePicker" class="field select-field">
             <span>{{ zh('关联设备') }}</span>
             <select v-model="selectedDeviceId" :disabled="loadingCustomerDevices || !customerDevices.length" @change="applySelectedDeviceToEmptyParts">
-              <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备...' : customerDevices.length ? '不关联设备' : '该客户暂无设备') }}</option>
+              <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备…' : customerDevices.length ? '不关联设备' : '该客户暂无设备') }}</option>
               <option v-for="device in customerDevices" :key="device.id" :value="String(device.id)">
                 {{ zh(deviceDisplayName(device)) }}
               </option>
@@ -3842,7 +3842,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
               <label class="field select-field">
                 <span>{{ zh('关联设备') }}<b>*</b></span>
                 <select v-model="part.deviceId" :disabled="loadingCustomerDevices || !customerDevices.length" @change="clearFieldError('serviceParts')">
-                  <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备...' : customerDevices.length ? '选择设备' : '该客户暂无设备') }}</option>
+                  <option value="">{{ zh(loadingCustomerDevices ? '正在加载设备…' : customerDevices.length ? '选择设备' : '该客户暂无设备') }}</option>
                   <option v-for="device in customerDevices" :key="device.id" :value="String(device.id)">
                     {{ zh(deviceDisplayName(device)) }}
                   </option>

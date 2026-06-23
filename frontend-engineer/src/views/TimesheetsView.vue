@@ -109,7 +109,7 @@ onMounted(load)
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
-    <p v-else-if="loading" class="muted">{{ zh('正在加载本人真实月报...') }}</p>
+    <p v-else-if="loading" class="muted">{{ zh('正在加载本人真实月报…') }}</p>
 
     <section class="metric-grid engineer-metrics timesheet-metrics">
       <article v-for="stat in stats" :key="stat[0]" class="metric-card blue">

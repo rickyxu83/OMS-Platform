@@ -173,11 +173,11 @@ const I18N = {
   "zh-CN": {
     title: "运营总览",
     subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
-    searchPlaceholder: "快速搜索工单或客户...",
-    exportReport: "AI营运总结",
+    searchPlaceholder: "快速搜索工单或客户…",
+    exportReport: "AI 运营总结",
     reportDialog: {
-      title: "AI营运总结",
-      description: "选择统计日期，使用 AI 根据服务记录生成营运总结并显示在当前页面。",
+      title: "AI 运营总结",
+      description: "选择统计日期，使用 AI 根据服务记录生成运营总结并显示在当前页面。",
       startDate: "开始日期",
       endDate: "结束日期",
       cancel: "取消",
@@ -267,10 +267,10 @@ const I18N = {
   "zh-TW": {
     title: "運營總覽",
     subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
-    searchPlaceholder: "快速搜尋工單或客戶...",
-    exportReport: "AI營運總結",
+    searchPlaceholder: "快速搜尋工單或客戶…",
+    exportReport: "AI 營運總結",
     reportDialog: {
-      title: "AI營運總結",
+      title: "AI 營運總結",
       description: "選擇統計日期，使用 AI 根據服務記錄生成營運總結並顯示在目前頁面。",
       startDate: "開始日期",
       endDate: "結束日期",
@@ -675,7 +675,7 @@ export function Dashboard() {
           <CardHeader>
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle>AI營運總結</CardTitle>
+                <CardTitle>{lang === "zh-TW" ? "AI 營運總結" : "AI 运营总结"}</CardTitle>
                 <CardDescription>
                   {workSummaryRange || "—"}
                   {workSummary.available && (workSummary.provider || workSummary.usage?.model)
@@ -692,22 +692,22 @@ export function Dashboard() {
           <CardContent className="space-y-5 text-sm">
             {!workSummary.available || !workSummary.summary ? (
               <div className="rounded-lg border bg-background px-4 py-3 text-muted-foreground">
-                {workSummary.reason || "AI 營運總結暫不可用"}
+                {workSummary.reason || (lang === "zh-TW" ? "AI 營運總結暫不可用" : "AI 运营总结暂不可用")}
               </div>
             ) : (
               <>
                 <p className="rounded-lg border bg-background px-4 py-3 leading-7">
-                  {textValue(workSummary.summary.executiveSummary, "记录未体现足够的可总结内容。")}
+                  {textValue(workSummary.summary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
                 </p>
                 {summaryThemes(workSummary.summary.keyThemes).length > 0 && (
                   <div>
-                    <div className="mb-2 font-medium">重點主題</div>
+                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "重點主題" : "重点主题"}</div>
                     <div className="grid gap-3 md:grid-cols-2">
                       {summaryThemes(workSummary.summary.keyThemes).map((item, index) => (
                         <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
-                          <div className="font-medium">{item.theme || "未命名主題"}</div>
+                          <div className="font-medium">{item.theme || (lang === "zh-TW" ? "未命名主題" : "未命名主题")}</div>
                           <div className="mt-1 text-muted-foreground leading-6">
-                            {item.evidenceCount ? `${item.evidenceCount} 条相关记录：` : ""}{item.details || "—"}
+                            {item.evidenceCount ? `${item.evidenceCount} ${lang === "zh-TW" ? "條相關記錄" : "条相关记录"}：` : ""}{item.details || "—"}
                           </div>
                         </div>
                       ))}
@@ -716,7 +716,7 @@ export function Dashboard() {
                 )}
                 {summaryList(workSummary.summary.customerImpact).length > 0 && (
                   <div>
-                    <div className="mb-2 font-medium">客戶影響</div>
+                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "客戶影響" : "客户影响"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                       {summaryList(workSummary.summary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
@@ -724,7 +724,7 @@ export function Dashboard() {
                 )}
                 {summaryList(workSummary.summary.riskSignals).length > 0 && (
                   <div>
-                    <div className="mb-2 font-medium">風險信號</div>
+                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "風險信號" : "风险信号"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                       {summaryList(workSummary.summary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
@@ -732,7 +732,7 @@ export function Dashboard() {
                 )}
                 {summaryList(workSummary.summary.followUpRecommendations).length > 0 && (
                   <div>
-                    <div className="mb-2 font-medium">後續建議</div>
+                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "後續建議" : "后续建议"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                       {summaryList(workSummary.summary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>

@@ -556,7 +556,7 @@ export function InspectionSchedules() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索客户、设备、工程师..."
+                placeholder="搜索客户、设备、工程师…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />

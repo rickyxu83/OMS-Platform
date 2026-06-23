@@ -241,7 +241,7 @@ function scheduleGeoSearch(value) {
     locationHint.value = ''
     return
   }
-  locationHint.value = `正在搜索“${keyword}”相关客户...`
+  locationHint.value = `正在搜索“${keyword}”相关客户…`
   geoSearchTimer = window.setTimeout(() => {
     searchGeo({}, { keyword }).catch(() => undefined)
   }, 300)
@@ -273,7 +273,7 @@ async function locateByAddress() {
   addressLocating.value = true
   candidates.value = []
   showCandidates.value = false
-  locationHint.value = `正在按地址定位“${keyword}”...`
+  locationHint.value = `正在按地址定位“${keyword}”…`
   try {
     const data = await api.get(`/geo/geocode?address=${encodeURIComponent(keyword)}`)
     const item = data?.item
@@ -451,7 +451,7 @@ onMounted(() => {
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
     <p v-if="successMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(successMessage) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入客户档案...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入客户档案…') }}</p>
 
     <section class="asset-card-list">
       <article
@@ -505,7 +505,7 @@ onMounted(() => {
                 @focus="showCandidates = candidates.length > 0"
               />
               <button class="ghost asset-inline-button" type="button" :disabled="locating" @click="locateNearMe">
-                <PreviewIcon name="pin" />{{ zh(locating ? '定位中...' : '定位查找') }}
+                <PreviewIcon name="pin" />{{ zh(locating ? '定位中…' : '定位查找') }}
               </button>
             </div>
           </label>
@@ -524,7 +524,7 @@ onMounted(() => {
             <div class="asset-inline-control">
               <textarea :value="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)"></textarea>
               <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
-                <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中...' : '按地址定位') }}
+                <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中…' : '按地址定位') }}
               </button>
             </div>
           </label>
@@ -565,7 +565,7 @@ onMounted(() => {
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
-          <button class="primary" type="button" :disabled="saving" @click="saveCustomer"><PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}</button>
+          <button class="primary" type="button" :disabled="saving" @click="saveCustomer"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '保存') }}</button>
         </footer>
       </div>
     </div>
@@ -579,14 +579,14 @@ onMounted(() => {
           </div>
         </header>
         <div class="exit-confirm-body">
-          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
-          <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务记录，系统会阻止删除。') }}</p>
+          <p>{{ zh('如果提示已有服务记录关联，请先删除关联的服务记录，再删除客户。') }}</p>
           <p v-if="deleteError" class="form-error asset-delete-error">{{ zh(deleteError) }}</p>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>
           <button class="primary danger-action" type="button" :disabled="deleting" @click="deleteCustomer">
-            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中...' : '确认删除') }}
+            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中…' : '确认删除') }}
           </button>
         </footer>
       </div>

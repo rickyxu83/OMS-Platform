@@ -35,7 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   assistant: "助理",
   dispatcher: "调度",
-  supervisor: "主管",
+  operations_director: "运营负责人",
   engineering_supervisor: "工程主管",
   sales_supervisor: "业务主管",
   sales: "业务",
@@ -46,7 +46,7 @@ const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "
   admin: "default",
   assistant: "info",
   dispatcher: "purple",
-  supervisor: "success",
+  operations_director: "success",
   engineering_supervisor: "success",
   sales_supervisor: "warning",
   sales: "info",
@@ -344,7 +344,7 @@ export function Users() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索姓名、账号、角色、电话、邮箱..."
+                placeholder="搜索姓名、账号、角色、电话、邮箱…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />

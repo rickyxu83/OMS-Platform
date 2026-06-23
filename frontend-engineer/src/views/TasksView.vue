@@ -1021,7 +1021,7 @@ onBeforeUnmount(() => {
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
-    <p v-else-if="loading && !displayTasks.length" class="muted">{{ zh('正在载入服务记录...') }}</p>
+    <p v-else-if="loading && !displayTasks.length" class="muted">{{ zh('正在载入服务记录…') }}</p>
 
     <div v-if="actionToast" class="floating-toast">{{ zh(actionToast) }}</div>
 
@@ -1124,7 +1124,7 @@ onBeforeUnmount(() => {
     </section>
 
     <footer v-if="allDisplayTasks.length" class="task-load-state">
-      <p v-if="loadingMore">{{ zh('正在加载更多服务记录...') }}</p>
+      <p v-if="loadingMore">{{ zh('正在加载更多服务记录…') }}</p>
       <p v-else-if="loadMoreError">
         {{ zh(loadMoreError) }}
         <button type="button" @click="loadMoreTasks">{{ zh('重试') }}</button>

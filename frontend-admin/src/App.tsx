@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useAdminDomTextI18n } from "@/lib/text-i18n"
 import { lazy, Suspense, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
@@ -18,9 +19,9 @@ const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ def
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
-  users: ["admin", "assistant", "dispatcher", "supervisor", "engineering_supervisor", "sales_supervisor"],
-  "audit-logs": ["admin", "supervisor", "engineering_supervisor"],
-  settings: ["admin", "supervisor", "engineering_supervisor"],
+  users: ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
+  "audit-logs": ["admin", "operations_director", "engineering_supervisor"],
+  settings: ["admin", "operations_director", "engineering_supervisor"],
 }
 
 function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: string[] }) {
@@ -69,6 +70,9 @@ function ProtectedAdminPage({ children, allow }: { children: ReactNode; allow?: 
 }
 
 export default function App() {
+  const { lang } = useLanguage()
+  useAdminDomTextI18n(lang)
+
   return (
     <>
       <Routes>

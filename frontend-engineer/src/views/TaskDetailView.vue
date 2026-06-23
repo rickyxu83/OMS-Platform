@@ -181,7 +181,7 @@ onMounted(load)
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
-    <p v-else-if="loading" class="muted">{{ zh('正在加载服务记录详情...') }}</p>
+    <p v-else-if="loading" class="muted">{{ zh('正在加载服务记录详情…') }}</p>
 
     <template v-if="task">
       <section class="detail-grid">

@@ -53,7 +53,7 @@ function serviceTypeLabel(value) {
     training: '现场培训',
     other: '其他事项',
   }
-  return labels[value] || value || '服务单'
+  return labels[value] || value || '服务记录'
 }
 
 function partQuantityText(item) {
@@ -64,7 +64,7 @@ function partQuantityText(item) {
 
 function compactText(value, maxLength = 90) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text
 }
 
 function warrantyDate(item) {
@@ -113,7 +113,7 @@ onMounted(() => {
     <header class="topbar asset-topbar">
       <div>
         <BrandEyebrow text="客户与资产 / 设备详情" :title="deviceTitle" />
-        <p class="asset-page-lead">{{ zh('查看设备维保状态，以及故障时应联系的维保厂商。') }}</p>
+        <p class="asset-page-lead">{{ zh('查看设备维保状态，以及故障时应联系的维保方。') }}</p>
         <div class="asset-inline-nav">
           <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
           <RouterLink class="ghost asset-refresh" to="/assets/devices"><PreviewIcon name="devices" />{{ zh('设备列表') }}</RouterLink>
@@ -124,7 +124,7 @@ onMounted(() => {
     </header>
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="loadDetail">{{ zh('重试') }}</button></p>
-    <p v-if="loading" class="muted">{{ zh('正在载入设备详情...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入设备详情…') }}</p>
 
     <section v-if="!loading && device" class="asset-detail-grid">
       <article class="asset-record-card asset-detail-card">
@@ -157,7 +157,7 @@ onMounted(() => {
         <div class="asset-detail-kv">
           <p><span>{{ zh('维保开始') }}</span><b>{{ zh(displayDate(device.maintenanceStart)) }}</b></p>
           <p><span>{{ zh('维保结束') }}</span><b>{{ zh(displayDate(device.maintenanceEnd || device.warrantyUntil)) }}</b></p>
-          <p><span>{{ zh('维保方') }}</span><b>{{ zh(device.maintenancePartyName || party?.name || '未关联维保厂商') }}</b></p>
+          <p><span>{{ zh('维保方') }}</span><b>{{ zh(device.maintenancePartyName || party?.name || '未关联维保方') }}</b></p>
           <p><span>{{ zh('联系人') }}</span><b>{{ zh(party?.contact || '未维护') }}</b></p>
           <p><span>{{ zh('联系电话') }}</span><b><a v-if="maintenancePhone" :href="telHref(maintenancePhone)">{{ maintenancePhone }}</a><template v-else>{{ zh('未维护') }}</template></b></p>
           <p v-if="party?.officialWebsite">
@@ -197,7 +197,7 @@ onMounted(() => {
               </p>
             </div>
             <RouterLink v-if="item.serviceOrderId" class="ghost asset-refresh" :to="`/tasks/${item.serviceOrderId}`">
-              <PreviewIcon name="service" />{{ zh('服务单') }}
+              <PreviewIcon name="service" />{{ zh('服务记录') }}
             </RouterLink>
           </div>
         </div>

@@ -56,7 +56,7 @@ const I18N = {
       partner: "合作维保方",
     },
     filters: {
-      searchPlaceholder: "搜索名称、电话、官网地址...",
+      searchPlaceholder: "搜索名称、电话、官网地址…",
       typePlaceholder: "类型筛选",
       all: "全部类型",
       vendor: "原厂联系人",
@@ -136,7 +136,7 @@ const I18N = {
       partner: "合作維保方",
     },
     filters: {
-      searchPlaceholder: "搜尋名稱、電話、官網地址...",
+      searchPlaceholder: "搜尋名稱、電話、官網地址…",
       typePlaceholder: "類型篩選",
       all: "全部類型",
       vendor: "原廠聯絡人",

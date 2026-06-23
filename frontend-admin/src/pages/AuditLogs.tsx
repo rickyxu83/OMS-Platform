@@ -222,7 +222,7 @@ export function AuditLogs() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   className="pl-9"
-                  placeholder="搜索操作人、描述、IP..."
+                  placeholder="搜索操作人、描述、IP…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />

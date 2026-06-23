@@ -244,7 +244,7 @@ export function SystemSettings() {
             <CardContent className="space-y-5">
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <div className="font-medium">启用 AI 营运总结</div>
+                  <div className="font-medium">启用 AI 运营总结</div>
                   <div className="text-sm text-muted-foreground">月报导出会调用这里配置的模型生成摘要。</div>
                 </div>
                 <Switch
@@ -452,7 +452,7 @@ export function SystemSettings() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
-                <Label>高德 Web服务 API Key（绑定服务=Web服务）</Label>
+                <Label>高德 Web 服务 API Key（绑定服务 = Web 服务）</Label>
                 <Input
                   type="password"
                   value={form.map.amapRestKey}
@@ -465,7 +465,7 @@ export function SystemSettings() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>高德 JSAPI Key（绑定服务=Web端）</Label>
+                  <Label>高德 JSAPI Key（绑定服务 = Web 端）</Label>
                   <Input
                     type="password"
                     value={form.map.amapJsapiKey}
@@ -474,7 +474,7 @@ export function SystemSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>高德 JSAPI 安全密钥（同一 Web端 Key）</Label>
+                  <Label>高德 JSAPI 安全密钥（同一 Web 端 Key）</Label>
                   <Input
                     type="password"
                     value={form.map.amapSecurityJsCode}
@@ -485,7 +485,7 @@ export function SystemSettings() {
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                后端地址搜索使用 Web服务 API Key；仪表盘地图使用 Web端 JSAPI Key 和该 Key 同一行的安全密钥。若高德启用了 Referer 白名单，请加入当前管理端域名。
+                后端地址搜索使用 Web 服务 API Key；仪表盘地图使用 Web 端 JSAPI Key 和该 Key 同一行的安全密钥。若高德启用了 Referer 白名单，请加入当前管理端域名。
               </div>
             </CardContent>
           </Card>

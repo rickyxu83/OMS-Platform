@@ -183,7 +183,7 @@ onMounted(() => {
     <section class="asset-toolbar">
       <label class="asset-search-box">
         <PreviewIcon name="eye" />
-        <input v-model="searchQuery" type="search" :placeholder="zh('搜索厂商、联系人、电话、官网地址')" @keydown.enter="loadParties" />
+        <input v-model="searchQuery" type="search" :placeholder="zh('搜索维保方、联系人、电话、官网地址')" @keydown.enter="loadParties" />
       </label>
       <select v-model="typeFilter" class="asset-select" @change="loadParties">
         <option value="">{{ zh('全部类型') }}</option>
@@ -203,7 +203,7 @@ onMounted(() => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入维保方目录...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入维保方目录…') }}</p>
 
     <section class="asset-card-list">
       <article
@@ -259,7 +259,7 @@ onMounted(() => {
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
-          <button class="primary" type="button" :disabled="saving" @click="saveParty"><PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}</button>
+          <button class="primary" type="button" :disabled="saving" @click="saveParty"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '保存') }}</button>
         </footer>
       </div>
     </div>

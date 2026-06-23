@@ -144,7 +144,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合...",
+      searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合…",
       statusPlaceholder: "状态筛选",
       all: "全部状态",
       allCustomers: "全部客户",
@@ -175,7 +175,7 @@ const I18N = {
       issueDescription: "详细描述",
       internalNote: "内部备注",
       descriptionPlaceholder: "服务描述",
-      notePlaceholder: "添加内部备注...",
+      notePlaceholder: "添加内部备注…",
       unnamedEngineer: "未指定",
       unnamedContact: "未维护联系人",
     },
@@ -226,7 +226,7 @@ const I18N = {
       cancel: "取消",
     },
     filters: {
-      searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合...",
+      searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合…",
       statusPlaceholder: "狀態篩選",
       all: "全部狀態",
       allCustomers: "全部客戶",
@@ -257,7 +257,7 @@ const I18N = {
       issueDescription: "詳細描述",
       internalNote: "內部備註",
       descriptionPlaceholder: "服務描述",
-      notePlaceholder: "新增內部備註...",
+      notePlaceholder: "新增內部備註…",
       unnamedEngineer: "未指定",
       unnamedContact: "未維護聯絡人",
     },
@@ -1118,7 +1118,7 @@ export function ServiceOrders() {
 
   async function bulkDeleteOrders() {
     if (!selectedIds.length) return;
-    if (!window.confirm(`确认删除选中的 ${selectedIds.length} 张服务表？此操作会删除相关报告、附件和工程师关联。`)) return;
+    if (!window.confirm(`确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联。`)) return;
     setSaving(true);
     setError("");
     try {
@@ -1362,7 +1362,7 @@ export function ServiceOrders() {
                 checked={allFilteredOrdersSelected}
                 onCheckedChange={toggleAllFilteredOrders}
                 disabled={saving || filteredOrders.length === 0}
-                aria-label="全选当前服务表列表"
+                aria-label="全选当前工单列表"
               />
               全选当前列表
             </label>

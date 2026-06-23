@@ -157,7 +157,7 @@ function serviceTypeLabel(value?: string) {
     training: "现场培训",
     other: "其他事项",
   };
-  return labels[value || ""] || value || "服务单";
+  return labels[value || ""] || value || "服务记录";
 }
 
 function partQuantityText(item: DevicePartHistory) {
@@ -168,7 +168,7 @@ function partQuantityText(item: DevicePartHistory) {
 
 function compactText(value?: string, maxLength = 120) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
@@ -608,7 +608,7 @@ export function Devices() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索设备名称、型号、序列号..."
+                placeholder="搜索设备名称、型号、序列号…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -894,7 +894,7 @@ export function Devices() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-medium">安装与更换记录</div>
-                        <div className="mt-1 text-xs text-muted-foreground">来自工程师服务单中关联到这台设备的配件安装、配件更换记录</div>
+                        <div className="mt-1 text-xs text-muted-foreground">来自工程师服务记录中关联到这台设备的配件安装、配件更换记录</div>
                       </div>
                       <Badge variant="secondary">{partHistory.length} 条</Badge>
                     </div>

@@ -71,7 +71,7 @@ const navItems = [
     to: '/assets',
     names: ['assets', 'asset-customers', 'asset-customer-detail', 'asset-devices', 'asset-device-detail', 'asset-maintenance-parties', 'asset-maintenance-party-detail'],
   },
-  { label: '新建服务表', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
+  { label: '新建服务记录', icon: 'new', to: '/service-sheets/new', names: ['service-sheet-new', 'service-sheet-edit'] },
   { label: '月报', icon: 'calendar', to: '/timesheet', names: ['timesheet', 'timesheets'] },
   { label: '我的', icon: 'user', to: '/profile', names: ['profile'] },
 ]
@@ -95,7 +95,7 @@ const guideSteps = [
   },
   {
     selector: '.home-create-action',
-    title: '新建服务表',
+    title: '新建服务记录',
     body: '点右下角“+”可以新建现场服务、远程服务或内勤记录。手机上点一下默认新建现场服务，长按可选择类型。',
   },
   {
@@ -645,8 +645,8 @@ watch(shouldAutoOpenFirstLoginGuide, (required) => {
     :class="{ dragging: createFabDragging, open: createModePickerOpen }"
     :style="createModePanelStyle"
     type="button"
-    :aria-label="zh('新建服务表')"
-    :title="zh('新建服务表')"
+    :aria-label="zh('新建服务记录')"
+    :title="zh('新建服务记录')"
     @pointerdown="startCreateFabDrag"
     @click="openCreateSheet"
   >

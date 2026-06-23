@@ -109,7 +109,7 @@ function partyContactLine(device) {
   const party = partyFor(device)
   const contact = party.contact || ''
   const phone = party.phone || device.maintenancePartyPhone || ''
-  if (!device.maintenancePartyName && !contact && !phone) return '未关联维保厂商'
+  if (!device.maintenancePartyName && !contact && !phone) return '未关联维保方'
   return [device.maintenancePartyName, contact, phone].filter(Boolean).join(' · ')
 }
 
@@ -292,7 +292,7 @@ onMounted(() => {
     <header class="topbar asset-topbar">
       <div>
         <BrandEyebrow text="客户与资产 / 客户详情" :title="customer?.name || '客户详情'" />
-        <p class="asset-page-lead">{{ zh('重点查看客户名下设备、在保状态和故障时应联系的维保厂商。') }}</p>
+        <p class="asset-page-lead">{{ zh('重点查看客户名下设备、在保状态和故障时应联系的维保方。') }}</p>
         <div class="asset-inline-nav">
           <RouterLink class="ghost asset-refresh" to="/assets"><PreviewIcon name="assets" />{{ zh('返回客户资产') }}</RouterLink>
           <RouterLink class="ghost asset-refresh" to="/assets/customers"><PreviewIcon name="customers" />{{ zh('客户列表') }}</RouterLink>
@@ -302,7 +302,7 @@ onMounted(() => {
 
     <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="loadDetail">{{ zh('重试') }}</button></p>
     <p v-if="saveMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(saveMessage) }}</p>
-    <p v-if="loading" class="muted">{{ zh('正在载入客户详情...') }}</p>
+    <p v-if="loading" class="muted">{{ zh('正在载入客户详情…') }}</p>
 
     <section v-if="!loading" class="asset-detail-grid">
       <article class="asset-record-card asset-detail-card">
@@ -316,7 +316,7 @@ onMounted(() => {
               <PreviewIcon name="trash" />{{ zh('删除客户') }}
             </button>
             <button class="primary" type="button" :disabled="saving || deleting" @click="saveCustomer">
-              <PreviewIcon name="save" />{{ zh(saving ? '保存中...' : '保存') }}
+              <PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '保存') }}
             </button>
           </div>
         </header>
@@ -325,7 +325,7 @@ onMounted(() => {
           <label>{{ zh('客户名称') }}<input v-model="form.name" type="text" /></label>
           <label>{{ zh('客户地址') }}<textarea v-model="form.address" rows="2" :placeholder="zh('点击定位后可选择地图候选地址')"></textarea></label>
           <button class="ghost asset-locate-button" type="button" :disabled="locating" @click="locateCustomer">
-            <PreviewIcon name="pin" />{{ zh(locating ? '定位中...' : '定位匹配地址') }}
+            <PreviewIcon name="pin" />{{ zh(locating ? '定位中…' : '定位匹配地址') }}
           </button>
           <p class="asset-record-line"><PreviewIcon name="pin" /><template v-if="hasCoordinates">{{ zh('已维护坐标') }}：{{ form.latitude }}, {{ form.longitude }}</template><template v-else>{{ zh('暂未维护坐标') }}</template></p>
           <div v-if="geoCandidates.length" class="asset-candidate-list">
@@ -385,14 +385,14 @@ onMounted(() => {
           </div>
         </header>
         <div class="exit-confirm-body">
-          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务单，系统会阻止删除。') }}</p>
-          <p>{{ zh('如果提示已有服务单关联，请先删除关联的服务单，再删除客户。') }}</p>
+          <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务记录，系统会阻止删除。') }}</p>
+          <p>{{ zh('如果提示已有服务记录关联，请先删除关联的服务记录，再删除客户。') }}</p>
           <p v-if="deleteError" class="form-error asset-delete-error">{{ zh(deleteError) }}</p>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" :disabled="deleting" @click="closeDeleteConfirm"><PreviewIcon name="edit" />{{ zh('取消') }}</button>
           <button class="primary danger-action" type="button" :disabled="deleting" @click="deleteCustomer">
-            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中...' : '确认删除') }}
+            <PreviewIcon name="trash" />{{ zh(deleting ? '删除中…' : '确认删除') }}
           </button>
         </footer>
       </div>
