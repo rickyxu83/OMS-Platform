@@ -1710,35 +1710,64 @@ export function Customers() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div ref={customerCandidateRef} className="space-y-2">
-              <Label htmlFor="cust-name">{t.dialog.name}</Label>
-              <div className="flex flex-wrap gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="cust-name"
-                    className="pl-9"
-                    value={form.name}
-                    onChange={(e) => updateCustomerName(e.target.value)}
-                    placeholder={t.dialog.namePlaceholder}
-                    autoComplete="off"
-                  />
+            <div ref={customerCandidateRef} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cust-name">{t.dialog.name}</Label>
+                <div className="flex flex-wrap gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="cust-name"
+                      className="pl-9"
+                      value={form.name}
+                      onChange={(e) => updateCustomerName(e.target.value)}
+                      placeholder={t.dialog.namePlaceholder}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={locateNearMe}
+                    disabled={locating}
+                    className="shrink-0"
+                  >
+                    {locating ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Crosshair className="w-4 h-4 mr-1" />
+                    )}
+                    {t.dialog.locate}
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={locateNearMe}
-                  disabled={locating}
-                  className="shrink-0"
-                >
-                  {locating ? (
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  ) : (
-                    <Crosshair className="w-4 h-4 mr-1" />
-                  )}
-                  {t.dialog.locate}
-                </Button>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cust-address">{t.dialog.address}</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    id="cust-address"
+                    value={form.address}
+                    onChange={(e) => updateCustomerAddress(e.target.value)}
+                    placeholder={t.dialog.addressPlaceholder}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={locateByAddress}
+                    disabled={addressLocating}
+                    className="shrink-0"
+                  >
+                    {addressLocating ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <MapPin className="w-4 h-4 mr-1" />
+                    )}
+                    {t.actions.locateAddress}
+                  </Button>
+                </div>
+              </div>
+
               {showCandidates && candidates.length > 0 ? (
                 <div className="border rounded-lg bg-white shadow-sm max-h-[200px] overflow-y-auto">
                   {candidates.map((c) => (
@@ -1770,6 +1799,31 @@ export function Customers() {
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   {geoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                   {locationHint}
+                </div>
+              ) : null}
+              {form.latitude != null && form.longitude != null ? (
+                <div className="rounded-lg border bg-slate-50/50 p-3 flex items-start gap-3">
+                  <Check className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+                  <div className="flex-1 min-w-0 text-xs space-y-1">
+                    <div className="font-medium text-slate-700">
+                      {form.mapPoiName || t.dialog.selectedCoordinate}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {form.mapAddress || form.address}
+                    </div>
+                    <div className="font-mono text-xs text-slate-500">
+                      {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
+                      {form.mapPoiId ? ` · POI ${form.mapPoiId}` : ""}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={clearMapSelection}
+                  >
+                    {t.actions.clear}
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -1815,31 +1869,6 @@ export function Customers() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="cust-address">{t.dialog.address}</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    id="cust-address"
-                    value={form.address}
-                    onChange={(e) => updateCustomerAddress(e.target.value)}
-                    placeholder={t.dialog.addressPlaceholder}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={locateByAddress}
-                    disabled={addressLocating}
-                    className="shrink-0"
-                  >
-                    {addressLocating ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    ) : (
-                      <MapPin className="w-4 h-4 mr-1" />
-                    )}
-                    {t.actions.locateAddress}
-                  </Button>
-                </div>
-              </div>
             </div>
 
             <div className="space-y-3">
@@ -1882,32 +1911,6 @@ export function Customers() {
                 ))}
               </div>
             </div>
-
-            {form.latitude != null && form.longitude != null ? (
-              <div className="rounded-lg border bg-slate-50/50 p-3 flex items-start gap-3">
-                <Check className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
-                <div className="flex-1 min-w-0 text-xs space-y-1">
-                  <div className="font-medium text-slate-700">
-                    {form.mapPoiName || t.dialog.selectedCoordinate}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {form.mapAddress || form.address}
-                  </div>
-                  <div className="font-mono text-xs text-slate-500">
-                    {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
-                    {form.mapPoiId ? ` · POI ${form.mapPoiId}` : ""}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={clearMapSelection}
-                >
-                  {t.actions.clear}
-                </Button>
-              </div>
-            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>

@@ -507,6 +507,14 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </label>
+          <label class="asset-editor-wide">{{ zh('客户地址') }}
+            <div class="asset-inline-control">
+              <textarea :value="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)"></textarea>
+              <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
+                <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中…' : '按地址定位') }}
+              </button>
+            </div>
+          </label>
           <div v-if="showCandidates && candidates.length" ref="customerCandidateList" class="asset-candidate-list asset-editor-wide">
             <button v-for="candidate in candidates" :key="`${candidate.source || 'candidate'}-${candidate.id || candidate.name}`" type="button" @click="applyCandidate(candidate)">
               <strong>{{ zh(candidate.name || '未命名地点') }}</strong>
@@ -517,15 +525,18 @@ onBeforeUnmount(() => {
           <p v-if="locationHint" class="asset-location-hint asset-editor-wide">
             <PreviewIcon v-if="geoLoading" name="refresh" />{{ zh(locationHint) }}
           </p>
-          <label>{{ zh('客户编码') }}<input v-model="form.code" type="text" :placeholder="zh('留空自动生成或沿用')" /></label>
-          <label class="asset-editor-wide">{{ zh('客户地址') }}
-            <div class="asset-inline-control">
-              <textarea :value="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)"></textarea>
-              <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
-                <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中…' : '按地址定位') }}
-              </button>
+          <section v-if="hasCoordinates" class="asset-editor-nested asset-editor-wide">
+            <div class="asset-map-meta">
+              <PreviewIcon name="pin" />
+              <div>
+                <strong>{{ zh(form.mapPoiName || '已维护坐标') }}</strong>
+                <span>{{ zh(form.mapAddress || form.address || '未维护地图地址') }}</span>
+                <code>{{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}{{ form.mapPoiId ? ` · POI ${form.mapPoiId}` : '' }}</code>
+              </div>
+              <button class="ghost" type="button" @click="clearMapSelection">{{ zh('清除') }}</button>
             </div>
-          </label>
+          </section>
+          <label>{{ zh('客户编码') }}<input v-model="form.code" type="text" :placeholder="zh('留空自动生成或沿用')" /></label>
           <label>{{ zh('默认联系人') }}<input v-model="form.contactName" type="text" /></label>
           <label>{{ zh('默认电话') }}<input v-model="form.contactPhone" type="tel" /></label>
           <label>{{ zh('业务归属') }}<input v-model="form.salesperson" type="text" /></label>
@@ -538,17 +549,6 @@ onBeforeUnmount(() => {
             </select>
           </label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
-          <section v-if="hasCoordinates" class="asset-editor-nested asset-editor-wide">
-            <div class="asset-map-meta">
-              <PreviewIcon name="pin" />
-              <div>
-                <strong>{{ zh(form.mapPoiName || '已维护坐标') }}</strong>
-                <span>{{ zh(form.mapAddress || form.address || '未维护地图地址') }}</span>
-                <code>{{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}{{ form.mapPoiId ? ` · POI ${form.mapPoiId}` : '' }}</code>
-              </div>
-              <button class="ghost" type="button" @click="clearMapSelection">{{ zh('清除') }}</button>
-            </div>
-          </section>
           <section class="asset-editor-nested">
             <div class="asset-editor-nested-head">
               <strong>{{ zh('联系人列表') }}</strong>
