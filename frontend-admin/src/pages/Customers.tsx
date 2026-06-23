@@ -595,17 +595,20 @@ export function Customers() {
   const userRole = String(user?.role || "");
   const canDeleteCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
   const canForceDeleteCustomer = CUSTOMER_FORCE_DELETE_ROLES.has(userRole);
+  const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
   const salespersonOptions = useMemo(() => {
-    const options = salespeople
-      .map((user) => (user.realName || user.username || "").trim())
-      .filter(Boolean);
+    const options = userRole === "sales"
+      ? [currentSalespersonName].filter(Boolean)
+      : salespeople
+          .map((user) => (user.realName || user.username || "").trim())
+          .filter(Boolean);
     if (form.salesperson.trim() && !options.includes(form.salesperson.trim())) {
       options.unshift(form.salesperson.trim());
     }
     return options;
-  }, [form.salesperson, salespeople]);
+  }, [currentSalespersonName, form.salesperson, salespeople, userRole]);
 
   async function load(keyword = searchQuery) {
     setLoading(true);

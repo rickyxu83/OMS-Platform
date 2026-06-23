@@ -1,14 +1,15 @@
 const { query, transaction } = require('../../config/db')
-const { badRequest, notFound } = require('../../utils/http-error')
+const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
 const { sendInspectionConfirmationMail } = require('../../services/mail')
+const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 
 const allowedCadences = new Set(['monthly', 'bi-monthly', 'quarterly'])
 let inspectionSchedulesTableReady = false
 let inspectionOrderColumnsReady = false
 
 const scheduleColumns = `
-  s.id, s.name, s.customer_id, c.name AS customer_name,
+  s.id, s.name, s.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson,
   s.target_engineer_id, u.real_name AS target_engineer_name, u.username AS target_engineer_username,
   s.cadence, s.next_run_anchor, s.active, s.end_date, s.next_order_status,
   s.created_by, creator.real_name AS created_by_name, s.updated_by, updater.real_name AS updated_by_name,
@@ -567,6 +568,7 @@ async function list(req, res) {
     cadence,
     active: activeFilter,
   }
+  const salesScope = buildSalesCustomerScope(req.user, 'c')
   const fromAndWhere = `
     FROM inspection_schedules s
     JOIN customers c ON c.id = s.customer_id
@@ -574,6 +576,7 @@ async function list(req, res) {
     JOIN users creator ON creator.id = s.created_by
     LEFT JOIN users updater ON updater.id = s.updated_by
     WHERE (:customerId IS NULL OR s.customer_id = :customerId)
+      ${salesScope.sql}
       AND (:deviceId IS NULL OR EXISTS (
         SELECT 1 FROM inspection_schedule_devices sd WHERE sd.schedule_id = s.id AND sd.device_id = :deviceId
       ))
@@ -581,13 +584,14 @@ async function list(req, res) {
       AND (:cadence = '' OR s.cadence = :cadence)
       AND (:active IS NULL OR s.active = :active)
   `
-  const countRows = await query(`SELECT COUNT(*) AS total ${fromAndWhere}`, params)
+  const scopedParams = { ...params, ...salesScope.params }
+  const countRows = await query(`SELECT COUNT(*) AS total ${fromAndWhere}`, scopedParams)
   const rows = await query(
     `SELECT ${scheduleColumns}
      ${fromAndWhere}
      ORDER BY s.active DESC, s.next_run_anchor ASC, s.id DESC
      LIMIT ${normalizedPageSize} OFFSET ${offset}`,
-    params,
+    scopedParams,
   )
 
   const scheduleIds = rows.map((r) => r.id)
@@ -768,6 +772,7 @@ async function detail(req, res) {
   if (!row) {
     throw notFound('巡检计划不存在')
   }
+  assertSalesCanAccessSalesperson(row.customer_salesperson, req.user, forbidden)
   res.json({ item: schedulePayload(row, row._devices) })
 }
 

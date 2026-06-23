@@ -2,6 +2,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
 const { effectiveSettings } = require('../settings/controller')
 
@@ -247,6 +248,7 @@ async function searchCompanies(req, res) {
   const likeKeywordKey = `%${customerNameKey(keyword)}%`
   const lat = toNumber(latitude)
   const lng = toNumber(longitude)
+  const salesScope = buildSalesCustomerScope(req.user, 'customers')
 
   const customers = await query(
     `SELECT id, name, name_key, address, contact_name, contact_phone, salesperson, latitude, longitude,
@@ -257,6 +259,7 @@ async function searchCompanies(req, res) {
        END AS distance_score
      FROM customers
      WHERE NOT (name = :internalCustomerName OR name_key = :internalCustomerNameKey)
+       ${salesScope.sql}
        AND (
          :keyword = ''
          OR name LIKE :likeKeyword
@@ -278,6 +281,7 @@ async function searchCompanies(req, res) {
       longitude: lng,
       internalCustomerName: INTERNAL_CUSTOMER_NAME,
       internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+      ...salesScope.params,
     },
   )
 

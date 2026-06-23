@@ -1,5 +1,6 @@
 const { query } = require('../../config/db')
-const { badRequest, notFound } = require('../../utils/http-error')
+const { badRequest, forbidden, notFound } = require('../../utils/http-error')
+const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -141,6 +142,7 @@ function devicePayload(row) {
 async function list(req, res) {
   const { customerId = null } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const salesScope = buildSalesCustomerScope(req.user, 'c')
   const rows = await query(
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
@@ -150,6 +152,7 @@ async function list(req, res) {
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
      WHERE (:customerId IS NULL OR d.customer_id = :customerId)
+       ${salesScope.sql}
        AND (
          :keyword = ''
          OR d.name LIKE :likeKeyword
@@ -166,6 +169,7 @@ async function list(req, res) {
       customerId: customerId || null,
       keyword,
       likeKeyword: `%${keyword}%`,
+      ...salesScope.params,
     },
   )
 
@@ -228,7 +232,7 @@ async function create(req, res) {
 async function detail(req, res) {
   await ensureDevicePartHistoryColumns()
   const rows = await query(
-    `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no,
+    `SELECT d.id, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name, d.model, d.pn, d.serial_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
             d.installation_source_service_order_id, d.location, d.warranty_until, d.created_at, d.updated_at
@@ -243,6 +247,7 @@ async function detail(req, res) {
   if (!rows[0]) {
     throw notFound('设备不存在')
   }
+  assertSalesCanAccessSalesperson(rows[0].customer_salesperson, req.user, forbidden)
 
   const partRows = await query(
     `SELECT sp.id, sp.service_order_id, sp.device_id, sp.action_type, sp.part_name, sp.part_no,

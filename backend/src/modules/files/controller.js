@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { ROLE_GROUPS } = require('../../permissions/roles')
+const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 fs.mkdirSync(uploadRoot, { recursive: true })
@@ -149,26 +150,16 @@ async function isAssignedEngineer(orderId, user) {
   return Boolean(rows[0])
 }
 
-function userIdentityValues(user) {
-  return [user?.real_name, user?.username].map((value) => String(value || '').trim()).filter(Boolean)
-}
-
 async function isSalesScopedOrder(orderId, user) {
-  const [primary = '', secondary = ''] = userIdentityValues(user)
-  if (!primary && !secondary) return false
+  const salesScope = buildSalesCustomerScope(user, 'c')
   const rows = await query(
     `SELECT 1
      FROM service_orders so
      JOIN customers c ON c.id = so.customer_id
      WHERE so.id = :orderId
-       AND (
-         so.timesheet_salesperson = :primary
-         OR c.salesperson = :primary
-         OR (:secondary <> '' AND so.timesheet_salesperson = :secondary)
-         OR (:secondary <> '' AND c.salesperson = :secondary)
-       )
+       ${salesScope.sql}
      LIMIT 1`,
-    { orderId, primary, secondary },
+    { orderId, ...salesScope.params },
   )
   return Boolean(rows[0])
 }

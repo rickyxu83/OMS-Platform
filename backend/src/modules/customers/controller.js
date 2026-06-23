@@ -1,6 +1,11 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const {
+  assertSalesCanAccessSalesperson,
+  assertSalesCanUseSalesperson,
+  buildSalesCustomerScope,
+} = require('../../permissions/sales-scope')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./internal')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
@@ -463,6 +468,7 @@ async function list(req, res) {
   const orderBy = effectiveEngineerId
     ? 'COALESCE(es.last_used_at, c.updated_at, c.created_at) DESC, COALESCE(es.engineer_order_count, 0) DESC, c.id DESC'
     : 'c.id DESC'
+  const salesScope = buildSalesCustomerScope(req.user, 'c')
   const rows = await query(
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
@@ -494,6 +500,7 @@ async function list(req, res) {
       ) es ON es.customer_id = c.id
      WHERE (:salesperson = '' OR c.salesperson = :salesperson)
        AND NOT (c.name = :internalCustomerName OR c.name_key = :internalCustomerNameKey)
+       ${salesScope.sql}
        ${engineerCustomerWhere}
        AND (
          :keyword = ''
@@ -518,6 +525,7 @@ async function list(req, res) {
       likeKeywordKey: `%${keywordKey}%`,
       internalCustomerName: INTERNAL_CUSTOMER_NAME,
       internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+      ...salesScope.params,
     },
   )
 
@@ -548,13 +556,15 @@ async function create(req, res) {
   if (!name) {
     throw badRequest('客户名称不能为空')
   }
+  assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = customerNameKey(name)
 
   let result
   try {
     result = await transaction(async (connection) => {
-      const [existingRows] = await connection.execute('SELECT id, code FROM customers WHERE name_key = :nameKey LIMIT 1', { nameKey })
+      const [existingRows] = await connection.execute('SELECT id, code, salesperson FROM customers WHERE name_key = :nameKey LIMIT 1', { nameKey })
       if (existingRows[0]) {
+        assertSalesCanAccessSalesperson(existingRows[0].salesperson, req.user, forbidden)
         const effectiveCode = code || existingRows[0].code || (await nextCustomerCode(connection))
         await connection.execute(
           `UPDATE customers
@@ -658,6 +668,7 @@ async function detail(req, res) {
   if (!rows[0]) {
     throw notFound('客户不存在')
   }
+  assertSalesCanAccessSalesperson(rows[0].salesperson, req.user, forbidden)
 
   await cleanupDuplicateContacts([rows[0].id])
   const contactsByCustomer = await loadContacts([rows[0].id])
@@ -683,10 +694,12 @@ async function update(req, res) {
     mapAddress,
     remark,
   } = req.body || {}
-  const existing = await query('SELECT id, code FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, code, salesperson FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('客户不存在')
   }
+  assertSalesCanAccessSalesperson(existing[0].salesperson, req.user, forbidden)
+  assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = name ? customerNameKey(name) : null
 
   try {
@@ -750,10 +763,11 @@ async function remove(req, res) {
   let forceDeleteResult = null
   await transaction(async (connection) => {
     const customerId = Number(req.params.id)
-    const [customers] = await connection.execute('SELECT id FROM customers WHERE id = :customerId LIMIT 1 FOR UPDATE', { customerId })
+    const [customers] = await connection.execute('SELECT id, salesperson FROM customers WHERE id = :customerId LIMIT 1 FOR UPDATE', { customerId })
     if (!customers[0]) {
       throw notFound('客户不存在')
     }
+    assertSalesCanAccessSalesperson(customers[0].salesperson, req.user, forbidden)
 
     const [relationRows] = await connection.execute(
       `SELECT
@@ -826,6 +840,8 @@ async function merge(req, res) {
   if (!targetCustomer || !sourceCustomer) {
     throw notFound('客户不存在')
   }
+  assertSalesCanAccessSalesperson(targetCustomer.salesperson, req.user, forbidden)
+  assertSalesCanAccessSalesperson(sourceCustomer.salesperson, req.user, forbidden)
 
   await transaction(async (connection) => {
     await connection.execute('UPDATE service_orders SET customer_id = :targetCustomerId WHERE customer_id = :sourceCustomerId', {
@@ -882,6 +898,12 @@ async function merge(req, res) {
 }
 
 async function devices(req, res) {
+  const customerRows = await query('SELECT id, salesperson FROM customers WHERE id = :customerId LIMIT 1', { customerId: req.params.id })
+  if (!customerRows[0]) {
+    throw notFound('客户不存在')
+  }
+  assertSalesCanAccessSalesperson(customerRows[0].salesperson, req.user, forbidden)
+
   const rows = await query(
     `SELECT d.id, d.customer_id, d.name, d.model, d.pn, d.serial_no, d.remark, d.maintenance_type,
             d.maintenance_party_id, mp.name AS maintenance_party_name, mp.phone AS maintenance_party_phone,
