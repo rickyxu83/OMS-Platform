@@ -21,10 +21,16 @@ export function Login() {
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const { lang, setLang } = useLanguage();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("remembered_username") || "";
+  });
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(localStorage.getItem("remembered_username"));
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [workspaceChoices, setWorkspaceChoices] = useState<WorkspaceOption[]>([]);
@@ -111,6 +117,8 @@ export function Login() {
       const result = await login(username, password, rememberMe);
       if (rememberMe) {
         localStorage.setItem("remembered_username", username);
+      } else {
+        localStorage.removeItem("remembered_username");
       }
       const workspaces = result.availableWorkspaces || result.user?.availableWorkspaces || [];
       const requestedWorkspace = searchParams.get("workspace") || "";
