@@ -1702,7 +1702,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
@@ -1713,8 +1713,8 @@ export function Customers() {
             <div ref={customerCandidateRef} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="cust-name">{t.dialog.name}</Label>
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative flex-1">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="relative min-w-0 flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="cust-name"
@@ -1730,7 +1730,7 @@ export function Customers() {
                     variant="outline"
                     onClick={locateNearMe}
                     disabled={locating}
-                    className="shrink-0"
+                    className="w-full shrink-0 sm:w-auto"
                   >
                     {locating ? (
                       <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -1744,19 +1744,21 @@ export function Customers() {
 
               <div className="space-y-2">
                 <Label htmlFor="cust-address">{t.dialog.address}</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    id="cust-address"
-                    value={form.address}
-                    onChange={(e) => updateCustomerAddress(e.target.value)}
-                    placeholder={t.dialog.addressPlaceholder}
-                  />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      id="cust-address"
+                      value={form.address}
+                      onChange={(e) => updateCustomerAddress(e.target.value)}
+                      placeholder={t.dialog.addressPlaceholder}
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={locateByAddress}
                     disabled={addressLocating}
-                    className="shrink-0"
+                    className="w-full shrink-0 sm:w-auto"
                   >
                     {addressLocating ? (
                       <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -1828,7 +1830,7 @@ export function Customers() {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="cust-code">{t.dialog.code}</Label>
                 <Input

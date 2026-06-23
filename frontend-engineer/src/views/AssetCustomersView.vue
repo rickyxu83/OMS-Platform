@@ -492,7 +492,7 @@ onBeforeUnmount(() => {
             <h2>{{ zh(editingId ? '编辑客户' : '新增客户') }}</h2>
           </div>
         </header>
-        <div class="asset-editor-form">
+        <div class="asset-editor-form asset-customer-editor-form">
           <label ref="customerNameField" class="asset-editor-wide">{{ zh('客户名称') }}
             <div class="asset-inline-control">
               <input
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
           </label>
           <label class="asset-editor-wide">{{ zh('客户地址') }}
             <div class="asset-inline-control">
-              <textarea :value="form.address" rows="2" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)"></textarea>
+              <input :value="form.address" type="text" :placeholder="zh('详细至街道门牌号')" @input="updateCustomerAddress($event.target.value)" />
               <button class="ghost asset-inline-button" type="button" :disabled="addressLocating" @click="locateByAddress">
                 <PreviewIcon name="pin" />{{ zh(addressLocating ? '定位中…' : '按地址定位') }}
               </button>
@@ -537,8 +537,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
           <label>{{ zh('客户编码') }}<input v-model="form.code" type="text" :placeholder="zh('留空自动生成或沿用')" /></label>
-          <label>{{ zh('默认联系人') }}<input v-model="form.contactName" type="text" /></label>
-          <label>{{ zh('默认电话') }}<input v-model="form.contactPhone" type="tel" /></label>
           <label>{{ zh('业务归属') }}<input v-model="form.salesperson" type="text" /></label>
           <label>{{ zh('客户等级') }}
             <select v-model="form.level">
@@ -548,6 +546,8 @@ onBeforeUnmount(() => {
               <option value="vip">{{ zh('VIP 客户') }}</option>
             </select>
           </label>
+          <label>{{ zh('默认联系人') }}<input v-model="form.contactName" type="text" /></label>
+          <label>{{ zh('默认电话') }}<input v-model="form.contactPhone" type="tel" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2"></textarea></label>
           <section class="asset-editor-nested">
             <div class="asset-editor-nested-head">
