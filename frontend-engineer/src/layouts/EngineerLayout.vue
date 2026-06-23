@@ -18,9 +18,6 @@ const avatarInitial = computed(() => String(displayName.value || '工').trim().s
 const avatarUrl = computed(() => currentUser.value?.avatarUrl || '')
 const accountOpen = ref(false)
 const exitConfirmOpen = ref(false)
-const firstLoginGuideOpen = ref(false)
-const featureTourIndex = ref(0)
-const featureTourRect = ref(null)
 const formDraftPending = ref(false)
 const createFabPosition = ref({ x: null, y: null })
 const createFabDragging = ref(false)
@@ -29,7 +26,6 @@ const isFormPage = computed(() => ['service-sheet-new', 'service-sheet-edit'].in
 const showHomeQuickAction = computed(() => route.name !== 'login')
 const showGlobalCreateAction = computed(() => !isFormPage.value && route.name !== 'service-sheet-edit')
 const isEditingExistingSheet = computed(() => route.name === 'service-sheet-edit')
-const shouldAutoOpenFirstLoginGuide = computed(() => Boolean(currentUser.value?.requiresOnboarding))
 const controlsAnchorClass = computed(() => ({
   'service-sheet-controls-anchor': isFormPage.value,
 }))
@@ -51,7 +47,6 @@ const exitConfirmMeta = computed(() => {
   }
 })
 const sharedFabStorageKey = 'oms-platform:service-record:create-fab-position'
-const guideStorageVersion = 'v1'
 let createFabMoved = false
 let createFabStartPointer = { x: 0, y: 0 }
 let createFabStartPosition = { x: 0, y: 0 }
@@ -87,90 +82,6 @@ const createModeOptions = [
   { mode: 'remote', label: '远程服务', icon: 'remote-service', className: 'remote' },
   { mode: 'office', label: '内勤工作', icon: 'office-service', className: 'office' },
 ]
-const guideSteps = [
-  {
-    selector: '.shell-account-trigger',
-    title: '账户菜单',
-    body: '这里可以打开快捷菜单，进入服务记录、月报、客户资产、我的，也可以重新打开功能指引。',
-  },
-  {
-    selector: '.home-create-action',
-    title: '新增服务记录',
-    body: '点右下角“+”可以新增现场服务、远程服务或内勤记录。手机上点一下默认新增现场服务，长按可选择类型。',
-  },
-  {
-    selector: '.profile-hero-card',
-    route: '/profile',
-    title: '我的资料',
-    body: '这里管理头像、账号状态和首次登录必做项。头像不是必填，但设置后更容易识别。',
-  },
-  {
-    selector: '.profile-form',
-    route: '/profile',
-    title: '修改密码',
-    body: '首次登录必须修改初始密码。新密码需要满足复杂度要求，保证账号安全。',
-  },
-  {
-    selector: '.signature-card',
-    route: '/profile',
-    title: '个人手写签名',
-    body: '签名会用于服务记录导出。可以预览、重新签名，确认无误后保存。',
-  },
-  {
-    selector: '.quick-action-row .locate',
-    route: '/service-sheets/new?mode=onsite&guide=1',
-    title: '定位查找',
-    body: '填写客户时用它搜索附近客户和地点，系统会按关键词匹配和当前位置排序。',
-  },
-  {
-    selector: '.quick-action-row .ghost',
-    route: '/service-sheets/new?mode=onsite&guide=1',
-    title: '同步资料',
-    body: '在线时可以手动刷新客户、联系人、草稿和离线队列，避免现场资料不同步。',
-  },
-  {
-    selector: '.timesheet-filter',
-    route: '/timesheet?guide=1',
-    title: '查看月报',
-    body: '月报会汇总你的现场、远程和内勤服务记录，方便核对当月工作。',
-  },
-]
-const activeGuideStep = computed(() => guideSteps[featureTourIndex.value] || guideSteps[0])
-const featureTourSpotlightStyle = computed(() => {
-  const rect = featureTourRect.value
-  if (!rect) return { opacity: 0 }
-  const padding = 8
-  return {
-    left: `${Math.max(8, rect.left - padding)}px`,
-    top: `${Math.max(8, rect.top - padding)}px`,
-    width: `${rect.width + padding * 2}px`,
-    height: `${rect.height + padding * 2}px`,
-    opacity: 1,
-  }
-})
-const featureTourBubbleStyle = computed(() => {
-  const rect = featureTourRect.value
-  if (!rect) return {}
-  if (window.innerWidth <= 520) {
-    const width = Math.min(320, window.innerWidth - 24)
-    const placeAtTop = rect.top > window.innerHeight * 0.52
-    return {
-      width: `${width}px`,
-      left: '12px',
-      top: placeAtTop ? '12px' : 'auto',
-      bottom: placeAtTop ? 'auto' : 'calc(12px + env(safe-area-inset-bottom))',
-    }
-  }
-  const maxWidth = window.innerWidth <= 680 ? 296 : 340
-  const sideGap = window.innerWidth <= 520 ? 72 : window.innerWidth <= 680 ? 56 : 28
-  const width = Math.min(maxWidth, window.innerWidth - sideGap)
-  const preferBelow = rect.top + rect.height + 18 + 190 < window.innerHeight
-  const top = preferBelow
-    ? rect.top + rect.height + 16
-    : Math.max(12, rect.top - (window.innerWidth <= 520 ? 170 : 210))
-  const left = Math.min(Math.max(14, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 14)
-  return { width: `${width}px`, left: `${left}px`, top: `${top}px` }
-})
 const createModePanelStyle = computed(() => {
   if (createFabPosition.value.x !== null && createFabPosition.value.y !== null) {
     return { left: `${createFabPosition.value.x}px`, top: `${createFabPosition.value.y}px`, right: 'auto', bottom: 'auto' }
@@ -188,78 +99,6 @@ function logout() {
   api.post('/auth/logout').catch(() => {})
   clearSession()
   router.push('/login')
-}
-
-function guideStorageKey() {
-  const user = currentUser.value || {}
-  const userKey = user.id || user.username || 'anonymous'
-  return `oms-platform-engineer:first-login-guide:${guideStorageVersion}:${userKey}`
-}
-
-function openFirstLoginGuide() {
-  accountOpen.value = false
-  featureTourIndex.value = 0
-  firstLoginGuideOpen.value = true
-  window.setTimeout(updateFeatureTourTarget, 80)
-}
-
-function closeFirstLoginGuide() {
-  safeStorageSet(localStorage, guideStorageKey(), '1')
-  firstLoginGuideOpen.value = false
-  featureTourRect.value = null
-}
-
-function maybeOpenFirstLoginGuide() {
-  if (!currentUser.value) return
-  if (!shouldAutoOpenFirstLoginGuide.value) return
-  if (safeStorageGet(localStorage, guideStorageKey(), '') === '1') return
-  openFirstLoginGuide()
-}
-
-async function prepareFeatureTourStep() {
-  const step = activeGuideStep.value
-  const targetRoute = step?.route ? router.resolve(step.route).fullPath : ''
-  if (targetRoute && route.fullPath !== targetRoute) {
-    await router.push(targetRoute)
-  }
-  accountOpen.value = Boolean(step?.selector?.includes('shell-menu-icon'))
-  await new Promise((resolve) => window.setTimeout(resolve, 180))
-  updateFeatureTourTarget()
-}
-
-function updateFeatureTourTarget() {
-  if (!firstLoginGuideOpen.value) return
-  const selector = activeGuideStep.value?.selector
-  const target = selector ? document.querySelector(selector) : null
-  if (!target) {
-    featureTourRect.value = null
-    return
-  }
-  target.scrollIntoView?.({ block: 'center', inline: 'center', behavior: 'smooth' })
-  window.setTimeout(() => {
-    const rect = target.getBoundingClientRect()
-    featureTourRect.value = {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    }
-  }, 220)
-}
-
-async function nextFeatureTourStep() {
-  if (featureTourIndex.value >= guideSteps.length - 1) {
-    closeFirstLoginGuide()
-    return
-  }
-  featureTourIndex.value += 1
-  await prepareFeatureTourStep()
-}
-
-async function previousFeatureTourStep() {
-  if (featureTourIndex.value <= 0) return
-  featureTourIndex.value -= 1
-  await prepareFeatureTourStep()
 }
 
 function draftStorageKey() {
@@ -502,7 +341,6 @@ onMounted(() => {
     syncPendingSelfReports().catch(() => {})
   }
   restoreCreateFabPosition()
-  window.setTimeout(maybeOpenFirstLoginGuide, 360)
   window.addEventListener('rc-open-exit-confirm', handleOpenExitConfirm)
   window.addEventListener('rc-form-dirty-state', handleFormDirtyState)
   window.addEventListener('resize', syncCreateFabPositionToViewport)
@@ -534,24 +372,8 @@ watch(
     createModePickerOpen.value = false
     formDraftPending.value = false
     restoreCreateFabPosition()
-    window.setTimeout(updateFeatureTourTarget, 260)
   },
 )
-
-watch(featureTourIndex, () => {
-  prepareFeatureTourStep()
-})
-
-watch(
-  () => currentUser.value?.id || currentUser.value?.username,
-  () => {
-    window.setTimeout(maybeOpenFirstLoginGuide, 240)
-  },
-)
-
-watch(shouldAutoOpenFirstLoginGuide, (required) => {
-  if (required) window.setTimeout(maybeOpenFirstLoginGuide, 240)
-})
 </script>
 
 <template>
@@ -599,19 +421,9 @@ watch(shouldAutoOpenFirstLoginGuide, (required) => {
               </RouterLink>
             </template>
             <button
-              class="shell-menu-icon"
-              type="button"
-              :style="{ '--menu-index': quickActions.length }"
-              :aria-label="zh('功能指引')"
-              :title="zh('功能指引')"
-              @click="openFirstLoginGuide"
-            >
-              <PreviewIcon name="status" />
-            </button>
-            <button
               class="shell-menu-icon danger"
               type="button"
-              :style="{ '--menu-index': quickActions.length + 1 }"
+              :style="{ '--menu-index': quickActions.length }"
               :aria-label="zh('退出')"
               :title="zh('退出')"
               @click="logout"
@@ -691,22 +503,6 @@ watch(shouldAutoOpenFirstLoginGuide, (required) => {
         </button>
       </footer>
     </div>
-  </div>
-  <div v-if="firstLoginGuideOpen" class="feature-tour-layer" role="dialog" aria-modal="true" :aria-label="zh('功能指引')">
-    <button class="feature-tour-backdrop" type="button" :aria-label="zh('结束功能指引')" @click="closeFirstLoginGuide"></button>
-    <div class="feature-tour-spotlight" :style="featureTourSpotlightStyle" aria-hidden="true"></div>
-    <section class="feature-tour-card" :style="featureTourBubbleStyle">
-      <p>{{ zh('功能指引') }} {{ featureTourIndex + 1 }} / {{ guideSteps.length }}</p>
-      <h2>{{ zh(activeGuideStep.title) }}</h2>
-      <span>{{ zh(activeGuideStep.body) }}</span>
-      <footer>
-        <button class="ghost" type="button" :disabled="featureTourIndex === 0" @click="previousFeatureTourStep">{{ zh('上一步') }}</button>
-        <button class="ghost" type="button" @click="closeFirstLoginGuide">{{ zh('结束') }}</button>
-        <button class="primary" type="button" @click="nextFeatureTourStep">
-          {{ zh(featureTourIndex >= guideSteps.length - 1 ? '完成' : '下一步') }}
-        </button>
-      </footer>
-    </section>
   </div>
   <a
     class="icp-badge"

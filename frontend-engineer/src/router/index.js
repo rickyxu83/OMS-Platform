@@ -88,10 +88,6 @@ function isEngineerUser(user) {
   return user?.role === 'engineer' || user?.role === 'engineering_supervisor'
 }
 
-function isFeatureGuideRoute(to) {
-  return String(to.query?.guide || '') === '1'
-}
-
 // /auth/me 会话校验缓存:60s 内的路由跳转不重复请求,且并发跳转共享同一个在途请求。
 // 缓存按 token 区分(登出/换号自动失效);onboarding 未完成时不缓存,确保完成后立即放行。
 const AUTH_ME_TTL_MS = 60_000
@@ -128,10 +124,10 @@ router.beforeEach(async (to) => {
       const user = await fetchSessionUser()
       if (!isEngineerUser(user)) return { name: 'login' }
       saveUser(user)
-      if (user?.requiresOnboarding && to.name !== 'profile' && !isFeatureGuideRoute(to)) return { name: 'profile' }
+      if (user?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     } catch {
       if (!currentUser.value) return { name: 'login' }
-      if (currentUser.value?.requiresOnboarding && to.name !== 'profile' && !isFeatureGuideRoute(to)) return { name: 'profile' }
+      if (currentUser.value?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     }
   }
 })
