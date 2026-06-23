@@ -1815,24 +1815,6 @@ export function Customers() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust-contact">{t.dialog.contact}</Label>
-                <Input
-                  id="cust-contact"
-                  value={primaryContact.name}
-                  onChange={(e) => updateContact(0, "name", e.target.value)}
-                  placeholder={t.dialog.contactName}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust-phone">{t.dialog.phone}</Label>
-                <Input
-                  id="cust-phone"
-                  value={primaryContact.phone}
-                  onChange={(e) => updateContact(0, "phone", e.target.value)}
-                  placeholder={t.dialog.contactPhone}
-                />
-              </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="cust-address">{t.dialog.address}</Label>
                 <div className="flex flex-wrap gap-2">
