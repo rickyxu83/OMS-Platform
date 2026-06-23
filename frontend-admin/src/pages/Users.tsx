@@ -213,8 +213,8 @@ export function Users() {
       setError("请输入有效的邮箱账号");
       return;
     }
-    if (form.loginAlias.trim() && !/^[A-Za-z0-9._-]{3,32}$/.test(form.loginAlias.trim())) {
-      setError("别名仅支持 3-32 位字母、数字、点、下划线或短横线");
+    if (form.loginAlias.trim() && !/^[A-Za-z0-9._-]{2,32}$/.test(form.loginAlias.trim())) {
+      setError("别名仅支持 2-32 位字母、数字、点、下划线或短横线");
       return;
     }
     if (!form.realName.trim()) {
@@ -602,7 +602,7 @@ export function Users() {
                 <Input
                   value={form.loginAlias}
                   onChange={(e) => setForm({ ...form, loginAlias: e.target.value })}
-                  placeholder="可选，3-32 位字母/数字/._-"
+                  placeholder="可选，2-32 位字母/数字/._-"
                 />
               </div>
             </div>

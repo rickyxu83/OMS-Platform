@@ -78,8 +78,8 @@ function validateLoginAlias(alias) {
   if (alias.includes('@')) {
     throw badRequest('别名不能使用邮箱格式')
   }
-  if (!/^[A-Za-z0-9._-]{3,32}$/.test(alias)) {
-    throw badRequest('别名仅支持 3-32 位字母、数字、点、下划线或短横线')
+  if (!/^[A-Za-z0-9._-]{2,32}$/.test(alias)) {
+    throw badRequest('别名仅支持 2-32 位字母、数字、点、下划线或短横线')
   }
 }
 

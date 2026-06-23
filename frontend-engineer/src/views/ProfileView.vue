@@ -196,8 +196,8 @@ async function saveAlias() {
   error.value = ''
   message.value = ''
   const loginAlias = String(aliasForm.loginAlias || '').trim()
-  if (loginAlias && !/^[A-Za-z0-9._-]{3,32}$/.test(loginAlias)) {
-    error.value = '别名仅支持 3-32 位字母、数字、点、下划线或短横线'
+  if (loginAlias && !/^[A-Za-z0-9._-]{2,32}$/.test(loginAlias)) {
+    error.value = '别名仅支持 2-32 位字母、数字、点、下划线或短横线'
     return
   }
   savingAlias.value = true
@@ -443,7 +443,7 @@ onMounted(load)
           <span :class="{ done: aliasForm.loginAlias }">{{ zh(aliasForm.loginAlias ? '已设置' : '可选') }}</span>
         </div>
         <label class="field"><span>{{ zh('邮箱账号') }}</span><input :value="user?.email || user?.username || ''" type="text" disabled /></label>
-        <label class="field"><span>{{ zh('登录别名') }}</span><input v-model="aliasForm.loginAlias" type="text" :placeholder="zh('可选，3-32 位字母/数字/._-')" /></label>
+        <label class="field"><span>{{ zh('登录别名') }}</span><input v-model="aliasForm.loginAlias" type="text" :placeholder="zh('可选，2-32 位字母/数字/._-')" /></label>
         <button class="primary" type="submit" :disabled="savingAlias"><PreviewIcon name="save" />{{ zh(savingAlias ? '保存中' : '保存别名') }}</button>
       </form>
 
