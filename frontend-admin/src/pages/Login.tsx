@@ -151,8 +151,8 @@ export function Login() {
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden p-3 sm:p-4"
-      style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)" }}
+      className="fixed inset-0 overflow-hidden p-3 sm:p-4"
+      style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)", overscrollBehavior: "none" }}
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] right-[10%] h-[500px] w-[500px] rounded-full bg-orange-400/25 blur-3xl" />
@@ -194,7 +194,7 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="relative z-10 flex min-h-[calc(100vh-1.5rem)] items-center justify-center pb-20">
+      <div className="relative z-10 flex h-full items-center justify-center pb-20">
         <div className="w-full max-w-sm">
           <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
             <div className="mb-4 flex justify-center">
