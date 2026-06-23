@@ -407,7 +407,7 @@ export function SystemSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>额外收件人（留空则仅发送默认收件人）</Label>
+                  <Label>额外收件人</Label>
                   <Input
                     value={form.notification.maintenanceExpiryRecipients}
                     onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: e.target.value } })}
