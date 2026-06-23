@@ -12,6 +12,7 @@ const loading = ref(false)
 const savingPassword = ref(false)
 const savingSignature = ref(false)
 const savingAvatar = ref(false)
+const savingAlias = ref(false)
 const error = ref('')
 const message = ref('')
 const user = ref(null)
@@ -41,6 +42,10 @@ const passwordForm = reactive({
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
+})
+
+const aliasForm = reactive({
+  loginAlias: '',
 })
 
 function passwordComplex(value) {
@@ -175,6 +180,7 @@ async function load() {
     }
     savedSignatureData.value = data.user.engineerSignature || ''
     signatureData.value = savedSignatureData.value
+    aliasForm.loginAlias = data.user.loginAlias || ''
     if (signatureEditorOpen.value) {
       await nextTick()
       await paintSignature(signatureData.value)
@@ -183,6 +189,26 @@ async function load() {
     error.value = err.message
   } finally {
     loading.value = false
+  }
+}
+
+async function saveAlias() {
+  error.value = ''
+  message.value = ''
+  const loginAlias = String(aliasForm.loginAlias || '').trim()
+  if (loginAlias && !/^[A-Za-z0-9._-]{3,32}$/.test(loginAlias)) {
+    error.value = '别名仅支持 3-32 位字母、数字、点、下划线或短横线'
+    return
+  }
+  savingAlias.value = true
+  try {
+    await api.put('/users/me', { loginAlias })
+    message.value = loginAlias ? '登录别名已保存' : '登录别名已清除'
+    await load()
+  } catch (err) {
+    error.value = err?.message || '别名保存失败'
+  } finally {
+    savingAlias.value = false
   }
 }
 
@@ -406,6 +432,19 @@ onMounted(load)
         <label class="field"><span>{{ zh('新密码') }}</span><input v-model="passwordForm.newPassword" type="password" required :placeholder="zh('至少 8 位，包含大小写字母、数字和特殊符号')" /></label>
         <label class="field"><span>{{ zh('确认新密码') }}</span><input v-model="passwordForm.confirmPassword" type="password" required :placeholder="zh('再次输入新密码')" /></label>
         <button class="primary" type="submit" :disabled="savingPassword"><PreviewIcon name="save" />{{ zh(savingPassword ? '保存中' : '更新密码') }}</button>
+      </form>
+
+      <form class="form-section profile-form profile-setting-card" @submit.prevent="saveAlias">
+        <div class="profile-section-head">
+          <div>
+            <p>{{ zh('ACCOUNT') }}</p>
+            <h2>{{ zh('登录别名') }}</h2>
+          </div>
+          <span :class="{ done: aliasForm.loginAlias }">{{ zh(aliasForm.loginAlias ? '已设置' : '可选') }}</span>
+        </div>
+        <label class="field"><span>{{ zh('邮箱账号') }}</span><input :value="user?.email || user?.username || ''" type="text" disabled /></label>
+        <label class="field"><span>{{ zh('登录别名') }}</span><input v-model="aliasForm.loginAlias" type="text" :placeholder="zh('可选，3-32 位字母/数字/._-')" /></label>
+        <button class="primary" type="submit" :disabled="savingAlias"><PreviewIcon name="save" />{{ zh(savingAlias ? '保存中' : '保存别名') }}</button>
       </form>
 
       <article class="form-section signature-card profile-setting-card" :class="{ required: !hasSavedSignature }">

@@ -452,7 +452,7 @@ export function SystemSettings() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
-                <Label>高德 Web 服务 API Key（绑定服务 = Web 服务）</Label>
+                <Label>高德 Web 服务 API Key</Label>
                 <Input
                   type="password"
                   value={form.map.amapRestKey}
@@ -465,7 +465,7 @@ export function SystemSettings() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>高德 JSAPI Key（绑定服务 = Web 端）</Label>
+                  <Label>高德 JSAPI Key</Label>
                   <Input
                     type="password"
                     value={form.map.amapJsapiKey}
@@ -474,7 +474,7 @@ export function SystemSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>高德 JSAPI 安全密钥（同一 Web 端 Key）</Label>
+                  <Label>高德 JSAPI 安全密钥</Label>
                   <Input
                     type="password"
                     value={form.map.amapSecurityJsCode}

@@ -4,6 +4,7 @@ const env = require('../../config/env')
 const { transaction } = require('../../config/db')
 const { ROLE_GROUPS, getAvailableWorkspaces, getDefaultWorkspace } = require('../../permissions/roles')
 const { badRequest, unauthorized } = require('../../utils/http-error')
+const { ensureUserLoginColumns } = require('../users/schema')
 
 const MAX_FAILED_LOGINS = 5
 const LOCKOUT_MINUTES = 15
@@ -49,13 +50,15 @@ function publicUser(user) {
   return {
     id: user.id,
     username: user.username,
+    email: user.email || '',
+    loginAlias: user.login_alias || '',
     realName: user.real_name,
     phone: user.phone,
     role: user.role,
     status: user.status,
     hasEngineerSignature,
     mustChangePassword,
-    requiresOnboarding: ROLE_GROUPS.engineerWorkspace.includes(user.role) && (mustChangePassword || !hasEngineerSignature),
+    requiresOnboarding: mustChangePassword || (ROLE_GROUPS.engineerWorkspace.includes(user.role) && !hasEngineerSignature),
     availableWorkspaces: getAvailableWorkspaces(user.role),
     defaultWorkspace: getDefaultWorkspace(user.role),
     avatarUrl: hasAvatar ? `/api/v1/avatars/${String(user.avatar_path).split(/[\\/]/).pop()}` : '',
@@ -75,20 +78,26 @@ function sessionPayload(user) {
 async function login(req, res) {
   const { username, password } = req.body || {}
   if (!username || !password) {
-    throw badRequest('用户名和密码不能为空')
+    throw badRequest('邮箱/别名和密码不能为空')
   }
+  await ensureUserLoginColumns()
+  const identifier = String(username).trim().toLowerCase()
 
   const loginResult = await transaction(async (connection) => {
     const [rows] = await connection.execute(
-      `SELECT id, username, password_hash, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password, failed_login_count, locked_until
+      `SELECT id, username, email, login_alias, password_hash, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password, failed_login_count, locked_until
        FROM users
-       WHERE username = :username
+       WHERE status = 'active'
+         AND (
+           LOWER(email) = :identifier
+           OR LOWER(login_alias) = :identifier
+         )
        LIMIT 1`,
-      { username },
+      { identifier },
     )
 
     const existingUser = rows[0]
-    if (!existingUser || existingUser.status !== 'active' || isLockActive(existingUser.locked_until)) {
+    if (!existingUser || isLockActive(existingUser.locked_until)) {
       return invalidLoginResult()
     }
 

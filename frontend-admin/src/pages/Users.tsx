@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 interface User {
   id: string | number;
   username?: string;
+  loginAlias?: string;
   realName?: string;
   name?: string;
   role?: string;
@@ -85,6 +86,7 @@ export function Users() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     username: "",
+    loginAlias: "",
     realName: "",
     password: "",
     role: "engineer",
@@ -122,7 +124,7 @@ export function Users() {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
       if (!keyword) return true;
       const roleLabel = ROLE_LABELS[u.role || ""] || u.role || "";
-      return [displayName(u), u.username, u.phone, u.email, roleLabel]
+      return [displayName(u), u.username, u.loginAlias, u.phone, u.email, roleLabel]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -176,6 +178,7 @@ export function Users() {
     setEditingUserId(null);
     setForm({
       username: "",
+      loginAlias: "",
       realName: "",
       password: "",
       role: "engineer",
@@ -190,6 +193,7 @@ export function Users() {
     setEditingUserId(user.id);
     setForm({
       username: user.username || "",
+      loginAlias: user.loginAlias || "",
       realName: user.realName || user.name || "",
       password: "",
       role: user.role || "engineer",
@@ -202,7 +206,15 @@ export function Users() {
 
   async function submit() {
     if (!form.username.trim()) {
-      setError("请输入账号");
+      setError("请输入邮箱账号");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.username.trim())) {
+      setError("请输入有效的邮箱账号");
+      return;
+    }
+    if (form.loginAlias.trim() && !/^[A-Za-z0-9._-]{3,32}$/.test(form.loginAlias.trim())) {
+      setError("别名仅支持 3-32 位字母、数字、点、下划线或短横线");
       return;
     }
     if (!form.realName.trim()) {
@@ -218,10 +230,11 @@ export function Users() {
     try {
       const payload: Record<string, unknown> = {
         username: form.username.trim(),
+        email: form.username.trim(),
+        loginAlias: form.loginAlias.trim() || null,
         realName: form.realName.trim(),
         role: form.role,
         phone: form.phone.trim() || null,
-        email: form.email.trim() || null,
         status: form.status,
       };
       if (form.password) payload.password = form.password;
@@ -290,7 +303,7 @@ export function Users() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">成员与角色</h1>
-          <p className="text-muted-foreground mt-1">管理系统用户和权限</p>
+          <p className="text-muted-foreground mt-1">管理系统用户、邮箱账号和权限</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={load}>
@@ -344,7 +357,7 @@ export function Users() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索姓名、账号、角色、电话、邮箱…"
+                placeholder="搜索姓名、邮箱账号、别名、角色、电话…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -454,7 +467,10 @@ export function Users() {
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div>
                           <div className="font-medium">{displayName(user)}</div>
-                          <div className="text-sm text-muted-foreground">@{user.username || "-"}</div>
+                          <div className="text-sm text-muted-foreground truncate">{user.email || user.username || "-"}</div>
+                          {user.loginAlias ? (
+                            <div className="text-xs text-muted-foreground">别名：{user.loginAlias}</div>
+                          ) : null}
                         </div>
                         <div>
                           <Badge variant={ROLE_VARIANT[user.role || ""] || "secondary"}>
@@ -464,7 +480,7 @@ export function Users() {
                         <div>
                           <div className="text-sm text-muted-foreground">联系方式</div>
                           <div className="text-sm">{user.phone || "-"}</div>
-                          <div className="text-xs text-muted-foreground truncate">{user.email || "-"}</div>
+                          <div className="text-xs text-muted-foreground truncate">{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">创建时间</div>
@@ -516,16 +532,17 @@ export function Users() {
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{editingUserId ? "编辑成员" : "新增成员"}</DialogTitle>
-            <DialogDescription>{editingUserId ? "修改成员资料、角色、状态；填写密码则同步重置密码" : "填写账号基础信息，保存后状态默认为在岗"}</DialogDescription>
+            <DialogDescription>{editingUserId ? "修改成员资料、角色、状态；填写密码则同步重置初始密码" : "使用邮箱作为账号；成员首次登录后必须修改初始密码"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>账号 *</Label>
+                <Label>邮箱账号 *</Label>
                 <Input
+                  type="email"
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  placeholder="登录账号"
+                  placeholder="name@company.com"
                 />
               </div>
               <div className="space-y-2">
@@ -537,12 +554,12 @@ export function Users() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>{editingUserId ? "重置密码（留空不修改）" : "密码 *"}</Label>
+                <Label>{editingUserId ? "重置初始密码（留空不修改）" : "初始密码 *"}</Label>
                 <Input
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder={editingUserId ? "填写则重置登录密码" : "登录密码"}
+                  placeholder={editingUserId ? "填写则重置为初始密码" : "首次登录使用的初始密码"}
                 />
               </div>
               <div className="space-y-2">
@@ -581,12 +598,11 @@ export function Users() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>邮箱</Label>
+                <Label>登录别名</Label>
                 <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="派单通知邮箱（可选）"
+                  value={form.loginAlias}
+                  onChange={(e) => setForm({ ...form, loginAlias: e.target.value })}
+                  placeholder="可选，3-32 位字母/数字/._-"
                 />
               </div>
             </div>

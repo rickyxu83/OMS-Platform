@@ -5,6 +5,7 @@ CREATE TABLE users (
   real_name VARCHAR(64) NOT NULL,
   phone VARCHAR(32) NULL,
   email VARCHAR(128) NULL,
+  login_alias VARCHAR(64) NULL,
   engineer_signature LONGTEXT NULL,
   avatar_path VARCHAR(255) NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
@@ -16,6 +17,7 @@ CREATE TABLE users (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_username (username),
+  KEY idx_users_email (email),
   KEY idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

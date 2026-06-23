@@ -3,6 +3,7 @@ const env = require('../config/env')
 const { query } = require('../config/db')
 const { ROLE_GROUPS } = require('../permissions/roles')
 const { forbidden, unauthorized } = require('../utils/http-error')
+const { ensureUserLoginColumns } = require('../modules/users/schema')
 
 function cookieToken(req) {
   const cookieHeader = req.get('cookie') || ''
@@ -32,8 +33,9 @@ async function authenticate(req, res, next) {
     }
 
     const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] })
+    await ensureUserLoginColumns()
     const users = await query(
-      `SELECT id, username, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password
+      `SELECT id, username, email, login_alias, real_name, phone, role, status, engineer_signature, avatar_path, must_change_password
        FROM users
        WHERE id = :id
        LIMIT 1`,
@@ -79,8 +81,13 @@ function requireEngineerOnboardingComplete(req, res, next) {
     return
   }
 
-  if (requiresOnboarding(req.user)) {
-    next(forbidden('请先修改密码并补充手写签名'))
+  if (req.user.must_change_password) {
+    next(forbidden('请先修改初始密码'))
+    return
+  }
+
+  if (ROLE_GROUPS.engineerWorkspace.includes(req.user.role) && !req.user.engineer_signature) {
+    next(forbidden('请先补充手写签名'))
     return
   }
 

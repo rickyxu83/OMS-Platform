@@ -5,34 +5,17 @@ const multer = require('multer')
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
+const { ensureUserLoginColumns } = require('./schema')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
-const publicColumns = 'id, username, real_name, phone, email, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
+const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher'])
 const allowedStatuses = new Set(['active', 'disabled'])
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const avatarUploadDir = path.join(uploadRoot, 'avatars')
 fs.mkdirSync(avatarUploadDir, { recursive: true })
-
-let userEmailColumnReady = false
-
-async function ensureUserEmailColumn() {
-  if (userEmailColumnReady) return
-  const rows = await query(
-    `SELECT column_name AS columnName
-     FROM information_schema.columns
-     WHERE table_schema = DATABASE()
-       AND table_name = 'users'
-       AND column_name = 'email'
-     LIMIT 1`,
-  )
-  if (!rows[0]) {
-    await query('ALTER TABLE users ADD COLUMN email VARCHAR(128) NULL AFTER phone')
-  }
-  userEmailColumnReady = true
-}
 
 const avatarExtensionByMime = {
   'image/jpeg': '.jpg',
@@ -73,11 +56,58 @@ function avatarUrl(avatarPath) {
 }
 
 function requiresOnboarding(row) {
-  return engineerRoles.has(row.role) && (Boolean(row.must_change_password) || !Boolean(row.engineer_signature))
+  return Boolean(row.must_change_password) || (engineerRoles.has(row.role) && !Boolean(row.engineer_signature))
 }
 
-function mustChangePasswordForRole(role) {
-  return engineerRoles.has(role) ? 1 : 0
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function normalizeAlias(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function validateEmail(email) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw badRequest('请输入有效的邮箱账号')
+  }
+}
+
+function validateLoginAlias(alias) {
+  if (!alias) return
+  if (alias.includes('@')) {
+    throw badRequest('别名不能使用邮箱格式')
+  }
+  if (!/^[A-Za-z0-9._-]{3,32}$/.test(alias)) {
+    throw badRequest('别名仅支持 3-32 位字母、数字、点、下划线或短横线')
+  }
+}
+
+async function assertLoginIdentifierAvailable({ email, loginAlias, excludeId = null }) {
+  const checks = []
+  const params = { excludeId: excludeId || 0 }
+  if (email) {
+    checks.push('LOWER(email) = :email OR LOWER(login_alias) = :email')
+    params.email = email
+  }
+  if (loginAlias) {
+    checks.push('LOWER(email) = :loginAlias OR LOWER(login_alias) = :loginAlias')
+    params.loginAlias = loginAlias
+  }
+  if (!checks.length) return
+
+  const rows = await query(
+    `SELECT id
+     FROM users
+     WHERE status = 'active'
+       AND id <> :excludeId
+       AND (${checks.map((check) => `(${check})`).join(' OR ')})
+     LIMIT 1`,
+    params,
+  )
+  if (rows[0]) {
+    throw badRequest('邮箱账号或别名已被使用')
+  }
 }
 
 function userPayload(row) {
@@ -85,6 +115,7 @@ function userPayload(row) {
   return {
     id: row.id,
     username: String(row.username).replace(/__deleted_\d+$/, ''),
+    loginAlias: row.login_alias || '',
     realName: row.real_name,
     phone: row.phone,
     email: row.email,
@@ -124,14 +155,14 @@ function validateSignature(dataUrl) {
 }
 
 async function list(req, res) {
-  await ensureUserEmailColumn()
+  await ensureUserLoginColumns()
   const { role, status = 'active', keyword = '' } = req.query
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
      WHERE (:role IS NULL OR role = :role)
        AND (:status IS NULL OR status = :status)
-       AND (:keyword = '' OR username LIKE :likeKeyword OR real_name LIKE :likeKeyword OR phone LIKE :likeKeyword OR email LIKE :likeKeyword)
+       AND (:keyword = '' OR username LIKE :likeKeyword OR login_alias LIKE :likeKeyword OR real_name LIKE :likeKeyword OR phone LIKE :likeKeyword OR email LIKE :likeKeyword)
      ORDER BY id DESC`,
     {
       role: role || null,
@@ -154,7 +185,7 @@ function assertUserInput({ role, status }) {
 }
 
 async function listEngineers(req, res) {
-  await ensureUserEmailColumn()
+  await ensureUserLoginColumns()
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
@@ -165,7 +196,7 @@ async function listEngineers(req, res) {
 }
 
 async function listSalespeople(req, res) {
-  await ensureUserEmailColumn()
+  await ensureUserLoginColumns()
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
@@ -176,28 +207,33 @@ async function listSalespeople(req, res) {
 }
 
 async function create(req, res) {
-  await ensureUserEmailColumn()
-  const { username, password, realName, phone, email, role, status = 'active' } = req.body || {}
+  await ensureUserLoginColumns()
+  const { username, password, realName, phone, email, loginAlias, role, status = 'active' } = req.body || {}
+  const accountEmail = normalizeEmail(email || username)
+  const normalizedAlias = normalizeAlias(loginAlias)
 
-  if (!username || !password || !realName || !role) {
-    throw badRequest('用户名、密码、姓名和角色不能为空')
+  if (!accountEmail || !password || !realName || !role) {
+    throw badRequest('邮箱账号、密码、姓名和角色不能为空')
   }
   assertUserInput({ role, status })
+  validateEmail(accountEmail)
+  validateLoginAlias(normalizedAlias)
   validatePassword(password)
+  await assertLoginIdentifierAvailable({ email: accountEmail, loginAlias: normalizedAlias })
 
   const passwordHash = await bcrypt.hash(password, 10)
   const result = await query(
-    `INSERT INTO users (username, password_hash, real_name, phone, email, role, status, must_change_password)
-     VALUES (:username, :passwordHash, :realName, :phone, :email, :role, :status, :mustChangePassword)`,
+    `INSERT INTO users (username, password_hash, real_name, phone, email, login_alias, role, status, must_change_password)
+     VALUES (:username, :passwordHash, :realName, :phone, :email, :loginAlias, :role, :status, 1)`,
     {
-      username,
+      username: accountEmail,
       passwordHash,
       realName,
       phone: phone || null,
-      email: email || null,
+      email: accountEmail,
+      loginAlias: normalizedAlias || null,
       role,
       status,
-      mustChangePassword: mustChangePasswordForRole(role),
     },
   )
 
@@ -205,18 +241,29 @@ async function create(req, res) {
 }
 
 async function update(req, res) {
-  await ensureUserEmailColumn()
+  await ensureUserLoginColumns()
   const { id } = req.params
-  const { username, realName, phone, email, role, status, password } = req.body || {}
+  const { username, realName, phone, email, loginAlias, role, status, password } = req.body || {}
+  const accountEmail = email || username ? normalizeEmail(email || username) : ''
+  const normalizedAlias = loginAlias === undefined ? undefined : normalizeAlias(loginAlias)
   assertUserInput({ role, status })
 
-  const existing = await query('SELECT id, role FROM users WHERE id = :id LIMIT 1', { id })
+  const existing = await query('SELECT id, role, email, login_alias FROM users WHERE id = :id LIMIT 1', { id })
   if (!existing[0]) {
     throw notFound('用户不存在')
   }
-  if (username) {
-    const duplicate = await query('SELECT id FROM users WHERE username = :username AND id <> :id LIMIT 1', { id, username })
-    if (duplicate[0]) throw badRequest('登录账号已存在')
+  if (accountEmail) {
+    validateEmail(accountEmail)
+  }
+  if (normalizedAlias !== undefined) {
+    validateLoginAlias(normalizedAlias)
+  }
+  if (accountEmail || normalizedAlias !== undefined) {
+    await assertLoginIdentifierAvailable({
+      email: accountEmail || null,
+      loginAlias: normalizedAlias || null,
+      excludeId: id,
+    })
   }
 
   if (password) {
@@ -228,23 +275,24 @@ async function update(req, res) {
            real_name = COALESCE(:realName, real_name),
            phone = :phone,
            email = :email,
+           login_alias = :loginAlias,
            role = COALESCE(:role, role),
            status = COALESCE(:status, status),
            password_hash = :passwordHash,
-           must_change_password = :mustChangePassword,
+           must_change_password = 1,
            failed_login_count = 0,
            locked_until = NULL
        WHERE id = :id`,
       {
         id,
-        username: username || null,
+        username: accountEmail || null,
         realName: realName || null,
         phone: phone || null,
-        email: email || null,
+        email: accountEmail || existing[0].email || null,
+        loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,
         role: role || null,
         status: status || null,
         passwordHash,
-        mustChangePassword: mustChangePasswordForRole(role || existing[0].role),
       },
     )
   } else {
@@ -254,10 +302,20 @@ async function update(req, res) {
            real_name = COALESCE(:realName, real_name),
            phone = :phone,
            email = :email,
+           login_alias = :loginAlias,
            role = COALESCE(:role, role),
            status = COALESCE(:status, status)
        WHERE id = :id`,
-      { id, username: username || null, realName: realName || null, phone: phone || null, email: email || null, role: role || null, status: status || null },
+      {
+        id,
+        username: accountEmail || null,
+        realName: realName || null,
+        phone: phone || null,
+        email: accountEmail || existing[0].email || null,
+        loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,
+        role: role || null,
+        status: status || null,
+      },
     )
   }
 
@@ -265,7 +323,7 @@ async function update(req, res) {
 }
 
 async function me(req, res) {
-  await ensureUserEmailColumn()
+  await ensureUserLoginColumns()
   const rows = await query(`SELECT ${privateColumns} FROM users WHERE id = :id LIMIT 1`, { id: req.user.id })
   if (!rows[0]) {
     throw notFound('用户不存在')
@@ -274,8 +332,9 @@ async function me(req, res) {
 }
 
 async function updateMe(req, res) {
-  const { currentPassword = '', newPassword = '', engineerSignature = null } = req.body || {}
-  const rows = await query('SELECT id, password_hash, role FROM users WHERE id = :id LIMIT 1', { id: req.user.id })
+  await ensureUserLoginColumns()
+  const { currentPassword = '', newPassword = '', engineerSignature = null, loginAlias } = req.body || {}
+  const rows = await query('SELECT id, password_hash, role, email, login_alias FROM users WHERE id = :id LIMIT 1', { id: req.user.id })
   const user = rows[0]
   if (!user) {
     throw notFound('用户不存在')
@@ -300,6 +359,18 @@ async function updateMe(req, res) {
   if (engineerSignature !== null) {
     updates.push('engineer_signature = :engineerSignature')
     params.engineerSignature = validateSignature(engineerSignature)
+  }
+
+  if (loginAlias !== undefined) {
+    const normalizedAlias = normalizeAlias(loginAlias)
+    validateLoginAlias(normalizedAlias)
+    await assertLoginIdentifierAvailable({
+      email: null,
+      loginAlias: normalizedAlias || null,
+      excludeId: req.user.id,
+    })
+    updates.push('login_alias = :loginAlias')
+    params.loginAlias = normalizedAlias || null
   }
 
   if (!updates.length) {
@@ -365,12 +436,18 @@ async function remove(req, res) {
 
 async function restore(req, res) {
   const { id } = req.params
-  const existing = await query('SELECT id, username FROM users WHERE id = :id LIMIT 1', { id })
+  await ensureUserLoginColumns()
+  const existing = await query('SELECT id, username, email, login_alias FROM users WHERE id = :id LIMIT 1', { id })
   if (!existing[0]) {
     throw notFound('用户不存在')
   }
 
   const username = String(existing[0].username).replace(/__deleted_\d+$/, '')
+  await assertLoginIdentifierAvailable({
+    email: normalizeEmail(existing[0].email || username),
+    loginAlias: normalizeAlias(existing[0].login_alias),
+    excludeId: id,
+  })
   await query(
     `UPDATE users
      SET username = :username,

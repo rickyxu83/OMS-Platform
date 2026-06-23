@@ -17,6 +17,7 @@ const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ d
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
+const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
   users: ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
@@ -39,6 +40,10 @@ function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: stri
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />
+  }
+
+  if (user?.mustChangePassword && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />
   }
 
   if (allow && user && !allow.includes(user.role)) {
@@ -77,6 +82,16 @@ export default function App() {
     <>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoading />}>
+                <ChangePassword />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/"
           element={
