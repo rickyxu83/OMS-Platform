@@ -61,7 +61,7 @@ export function Login() {
       passwordPlaceholder: "请输入密码",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseLine: "以 GPL-3.0 开源",
+      licenseLine: "OMS Platform 已开源发布，遵循 GPL-3.0 许可证",
     },
     "zh-TW": {
       title: "OMS Platform",
@@ -88,7 +88,7 @@ export function Login() {
       passwordPlaceholder: "請輸入密碼",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
-      licenseLine: "以 GPL-3.0 開源",
+      licenseLine: "OMS Platform 已開源發布，遵循 GPL-3.0 授權條款",
     },
   };
 
