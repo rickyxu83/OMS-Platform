@@ -198,7 +198,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
         labelKey: "users",
         icon: Settings,
         path: "users",
-        requiredRoles: ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
+        requiredRoles: ["admin", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
       },
       {
         labelKey: "audit-logs",

@@ -20,7 +20,7 @@ const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module)
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
-  users: ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
+  users: ["admin", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor"],
   "audit-logs": ["admin", "operations_director", "engineering_supervisor"],
   settings: ["admin", "operations_director", "engineering_supervisor"],
 }

@@ -3,7 +3,7 @@ const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
-const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
+const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
 let ensureCustomerLevelColumnPromise = null
 
 async function ensureCustomerLevelColumn() {
@@ -748,11 +748,13 @@ async function remove(req, res) {
     const [relationRows] = await connection.execute(
       `SELECT
          (SELECT COUNT(*) FROM devices WHERE customer_id = :customerId) AS device_count,
-         (SELECT COUNT(*) FROM service_orders WHERE customer_id = :customerId) AS service_order_count`,
+         (SELECT COUNT(*) FROM service_orders WHERE customer_id = :customerId) AS service_order_count,
+         (SELECT COUNT(*) FROM inspection_schedules WHERE customer_id = :customerId) AS inspection_schedule_count`,
       { customerId },
     )
     const deviceCount = Number(relationRows[0]?.device_count || 0)
     const serviceOrderCount = Number(relationRows[0]?.service_order_count || 0)
+    const inspectionScheduleCount = Number(relationRows[0]?.inspection_schedule_count || 0)
     if (deviceCount > 0) {
       if (forced) {
         forceDeleteResult = await forceDeleteCustomer(connection, customerId)
@@ -766,6 +768,13 @@ async function remove(req, res) {
         return
       }
       throw badRequest('该客户已有服务单关联，请先删除关联的服务单，再删除客户')
+    }
+    if (inspectionScheduleCount > 0) {
+      if (forced) {
+        forceDeleteResult = await forceDeleteCustomer(connection, customerId)
+        return
+      }
+      throw badRequest('该客户已有巡检计划关联，请先删除关联的巡检计划，再删除客户')
     }
 
     await deleteCustomerContacts(connection, customerId)

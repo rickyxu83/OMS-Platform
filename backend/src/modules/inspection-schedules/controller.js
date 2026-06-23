@@ -910,9 +910,16 @@ async function update(req, res) {
 
 async function remove(req, res) {
   await ensureInspectionSchedulesTable()
+  await ensureInspectionOrderColumns()
   const existing = await loadSchedule(req.params.id)
   if (!existing) {
     throw notFound('巡检计划不存在')
+  }
+  if (req.user.role === 'assistant') {
+    const orders = await query('SELECT COUNT(*) AS total FROM service_orders WHERE inspection_schedule_id = :id', { id: req.params.id })
+    if (Number(orders[0]?.total || 0) > 0) {
+      throw badRequest('该巡检计划已生成工单，助理不能删除')
+    }
   }
   await query('DELETE FROM inspection_schedules WHERE id = :id', { id: req.params.id })
   res.status(204).end()

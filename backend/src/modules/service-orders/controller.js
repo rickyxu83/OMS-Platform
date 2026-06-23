@@ -2759,6 +2759,9 @@ async function remove(req, res) {
     throw notFound('服务单不存在')
   }
 
+  if (req.user.role === 'assistant' && order.status !== 'draft') {
+    throw badRequest('助理只能删除未派发的草稿工单')
+  }
   if (!['draft', 'assigned', 'rejected'].includes(order.status)) {
     throw badRequest('仅未提交的草稿服务单可以删除')
   }

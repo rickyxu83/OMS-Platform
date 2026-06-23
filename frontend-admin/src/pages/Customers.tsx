@@ -220,13 +220,17 @@ const I18N = {
       selectedCoordinate: "已选坐标",
       deleteTitle: "删除客户",
       deleteDescription: "删除客户前请确认关联数据。管理端删除会强制清理该客户下的设备、工单、巡检计划和联系人，操作不可恢复。",
+      deleteSafeDescription: "删除客户前请确认关联数据。只能删除没有关联设备、工单或巡检计划的客户。",
       deleteWarning: "强制删除会一并删除关联设备、工单和巡检计划，请确认已经备份或不再需要这些数据。",
+      deleteSafeWarning: "有关联数据的客户不会被删除，请先处理关联设备、工单或巡检计划。",
       deleteServiceCount: "当前客户已有 {count} 条工单记录。",
       deleteNoServiceCount: "系统会再次检查是否有关联设备或工单。",
       deleteSuccess: "已删除客户：{name}",
       deleteForceSuccess: "已删除客户：{name}（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张工单）",
       bulkDeleteConfirm: "确认强制删除选中的 {count} 个客户？会一并删除关联设备、工单、巡检计划和联系人，操作不可恢复。",
+      bulkDeleteSafeConfirm: "确认删除选中的 {count} 个客户？只有没有关联数据的客户可以删除。",
       bulkDeleteSuccess: "已删除 {count} 个客户（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张工单）",
+      bulkDeleteSafeSuccess: "已删除 {count} 个客户",
       detailTitle: "客户详情",
       detailDescription: "客户基础信息、联系人、业务归属与地图坐标",
       serviceOrderCount: "服务次数",
@@ -370,13 +374,17 @@ const I18N = {
       selectedCoordinate: "已選座標",
       deleteTitle: "刪除客戶",
       deleteDescription: "刪除客戶前請確認關聯資料。管理端刪除會強制清理該客戶下的設備、工單、巡檢計畫和聯絡人，操作不可恢復。",
+      deleteSafeDescription: "刪除客戶前請確認關聯資料。只能刪除沒有關聯設備、工單或巡檢計畫的客戶。",
       deleteWarning: "強制刪除會一併刪除關聯設備、工單和巡檢計畫，請確認已經備份或不再需要這些資料。",
+      deleteSafeWarning: "有關聯資料的客戶不會被刪除，請先處理關聯設備、工單或巡檢計畫。",
       deleteServiceCount: "目前客戶已有 {count} 條工單記錄。",
       deleteNoServiceCount: "系統會再次檢查是否有關聯設備或工單。",
       deleteSuccess: "已刪除客戶：{name}",
       deleteForceSuccess: "已刪除客戶：{name}（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張工單）",
       bulkDeleteConfirm: "確認強制刪除選中的 {count} 個客戶？會一併刪除關聯設備、工單、巡檢計畫和聯絡人，操作不可恢復。",
+      bulkDeleteSafeConfirm: "確認刪除選中的 {count} 個客戶？只有沒有關聯資料的客戶可以刪除。",
       bulkDeleteSuccess: "已刪除 {count} 個客戶（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張工單）",
+      bulkDeleteSafeSuccess: "已刪除 {count} 個客戶",
       detailTitle: "客戶詳情",
       detailDescription: "客戶基礎資訊、聯絡人、業務歸屬與地圖座標",
       serviceOrderCount: "服務次數",
@@ -489,9 +497,17 @@ const CADENCE_LABELS: Record<string, string> = {
   weekly: "每周",
 };
 
-const CUSTOMER_ADMIN_DELETE_ROLES = new Set([
+const CUSTOMER_DELETE_ROLES = new Set([
   "admin",
   "assistant",
+  "dispatcher",
+  "operations_director",
+  "engineering_supervisor",
+  "sales_supervisor",
+  "sales",
+]);
+const CUSTOMER_FORCE_DELETE_ROLES = new Set([
+  "admin",
   "dispatcher",
   "operations_director",
   "engineering_supervisor",
@@ -576,7 +592,9 @@ export function Customers() {
   const [locating, setLocating] = useState(false);
   const [addressLocating, setAddressLocating] = useState(false);
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
-  const canForceDeleteCustomer = CUSTOMER_ADMIN_DELETE_ROLES.has(String(user?.role || ""));
+  const userRole = String(user?.role || "");
+  const canDeleteCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
+  const canForceDeleteCustomer = CUSTOMER_FORCE_DELETE_ROLES.has(userRole);
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
   const salespersonOptions = useMemo(() => {
@@ -687,7 +705,7 @@ export function Customers() {
     [customers, levelFilter],
   );
 
-  const allFilteredCustomersSelected = canForceDeleteCustomer
+  const allFilteredCustomersSelected = canDeleteCustomer
     && filtered.length > 0
     && filtered.every((customer) => selectedCustomerIds.includes(String(customer.id)));
 
@@ -706,7 +724,7 @@ export function Customers() {
   }
 
   useEffect(() => {
-    if (!canForceDeleteCustomer) {
+    if (!canDeleteCustomer) {
       setSelectedCustomerIds([]);
       return;
     }
@@ -715,7 +733,7 @@ export function Customers() {
       const next = ids.filter((id) => visibleIds.has(id));
       return next.length === ids.length ? ids : next;
     });
-  }, [filtered, canForceDeleteCustomer]);
+  }, [filtered, canDeleteCustomer]);
 
   const stats = useMemo(() => {
     const total = customers.length;
@@ -1032,7 +1050,7 @@ export function Customers() {
     setSuccessMessage("");
     setDeleteError("");
     try {
-      const data = await api.delete(`/customers/${deleteTarget.id}?force=1`);
+      const data = await api.delete(`/customers/${deleteTarget.id}${canForceDeleteCustomer ? "?force=1" : ""}`);
       setDeleteTarget(null);
       await load();
       const message = data?.forced
@@ -1053,8 +1071,12 @@ export function Customers() {
   }
 
   async function confirmBulkDelete() {
-    if (!selectedCustomerIds.length || !canForceDeleteCustomer) return;
-    if (!window.confirm(interpolate(t.dialog.bulkDeleteConfirm, { count: selectedCustomerIds.length }))) return;
+    if (!selectedCustomerIds.length || !canDeleteCustomer) return;
+    const confirmMessage = interpolate(
+      canForceDeleteCustomer ? t.dialog.bulkDeleteConfirm : t.dialog.bulkDeleteSafeConfirm,
+      { count: selectedCustomerIds.length },
+    );
+    if (!window.confirm(confirmMessage)) return;
     setDeleting(true);
     setError("");
     setSuccessMessage("");
@@ -1064,7 +1086,7 @@ export function Customers() {
       let deviceCount = 0;
       let serviceOrderCount = 0;
       for (const id of selectedCustomerIds) {
-        const data = await api.delete(`/customers/${id}?force=1`);
+        const data = await api.delete(`/customers/${id}${canForceDeleteCustomer ? "?force=1" : ""}`);
         deletedCount += 1;
         deviceCount += Number(data?.deviceCount || 0);
         serviceOrderCount += Number(data?.serviceOrderCount || 0);
@@ -1072,11 +1094,13 @@ export function Customers() {
       if (detailTarget && selectedCustomerIds.includes(String(detailTarget.id))) setDetailTarget(null);
       setSelectedCustomerIds([]);
       await load();
-      setSuccessMessage(interpolate(t.dialog.bulkDeleteSuccess, {
-        count: deletedCount,
-        deviceCount,
-        serviceOrderCount,
-      }));
+      setSuccessMessage(canForceDeleteCustomer
+        ? interpolate(t.dialog.bulkDeleteSuccess, {
+            count: deletedCount,
+            deviceCount,
+            serviceOrderCount,
+          })
+        : interpolate(t.dialog.bulkDeleteSafeSuccess, { count: deletedCount }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.bulkDeleteFailed;
       setDeleteError(msg);
@@ -1211,7 +1235,7 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {canForceDeleteCustomer ? (
+          {canDeleteCustomer ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-slate-50/70 px-3 py-2">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox
@@ -1245,7 +1269,7 @@ export function Customers() {
               <Table className="min-w-[760px]">
               <TableHeader>
                 <TableRow>
-                  {canForceDeleteCustomer ? <TableHead className="w-10" /> : null}
+                  {canDeleteCustomer ? <TableHead className="w-10" /> : null}
                   <TableHead>{t.list.name}</TableHead>
                   <TableHead>{t.list.contact}</TableHead>
                   <TableHead>{t.list.phone}</TableHead>
@@ -1257,13 +1281,13 @@ export function Customers() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={canForceDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={canDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" /> {t.list.loading}
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={canForceDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={canDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
                       {t.list.empty}
                     </TableCell>
                   </TableRow>
@@ -1287,7 +1311,7 @@ export function Customers() {
                           }
                         }}
                       >
-                        {canForceDeleteCustomer ? (
+                        {canDeleteCustomer ? (
                           <TableCell onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               checked={selected}
@@ -1349,7 +1373,7 @@ export function Customers() {
                               <Pencil className="w-4 h-4 mr-1" />
                               {t.actions.edit}
                             </Button>
-                            {canForceDeleteCustomer ? (
+                            {canDeleteCustomer ? (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -1922,11 +1946,11 @@ export function Customers() {
               <AlertTriangle className="w-5 h-5 text-red-600" />
               {t.dialog.deleteTitle}
             </DialogTitle>
-            <DialogDescription>{t.dialog.deleteDescription}</DialogDescription>
+            <DialogDescription>{canForceDeleteCustomer ? t.dialog.deleteDescription : t.dialog.deleteSafeDescription}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-700">
-              {t.dialog.deleteWarning}
+              {canForceDeleteCustomer ? t.dialog.deleteWarning : t.dialog.deleteSafeWarning}
             </div>
             <div className="rounded-lg border bg-slate-50 p-3 text-slate-700">
               <div className="font-medium text-slate-900">{deleteTarget?.name || t.misc.unknown}</div>
@@ -1946,9 +1970,9 @@ export function Customers() {
             <Button variant="outline" onClick={closeDelete} disabled={deleting}>
               {t.actions.cancel}
             </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={deleting || !canForceDeleteCustomer}>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting || !canDeleteCustomer}>
               {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              {deleting ? t.actions.deleting : t.actions.forceDelete}
+              {deleting ? t.actions.deleting : canForceDeleteCustomer ? t.actions.forceDelete : t.actions.delete}
             </Button>
           </DialogFooter>
         </DialogContent>

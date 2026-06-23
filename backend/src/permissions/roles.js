@@ -21,7 +21,7 @@ const ROLE_GROUPS = Object.freeze({
   serviceOrderOps: OPERATION_ROLES,
   serviceOrderView: VIEW_ROLES,
   serviceOrderEngineer: ENGINEER_WORKSPACE_ROLES,
-  userManage: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor']),
+  userManage: Object.freeze(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor']),
   userSelf: ALL_SIGNED_IN_ROLES,
   engineerDirectory: ALL_SIGNED_IN_ROLES,
   salesDirectory: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),

@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -557,6 +558,7 @@ function DetailBlock({ label, value }: { label: string; value?: string }) {
 
 export function ServiceOrders() {
   const { lang } = useLanguage();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -602,6 +604,7 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
+  const canDeleteOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(String(user?.role || ""));
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -1118,11 +1121,21 @@ export function ServiceOrders() {
 
   async function bulkDeleteOrders() {
     if (!selectedIds.length) return;
-    if (!window.confirm(`确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联。`)) return;
+    const canUseBulkDeleteEndpoint = user?.role === "admin";
+    const message = canUseBulkDeleteEndpoint
+      ? `确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联。`
+      : `确认删除选中的 ${selectedIds.length} 张工单？只有未提交且符合当前角色权限的工单可以删除。`;
+    if (!window.confirm(message)) return;
     setSaving(true);
     setError("");
     try {
-      await api.post("/service-orders/bulk-delete", { ids: selectedIds });
+      if (canUseBulkDeleteEndpoint) {
+        await api.post("/service-orders/bulk-delete", { ids: selectedIds });
+      } else {
+        for (const id of selectedIds) {
+          await api.delete(`/service-orders/${id}`);
+        }
+      }
       setSelectedIds([]);
       await load();
     } catch (e) {
@@ -1255,10 +1268,12 @@ export function ServiceOrders() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
-          </Button>
+          {canDeleteOrders ? (
+            <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
+            </Button>
+          ) : null}
           <Button onClick={openCreateOrder} disabled={saving}>
             <Plus className="w-4 h-4 mr-2" />
             新增工单
