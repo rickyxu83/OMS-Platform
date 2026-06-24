@@ -306,6 +306,7 @@ export function Devices() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
@@ -353,6 +354,7 @@ export function Devices() {
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
     } finally {
+      setLoadedOnce(true);
       setLoading(false);
     }
   }
@@ -411,6 +413,8 @@ export function Devices() {
       { label: "原厂维保", value: vendor },
     ];
   }, [filtered]);
+  const initialLoading = loading && !loadedOnce;
+  const refreshing = loading && loadedOnce;
 
   const allFilteredDevicesSelected = filtered.length > 0
     && filtered.every((device) => selectedDeviceIds.includes(String(device.id)));
@@ -839,7 +843,7 @@ export function Devices() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -903,7 +907,15 @@ export function Devices() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle>设备列表 ({filtered.length})</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>设备列表 ({filtered.length})</CardTitle>
+              {refreshing ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  正在更新
+                </span>
+              ) : null}
+            </div>
             {canManageDevices ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -944,7 +956,7 @@ export function Devices() {
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
-            {loading ? (
+            {initialLoading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
               </div>

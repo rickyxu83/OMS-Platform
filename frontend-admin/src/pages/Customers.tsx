@@ -597,6 +597,7 @@ export function Customers() {
   const t = I18N[lang];
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
@@ -662,6 +663,7 @@ export function Customers() {
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
     } finally {
+      setLoadedOnce(true);
       setLoading(false);
     }
   }
@@ -796,6 +798,8 @@ export function Customers() {
       { label: t.stats.serviceCount, value: serviceCount },
     ];
   }, [customers, t.stats]);
+  const initialLoading = loading && !loadedOnce;
+  const refreshing = loading && loadedOnce;
 
   const levelFilterLabel = levelFilter === "all"
     ? ""
@@ -1298,7 +1302,7 @@ export function Customers() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -1309,7 +1313,15 @@ export function Customers() {
         <CardHeader className="pb-0">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>{t.list.title}</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>{t.list.title}</CardTitle>
+                {refreshing ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t.list.loading}
+                  </span>
+                ) : null}
+              </div>
               {levelFilterLabel ? (
                 <Button
                   type="button"
@@ -1393,7 +1405,7 @@ export function Customers() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {initialLoading ? (
                   <TableRow>
                     <TableCell colSpan={canDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" /> {t.list.loading}

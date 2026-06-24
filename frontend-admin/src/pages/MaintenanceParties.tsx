@@ -259,6 +259,7 @@ export function MaintenanceParties() {
   const t = I18N[lang];
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -288,6 +289,7 @@ export function MaintenanceParties() {
       const msg = e instanceof Error ? e.message : t.errors.loadFailed;
       setError(msg);
     } finally {
+      setLoadedOnce(true);
       setLoading(false);
     }
   }
@@ -325,6 +327,8 @@ export function MaintenanceParties() {
       { label: t.stats.partner, value: partner },
     ];
   }, [parties, t.stats]);
+  const initialLoading = loading && !loadedOnce;
+  const refreshing = loading && loadedOnce;
 
   const allFilteredPartiesSelected = filtered.length > 0
     && filtered.every((party) => selectedPartyIds.includes(String(party.id)));
@@ -530,7 +534,7 @@ export function MaintenanceParties() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -579,7 +583,15 @@ export function MaintenanceParties() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
+              {refreshing ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t.list.loading}
+                </span>
+              ) : null}
+            </div>
             {canManageParties ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -611,7 +623,7 @@ export function MaintenanceParties() {
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
-            {loading ? (
+            {initialLoading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
               </div>
