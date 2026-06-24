@@ -24,6 +24,7 @@ const feedbackSubmitting = ref(false)
 const feedbackMessage = ref('')
 const formDraftPending = ref(false)
 const isFormPage = computed(() => ['service-sheet-new', 'service-sheet-edit'].includes(String(route.name || '')))
+const showCreateFab = computed(() => !isFormPage.value)
 const isEditingExistingSheet = computed(() => route.name === 'service-sheet-edit')
 const controlsAnchorClass = computed(() => ({
   'service-sheet-controls-anchor': isFormPage.value,
@@ -218,15 +219,6 @@ watch(
           >
             <PreviewIcon name="home" />
           </button>
-          <button
-            class="shell-quick-action shell-create-shortcut"
-            type="button"
-            :aria-label="zh('新增服务记录')"
-            :title="zh('新增服务记录')"
-            @click="openCreateSheet"
-          >
-            <PreviewIcon name="new" />
-          </button>
           <button class="shell-quick-action" type="button" :aria-label="zh('反馈')" :title="zh('反馈')" @click="openFeedback">
             <PreviewIcon name="edit" />
           </button>
@@ -258,6 +250,16 @@ watch(
       <component :is="Component" />
     </div>
   </RouterView>
+  <button
+    v-if="showCreateFab"
+    class="home-create-action"
+    type="button"
+    :aria-label="zh('新增服务记录')"
+    :title="zh('新增服务记录')"
+    @click="openCreateSheet"
+  >
+    <PreviewIcon name="new" />
+  </button>
   <div v-if="exitConfirmOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('取消填写')">
     <div class="signature-modal-shell exit-confirm-shell">
       <header class="signature-modal-head">

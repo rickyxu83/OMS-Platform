@@ -3182,27 +3182,21 @@ h2 {
   bottom: max(24px, env(safe-area-inset-bottom));
   width: 60px;
   height: 60px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   border-radius: 999px;
   padding: 0;
-  border: 1px solid rgb(129 232 255 / 58%);
-  color: #075985;
-  background:
-    radial-gradient(circle at 30% 22%, rgb(255 255 255 / 95%), transparent 35%),
-    linear-gradient(145deg, rgb(233 252 255 / 98%), rgb(201 244 255 / 92%) 52%, rgb(221 231 255 / 88%)),
-    rgb(255 255 255 / 92%);
+  border: 1px solid #1d4ed8;
+  color: #fff;
+  background: #2563eb;
   font-weight: 900;
   text-decoration: none;
   user-select: none;
-  touch-action: none;
-  cursor: grab;
+  cursor: pointer;
   box-shadow:
-    0 16px 34px rgb(15 23 42 / 12%),
-    0 8px 18px rgb(34 211 238 / 14%),
-    0 0 0 6px rgb(56 189 248 / 8%),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
+    0 18px 36px rgb(37 99 235 / 24%),
+    0 8px 18px rgb(15 23 42 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 24%);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -3211,13 +3205,7 @@ h2 {
 }
 
 .home-create-action.dragging {
-  cursor: grabbing;
-  opacity: 0.96;
-  box-shadow:
-    0 18px 38px rgb(15 23 42 / 14%),
-    0 9px 20px rgb(34 211 238 / 16%),
-    0 0 0 7px rgb(56 189 248 / 9%),
-    inset 0 1px 0 rgb(255 255 255 / 78%);
+  opacity: 1;
 }
 
 .home-create-action.open .preview-icon {
@@ -3227,11 +3215,11 @@ h2 {
 .home-create-action::before {
   content: "";
   position: absolute;
-  inset: 8px;
+  inset: -10px;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgb(34 211 238 / 26%), rgb(59 130 246 / 18%));
-  opacity: 0.75;
+  background: radial-gradient(circle, rgb(37 99 235 / 18%), transparent 68%);
+  opacity: 0.9;
   transition:
     opacity 160ms ease,
     transform 160ms ease;
@@ -3241,7 +3229,7 @@ h2 {
   width: 27px;
   height: 27px;
   stroke-width: 2.5;
-  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 62%));
+  filter: none;
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -3258,7 +3246,7 @@ h2 {
 }
 
 .home-create-action:active {
-  transform: none;
+  transform: scale(0.96);
 }
 
 .create-mode-panel {
