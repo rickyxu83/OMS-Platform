@@ -230,6 +230,21 @@ function canonicalMaintenanceType(value?: string) {
   return MAINTENANCE_TYPE_ALIASES[type] || type;
 }
 
+function maintenancePartyMatchesType(party: MaintenanceParty, type?: string) {
+  const maintenanceType = canonicalMaintenanceType(type);
+  if (maintenanceType === "none") return false;
+  return canonicalMaintenanceType(party.partyType) === maintenanceType;
+}
+
+function resolveMaintenancePartyId(parties: MaintenanceParty[], type: string, currentId?: string | number | null) {
+  const maintenanceType = canonicalMaintenanceType(type);
+  if (maintenanceType === "none" || !currentId) return "";
+  return parties.some((party) => (
+    String(party.id) === String(currentId)
+    && maintenancePartyMatchesType(party, maintenanceType)
+  )) ? String(currentId) : "";
+}
+
 function customerLabel(customer?: Customer | null) {
   if (!customer) return "";
   return customer.name || `客户 #${customer.id}`;
@@ -316,6 +331,14 @@ export function Devices() {
   const [batchEditOpen, setBatchEditOpen] = useState(false);
   const [batchEditForm, setBatchEditForm] = useState<BatchEditForm>(() => createEmptyBatchEditForm());
   const [batchEditToggles, setBatchEditToggles] = useState<BatchEditToggles>(() => createEmptyBatchEditToggles());
+  const filteredMaintenanceParties = useMemo(
+    () => parties.filter((party) => maintenancePartyMatchesType(party, form.maintenanceType)),
+    [parties, form.maintenanceType],
+  );
+  const filteredBatchEditMaintenanceParties = useMemo(
+    () => parties.filter((party) => maintenancePartyMatchesType(party, batchEditForm.maintenanceType)),
+    [parties, batchEditForm.maintenanceType],
+  );
 
   async function load(keyword = searchQuery) {
     setLoading(true);
@@ -494,14 +517,15 @@ export function Devices() {
     setError("");
     setCreateMode("single");
     setEditingId(device.id);
+    const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
     setForm({
       customerId: device.customerId ? String(device.customerId) : "",
       name: device.name || "",
       model: device.model || "",
       pn: device.pn || "",
       serialNo: device.serialNo || "",
-      maintenanceType: canonicalMaintenanceType(device.maintenanceType),
-      maintenancePartyId: device.maintenancePartyId ? String(device.maintenancePartyId) : "",
+      maintenanceType,
+      maintenancePartyId: resolveMaintenancePartyId(parties, maintenanceType, device.maintenancePartyId),
       maintenanceStart: inputDate(device.maintenanceStart),
       maintenanceEnd: inputDate(device.maintenanceEnd),
       location: device.location || "",
@@ -961,25 +985,25 @@ export function Devices() {
                       ) : null}
                       <Server className="w-5 h-5 text-primary" />
                       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
-                        <div>
-                          <div className="font-medium">{deviceDisplayName(device)}</div>
-                          <div className="text-sm text-muted-foreground">{device.customerName || "-"}</div>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium" title={deviceDisplayName(device)}>{deviceDisplayName(device)}</div>
+                          <div className="truncate text-sm text-muted-foreground" title={device.customerName || "-"}>{device.customerName || "-"}</div>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <div className="text-xs text-muted-foreground">型号</div>
-                          <div className="text-sm">{device.model || "-"}</div>
+                          <div className="truncate text-sm" title={device.model || "-"}>{device.model || "-"}</div>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <div className="text-xs text-muted-foreground">SN</div>
-                          <div className="text-sm">{device.serialNo || "-"}</div>
+                          <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
                         </div>
                         <div>
                           <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>
                             {typeLabel}
                           </Badge>
                         </div>
-                        <div>
-                          <div className="text-sm">{device.maintenancePartyName || "-"}</div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm" title={device.maintenancePartyName || "-"}>{device.maintenancePartyName || "-"}</div>
                           <div className="text-xs text-muted-foreground">
                             截止 {formatDate(device.maintenanceEnd)}
                           </div>
@@ -1317,7 +1341,7 @@ export function Devices() {
                     <Input
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="例如 sz5eap01，可不填"
+                      placeholder="例如 sz5eap01；多个值用 ; 隔开，可不填"
                     />
                   </div>
                   <div className="space-y-2 relative" ref={modelDropdownRef}>
@@ -1363,7 +1387,7 @@ export function Devices() {
                     <Input
                       value={form.serialNo}
                       onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
-                      placeholder="序列号"
+                      placeholder="序列号；多个值用 ; 隔开"
                     />
                   </div>
                 </>
@@ -1372,7 +1396,11 @@ export function Devices() {
                 <Label>维保类型</Label>
                 <Select
                   value={form.maintenanceType}
-                  onValueChange={(v) => setForm({ ...form, maintenanceType: v, maintenancePartyId: v === "none" ? "" : form.maintenancePartyId })}
+                  onValueChange={(v) => setForm((prev) => ({
+                    ...prev,
+                    maintenanceType: v,
+                    maintenancePartyId: resolveMaintenancePartyId(parties, v, prev.maintenancePartyId),
+                  }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="选择维保类型" />
@@ -1395,11 +1423,14 @@ export function Devices() {
                     <SelectValue placeholder={form.maintenanceType === "none" ? "无维保" : "选择维保方"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {parties.map((p) => (
+                    {filteredMaintenanceParties.map((p) => (
                       <SelectItem key={p.id} value={String(p.id)}>
                         {p.name || `维保方 #${p.id}`}
                       </SelectItem>
                     ))}
+                    {!filteredMaintenanceParties.length ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">当前类型暂无可选维保方</div>
+                    ) : null}
                   </SelectContent>
                 </Select>
               </div>
@@ -1477,7 +1508,7 @@ export function Devices() {
                           <Input
                             value={row.name}
                             onChange={(e) => updateBatchRow(index, "name", e.target.value)}
-                            placeholder={`第 ${index + 1} 台主机名`}
+                            placeholder={`第 ${index + 1} 台主机名；多个值用 ; 隔开`}
                           />
                           <Input
                             value={row.model}
@@ -1487,7 +1518,7 @@ export function Devices() {
                           <Input
                             value={row.serialNo}
                             onChange={(e) => updateBatchRow(index, "serialNo", e.target.value)}
-                            placeholder="SN"
+                            placeholder="SN；多个值用 ; 隔开"
                           />
                           <Button
                             type="button"
@@ -1550,7 +1581,11 @@ export function Devices() {
                 <Label>维保类型</Label>
                 <Select
                   value={batchEditForm.maintenanceType}
-                  onValueChange={(v) => setBatchEditForm((f) => ({ ...f, maintenanceType: v }))}
+                  onValueChange={(v) => setBatchEditForm((f) => ({
+                    ...f,
+                    maintenanceType: v,
+                    maintenancePartyId: resolveMaintenancePartyId(parties, v, f.maintenancePartyId),
+                  }))}
                   disabled={!batchEditToggles.maintenanceType}
                 >
                   <SelectTrigger>
@@ -1581,11 +1616,14 @@ export function Devices() {
                     <SelectValue placeholder={batchEditForm.maintenanceType === "none" ? "无维保" : "选择维保方"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {parties.map((p) => (
+                    {filteredBatchEditMaintenanceParties.map((p) => (
                       <SelectItem key={p.id} value={String(p.id)}>
                         {p.name || `维保方 #${p.id}`}
                       </SelectItem>
                     ))}
+                    {!filteredBatchEditMaintenanceParties.length ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">当前类型暂无可选维保方</div>
+                    ) : null}
                   </SelectContent>
                 </Select>
               </div>

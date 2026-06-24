@@ -19,11 +19,16 @@ async function ensureMaintenancePartyColumns() {
          FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'maintenance_parties'
-           AND COLUMN_NAME IN ('contact', 'official_website', 'service_scope', 'remark')`,
+           AND COLUMN_NAME IN ('contact', 'contacts', 'official_website', 'service_scope', 'remark')`,
       )
       const existing = new Set(rows.map((row) => row.columnName))
       if (!existing.has('contact')) {
         await query('ALTER TABLE maintenance_parties ADD COLUMN contact VARCHAR(100) NULL AFTER phone')
+        existing.add('contact')
+      }
+      if (!existing.has('contacts')) {
+        await query('ALTER TABLE maintenance_parties ADD COLUMN contacts LONGTEXT NULL AFTER contact')
+        existing.add('contacts')
       }
       if (existing.has('service_scope') && !existing.has('official_website')) {
         await query('ALTER TABLE maintenance_parties CHANGE COLUMN service_scope official_website VARCHAR(255) NULL')
@@ -68,13 +73,43 @@ function validatePhone(input) {
   return phone
 }
 
+function parseContacts(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function normalizeContacts(value, fallbackContact = '', fallbackPhone = '') {
+  const parsed = parseContacts(value)
+  const source = parsed.length ? parsed : [{ name: fallbackContact, phone: fallbackPhone }]
+  return source
+    .map((item) => {
+      const name = normalizeText(item?.name)
+      const phone = validatePhone(item?.phone)
+      return name || phone ? { name, phone: phone || '' } : null
+    })
+    .filter(Boolean)
+    .slice(0, 20)
+}
+
+function contactsJson(contacts) {
+  return contacts.length ? JSON.stringify(contacts) : null
+}
+
 function partyPayload(row) {
+  const contacts = normalizeContacts(row.contacts, row.contact, row.phone)
   return {
     id: row.id,
     partyType: row.party_type,
     name: row.name,
     contact: row.contact,
     phone: normalizePhoneNumber(row.phone) || row.phone,
+    contacts,
     officialWebsite: row.official_website,
     remark: row.remark,
     createdAt: row.created_at,
@@ -91,13 +126,14 @@ async function list(req, res) {
     throw badRequest('维护方类型不正确')
   }
   const rows = await query(
-    `SELECT id, party_type, name, contact, phone, official_website, remark, created_at, updated_at
+    `SELECT id, party_type, name, contact, contacts, phone, official_website, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE (:partyType = '' OR party_type = :partyType)
        AND (
          :keyword = ''
          OR name LIKE :likeKeyword
          OR contact LIKE :likeKeyword
+         OR contacts LIKE :likeKeyword
          OR phone LIKE :likeKeyword
          OR official_website LIKE :likeKeyword
          OR remark LIKE :likeKeyword
@@ -118,8 +154,10 @@ async function create(req, res) {
   await ensureMaintenancePartyColumns()
   const partyType = normalizePartyType(req.body?.partyType)
   const name = normalizeText(req.body?.name)
-  const contact = normalizeText(req.body?.contact) || null
-  const phone = validatePhone(req.body?.phone)
+  const contacts = normalizeContacts(req.body?.contacts, req.body?.contact, req.body?.phone)
+  const primaryContact = contacts[0] || {}
+  const contact = primaryContact.name || null
+  const phone = primaryContact.phone || validatePhone(req.body?.phone)
   const officialWebsite = normalizeText(req.body?.officialWebsite ?? req.body?.serviceScope) || null
   const remark = normalizeText(req.body?.remark) || null
 
@@ -131,9 +169,9 @@ async function create(req, res) {
   }
 
   const result = await query(
-    `INSERT INTO maintenance_parties (party_type, name, contact, phone, official_website, remark)
-     VALUES (:partyType, :name, :contact, :phone, :officialWebsite, :remark)`,
-    { partyType, name, contact, phone, officialWebsite, remark },
+    `INSERT INTO maintenance_parties (party_type, name, contact, contacts, phone, official_website, remark)
+     VALUES (:partyType, :name, :contact, :contacts, :phone, :officialWebsite, :remark)`,
+    { partyType, name, contact, contacts: contactsJson(contacts), phone, officialWebsite, remark },
   )
 
   res.status(201).json({ id: result.insertId })
@@ -142,7 +180,7 @@ async function create(req, res) {
 async function detail(req, res) {
   await ensureMaintenancePartyColumns()
   const rows = await query(
-    `SELECT id, party_type, name, contact, phone, official_website, remark, created_at, updated_at
+    `SELECT id, party_type, name, contact, contacts, phone, official_website, remark, created_at, updated_at
      FROM maintenance_parties
      WHERE id = :id
      LIMIT 1`,
@@ -158,7 +196,7 @@ async function detail(req, res) {
 
 async function update(req, res) {
   await ensureMaintenancePartyColumns()
-  const existing = await query('SELECT id FROM maintenance_parties WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, contact, contacts, phone FROM maintenance_parties WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('维护方不存在')
   }
@@ -166,6 +204,7 @@ async function update(req, res) {
   const hasPartyType = Object.prototype.hasOwnProperty.call(req.body || {}, 'partyType')
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
   const hasContact = Object.prototype.hasOwnProperty.call(req.body || {}, 'contact')
+  const hasContacts = Object.prototype.hasOwnProperty.call(req.body || {}, 'contacts')
   const hasPhone = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')
   const hasOfficialWebsite = Object.prototype.hasOwnProperty.call(req.body || {}, 'officialWebsite')
     || Object.prototype.hasOwnProperty.call(req.body || {}, 'serviceScope')
@@ -173,8 +212,14 @@ async function update(req, res) {
 
   const partyType = hasPartyType ? normalizePartyType(req.body.partyType, '') : null
   const name = hasName ? normalizeText(req.body.name) : null
-  const contact = hasContact ? normalizeText(req.body.contact) || null : null
-  const phone = hasPhone ? validatePhone(req.body.phone) : null
+  const normalizedContacts = hasContacts
+    ? normalizeContacts(req.body.contacts, req.body.contact, req.body.phone)
+    : hasContact || hasPhone
+      ? normalizeContacts(null, hasContact ? req.body.contact : existing[0].contact, hasPhone ? req.body.phone : existing[0].phone)
+      : null
+  const primaryContact = normalizedContacts?.[0] || {}
+  const contact = hasContacts || hasContact ? primaryContact.name || null : null
+  const phone = hasContacts || hasPhone ? primaryContact.phone || null : null
   const officialWebsite = hasOfficialWebsite ? normalizeText(req.body.officialWebsite ?? req.body.serviceScope) || null : null
   const remark = hasRemark ? normalizeText(req.body.remark) || null : null
 
@@ -189,8 +234,9 @@ async function update(req, res) {
     `UPDATE maintenance_parties
      SET party_type = COALESCE(:partyType, party_type),
          name = COALESCE(:name, name),
-         contact = CASE WHEN :hasContact THEN :contact ELSE contact END,
-         phone = CASE WHEN :hasPhone THEN :phone ELSE phone END,
+         contact = CASE WHEN :hasContactOrContacts THEN :contact ELSE contact END,
+         contacts = CASE WHEN :hasContacts THEN :contacts ELSE contacts END,
+         phone = CASE WHEN :hasPhoneOrContacts THEN :phone ELSE phone END,
          official_website = CASE WHEN :hasOfficialWebsite THEN :officialWebsite ELSE official_website END,
          remark = CASE WHEN :hasRemark THEN :remark ELSE remark END
      WHERE id = :id`,
@@ -198,10 +244,12 @@ async function update(req, res) {
       id: req.params.id,
       partyType: hasPartyType ? partyType : null,
       name: hasName ? name : null,
-      hasContact,
-      contact: hasContact ? contact : null,
-      hasPhone,
-      phone: hasPhone ? phone : null,
+      hasContactOrContacts: hasContact || hasContacts,
+      contact: hasContact || hasContacts ? contact : null,
+      hasContacts,
+      contacts: hasContacts ? contactsJson(normalizedContacts) : null,
+      hasPhoneOrContacts: hasPhone || hasContacts,
+      phone: hasPhone || hasContacts ? phone : null,
       hasOfficialWebsite,
       officialWebsite: hasOfficialWebsite ? officialWebsite : null,
       hasRemark,

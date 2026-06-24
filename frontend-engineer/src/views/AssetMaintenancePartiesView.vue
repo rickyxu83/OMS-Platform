@@ -34,7 +34,7 @@ const filteredParties = computed(() => {
   return parties.value.filter((item) => {
     if (typeFilter.value && item.partyType !== typeFilter.value) return false
     if (!keyword) return true
-    return [item.name, item.contact, item.phone, item.officialWebsite, item.remark]
+    return [item.name, item.contact, item.phone, item.officialWebsite, item.remark, ...contactsForParty(item).flatMap((contact) => [contact.name, contact.phone])]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(keyword))
   })
@@ -54,12 +54,18 @@ const stats = computed(() => {
 function emptyForm() {
   return {
     name: '',
-    contact: '',
-    phone: '',
+    contacts: [{ name: '', phone: '' }],
     partyType: 'our_maintenance',
     officialWebsite: '',
     remark: '',
   }
+}
+
+function contactsForParty(party) {
+  const contacts = Array.isArray(party?.contacts) ? party.contacts : []
+  if (contacts.length) return contacts.map((contact) => ({ name: contact.name || '', phone: contact.phone || '' }))
+  if (party?.contact || party?.phone) return [{ name: party.contact || '', phone: party.phone || '' }]
+  return []
 }
 
 function partyTypeLabel(value) {
@@ -103,8 +109,7 @@ function openEdit(party) {
   editingId.value = party.id
   form.value = {
     name: party.name || '',
-    contact: party.contact || '',
-    phone: party.phone || '',
+    contacts: contactsForParty(party).length ? contactsForParty(party) : [{ name: '', phone: '' }],
     partyType: party.partyType || 'our_maintenance',
     officialWebsite: party.officialWebsite || '',
     remark: party.remark || '',
@@ -118,9 +123,26 @@ function closeDialog() {
 }
 
 function onPartyTypeChange() {
+  if (!form.value.contacts.length) form.value.contacts = [{ name: '', phone: '' }]
   if (isOriginalManufacturer(form.value.partyType)) {
-    form.value.contact = ''
+    form.value.contacts = form.value.contacts.map((contact) => ({ ...contact, name: '' }))
   }
+}
+
+function updateContact(index, field, value) {
+  form.value.contacts[index] = { ...form.value.contacts[index], [field]: value }
+}
+
+function addContact() {
+  form.value.contacts.push({ name: '', phone: '' })
+}
+
+function removeContact(index) {
+  if (form.value.contacts.length <= 1) {
+    form.value.contacts = [{ name: '', phone: '' }]
+    return
+  }
+  form.value.contacts.splice(index, 1)
 }
 
 function resetFilters() {
@@ -134,9 +156,12 @@ async function saveParty() {
     error.value = '请输入维保方名称'
     return
   }
-  if (form.value.phone.trim()) {
+  const contacts = form.value.contacts
+    .map((contact) => ({ name: contact.name.trim(), phone: contact.phone.trim() }))
+    .filter((contact) => contact.name || contact.phone)
+  for (const contact of contacts) {
     const phoneRe = /^[0-9+()\-\s]{7,32}$/
-    if (!phoneRe.test(form.value.phone.trim())) {
+    if (contact.phone && !phoneRe.test(contact.phone)) {
       error.value = '联系电话格式不正确'
       return
     }
@@ -146,8 +171,9 @@ async function saveParty() {
   try {
     const payload = {
       name: form.value.name.trim(),
-      contact: isOriginalManufacturer(form.value.partyType) ? undefined : form.value.contact.trim() || undefined,
-      phone: form.value.phone.trim() || undefined,
+      contacts,
+      contact: contacts[0]?.name || undefined,
+      phone: contacts[0]?.phone || undefined,
       partyType: form.value.partyType,
       officialWebsite: form.value.officialWebsite.trim() || undefined,
       remark: form.value.remark.trim() || undefined,
@@ -224,8 +250,13 @@ onMounted(() => {
           <button class="ghost" type="button" @click.stop="openEdit(party)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
         <div class="asset-contact-list">
-          <span v-if="isOriginalManufacturer(party.partyType)"><PreviewIcon name="contact" />{{ zh('联系电话') }}<b><a v-if="party.phone" :href="telHref(party.phone)" @click.stop>{{ party.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b></span>
-          <span v-else><PreviewIcon name="contact" />{{ zh(party.contact || '未维护联系人') }}<b><a v-if="party.phone" :href="telHref(party.phone)" @click.stop>{{ party.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b></span>
+          <template v-if="contactsForParty(party).length">
+            <span v-for="(contact, index) in contactsForParty(party).slice(0, 3)" :key="`${party.id}-contact-${index}`">
+              <PreviewIcon name="contact" />{{ zh(isOriginalManufacturer(party.partyType) ? '联系电话' : (contact.name || '未维护联系人')) }}
+              <b><a v-if="contact.phone" :href="telHref(contact.phone)" @click.stop>{{ contact.phone }}</a><template v-else>{{ zh('未维护电话') }}</template></b>
+            </span>
+          </template>
+          <span v-else><PreviewIcon name="contact" />{{ zh('未维护联系人') }}<b>{{ zh('未维护电话') }}</b></span>
         </div>
         <p v-if="party.officialWebsite" class="asset-record-line">
           <PreviewIcon name="maintenance" />
@@ -252,8 +283,39 @@ onMounted(() => {
               <option value="our_maintenance">{{ zh('合作维保方') }}</option>
             </select>
           </label>
-          <label v-if="!isOriginalManufacturer(form.partyType)">{{ zh('联系人') }}<input v-model="form.contact" type="text" :placeholder="zh('联系人姓名')" /></label>
-          <label>{{ zh('联系电话') }}<input v-model="form.phone" type="tel" :placeholder="zh('支持数字、加号、括号、横线、空格，长度 7-32')" /></label>
+          <div class="asset-editor-contact-section">
+            <div class="asset-editor-section-head">
+              <span>{{ zh(isOriginalManufacturer(form.partyType) ? '联系电话' : '联系人列表') }}</span>
+              <button v-if="!isOriginalManufacturer(form.partyType)" class="ghost" type="button" @click="addContact"><PreviewIcon name="new" />{{ zh('新增联系人') }}</button>
+            </div>
+            <div
+              v-for="(contact, index) in form.contacts"
+              :key="`party-contact-${index}`"
+              class="asset-editor-contact-row"
+              :class="{ single: isOriginalManufacturer(form.partyType) }"
+            >
+              <input
+                v-if="!isOriginalManufacturer(form.partyType)"
+                :value="contact.name"
+                type="text"
+                :placeholder="zh('联系人姓名')"
+                @input="updateContact(index, 'name', $event.target.value)"
+              />
+              <input
+                :value="contact.phone"
+                type="tel"
+                :placeholder="zh('支持数字、加号、括号、横线、空格，长度 7-32')"
+                @input="updateContact(index, 'phone', $event.target.value)"
+              />
+              <button
+                v-if="!isOriginalManufacturer(form.partyType)"
+                class="ghost danger-lite"
+                type="button"
+                :disabled="form.contacts.length === 1"
+                @click="removeContact(index)"
+              >{{ zh('删除') }}</button>
+            </div>
+          </div>
           <label>{{ zh('官网地址') }}<input v-model="form.officialWebsite" type="url" :placeholder="zh('例如 https://www.example.com')" /></label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="3" :placeholder="zh('补充说明')"></textarea></label>
         </div>

@@ -34,6 +34,7 @@ interface Party {
   name?: string;
   phone?: string;
   contact?: string;
+  contacts?: Array<{ name?: string; phone?: string }>;
   partyType?: string;
   officialWebsite?: string;
   remark?: string;
@@ -59,6 +60,8 @@ const I18N = {
       batchDelete: "批量删除",
       clearSelection: "清空选择",
       close: "关闭",
+      addContact: "新增联系人",
+      removeContact: "删除联系人",
     },
     stats: {
       total: "维保方总数",
@@ -90,6 +93,7 @@ const I18N = {
       name: "维保方名称 *",
       namePlaceholder: "例如 Dell EMC 原厂技术支持",
       contact: "联系人",
+      contacts: "联系人列表",
       contactPlaceholder: "联系人姓名",
       phone: "联系电话",
       phonePlaceholder: "支持数字、加号、括号、横线、空格，长度 7-32",
@@ -139,6 +143,8 @@ const I18N = {
       batchDelete: "批量刪除",
       clearSelection: "清空選擇",
       close: "關閉",
+      addContact: "新增聯絡人",
+      removeContact: "刪除聯絡人",
     },
     stats: {
       total: "維保方總數",
@@ -170,6 +176,7 @@ const I18N = {
       name: "維保方名稱 *",
       namePlaceholder: "例如 Dell EMC 原廠技術支援",
       contact: "聯絡人",
+      contacts: "聯絡人列表",
       contactPlaceholder: "聯絡人姓名",
       phone: "聯絡電話",
       phonePlaceholder: "支援數字、加號、括號、橫線、空格，長度 7-32",
@@ -233,6 +240,18 @@ function telHref(value?: string) {
   return normalized ? `tel:${normalized}` : "";
 }
 
+function contactsForParty(party?: Party | null) {
+  const contacts = Array.isArray(party?.contacts) ? party.contacts : [];
+  if (contacts.length) {
+    return contacts.map((contact) => ({
+      name: contact.name || "",
+      phone: contact.phone || "",
+    }));
+  }
+  if (party?.contact || party?.phone) return [{ name: party.contact || "", phone: party.phone || "" }];
+  return [];
+}
+
 export function MaintenanceParties() {
   const { lang } = useLanguage();
   const { user } = useAuth();
@@ -250,8 +269,7 @@ export function MaintenanceParties() {
   const [selectedPartyIds, setSelectedPartyIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     name: "",
-    contact: "",
-    phone: "",
+    contacts: [{ name: "", phone: "" }],
     partyType: "our_maintenance",
     officialWebsite: "",
     remark: "",
@@ -287,7 +305,7 @@ export function MaintenanceParties() {
     return parties.filter((p) => {
       if (typeFilter !== "all" && p.partyType !== typeFilter) return false;
       if (!keyword) return true;
-      return [p.name, p.phone, p.contact, p.officialWebsite, p.remark]
+      return [p.name, p.phone, p.contact, p.officialWebsite, p.remark, ...contactsForParty(p).flatMap((contact) => [contact.name, contact.phone])]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -325,6 +343,32 @@ export function MaintenanceParties() {
     );
   }
 
+  function updateFormContact(index: number, field: "name" | "phone", value: string) {
+    setForm((current) => ({
+      ...current,
+      contacts: current.contacts.map((contact, contactIndex) => (
+        contactIndex === index ? { ...contact, [field]: value } : contact
+      )),
+    }));
+  }
+
+  function addFormContact() {
+    setForm((current) => ({
+      ...current,
+      contacts: [...current.contacts, { name: "", phone: "" }],
+    }));
+  }
+
+  function removeFormContact(index: number) {
+    setForm((current) => {
+      const contacts = current.contacts.filter((_, contactIndex) => contactIndex !== index);
+      return {
+        ...current,
+        contacts: contacts.length ? contacts : [{ name: "", phone: "" }],
+      };
+    });
+  }
+
   useEffect(() => {
     const visibleIds = new Set(filtered.map((party) => String(party.id)));
     setSelectedPartyIds((ids) => {
@@ -354,8 +398,7 @@ export function MaintenanceParties() {
     setEditingId(null);
     setForm({
       name: "",
-      contact: "",
-      phone: "",
+      contacts: [{ name: "", phone: "" }],
       partyType: "our_maintenance",
       officialWebsite: "",
       remark: "",
@@ -367,8 +410,7 @@ export function MaintenanceParties() {
     setEditingId(party.id);
     setForm({
       name: party.name || "",
-      contact: party.contact || "",
-      phone: party.phone || "",
+      contacts: contactsForParty(party).length ? contactsForParty(party) : [{ name: "", phone: "" }],
       partyType: party.partyType || "our_maintenance",
       officialWebsite: party.officialWebsite || "",
       remark: party.remark || "",
@@ -381,9 +423,12 @@ export function MaintenanceParties() {
       setError(t.errors.nameRequired);
       return;
     }
-    if (form.phone.trim()) {
+    const contacts = form.contacts
+      .map((contact) => ({ name: contact.name.trim(), phone: contact.phone.trim() }))
+      .filter((contact) => contact.name || contact.phone);
+    for (const contact of contacts) {
       const phoneRe = /^[0-9+()\-\s]{7,32}$/;
-      if (!phoneRe.test(form.phone.trim())) {
+      if (contact.phone && !phoneRe.test(contact.phone)) {
         setError(t.errors.phoneInvalid);
         return;
       }
@@ -393,8 +438,9 @@ export function MaintenanceParties() {
     try {
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
-        contact: isOriginalManufacturer(form.partyType) ? undefined : form.contact.trim() || undefined,
-        phone: form.phone.trim() || undefined,
+        contacts,
+        contact: contacts[0]?.name || undefined,
+        phone: contacts[0]?.phone || undefined,
         partyType: form.partyType,
         officialWebsite: form.officialWebsite.trim() || undefined,
         remark: form.remark.trim() || undefined,
@@ -576,6 +622,7 @@ export function MaintenanceParties() {
               {filtered.map((p) => {
                 const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
                 const selected = selectedPartyIds.includes(String(p.id));
+                const contacts = contactsForParty(p);
                 return (
                   <div
                     key={p.id}
@@ -612,8 +659,14 @@ export function MaintenanceParties() {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {isOriginalManufacturer(p.partyType)
-                            ? <>{t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>
-                            : <>{t.dialog.contact}：{p.contact || t.misc.unknown} · {t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>}
+                            ? <>{t.dialog.phone}：{renderPhoneLink(contacts[0]?.phone || p.phone, true)}</>
+                            : contacts.length
+                              ? contacts.slice(0, 3).map((contact, index) => (
+                                  <span key={`${contact.name}-${index}`} className="mr-3 inline-block">
+                                    {contact.name || t.misc.unknown} · {renderPhoneLink(contact.phone, true)}
+                                  </span>
+                                ))
+                              : <>{t.dialog.contact}：{t.misc.unknown} · {t.dialog.phone}：{renderPhoneLink(p.phone, true)}</>}
                         </div>
                         {p.remark ? (
                           <div className="mt-1 max-w-[520px] truncate text-xs text-muted-foreground" title={p.remark}>
@@ -669,6 +722,7 @@ export function MaintenanceParties() {
           </DialogHeader>
           {detailTarget ? (() => {
             const typeLabel = t.types[detailTarget.partyType as keyof typeof t.types] || detailTarget.partyType || t.misc.unknown;
+            const contacts = contactsForParty(detailTarget);
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
@@ -682,16 +736,10 @@ export function MaintenanceParties() {
                       </div>
                       <Badge variant={TYPE_VARIANT[detailTarget.partyType || ""] || "secondary"}>{typeLabel}</Badge>
                     </div>
-                    <div className={`mt-4 grid grid-cols-2 gap-3 ${isOriginalManufacturer(detailTarget.partyType) ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
-                      {!isOriginalManufacturer(detailTarget.partyType) ? (
-                        <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
-                          <div className="text-xs text-muted-foreground">{t.dialog.contact}</div>
-                          <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.contact || t.misc.unknown}</div>
-                        </div>
-                      ) : null}
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.phone}</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{renderPhoneLink(detailTarget.phone)}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{renderPhoneLink(contacts[0]?.phone || detailTarget.phone)}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>
@@ -701,6 +749,20 @@ export function MaintenanceParties() {
                         <div className="text-xs text-muted-foreground">{t.dialog.updatedAt}</div>
                         <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(detailTarget.updatedAt)}</div>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm font-medium">{t.dialog.contacts}</div>
+                    <div className="mt-3 space-y-2">
+                      {contacts.length ? contacts.map((contact, index) => (
+                        <div key={`${contact.name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
+                          <div className="font-medium text-slate-900">{contact.name || t.misc.unknown}</div>
+                          <div className="text-muted-foreground">{renderPhoneLink(contact.phone)}</div>
+                        </div>
+                      )) : (
+                        <div className="rounded-md bg-slate-50 px-3 py-2 text-sm leading-6 text-muted-foreground">{t.misc.unknown}</div>
+                      )}
                     </div>
                   </div>
 
@@ -768,7 +830,13 @@ export function MaintenanceParties() {
               <Label>{t.dialog.type}</Label>
               <Select
                 value={form.partyType}
-                onValueChange={(v) => setForm({ ...form, partyType: v, contact: isOriginalManufacturer(v) ? "" : form.contact })}
+                onValueChange={(v) => setForm({
+                  ...form,
+                  partyType: v,
+                  contacts: isOriginalManufacturer(v)
+                    ? form.contacts.map((contact) => ({ ...contact, name: "" }))
+                    : form.contacts,
+                })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t.dialog.typePlaceholder} />
@@ -779,25 +847,44 @@ export function MaintenanceParties() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {!isOriginalManufacturer(form.partyType) && (
-                <div className="space-y-2">
-                  <Label>{t.dialog.contact}</Label>
-                  <Input
-                    value={form.contact}
-                    onChange={(e) => setForm({ ...form, contact: e.target.value })}
-                    placeholder={t.dialog.contactPlaceholder}
-                  />
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label>{t.dialog.phone}</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder={t.dialog.phonePlaceholder}
-                />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label>{isOriginalManufacturer(form.partyType) ? t.dialog.phone : t.dialog.contacts}</Label>
+                {!isOriginalManufacturer(form.partyType) ? (
+                  <Button type="button" variant="outline" size="sm" onClick={addFormContact}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {t.actions.addContact}
+                  </Button>
+                ) : null}
               </div>
+              {form.contacts.map((contact, index) => (
+                <div key={index} className={`grid gap-3 rounded-lg border p-3 ${isOriginalManufacturer(form.partyType) ? "grid-cols-1" : "grid-cols-1 md:grid-cols-[1fr_1fr_auto]"}`}>
+                  {!isOriginalManufacturer(form.partyType) ? (
+                    <Input
+                      value={contact.name}
+                      onChange={(e) => updateFormContact(index, "name", e.target.value)}
+                      placeholder={t.dialog.contactPlaceholder}
+                    />
+                  ) : null}
+                  <Input
+                    value={contact.phone}
+                    onChange={(e) => updateFormContact(index, "phone", e.target.value)}
+                    placeholder={t.dialog.phonePlaceholder}
+                  />
+                  {!isOriginalManufacturer(form.partyType) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => removeFormContact(index)}
+                      disabled={form.contacts.length === 1}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {t.actions.removeContact}
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
             </div>
             <div className="space-y-2">
               <Label>{t.dialog.officialWebsite}</Label>

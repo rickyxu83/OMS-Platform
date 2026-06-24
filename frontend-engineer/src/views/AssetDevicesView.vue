@@ -17,8 +17,10 @@ const error = ref('')
 const searchQuery = ref('')
 const customerFilter = ref('')
 const dialogOpen = ref(false)
+const createMode = ref('single')
 const editingId = ref(null)
 const form = ref(emptyForm())
+const batchRows = ref(createInitialBatchRows())
 const customerInput = ref('')
 const customerDropdownOpen = ref(false)
 const customerSearchLoading = ref(false)
@@ -73,6 +75,12 @@ const filteredDevices = computed(() => {
 
 const selectedCustomer = computed(() => customers.value.find((item) => String(item.id) === String(form.value.customerId)) || null)
 
+const filteredMaintenanceParties = computed(() => {
+  const type = canonicalMaintenanceType(form.value.maintenanceType)
+  if (type === 'none') return []
+  return parties.value.filter((party) => canonicalMaintenanceType(party.partyType) === type)
+})
+
 const dialogCustomerOptions = computed(() => {
   const keyword = normalizeCustomerSearchText(customerInput.value)
   const selectedId = String(form.value.customerId || '')
@@ -116,6 +124,22 @@ function emptyForm() {
   }
 }
 
+function createEmptyBatchRow() {
+  return {
+    name: '',
+    model: '',
+    serialNo: '',
+  }
+}
+
+function createInitialBatchRows(count = 3) {
+  return Array.from({ length: count }, () => createEmptyBatchRow())
+}
+
+function batchRowHasInput(row) {
+  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim())
+}
+
 function customerLabel(customer) {
   if (!customer) return ''
   return customer.name || `客户 #${customer.id}`
@@ -153,6 +177,16 @@ function maintenanceLabel(value) {
   return maintenanceLabels[value || 'none'] || value || '未维护'
 }
 
+function resolveMaintenancePartyId(type, currentId) {
+  const normalizedType = canonicalMaintenanceType(type)
+  if (normalizedType === 'none') return ''
+  if (!currentId) return ''
+  return parties.value.some((party) => (
+    String(party.id) === String(currentId)
+    && canonicalMaintenanceType(party.partyType) === normalizedType
+  )) ? String(currentId) : ''
+}
+
 async function loadBaseData() {
   const [customerData, partyData] = await Promise.all([
     api.get('/customers?pageSize=200'),
@@ -179,8 +213,21 @@ async function loadDevices() {
 }
 
 function openCreate() {
+  createMode.value = 'single'
   editingId.value = null
   form.value = { ...emptyForm(), customerId: customerFilter.value || '' }
+  batchRows.value = createInitialBatchRows()
+  customerInput.value = selectedCustomerLabel(form.value.customerId)
+  customerDropdownOpen.value = false
+  modelSuggestions.value = []
+  dialogOpen.value = true
+}
+
+function openBulkCreate() {
+  createMode.value = 'bulk'
+  editingId.value = null
+  form.value = { ...emptyForm(), customerId: customerFilter.value || '' }
+  batchRows.value = createInitialBatchRows()
   customerInput.value = selectedCustomerLabel(form.value.customerId)
   customerDropdownOpen.value = false
   modelSuggestions.value = []
@@ -188,15 +235,17 @@ function openCreate() {
 }
 
 function openEdit(device) {
+  createMode.value = 'single'
   editingId.value = device.id
+  const maintenanceType = canonicalMaintenanceType(device.maintenanceType)
   form.value = {
     customerId: device.customerId ? String(device.customerId) : '',
     name: device.name || '',
     model: device.model || '',
     pn: device.pn || '',
     serialNo: device.serialNo || '',
-    maintenanceType: canonicalMaintenanceType(device.maintenanceType),
-    maintenancePartyId: device.maintenancePartyId ? String(device.maintenancePartyId) : '',
+    maintenanceType,
+    maintenancePartyId: resolveMaintenancePartyId(maintenanceType, device.maintenancePartyId),
     maintenanceStart: inputDate(device.maintenanceStart),
     maintenanceEnd: inputDate(device.maintenanceEnd),
     location: device.location || '',
@@ -207,6 +256,27 @@ function openEdit(device) {
   customerDropdownOpen.value = false
   modelSuggestions.value = []
   dialogOpen.value = true
+}
+
+function updateBatchRow(index, field, value) {
+  batchRows.value = batchRows.value.map((row, rowIndex) => (
+    rowIndex === index ? { ...row, [field]: value } : row
+  ))
+}
+
+function addBatchRow() {
+  batchRows.value = [...batchRows.value, createEmptyBatchRow()]
+}
+
+function removeBatchRow(index) {
+  const next = batchRows.value.filter((_, rowIndex) => rowIndex !== index)
+  batchRows.value = next.length ? next : [createEmptyBatchRow()]
+}
+
+function changeMaintenanceType(value) {
+  const type = canonicalMaintenanceType(value)
+  form.value.maintenanceType = type
+  form.value.maintenancePartyId = resolveMaintenancePartyId(type, form.value.maintenancePartyId)
 }
 
 function closeDialog() {
@@ -235,14 +305,11 @@ async function saveDevice() {
   }
   saving.value = true
   error.value = ''
+  let createdCount = 0
   try {
     const type = canonicalMaintenanceType(form.value.maintenanceType)
-    const payload = {
+    const commonPayload = {
       customerId: effectiveCustomerId,
-      name: form.value.name.trim() || null,
-      model: form.value.model.trim(),
-      pn: form.value.pn.trim() || undefined,
-      serialNo: form.value.serialNo.trim() || undefined,
       maintenanceType: type,
       maintenancePartyId: type === 'none' ? null : (form.value.maintenancePartyId || null),
       maintenanceStart: form.value.maintenanceStart || undefined,
@@ -251,12 +318,60 @@ async function saveDevice() {
       status: form.value.status,
       remark: form.value.remark.trim() || undefined,
     }
-    if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
-    else await api.post('/devices', payload)
+
+    if (!editingId.value && createMode.value === 'bulk') {
+      const defaultModel = form.value.model.trim()
+      const rows = batchRows.value
+        .map((row, index) => ({
+          index,
+          name: row.name.trim(),
+          model: row.model.trim() || defaultModel,
+          serialNo: row.serialNo.trim(),
+          hasInput: batchRowHasInput(row),
+        }))
+        .filter((row) => row.hasInput)
+
+      if (!rows.length) {
+        error.value = '请至少填写一台设备'
+        return
+      }
+
+      const missingModel = rows.find((row) => !row.model)
+      if (missingModel) {
+        error.value = `第 ${missingModel.index + 1} 行缺少设备型号，请填写该行型号或上方默认型号`
+        return
+      }
+
+      for (const row of rows) {
+        await api.post('/devices', {
+          ...commonPayload,
+          name: row.name || null,
+          model: row.model,
+          serialNo: row.serialNo || undefined,
+        })
+        createdCount += 1
+      }
+    } else {
+      if (!form.value.model.trim()) {
+        error.value = '请输入设备型号'
+        return
+      }
+      const payload = {
+        ...commonPayload,
+        name: form.value.name.trim() || null,
+        model: form.value.model.trim(),
+        pn: form.value.pn.trim() || undefined,
+        serialNo: form.value.serialNo.trim() || undefined,
+      }
+      if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
+      else await api.post('/devices', payload)
+    }
     dialogOpen.value = false
     await loadDevices()
   } catch (err) {
-    error.value = err.message || '保存失败'
+    const message = err.message || '保存失败'
+    error.value = createdCount ? `已新增 ${createdCount} 台设备，后续保存失败：${message}` : message
+    if (createdCount) await loadDevices()
   } finally {
     saving.value = false
   }
@@ -376,6 +491,7 @@ onBeforeUnmount(() => {
         <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
       </select>
       <button class="ghost" type="button" :disabled="loading" @click="loadDevices"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
+      <button class="ghost" type="button" @click="openBulkCreate"><PreviewIcon name="new" />{{ zh('批量新增') }}</button>
       <button class="primary" type="button" @click="openCreate"><PreviewIcon name="new" />{{ zh('新增设备') }}</button>
     </section>
 
@@ -400,8 +516,14 @@ onBeforeUnmount(() => {
           </div>
           <button class="ghost" type="button" @click.stop="openEdit(device)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
-        <p class="asset-record-line"><PreviewIcon name="devices" />{{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}</p>
-        <p class="asset-record-line"><PreviewIcon name="pin" />{{ zh(device.location || '未维护位置') }}</p>
+        <p class="asset-record-line">
+          <PreviewIcon name="devices" />
+          <span class="asset-ellipsis" :title="`${device.model || '未维护型号'} · SN: ${device.serialNo || '未维护'}`">{{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}</span>
+        </p>
+        <p class="asset-record-line">
+          <PreviewIcon name="pin" />
+          <span class="asset-ellipsis" :title="device.location || '未维护位置'">{{ zh(device.location || '未维护位置') }}</span>
+        </p>
         <div class="asset-meta-row">
           <span>{{ zh(maintenanceLabel(device.maintenanceType)) }}</span>
           <span>{{ zh('维保到期') }}：{{ zh(displayDate(device.maintenanceEnd || device.warrantyUntil)) }}</span>
@@ -410,12 +532,12 @@ onBeforeUnmount(() => {
       <p v-if="!loading && !filteredDevices.length" class="empty-state">{{ zh('暂无设备资产') }}</p>
     </section>
 
-    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑设备' : '新增设备')" @click.self="closeDialog">
-      <div class="signature-modal-shell asset-editor-shell">
+    <div v-if="dialogOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh(editingId ? '编辑设备' : createMode === 'bulk' ? '批量新增设备' : '新增设备')" @click.self="closeDialog">
+      <div class="signature-modal-shell asset-editor-shell" :class="{ 'asset-editor-shell-wide': !editingId && createMode === 'bulk' }">
         <header class="signature-modal-head">
           <div>
             <p>{{ zh('设备资产') }}</p>
-            <h2>{{ zh(editingId ? '编辑设备' : '新增设备') }}</h2>
+            <h2>{{ zh(editingId ? '编辑设备' : createMode === 'bulk' ? '批量新增设备' : '新增设备') }}</h2>
           </div>
         </header>
         <div class="asset-editor-form">
@@ -448,13 +570,12 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </label>
-          <label>{{ zh('主机名') }}<input v-model="form.name" type="text" :placeholder="zh('例如 sz5eap01，可不填')" /></label>
-          <label>{{ zh('设备型号 *') }}
+          <label v-if="!editingId && createMode === 'bulk'" class="asset-editor-wide">{{ zh('默认设备型号') }}
             <div ref="modelComboRef" class="asset-combo-field">
               <input
                 v-model="form.model"
                 type="text"
-                :placeholder="zh('例如 PowerEdge R740')"
+                :placeholder="zh('同型号设备可在这里填一次，每行也可单独覆盖')"
                 autocomplete="off"
                 @focus="modelDropdownOpen = Boolean(modelLoading || modelSuggestions.length)"
                 @input="scheduleModelSearch(form.model)"
@@ -473,10 +594,37 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </label>
-          <label>{{ zh('部件号 PN') }}<input v-model="form.pn" type="text" :placeholder="zh('部件号')" /></label>
-          <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号')" /></label>
+          <template v-else>
+            <label>{{ zh('主机名') }}<input v-model="form.name" type="text" :placeholder="zh('例如 sz5eap01；多个值用 ; 隔开，可不填')" /></label>
+            <label>{{ zh('设备型号 *') }}
+              <div ref="modelComboRef" class="asset-combo-field">
+                <input
+                  v-model="form.model"
+                  type="text"
+                  :placeholder="zh('例如 PowerEdge R740')"
+                  autocomplete="off"
+                  @focus="modelDropdownOpen = Boolean(modelLoading || modelSuggestions.length)"
+                  @input="scheduleModelSearch(form.model)"
+                />
+                <div v-if="modelDropdownOpen && (modelLoading || modelSuggestions.length)" class="asset-dropdown">
+                  <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
+                  <button
+                    v-for="(suggestion, index) in modelSuggestions"
+                    :key="`${suggestion.canonicalModel || suggestion.officialName}-${suggestion.partNumber}-${index}`"
+                    type="button"
+                    @click="applyModelSuggestion(suggestion)"
+                  >
+                    <strong>{{ zh(suggestion.canonicalModel || suggestion.officialName || '标准型号') }}</strong>
+                    <span>{{ zh([suggestion.brand || suggestion.vendor, suggestion.partNumber, suggestion.category].filter(Boolean).join(' · ') || '标准型号') }}</span>
+                  </button>
+                </div>
+              </div>
+            </label>
+            <label>{{ zh('部件号 PN') }}<input v-model="form.pn" type="text" :placeholder="zh('部件号')" /></label>
+            <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号；多个值用 ; 隔开')" /></label>
+          </template>
           <label>{{ zh('维保类型') }}
-            <select v-model="form.maintenanceType">
+            <select :value="form.maintenanceType" @change="changeMaintenanceType($event.target.value)">
               <option value="none">{{ zh('无维保') }}</option>
               <option value="our_maintenance">{{ zh('我方维保') }}</option>
               <option value="original_manufacturer">{{ zh('原厂维保') }}</option>
@@ -485,7 +633,7 @@ onBeforeUnmount(() => {
           <label>{{ zh('维保方') }}
             <select v-model="form.maintenancePartyId" :disabled="form.maintenanceType === 'none'">
               <option value="">{{ zh(form.maintenanceType === 'none' ? '无维保' : '选择维保方') }}</option>
-              <option v-for="party in parties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
+              <option v-for="party in filteredMaintenanceParties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
             </select>
           </label>
           <label>{{ zh('维保开始') }}<input v-model="form.maintenanceStart" type="date" /></label>
@@ -500,10 +648,54 @@ onBeforeUnmount(() => {
             </select>
           </label>
           <label>{{ zh('备注') }}<textarea v-model="form.remark" rows="2" :placeholder="zh('补充说明')"></textarea></label>
+          <section v-if="!editingId && createMode === 'bulk'" class="asset-editor-batch-section">
+            <div class="asset-editor-section-head">
+              <div>
+                <strong>{{ zh('设备明细 *') }}</strong>
+                <p>{{ zh('每行一台设备；空行会自动忽略，行内型号为空时使用上方默认型号。') }}</p>
+              </div>
+              <button class="ghost" type="button" :disabled="saving" @click="addBatchRow"><PreviewIcon name="new" />{{ zh('添加一行') }}</button>
+            </div>
+            <div class="asset-editor-batch-table">
+              <div class="asset-editor-batch-head">
+                <span>{{ zh('主机名') }}</span>
+                <span>{{ zh('型号') }}</span>
+                <span>{{ zh('SN') }}</span>
+                <span></span>
+              </div>
+              <div
+                v-for="(row, index) in batchRows"
+                :key="index"
+                class="asset-editor-batch-row"
+              >
+                <input
+                  :value="row.name"
+                  type="text"
+                  :placeholder="zh(`第 ${index + 1} 台主机名；多个值用 ; 隔开`)"
+                  @input="updateBatchRow(index, 'name', $event.target.value)"
+                />
+                <input
+                  :value="row.model"
+                  type="text"
+                  :placeholder="zh('型号，空则用默认型号')"
+                  @input="updateBatchRow(index, 'model', $event.target.value)"
+                />
+                <input
+                  :value="row.serialNo"
+                  type="text"
+                  :placeholder="zh('SN；多个值用 ; 隔开')"
+                  @input="updateBatchRow(index, 'serialNo', $event.target.value)"
+                />
+                <button class="ghost asset-editor-row-remove" type="button" :disabled="saving" :aria-label="zh(`删除第 ${index + 1} 行`)" @click="removeBatchRow(index)">
+                  <PreviewIcon name="trash" />
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
-          <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '保存') }}</button>
+          <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : editingId ? '保存修改' : createMode === 'bulk' ? '批量保存' : '保存') }}</button>
         </footer>
       </div>
     </div>

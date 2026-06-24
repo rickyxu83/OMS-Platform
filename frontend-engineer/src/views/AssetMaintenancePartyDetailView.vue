@@ -38,6 +38,13 @@ function telHref(phone) {
   return normalized ? `tel:${normalized}` : ''
 }
 
+function contactsForParty(item) {
+  const contacts = Array.isArray(item?.contacts) ? item.contacts : []
+  if (contacts.length) return contacts.map((contact) => ({ name: contact.name || '', phone: contact.phone || '' }))
+  if (item?.contact || item?.phone) return [{ name: item.contact || '', phone: item.phone || '' }]
+  return []
+}
+
 function displayDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 10) : '未维护'
 }
@@ -103,8 +110,14 @@ onMounted(() => {
           </div>
         </header>
         <div class="asset-detail-kv">
-          <p><span>{{ zh('联系人') }}</span><b>{{ zh(party.contact || '未维护') }}</b></p>
-          <p><span>{{ zh('联系电话') }}</span><b><a v-if="party.phone" :href="telHref(party.phone)">{{ party.phone }}</a><template v-else>{{ zh('未维护') }}</template></b></p>
+          <p v-for="(contact, index) in contactsForParty(party)" :key="`party-contact-${index}`">
+            <span>{{ zh(index === 0 ? '联系人' : `联系人 ${index + 1}`) }}</span>
+            <b>
+              {{ zh(contact.name || '未维护') }}
+              <template v-if="contact.phone"> · <a :href="telHref(contact.phone)">{{ contact.phone }}</a></template>
+            </b>
+          </p>
+          <p v-if="!contactsForParty(party).length"><span>{{ zh('联系人') }}</span><b>{{ zh('未维护') }}</b></p>
           <p v-if="party.officialWebsite">
             <span>{{ zh('官网地址') }}</span>
             <b><a :href="officialWebsiteHref(party.officialWebsite)" target="_blank" rel="noreferrer">{{ zh(party.officialWebsite) }}</a></b>
