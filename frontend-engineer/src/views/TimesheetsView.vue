@@ -63,7 +63,7 @@ async function load() {
 
 function exportCsv() {
   const lines = [
-    ['填表人', '日期', '星期', '工作性质', '类别', '客户名称', '专案/产品', '工作内容', '进度', '工时', '备注'],
+    ['填表人', '日期', '星期', '工作性质', '类别', '客户名称', '专案/产品', '工作内容', '进度', '备注'],
     ...detailRows.value.map((row) => [
       row.engineerName || '',
       row.date || '',
@@ -74,7 +74,6 @@ function exportCsv() {
       row.productName || '',
       row.workContent || '',
       row.progress || '',
-      Number(row.workHours || 1),
       row.remark || '',
     ]),
   ]
@@ -151,14 +150,12 @@ onMounted(load)
           <span>{{ zh('类别') }}</span>
           <span>{{ zh('客户') }}</span>
           <span>{{ zh('工作内容') }}</span>
-          <span>{{ zh('工时') }}</span>
         </div>
         <article v-for="row in detailRows" :key="`${row.serviceOrderId || row.manualEntryId}-${row.date}-${row.category}`">
           <span>{{ row.date }}</span>
           <strong>{{ zh(row.category || row.workNature || '-') }}</strong>
           <span>{{ zh(row.customerName || '内部工作') }}</span>
           <span>{{ zh(row.workContent || '-') }}</span>
-          <span>{{ Number(row.workHours || 1) }}h</span>
         </article>
         <p v-if="!detailRows.length && !loading" class="empty-state">{{ zh('暂无月报数据') }}</p>
       </div>

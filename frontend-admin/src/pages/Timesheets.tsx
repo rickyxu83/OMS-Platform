@@ -34,8 +34,6 @@ interface TimesheetItem {
   salesperson?: string;
   progress?: string;
   remark?: string;
-  workHours?: number;
-  duration?: number;
   source?: string;
 }
 
@@ -62,11 +60,6 @@ function formatDate(value?: string) {
   return String(value).replace("T", " ").slice(0, 16);
 }
 
-function formatHours(value?: number) {
-  if (value == null || Number.isNaN(value)) return "-";
-  return `${value.toFixed(1)}h`;
-}
-
 function safeSheetName(value: string, fallback: string) {
   const cleaned = value.replace(/[\\/?*\[\]:]/g, " ").trim() || fallback;
   return cleaned.slice(0, 31);
@@ -74,11 +67,6 @@ function safeSheetName(value: string, fallback: string) {
 
 function getServiceDate(item: TimesheetItem) {
   return item.date || item.serviceDate || item.serviceAt || "";
-}
-
-function getWorkHours(item: TimesheetItem) {
-  const value = Number(item.workHours ?? item.duration ?? 1);
-  return Number.isFinite(value) ? value : 0;
 }
 
 function getSourceLabel(source?: string) {
@@ -112,7 +100,6 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
     { header: "专案/产品", key: "productName", width: 24 },
     { header: "工作内容", key: "workContent", width: 42 },
     { header: "进度", key: "progress", width: 12 },
-    { header: "工时", key: "workHours", width: 10 },
     { header: "备注", key: "remark", width: 18 },
     { header: "来源", key: "source", width: 12 },
   ];
@@ -141,7 +128,6 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
         productName: item.productName || "",
         workContent: item.workContent || "",
         progress: item.progress || "",
-        workHours: getWorkHours(item),
         remark: item.remark || item.orderNo || "",
         source: getSourceLabel(item.source),
       });
@@ -177,8 +163,8 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
         };
         cell.alignment = {
           vertical: "middle",
-          horizontal: colNumber === 10 ? "right" : "left",
-          wrapText: [7, 8, 11].includes(colNumber),
+          horizontal: "left",
+          wrapText: [7, 8, 10].includes(colNumber),
         };
         if (rowNumber % 2 === 0) {
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAFC" } };
@@ -187,7 +173,6 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
     });
 
     worksheet.getColumn("date").numFmt = "yyyy-mm-dd";
-    worksheet.getColumn("workHours").numFmt = "0.0";
     worksheet.properties.defaultRowHeight = 22;
     worksheet.headerFooter.oddHeader = `&C${label} - ${engineer}`;
     worksheet.headerFooter.oddFooter = "&R第 &P / &N 页";
@@ -271,14 +256,12 @@ export function Timesheets() {
 
   const stats = useMemo(() => {
     const total = items.length;
-    const totalHours = items.reduce((sum, item) => sum + Number(item.workHours || item.duration || 0), 0);
     const service = items.filter((i) => i.source === "service_order").length;
     const manual = items.filter((i) => i.source === "manual").length;
     return [
       { label: "已加载记录", value: total },
       { label: "工单", value: service },
       { label: "手工记录", value: manual },
-      { label: "总工时", value: `${totalHours.toFixed(1)}h` },
     ];
   }, [items]);
 
@@ -292,7 +275,7 @@ export function Timesheets() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">月报导出</h1>
-          <p className="text-muted-foreground mt-1">导出指定月份的工时数据</p>
+          <p className="text-muted-foreground mt-1">导出指定月份的月报数据</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={load} disabled={loading}>
@@ -393,7 +376,7 @@ export function Timesheets() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
@@ -409,8 +392,8 @@ export function Timesheets() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>工时列表 {label && <span className="text-muted-foreground font-normal text-sm ml-2">({label})</span>}</CardTitle>
-            <CardDescription>按工单维度展示当前月份工时记录</CardDescription>
+            <CardTitle>月报列表 {label && <span className="text-muted-foreground font-normal text-sm ml-2">({label})</span>}</CardTitle>
+            <CardDescription>按工单维度展示当前月份月报记录</CardDescription>
           </div>
           <Badge variant="secondary">{items.length} 条</Badge>
         </CardHeader>
@@ -420,7 +403,7 @@ export function Timesheets() {
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">暂无工时数据</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">暂无月报数据</div>
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[720px]">
@@ -430,7 +413,6 @@ export function Timesheets() {
                     <TableHead>客户</TableHead>
                     <TableHead>工程师</TableHead>
                     <TableHead>服务日期</TableHead>
-                    <TableHead className="text-right">工时</TableHead>
                     <TableHead>来源</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -442,9 +424,6 @@ export function Timesheets() {
                       <TableCell>{item.engineerName || "-"}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDate(item.serviceDate || item.serviceAt)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-primary">
-                        {formatHours(item.workHours ?? item.duration)}
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.source === "service_order" ? "info" : "secondary"}>

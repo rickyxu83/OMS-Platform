@@ -5329,7 +5329,7 @@ h2 {
 .detail-table-head,
 .detail-table article {
   display: grid;
-  grid-template-columns: 96px 110px minmax(120px, 0.9fr) minmax(180px, 1.6fr) 64px;
+  grid-template-columns: 96px 110px minmax(120px, 0.9fr) minmax(220px, 1.8fr);
   gap: 12px;
   align-items: center;
 }
@@ -5918,7 +5918,7 @@ h2 {
 
   .detail-table-head,
   .detail-table article {
-    min-width: 760px;
+    min-width: 680px;
   }
 }
 
