@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,6 +120,7 @@ export function InspectionSchedules() {
   const [engineerOptionsOpen, setEngineerOptionsOpen] = useState(false);
   const [customerDropdownBox, setCustomerDropdownBox] = useState<FloatingDropdownBox | null>(null);
   const [engineerDropdownBox, setEngineerDropdownBox] = useState<FloatingDropdownBox | null>(null);
+  const dialogContentRef = useRef<HTMLDivElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const engineerInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
@@ -294,8 +294,10 @@ export function InspectionSchedules() {
   const selectedEngineerCount = form.targetEngineerIds.length;
 
   function measureDropdown(input: HTMLInputElement | null): FloatingDropdownBox | null {
-    if (!input || typeof window === "undefined") return null;
+    const dialogContent = dialogContentRef.current;
+    if (!input || !dialogContent || typeof window === "undefined") return null;
     const rect = input.getBoundingClientRect();
+    const dialogRect = dialogContent.getBoundingClientRect();
     const viewportPadding = 12;
     const gap = 6;
     const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -304,8 +306,8 @@ export function InspectionSchedules() {
     const available = Math.max(120, (openAbove ? spaceAbove : spaceBelow) - gap);
     const maxHeight = Math.min(260, available);
     return {
-      top: openAbove ? Math.max(viewportPadding, rect.top - maxHeight - gap) : rect.bottom + gap,
-      left: Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - rect.width - viewportPadding)),
+      top: openAbove ? rect.top - dialogRect.top - maxHeight - gap : rect.bottom - dialogRect.top + gap,
+      left: rect.left - dialogRect.left,
       width: rect.width,
       maxHeight,
     };
@@ -501,10 +503,10 @@ export function InspectionSchedules() {
     }
   }
 
-  const customerOptionsDropdown = dialogOpen && customerOptionsOpen && customerDropdownBox && typeof document !== "undefined"
-    ? createPortal(
+  const customerOptionsDropdown = dialogOpen && customerOptionsOpen && customerDropdownBox
+    ? (
       <div
-        className="fixed z-[70] overflow-y-auto rounded-md border border-border bg-background p-1 shadow-xl"
+        className="absolute z-[80] overflow-y-auto rounded-md border border-border bg-background p-1 shadow-xl"
         style={{
           top: customerDropdownBox.top,
           left: customerDropdownBox.left,
@@ -537,15 +539,14 @@ export function InspectionSchedules() {
         ) : (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配客户</div>
         )}
-      </div>,
-      document.body,
+      </div>
     )
     : null;
 
-  const engineerOptionsDropdown = dialogOpen && engineerOptionsOpen && engineerDropdownBox && typeof document !== "undefined"
-    ? createPortal(
+  const engineerOptionsDropdown = dialogOpen && engineerOptionsOpen && engineerDropdownBox
+    ? (
       <div
-        className="fixed z-[70] space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-xl"
+        className="absolute z-[80] space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-xl"
         style={{
           top: engineerDropdownBox.top,
           left: engineerDropdownBox.left,
@@ -601,8 +602,7 @@ export function InspectionSchedules() {
         ) : (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配工程师</div>
         )}
-      </div>,
-      document.body,
+      </div>
     )
     : null;
 
@@ -1043,14 +1043,14 @@ export function InspectionSchedules() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
+        <DialogContent ref={dialogContentRef} className="sm:max-w-[640px] max-h-[85vh] overflow-visible">
           <DialogHeader>
             <DialogTitle>{editingId ? "编辑巡检计划" : "新增巡检计划"}</DialogTitle>
             <DialogDescription>
               选择客户、指派工程师，并勾选需要巡检的设备
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="max-h-[calc(85vh-9rem)] space-y-4 overflow-y-auto py-2 pr-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2 md:col-span-2">
                 <Label>计划名称</Label>
@@ -1079,7 +1079,6 @@ export function InspectionSchedules() {
                   }}
                   placeholder="输入客户名称或选择客户"
                 />
-                {customerOptionsDropdown}
                 {selectedCustomer && (
                   <div className="text-xs text-muted-foreground">
                     已选：{selectedCustomer.name || `客户 #${selectedCustomer.id}`}
@@ -1112,7 +1111,6 @@ export function InspectionSchedules() {
                   }}
                   placeholder={selectedEngineerCount ? "继续输入筛选工程师" : "输入工程师姓名或选择工程师"}
                 />
-                {engineerOptionsDropdown}
                 {selectedEngineerCount > 0 && (
                   <div className="text-xs text-muted-foreground">
                     已选：{selectedEngineerSummary}{selectedEngineerCount > 3 ? ` +${selectedEngineerCount - 3}` : ""}
@@ -1231,6 +1229,8 @@ export function InspectionSchedules() {
               </div>
             </div>
           </div>
+          {customerOptionsDropdown}
+          {engineerOptionsDropdown}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               取消
