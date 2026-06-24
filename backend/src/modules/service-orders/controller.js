@@ -2107,7 +2107,7 @@ async function latestCustomerSignature(req, res) {
   const customerId = Number(req.query.customerId || 0)
   const nameKey = customerNameKey(req.query.customerName || '')
   const filters = []
-  const params = { engineerId: req.user.id }
+  const params = {}
 
   if (customerId) {
     filters.push('so.customer_id = :customerId')
@@ -2128,14 +2128,6 @@ async function latestCustomerSignature(req, res) {
      JOIN customers c ON c.id = so.customer_id
      WHERE (sr.customer_signature_file_id IS NOT NULL OR sr.customer_signature IS NOT NULL)
        AND (${filters.join(' OR ')})
-       AND (
-         so.assigned_engineer_id = :engineerId
-         OR EXISTS (
-           SELECT 1
-           FROM service_order_engineers soe
-           WHERE soe.service_order_id = so.id AND soe.engineer_id = :engineerId
-         )
-       )
      ORDER BY COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,

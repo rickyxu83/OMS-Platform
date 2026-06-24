@@ -423,7 +423,7 @@ export function Timesheets() {
                       <TableCell>{item.customerName || "-"}</TableCell>
                       <TableCell>{item.engineerName || "-"}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDate(item.serviceDate || item.serviceAt)}
+                        {formatDate(getServiceDate(item))}
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.source === "service_order" ? "info" : "secondary"}>
