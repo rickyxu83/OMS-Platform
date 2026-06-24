@@ -7,7 +7,7 @@ const PROVIDERS = {
     scopes: {
       'approved-v1': {
         servers: ['HPE', 'Dell', 'Lenovo', 'IBM'],
-        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei'],
+        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei', 'IBM', 'Lenovo', 'LenovoNetapp'],
         network: ['Cisco', 'Huawei', 'H3C', 'Brocade', 'F5'],
       }
     }
@@ -21,7 +21,7 @@ const PROVIDERS = {
     scopes: {
       'approved-v1': {
         servers: ['HPE', 'Dell', 'Lenovo', 'IBM'],
-        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei'],
+        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei', 'IBM', 'Lenovo', 'LenovoNetapp'],
         network: ['Cisco', 'Huawei', 'H3C', 'Brocade', 'F5'],
       }
     }
@@ -37,7 +37,7 @@ const PROVIDERS = {
     scopes: {
       'approved-v1': {
         servers: ['HPE', 'Dell', 'Lenovo', 'IBM'],
-        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei'],
+        storage: ['NetApp', 'HDS', 'Dell EMC', 'QNAP', 'Synology', 'Huawei', 'IBM', 'Lenovo', 'LenovoNetapp'],
         network: ['Cisco', 'Huawei', 'H3C', 'Brocade', 'F5'],
       }
     }
