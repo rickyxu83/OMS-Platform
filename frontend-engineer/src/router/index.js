@@ -38,6 +38,21 @@ const ExternalLoginRedirect = {
   name: 'ExternalLoginRedirect',
   render: () => null,
 }
+const CHUNK_RELOAD_KEY = 'oms-engineer:chunk-reload'
+
+function isChunkLoadError(error) {
+  const text = String(error?.message || error || '')
+  return /Loading chunk|ChunkLoadError|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(text)
+}
+
+function reloadOnceForChunkError(error) {
+  if (!isChunkLoadError(error)) return false
+  const reloadKey = window.location.href
+  if (sessionStorage.getItem(CHUNK_RELOAD_KEY) === reloadKey) return false
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, reloadKey)
+  window.location.reload()
+  return true
+}
 
 function redirectToUnifiedLogin(to) {
   const redirectPath = typeof to.query.redirect === 'string' && to.query.redirect.startsWith('/')
@@ -79,6 +94,10 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+router.onError((error) => {
+  if (reloadOnceForChunkError(error)) return
 })
 
 // 首屏渲染后在空闲时预取其余视图 chunk:
