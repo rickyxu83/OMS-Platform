@@ -2194,6 +2194,32 @@ h2 {
   padding: 18px;
 }
 
+.feedback-modal {
+  place-items: start end;
+  padding:
+    max(72px, calc(env(safe-area-inset-top) + 72px))
+    max(18px, calc((100vw - 1180px) / 2 + 18px))
+    max(18px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  background: rgb(15 23 42 / 18%);
+  backdrop-filter: blur(6px);
+}
+
+.feedback-modal .feedback-modal-shell {
+  width: min(380px, calc(100vw - 36px));
+  border-color: rgb(203 213 225 / 86%);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 22px 58px rgb(15 23 42 / 18%),
+    0 1px 4px rgb(15 23 42 / 8%);
+}
+
+.feedback-modal .signature-modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
 .feedback-modal-shell .signature-modal-head,
 .feedback-modal-shell .signature-modal-actions {
   justify-content: stretch;
@@ -2262,6 +2288,22 @@ h2 {
 .feedback-modal-shell .signature-modal-actions button {
   width: 100%;
   justify-content: center;
+}
+
+@media (max-width: 680px) {
+  .feedback-modal {
+    place-items: center;
+    padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    background: rgb(15 23 42 / 54%);
+    backdrop-filter: blur(12px);
+  }
+
+  .feedback-modal .feedback-modal-shell {
+    width: min(420px, calc(100vw - 28px));
+    max-height: calc(100svh - 28px);
+    border-radius: 18px;
+    overflow: auto;
+  }
 }
 
 .danger-action {
@@ -5844,7 +5886,7 @@ h2 {
     padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
   }
 
-  .signature-modal-shell:not(.exit-confirm-shell):not(.asset-editor-shell):not(.profile-signature-preview-shell) {
+  .signature-modal-shell:not(.exit-confirm-shell):not(.asset-editor-shell):not(.profile-signature-preview-shell):not(.feedback-modal-shell) {
     width: 100%;
     height: 100%;
     max-width: none;
@@ -5913,6 +5955,22 @@ h2 {
 
   .exit-confirm-shell .signature-modal-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feedback-modal {
+    place-items: start end;
+    padding:
+      max(72px, calc(env(safe-area-inset-top) + 72px))
+      max(18px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom))
+      max(18px, env(safe-area-inset-left));
+  }
+
+  .feedback-modal .feedback-modal-shell {
+    width: min(380px, calc(100vw - 36px));
+    height: auto;
+    max-height: calc(100vh - 96px);
+    overflow: auto;
   }
 }
 

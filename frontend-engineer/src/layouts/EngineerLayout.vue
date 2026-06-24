@@ -555,7 +555,7 @@ watch(
       </footer>
     </div>
   </div>
-  <div v-if="feedbackOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('反馈')" @click.self="closeFeedback">
+  <div v-if="feedbackOpen" class="signature-modal feedback-modal" role="dialog" aria-modal="true" :aria-label="zh('反馈')" @click.self="closeFeedback">
     <div class="signature-modal-shell feedback-modal-shell">
       <header class="signature-modal-head">
         <div>
