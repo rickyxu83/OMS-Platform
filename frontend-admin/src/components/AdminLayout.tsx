@@ -262,6 +262,11 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+function formatHeaderTime(value: Date) {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+}
+
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -496,7 +501,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <Search className="w-4 h-4" />
             </Button>
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={() => setFeedbackOpen(true)}
               className="h-8 w-8"
@@ -528,14 +533,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
           <div className="hidden items-center gap-6 lg:flex">
             <div className="text-sm text-muted-foreground">
-              {currentTime.toLocaleString(lang, {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
+              {formatHeaderTime(currentTime)}
             </div>
 
             {/* Quick Nav */}
@@ -550,10 +548,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Button>
 
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => setFeedbackOpen(true)}
-              className="gap-2"
+              className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
             >
               <MessageSquare className="w-4 h-4" />
               {strings.common.feedback}
