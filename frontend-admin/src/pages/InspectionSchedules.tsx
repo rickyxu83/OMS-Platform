@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,6 +63,13 @@ interface Engineer {
   username?: string;
 }
 
+interface FloatingDropdownBox {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+}
+
 const CADENCE_LABELS: Record<string, string> = {
   monthly: "每月",
   bimonthly: "每两月",
@@ -111,6 +119,10 @@ export function InspectionSchedules() {
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [engineerSearch, setEngineerSearch] = useState("");
   const [engineerOptionsOpen, setEngineerOptionsOpen] = useState(false);
+  const [customerDropdownBox, setCustomerDropdownBox] = useState<FloatingDropdownBox | null>(null);
+  const [engineerDropdownBox, setEngineerDropdownBox] = useState<FloatingDropdownBox | null>(null);
+  const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const engineerInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     name: "",
@@ -281,6 +293,56 @@ export function InspectionSchedules() {
   const selectedDeviceCount = form.deviceIds.length;
   const selectedEngineerCount = form.targetEngineerIds.length;
 
+  function measureDropdown(input: HTMLInputElement | null): FloatingDropdownBox | null {
+    if (!input || typeof window === "undefined") return null;
+    const rect = input.getBoundingClientRect();
+    const viewportPadding = 12;
+    const gap = 6;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const available = Math.max(120, (openAbove ? spaceAbove : spaceBelow) - gap);
+    const maxHeight = Math.min(260, available);
+    return {
+      top: openAbove ? Math.max(viewportPadding, rect.top - maxHeight - gap) : rect.bottom + gap,
+      left: Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - rect.width - viewportPadding)),
+      width: rect.width,
+      maxHeight,
+    };
+  }
+
+  function updateCustomerDropdownBox() {
+    setCustomerDropdownBox(measureDropdown(customerInputRef.current));
+  }
+
+  function updateEngineerDropdownBox() {
+    setEngineerDropdownBox(measureDropdown(engineerInputRef.current));
+  }
+
+  useEffect(() => {
+    if (!customerOptionsOpen) return;
+    updateCustomerDropdownBox();
+    const handleViewportChange = () => updateCustomerDropdownBox();
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [customerOptionsOpen, customerSearch, filteredCustomerOptions.length]);
+
+  useEffect(() => {
+    if (!engineerOptionsOpen) return;
+    updateEngineerDropdownBox();
+    const handleViewportChange = () => updateEngineerDropdownBox();
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [engineerOptionsOpen, engineerSearch, filteredEngineerOptions.length]);
+
   function toggleDevice(deviceId: number) {
     setForm((prev) => ({
       ...prev,
@@ -345,7 +407,7 @@ export function InspectionSchedules() {
   }
 
   function updateCustomer(customerId: string) {
-    setForm({ ...form, customerId, deviceIds: [] });
+    setForm((prev) => ({ ...prev, customerId, deviceIds: [] }));
     const customer = customers.find((c) => String(c.id) === customerId);
     setCustomerSearch(customer?.name || "");
     setCustomerOptionsOpen(false);
@@ -354,6 +416,7 @@ export function InspectionSchedules() {
   function updateCustomerSearch(value: string) {
     setCustomerSearch(value);
     setCustomerOptionsOpen(true);
+    updateCustomerDropdownBox();
     if (selectedCustomer && value !== (selectedCustomer.name || `客户 #${selectedCustomer.id}`)) {
       setForm((prev) => ({ ...prev, customerId: "", deviceIds: [] }));
     }
@@ -362,6 +425,7 @@ export function InspectionSchedules() {
   function toggleEngineer(engineerId: string) {
     setEngineerSearch("");
     setEngineerOptionsOpen(true);
+    updateEngineerDropdownBox();
     setForm((prev) => ({
       ...prev,
       targetEngineerIds: prev.targetEngineerIds.includes(engineerId)
@@ -436,6 +500,111 @@ export function InspectionSchedules() {
       setSaving(false);
     }
   }
+
+  const customerOptionsDropdown = dialogOpen && customerOptionsOpen && customerDropdownBox && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        className="fixed z-[70] overflow-y-auto rounded-md border border-border bg-background p-1 shadow-xl"
+        style={{
+          top: customerDropdownBox.top,
+          left: customerDropdownBox.left,
+          width: customerDropdownBox.width,
+          maxHeight: customerDropdownBox.maxHeight,
+        }}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        {filteredCustomerOptions.length ? (
+          filteredCustomerOptions.map((c) => {
+            const customerId = String(c.id);
+            const selected = form.customerId === customerId;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
+                  selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
+                }`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  updateCustomer(customerId);
+                }}
+              >
+                <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
+                {selected && <Badge variant="outline">已选</Badge>}
+              </button>
+            );
+          })
+        ) : (
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配客户</div>
+        )}
+      </div>,
+      document.body,
+    )
+    : null;
+
+  const engineerOptionsDropdown = dialogOpen && engineerOptionsOpen && engineerDropdownBox && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        className="fixed z-[70] space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-xl"
+        style={{
+          top: engineerDropdownBox.top,
+          left: engineerDropdownBox.left,
+          width: engineerDropdownBox.width,
+          maxHeight: engineerDropdownBox.maxHeight,
+        }}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        {filteredEngineerOptions.length ? (
+          filteredEngineerOptions.map((e) => {
+            const engineerId = String(e.id);
+            const checked = form.targetEngineerIds.includes(engineerId);
+            return (
+              <div
+                key={e.id}
+                role="checkbox"
+                aria-checked={checked}
+                tabIndex={0}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  toggleEngineer(engineerId);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    toggleEngineer(engineerId);
+                  }
+                }}
+                className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                  checked
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={checked}
+                  readOnly
+                  tabIndex={-1}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {e.realName || e.username || `工程师 #${e.id}`}
+                  </div>
+                  {e.username && e.realName && (
+                    <div className="text-xs text-muted-foreground">{e.username}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配工程师</div>
+        )}
+      </div>,
+      document.body,
+    )
+    : null;
 
   async function toggleActive(schedule: Schedule) {
     if (!schedule.id) return;
@@ -864,7 +1033,16 @@ export function InspectionSchedules() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setCustomerOptionsOpen(false);
+            setEngineerOptionsOpen(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "编辑巡检计划" : "新增巡检计划"}</DialogTitle>
@@ -892,36 +1070,16 @@ export function InspectionSchedules() {
               >
                 <Label>客户 *</Label>
                 <Input
+                  ref={customerInputRef}
                   value={customerSearch}
                   onChange={(event) => updateCustomerSearch(event.target.value)}
-                  onFocus={() => setCustomerOptionsOpen(true)}
+                  onFocus={() => {
+                    updateCustomerDropdownBox();
+                    setCustomerOptionsOpen(true);
+                  }}
                   placeholder="输入客户名称或选择客户"
                 />
-                {customerOptionsOpen && (
-                  <div className="absolute left-0 right-0 z-50 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-1 shadow-lg">
-                    {filteredCustomerOptions.length ? (
-                      filteredCustomerOptions.map((c) => {
-                        const customerId = String(c.id);
-                        const selected = form.customerId === customerId;
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
-                              selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
-                            }`}
-                            onClick={() => updateCustomer(customerId)}
-                          >
-                            <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
-                            {selected && <Badge variant="outline">已选</Badge>}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配客户</div>
-                    )}
-                  </div>
-                )}
+                {customerOptionsDropdown}
                 {selectedCustomer && (
                   <div className="text-xs text-muted-foreground">
                     已选：{selectedCustomer.name || `客户 #${selectedCustomer.id}`}
@@ -941,62 +1099,20 @@ export function InspectionSchedules() {
                   <span className="text-xs text-muted-foreground">已选 {selectedEngineerCount} 人</span>
                 </div>
                 <Input
+                  ref={engineerInputRef}
                   value={engineerSearch}
                   onChange={(event) => {
                     setEngineerSearch(event.target.value);
+                    updateEngineerDropdownBox();
                     setEngineerOptionsOpen(true);
                   }}
-                  onFocus={() => setEngineerOptionsOpen(true)}
+                  onFocus={() => {
+                    updateEngineerDropdownBox();
+                    setEngineerOptionsOpen(true);
+                  }}
                   placeholder={selectedEngineerCount ? "继续输入筛选工程师" : "输入工程师姓名或选择工程师"}
                 />
-                {engineerOptionsOpen && (
-                  <div className="absolute left-0 right-0 z-50 max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-lg">
-                    {filteredEngineerOptions.length ? (
-                      filteredEngineerOptions.map((e) => {
-                        const engineerId = String(e.id);
-                        const checked = form.targetEngineerIds.includes(engineerId);
-                        return (
-                          <div
-                            key={e.id}
-                            role="checkbox"
-                            aria-checked={checked}
-                            tabIndex={0}
-                            onClick={() => toggleEngineer(engineerId)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                toggleEngineer(engineerId);
-                              }
-                            }}
-                            className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
-                              checked
-                                ? "border-primary bg-primary/5"
-                                : "border-border hover:border-muted-foreground/30"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-primary"
-                              checked={checked}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={() => toggleEngineer(engineerId)}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">
-                                {e.realName || e.username || `工程师 #${e.id}`}
-                              </div>
-                              {e.username && e.realName && (
-                                <div className="text-xs text-muted-foreground">{e.username}</div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">未找到匹配工程师</div>
-                    )}
-                  </div>
-                )}
+                {engineerOptionsDropdown}
                 {selectedEngineerCount > 0 && (
                   <div className="text-xs text-muted-foreground">
                     已选：{selectedEngineerSummary}{selectedEngineerCount > 3 ? ` +${selectedEngineerCount - 3}` : ""}
