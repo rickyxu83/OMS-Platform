@@ -2106,20 +2106,30 @@ async function exportPdfBatch(req, res) {
 async function latestCustomerSignature(req, res) {
   const customerId = Number(req.query.customerId || 0)
   const nameKey = customerNameKey(req.query.customerName || '')
-  const filters = []
+  const contactName = String(req.query.contactName || '').trim()
+  const customerFilters = []
+  const contactFilters = []
   const params = {}
 
   if (customerId) {
-    filters.push('so.customer_id = :customerId')
+    customerFilters.push('so.customer_id = :customerId')
     params.customerId = customerId
   }
   if (nameKey) {
-    filters.push('c.name_key = :customerNameKey')
+    customerFilters.push('c.name_key = :customerNameKey')
     params.customerNameKey = nameKey
   }
-  if (!filters.length) {
-    throw badRequest('请先选择或填写客户名称')
+  if (contactName) {
+    contactFilters.push('TRIM(sr.customer_name) = :contactName')
+    params.contactName = contactName
   }
+  const filters = [...customerFilters, ...contactFilters]
+  if (!filters.length) {
+    throw badRequest('请先选择或填写客户名称或联系人')
+  }
+  const customerMatchRank = customerFilters.length && contactFilters.length
+    ? `CASE WHEN (${customerFilters.join(' OR ')}) THEN 0 ELSE 1 END,`
+    : ''
 
   const rows = await query(
     `SELECT sr.customer_signature_file_id, sr.customer_signature
@@ -2128,7 +2138,7 @@ async function latestCustomerSignature(req, res) {
      JOIN customers c ON c.id = so.customer_id
      WHERE (sr.customer_signature_file_id IS NOT NULL OR sr.customer_signature IS NOT NULL)
        AND (${filters.join(' OR ')})
-     ORDER BY COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
+     ORDER BY ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,
   )

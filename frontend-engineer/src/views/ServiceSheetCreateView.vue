@@ -1504,8 +1504,9 @@ async function useLatestCustomerSignature() {
   params.set('mine', '1')
   if (customer.id) params.set('customerId', customer.id)
   if (customer.name) params.set('customerName', customer.name)
-  if (!params.toString()) {
-    error.value = '请先选择或填写客户名称'
+  if (customer.contactName) params.set('contactName', customer.contactName)
+  if (!customer.id && !customer.name && !customer.contactName) {
+    error.value = '请先选择或填写客户名称或联系人'
     return
   }
 
@@ -1547,6 +1548,15 @@ function sameCustomer(left, right) {
   const leftName = left.name || left.customerName || ''
   const rightName = right.name || right.customerName || ''
   return leftName && rightName && leftName === rightName
+}
+
+function contactNameKey(value) {
+  return String(value || '').replace(/\s+/g, '').trim()
+}
+
+function clearSignatureWhenContactChanged(previousName, nextName) {
+  if (!customerSignature.value) return
+  if (contactNameKey(previousName) !== contactNameKey(nextName)) clearSignature()
 }
 
 function findCustomerProfile(customer) {
@@ -1783,13 +1793,14 @@ function applyCustomer(customer, sourceId = '') {
   const normalized = customerWithProfile(customer)
   const contact = preferredContactForCustomer(normalized)
   const customerChanged = !sameCustomer(selectedCustomer.value, normalized)
-  if (customerChanged) clearSignature()
-  selectedHistoryId.value = sourceId
-  selectedCustomer.value = {
+  const nextCustomer = {
     ...normalized,
     contactName: contact.name || normalized.contactName || '',
     contactPhone: contact.phone || normalized.contactPhone || '',
   }
+  clearSignatureWhenContactChanged(activeCustomer.value.contactName, nextCustomer.contactName)
+  selectedHistoryId.value = sourceId
+  selectedCustomer.value = nextCustomer
   showContactOptions.value = false
   showNearbyCompanies.value = false
   if (customerChanged && currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
@@ -1995,10 +2006,12 @@ function clearInactiveFieldErrors() {
 
 function applyContactFields(fields) {
   const current = normalizeCustomer(activeCustomer.value)
-  selectedCustomer.value = {
+  const nextCustomer = {
     ...current,
     ...fields,
   }
+  clearSignatureWhenContactChanged(current.contactName, nextCustomer.contactName)
+  selectedCustomer.value = nextCustomer
 }
 
 function updateCustomerField(field, value) {
@@ -2014,12 +2027,9 @@ function updateCustomerField(field, value) {
   clearFieldError(field)
   if (field === 'name') {
     selectedCustomer.value.id = ''
-    selectedCustomer.value.contactName = ''
-    selectedCustomer.value.contactPhone = ''
     selectedCustomer.value.contacts = []
     locationHint.value = String(value || '').trim() ? '正在匹配系统客户…' : ''
     scheduleCustomerLibrarySearch(value)
-    clearSignature()
   }
   if (field === 'name' || field === 'address') {
     if (currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
