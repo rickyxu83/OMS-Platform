@@ -126,6 +126,8 @@ CREATE TABLE service_orders (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   order_no VARCHAR(32) NOT NULL,
   customer_id BIGINT UNSIGNED NOT NULL,
+  contact_name VARCHAR(64) NULL,
+  contact_phone VARCHAR(32) NULL,
   device_id BIGINT UNSIGNED NULL,
   service_mode ENUM('onsite', 'remote', 'office') NOT NULL DEFAULT 'onsite',
   service_type ENUM('install', 'repair', 'maintain', 'inspect', 'training', 'other') NOT NULL,

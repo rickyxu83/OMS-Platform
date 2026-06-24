@@ -30,7 +30,20 @@ let servicePartsColumnsReady = false
 const orderColumns = `
   so.id, so.order_no, so.customer_id, c.name AS customer_name, c.address AS customer_address,
   c.salesperson AS customer_salesperson,
-  c.contact_name, c.contact_phone, so.device_id,
+  COALESCE(
+    NULLIF(so.contact_name, ''),
+    NULLIF((
+      SELECT sr.customer_name
+      FROM service_reports sr
+      WHERE sr.service_order_id = so.id
+      ORDER BY sr.id DESC
+      LIMIT 1
+    ), ''),
+    c.contact_name
+  ) AS contact_name,
+  COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone) AS contact_phone,
+  so.contact_name AS order_contact_name, so.contact_phone AS order_contact_phone,
+  so.device_id,
   COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
   so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
@@ -190,10 +203,27 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
      WHERE table_schema = DATABASE()
        AND table_name = 'service_orders'
        AND column_name IN (
+         'contact_name', 'contact_phone',
          'inspection_schedule_id', 'inspection_occurrence_date', 'target_engineer_id', 'confirmed_by', 'confirmed_at'
        )`,
   )
   const existing = new Set(rows.map((row) => row.columnName || row.column_name))
+  if (!existing.has('contact_name')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN contact_name VARCHAR(64) NULL AFTER customer_id')
+  }
+  if (!existing.has('contact_phone')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN contact_phone VARCHAR(32) NULL AFTER contact_name')
+  }
+  if (!existing.has('contact_name') || !existing.has('contact_phone')) {
+    await execute(
+      `UPDATE service_orders so
+       LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+       JOIN customers c ON c.id = so.customer_id
+       SET so.contact_name = COALESCE(NULLIF(so.contact_name, ''), NULLIF(sr.customer_name, ''), c.contact_name),
+           so.contact_phone = COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone)
+       WHERE so.contact_name IS NULL OR so.contact_name = '' OR so.contact_phone IS NULL OR so.contact_phone = ''`,
+    )
+  }
   if (!existing.has('inspection_schedule_id')) {
     await execute('ALTER TABLE service_orders ADD COLUMN inspection_schedule_id BIGINT UNSIGNED NULL AFTER internal_note')
   }
@@ -1150,6 +1180,7 @@ async function list(req, res) {
 }
 
 async function statsOverview(req, res) {
+  await ensureServiceOrderInspectionColumns()
   const salesScope = buildSalesCustomerScope(req.user, 'c')
 
   const [summaryRows, trendRows, recentRows] = await Promise.all([
@@ -1464,6 +1495,19 @@ async function customerSalesperson(connection, customerId) {
   return rows[0]?.salesperson || null
 }
 
+async function customerDefaultContact(connection, customerId) {
+  if (!customerId) return { contactName: null, contactPhone: null }
+  const [rows] = await connection.execute(
+    'SELECT contact_name, contact_phone FROM customers WHERE id = :customerId LIMIT 1',
+    { customerId },
+  )
+  const row = rows[0] || {}
+  return {
+    contactName: row.contact_name || null,
+    contactPhone: normalizeCustomerContactPhone(row.contact_phone) || row.contact_phone || null,
+  }
+}
+
 async function assertDeviceBelongsToCustomer(connection, deviceId, customerId) {
   if (!deviceId) return
   const [rows] = await connection.execute('SELECT id FROM devices WHERE id = :deviceId AND customer_id = :customerId LIMIT 1', {
@@ -1589,21 +1633,24 @@ async function create(req, res) {
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
     const status = normalizedPrimaryEngineerId ? 'assigned' : 'draft'
     const salespersonSnapshot = timesheetSalesperson || (await customerSalesperson(connection, customerId))
+    const defaultContact = await customerDefaultContact(connection, customerId)
 
     const [insertResult] = await connection.execute(
       `INSERT INTO service_orders (
-         order_no, customer_id, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
+         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
          assigned_engineer_id, target_engineer_id, planned_start_at, planned_end_at, internal_note, created_by
        )
        VALUES (
-         :orderNo, :customerId, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
+         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
          :priority, :status, :issueDescription,
          :assignedEngineerId, :targetEngineerId, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy
        )`,
       {
         orderNo,
         customerId,
+        contactName: defaultContact.contactName,
+        contactPhone: defaultContact.contactPhone,
         deviceId: deviceId || null,
         serviceMode: ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite',
         serviceType,
@@ -1787,8 +1834,8 @@ async function createSelfReport(req, res) {
              map_poi_name = COALESCE(NULLIF(:customerMapPoiName, ''), map_poi_name),
              map_address = COALESCE(NULLIF(:customerMapAddress, ''), map_address),
              address = COALESCE(NULLIF(:customerAddress, ''), address),
-             contact_name = COALESCE(NULLIF(:contactName, ''), contact_name),
-             contact_phone = COALESCE(NULLIF(:contactPhone, ''), contact_phone)
+             contact_name = COALESCE(NULLIF(contact_name, ''), :contactName),
+             contact_phone = COALESCE(NULLIF(contact_phone, ''), :contactPhone)
          WHERE id = :customerId`,
         {
           customerId: effectiveCustomerId,
@@ -1853,18 +1900,20 @@ async function createSelfReport(req, res) {
 
     const [orderResult] = await connection.execute(
       `INSERT INTO service_orders (
-         order_no, customer_id, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
+         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
          assigned_engineer_id, internal_note, created_by, submitted_at
        )
        VALUES (
-         :orderNo, :customerId, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
+         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
          :priority, 'submitted', :issueDescription,
          :engineerId, :internalNote, :createdBy, CURRENT_TIMESTAMP
        )`,
       {
         orderNo,
         customerId: effectiveCustomerId,
+        contactName: contactName || null,
+        contactPhone: customerProfileContactPhone || null,
         deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
@@ -2362,8 +2411,8 @@ async function updateSelfReport(req, res) {
         await connection.execute(
           `UPDATE customers
            SET address = COALESCE(NULLIF(:customerAddress, ''), address),
-               contact_name = COALESCE(NULLIF(:contactName, ''), contact_name),
-               contact_phone = COALESCE(NULLIF(:contactPhone, ''), contact_phone),
+               contact_name = COALESCE(NULLIF(contact_name, ''), :contactName),
+               contact_phone = COALESCE(NULLIF(contact_phone, ''), :contactPhone),
                latitude = COALESCE(:customerLatitude, latitude),
                longitude = COALESCE(:customerLongitude, longitude),
                map_provider = COALESCE(:customerMapProvider, map_provider),
@@ -2390,8 +2439,8 @@ async function updateSelfReport(req, res) {
            SET name = :customerName,
                name_key = :customerNameKey,
                address = :customerAddress,
-               contact_name = :contactName,
-               contact_phone = :contactPhone,
+               contact_name = COALESCE(NULLIF(contact_name, ''), :contactName),
+               contact_phone = COALESCE(NULLIF(contact_phone, ''), :contactPhone),
                latitude = COALESCE(:customerLatitude, latitude),
                longitude = COALESCE(:customerLongitude, longitude),
                map_provider = COALESCE(:customerMapProvider, map_provider),
@@ -2478,6 +2527,8 @@ async function updateSelfReport(req, res) {
     await connection.execute(
       `UPDATE service_orders
        SET customer_id = :customerId,
+           contact_name = :contactName,
+           contact_phone = :contactPhone,
            device_id = :deviceId,
            service_mode = :serviceMode,
            service_type = :serviceType,
@@ -2496,6 +2547,8 @@ async function updateSelfReport(req, res) {
       {
         id: req.params.id,
         customerId: effectiveCustomerId,
+        contactName: contactName || customerConfirmName || null,
+        contactPhone: customerProfileContactPhone || null,
         deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,

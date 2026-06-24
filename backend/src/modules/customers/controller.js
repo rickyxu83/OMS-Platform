@@ -884,6 +884,12 @@ async function merge(req, res) {
         updatedBy: req.user?.id || null,
       },
     )
+    await recordContact(
+      connection,
+      sourceCustomerId,
+      sourceCustomer.contact_name,
+      normalizePhoneNumber(sourceCustomer.contact_phone) || sourceCustomer.contact_phone || null,
+    )
     await mergeCustomerContacts(connection, sourceCustomerId, targetCustomerId)
 
     const aliases = new Set()
@@ -895,8 +901,6 @@ async function merge(req, res) {
     await connection.execute(
       `UPDATE customers
        SET address = COALESCE(NULLIF(address, ''), :address),
-           contact_name = COALESCE(NULLIF(contact_name, ''), :contactName),
-           contact_phone = COALESCE(NULLIF(contact_phone, ''), :contactPhone),
            salesperson = COALESCE(NULLIF(salesperson, ''), :salesperson),
            level = COALESCE(level, :level),
            latitude = COALESCE(latitude, :latitude),
@@ -910,8 +914,6 @@ async function merge(req, res) {
       {
         targetCustomerId,
         address: sourceCustomer.address || null,
-        contactName: sourceCustomer.contact_name || null,
-        contactPhone: normalizePhoneNumber(sourceCustomer.contact_phone) || sourceCustomer.contact_phone || null,
         salesperson: sourceCustomer.salesperson || null,
         level: normalizeCustomerLevel(sourceCustomer.level),
         latitude: sourceCustomer.latitude || null,
