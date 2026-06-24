@@ -194,8 +194,9 @@ async function create(req, res) {
     warrantyUntil,
   } = req.body || {}
   const normalizedModel = normalizeText(model)
-  if (!customerId || !normalizedModel) {
-    throw badRequest('客户和设备型号不能为空')
+  const normalizedSerialNo = normalizeText(serialNo)
+  if (!customerId || !normalizedModel || !normalizedSerialNo) {
+    throw badRequest('客户、设备型号和 S/N 序列号不能为空')
   }
   const normalizedName = normalizeText(name)
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
@@ -215,8 +216,8 @@ async function create(req, res) {
       customerId,
       name: normalizedName,
       model: normalizedModel,
-      pn: pn || null,
-      serialNo: serialNo || null,
+      pn: normalizeText(pn),
+      serialNo: normalizedSerialNo,
       remark: remark || null,
       maintenanceType: normalizedMaintenanceType,
       maintenancePartyId: normalizedMaintenancePartyId,

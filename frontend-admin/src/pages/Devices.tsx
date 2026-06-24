@@ -626,6 +626,11 @@ export function Devices() {
           setError(`第 ${missingModel.index + 1} 行缺少设备型号，请填写该行型号或上方默认型号`);
           return;
         }
+        const missingSerialNo = rows.find((row) => !row.serialNo);
+        if (missingSerialNo) {
+          setError(`第 ${missingSerialNo.index + 1} 行缺少 S/N 序列号`);
+          return;
+        }
 
         for (const row of rows) {
           await api.post("/devices", {
@@ -639,6 +644,10 @@ export function Devices() {
       } else {
         if (!form.model.trim()) {
           setError("请输入设备型号");
+          return;
+        }
+        if (!form.serialNo.trim()) {
+          setError("请输入 S/N 序列号");
           return;
         }
         const payload: Record<string, unknown> = {
@@ -1395,7 +1404,7 @@ export function Devices() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label>序列号 SN</Label>
+                    <Label>序列号 SN *</Label>
                     <Input
                       value={form.serialNo}
                       onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
@@ -1499,7 +1508,7 @@ export function Devices() {
                     <div>
                       <Label>设备明细 *</Label>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        每行一台设备；空行会自动忽略，行内型号为空时使用上方默认型号。
+                        每行一台设备；空行会自动忽略，行内型号为空时使用上方默认型号，S/N 每行必填。
                       </p>
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={addBatchRow} disabled={saving}>
@@ -1511,7 +1520,7 @@ export function Devices() {
                     <div className="hidden grid-cols-[1fr_1.25fr_1fr_44px] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
                       <span>主机名</span>
                       <span>型号</span>
-                      <span>SN</span>
+                      <span>SN *</span>
                       <span />
                     </div>
                     <div className="divide-y">
@@ -1530,7 +1539,7 @@ export function Devices() {
                           <Input
                             value={row.serialNo}
                             onChange={(e) => updateBatchRow(index, "serialNo", e.target.value)}
-                            placeholder="SN；多个值用 ; 隔开"
+                            placeholder="SN 必填；多个值用 ; 隔开"
                           />
                           <Button
                             type="button"

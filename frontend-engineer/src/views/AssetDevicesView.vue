@@ -341,6 +341,11 @@ async function saveDevice() {
         error.value = `第 ${missingModel.index + 1} 行缺少设备型号，请填写该行型号或上方默认型号`
         return
       }
+      const missingSerialNo = rows.find((row) => !row.serialNo)
+      if (missingSerialNo) {
+        error.value = `第 ${missingSerialNo.index + 1} 行缺少 S/N 序列号`
+        return
+      }
 
       for (const row of rows) {
         await api.post('/devices', {
@@ -354,6 +359,10 @@ async function saveDevice() {
     } else {
       if (!form.value.model.trim()) {
         error.value = '请输入设备型号'
+        return
+      }
+      if (!form.value.serialNo.trim()) {
+        error.value = '请输入 S/N 序列号'
         return
       }
       const payload = {
@@ -620,7 +629,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </label>
-            <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号；多个值用 ; 隔开')" /></label>
+            <label>{{ zh('序列号 SN *') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号必填；多个值用 ; 隔开')" /></label>
           </template>
           <label>{{ zh('维保类型') }}
             <select :value="form.maintenanceType" @change="changeMaintenanceType($event.target.value)">
@@ -659,7 +668,7 @@ onBeforeUnmount(() => {
               <div class="asset-editor-batch-head">
                 <span>{{ zh('主机名') }}</span>
                 <span>{{ zh('型号') }}</span>
-                <span>{{ zh('SN') }}</span>
+                <span>{{ zh('SN *') }}</span>
                 <span></span>
               </div>
               <div
@@ -682,7 +691,7 @@ onBeforeUnmount(() => {
                 <input
                   :value="row.serialNo"
                   type="text"
-                  :placeholder="zh('SN；多个值用 ; 隔开')"
+                  :placeholder="zh('SN 必填；多个值用 ; 隔开')"
                   @input="updateBatchRow(index, 'serialNo', $event.target.value)"
                 />
                 <button class="ghost asset-editor-row-remove" type="button" :disabled="saving" :aria-label="zh(`删除第 ${index + 1} 行`)" @click="removeBatchRow(index)">
