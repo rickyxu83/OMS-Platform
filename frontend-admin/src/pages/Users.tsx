@@ -44,16 +44,16 @@ const ROLE_LABELS: Record<string, string> = {
   engineer: "工程师",
 };
 
-const ROLE_BADGE_CLASS: Record<string, string> = {
-  admin: "border-rose-200 bg-rose-50 text-rose-700",
-  assistant: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  dispatcher: "border-violet-200 bg-violet-50 text-violet-700",
-  operations_director: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  engineering_supervisor: "border-blue-200 bg-blue-50 text-blue-700",
-  administrative_supervisor: "border-teal-200 bg-teal-50 text-teal-700",
-  sales_supervisor: "border-amber-200 bg-amber-50 text-amber-700",
-  sales: "border-orange-200 bg-orange-50 text-orange-700",
-  engineer: "border-slate-200 bg-slate-50 text-slate-700",
+const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "warning" | "secondary" | "rose" | "cyan" | "teal" | "orange"> = {
+  admin: "rose",
+  assistant: "cyan",
+  dispatcher: "purple",
+  operations_director: "success",
+  engineering_supervisor: "info",
+  administrative_supervisor: "teal",
+  sales_supervisor: "warning",
+  sales: "orange",
+  engineer: "secondary",
 };
 
 const STATUS_VARIANT: Record<string, "success" | "secondary"> = {
@@ -492,7 +492,7 @@ export function Users() {
                           ) : null}
                         </div>
                         <div>
-                          <Badge variant="outline" className={ROLE_BADGE_CLASS[user.role || ""] || "border-slate-200 bg-slate-50 text-slate-700"}>
+                          <Badge variant={ROLE_VARIANT[user.role || ""] || "secondary"}>
                             {roleLabel}
                           </Badge>
                         </div>
