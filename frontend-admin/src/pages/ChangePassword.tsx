@@ -6,8 +6,16 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
+const passwordRules = [
+  { label: "至少 8 位", test: (value: string) => value.length >= 8 },
+  { label: "包含小写字母", test: (value: string) => /[a-z]/.test(value) },
+  { label: "包含大写字母", test: (value: string) => /[A-Z]/.test(value) },
+  { label: "包含数字", test: (value: string) => /\d/.test(value) },
+  { label: "包含特殊符号", test: (value: string) => /[^A-Za-z0-9]/.test(value) },
+];
+
 function passwordComplex(value: string) {
-  return value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value) && /[^A-Za-z0-9]/.test(value);
+  return passwordRules.every((rule) => rule.test(value));
 }
 
 export function ChangePassword() {
@@ -19,6 +27,7 @@ export function ChangePassword() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const passwordRuleState = passwordRules.map((rule) => ({ ...rule, passed: rule.test(newPassword) }));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -76,7 +85,23 @@ export function ChangePassword() {
           </div>
           <div className="space-y-2">
             <Label>新密码</Label>
-            <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              aria-describedby="password-policy"
+              required
+            />
+            <div id="password-policy" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <p className="mb-2 font-medium text-slate-700">密码要求</p>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {passwordRuleState.map((rule) => (
+                  <span key={rule.label} className={rule.passed ? "text-emerald-700" : "text-slate-500"}>
+                    {rule.passed ? "已满足" : "需满足"}：{rule.label}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>确认新密码</Label>
