@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
@@ -24,6 +24,8 @@ const customerDropdownOpen = ref(false)
 const customerSearchLoading = ref(false)
 const modelSuggestions = ref([])
 const modelLoading = ref(false)
+const modelDropdownOpen = ref(false)
+const modelComboRef = ref(null)
 
 let customerSearchTimer = null
 let modelSearchTimer = null
@@ -305,8 +307,10 @@ function scheduleModelSearch(value) {
   const keyword = String(value || '').trim()
   if (keyword.length < 2) {
     modelSuggestions.value = []
+    modelDropdownOpen.value = false
     return
   }
+  modelDropdownOpen.value = true
   modelSearchTimer = window.setTimeout(async () => {
     modelLoading.value = true
     try {
@@ -324,9 +328,17 @@ function applyModelSuggestion(suggestion) {
   form.value.model = suggestion.canonicalModel || suggestion.officialName || form.value.model
   form.value.pn = suggestion.partNumber || form.value.pn
   modelSuggestions.value = []
+  modelDropdownOpen.value = false
+}
+
+function handleModelOutsidePointer(event) {
+  if (!modelDropdownOpen.value) return
+  if (modelComboRef.value?.contains?.(event.target)) return
+  modelDropdownOpen.value = false
 }
 
 onMounted(async () => {
+  document.addEventListener('pointerdown', handleModelOutsidePointer)
   try {
     customerFilter.value = String(route.query.customerId || '')
     await loadBaseData()
@@ -334,6 +346,11 @@ onMounted(async () => {
   } catch (err) {
     error.value = err.message || '加载失败'
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleModelOutsidePointer)
+  window.clearTimeout(modelSearchTimer)
 })
 </script>
 
@@ -433,15 +450,16 @@ onMounted(async () => {
           </label>
           <label>{{ zh('主机名') }}<input v-model="form.name" type="text" :placeholder="zh('例如 sz5eap01，可不填')" /></label>
           <label>{{ zh('设备型号 *') }}
-            <div class="asset-combo-field">
+            <div ref="modelComboRef" class="asset-combo-field">
               <input
                 v-model="form.model"
                 type="text"
                 :placeholder="zh('例如 PowerEdge R740')"
                 autocomplete="off"
+                @focus="modelDropdownOpen = Boolean(modelLoading || modelSuggestions.length)"
                 @input="scheduleModelSearch(form.model)"
               />
-              <div v-if="modelLoading || modelSuggestions.length" class="asset-dropdown">
+              <div v-if="modelDropdownOpen && (modelLoading || modelSuggestions.length)" class="asset-dropdown">
                 <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
                 <button
                   v-for="(suggestion, index) in modelSuggestions"

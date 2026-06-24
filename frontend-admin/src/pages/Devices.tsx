@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -204,6 +204,8 @@ export function Devices() {
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const [modelTimer, setModelTimer] = useState<number | null>(null);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
   const [customerInput, setCustomerInput] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
@@ -306,6 +308,17 @@ export function Devices() {
       return next.length === ids.length ? ids : next;
     });
   }, [filtered]);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && modelDropdownRef.current?.contains(target)) return;
+      setModelDropdownOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [modelDropdownOpen]);
 
   function toggleDeviceSelection(deviceId: string | number, checked: boolean | "indeterminate") {
     const id = String(deviceId);
@@ -505,8 +518,10 @@ export function Devices() {
     const keyword = value.trim();
     if (keyword.length < 2) {
       setModelSuggestions([]);
+      setModelDropdownOpen(false);
       return;
     }
+    setModelDropdownOpen(true);
     const timerId = window.setTimeout(async () => {
       setModelLoading(true);
       try {
@@ -528,6 +543,7 @@ export function Devices() {
       pn: suggestion.partNumber || prev.pn,
     }));
     setModelSuggestions([]);
+    setModelDropdownOpen(false);
   }
 
   async function deleteDevice(device: Device) {
@@ -1044,17 +1060,20 @@ export function Devices() {
                   placeholder="例如 sz5eap01，可不填"
                 />
               </div>
-              <div className="space-y-2 relative">
+              <div className="space-y-2 relative" ref={modelDropdownRef}>
                 <Label>设备型号 *</Label>
                 <Input
                   value={form.model}
+                  onFocus={() => {
+                    if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
+                  }}
                   onChange={(e) => {
                     setForm({ ...form, model: e.target.value });
                     scheduleModelSearch(e.target.value);
                   }}
                   placeholder="例如 PowerEdge R740"
                 />
-                {(modelLoading || modelSuggestions.length > 0) && (
+                {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
                   <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
                     {modelLoading ? (
                       <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">

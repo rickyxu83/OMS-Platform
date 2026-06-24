@@ -1,5 +1,49 @@
 const IMPORTED_FIXTURE_DATA = require('./imported-fixture-data')
 
+function dellEmcVnxModel(model) {
+  const compact = `VNX${model}`
+  const spaced = `VNX ${model}`
+  return {
+    brand: 'Dell EMC',
+    category: 'storage',
+    canonicalModel: `Dell EMC VNX ${model}`,
+    partNumber: compact,
+    aliases: [
+      `Dell EMC VNX ${model}`,
+      `Dell EMC ${compact}`,
+      `EMC VNX ${model}`,
+      `EMC ${compact}`,
+      spaced,
+      compact,
+    ],
+  }
+}
+
+function dellEmcVnxeModel(model) {
+  const compact = `VNXe${model}`
+  const spaced = `VNXe ${model}`
+  return {
+    brand: 'Dell EMC',
+    category: 'storage',
+    canonicalModel: `Dell EMC VNXe ${model}`,
+    partNumber: compact,
+    aliases: [
+      `Dell EMC VNXe ${model}`,
+      `Dell EMC ${compact}`,
+      `EMC VNXe ${model}`,
+      `EMC ${compact}`,
+      spaced,
+      compact,
+    ],
+  }
+}
+
+const DELL_EMC_VNX_FIXTURE_DATA = [
+  ...['5100', '5300', '5500', '5700', '7500'].map(dellEmcVnxModel),
+  ...['5200', '5400', '5600', '5800', '7600', '8000'].map(dellEmcVnxModel),
+  ...['3100', '3150', '3200', '3300'].map(dellEmcVnxeModel),
+]
+
 const BASE_FIXTURE_DATA = [
   {
     brand: 'HPE',
@@ -355,4 +399,4 @@ const BASE_FIXTURE_DATA = [
   },
 ]
 
-module.exports = [...BASE_FIXTURE_DATA, ...IMPORTED_FIXTURE_DATA]
+module.exports = [...BASE_FIXTURE_DATA, ...DELL_EMC_VNX_FIXTURE_DATA, ...IMPORTED_FIXTURE_DATA]
