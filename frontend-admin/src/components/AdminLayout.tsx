@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
+import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 
 interface NavItem {
@@ -262,6 +263,13 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+interface Announcement {
+  id: number;
+  title: string;
+  contentMarkdown: string;
+  kind: "info" | "warning" | "success";
+}
+
 function formatHeaderTime(value: Date) {
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
@@ -282,6 +290,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [feedbackType, setFeedbackType] = useState<"problem" | "suggestion">("problem");
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const strings = STRINGS[lang];
@@ -303,6 +314,21 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     media.addEventListener("change", syncSidebar);
     return () => media.removeEventListener("change", syncSidebar);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/announcements/unread")
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setAnnouncements(items);
+        setAnnouncementOpen(items.length > 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const handleLangToggle = () => {
     const nextLang = lang === "zh-CN" ? "zh-TW" : "zh-CN";
@@ -370,6 +396,31 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       setFeedbackSubmitting(false);
     }
   };
+
+  const currentAnnouncement = announcements[0] || null;
+
+  const acknowledgeAnnouncement = async () => {
+    if (!currentAnnouncement || announcementSubmitting) return;
+    setAnnouncementSubmitting(true);
+    try {
+      await api.post(`/announcements/${currentAnnouncement.id}/read`);
+      setAnnouncements((items) => {
+        const nextItems = items.filter((item) => item.id !== currentAnnouncement.id);
+        setAnnouncementOpen(nextItems.length > 0);
+        return nextItems;
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "确认公告失败");
+    } finally {
+      setAnnouncementSubmitting(false);
+    }
+  };
+
+  const announcementIcon = currentAnnouncement?.kind === "warning"
+    ? "⚠️"
+    : currentAnnouncement?.kind === "success"
+      ? "✅"
+      : "📣";
 
   return (
     <div className="flex h-screen bg-background">
@@ -711,6 +762,30 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 {feedbackSubmitting ? "提交中…" : strings.common.feedbackSubmit}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={announcementOpen && Boolean(currentAnnouncement)}
+        onOpenChange={(open) => {
+          if (!open) acknowledgeAnnouncement();
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-8">
+              <span aria-hidden="true" className="text-xl">{announcementIcon}</span>
+              <span>{currentAnnouncement?.title || "公告"}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[56vh] overflow-y-auto rounded-lg border bg-slate-50/70 p-4">
+            <MarkdownContent content={currentAnnouncement?.contentMarkdown || ""} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button onClick={acknowledgeAnnouncement} disabled={announcementSubmitting}>
+              {announcementSubmitting ? "确认中…" : announcements.length > 1 ? `已读，下一条 (${announcements.length - 1})` : "已读并关闭"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

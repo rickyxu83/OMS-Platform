@@ -10,6 +10,7 @@ const { errorHandler, notFoundHandler } = require('./middleware/error-handler')
 const { simplifyInput } = require('./middleware/simplify-input')
 
 const authRoutes = require('./modules/auth/routes')
+const announcementRoutes = require('./modules/announcements/routes')
 const auditLogRoutes = require('./modules/audit-logs/routes')
 const customerRoutes = require('./modules/customers/routes')
 const deviceRoutes = require('./modules/devices/routes')
@@ -78,6 +79,7 @@ pool
   })
 
 app.use('/api/v1/auth', authRoutes)
+app.use('/api/v1/announcements', authenticate, auditLogger, announcementRoutes)
 app.use('/api/v1/users', authenticate, auditLogger, userRoutes)
 app.use('/api/v1/customers', authenticate, requireEngineerOnboardingComplete, auditLogger, customerRoutes)
 app.use('/api/v1/devices', authenticate, requireEngineerOnboardingComplete, auditLogger, deviceRoutes)

@@ -14,6 +14,7 @@ import {
   readLocalSelfReportDraft,
 } from '../services/self-report-draft'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from '../services/safe-storage'
+import { renderMarkdown } from '../services/markdown'
 import { pendingSyncCount, refreshPendingSyncQueue, syncPendingSelfReports } from '../services/sync-queue'
 
 const { language, setLanguage, zh } = usePreviewI18n()
@@ -29,6 +30,9 @@ const feedbackType = ref('problem')
 const feedbackContent = ref('')
 const feedbackSubmitting = ref(false)
 const feedbackMessage = ref('')
+const announcements = ref([])
+const announcementOpen = ref(false)
+const announcementSubmitting = ref(false)
 const formDraftPending = ref(false)
 const createFabPosition = ref({ x: null, y: null })
 const createFabDragging = ref(false)
@@ -93,6 +97,13 @@ const createModeOptions = [
   { mode: 'remote', label: '远程服务', icon: 'remote-service', className: 'remote' },
   { mode: 'office', label: '内勤工作', icon: 'office-service', className: 'office' },
 ]
+const currentAnnouncement = computed(() => announcements.value[0] || null)
+const currentAnnouncementHtml = computed(() => renderMarkdown(currentAnnouncement.value?.contentMarkdown || ''))
+const currentAnnouncementIcon = computed(() => {
+  if (currentAnnouncement.value?.kind === 'warning') return '⚠️'
+  if (currentAnnouncement.value?.kind === 'success') return '✅'
+  return '📣'
+})
 const createModePanelStyle = computed(() => {
   if (createFabPosition.value.x !== null && createFabPosition.value.y !== null) {
     return { left: `${createFabPosition.value.x}px`, top: `${createFabPosition.value.y}px`, right: 'auto', bottom: 'auto' }
@@ -390,6 +401,29 @@ async function submitFeedback() {
   }
 }
 
+async function loadUnreadAnnouncements() {
+  try {
+    const data = await api.get('/announcements/unread')
+    announcements.value = Array.isArray(data?.items) ? data.items : []
+    announcementOpen.value = announcements.value.length > 0
+  } catch {}
+}
+
+async function acknowledgeAnnouncement() {
+  if (!currentAnnouncement.value || announcementSubmitting.value) return
+  const announcementId = currentAnnouncement.value.id
+  announcementSubmitting.value = true
+  try {
+    await api.post(`/announcements/${announcementId}/read`, {})
+    announcements.value = announcements.value.filter((item) => item.id !== announcementId)
+    announcementOpen.value = announcements.value.length > 0
+  } catch (error) {
+    feedbackMessage.value = error instanceof Error ? error.message : '确认公告失败'
+  } finally {
+    announcementSubmitting.value = false
+  }
+}
+
 async function discardDraftAndExit() {
   window.dispatchEvent(new CustomEvent('rc-discard-current-draft'))
   const orderId = currentDraftOrderId()
@@ -412,6 +446,7 @@ function handleFormDirtyState(event) {
 
 onMounted(() => {
   refreshPendingSyncQueue()
+  loadUnreadAnnouncements()
   startNetworkWatch()
   if (isOnline.value && pendingSyncCount.value) {
     syncPendingSelfReports().catch(() => {})
@@ -561,6 +596,21 @@ watch(
     >
       <PreviewIcon :name="option.icon" />
     </button>
+  </div>
+  <div v-if="announcementOpen && currentAnnouncement" class="signature-modal announcement-modal" role="dialog" aria-modal="true" :aria-label="zh('公告')">
+    <div class="signature-modal-shell announcement-modal-shell">
+      <header class="signature-modal-head">
+        <div>
+          <h2><span aria-hidden="true">{{ currentAnnouncementIcon }}</span>{{ zh(currentAnnouncement.title || '公告') }}</h2>
+        </div>
+      </header>
+      <div class="announcement-modal-body markdown-content" v-html="currentAnnouncementHtml"></div>
+      <footer class="signature-modal-actions">
+        <button class="primary" type="button" :disabled="announcementSubmitting" @click="acknowledgeAnnouncement">
+          <PreviewIcon name="send" />{{ zh(announcementSubmitting ? '确认中…' : announcements.length > 1 ? `已读，下一条 (${announcements.length - 1})` : '已读并关闭') }}
+        </button>
+      </footer>
+    </div>
   </div>
   <div v-if="exitConfirmOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('取消填写')">
     <div class="signature-modal-shell exit-confirm-shell">

@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { Loader2, MapPinned, RefreshCw, Save, Send, WandSparkles } from "lucide-react";
+import { Bell, Loader2, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 
 interface SettingsForm {
@@ -41,6 +45,22 @@ interface SettingsForm {
   };
 }
 
+interface AnnouncementForm {
+  title: string;
+  contentMarkdown: string;
+  kind: "info" | "warning" | "success";
+  active: boolean;
+  targetRoles: string[];
+  startsAt: string;
+  endsAt: string;
+}
+
+interface AnnouncementItem extends AnnouncementForm {
+  id: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 const emptyForm: SettingsForm = {
   ai: {
     workSummaryEnabled: false,
@@ -74,19 +94,74 @@ const emptyForm: SettingsForm = {
   },
 };
 
+const emptyAnnouncementForm: AnnouncementForm = {
+  title: "",
+  contentMarkdown: "",
+  kind: "info",
+  active: true,
+  targetRoles: [],
+  startsAt: "",
+  endsAt: "",
+};
+
+const roleOptions = [
+  ["admin", "管理员"],
+  ["assistant", "助理"],
+  ["dispatcher", "调度"],
+  ["operations_director", "运营负责人"],
+  ["engineering_supervisor", "工程主管"],
+  ["administrative_supervisor", "行政主管"],
+  ["sales_supervisor", "业务主管"],
+  ["sales", "业务"],
+  ["engineer", "工程师"],
+];
+
+const quickEmoji = ["📣", "⚠️", "✅", "🛠️", "📌", "📝", "🚀", "💡"];
+
 function toBool(value: unknown) {
   return value === true || value === "true";
 }
 
+function toDateTimeInput(value?: string) {
+  if (!value) return "";
+  return String(value).replace(" ", "T").slice(0, 16);
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "长期";
+  return String(value).replace("T", " ").slice(0, 16);
+}
+
 export function SystemSettings() {
   const [form, setForm] = useState<SettingsForm>(emptyForm);
+  const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
   const [testingMail, setTestingMail] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
+
+  async function loadAnnouncements() {
+    const data = await api.get("/announcements");
+    const items = Array.isArray(data?.items) ? data.items : [];
+    setAnnouncements(items.map((item: any) => ({
+      id: item.id,
+      title: item.title || "",
+      contentMarkdown: item.contentMarkdown || "",
+      kind: item.kind || "info",
+      active: Boolean(item.active),
+      targetRoles: Array.isArray(item.targetRoles) ? item.targetRoles : [],
+      startsAt: item.startsAt || "",
+      endsAt: item.endsAt || "",
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    })));
+  }
 
   async function load() {
     setLoading(true);
@@ -128,6 +203,7 @@ export function SystemSettings() {
           amapSecurityJsCode: item.map?.amapSecurityJsCode || "",
         },
       });
+      await loadAnnouncements();
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载设置失败");
     } finally {
@@ -193,6 +269,82 @@ export function SystemSettings() {
       setError(e instanceof Error ? e.message : "SMTP 测试失败");
     } finally {
       setTestingMail(false);
+    }
+  }
+
+  function resetAnnouncementForm() {
+    setAnnouncementForm(emptyAnnouncementForm);
+    setEditingAnnouncementId(null);
+  }
+
+  function toggleAnnouncementRole(role: string, checked: boolean | "indeterminate") {
+    setAnnouncementForm((current) => {
+      const roles = new Set(current.targetRoles);
+      if (checked === true) roles.add(role);
+      else roles.delete(role);
+      return { ...current, targetRoles: Array.from(roles) };
+    });
+  }
+
+  function insertEmoji(emoji: string) {
+    setAnnouncementForm((current) => ({
+      ...current,
+      contentMarkdown: `${current.contentMarkdown}${current.contentMarkdown ? " " : ""}${emoji} `,
+    }));
+  }
+
+  function editAnnouncement(item: AnnouncementItem) {
+    setEditingAnnouncementId(item.id);
+    setAnnouncementForm({
+      title: item.title,
+      contentMarkdown: item.contentMarkdown,
+      kind: item.kind,
+      active: item.active,
+      targetRoles: item.targetRoles || [],
+      startsAt: toDateTimeInput(item.startsAt),
+      endsAt: toDateTimeInput(item.endsAt),
+    });
+  }
+
+  async function saveAnnouncement() {
+    setAnnouncementSaving(true);
+    setError("");
+    setSaved("");
+    try {
+      const payload = {
+        ...announcementForm,
+        startsAt: announcementForm.startsAt || null,
+        endsAt: announcementForm.endsAt || null,
+      };
+      if (editingAnnouncementId) {
+        await api.put(`/announcements/${editingAnnouncementId}`, payload);
+      } else {
+        await api.post("/announcements", payload);
+      }
+      setSaved(editingAnnouncementId ? "公告已更新" : "公告已发布");
+      resetAnnouncementForm();
+      await loadAnnouncements();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存公告失败");
+    } finally {
+      setAnnouncementSaving(false);
+    }
+  }
+
+  async function deleteAnnouncement(id: number) {
+    if (!window.confirm("确定删除这条公告吗？已读记录也会一起删除。")) return;
+    setAnnouncementSaving(true);
+    setError("");
+    setSaved("");
+    try {
+      await api.delete(`/announcements/${id}`);
+      setSaved("公告已删除");
+      if (editingAnnouncementId === id) resetAnnouncementForm();
+      await loadAnnouncements();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除公告失败");
+    } finally {
+      setAnnouncementSaving(false);
     }
   }
 
@@ -378,6 +530,184 @@ export function SystemSettings() {
                   onChange={(e) => setTestRecipient(e.target.value)}
                   placeholder="不填则发送到 SMTP 账号"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-primary" />
+                  <CardTitle>登录公告</CardTitle>
+                </div>
+                <Button variant="outline" size="sm" onClick={resetAnnouncementForm} disabled={announcementSaving}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  新公告
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.78fr)]">
+              <div className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_160px]">
+                  <div className="space-y-2">
+                    <Label>标题</Label>
+                    <Input
+                      value={announcementForm.title}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
+                      placeholder="例如：📣 本周功能更新"
+                      maxLength={160}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>类型</Label>
+                    <Select
+                      value={announcementForm.kind}
+                      onValueChange={(value) => setAnnouncementForm({ ...announcementForm, kind: value as AnnouncementForm["kind"] })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="info">📣 普通通知</SelectItem>
+                        <SelectItem value="warning">⚠️ 重要提醒</SelectItem>
+                        <SelectItem value="success">✅ 完成通知</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>内容（支持 Markdown 和 emoji）</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {quickEmoji.map((emoji) => (
+                      <Button
+                        key={emoji}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 px-0 text-base"
+                        onClick={() => insertEmoji(emoji)}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                  <Textarea
+                    value={announcementForm.contentMarkdown}
+                    onChange={(e) => setAnnouncementForm({ ...announcementForm, contentMarkdown: e.target.value })}
+                    placeholder={`可写：
+## 功能更新
+- 支持 **加粗**、列表、链接和 emoji
+- 请补充客户资料`}
+                    className="min-h-[180px] font-mono text-sm"
+                    maxLength={10000}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>开始显示</Label>
+                    <Input
+                      type="datetime-local"
+                      value={announcementForm.startsAt}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, startsAt: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>结束显示</Label>
+                    <Input
+                      type="datetime-local"
+                      value={announcementForm.endsAt}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, endsAt: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="font-medium">启用公告</div>
+                    <div className="text-sm text-muted-foreground">关闭后不会对用户弹出，已读记录仍保留。</div>
+                  </div>
+                  <Switch
+                    checked={announcementForm.active}
+                    onCheckedChange={(checked) => setAnnouncementForm({ ...announcementForm, active: checked })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>目标角色</Label>
+                  <div className="grid gap-2 rounded-lg border p-3 md:grid-cols-3">
+                    {roleOptions.map(([role, label]) => (
+                      <label key={role} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={announcementForm.targetRoles.includes(role)}
+                          onCheckedChange={(checked) => toggleAnnouncementRole(role, checked)}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="text-xs text-muted-foreground">不勾选时面向所有已登录用户。</div>
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  {editingAnnouncementId && (
+                    <Button variant="outline" onClick={resetAnnouncementForm} disabled={announcementSaving}>
+                      取消编辑
+                    </Button>
+                  )}
+                  <Button onClick={saveAnnouncement} disabled={announcementSaving}>
+                    {announcementSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {editingAnnouncementId ? "更新公告" : "发布公告"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-slate-50/70 p-4">
+                  <div className="mb-3 text-sm font-semibold text-slate-700">弹窗预览</div>
+                  <div className="rounded-lg border bg-white p-4 shadow-sm">
+                    <div className="mb-3 text-lg font-semibold">
+                      {announcementForm.kind === "warning" ? "⚠️" : announcementForm.kind === "success" ? "✅" : "📣"} {announcementForm.title || "公告标题"}
+                    </div>
+                    <MarkdownContent content={announcementForm.contentMarkdown || "公告内容预览"} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-700">近期公告</div>
+                  <div className="max-h-[460px] space-y-2 overflow-y-auto pr-1">
+                    {announcements.map((item) => (
+                      <div key={item.id} className="rounded-lg border bg-white p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold">{item.title}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {item.active ? "启用" : "停用"} · {formatDateTime(item.startsAt)} 至 {formatDateTime(item.endsAt)}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {item.targetRoles.length ? item.targetRoles.map((role) => roleOptions.find(([value]) => value === role)?.[1] || role).join("、") : "所有用户"}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => editAnnouncement(item)} disabled={announcementSaving} aria-label="编辑公告">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteAnnouncement(item.id)} disabled={announcementSaving} aria-label="删除公告">
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {!announcements.length && (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        暂无公告
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
