@@ -29,6 +29,7 @@ interface AmapProps {
   points?: AmapPoint[];
   zoom?: number;
   height?: number | string;
+  fitView?: boolean;
   onPointClick?: (point: AmapPoint) => void;
   className?: string;
 }
@@ -36,7 +37,7 @@ interface AmapProps {
 let amapLoaderPromise: Promise<any> | null = null;
 let amapLoadedKey = "";
 let amapLoadedSecurityJsCode = "";
-const MAX_FLIGHT_LINES = 80;
+const MAX_FLIGHT_LINES = 120;
 const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
 const COVERAGE_FIT_MAX_ZOOM = 12;
 
@@ -268,6 +269,7 @@ export function Amap({
   points = [],
   zoom = 9,
   height = 400,
+  fitView = true,
   onPointClick,
   className = "",
 }: AmapProps) {
@@ -395,7 +397,13 @@ export function Amap({
     map.on("zoomchange", renderFlights);
     map.on("zoomend", settleAfterViewportChange);
 
-    if (validPoints.length > 0) {
+    if (!fitView) {
+      try {
+        map.setZoomAndCenter(zoom, [center.lng, center.lat]);
+        renderFlights();
+      } catch {}
+      settleTimer = window.setTimeout(settleMap, 320);
+    } else if (validPoints.length > 0) {
       try {
         map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING], COVERAGE_FIT_MAX_ZOOM);
         renderFlights();
@@ -415,7 +423,7 @@ export function Amap({
       shell?.classList.remove("ops-map-preparing", "ops-map-settled");
       if (overlayRef.current) overlayRef.current.innerHTML = "";
     };
-  }, [state, points, center.lng, center.lat, center.name, zoom, onPointClick]);
+  }, [state, points, center.lng, center.lat, center.name, zoom, fitView, onPointClick]);
 
   if (state === "fallback" || state === "error") {
     return <FallbackMap center={center} points={points} onPointClick={onPointClick} message={errorMsg} height={height} className={className} />;
