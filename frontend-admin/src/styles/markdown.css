@@ -61,3 +61,24 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.markdown-color {
+  border-radius: 5px;
+  padding: 1px 4px;
+  font-weight: 800;
+}
+
+.markdown-color-red {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.markdown-color-blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.markdown-color-green {
+  background: #ecfdf5;
+  color: #047857;
+}

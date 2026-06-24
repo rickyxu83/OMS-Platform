@@ -9,7 +9,7 @@ function safeHref(value: string) {
 
 function inlineMarkdown(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[(red|blue|green)\][\s\S]+?\[\/\2\]|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -24,6 +24,14 @@ function inlineMarkdown(text: string): ReactNode[] {
       nodes.push(<strong key={key}>{inlineMarkdown(token.slice(2, -2))}</strong>);
     } else if (token.startsWith("*")) {
       nodes.push(<em key={key}>{inlineMarkdown(token.slice(1, -1))}</em>);
+    } else if (/^\[(red|blue|green)\]/.test(token)) {
+      const color = token.match(/^\[(red|blue|green)\]/)?.[1] || "blue";
+      const content = token.replace(/^\[(red|blue|green)\]/, "").replace(new RegExp(`\\[/${color}\\]$`), "");
+      nodes.push(
+        <span key={key} className={`markdown-color markdown-color-${color}`}>
+          {inlineMarkdown(content)}
+        </span>,
+      );
     } else {
       const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       const href = link ? safeHref(link[2]) : "";

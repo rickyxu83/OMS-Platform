@@ -599,6 +599,7 @@ export function SystemSettings() {
                     placeholder={`可写：
 ## 功能更新
 - 支持 **加粗**、列表、链接和 emoji
+- 支持 [red]红色重点[/red]、[blue]蓝色说明[/blue]、[green]绿色完成[/green]
 - 请补充客户资料`}
                     className="min-h-[180px] font-mono text-sm"
                     maxLength={10000}

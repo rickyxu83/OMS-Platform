@@ -26,6 +26,7 @@ function inlineMarkdown(value) {
       const target = /^https?:/i.test(safe) ? ' target="_blank" rel="noreferrer"' : ''
       return `<a href="${escapeHtml(safe)}"${target}>${label}</a>`
     })
+    .replace(/\[(red|blue|green)\]([\s\S]+?)\[\/\1\]/g, '<span class="markdown-color markdown-color-$1">$2</span>')
 }
 
 export function renderMarkdown(value) {
