@@ -1,5 +1,6 @@
 const { query } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
+const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
 
 const validPartyTypes = new Set(['original_manufacturer', 'our_maintenance'])
 const partyTypeAliases = {
@@ -59,9 +60,9 @@ function normalizePartyType(value, fallback = 'our_maintenance') {
 }
 
 function validatePhone(input) {
-  const phone = normalizeText(input)
+  const phone = normalizePhoneNumber(input)
   if (!phone) return null
-  if (!/^[0-9+()\-\s]{7,32}$/.test(phone)) {
+  if (!isValidNormalizedPhone(phone)) {
     throw badRequest('联系电话格式不正确')
   }
   return phone
@@ -73,7 +74,7 @@ function partyPayload(row) {
     partyType: row.party_type,
     name: row.name,
     contact: row.contact,
-    phone: row.phone,
+    phone: normalizePhoneNumber(row.phone) || row.phone,
     officialWebsite: row.official_website,
     remark: row.remark,
     createdAt: row.created_at,

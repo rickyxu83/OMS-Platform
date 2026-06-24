@@ -1,6 +1,7 @@
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
+const { normalizePhoneNumber } = require('../../utils/phone')
 const { effectiveSettings } = require('../settings/controller')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
 const { pinyin } = require('pinyin-pro')
@@ -300,7 +301,7 @@ function normalizeCustomerCandidates(currentDraft = {}) {
         ? candidate.contacts
             .map((contact) => ({
               name: trimText(contact?.name, 60),
-              phone: trimText(contact?.phone, 40),
+              phone: normalizePhoneNumber(contact?.phone) || trimText(contact?.phone, 40),
             }))
             .filter((contact) => contact.name)
             .slice(0, 6)
@@ -310,7 +311,7 @@ function normalizeCustomerCandidates(currentDraft = {}) {
         name: trimText(candidate?.name, 120),
         address: trimText(candidate?.address || candidate?.mapAddress, 180),
         contactName: trimText(candidate?.contactName, 60),
-        contactPhone: trimText(candidate?.contactPhone, 40),
+        contactPhone: normalizePhoneNumber(candidate?.contactPhone) || trimText(candidate?.contactPhone, 40),
         weight: Number(candidate?.weight || 0) || 0,
         contacts,
       }
@@ -408,7 +409,7 @@ async function loadDatabaseCustomerCandidates(engineerId) {
     const list = groups.get(row.customer_id) || []
     list.push({
       name: trimText(row.name, 60),
-      phone: trimText(row.phone, 40),
+      phone: normalizePhoneNumber(row.phone) || trimText(row.phone, 40),
       weight: Number(row.use_count || 0),
     })
     groups.set(row.customer_id, list)
@@ -421,7 +422,7 @@ async function loadDatabaseCustomerCandidates(engineerId) {
       name: trimText(row.name, 120),
       address: trimText(row.address || row.map_address, 180),
       contactName: trimText(row.contact_name, 60),
-      contactPhone: trimText(row.contact_phone, 40),
+      contactPhone: normalizePhoneNumber(row.contact_phone) || trimText(row.contact_phone, 40),
       weight: Math.min(500, Number(row.engineer_order_count || 0) * 40 + Number(row.service_order_count || 0) * 5),
       contacts: contactsByCustomer.get(row.id) || [],
     }))

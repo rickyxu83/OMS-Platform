@@ -2,6 +2,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const { normalizePhoneNumber } = require('../../utils/phone')
 const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
 const { effectiveSettings } = require('../settings/controller')
@@ -307,7 +308,7 @@ async function searchCompanies(req, res) {
     groups.get(contact.customer_id).push({
       id: contact.id,
       name: contact.name,
-      phone: contact.phone || '',
+      phone: normalizePhoneNumber(contact.phone) || contact.phone || '',
       useCount: contact.use_count,
       lastUsedAt: contact.last_used_at,
     })
@@ -320,7 +321,7 @@ async function searchCompanies(req, res) {
     name: item.name,
     address: item.address || '',
     contactName: item.contact_name || '',
-    contactPhone: item.contact_phone || '',
+    contactPhone: normalizePhoneNumber(item.contact_phone) || item.contact_phone || '',
     salesperson: item.salesperson || '',
     contacts: contactsByCustomer.get(item.id) || [],
     latitude: item.latitude,

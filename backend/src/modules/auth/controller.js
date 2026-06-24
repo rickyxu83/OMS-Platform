@@ -4,6 +4,7 @@ const env = require('../../config/env')
 const { transaction } = require('../../config/db')
 const { ROLE_GROUPS, getAvailableWorkspaces, getDefaultWorkspace } = require('../../permissions/roles')
 const { badRequest, unauthorized } = require('../../utils/http-error')
+const { normalizePhoneNumber } = require('../../utils/phone')
 const { ensureUserLoginColumns } = require('../users/schema')
 
 const MAX_FAILED_LOGINS = 5
@@ -53,7 +54,7 @@ function publicUser(user) {
     email: user.email || '',
     loginAlias: user.login_alias || '',
     realName: user.real_name,
-    phone: user.phone,
+    phone: normalizePhoneNumber(user.phone) || user.phone,
     role: user.role,
     status: user.status,
     hasEngineerSignature,

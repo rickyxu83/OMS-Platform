@@ -1,6 +1,7 @@
 const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
+const { normalizePhoneNumber } = require('../../utils/phone')
 
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -11,7 +12,7 @@ function maintenancePartyPayload(row) {
   return {
     id: row.maintenance_party_id,
     name: row.maintenance_party_name,
-    phone: row.maintenance_party_phone,
+    phone: normalizePhoneNumber(row.maintenance_party_phone) || row.maintenance_party_phone,
   }
 }
 
@@ -127,7 +128,7 @@ function devicePayload(row) {
     maintenanceType: row.maintenance_type,
     maintenancePartyId: row.maintenance_party_id,
     maintenancePartyName: row.maintenance_party_name,
-    maintenancePartyPhone: row.maintenance_party_phone,
+    maintenancePartyPhone: normalizePhoneNumber(row.maintenance_party_phone) || row.maintenance_party_phone,
     maintenanceParty: maintenancePartyPayload(row),
     maintenanceStart: row.maintenance_start,
     maintenanceEnd: row.maintenance_end,

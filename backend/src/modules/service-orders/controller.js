@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail } = require('../../services/mail')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
@@ -136,7 +137,7 @@ function orderPayload(row) {
     customerName: row.customer_name,
     customerAddress: row.customer_address,
     contactName: row.contact_name,
-    contactPhone: row.contact_phone,
+    contactPhone: normalizePhoneNumber(row.contact_phone) || row.contact_phone,
     deviceId: row.device_id,
     deviceName: row.device_name,
     serviceMode: row.service_mode || 'onsite',
@@ -782,9 +783,7 @@ async function writeAudit(connection, actorId, targetId, action, detail = {}) {
 }
 
 function normalizeCustomerContactPhone(phone) {
-  const text = String(phone || '').trim()
-  if (!text || text.includes('@')) return ''
-  return text
+  return normalizePhoneNumber(phone)
 }
 
 async function recordCustomerContact(connection, customerId, name, phone = null, engineerId = null) {
@@ -921,7 +920,7 @@ async function listOrderEngineers(orderIds) {
       id: row.id,
       realName: row.real_name,
       username: row.username,
-      phone: row.phone,
+      phone: normalizePhoneNumber(row.phone) || row.phone,
       email: row.email,
       engineerSignature: row.engineer_signature || '',
     })

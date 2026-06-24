@@ -5,6 +5,7 @@ const multer = require('multer')
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
+const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
 const { ALL_ROLES } = require('../../permissions/catalog')
 const { ensureUserLoginColumns } = require('./schema')
 
@@ -84,6 +85,15 @@ function validateLoginAlias(alias) {
   }
 }
 
+function normalizeOptionalPhone(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null
+  const phone = normalizePhoneNumber(value)
+  if (!isValidNormalizedPhone(phone)) {
+    throw badRequest('联系电话格式不正确')
+  }
+  return phone
+}
+
 async function assertLoginIdentifierAvailable({ email, loginAlias, excludeId = null }) {
   const checks = []
   const params = { excludeId: excludeId || 0 }
@@ -118,7 +128,7 @@ function userPayload(row) {
     username: String(row.username).replace(/__deleted_\d+$/, ''),
     loginAlias: row.login_alias || '',
     realName: row.real_name,
-    phone: row.phone,
+    phone: normalizePhoneNumber(row.phone) || row.phone,
     email: row.email,
     role: row.role,
     status: row.status,
@@ -212,6 +222,7 @@ async function create(req, res) {
   const { username, password, realName, phone, email, loginAlias, role, status = 'active' } = req.body || {}
   const accountEmail = normalizeEmail(email || username)
   const normalizedAlias = normalizeAlias(loginAlias)
+  const normalizedPhone = normalizeOptionalPhone(phone)
 
   if (!accountEmail || !password || !realName || !role) {
     throw badRequest('邮箱账号、密码、姓名和角色不能为空')
@@ -230,7 +241,7 @@ async function create(req, res) {
       username: accountEmail,
       passwordHash,
       realName,
-      phone: phone || null,
+      phone: normalizedPhone,
       email: accountEmail,
       loginAlias: normalizedAlias || null,
       role,
@@ -247,6 +258,7 @@ async function update(req, res) {
   const { username, realName, phone, email, loginAlias, role, status, password } = req.body || {}
   const accountEmail = email || username ? normalizeEmail(email || username) : ''
   const normalizedAlias = loginAlias === undefined ? undefined : normalizeAlias(loginAlias)
+  const normalizedPhone = normalizeOptionalPhone(phone)
   assertUserInput({ role, status })
 
   const existing = await query('SELECT id, role, email, login_alias FROM users WHERE id = :id LIMIT 1', { id })
@@ -288,7 +300,7 @@ async function update(req, res) {
         id,
         username: accountEmail || null,
         realName: realName || null,
-        phone: phone || null,
+        phone: normalizedPhone,
         email: accountEmail || existing[0].email || null,
         loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,
         role: role || null,
@@ -311,7 +323,7 @@ async function update(req, res) {
         id,
         username: accountEmail || null,
         realName: realName || null,
-        phone: phone || null,
+        phone: normalizedPhone,
         email: accountEmail || existing[0].email || null,
         loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,
         role: role || null,

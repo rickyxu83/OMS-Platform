@@ -1,6 +1,7 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
+const { normalizePhoneNumber } = require('../../utils/phone')
 const {
   assertSalesCanAccessSalesperson,
   assertSalesCanUseSalesperson,
@@ -43,7 +44,7 @@ function contactPayload(row) {
     id: row.id,
     customerId: row.customer_id,
     name: row.name,
-    phone: row.phone,
+    phone: normalizePhoneNumber(row.phone) || row.phone,
     useCount: row.use_count,
     lastUsedAt: row.last_used_at,
   }
@@ -57,7 +58,7 @@ function customerPayload(row, contacts = []) {
     code: row.code,
     address: row.address,
     contactName: row.contact_name,
-    contactPhone: row.contact_phone,
+    contactPhone: normalizePhoneNumber(row.contact_phone) || row.contact_phone,
     salesperson: row.salesperson,
     level: normalizeCustomerLevel(row.level),
     latitude: row.latitude,
@@ -140,6 +141,7 @@ async function cleanupDuplicateContacts(customerIds) {
 
 async function recordContact(connection, customerId, name, phone = null) {
   if (!name) return
+  const normalizedPhone = normalizePhoneNumber(phone)
   const [existingRows] = await connection.execute(
     `SELECT id, use_count
      FROM customer_contacts
@@ -157,8 +159,8 @@ async function recordContact(connection, customerId, name, phone = null) {
            use_count = use_count + :duplicateUseCount + 1,
            last_used_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = :id`,
-      { id: keeper.id, phone: phone || null, duplicateUseCount },
+      WHERE id = :id`,
+      { id: keeper.id, phone: normalizedPhone || null, duplicateUseCount },
     )
     if (duplicateIds.length) {
       await mergeDuplicateContacts(connection, keeper.id, duplicateIds)
@@ -169,7 +171,7 @@ async function recordContact(connection, customerId, name, phone = null) {
   await connection.execute(
     `INSERT INTO customer_contacts (customer_id, name, phone, use_count, last_used_at)
      VALUES (:customerId, :name, :phone, 1, CURRENT_TIMESTAMP)`,
-    { customerId, name, phone: phone || null },
+    { customerId, name, phone: normalizedPhone || null },
   )
 }
 
@@ -215,7 +217,7 @@ async function replaceContacts(connection, customerId, contacts = []) {
     .map((contact) => ({
       id: Number(contact.id || 0) || null,
       name: String(contact.name || '').trim(),
-      phone: String(contact.phone || '').trim() || null,
+      phone: normalizePhoneNumber(contact.phone) || null,
     }))
     .filter((contact) => contact.name)
 
@@ -558,6 +560,7 @@ async function create(req, res) {
   }
   assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = customerNameKey(name)
+  const normalizedContactPhone = normalizePhoneNumber(contactPhone)
 
   let result
   try {
@@ -589,7 +592,7 @@ async function create(req, res) {
             code: effectiveCode,
             address: address || null,
             contactName: contactName || null,
-            contactPhone: contactPhone || null,
+            contactPhone: normalizedContactPhone || null,
             salesperson: salesperson || null,
             level: normalizeCustomerLevel(level),
             latitude: latitude || null,
@@ -604,7 +607,7 @@ async function create(req, res) {
         if (Array.isArray(contacts)) {
           await replaceContacts(connection, existingRows[0].id, contacts)
         } else {
-          await recordContact(connection, existingRows[0].id, contactName, contactPhone)
+          await recordContact(connection, existingRows[0].id, contactName, normalizedContactPhone)
         }
         return { insertId: existingRows[0].id }
       }
@@ -626,7 +629,7 @@ async function create(req, res) {
           code: code || (await nextCustomerCode(connection)),
           address: address || null,
           contactName: contactName || null,
-          contactPhone: contactPhone || null,
+          contactPhone: normalizedContactPhone || null,
           salesperson: salesperson || null,
           level: normalizeCustomerLevel(level),
           latitude: latitude || null,
@@ -641,7 +644,7 @@ async function create(req, res) {
       if (Array.isArray(contacts)) {
         await replaceContacts(connection, insertResult.insertId, contacts)
       } else {
-        await recordContact(connection, insertResult.insertId, contactName, contactPhone)
+        await recordContact(connection, insertResult.insertId, contactName, normalizedContactPhone)
       }
       return insertResult
     })
@@ -701,6 +704,7 @@ async function update(req, res) {
   assertSalesCanAccessSalesperson(existing[0].salesperson, req.user, forbidden)
   assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = name ? customerNameKey(name) : null
+  const normalizedContactPhone = normalizePhoneNumber(contactPhone)
 
   try {
     await transaction(async (connection) => {
@@ -729,7 +733,7 @@ async function update(req, res) {
           code: code || existing[0].code || (await nextCustomerCode(connection)),
           address: address || null,
           contactName: contactName || null,
-          contactPhone: contactPhone || null,
+          contactPhone: normalizedContactPhone || null,
           salesperson: salesperson || null,
           level: normalizeCustomerLevel(level),
           latitude: latitude || null,
@@ -744,7 +748,7 @@ async function update(req, res) {
       if (Array.isArray(contacts)) {
         await replaceContacts(connection, req.params.id, contacts)
       } else {
-        await recordContact(connection, req.params.id, contactName, contactPhone)
+        await recordContact(connection, req.params.id, contactName, normalizedContactPhone)
       }
     })
   } catch (error) {
@@ -879,7 +883,7 @@ async function merge(req, res) {
         targetCustomerId,
         address: sourceCustomer.address || null,
         contactName: sourceCustomer.contact_name || null,
-        contactPhone: sourceCustomer.contact_phone || null,
+        contactPhone: normalizePhoneNumber(sourceCustomer.contact_phone) || sourceCustomer.contact_phone || null,
         salesperson: sourceCustomer.salesperson || null,
         level: normalizeCustomerLevel(sourceCustomer.level),
         latitude: sourceCustomer.latitude || null,
