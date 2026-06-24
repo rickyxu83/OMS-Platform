@@ -6,7 +6,13 @@ import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { clearSession, currentUser } from '../services/auth'
 import { isOnline, probeNetwork, startNetworkWatch, stopNetworkWatch } from '../services/network'
-import { readOfflineCacheMeta } from '../services/offline-cache'
+import {
+  clearSelfReportDraft,
+  listCreateDraftBuckets,
+  normalizeDraftItemId,
+  normalizeDraftMode,
+  readLocalSelfReportDraft,
+} from '../services/self-report-draft'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from '../services/safe-storage'
 import { pendingSyncCount, refreshPendingSyncQueue, syncPendingSelfReports } from '../services/sync-queue'
 
@@ -106,15 +112,34 @@ function logout() {
   router.push('/login')
 }
 
-function draftStorageKey() {
-  const userId = currentUser.value?.id || 'anonymous'
-  const suffix = route.name === 'service-sheet-edit' ? route.params.id : 'new'
-  return `oms-platform:draft:${userId}:service-record:${suffix}`
-}
-
 function goHome() {
   accountOpen.value = false
   router.push('/')
+}
+
+function currentDraftOrderId() {
+  const id = Number(route.params.id || 0)
+  return id > 0 ? id : null
+}
+
+function currentDraftMode() {
+  return normalizeDraftMode(route.query.mode)
+}
+
+function currentDraftId() {
+  return normalizeDraftItemId(route.query.draftId)
+}
+
+function hasCurrentLocalDraft() {
+  const orderId = currentDraftOrderId()
+  const localDraft = readLocalSelfReportDraft(orderId)
+  if (!localDraft?.data) return false
+  if (orderId) return true
+
+  const draftId = currentDraftId()
+  const buckets = listCreateDraftBuckets(localDraft.data)
+  if (draftId) return buckets.some((item) => item.draftId === draftId)
+  return buckets.some((item) => item.mode === currentDraftMode())
 }
 
 function fabSize() {
@@ -314,7 +339,7 @@ function selectCreateMode(mode) {
 }
 
 function openExitConfirm() {
-  if (!readOfflineCacheMeta(draftStorageKey()) && !formDraftPending.value) {
+  if (!hasCurrentLocalDraft() && !formDraftPending.value) {
     router.push('/')
     return
   }
@@ -365,8 +390,14 @@ async function submitFeedback() {
   }
 }
 
-function discardDraftAndExit() {
-  safeStorageRemove(localStorage, draftStorageKey())
+async function discardDraftAndExit() {
+  window.dispatchEvent(new CustomEvent('rc-discard-current-draft'))
+  const orderId = currentDraftOrderId()
+  const draftId = currentDraftId()
+  if (orderId || draftId || hasCurrentLocalDraft()) {
+    await clearSelfReportDraft(orderId, currentDraftMode(), draftId).catch(() => {})
+  }
+  formDraftPending.value = false
   exitConfirmOpen.value = false
   router.push('/')
 }

@@ -245,8 +245,13 @@ export function removeScopedDraftPayload(existingPayload, serviceOrderId, draftM
   const mode = normalizeDraftMode(draftMode)
   const buckets = createDraftBuckets(existingPayload, mode)
   const normalizedDraftId = normalizeDraftItemId(draftId)
-  if (!normalizedDraftId) delete buckets[mode]
-  else buckets[mode] = (buckets[mode] || []).filter((item) => item.draftId !== normalizedDraftId)
+  if (!normalizedDraftId) {
+    delete buckets[mode]
+  } else {
+    CREATE_DRAFT_MODES.forEach((bucketMode) => {
+      buckets[bucketMode] = (buckets[bucketMode] || []).filter((item) => item.draftId !== normalizedDraftId)
+    })
+  }
   return withCreateDraftBuckets(existingPayload, buckets)
 }
 

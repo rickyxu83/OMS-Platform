@@ -3153,6 +3153,19 @@ function emitDraftDirtyState() {
   window.dispatchEvent(new CustomEvent('rc-form-dirty-state', { detail: { dirty: draftDirty.value } }))
 }
 
+function handleCurrentDraftDiscarded() {
+  window.clearTimeout(draftTimer)
+  window.clearTimeout(draftSyncTimer)
+  window.clearInterval(draftCountdownTimer)
+  draftDirty.value = false
+  draftRestored.value = false
+  draftCountdown.value = 0
+  draftSavedAt.value = ''
+  draftSavedAtMs.value = 0
+  lastDraftClientUpdatedAt.value = ''
+  emitDraftDirtyState()
+}
+
 function cancelFabSize() {
   return window.innerWidth <= 680 ? 56 : 60
 }
@@ -3340,6 +3353,7 @@ onMounted(async () => {
   restoreCancelFabPosition()
   window.addEventListener('resize', resizeSignatureCanvas)
   window.addEventListener('storage', refreshPendingSyncQueue)
+  window.addEventListener('rc-discard-current-draft', handleCurrentDraftDiscarded)
   document.addEventListener('pointerdown', handleDocumentPointerDown)
   window.addEventListener('resize', syncCancelFabPositionToViewport)
   emitDraftDirtyState()
@@ -3355,6 +3369,7 @@ onBeforeUnmount(() => {
   window.clearInterval(statusClockTimer)
   window.removeEventListener('resize', resizeSignatureCanvas)
   window.removeEventListener('storage', refreshPendingSyncQueue)
+  window.removeEventListener('rc-discard-current-draft', handleCurrentDraftDiscarded)
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
   window.removeEventListener('resize', syncCancelFabPositionToViewport)
   stopCancelFabDrag()
