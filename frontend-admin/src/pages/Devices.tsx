@@ -17,6 +17,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+
+const DEVICE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"]);
 
 interface Device {
   id: string | number;
@@ -183,6 +186,8 @@ function mergeCustomers(current: Customer[], incoming: Customer[]) {
 }
 
 export function Devices() {
+  const { user } = useAuth();
+  const canManageDevices = DEVICE_MANAGE_ROLES.has(String(user?.role || ""));
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
@@ -574,10 +579,12 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            新增设备
-          </Button>
+          {canManageDevices ? (
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              新增设备
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -659,31 +666,33 @@ export function Devices() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>设备列表 ({filtered.length})</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={allFilteredDevicesSelected}
-                  onCheckedChange={toggleAllFilteredDevices}
-                  disabled={saving || filtered.length === 0}
-                  aria-label="全选当前设备列表"
-                />
-                全选当前列表
-              </label>
-              {selectedDeviceIds.length ? (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedDeviceIds([])} disabled={saving}>
-                  清空选择
+            {canManageDevices ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={allFilteredDevicesSelected}
+                    onCheckedChange={toggleAllFilteredDevices}
+                    disabled={saving || filtered.length === 0}
+                    aria-label="全选当前设备列表"
+                  />
+                  全选当前列表
+                </label>
+                {selectedDeviceIds.length ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedDeviceIds([])} disabled={saving}>
+                    清空选择
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={bulkDeleteDevices}
+                  disabled={saving || !selectedDeviceIds.length}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                className="text-red-600 hover:text-red-700"
-                onClick={bulkDeleteDevices}
-                disabled={saving || !selectedDeviceIds.length}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
-              </Button>
-            </div>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -717,14 +726,16 @@ export function Devices() {
                     }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div onClick={(event) => event.stopPropagation()}>
-                        <Checkbox
-                          checked={selected}
-                          onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
-                          disabled={saving}
-                          aria-label={`选择设备 ${deviceDisplayName(device)}`}
-                        />
-                      </div>
+                      {canManageDevices ? (
+                        <div onClick={(event) => event.stopPropagation()}>
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
+                            disabled={saving}
+                            aria-label={`选择设备 ${deviceDisplayName(device)}`}
+                          />
+                        </div>
+                      ) : null}
                       <Server className="w-5 h-5 text-primary" />
                       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
                         <div>
@@ -759,16 +770,18 @@ export function Devices() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
-                        <Pencil className="w-4 h-4 mr-1" />
-                        编辑
-                      </Button>
-                      <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        删除
-                      </Button>
-                    </div>
+                    {canManageDevices ? (
+                      <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
+                          <Pencil className="w-4 h-4 mr-1" />
+                          编辑
+                        </Button>
+                        <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          删除
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -944,7 +957,7 @@ export function Devices() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               关闭
             </Button>
-            {detailTarget ? (
+            {detailTarget && canManageDevices ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

@@ -9,7 +9,7 @@ CREATE TABLE users (
   engineer_signature LONGTEXT NULL,
   avatar_path VARCHAR(255) NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
-  role ENUM('admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher') NOT NULL,
+  role ENUM('admin', 'assistant', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher') NOT NULL,
   status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
   failed_login_count INT UNSIGNED NOT NULL DEFAULT 0,
   locked_until DATETIME NULL,

@@ -5,13 +5,14 @@ const multer = require('multer')
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
+const { ALL_ROLES } = require('../../permissions/catalog')
 const { ensureUserLoginColumns } = require('./schema')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
 const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
 const privateColumns = publicColumns
-const allowedRoles = new Set(['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher'])
+const allowedRoles = new Set(ALL_ROLES)
 const allowedStatuses = new Set(['active', 'disabled'])
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const avatarUploadDir = path.join(uploadRoot, 'avatars')

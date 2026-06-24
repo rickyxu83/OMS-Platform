@@ -19,6 +19,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+
+const INSPECTION_SCHEDULE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"]);
 
 interface Schedule {
   id: string | number;
@@ -86,6 +89,8 @@ function inputDate(value?: string) {
 }
 
 export function InspectionSchedules() {
+  const { user } = useAuth();
+  const canManageSchedules = INSPECTION_SCHEDULE_MANAGE_ROLES.has(String(user?.role || ""));
   const [searchParams, setSearchParams] = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -512,14 +517,18 @@ export function InspectionSchedules() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
-            生成到期巡检单
-          </Button>
-          <Button onClick={openCreate} disabled={saving}>
-            <Plus className="w-4 h-4 mr-2" />
-            新增计划
-          </Button>
+          {canManageSchedules ? (
+            <>
+              <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
+                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                生成到期巡检单
+              </Button>
+              <Button onClick={openCreate} disabled={saving}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增计划
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -616,31 +625,33 @@ export function InspectionSchedules() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>巡检计划列表 ({filtered.length})</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={allFilteredSchedulesSelected}
-                  onCheckedChange={toggleAllFilteredSchedules}
-                  disabled={saving || filtered.length === 0}
-                  aria-label="全选当前巡检计划列表"
-                />
-                全选当前列表
-              </label>
-              {selectedScheduleIds.length ? (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedScheduleIds([])} disabled={saving}>
-                  清空选择
+            {canManageSchedules ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={allFilteredSchedulesSelected}
+                    onCheckedChange={toggleAllFilteredSchedules}
+                    disabled={saving || filtered.length === 0}
+                    aria-label="全选当前巡检计划列表"
+                  />
+                  全选当前列表
+                </label>
+                {selectedScheduleIds.length ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedScheduleIds([])} disabled={saving}>
+                    清空选择
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={bulkDeleteSchedules}
+                  disabled={saving || !selectedScheduleIds.length}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  批量删除{selectedScheduleIds.length ? ` (${selectedScheduleIds.length})` : ""}
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                className="text-red-600 hover:text-red-700"
-                onClick={bulkDeleteSchedules}
-                disabled={saving || !selectedScheduleIds.length}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                批量删除{selectedScheduleIds.length ? ` (${selectedScheduleIds.length})` : ""}
-              </Button>
-            </div>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -675,14 +686,16 @@ export function InspectionSchedules() {
                       }
                     }}
                   >
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Checkbox
-                        checked={selected}
-                        onCheckedChange={(checked) => toggleScheduleSelection(s.id, checked)}
-                        disabled={saving}
-                        aria-label={`选择巡检计划 ${title}`}
-                      />
-                    </div>
+                    {canManageSchedules ? (
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={(checked) => toggleScheduleSelection(s.id, checked)}
+                          disabled={saving}
+                          aria-label={`选择巡检计划 ${title}`}
+                        />
+                      </div>
+                    ) : null}
                     <div className="min-w-0">
                       <div className="text-base font-semibold leading-6 text-slate-900">
                         {title}
@@ -712,40 +725,44 @@ export function InspectionSchedules() {
                       <div className="mt-1 whitespace-nowrap text-sm font-semibold text-slate-900">{formatDate(s.nextRunAnchor)}</div>
                     </div>
                     <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                      <Switch
-                        checked={Boolean(s.active)}
-                        onCheckedChange={() => toggleActive(s)}
-                        disabled={saving}
-                      />
+                      {canManageSchedules ? (
+                        <Switch
+                          checked={Boolean(s.active)}
+                          onCheckedChange={() => toggleActive(s)}
+                          disabled={saving}
+                        />
+                      ) : null}
                       <span className="whitespace-nowrap text-sm text-muted-foreground">
                         {s.active ? "已启用" : "已停用"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                        onClick={() => {
-                          openEdit(s);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4 mr-1" />
-                        编辑
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
-                        onClick={() => {
-                          deleteSchedule(s);
-                        }}
-                        disabled={saving}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        删除
-                      </Button>
-                    </div>
+                    {canManageSchedules ? (
+                      <div className="flex items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                          onClick={() => {
+                            openEdit(s);
+                          }}
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          编辑
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+                          onClick={() => {
+                            deleteSchedule(s);
+                          }}
+                          disabled={saving}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          删除
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -833,7 +850,7 @@ export function InspectionSchedules() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               关闭
             </Button>
-            {detailTarget ? (
+            {detailTarget && canManageSchedules ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

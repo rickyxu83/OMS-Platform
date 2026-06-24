@@ -34,6 +34,7 @@ The platform has two main workspaces:
 | `engineer` | View and process only assigned or own work orders | Not allowed |
 | `engineering_supervisor` | Use own-task filtering when entering as engineer | View, dispatch, and manage all work orders |
 | `operations_director` | Not allowed | View and manage all work orders according to granted modules |
+| `administrative_supervisor` | Not allowed | View admin workspace business data; cannot dispatch, approve, edit, delete, or change system settings |
 | `admin` | Not allowed | Full platform access |
 
 Permission rules are enforced by both frontend routing and backend APIs. If a page is not visible or an API returns a forbidden error, confirm the account role and workspace access first.

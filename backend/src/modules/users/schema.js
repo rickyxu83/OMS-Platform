@@ -1,9 +1,70 @@
 const { query } = require('../../config/db')
+const { ALL_ROLES } = require('../../permissions/catalog')
 
 let userLoginColumnsReady = false
+let userRoleEnumReady = false
+
+const LEGACY_ROLES = Object.freeze(['supervisor'])
+
+function roleEnumDefinition(roles) {
+  return `ENUM(${roles.map((role) => `'${String(role).replace(/'/g, "''")}'`).join(', ')})`
+}
+
+async function runQuery(sql, params = {}, connection = null) {
+  if (connection) {
+    const [rows] = await connection.execute(sql, params)
+    return rows
+  }
+  return query(sql, params)
+}
+
+async function ensureUserRoleEnum(connection = null) {
+  if (!connection && userRoleEnumReady) return
+
+  const rows = await runQuery(
+    `SELECT column_type AS columnType
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'users'
+       AND column_name = 'role'
+     LIMIT 1`,
+    {},
+    connection,
+  )
+  const columnType = String(rows[0]?.columnType || '')
+  const hasAllCurrentRoles = ALL_ROLES.every((role) => columnType.includes(`'${role}'`))
+  const hasLegacyRoles = LEGACY_ROLES.some((role) => columnType.includes(`'${role}'`))
+
+  if (!hasAllCurrentRoles || hasLegacyRoles) {
+    const expandedRoles = [...new Set([...ALL_ROLES, ...LEGACY_ROLES])]
+    await runQuery(
+      `ALTER TABLE users
+       MODIFY role ${roleEnumDefinition(expandedRoles)} NOT NULL`,
+      {},
+      connection,
+    )
+    await runQuery(
+      `UPDATE users
+       SET role = 'operations_director'
+       WHERE role = 'supervisor'`,
+      {},
+      connection,
+    )
+    await runQuery(
+      `ALTER TABLE users
+       MODIFY role ${roleEnumDefinition(ALL_ROLES)} NOT NULL`,
+      {},
+      connection,
+    )
+  }
+
+  if (!connection) userRoleEnumReady = true
+}
 
 async function ensureUserLoginColumns() {
   if (userLoginColumnsReady) return
+
+  await ensureUserRoleEnum()
 
   const rows = await query(
     `SELECT column_name AS columnName
@@ -44,5 +105,6 @@ async function ensureUserLoginColumns() {
 }
 
 module.exports = {
+  ensureUserRoleEnum,
   ensureUserLoginColumns,
 }

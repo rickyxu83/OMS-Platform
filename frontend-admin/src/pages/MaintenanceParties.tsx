@@ -17,7 +17,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
+
+const MAINTENANCE_PARTY_MANAGE_ROLES = new Set([
+  "admin",
+  "assistant",
+  "dispatcher",
+  "operations_director",
+  "engineering_supervisor",
+  "sales_supervisor",
+]);
 
 interface Party {
   id: string | number;
@@ -225,6 +235,8 @@ function telHref(value?: string) {
 
 export function MaintenanceParties() {
   const { lang } = useLanguage();
+  const { user } = useAuth();
+  const canManageParties = MAINTENANCE_PARTY_MANAGE_ROLES.has(String(user?.role || ""));
   const t = I18N[lang];
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
@@ -450,10 +462,12 @@ export function MaintenanceParties() {
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            {t.actions.create}
-          </Button>
+          {canManageParties ? (
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              {t.actions.create}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -520,31 +534,33 @@ export function MaintenanceParties() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={allFilteredPartiesSelected}
-                  onCheckedChange={toggleAllFilteredParties}
-                  disabled={saving || filtered.length === 0}
-                  aria-label={t.list.selectAllCurrent}
-                />
-                {t.list.selectAllCurrent}
-              </label>
-              {selectedPartyIds.length ? (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedPartyIds([])} disabled={saving}>
-                  {t.actions.clearSelection}
+            {canManageParties ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={allFilteredPartiesSelected}
+                    onCheckedChange={toggleAllFilteredParties}
+                    disabled={saving || filtered.length === 0}
+                    aria-label={t.list.selectAllCurrent}
+                  />
+                  {t.list.selectAllCurrent}
+                </label>
+                {selectedPartyIds.length ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedPartyIds([])} disabled={saving}>
+                    {t.actions.clearSelection}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={bulkDeleteParties}
+                  disabled={saving || !selectedPartyIds.length}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {t.actions.batchDelete}{selectedPartyIds.length ? ` (${selectedPartyIds.length})` : ""}
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                className="text-red-600 hover:text-red-700"
-                onClick={bulkDeleteParties}
-                disabled={saving || !selectedPartyIds.length}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {t.actions.batchDelete}{selectedPartyIds.length ? ` (${selectedPartyIds.length})` : ""}
-              </Button>
-            </div>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -576,14 +592,16 @@ export function MaintenanceParties() {
                     }}
                   >
                     <div className="flex items-center gap-4 flex-1">
-                      <div onClick={(event) => event.stopPropagation()}>
-                        <Checkbox
-                          checked={selected}
-                          onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
-                          disabled={saving}
-                          aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
-                        />
-                      </div>
+                      {canManageParties ? (
+                        <div onClick={(event) => event.stopPropagation()}>
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
+                            disabled={saving}
+                            aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
+                          />
+                        </div>
+                      ) : null}
                       <Building2 className="w-5 h-5 text-primary" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -622,16 +640,18 @@ export function MaintenanceParties() {
                         <div className="text-sm">{formatDate(p.updatedAt)}</div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
-                        <Pencil className="w-4 h-4 mr-1" />
-                        {t.actions.edit}
-                      </Button>
-                      <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        {t.actions.delete}
-                      </Button>
-                    </div>
+                    {canManageParties ? (
+                      <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
+                          <Pencil className="w-4 h-4 mr-1" />
+                          {t.actions.edit}
+                        </Button>
+                        <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          {t.actions.delete}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -715,7 +735,7 @@ export function MaintenanceParties() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
-            {detailTarget ? (
+            {detailTarget && canManageParties ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

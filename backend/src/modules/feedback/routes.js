@@ -7,6 +7,6 @@ const router = express.Router()
 
 router.post('/', requireRoles(...ROLE_GROUPS.allSignedIn), controller.create)
 router.get('/', requireRoles(...ROLE_GROUPS.adminWorkspace), controller.list)
-router.put('/:id/status', requireRoles(...ROLE_GROUPS.adminWorkspace), controller.updateStatus)
+router.put('/:id/status', requireRoles(...ROLE_GROUPS.feedbackManage), controller.updateStatus)
 
 module.exports = router

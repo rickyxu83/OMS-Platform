@@ -4,7 +4,7 @@ import type { WorkspaceOption } from '@/config/app'
 
 const ADMIN_ACCESS_ROLES = [
   'admin', 'assistant', 'dispatcher', 'operations_director',
-  'engineering_supervisor', 'sales_supervisor', 'sales',
+  'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales',
 ]
 
 interface User {

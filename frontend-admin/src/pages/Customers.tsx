@@ -593,7 +593,8 @@ export function Customers() {
   const [addressLocating, setAddressLocating] = useState(false);
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const userRole = String(user?.role || "");
-  const canDeleteCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
+  const canManageCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
+  const canDeleteCustomer = canManageCustomer;
   const canForceDeleteCustomer = CUSTOMER_FORCE_DELETE_ROLES.has(userRole);
   const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
 
@@ -1171,10 +1172,12 @@ export function Customers() {
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            {t.actions.create}
-          </Button>
+          {canManageCustomer ? (
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              {t.actions.create}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -1364,18 +1367,20 @@ export function Customers() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openEdit(c);
-                              }}
-                            >
-                              <Pencil className="w-4 h-4 mr-1" />
-                              {t.actions.edit}
-                            </Button>
+                            {canManageCustomer ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openEdit(c);
+                                }}
+                              >
+                                <Pencil className="w-4 h-4 mr-1" />
+                                {t.actions.edit}
+                              </Button>
+                            ) : null}
                             {canDeleteCustomer ? (
                               <Button
                                 size="sm"
@@ -1690,7 +1695,7 @@ export function Customers() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
-            {detailTarget ? (
+            {detailTarget && canManageCustomer ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

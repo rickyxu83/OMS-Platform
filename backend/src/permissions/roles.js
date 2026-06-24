@@ -4,12 +4,13 @@ const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'dispatcher',
   'operations_director',
   'engineering_supervisor',
+  'administrative_supervisor',
   'sales_supervisor',
   'sales',
 ])
 const ENGINEER_WORKSPACE_ROLES = Object.freeze(['engineer', 'engineering_supervisor'])
 const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor'])
-const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor'])
+const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor'])
 const ALL_SIGNED_IN_ROLES = Object.freeze([...new Set([...ADMIN_WORKSPACE_ROLES, ...ENGINEER_WORKSPACE_ROLES])])
 
 const ROLE_GROUPS = Object.freeze({
@@ -21,14 +22,15 @@ const ROLE_GROUPS = Object.freeze({
   serviceOrderOps: OPERATION_ROLES,
   serviceOrderView: VIEW_ROLES,
   serviceOrderEngineer: ENGINEER_WORKSPACE_ROLES,
-  userManage: Object.freeze(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor']),
+  userManage: Object.freeze(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor']),
   userSelf: ALL_SIGNED_IN_ROLES,
   engineerDirectory: ALL_SIGNED_IN_ROLES,
-  salesDirectory: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),
+  salesDirectory: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'administrative_supervisor', 'sales_supervisor', 'sales']),
   auditLogs: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
   settings: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
-  customerWrite: Object.freeze([...VIEW_ROLES, 'engineer']),
-  customerDelete: Object.freeze([...VIEW_ROLES, 'engineer']),
+  feedbackManage: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']),
+  customerWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
+  customerDelete: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerMerge: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),
   deviceWrite: Object.freeze([...OPERATION_ROLES, 'engineer']),
   deviceDelete: OPERATION_ROLES,

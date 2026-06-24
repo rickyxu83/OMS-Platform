@@ -6,6 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+
+const FEEDBACK_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor", "sales"]);
 
 interface FeedbackItem {
   id: string | number;
@@ -32,6 +35,7 @@ const ROLE_LABEL: Record<string, string> = {
   dispatcher: "调度",
   operations_director: "运营负责人",
   engineering_supervisor: "工程主管",
+  administrative_supervisor: "行政主管",
   sales_supervisor: "业务主管",
   sales: "业务",
   engineer: "工程师",
@@ -47,6 +51,8 @@ function submitterName(item: FeedbackItem) {
 }
 
 export function Feedback() {
+  const { user } = useAuth();
+  const canManageFeedback = FEEDBACK_MANAGE_ROLES.has(String(user?.role || ""));
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("open");
@@ -195,20 +201,22 @@ export function Feedback() {
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant={item.status === "open" ? "default" : "outline"}
-                    disabled={updatingId === item.id}
-                    onClick={() => updateStatus(item, item.status === "open" ? "resolved" : "open")}
-                  >
-                    {updatingId === item.id ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : item.status === "open" ? (
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Circle className="mr-2 h-4 w-4" />
-                    )}
-                    {item.status === "open" ? "标记已处理" : "改回未处理"}
-                  </Button>
+                  {canManageFeedback ? (
+                    <Button
+                      variant={item.status === "open" ? "default" : "outline"}
+                      disabled={updatingId === item.id}
+                      onClick={() => updateStatus(item, item.status === "open" ? "resolved" : "open")}
+                    >
+                      {updatingId === item.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : item.status === "open" ? (
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Circle className="mr-2 h-4 w-4" />
+                      )}
+                      {item.status === "open" ? "标记已处理" : "改回未处理"}
+                    </Button>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

@@ -604,7 +604,8 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
-  const canDeleteOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(String(user?.role || ""));
+  const canManageOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(String(user?.role || ""));
+  const canDeleteOrders = canManageOrders;
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -1274,10 +1275,12 @@ export function ServiceOrders() {
               批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
             </Button>
           ) : null}
-          <Button onClick={openCreateOrder} disabled={saving}>
-            <Plus className="w-4 h-4 mr-2" />
-            新增工单
-          </Button>
+          {canManageOrders ? (
+            <Button onClick={openCreateOrder} disabled={saving}>
+              <Plus className="w-4 h-4 mr-2" />
+              新增工单
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -1421,8 +1424,8 @@ export function ServiceOrders() {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                 const workflowStatus = getWorkflowStatus(order);
-                const canConfirmInspection = workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
-                const canAssign = workflowStatus !== "cancelled" && workflowStatus !== "submitted";
+                const canConfirmInspection = canManageOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
+                const canAssign = canManageOrders && workflowStatus !== "cancelled" && workflowStatus !== "submitted";
                 const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
                 return (
                   <div

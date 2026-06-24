@@ -38,6 +38,7 @@ const ROLE_LABELS: Record<string, string> = {
   dispatcher: "调度",
   operations_director: "运营负责人",
   engineering_supervisor: "工程主管",
+  administrative_supervisor: "行政主管",
   sales_supervisor: "业务主管",
   sales: "业务",
   engineer: "工程师",
@@ -49,6 +50,7 @@ const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "
   dispatcher: "purple",
   operations_director: "success",
   engineering_supervisor: "success",
+  administrative_supervisor: "info",
   sales_supervisor: "warning",
   sales: "info",
   engineer: "secondary",
@@ -94,6 +96,7 @@ export function Users() {
     email: "",
     status: "active",
   });
+  const canManageUsers = currentUser?.role === "admin";
 
   async function load() {
     setLoading(true);
@@ -140,6 +143,16 @@ export function Users() {
       { label: "系统管理员", value: admin },
     ];
   }, [users]);
+
+  const permissionRows = useMemo(() => {
+    const rows = new Map<string, string>();
+    Object.values(permData || {}).forEach((role) => {
+      role.permissions.forEach((permission) => {
+        if (!rows.has(permission.key)) rows.set(permission.key, permission.label);
+      });
+    });
+    return Array.from(rows, ([key, label]) => ({ key, label }));
+  }, [permData]);
 
   const selectableFilteredUserIds = useMemo(() => (
     filtered
@@ -323,10 +336,12 @@ export function Users() {
             <Shield className="w-4 h-4 mr-2" />
             权限说明
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            新增成员
-          </Button>
+          {canManageUsers ? (
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              新增成员
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -404,31 +419,33 @@ export function Users() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>成员列表 ({filtered.length})</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={allFilteredUsersSelected}
-                  onCheckedChange={toggleAllFilteredUsers}
-                  disabled={saving || selectableFilteredUserIds.length === 0}
-                  aria-label="全选当前可停用成员"
-                />
-                全选当前可停用成员
-              </label>
-              {selectedUserIds.length ? (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedUserIds([])} disabled={saving}>
-                  清空选择
+            {canManageUsers ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={allFilteredUsersSelected}
+                    onCheckedChange={toggleAllFilteredUsers}
+                    disabled={saving || selectableFilteredUserIds.length === 0}
+                    aria-label="全选当前可停用成员"
+                  />
+                  全选当前可停用成员
+                </label>
+                {selectedUserIds.length ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedUserIds([])} disabled={saving}>
+                    清空选择
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={bulkDisableUsers}
+                  disabled={saving || !selectedUserIds.length}
+                >
+                  <UserX className="w-4 h-4 mr-2" />
+                  批量停用{selectedUserIds.length ? ` (${selectedUserIds.length})` : ""}
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                className="text-red-600 hover:text-red-700"
-                onClick={bulkDisableUsers}
-                disabled={saving || !selectedUserIds.length}
-              >
-                <UserX className="w-4 h-4 mr-2" />
-                批量停用{selectedUserIds.length ? ` (${selectedUserIds.length})` : ""}
-              </Button>
-            </div>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -451,12 +468,14 @@ export function Users() {
                     className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1">
-                      <Checkbox
-                        checked={selected}
-                        onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
-                        disabled={saving || !selectable}
-                        aria-label={`选择成员 ${displayName(user)}`}
-                      />
+                      {canManageUsers ? (
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
+                          disabled={saving || !selectable}
+                          aria-label={`选择成员 ${displayName(user)}`}
+                        />
+                      ) : null}
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         {user.status === "active" ? (
                           <UserCheck className="w-5 h-5 text-primary" />
@@ -493,32 +512,34 @@ export function Users() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                        onClick={() => openEdit(user)}
-                        disabled={saving}
-                      >
-                        <Pencil className="w-4 h-4 mr-1" />
-                        编辑
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                        onClick={() => toggleStatus(user)}
-                        disabled={saving || String(currentUser?.id) === String(user.id)}
-                      >
-                        {user.status === "active" ? (
-                          <UserX className="w-4 h-4 mr-1" />
-                        ) : (
-                          <UserCheck className="w-4 h-4 mr-1" />
-                        )}
-                        {user.status === "active" ? "停用" : "启用"}
-                      </Button>
-                    </div>
+                    {canManageUsers ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                          onClick={() => openEdit(user)}
+                          disabled={saving}
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          编辑
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                          onClick={() => toggleStatus(user)}
+                          disabled={saving || String(currentUser?.id) === String(user.id)}
+                        >
+                          {user.status === "active" ? (
+                            <UserX className="w-4 h-4 mr-1" />
+                          ) : (
+                            <UserCheck className="w-4 h-4 mr-1" />
+                          )}
+                          {user.status === "active" ? "停用" : "启用"}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -645,9 +666,9 @@ export function Users() {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.values(permData)[0]?.permissions.map((_, idx) => {
-                    const permKey = Object.values(permData)[0]?.permissions[idx]?.key || "";
-                    const permLabel = Object.values(permData)[0]?.permissions[idx]?.label || "";
+                  {permissionRows.map((permission) => {
+                    const permKey = permission.key;
+                    const permLabel = permission.label;
                     return (
                       <tr key={permKey} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="py-2 px-3 text-sm">{permLabel}</td>
