@@ -66,23 +66,110 @@ function extractTextFromProviderResponse(data) {
   return ''
 }
 
-function parseJsonText(text) {
-  const trimmed = String(text || '').trim()
-  if (!trimmed) return null
+function stripJsonCodeFence(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+}
+
+function findBalancedJsonObject(value) {
+  const text = String(value || '')
+  const start = text.indexOf('{')
+  if (start < 0) return ''
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+    if (char === '"') {
+      inString = true
+    } else if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(start, index + 1)
+    }
+  }
+  return ''
+}
+
+function parseJsonStringField(source, fieldName) {
+  const pattern = new RegExp(`"${fieldName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`)
+  const match = String(source || '').match(pattern)
+  if (!match) return ''
   try {
-    return JSON.parse(trimmed)
-  } catch {}
-  const match = trimmed.match(/\{[\s\S]*\}/)
-  if (!match) return null
-  try {
-    return JSON.parse(match[0])
+    return JSON.parse(`"${match[1]}"`).trim()
   } catch {
-    return null
+    return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim()
   }
 }
 
+function salvageJsonSummary(text) {
+  const executiveSummary = parseJsonStringField(text, 'executiveSummary')
+  const coverageNotes = parseJsonStringField(text, 'coverageNotes')
+  if (!executiveSummary && !coverageNotes) return null
+  return { executiveSummary, coverageNotes }
+}
+
+function unwrapSummaryObject(value, depth = 0) {
+  if (depth > 3) return null
+  if (typeof value === 'string') return parseJsonText(value, depth + 1)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+
+  if (value.summary && typeof value.summary === 'object') {
+    const nestedSummary = unwrapSummaryObject(value.summary, depth + 1)
+    if (nestedSummary) return nestedSummary
+  }
+
+  const providerContent = extractTextFromProviderResponse(value)
+  if (providerContent) {
+    const nestedProviderContent = parseJsonText(providerContent, depth + 1)
+    if (nestedProviderContent) return nestedProviderContent
+  }
+
+  if (typeof value.executiveSummary === 'string') {
+    const nestedExecutiveSummary = parseJsonText(value.executiveSummary, depth + 1)
+    if (nestedExecutiveSummary?.executiveSummary) {
+      return {
+        ...nestedExecutiveSummary,
+        coverageNotes: value.coverageNotes || nestedExecutiveSummary.coverageNotes,
+      }
+    }
+  }
+
+  return value
+}
+
+function parseJsonText(text, depth = 0) {
+  const trimmed = stripJsonCodeFence(text)
+  if (!trimmed) return null
+  const candidates = [trimmed, findBalancedJsonObject(trimmed)].filter(Boolean)
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate)
+      const unwrapped = unwrapSummaryObject(parsed, depth + 1)
+      if (unwrapped) return unwrapped
+    } catch {}
+  }
+  return salvageJsonSummary(trimmed)
+}
+
 function normalizeSummary(value, coverageNotes) {
-  const summary = value && typeof value === 'object' ? value : {}
+  const nestedSummary = unwrapSummaryObject(value)
+  const summary = nestedSummary && typeof nestedSummary === 'object' ? nestedSummary : {}
   const normalizeStrings = (items) => Array.isArray(items) ? items.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 8) : []
   const normalizeThemes = (items) => Array.isArray(items)
     ? items.map((item) => ({
@@ -153,7 +240,7 @@ async function callCompatibleProvider(payload, aiSettings) {
           { role: 'user', content: buildPrompt(payload) },
         ],
         stream: false,
-        max_tokens: 1800,
+        max_tokens: 3000,
       }),
     })
 

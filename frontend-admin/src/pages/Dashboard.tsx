@@ -130,6 +130,42 @@ function summaryThemes(items?: WorkSummaryTheme[]) {
   return Array.isArray(items) ? items.filter((item) => item.theme || item.details) : [];
 }
 
+function parseWorkSummaryJson(value?: string): WorkSummaryResult | null {
+  const text = String(value || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (!text.includes("{")) return null;
+  const candidates = [text, text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const result = parsed as WorkSummaryResult;
+        const nestedExecutiveSummary = parseWorkSummaryJson(result.executiveSummary);
+        return nestedExecutiveSummary ? { ...result, ...nestedExecutiveSummary, coverageNotes: result.coverageNotes || nestedExecutiveSummary.coverageNotes } : result;
+      }
+      if (typeof parsed === "string") {
+        const nested: WorkSummaryResult | null = parseWorkSummaryJson(parsed);
+        if (nested) return nested;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function normalizeWorkSummaryForDisplay(summary?: WorkSummaryResult | null) {
+  if (!summary) return null;
+  const embedded = parseWorkSummaryJson(summary.executiveSummary);
+  if (!embedded?.executiveSummary) return summary;
+  return {
+    ...summary,
+    ...embedded,
+    coverageNotes: summary.coverageNotes || embedded.coverageNotes,
+  };
+}
+
 const LAST_REPORT_EXPORT_KEY = "admin:lastMonthlyReportExport";
 
 function formatDate(date: Date) {
@@ -575,6 +611,7 @@ export function Dashboard() {
     { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
     { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
   ];
+  const displayWorkSummary = normalizeWorkSummaryForDisplay(workSummary?.summary);
 
   const recentOrders = orders.slice(0, 7).map((o) => {
     const status = getWorkflowStatus(o);
@@ -757,20 +794,20 @@ export function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-5 text-sm">
-            {!workSummary.available || !workSummary.summary ? (
+            {!workSummary.available || !displayWorkSummary ? (
               <div className="rounded-lg border bg-background px-4 py-3 text-muted-foreground">
                 {workSummary.reason || (lang === "zh-TW" ? "AI 營運總結暫不可用" : "AI 运营总结暂不可用")}
               </div>
             ) : (
               <>
                 <p className="rounded-lg border bg-background px-4 py-3 leading-7">
-                  {textValue(workSummary.summary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
+                  {textValue(displayWorkSummary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
                 </p>
-                {summaryThemes(workSummary.summary.keyThemes).length > 0 && (
+                {summaryThemes(displayWorkSummary.keyThemes).length > 0 && (
                   <div>
                     <div className="mb-2 font-medium">{lang === "zh-TW" ? "重點主題" : "重点主题"}</div>
                     <div className="grid gap-3 md:grid-cols-2">
-                      {summaryThemes(workSummary.summary.keyThemes).map((item, index) => (
+                      {summaryThemes(displayWorkSummary.keyThemes).map((item, index) => (
                         <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
                           <div className="font-medium">{item.theme || (lang === "zh-TW" ? "未命名主題" : "未命名主题")}</div>
                           <div className="mt-1 text-muted-foreground leading-6">
@@ -781,32 +818,32 @@ export function Dashboard() {
                     </div>
                   </div>
                 )}
-                {summaryList(workSummary.summary.customerImpact).length > 0 && (
+                {summaryList(displayWorkSummary.customerImpact).length > 0 && (
                   <div>
                     <div className="mb-2 font-medium">{lang === "zh-TW" ? "客戶影響" : "客户影响"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(workSummary.summary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
+                      {summaryList(displayWorkSummary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
                   </div>
                 )}
-                {summaryList(workSummary.summary.riskSignals).length > 0 && (
+                {summaryList(displayWorkSummary.riskSignals).length > 0 && (
                   <div>
                     <div className="mb-2 font-medium">{lang === "zh-TW" ? "風險信號" : "风险信号"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(workSummary.summary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
+                      {summaryList(displayWorkSummary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
                   </div>
                 )}
-                {summaryList(workSummary.summary.followUpRecommendations).length > 0 && (
+                {summaryList(displayWorkSummary.followUpRecommendations).length > 0 && (
                   <div>
                     <div className="mb-2 font-medium">{lang === "zh-TW" ? "後續建議" : "后续建议"}</div>
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(workSummary.summary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
+                      {summaryList(displayWorkSummary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
                   </div>
                 )}
-                {workSummary.summary.coverageNotes && (
-                  <div className="text-xs text-muted-foreground">{workSummary.summary.coverageNotes}</div>
+                {displayWorkSummary.coverageNotes && (
+                  <div className="text-xs text-muted-foreground">{displayWorkSummary.coverageNotes}</div>
                 )}
               </>
             )}
