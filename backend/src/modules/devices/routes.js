@@ -11,6 +11,7 @@ const deviceDeleteRoles = ROLE_GROUPS.deviceDelete
 router.get('/', controller.list)
 router.post('/', requireRoles(...deviceWriteRoles), controller.create)
 router.get('/:id', controller.detail)
+router.put('/batch', requireRoles(...deviceWriteRoles), controller.batchUpdate)
 router.put('/:id', requireRoles(...deviceWriteRoles), controller.update)
 router.delete('/:id', requireRoles(...deviceDeleteRoles), controller.remove)
 

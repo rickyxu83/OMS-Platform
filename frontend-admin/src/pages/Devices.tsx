@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -163,6 +163,50 @@ function createEmptyBatchRow(): BatchDeviceRow {
   };
 }
 
+interface BatchEditForm {
+  maintenanceType: string;
+  maintenancePartyId: string;
+  maintenanceStart: string;
+  maintenanceEnd: string;
+  warrantyUntil: string;
+  location: string;
+  remark: string;
+}
+
+interface BatchEditToggles {
+  maintenanceType: boolean;
+  maintenancePartyId: boolean;
+  maintenanceStart: boolean;
+  maintenanceEnd: boolean;
+  warrantyUntil: boolean;
+  location: boolean;
+  remark: boolean;
+}
+
+function createEmptyBatchEditForm(): BatchEditForm {
+  return {
+    maintenanceType: "none",
+    maintenancePartyId: "",
+    maintenanceStart: "",
+    maintenanceEnd: "",
+    warrantyUntil: "",
+    location: "",
+    remark: "",
+  };
+}
+
+function createEmptyBatchEditToggles(): BatchEditToggles {
+  return {
+    maintenanceType: false,
+    maintenancePartyId: false,
+    maintenanceStart: false,
+    maintenanceEnd: false,
+    warrantyUntil: false,
+    location: false,
+    remark: false,
+  };
+}
+
 function createInitialBatchRows(count = 3) {
   return Array.from({ length: count }, () => createEmptyBatchRow());
 }
@@ -269,6 +313,9 @@ export function Devices() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [form, setForm] = useState<DeviceForm>(() => createEmptyDeviceForm());
   const [batchRows, setBatchRows] = useState<BatchDeviceRow[]>(() => createInitialBatchRows());
+  const [batchEditOpen, setBatchEditOpen] = useState(false);
+  const [batchEditForm, setBatchEditForm] = useState<BatchEditForm>(() => createEmptyBatchEditForm());
+  const [batchEditToggles, setBatchEditToggles] = useState<BatchEditToggles>(() => createEmptyBatchEditToggles());
 
   async function load(keyword = searchQuery) {
     setLoading(true);
@@ -686,6 +733,48 @@ export function Devices() {
     }
   }
 
+  function openBatchEdit() {
+    setError("");
+    setBatchEditForm(createEmptyBatchEditForm());
+    setBatchEditToggles(createEmptyBatchEditToggles());
+    setBatchEditOpen(true);
+  }
+
+  async function submitBatchEdit() {
+    const fields: Record<string, unknown> = {};
+    if (batchEditToggles.maintenanceType) {
+      fields.maintenanceType = canonicalMaintenanceType(batchEditForm.maintenanceType);
+      if (fields.maintenanceType !== "none" && batchEditToggles.maintenancePartyId) {
+        fields.maintenancePartyId = batchEditForm.maintenancePartyId || null;
+      }
+    } else if (batchEditToggles.maintenancePartyId) {
+      fields.maintenancePartyId = batchEditForm.maintenancePartyId || null;
+    }
+    if (batchEditToggles.maintenanceStart) fields.maintenanceStart = batchEditForm.maintenanceStart || null;
+    if (batchEditToggles.maintenanceEnd) fields.maintenanceEnd = batchEditForm.maintenanceEnd || null;
+    if (batchEditToggles.warrantyUntil) fields.warrantyUntil = batchEditForm.warrantyUntil || null;
+    if (batchEditToggles.location) fields.location = batchEditForm.location.trim() || null;
+    if (batchEditToggles.remark) fields.remark = batchEditForm.remark.trim() || null;
+
+    if (Object.keys(fields).length === 0) {
+      setError("请至少勾选一个要修改的字段");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      await api.put("/devices/batch", { ids: selectedDeviceIds, fields });
+      setBatchEditOpen(false);
+      setSelectedDeviceIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "批量编辑失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -807,6 +896,15 @@ export function Devices() {
                     清空选择
                   </Button>
                 ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={openBatchEdit}
+                  disabled={saving || !selectedDeviceIds.length}
+                >
+                  <Edit3 className="w-4 h-4 mr-2" />
+                  批量编辑{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+                </Button>
                 <Button
                   variant="ghost"
                   className="text-red-600 hover:text-red-700"
@@ -1417,6 +1515,170 @@ export function Devices() {
             <Button onClick={submit} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : createMode === "bulk" ? "批量保存" : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      
+      <Dialog
+        open={batchEditOpen}
+        onOpenChange={(open) => {
+          setBatchEditOpen(open);
+          if (!open) setError("");
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>批量编辑设备 ({selectedDeviceIds.length} 台)</DialogTitle>
+            <DialogDescription>
+              勾选要修改的字段，只更新勾选的字段，未勾选的保持不变
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.maintenanceType}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, maintenanceType: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>维保类型</Label>
+                <Select
+                  value={batchEditForm.maintenanceType}
+                  onValueChange={(v) => setBatchEditForm((f) => ({ ...f, maintenanceType: v }))}
+                  disabled={!batchEditToggles.maintenanceType}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择维保类型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">无维保</SelectItem>
+                    <SelectItem value="our_maintenance">我方维保</SelectItem>
+                    <SelectItem value="original_manufacturer">原厂维保</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.maintenancePartyId}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, maintenancePartyId: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>维保方</Label>
+                <Select
+                  value={batchEditForm.maintenancePartyId}
+                  onValueChange={(v) => setBatchEditForm((f) => ({ ...f, maintenancePartyId: v }))}
+                  disabled={!batchEditToggles.maintenancePartyId || batchEditForm.maintenanceType === "none"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={batchEditForm.maintenanceType === "none" ? "无维保" : "选择维保方"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parties.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name || `维保方 #${p.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.maintenanceStart}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, maintenanceStart: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>维保开始日期</Label>
+                <Input
+                  type="date"
+                  value={batchEditForm.maintenanceStart}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, maintenanceStart: e.target.value }))}
+                  disabled={!batchEditToggles.maintenanceStart}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.maintenanceEnd}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, maintenanceEnd: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>维保截止日期</Label>
+                <Input
+                  type="date"
+                  value={batchEditForm.maintenanceEnd}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, maintenanceEnd: e.target.value }))}
+                  disabled={!batchEditToggles.maintenanceEnd}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.warrantyUntil}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, warrantyUntil: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>质保截止日期</Label>
+                <Input
+                  type="date"
+                  value={batchEditForm.warrantyUntil}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, warrantyUntil: e.target.value }))}
+                  disabled={!batchEditToggles.warrantyUntil}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.location}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, location: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>安装位置</Label>
+                <Input
+                  value={batchEditForm.location}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, location: e.target.value }))}
+                  disabled={!batchEditToggles.location}
+                  placeholder="安装位置"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.remark}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, remark: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>备注</Label>
+                <Textarea
+                  value={batchEditForm.remark}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, remark: e.target.value }))}
+                  disabled={!batchEditToggles.remark}
+                  rows={2}
+                  placeholder="补充说明"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchEditOpen(false)} disabled={saving}>
+              取消
+            </Button>
+            <Button onClick={submitBatchEdit} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? "保存中…" : "批量保存"}
             </Button>
           </DialogFooter>
         </DialogContent>

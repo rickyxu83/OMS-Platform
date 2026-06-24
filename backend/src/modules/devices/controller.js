@@ -292,6 +292,86 @@ async function detail(req, res) {
   })
 }
 
+async function batchUpdate(req, res) {
+  const { ids, fields = {} } = req.body || {}
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw badRequest('请选择至少一台设备')
+  }
+  const numericIds = ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+  if (numericIds.length === 0) {
+    throw badRequest('设备 ID 不合法')
+  }
+
+  const setClauses = []
+  const params = {}
+
+  if (Object.prototype.hasOwnProperty.call(fields, 'maintenanceType')) {
+    const maintenanceType = normalizeMaintenanceType(fields.maintenanceType)
+    setClauses.push('maintenance_type = :maintenanceType')
+    params.maintenanceType = maintenanceType
+    if (maintenanceType === 'none') {
+      setClauses.push('maintenance_party_id = NULL')
+    } else if (Object.prototype.hasOwnProperty.call(fields, 'maintenancePartyId')) {
+      const partyId = normalizeMaintenancePartyId(fields.maintenancePartyId, maintenanceType)
+      if (partyId) await ensureMaintenancePartyExists(partyId)
+      setClauses.push('maintenance_party_id = :maintenancePartyId')
+      params.maintenancePartyId = partyId
+    }
+  } else if (Object.prototype.hasOwnProperty.call(fields, 'maintenancePartyId')) {
+    const partyId = normalizeMaintenancePartyId(fields.maintenancePartyId, 'original_manufacturer')
+    if (partyId) await ensureMaintenancePartyExists(partyId)
+    setClauses.push('maintenance_party_id = :maintenancePartyId')
+    params.maintenancePartyId = partyId
+  }
+
+  if (Object.prototype.hasOwnProperty.call(fields, 'maintenanceStart')) {
+    setClauses.push('maintenance_start = :maintenanceStart')
+    params.maintenanceStart = normalizeDate(fields.maintenanceStart)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'maintenanceEnd')) {
+    setClauses.push('maintenance_end = :maintenanceEnd')
+    params.maintenanceEnd = normalizeDate(fields.maintenanceEnd)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'warrantyUntil')) {
+    setClauses.push('warranty_until = :warrantyUntil')
+    params.warrantyUntil = normalizeDate(fields.warrantyUntil)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'location')) {
+    setClauses.push('location = :location')
+    params.location = normalizeText(fields.location)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'remark')) {
+    setClauses.push('remark = :remark')
+    params.remark = normalizeText(fields.remark)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'name')) {
+    setClauses.push('name = :name')
+    params.name = normalizeText(fields.name)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'pn')) {
+    setClauses.push('pn = :pn')
+    params.pn = normalizeText(fields.pn)
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'location')) {
+    setClauses.push('location = :location')
+    params.location = normalizeText(fields.location)
+  }
+
+  if (setClauses.length === 0) {
+    throw badRequest('没有需要更新的字段')
+  }
+
+  const placeholders = numericIds.map((_, i) => `:id${i}`).join(', ')
+  numericIds.forEach((id, i) => { params[`id${i}`] = id })
+
+  await query(
+    `UPDATE devices SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`,
+    params,
+  )
+
+  res.status(204).end()
+}
+
 async function update(req, res) {
   await ensureDeviceIdentityColumns()
   const {
@@ -385,6 +465,7 @@ module.exports = {
   list,
   create,
   detail,
+  batchUpdate,
   update,
   remove,
   normalizeMaintenanceType,
