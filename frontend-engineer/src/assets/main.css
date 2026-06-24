@@ -563,8 +563,8 @@ textarea {
 }
 
 .shell-menu-icon .preview-icon {
-  width: 1em;
-  height: 1em;
+  width: 24px;
+  height: 24px;
 }
 
 .shell-menu-icon.active {
@@ -574,7 +574,11 @@ textarea {
 }
 
 .shell-home-compact button:hover,
+.shell-home-compact button:focus-visible,
+.shell-feedback-compact button:hover,
+.shell-feedback-compact button:focus-visible,
 .shell-language-compact button:hover,
+.shell-language-compact button:focus-visible,
 .shell-menu-icon:hover,
 .shell-menu-icon:focus-visible {
   color: #0f172a;
