@@ -179,6 +179,57 @@ function huaweiRouterModel(model, aliases = []) {
   ])
 }
 
+function paloAltoFirewallModel(model, aliases = []) {
+  const compact = model.replace(/-/g, '')
+  return networkModel('Palo Alto Networks', `Palo Alto Networks ${model}`, model, [
+    `Palo Alto ${model}`,
+    `PaloAlto ${model}`,
+    `PaloAlto${compact.replace(/^PA/i, '')}`,
+    compact,
+    `PAN-${model}`,
+    `${model} 防火墙`,
+    `${compact} 防火墙`,
+    `Palo Alto ${model} 防火墙`,
+    `Palo Alto Networks ${model} 防火墙`,
+    `PaloAlto ${model} 防火墙`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function fortinetAdcModel(model, aliases = []) {
+  const hyphenated = `FortiADC-${model}`
+  const spaced = `FortiADC ${model}`
+  return networkModel('Fortinet', `Fortinet ${hyphenated}`, hyphenated, [
+    spaced,
+    `Fortinet ${spaced}`,
+    `Fortinet ${hyphenated}`,
+    `FAD-${model}`,
+    `FAD ${model}`,
+    `FortiADC${model}`,
+    `${hyphenated} 负载均衡`,
+    `${spaced} 负载均衡`,
+    `${hyphenated} 应用交付`,
+    `${spaced} 应用交付`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function ciscoNexusModel(model, partNumber, aliases = []) {
+  const compact = String(model || '').replace(/\s+/g, '')
+  return networkModel('Cisco', `Cisco Nexus ${model}`, partNumber || compact, [
+    `Nexus ${model}`,
+    `Cisco ${compact}`,
+    `Nexus ${compact}`,
+    compact,
+    partNumber,
+    partNumber ? partNumber.replace(/-/g, ' ') : '',
+    `${model} 交换机`,
+    `Nexus ${model} 交换机`,
+    `Cisco Nexus ${model} 交换机`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 const DELL_EMC_VNX_FIXTURE_DATA = [
   ...['5100', '5300', '5500', '5700', '7500'].map(dellEmcVnxModel),
   ...['5200', '5400', '5600', '5800', '7600', '8000'].map(dellEmcVnxModel),
@@ -426,6 +477,77 @@ const HUAWEI_ROUTER_FIXTURE_DATA = [
   huaweiRouterModel('NetEngine 8000 M1A', ['NE8000 M1A', 'NetEngine8000 M1A']),
   huaweiRouterModel('NetEngine 8000 M6', ['NE8000 M6', 'NetEngine8000 M6']),
   huaweiRouterModel('NetEngine 8000 M8', ['NE8000 M8', 'NetEngine8000 M8']),
+]
+
+const PALO_ALTO_NETWORKS_FIXTURE_DATA = [
+  ...[
+    'PA-220',
+    'PA-410',
+    'PA-415',
+    'PA-440',
+    'PA-450',
+    'PA-460',
+    'PA-820',
+    'PA-850',
+    'PA-1410',
+    'PA-1420',
+    'PA-3220',
+    'PA-3250',
+    'PA-3260',
+    'PA-3410',
+    'PA-3420',
+    'PA-3430',
+    'PA-3440',
+    'PA-5220',
+    'PA-5250',
+    'PA-5260',
+    'PA-5410',
+    'PA-5420',
+    'PA-5430',
+    'PA-5440',
+    'PA-7050',
+    'PA-7080',
+  ].map(paloAltoFirewallModel),
+  networkModel('Palo Alto Networks', 'Palo Alto Networks VM-Series', 'VM-Series', [
+    'Palo Alto VM-Series',
+    'PaloAlto VM-Series',
+    'PA VM-Series',
+    'VM Series',
+    'Palo Alto 虚拟防火墙',
+    'Palo Alto VM 防火墙',
+  ]),
+]
+
+const FORTINET_ADC_FIXTURE_DATA = [
+  ...[
+    '60F',
+    '100F',
+    '200F',
+    '300F',
+    '400F',
+    '1000F',
+    '2000F',
+    '3000F',
+  ].map(fortinetAdcModel),
+  networkModel('Fortinet', 'Fortinet FortiADC VM', 'FortiADC-VM', [
+    'FortiADC VM',
+    'Fortinet FortiADC-VM',
+    'FAD-VM',
+    'FortiADC 虚拟负载均衡',
+  ]),
+]
+
+const CISCO_NEXUS_FIXTURE_DATA = [
+  ciscoNexusModel('5010', 'N5K-C5010P-BF', ['N5K-C5010P', 'Nexus 5000 5010', 'Cisco Nexus 5000 5010']),
+  ciscoNexusModel('5020', 'N5K-C5020P-BF', ['N5K-C5020P', 'Nexus 5000 5020', 'Cisco Nexus 5000 5020']),
+  ciscoNexusModel('5548P', 'N5K-C5548P', ['Nexus 5548 P', 'Cisco Nexus 5548 P', '5548P']),
+  ciscoNexusModel('5548UP', 'N5K-C5548UP', ['Nexus 5548 UP', 'Cisco Nexus 5548 UP', '5548UP']),
+  ciscoNexusModel('5596T', 'N5K-C5596T', ['Nexus 5596 T', 'Cisco Nexus 5596 T', '5596T']),
+  ciscoNexusModel('5596UP', 'N5K-C5596UP', ['Nexus 5596 UP', 'Cisco Nexus 5596 UP', '5596UP']),
+  ciscoNexusModel('56128P', 'N5K-C56128P', ['Nexus 56128 P', 'Cisco Nexus 56128 P', '56128P']),
+  ciscoNexusModel('5672UP', 'N5K-C5672UP', ['Nexus 5672 UP', 'Cisco Nexus 5672 UP', '5672UP']),
+  ciscoNexusModel('5672UP-16G', 'N5K-C5672UP-16G', ['Nexus 5672 UP 16G', 'Cisco Nexus 5672UP 16G', '5672UP-16G']),
+  ciscoNexusModel('5696Q', 'N5K-C5696Q', ['Nexus 5696 Q', 'Cisco Nexus 5696 Q', '5696Q']),
 ]
 
 const BASE_FIXTURE_DATA = [
@@ -794,5 +916,8 @@ module.exports = [
   ...HUAWEI_NETWORK_SECURITY_FIXTURE_DATA,
   ...HUAWEI_SWITCH_FIXTURE_DATA,
   ...HUAWEI_ROUTER_FIXTURE_DATA,
+  ...PALO_ALTO_NETWORKS_FIXTURE_DATA,
+  ...FORTINET_ADC_FIXTURE_DATA,
+  ...CISCO_NEXUS_FIXTURE_DATA,
   ...IMPORTED_FIXTURE_DATA,
 ]

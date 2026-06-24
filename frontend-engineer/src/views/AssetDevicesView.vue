@@ -620,7 +620,6 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </label>
-            <label>{{ zh('部件号 PN') }}<input v-model="form.pn" type="text" :placeholder="zh('部件号')" /></label>
             <label>{{ zh('序列号 SN') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号；多个值用 ; 隔开')" /></label>
           </template>
           <label>{{ zh('维保类型') }}
