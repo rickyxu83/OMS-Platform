@@ -341,6 +341,25 @@ CREATE TABLE audit_logs (
   CONSTRAINT fk_audit_logs_actor_id FOREIGN KEY (actor_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE feedback_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  type ENUM('problem', 'suggestion') NOT NULL DEFAULT 'problem',
+  content TEXT NOT NULL,
+  page_path VARCHAR(255) NULL,
+  status ENUM('open', 'resolved') NOT NULL DEFAULT 'open',
+  submitter_id BIGINT UNSIGNED NOT NULL,
+  submitter_role VARCHAR(64) NOT NULL,
+  resolved_by BIGINT UNSIGNED NULL,
+  resolved_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_feedback_status_created (status, created_at),
+  KEY idx_feedback_submitter (submitter_id),
+  CONSTRAINT fk_feedback_submitter FOREIGN KEY (submitter_id) REFERENCES users (id),
+  CONSTRAINT fk_feedback_resolved_by FOREIGN KEY (resolved_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Canonical device model catalog for normalized backend lookups.
 CREATE TABLE IF NOT EXISTS device_model_catalog (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

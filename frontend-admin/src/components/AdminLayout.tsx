@@ -11,6 +11,7 @@ import {
   Settings,
   Shield,
   LogOut,
+  MessageSquare,
   Search,
   PanelLeftClose,
   PanelLeftOpen,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +32,7 @@ import { toast } from "sonner";
 import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
+import { api } from "@/services/api";
 
 interface NavItem {
   label: string;
@@ -62,6 +65,16 @@ const STRINGS: Record<AppLang, {
     switchedToCn: string
     switchedToTw: string
     switchEngineer: string
+    feedback: string
+    feedbackTitle: string
+    feedbackType: string
+    feedbackProblem: string
+    feedbackSuggestion: string
+    feedbackContent: string
+    feedbackPlaceholder: string
+    feedbackSubmit: string
+    feedbackSuccess: string
+    feedbackEmpty: string
   }
   groups: Record<string, string>
   pages: Record<string, string>
@@ -83,6 +96,16 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切换至简体中文",
       switchedToTw: "已切换至繁體中文",
       switchEngineer: "工程师工作台",
+      feedback: "反馈",
+      feedbackTitle: "反馈",
+      feedbackType: "类型",
+      feedbackProblem: "遇到问题",
+      feedbackSuggestion: "功能建议",
+      feedbackContent: "内容",
+      feedbackPlaceholder: "简单写一下遇到的问题或想法…",
+      feedbackSubmit: "提交",
+      feedbackSuccess: "反馈已提交",
+      feedbackEmpty: "请填写反馈内容",
     },
     groups: {
       workspace: "工作台",
@@ -102,6 +125,7 @@ const STRINGS: Record<AppLang, {
       users: "成员与角色",
       "audit-logs": "操作审计",
       settings: "系统设置",
+      feedback: "反馈",
     },
     roles: {
       admin: "管理员",
@@ -130,6 +154,16 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切換至简体中文",
       switchedToTw: "已切換至繁體中文",
       switchEngineer: "工程師工作臺",
+      feedback: "回饋",
+      feedbackTitle: "回饋",
+      feedbackType: "類型",
+      feedbackProblem: "遇到問題",
+      feedbackSuggestion: "功能建議",
+      feedbackContent: "內容",
+      feedbackPlaceholder: "簡單寫一下遇到的問題或想法…",
+      feedbackSubmit: "提交",
+      feedbackSuccess: "回饋已提交",
+      feedbackEmpty: "請填寫回饋內容",
     },
     groups: {
       workspace: "工作臺",
@@ -149,6 +183,7 @@ const STRINGS: Record<AppLang, {
       users: "成員與角色",
       "audit-logs": "操作審計",
       settings: "系統設定",
+      feedback: "回饋",
     },
     roles: {
       admin: "管理員",
@@ -212,6 +247,11 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
         path: "settings",
         requiredRoles: ["admin", "operations_director", "engineering_supervisor"],
       },
+      {
+        labelKey: "feedback",
+        icon: MessageSquare,
+        path: "feedback",
+      },
     ],
   },
 ];
@@ -231,6 +271,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
   const [quickNavOpen, setQuickNavOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<"problem" | "suggestion">("problem");
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const strings = STRINGS[lang];
@@ -292,6 +336,31 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     navigate(`/${path}`);
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setSidebarOpen(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    const content = feedbackContent.trim();
+    if (!content) {
+      toast.error(strings.common.feedbackEmpty);
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+    try {
+      await api.post("/feedback", {
+        type: feedbackType,
+        content,
+        pagePath: location.pathname,
+      });
+      toast.success(strings.common.feedbackSuccess);
+      setFeedbackContent("");
+      setFeedbackType("problem");
+      setFeedbackOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "提交失败");
+    } finally {
+      setFeedbackSubmitting(false);
     }
   };
 
@@ -425,6 +494,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <Search className="w-4 h-4" />
             </Button>
             <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setFeedbackOpen(true)}
+              className="h-8 w-8"
+              aria-label={strings.common.feedback}
+            >
+              <MessageSquare className="w-4 h-4" />
+            </Button>
+            <Button
               variant="ghost"
               size="sm"
               onClick={handleLangToggle}
@@ -467,6 +545,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               <Search className="w-4 h-4" />
               {strings.common.quickNav}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFeedbackOpen(true)}
+              className="gap-2"
+            >
+              <MessageSquare className="w-4 h-4" />
+              {strings.common.feedback}
             </Button>
 
             {/* Language Toggle */}
@@ -585,6 +673,53 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   {strings.common.quickNavEmpty}
                 </div>
               )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>{strings.common.feedbackTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">{strings.common.feedbackType}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["problem", strings.common.feedbackProblem],
+                  ["suggestion", strings.common.feedbackSuggestion],
+                ].map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant={feedbackType === value ? "default" : "outline"}
+                    onClick={() => setFeedbackType(value as "problem" | "suggestion")}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">{strings.common.feedbackContent}</div>
+              <Textarea
+                value={feedbackContent}
+                onChange={(event) => setFeedbackContent(event.target.value)}
+                placeholder={strings.common.feedbackPlaceholder}
+                className="min-h-[120px]"
+                maxLength={2000}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setFeedbackOpen(false)} disabled={feedbackSubmitting}>
+                取消
+              </Button>
+              <Button onClick={submitFeedback} disabled={feedbackSubmitting}>
+                {feedbackSubmitting ? "提交中…" : strings.common.feedbackSubmit}
+              </Button>
             </div>
           </div>
         </DialogContent>

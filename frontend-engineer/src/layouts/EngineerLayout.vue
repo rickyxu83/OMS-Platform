@@ -18,6 +18,11 @@ const avatarInitial = computed(() => String(displayName.value || '工').trim().s
 const avatarUrl = computed(() => currentUser.value?.avatarUrl || '')
 const accountOpen = ref(false)
 const exitConfirmOpen = ref(false)
+const feedbackOpen = ref(false)
+const feedbackType = ref('problem')
+const feedbackContent = ref('')
+const feedbackSubmitting = ref(false)
+const feedbackMessage = ref('')
 const formDraftPending = ref(false)
 const createFabPosition = ref({ x: null, y: null })
 const createFabDragging = ref(false)
@@ -320,6 +325,46 @@ function closeExitConfirm() {
   exitConfirmOpen.value = false
 }
 
+function openFeedback() {
+  accountOpen.value = false
+  feedbackMessage.value = ''
+  feedbackOpen.value = true
+}
+
+function closeFeedback() {
+  if (feedbackSubmitting.value) return
+  feedbackOpen.value = false
+  feedbackMessage.value = ''
+}
+
+async function submitFeedback() {
+  const content = feedbackContent.value.trim()
+  if (!content) {
+    feedbackMessage.value = '请填写反馈内容'
+    return
+  }
+
+  feedbackSubmitting.value = true
+  feedbackMessage.value = ''
+  try {
+    await api.post('/feedback', {
+      type: feedbackType.value,
+      content,
+      pagePath: route.fullPath,
+    })
+    feedbackContent.value = ''
+    feedbackType.value = 'problem'
+    feedbackMessage.value = '反馈已提交'
+    window.setTimeout(() => {
+      if (feedbackMessage.value === '反馈已提交') closeFeedback()
+    }, 700)
+  } catch (error) {
+    feedbackMessage.value = error instanceof Error ? error.message : '提交失败'
+  } finally {
+    feedbackSubmitting.value = false
+  }
+}
+
 function discardDraftAndExit() {
   safeStorageRemove(localStorage, draftStorageKey())
   exitConfirmOpen.value = false
@@ -369,6 +414,7 @@ watch(
   () => {
     exitConfirmOpen.value = false
     accountOpen.value = false
+    feedbackOpen.value = false
     createModePickerOpen.value = false
     formDraftPending.value = false
     restoreCreateFabPosition()
@@ -392,6 +438,11 @@ watch(
           <div v-if="showHomeQuickAction" class="shell-glass-pill shell-home-compact">
             <button type="button" :aria-label="zh('返回首页')" :title="zh('返回首页')" @click="goHome">
               <PreviewIcon name="home" />
+            </button>
+          </div>
+          <div class="shell-glass-pill shell-feedback-compact">
+            <button type="button" :aria-label="zh('反馈')" :title="zh('反馈')" @click="openFeedback">
+              <PreviewIcon name="edit" />
             </button>
           </div>
           <div class="shell-glass-pill shell-language-compact">
@@ -500,6 +551,43 @@ watch(
         <button class="ghost" type="button" @click="closeExitConfirm"><PreviewIcon name="edit" />{{ zh('继续填写') }}</button>
         <button class="primary danger-action" type="button" @click="discardDraftAndExit">
           <PreviewIcon :name="exitConfirmMeta.actionIcon" />{{ zh(exitConfirmMeta.actionLabel) }}
+        </button>
+      </footer>
+    </div>
+  </div>
+  <div v-if="feedbackOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('反馈')" @click.self="closeFeedback">
+    <div class="signature-modal-shell feedback-modal-shell">
+      <header class="signature-modal-head">
+        <div>
+          <h2>{{ zh('反馈') }}</h2>
+        </div>
+      </header>
+      <div class="feedback-modal-body">
+        <div class="feedback-type-switch" role="group" :aria-label="zh('反馈类型')">
+          <button
+            type="button"
+            :class="{ active: feedbackType === 'problem' }"
+            @click="feedbackType = 'problem'"
+          >{{ zh('遇到问题') }}</button>
+          <button
+            type="button"
+            :class="{ active: feedbackType === 'suggestion' }"
+            @click="feedbackType = 'suggestion'"
+          >{{ zh('功能建议') }}</button>
+        </div>
+        <textarea
+          v-model="feedbackContent"
+          class="feedback-textarea"
+          :placeholder="zh('简单写一下遇到的问题或想法…')"
+          maxlength="2000"
+          autofocus
+        ></textarea>
+        <p v-if="feedbackMessage" class="feedback-message">{{ zh(feedbackMessage) }}</p>
+      </div>
+      <footer class="signature-modal-actions">
+        <button class="ghost" type="button" :disabled="feedbackSubmitting" @click="closeFeedback">{{ zh('取消') }}</button>
+        <button class="primary" type="button" :disabled="feedbackSubmitting" @click="submitFeedback">
+          <PreviewIcon name="send" />{{ zh(feedbackSubmitting ? '提交中…' : '提交') }}
         </button>
       </footer>
     </div>

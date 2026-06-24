@@ -17,6 +17,7 @@ const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ d
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
+const Feedback = lazy(() => import("@/pages/Feedback").then((module) => ({ default: module.Feedback })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
@@ -177,6 +178,14 @@ export default function App() {
           element={
             <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES.settings}>
               <SystemSettings />
+            </ProtectedAdminPage>
+          }
+        />
+        <Route
+          path="/feedback"
+          element={
+            <ProtectedAdminPage>
+              <Feedback />
             </ProtectedAdminPage>
           }
         />
