@@ -274,9 +274,11 @@ textarea {
 }
 
 .shell-status-compact {
+  position: relative;
   width: 38px;
   margin-right: 0;
   border-radius: 999px 12px 12px 999px;
+  overflow: visible;
 }
 
 .shell-status-compact i {
@@ -299,6 +301,8 @@ textarea {
   margin-right: 0;
   border-radius: 12px;
   padding: 3px;
+  overflow: visible;
+  position: relative;
 }
 
 .shell-home-compact {
@@ -306,6 +310,8 @@ textarea {
   margin-right: 0;
   border-radius: 12px;
   padding: 3px;
+  overflow: visible;
+  position: relative;
 }
 
 .shell-feedback-compact {
@@ -313,10 +319,13 @@ textarea {
   margin-right: 0;
   border-radius: 12px;
   padding: 3px;
+  overflow: visible;
+  position: relative;
 }
 
 .shell-home-compact button,
 .shell-feedback-compact button {
+  position: relative;
   width: 34px;
   height: 30px;
   display: inline-grid;
@@ -337,6 +346,14 @@ textarea {
   border-radius: 999px;
   color: #64748b;
   background: transparent;
+}
+
+.shell-home-compact button .preview-icon,
+.shell-feedback-compact button .preview-icon,
+.shell-language-compact button .preview-icon,
+.shell-menu-icon .preview-icon {
+  width: 23px;
+  height: 23px;
 }
 
 .shell-language-mark {
@@ -457,6 +474,7 @@ textarea {
 }
 
 .shell-account-trigger {
+  position: relative;
   display: inline-flex;
   width: 48px;
   height: 48px;
@@ -524,26 +542,25 @@ textarea {
 }
 
 .shell-account-menu {
-  --account-menu-width: 360px;
   display: flex;
-  gap: 12px;
-  width: var(--account-menu-width);
+  gap: 10px;
+  width: auto;
   min-width: 0;
-  margin-right: -7px;
-  padding: 0 18px;
-  overflow: hidden;
+  margin-right: 2px;
+  padding: 0 8px 0 10px;
+  overflow: visible;
   border: 0;
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
   transform-origin: right center;
-  animation: account-rail-left-in 280ms cubic-bezier(0.18, 0.82, 0.24, 1.12) both;
 }
 
 .shell-menu-icon {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
   display: inline-grid;
   place-items: center;
   border: 0;
@@ -553,8 +570,6 @@ textarea {
   text-decoration: none;
   opacity: 1;
   transform: translateX(0) scale(1);
-  animation: account-icon-pop 240ms ease-out both;
-  animation-delay: calc(var(--menu-index, 0) * 32ms + 70ms);
   transition:
     background 140ms ease,
     color 140ms ease,
@@ -562,15 +577,68 @@ textarea {
     box-shadow 140ms ease;
 }
 
-.shell-menu-icon .preview-icon {
-  width: 24px;
-  height: 24px;
-}
-
 .shell-menu-icon.active {
   color: #fff;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   box-shadow: 0 10px 20px rgb(37 99 235 / 18%);
+}
+
+.shell-status-compact::after,
+.shell-home-compact button::after,
+.shell-feedback-compact button::after,
+.shell-language-compact button::after,
+.shell-menu-icon::after,
+.shell-account-trigger::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  z-index: 8;
+  max-width: 180px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(15 23 42 / 92%);
+  box-shadow: 0 10px 22px rgb(15 23 42 / 18%);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transition:
+    opacity 120ms ease,
+    visibility 120ms ease;
+}
+
+.shell-status-compact:hover::after,
+.shell-status-compact:focus-visible::after,
+.shell-home-compact button:hover::after,
+.shell-home-compact button:focus-visible::after,
+.shell-feedback-compact button:hover::after,
+.shell-feedback-compact button:focus-visible::after,
+.shell-language-compact button:hover::after,
+.shell-language-compact button:focus-visible::after,
+.shell-menu-icon:hover::after,
+.shell-menu-icon:focus-visible::after,
+.shell-account-trigger:hover::after,
+.shell-account-trigger:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 180ms;
+}
+
+@media (hover: none) {
+  .shell-status-compact::after,
+  .shell-home-compact button::after,
+  .shell-feedback-compact button::after,
+  .shell-language-compact button::after,
+  .shell-menu-icon::after,
+  .shell-account-trigger::after {
+    display: none;
+  }
 }
 
 .shell-home-compact button:hover,
@@ -618,34 +686,6 @@ textarea {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes account-rail-left-in {
-  from {
-    opacity: 0;
-    filter: blur(4px);
-    width: 0;
-    transform: translateX(18px) scaleX(0.72);
-  }
-
-  to {
-    opacity: 1;
-    filter: blur(0);
-    width: var(--account-menu-width);
-    transform: translateX(0) scaleX(1);
-  }
-}
-
-@keyframes account-icon-pop {
-  from {
-    opacity: 0;
-    transform: translateX(14px) scale(0.84);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
   }
 }
 
@@ -5442,12 +5482,14 @@ h2 {
   }
 
   .shell-home-compact,
+  .shell-feedback-compact,
   .shell-language-compact {
     width: 34px;
     padding: 2px;
   }
 
   .shell-home-compact button,
+  .shell-feedback-compact button,
   .shell-language-compact button {
     width: 28px;
     height: 26px;
@@ -5996,6 +6038,7 @@ h2 {
   .shell-menu-icon,
   .shell-logout,
   .shell-home-compact button,
+  .shell-feedback-compact button,
   .shell-language-compact button,
   .environment-menu button,
   .environment-segments button,
@@ -6027,6 +6070,7 @@ h2 {
   .shell-menu-icon,
   .shell-logout,
   .shell-home-compact button,
+  .shell-feedback-compact button,
   .shell-language-compact button,
   .environment-menu button,
   .environment-segments button,

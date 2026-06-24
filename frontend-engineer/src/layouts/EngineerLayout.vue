@@ -431,17 +431,16 @@ watch(
             class="shell-glass-pill shell-status-compact"
             :class="{ offline: !isOnline }"
             :aria-label="zh(networkLabel)"
-            :title="zh(isOnline ? '在线模式：会刷新缓存并自动补传离线队列。' : '离线模式：可使用缓存和本机草稿。')"
           >
             <i aria-hidden="true"></i>
           </div>
           <div v-if="showHomeQuickAction" class="shell-glass-pill shell-home-compact">
-            <button type="button" :aria-label="zh('返回首页')" :title="zh('返回首页')" @click="goHome">
+            <button type="button" :aria-label="zh('返回首页')" @click="goHome">
               <PreviewIcon name="home" />
             </button>
           </div>
           <div class="shell-glass-pill shell-feedback-compact">
-            <button type="button" :aria-label="zh('反馈')" :title="zh('反馈')" @click="openFeedback">
+            <button type="button" :aria-label="zh('反馈')" @click="openFeedback">
               <PreviewIcon name="edit" />
             </button>
           </div>
@@ -449,7 +448,6 @@ watch(
             <button
               type="button"
               :aria-label="zh(language === 'hans' ? '切换繁体' : '切换简体')"
-              :title="zh(language === 'hans' ? '切换繁体' : '切换简体')"
               @click="setLanguage(language === 'hans' ? 'hant' : 'hans')"
             >
               <PreviewIcon name="language" />
@@ -462,10 +460,8 @@ watch(
                 v-if="item.to"
                 class="shell-menu-icon"
                 :class="{ active: isNavActive(item) }"
-                :style="{ '--menu-index': index }"
                 :to="item.to"
                 :aria-label="zh(item.label)"
-                :title="zh(item.label)"
                 @click="accountOpen = false"
               >
                 <PreviewIcon :name="item.icon" />
@@ -474,9 +470,7 @@ watch(
             <button
               class="shell-menu-icon danger"
               type="button"
-              :style="{ '--menu-index': quickActions.length }"
               :aria-label="zh('退出')"
-              :title="zh('退出')"
               @click="logout"
             >
               <PreviewIcon name="logout" />
