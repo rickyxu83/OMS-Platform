@@ -443,16 +443,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
               <Badge variant="outline" className="text-xs h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
             </div>
-            <div className="mt-2 px-2">
-              <a
-                href="https://beian.miit.gov.cn/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-muted-foreground/60 hover:text-muted-foreground underline-offset-2 hover:underline"
-              >
-                浙ICP备2026045692号
-              </a>
-            </div>
           </div>
         </div>
       </aside>

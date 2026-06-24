@@ -586,12 +586,4 @@ watch(
       </footer>
     </div>
   </div>
-  <a
-    class="icp-badge"
-    href="https://beian.miit.gov.cn/"
-    target="_blank"
-    rel="noreferrer"
-    aria-label="浙ICP备2026045692号"
-    style="position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 1; font-size: var(--type-caption); line-height: 1.4; color: rgba(100,116,139,0.45); text-decoration: none; padding: 1px 8px; pointer-events: auto;"
-  >浙ICP备2026045692号</a>
 </template>
