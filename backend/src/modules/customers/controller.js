@@ -856,6 +856,34 @@ async function merge(req, res) {
       targetCustomerId,
       sourceCustomerId,
     })
+    await connection.execute(
+      `UPDATE inspection_schedules source_schedule
+       JOIN inspection_schedules target_schedule
+         ON target_schedule.customer_id = :targetCustomerId
+        AND target_schedule.target_engineer_id = source_schedule.target_engineer_id
+        AND target_schedule.cadence = source_schedule.cadence
+        AND target_schedule.active = 1
+       SET source_schedule.active = 0,
+           source_schedule.updated_by = COALESCE(:updatedBy, source_schedule.updated_by)
+       WHERE source_schedule.customer_id = :sourceCustomerId
+         AND source_schedule.active = 1`,
+      {
+        targetCustomerId,
+        sourceCustomerId,
+        updatedBy: req.user?.id || null,
+      },
+    )
+    await connection.execute(
+      `UPDATE inspection_schedules
+       SET customer_id = :targetCustomerId,
+           updated_by = COALESCE(:updatedBy, updated_by)
+       WHERE customer_id = :sourceCustomerId`,
+      {
+        targetCustomerId,
+        sourceCustomerId,
+        updatedBy: req.user?.id || null,
+      },
+    )
     await mergeCustomerContacts(connection, sourceCustomerId, targetCustomerId)
 
     const aliases = new Set()

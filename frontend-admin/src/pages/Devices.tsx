@@ -81,6 +81,27 @@ interface ModelSuggestion {
   category?: string;
 }
 
+interface DeviceForm {
+  customerId: string;
+  name: string;
+  model: string;
+  pn: string;
+  serialNo: string;
+  maintenanceType: string;
+  maintenancePartyId: string;
+  maintenanceStart: string;
+  maintenanceEnd: string;
+  location: string;
+  status: string;
+  remark: string;
+}
+
+interface BatchDeviceRow {
+  name: string;
+  model: string;
+  serialNo: string;
+}
+
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   none: "无维保",
   vendor: "原厂维保",
@@ -115,6 +136,40 @@ const DEVICE_STATUS_BADGE: Record<string, "success" | "secondary" | "warning" | 
   maintenance: "warning",
   scrapped: "destructive",
 };
+
+function createEmptyDeviceForm(overrides: Partial<DeviceForm> = {}): DeviceForm {
+  return {
+    customerId: "",
+    name: "",
+    model: "",
+    pn: "",
+    serialNo: "",
+    maintenanceType: "none",
+    maintenancePartyId: "",
+    maintenanceStart: "",
+    maintenanceEnd: "",
+    location: "",
+    status: "active",
+    remark: "",
+    ...overrides,
+  };
+}
+
+function createEmptyBatchRow(): BatchDeviceRow {
+  return {
+    name: "",
+    model: "",
+    serialNo: "",
+  };
+}
+
+function createInitialBatchRows(count = 3) {
+  return Array.from({ length: count }, () => createEmptyBatchRow());
+}
+
+function batchRowHasInput(row: BatchDeviceRow) {
+  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim());
+}
 
 function formatDate(value?: string) {
   if (!value) return "-";
@@ -197,6 +252,7 @@ export function Devices() {
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerFilter, setCustomerFilter] = useState("all");
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
@@ -211,20 +267,8 @@ export function Devices() {
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [customerSearchTimer, setCustomerSearchTimer] = useState<number | null>(null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
-  const [form, setForm] = useState({
-    customerId: "",
-    name: "",
-    model: "",
-    pn: "",
-    serialNo: "",
-    maintenanceType: "none",
-    maintenancePartyId: "",
-    maintenanceStart: "",
-    maintenanceEnd: "",
-    location: "",
-    status: "active",
-    remark: "",
-  });
+  const [form, setForm] = useState<DeviceForm>(() => createEmptyDeviceForm());
+  const [batchRows, setBatchRows] = useState<BatchDeviceRow[]>(() => createInitialBatchRows());
 
   async function load(keyword = searchQuery) {
     setLoading(true);
@@ -281,7 +325,7 @@ export function Devices() {
       const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
       if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (!keyword) return true;
-      return [d.name, d.model, d.pn, d.serialNo, d.customerName]
+      return [d.name, d.model, d.serialNo, d.customerName]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -375,22 +419,24 @@ export function Devices() {
   }
 
   function openCreate() {
+    setError("");
+    setCreateMode("single");
     setEditingId(null);
     const defaultCustomerId = customerFilter !== "all" ? customerFilter : "";
-    setForm({
-      customerId: defaultCustomerId,
-      name: "",
-      model: "",
-      pn: "",
-      serialNo: "",
-      maintenanceType: "none",
-      maintenancePartyId: "",
-      maintenanceStart: "",
-      maintenanceEnd: "",
-      location: "",
-      status: "active",
-      remark: "",
-    });
+    setForm(createEmptyDeviceForm({ customerId: defaultCustomerId }));
+    setCustomerInput(selectedCustomerLabel(defaultCustomerId));
+    setCustomerDropdownOpen(false);
+    setModelSuggestions([]);
+    setDialogOpen(true);
+  }
+
+  function openBulkCreate() {
+    setError("");
+    setCreateMode("bulk");
+    setEditingId(null);
+    const defaultCustomerId = customerFilter !== "all" ? customerFilter : "";
+    setForm(createEmptyDeviceForm({ customerId: defaultCustomerId }));
+    setBatchRows(createInitialBatchRows());
     setCustomerInput(selectedCustomerLabel(defaultCustomerId));
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
@@ -398,6 +444,8 @@ export function Devices() {
   }
 
   function openEdit(device: Device) {
+    setError("");
+    setCreateMode("single");
     setEditingId(device.id);
     setForm({
       customerId: device.customerId ? String(device.customerId) : "",
@@ -417,6 +465,23 @@ export function Devices() {
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
     setDialogOpen(true);
+  }
+
+  function updateBatchRow(index: number, field: keyof BatchDeviceRow, value: string) {
+    setBatchRows((rows) => rows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, [field]: value } : row
+    )));
+  }
+
+  function addBatchRow() {
+    setBatchRows((rows) => [...rows, createEmptyBatchRow()]);
+  }
+
+  function removeBatchRow(index: number) {
+    setBatchRows((rows) => {
+      const next = rows.filter((_, rowIndex) => rowIndex !== index);
+      return next.length ? next : [createEmptyBatchRow()];
+    });
   }
 
   async function openDetail(device: Device) {
@@ -449,38 +514,77 @@ export function Devices() {
       setCustomerDropdownOpen(true);
       return;
     }
-    if (!form.model.trim()) {
-      setError("请输入设备型号");
-      return;
-    }
     setSaving(true);
     setError("");
+    let createdCount = 0;
     try {
-      const payload: Record<string, unknown> = {
+      const maintenanceType = canonicalMaintenanceType(form.maintenanceType);
+      const commonPayload: Record<string, unknown> = {
         customerId: effectiveCustomerId,
-        name: form.name.trim() || null,
-        model: form.model.trim(),
-        pn: form.pn.trim() || undefined,
-        serialNo: form.serialNo.trim() || undefined,
-        maintenanceType: canonicalMaintenanceType(form.maintenanceType),
-        maintenancePartyId:
-          canonicalMaintenanceType(form.maintenanceType) === "none" ? null : form.maintenancePartyId || null,
+        maintenanceType,
+        maintenancePartyId: maintenanceType === "none" ? null : form.maintenancePartyId || null,
         maintenanceStart: form.maintenanceStart || undefined,
         maintenanceEnd: form.maintenanceEnd || undefined,
         location: form.location.trim() || undefined,
         status: form.status,
         remark: form.remark.trim() || undefined,
       };
-      if (editingId) {
-        await api.put(`/devices/${editingId}`, payload);
+
+      if (!editingId && createMode === "bulk") {
+        const defaultModel = form.model.trim();
+        const rows = batchRows
+          .map((row, index) => ({
+            index,
+            name: row.name.trim(),
+            model: row.model.trim() || defaultModel,
+            serialNo: row.serialNo.trim(),
+            hasInput: batchRowHasInput(row),
+          }))
+          .filter((row) => row.hasInput);
+
+        if (!rows.length) {
+          setError("请至少填写一台设备");
+          return;
+        }
+        const missingModel = rows.find((row) => !row.model);
+        if (missingModel) {
+          setError(`第 ${missingModel.index + 1} 行缺少设备型号，请填写该行型号或上方默认型号`);
+          return;
+        }
+
+        for (const row of rows) {
+          await api.post("/devices", {
+            ...commonPayload,
+            name: row.name || null,
+            model: row.model,
+            serialNo: row.serialNo || undefined,
+          });
+          createdCount += 1;
+        }
       } else {
-        await api.post("/devices", payload);
+        if (!form.model.trim()) {
+          setError("请输入设备型号");
+          return;
+        }
+        const payload: Record<string, unknown> = {
+          ...commonPayload,
+          name: form.name.trim() || null,
+          model: form.model.trim(),
+          pn: form.pn.trim() || undefined,
+          serialNo: form.serialNo.trim() || undefined,
+        };
+        if (editingId) {
+          await api.put(`/devices/${editingId}`, payload);
+        } else {
+          await api.post("/devices", payload);
+        }
       }
       setDialogOpen(false);
       await load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "保存失败";
-      setError(msg);
+      setError(createdCount ? `已新增 ${createdCount} 台设备，后续保存失败：${msg}` : msg);
+      if (createdCount) await load();
     } finally {
       setSaving(false);
     }
@@ -540,7 +644,6 @@ export function Devices() {
     setForm((prev) => ({
       ...prev,
       model: suggestion.canonicalModel || prev.model,
-      pn: suggestion.partNumber || prev.pn,
     }));
     setModelSuggestions([]);
     setModelDropdownOpen(false);
@@ -596,10 +699,16 @@ export function Devices() {
             刷新
           </Button>
           {canManageDevices ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              新增设备
-            </Button>
+            <>
+              <Button variant="outline" onClick={openBulkCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                批量新增
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增设备
+              </Button>
+            </>
           ) : null}
         </div>
       </div>
@@ -763,10 +872,8 @@ export function Devices() {
                           <div className="text-sm">{device.model || "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs text-muted-foreground">PN / SN</div>
-                          <div className="text-sm">
-                            {device.pn || "-"} <span className="text-muted-foreground">/</span> {device.serialNo || "-"}
-                          </div>
+                          <div className="text-xs text-muted-foreground">SN</div>
+                          <div className="text-sm">{device.serialNo || "-"}</div>
                         </div>
                         <div>
                           <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>
@@ -841,14 +948,10 @@ export function Devices() {
                         <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>{typeLabel}</Badge>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">型号</div>
                         <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.model || "-"}</div>
-                      </div>
-                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
-                        <div className="text-xs text-muted-foreground">PN</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.pn || "-"}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">SN</div>
@@ -987,17 +1090,35 @@ export function Devices() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setError("");
+            setModelDropdownOpen(false);
+          }
+        }}
+      >
         <DialogContent
-          className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto"
+          className={`max-h-[85vh] overflow-y-auto ${!editingId && createMode === "bulk" ? "sm:max-w-[920px]" : "sm:max-w-[640px]"}`}
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>{editingId ? "编辑设备" : "新增设备"}</DialogTitle>
+            <DialogTitle>{editingId ? "编辑设备" : createMode === "bulk" ? "批量新增设备" : "新增设备"}</DialogTitle>
             <DialogDescription>
-              {editingId ? "更新设备信息" : "填写设备信息后提交保存"}
+              {editingId
+                ? "更新设备信息"
+                : createMode === "bulk"
+                  ? "公共信息填一次，每行保存为一台设备"
+                  : "填写设备信息后提交保存"}
             </DialogDescription>
           </DialogHeader>
+          {error ? (
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2 md:col-span-2">
@@ -1052,68 +1173,103 @@ export function Devices() {
                   )}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>主机名</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="例如 sz5eap01，可不填"
-                />
-              </div>
-              <div className="space-y-2 relative" ref={modelDropdownRef}>
-                <Label>设备型号 *</Label>
-                <Input
-                  value={form.model}
-                  onFocus={() => {
-                    if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
-                  }}
-                  onChange={(e) => {
-                    setForm({ ...form, model: e.target.value });
-                    scheduleModelSearch(e.target.value);
-                  }}
-                  placeholder="例如 PowerEdge R740"
-                />
-                {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
-                  <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
-                    {modelLoading ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
-                      </div>
-                    ) : modelSuggestions.map((suggestion, index) => (
-                      <button
-                        key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
-                        type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
-                        onClick={() => applyModelSuggestion(suggestion)}
-                      >
-                        <Check className="w-4 h-4 mt-0.5 text-primary" />
-                        <span>
-                          <span className="font-medium">{suggestion.canonicalModel}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+              {!editingId && createMode === "bulk" ? (
+                <div className="space-y-2 relative md:col-span-2" ref={modelDropdownRef}>
+                  <Label>默认设备型号</Label>
+                  <Input
+                    value={form.model}
+                    onFocus={() => {
+                      if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
+                    }}
+                    onChange={(e) => {
+                      setForm({ ...form, model: e.target.value });
+                      scheduleModelSearch(e.target.value);
+                    }}
+                    placeholder="同型号设备可在这里填一次，每行也可单独覆盖"
+                  />
+                  {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
+                    <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
+                      {modelLoading ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+                        </div>
+                      ) : modelSuggestions.map((suggestion, index) => (
+                        <button
+                          key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
+                          onClick={() => applyModelSuggestion(suggestion)}
+                        >
+                          <Check className="w-4 h-4 mt-0.5 text-primary" />
+                          <span>
+                            <span className="font-medium">{suggestion.canonicalModel}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    ))}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>主机名</Label>
+                    <Input
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="例如 sz5eap01，可不填"
+                    />
                   </div>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>部件号 PN</Label>
-                <Input
-                  value={form.pn}
-                  onChange={(e) => setForm({ ...form, pn: e.target.value })}
-                  placeholder="部件号"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>序列号 SN</Label>
-                <Input
-                  value={form.serialNo}
-                  onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
-                  placeholder="序列号"
-                />
-              </div>
+                  <div className="space-y-2 relative" ref={modelDropdownRef}>
+                    <Label>设备型号 *</Label>
+                    <Input
+                      value={form.model}
+                      onFocus={() => {
+                        if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
+                      }}
+                      onChange={(e) => {
+                        setForm({ ...form, model: e.target.value });
+                        scheduleModelSearch(e.target.value);
+                      }}
+                      placeholder="例如 PowerEdge R740"
+                    />
+                    {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
+                      <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
+                        {modelLoading ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+                          </div>
+                        ) : modelSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
+                            onClick={() => applyModelSuggestion(suggestion)}
+                          >
+                            <Check className="w-4 h-4 mt-0.5 text-primary" />
+                            <span>
+                              <span className="font-medium">{suggestion.canonicalModel}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>序列号 SN</Label>
+                    <Input
+                      value={form.serialNo}
+                      onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
+                      placeholder="序列号"
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <Label>维保类型</Label>
                 <Select
@@ -1196,6 +1352,62 @@ export function Devices() {
                   placeholder="补充说明"
                 />
               </div>
+              {!editingId && createMode === "bulk" ? (
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <Label>设备明细 *</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        每行一台设备；空行会自动忽略，行内型号为空时使用上方默认型号。
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addBatchRow} disabled={saving}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      添加一行
+                    </Button>
+                  </div>
+                  <div className="rounded-md border">
+                    <div className="hidden grid-cols-[1fr_1.25fr_1fr_44px] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                      <span>主机名</span>
+                      <span>型号</span>
+                      <span>SN</span>
+                      <span />
+                    </div>
+                    <div className="divide-y">
+                      {batchRows.map((row, index) => (
+                        <div key={index} className="grid grid-cols-1 gap-2 p-3 md:grid-cols-[1fr_1.25fr_1fr_44px]">
+                          <Input
+                            value={row.name}
+                            onChange={(e) => updateBatchRow(index, "name", e.target.value)}
+                            placeholder={`第 ${index + 1} 台主机名`}
+                          />
+                          <Input
+                            value={row.model}
+                            onChange={(e) => updateBatchRow(index, "model", e.target.value)}
+                            placeholder="型号，空则用默认型号"
+                          />
+                          <Input
+                            value={row.serialNo}
+                            onChange={(e) => updateBatchRow(index, "serialNo", e.target.value)}
+                            placeholder="SN"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="justify-self-start text-red-600 hover:text-red-700 md:justify-self-center"
+                            onClick={() => removeBatchRow(index)}
+                            disabled={saving}
+                            aria-label={`删除第 ${index + 1} 行`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <DialogFooter>
@@ -1204,7 +1416,7 @@ export function Devices() {
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-              {saving ? "保存中…" : editingId ? "保存修改" : "保存"}
+              {saving ? "保存中…" : editingId ? "保存修改" : createMode === "bulk" ? "批量保存" : "保存"}
             </Button>
           </DialogFooter>
         </DialogContent>

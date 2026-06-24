@@ -2347,44 +2347,85 @@ async function updateSelfReport(req, res) {
 
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
+    let effectiveCustomerId = order.customer_id
+    let customerChanged = false
     if (shouldSyncCustomerProfile) {
-      await connection.execute(
-        `UPDATE customers
-         SET name = :customerName,
-             name_key = :customerNameKey,
-             address = :customerAddress,
-             contact_name = :contactName,
-             contact_phone = :contactPhone,
-             latitude = COALESCE(:customerLatitude, latitude),
-             longitude = COALESCE(:customerLongitude, longitude),
-             map_provider = COALESCE(:customerMapProvider, map_provider),
-             map_poi_id = COALESCE(:customerMapPoiId, map_poi_id),
-             map_poi_name = COALESCE(:customerMapPoiName, map_poi_name),
-             map_address = COALESCE(:customerMapAddress, map_address)
-         WHERE id = :customerId`,
-        {
-          customerId: order.customer_id,
-          customerName,
-          customerNameKey: customerNameKey(customerName),
-          customerAddress: customerAddress || null,
-          contactName: contactName || customerConfirmName || null,
-          contactPhone: customerProfileContactPhone || null,
-          customerLatitude: customerLatitude || null,
-          customerLongitude: customerLongitude || null,
-          customerMapProvider: customerMapProvider || null,
-          customerMapPoiId: customerMapPoiId || null,
-          customerMapPoiName: customerMapPoiName || null,
-          customerMapAddress: customerMapAddress || null,
-        },
+      const nameKey = customerNameKey(customerName)
+      const [matchedCustomers] = await connection.execute(
+        'SELECT id FROM customers WHERE name_key = :nameKey LIMIT 1',
+        { nameKey },
       )
+      effectiveCustomerId = matchedCustomers[0]?.id || order.customer_id
+      const isSwitchingCustomer = Number(effectiveCustomerId) !== Number(order.customer_id)
+      customerChanged = isSwitchingCustomer
+      if (isSwitchingCustomer) {
+        await connection.execute(
+          `UPDATE customers
+           SET address = COALESCE(NULLIF(:customerAddress, ''), address),
+               contact_name = COALESCE(NULLIF(:contactName, ''), contact_name),
+               contact_phone = COALESCE(NULLIF(:contactPhone, ''), contact_phone),
+               latitude = COALESCE(:customerLatitude, latitude),
+               longitude = COALESCE(:customerLongitude, longitude),
+               map_provider = COALESCE(:customerMapProvider, map_provider),
+               map_poi_id = COALESCE(:customerMapPoiId, map_poi_id),
+               map_poi_name = COALESCE(:customerMapPoiName, map_poi_name),
+               map_address = COALESCE(:customerMapAddress, map_address)
+           WHERE id = :customerId`,
+          {
+            customerId: effectiveCustomerId,
+            customerAddress: customerAddress || null,
+            contactName: contactName || customerConfirmName || null,
+            contactPhone: customerProfileContactPhone || null,
+            customerLatitude: customerLatitude || null,
+            customerLongitude: customerLongitude || null,
+            customerMapProvider: customerMapProvider || null,
+            customerMapPoiId: customerMapPoiId || null,
+            customerMapPoiName: customerMapPoiName || null,
+            customerMapAddress: customerMapAddress || null,
+          },
+        )
+      } else {
+        await connection.execute(
+          `UPDATE customers
+           SET name = :customerName,
+               name_key = :customerNameKey,
+               address = :customerAddress,
+               contact_name = :contactName,
+               contact_phone = :contactPhone,
+               latitude = COALESCE(:customerLatitude, latitude),
+               longitude = COALESCE(:customerLongitude, longitude),
+               map_provider = COALESCE(:customerMapProvider, map_provider),
+               map_poi_id = COALESCE(:customerMapPoiId, map_poi_id),
+               map_poi_name = COALESCE(:customerMapPoiName, map_poi_name),
+               map_address = COALESCE(:customerMapAddress, map_address)
+           WHERE id = :customerId`,
+          {
+            customerId: effectiveCustomerId,
+            customerName,
+            customerNameKey: nameKey,
+            customerAddress: customerAddress || null,
+            contactName: contactName || customerConfirmName || null,
+            contactPhone: customerProfileContactPhone || null,
+            customerLatitude: customerLatitude || null,
+            customerLongitude: customerLongitude || null,
+            customerMapProvider: customerMapProvider || null,
+            customerMapPoiId: customerMapPoiId || null,
+            customerMapPoiName: customerMapPoiName || null,
+            customerMapAddress: customerMapAddress || null,
+          },
+        )
+      }
     }
+    const effectiveTimesheetSalesperson = timesheetSalesperson || (customerChanged
+      ? await customerSalesperson(connection, effectiveCustomerId)
+      : null)
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
     let effectiveDeviceId = shouldManageInstallDevice
       ? (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
       : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
     if (effectiveDeviceId) {
-      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, order.customer_id)
+      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
     const hasInstallDeviceFields = shouldManageInstallDevice
       && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
@@ -2404,7 +2445,7 @@ async function updateSelfReport(req, res) {
          )
          VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none', :serviceOrderId)`,
         {
-          customerId: order.customer_id,
+          customerId: effectiveCustomerId,
           deviceName: effectiveDeviceName,
           deviceModel: effectiveDeviceModel,
           devicePn: devicePn || null,
@@ -2436,11 +2477,15 @@ async function updateSelfReport(req, res) {
 
     await connection.execute(
       `UPDATE service_orders
-       SET device_id = :deviceId,
+       SET customer_id = :customerId,
+           device_id = :deviceId,
            service_mode = :serviceMode,
            service_type = :serviceType,
            timesheet_category = :timesheetCategory,
-           timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
+           timesheet_salesperson = CASE
+             WHEN :customerChanged THEN :timesheetSalesperson
+             ELSE COALESCE(:timesheetSalesperson, timesheet_salesperson)
+           END,
            priority = :priority,
            issue_description = :issueDescription,
            assigned_engineer_id = COALESCE(assigned_engineer_id, :engineerId),
@@ -2450,11 +2495,13 @@ async function updateSelfReport(req, res) {
        WHERE id = :id`,
       {
         id: req.params.id,
+        customerId: effectiveCustomerId,
         deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
         timesheetCategory: effectiveServiceMode === 'onsite' ? null : timesheetCategory || '其他',
-        timesheetSalesperson: timesheetSalesperson || null,
+        timesheetSalesperson: effectiveTimesheetSalesperson || null,
+        customerChanged: customerChanged ? 1 : 0,
         priority,
         issueDescription,
         engineerId: req.user.id,
@@ -2509,13 +2556,13 @@ async function updateSelfReport(req, res) {
 
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await saveServiceParts(connection, req.params.id, parts, {
-      customerId: order.customer_id,
+      customerId: effectiveCustomerId,
       fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
       fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
     })
 
     if (effectiveServiceMode !== 'office') {
-      await recordCustomerContact(connection, order.customer_id, contactName || customerConfirmName, contactPhone, req.user.id)
+      await recordCustomerContact(connection, effectiveCustomerId, contactName || customerConfirmName, contactPhone, req.user.id)
     }
     await writeAudit(connection, req.user.id, req.params.id, 'self_report_update')
     await connection.execute(

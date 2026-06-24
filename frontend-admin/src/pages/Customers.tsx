@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,6 +170,8 @@ const I18N = {
       saving: "保存中…",
       clearSelection: "清空选择",
       close: "关闭",
+      merge: "合并客户",
+      merging: "合并中…",
     },
     stats: {
       total: "客户总数",
@@ -231,6 +233,14 @@ const I18N = {
       bulkDeleteSafeConfirm: "确认删除选中的 {count} 个客户？只有没有关联数据的客户可以删除。",
       bulkDeleteSuccess: "已删除 {count} 个客户（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张工单）",
       bulkDeleteSafeSuccess: "已删除 {count} 个客户",
+      mergeTitle: "合并客户",
+      mergeDescription: "选择一个客户作为保留档案，另一个客户的设备、工单、巡检计划和联系人会转入保留客户，来源客户会被删除。",
+      mergeKeepCustomer: "保留客户",
+      mergeSourceCustomer: "并入后删除",
+      mergeWarning: "合并不可撤销，请确认保留客户是资料更完整的一方。",
+      mergeNeedTwo: "请先勾选 2 个客户再合并。",
+      mergeSuccess: "已合并客户：{source} → {target}",
+      mergeConfirm: "确认合并",
       detailTitle: "客户详情",
       detailDescription: "客户基础信息、联系人、业务归属与地图坐标",
       serviceOrderCount: "服务次数",
@@ -272,6 +282,7 @@ const I18N = {
       createFailed: "新增失败",
       deleteFailed: "删除失败",
       bulkDeleteFailed: "批量删除失败",
+      mergeFailed: "合并失败",
       nameRequired: "请输入客户名称",
       geoSearchFailed: "搜索失败",
     },
@@ -324,6 +335,8 @@ const I18N = {
       saving: "儲存中…",
       clearSelection: "清空選擇",
       close: "關閉",
+      merge: "合併客戶",
+      merging: "合併中…",
     },
     stats: {
       total: "客戶總數",
@@ -385,6 +398,14 @@ const I18N = {
       bulkDeleteSafeConfirm: "確認刪除選中的 {count} 個客戶？只有沒有關聯資料的客戶可以刪除。",
       bulkDeleteSuccess: "已刪除 {count} 個客戶（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張工單）",
       bulkDeleteSafeSuccess: "已刪除 {count} 個客戶",
+      mergeTitle: "合併客戶",
+      mergeDescription: "選擇一個客戶作為保留檔案，另一個客戶的設備、工單、巡檢計畫和聯絡人會轉入保留客戶，來源客戶會被刪除。",
+      mergeKeepCustomer: "保留客戶",
+      mergeSourceCustomer: "併入後刪除",
+      mergeWarning: "合併不可復原，請確認保留客戶是資料更完整的一方。",
+      mergeNeedTwo: "請先勾選 2 個客戶再合併。",
+      mergeSuccess: "已合併客戶：{source} → {target}",
+      mergeConfirm: "確認合併",
       detailTitle: "客戶詳情",
       detailDescription: "客戶基礎資訊、聯絡人、業務歸屬與地圖座標",
       serviceOrderCount: "服務次數",
@@ -426,6 +447,7 @@ const I18N = {
       createFailed: "新增失敗",
       deleteFailed: "刪除失敗",
       bulkDeleteFailed: "批量刪除失敗",
+      mergeFailed: "合併失敗",
       nameRequired: "請輸入客戶名稱",
       geoSearchFailed: "搜尋失敗",
     },
@@ -514,6 +536,14 @@ const CUSTOMER_FORCE_DELETE_ROLES = new Set([
   "sales_supervisor",
   "sales",
 ]);
+const CUSTOMER_MERGE_ROLES = new Set([
+  "admin",
+  "assistant",
+  "dispatcher",
+  "operations_director",
+  "sales_supervisor",
+  "sales",
+]);
 
 function levelOf(c: Customer): string {
   return c.level || "normal";
@@ -576,6 +606,10 @@ export function Customers() {
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState("");
   const [detailTarget, setDetailTarget] = useState<Customer | null>(null);
   const [detailInsight, setDetailInsight] = useState<CustomerInsight | null>(null);
   const [detailInsightLoading, setDetailInsightLoading] = useState(false);
@@ -596,6 +630,7 @@ export function Customers() {
   const canManageCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
   const canDeleteCustomer = canManageCustomer;
   const canForceDeleteCustomer = CUSTOMER_FORCE_DELETE_ROLES.has(userRole);
+  const canMergeCustomer = CUSTOMER_MERGE_ROLES.has(userRole);
   const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
@@ -712,6 +747,18 @@ export function Customers() {
   const allFilteredCustomersSelected = canDeleteCustomer
     && filtered.length > 0
     && filtered.every((customer) => selectedCustomerIds.includes(String(customer.id)));
+
+  const selectedCustomers = useMemo(
+    () => selectedCustomerIds
+      .map((id) => customers.find((customer) => String(customer.id) === id))
+      .filter((customer): customer is Customer => Boolean(customer)),
+    [customers, selectedCustomerIds],
+  );
+
+  const mergeTarget = selectedCustomers.find((customer) => String(customer.id) === mergeTargetId) || null;
+  const mergeSource = mergeTarget
+    ? selectedCustomers.find((customer) => String(customer.id) !== String(mergeTarget.id)) || null
+    : null;
 
   function renderPhoneLink(phone?: string, stopPropagation = false) {
     const href = telHref(phone);
@@ -1040,6 +1087,56 @@ export function Customers() {
     setDeleteTarget(c);
   }
 
+  function openMergeDialog() {
+    setError("");
+    setSuccessMessage("");
+    setMergeError("");
+    if (selectedCustomers.length !== 2) {
+      setError(t.dialog.mergeNeedTwo);
+      return;
+    }
+    const defaultTarget = [...selectedCustomers].sort((left, right) => (
+      String(right.name || "").length - String(left.name || "").length
+    ))[0] || selectedCustomers[0];
+    setMergeTargetId(String(defaultTarget.id));
+    setMergeDialogOpen(true);
+  }
+
+  function closeMergeDialog() {
+    if (merging) return;
+    setMergeDialogOpen(false);
+    setMergeError("");
+  }
+
+  async function confirmMerge() {
+    if (!mergeTarget || !mergeSource) return;
+    const targetName = mergeTarget.name || `客户 #${mergeTarget.id}`;
+    const sourceName = mergeSource.name || `客户 #${mergeSource.id}`;
+    setMerging(true);
+    setError("");
+    setSuccessMessage("");
+    setMergeError("");
+    try {
+      await api.post(`/customers/${mergeTarget.id}/merge`, { sourceCustomerId: mergeSource.id });
+      setMergeDialogOpen(false);
+      setSelectedCustomerIds([]);
+      if (
+        detailTarget
+        && (String(detailTarget.id) === String(mergeSource.id) || String(detailTarget.id) === String(mergeTarget.id))
+      ) {
+        setDetailTarget(null);
+      }
+      await load();
+      setSuccessMessage(interpolate(t.dialog.mergeSuccess, { source: sourceName, target: targetName }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t.errors.mergeFailed;
+      setMergeError(msg);
+      setError(msg);
+    } finally {
+      setMerging(false);
+    }
+  }
+
   function closeDelete() {
     if (deleting) return;
     setDeleteError("");
@@ -1253,17 +1350,28 @@ export function Customers() {
                 {t.list.selectAllCurrent}
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                {selectedCustomerIds.length ? (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting}>
-                    {t.actions.clearSelection}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={confirmBulkDelete}
-                  disabled={deleting || !selectedCustomerIds.length}
-                >
+	                {selectedCustomerIds.length ? (
+	                  <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting || merging}>
+	                    {t.actions.clearSelection}
+	                  </Button>
+	                ) : null}
+	                {canMergeCustomer ? (
+	                  <Button
+	                    variant="outline"
+	                    size="sm"
+	                    onClick={openMergeDialog}
+	                    disabled={deleting || merging || selectedCustomerIds.length !== 2}
+	                  >
+	                    {merging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+	                    {merging ? t.actions.merging : `${t.actions.merge}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
+	                  </Button>
+	                ) : null}
+	                <Button
+	                  variant="ghost"
+	                  className="text-red-600 hover:text-red-700"
+	                  onClick={confirmBulkDelete}
+	                  disabled={deleting || merging || !selectedCustomerIds.length}
+	                >
                   {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
                   {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                 </Button>
@@ -1407,6 +1515,79 @@ export function Customers() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={mergeDialogOpen} onOpenChange={(open) => { if (!open) closeMergeDialog(); }}>
+        <DialogContent className="sm:max-w-[680px]">
+          <DialogHeader>
+            <DialogTitle>{t.dialog.mergeTitle}</DialogTitle>
+            <DialogDescription>{t.dialog.mergeDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {mergeError ? (
+              <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {mergeError}
+              </div>
+            ) : null}
+            <div className="grid gap-3 md:grid-cols-2">
+              {selectedCustomers.map((customer) => {
+                const selected = String(customer.id) === mergeTargetId;
+                return (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    className={`rounded-lg border p-4 text-left transition-colors ${
+                      selected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:border-primary/50 hover:bg-accent/30"
+                    }`}
+                    onClick={() => setMergeTargetId(String(customer.id))}
+                    disabled={merging}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{customer.name || t.misc.unknown}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{customer.code || `客户 #${customer.id}`}</div>
+                      </div>
+                      {selected ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                    </div>
+                    <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                      <div>{t.list.salesperson}：{customer.salesperson || t.misc.unknown}</div>
+                      <div>{t.dialog.serviceOrderCount}：{Number(customer.serviceOrderCount || 0)}</div>
+                      <div className="truncate">{t.list.address}：{customer.address || t.misc.unknown}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {mergeTarget && mergeSource ? (
+              <div className="rounded-lg border bg-slate-50/80 p-4 text-sm">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">{t.dialog.mergeSourceCustomer}</div>
+                    <div className="mt-1 truncate font-semibold text-slate-900">{mergeSource.name || t.misc.unknown}</div>
+                  </div>
+                  <ArrowRightLeft className="hidden h-4 w-4 text-muted-foreground md:block" />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">{t.dialog.mergeKeepCustomer}</div>
+                    <div className="mt-1 truncate font-semibold text-slate-900">{mergeTarget.name || t.misc.unknown}</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-start gap-2 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{t.dialog.mergeWarning}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeMergeDialog} disabled={merging}>
+              {t.actions.cancel}
+            </Button>
+            <Button onClick={confirmMerge} disabled={merging || !mergeTarget || !mergeSource}>
+              {merging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+              {merging ? t.actions.merging : t.dialog.mergeConfirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1000px]">
