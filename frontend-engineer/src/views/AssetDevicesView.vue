@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
@@ -21,6 +21,10 @@ const createMode = ref('single')
 const editingId = ref(null)
 const form = ref(emptyForm())
 const batchRows = ref(createInitialBatchRows())
+const selectedDeviceIds = ref([])
+const batchEditOpen = ref(false)
+const batchEditForm = ref(emptyBatchEditForm())
+const batchEditToggles = ref(emptyBatchEditToggles())
 const customerInput = ref('')
 const customerDropdownOpen = ref(false)
 const customerSearchLoading = ref(false)
@@ -81,6 +85,17 @@ const filteredMaintenanceParties = computed(() => {
   return parties.value.filter((party) => canonicalMaintenanceType(party.partyType) === type)
 })
 
+const filteredBatchEditMaintenanceParties = computed(() => {
+  const type = canonicalMaintenanceType(batchEditForm.value.maintenanceType)
+  if (type === 'none') return []
+  return parties.value.filter((party) => canonicalMaintenanceType(party.partyType) === type)
+})
+
+const allFilteredDevicesSelected = computed(() => (
+  filteredDevices.value.length > 0
+  && filteredDevices.value.every((device) => selectedDeviceIds.value.includes(String(device.id)))
+))
+
 const dialogCustomerOptions = computed(() => {
   const keyword = normalizeCustomerSearchText(customerInput.value)
   const selectedId = String(form.value.customerId || '')
@@ -121,6 +136,30 @@ function emptyForm() {
     location: '',
     status: 'active',
     remark: '',
+  }
+}
+
+function emptyBatchEditForm() {
+  return {
+    maintenanceType: 'none',
+    maintenancePartyId: '',
+    maintenanceStart: '',
+    maintenanceEnd: '',
+    warrantyUntil: '',
+    location: '',
+    remark: '',
+  }
+}
+
+function emptyBatchEditToggles() {
+  return {
+    maintenanceType: false,
+    maintenancePartyId: false,
+    maintenanceStart: false,
+    maintenanceEnd: false,
+    warrantyUntil: false,
+    location: false,
+    remark: false,
   }
 }
 
@@ -277,6 +316,85 @@ function changeMaintenanceType(value) {
   const type = canonicalMaintenanceType(value)
   form.value.maintenanceType = type
   form.value.maintenancePartyId = resolveMaintenancePartyId(type, form.value.maintenancePartyId)
+}
+
+function changeBatchEditMaintenanceType(value) {
+  const type = canonicalMaintenanceType(value)
+  batchEditForm.value.maintenanceType = type
+  batchEditForm.value.maintenancePartyId = resolveMaintenancePartyId(type, batchEditForm.value.maintenancePartyId)
+}
+
+function toggleDeviceSelection(deviceId, checked) {
+  const id = String(deviceId)
+  if (checked) {
+    if (!selectedDeviceIds.value.includes(id)) selectedDeviceIds.value = [...selectedDeviceIds.value, id]
+    return
+  }
+  selectedDeviceIds.value = selectedDeviceIds.value.filter((item) => item !== id)
+}
+
+function toggleAllFilteredDevices(checked) {
+  if (!checked) {
+    clearDeviceSelection()
+    return
+  }
+  selectedDeviceIds.value = filteredDevices.value.map((device) => String(device.id))
+}
+
+function clearDeviceSelection() {
+  selectedDeviceIds.value = []
+}
+
+function openBatchEdit() {
+  if (!selectedDeviceIds.value.length) {
+    error.value = '请先选择要批量编辑的设备'
+    return
+  }
+  error.value = ''
+  batchEditForm.value = emptyBatchEditForm()
+  batchEditToggles.value = emptyBatchEditToggles()
+  batchEditOpen.value = true
+}
+
+function closeBatchEdit() {
+  if (saving.value) return
+  batchEditOpen.value = false
+  error.value = ''
+}
+
+async function submitBatchEdit() {
+  const fields = {}
+  if (batchEditToggles.value.maintenanceType) {
+    fields.maintenanceType = canonicalMaintenanceType(batchEditForm.value.maintenanceType)
+    if (fields.maintenanceType !== 'none' && batchEditToggles.value.maintenancePartyId) {
+      fields.maintenancePartyId = batchEditForm.value.maintenancePartyId || null
+    }
+  } else if (batchEditToggles.value.maintenancePartyId) {
+    fields.maintenancePartyId = batchEditForm.value.maintenancePartyId || null
+  }
+  if (batchEditToggles.value.maintenanceStart) fields.maintenanceStart = batchEditForm.value.maintenanceStart || null
+  if (batchEditToggles.value.maintenanceEnd) fields.maintenanceEnd = batchEditForm.value.maintenanceEnd || null
+  if (batchEditToggles.value.warrantyUntil) fields.warrantyUntil = batchEditForm.value.warrantyUntil || null
+  if (batchEditToggles.value.location) fields.location = batchEditForm.value.location.trim() || null
+  if (batchEditToggles.value.remark) fields.remark = batchEditForm.value.remark.trim() || null
+
+  if (!Object.keys(fields).length) {
+    error.value = '请至少勾选一个要修改的字段'
+    return
+  }
+
+  saving.value = true
+  error.value = ''
+  try {
+    await api.put('/devices/batch', { ids: selectedDeviceIds.value, fields })
+    batchEditOpen.value = false
+    selectedDeviceIds.value = []
+    await loadDevices()
+  } catch (err) {
+    error.value = err.message || '批量编辑失败'
+  } finally {
+    saving.value = false
+  }
 }
 
 function closeDialog() {
@@ -476,6 +594,12 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleModelOutsidePointer)
   window.clearTimeout(modelSearchTimer)
 })
+
+watch(filteredDevices, (items) => {
+  const visibleIds = new Set(items.map((device) => String(device.id)))
+  const next = selectedDeviceIds.value.filter((id) => visibleIds.has(id))
+  if (next.length !== selectedDeviceIds.value.length) selectedDeviceIds.value = next
+})
 </script>
 
 <template>
@@ -504,6 +628,21 @@ onBeforeUnmount(() => {
       <button class="primary" type="button" @click="openCreate"><PreviewIcon name="new" />{{ zh('新增设备') }}</button>
     </section>
 
+    <section v-if="filteredDevices.length" class="asset-batch-toolbar">
+      <label>
+        <input
+          type="checkbox"
+          :checked="allFilteredDevicesSelected"
+          :disabled="saving"
+          @change="toggleAllFilteredDevices($event.target.checked)"
+        />
+        {{ zh('全选当前列表') }}
+      </label>
+      <span>{{ zh(`已选择 ${selectedDeviceIds.length} 台`) }}</span>
+      <button v-if="selectedDeviceIds.length" class="ghost" type="button" :disabled="saving" @click="clearDeviceSelection">{{ zh('清空选择') }}</button>
+      <button class="ghost" type="button" :disabled="saving || !selectedDeviceIds.length" @click="openBatchEdit"><PreviewIcon name="edit" />{{ zh('批量编辑') }}</button>
+    </section>
+
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
     <p v-if="loading" class="muted">{{ zh('正在加载设备资产…') }}</p>
 
@@ -519,9 +658,20 @@ onBeforeUnmount(() => {
         @keydown.space.prevent="$router.push(`/assets/devices/${device.id}`)"
       >
         <header>
-          <div>
-            <span class="asset-record-kicker">{{ zh(device.customerName || '未关联客户') }}</span>
-            <h2>{{ zh(deviceDisplayName(device)) }}</h2>
+          <div class="asset-record-title-row">
+            <label class="asset-record-select" @click.stop @keydown.stop>
+              <input
+                type="checkbox"
+                :checked="selectedDeviceIds.includes(String(device.id))"
+                :disabled="saving"
+                :aria-label="zh(`选择设备 ${deviceDisplayName(device)}`)"
+                @change="toggleDeviceSelection(device.id, $event.target.checked)"
+              />
+            </label>
+            <div>
+              <span class="asset-record-kicker">{{ zh(device.customerName || '未关联客户') }}</span>
+              <h2>{{ zh(deviceDisplayName(device)) }}</h2>
+            </div>
           </div>
           <button class="ghost" type="button" @click.stop="openEdit(device)"><PreviewIcon name="edit" />{{ zh('编辑') }}</button>
         </header>
@@ -704,6 +854,86 @@ onBeforeUnmount(() => {
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
           <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : editingId ? '保存修改' : createMode === 'bulk' ? '批量保存' : '保存') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <div v-if="batchEditOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('批量编辑设备')" @click.self="closeBatchEdit">
+      <div class="signature-modal-shell asset-editor-shell asset-batch-edit-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('设备资产') }}</p>
+            <h2>{{ zh(`批量编辑设备 (${selectedDeviceIds.length} 台)`) }}</h2>
+          </div>
+        </header>
+        <p v-if="error" class="form-error">{{ zh(error) }}</p>
+        <div class="asset-editor-form asset-batch-edit-form">
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.maintenanceType" type="checkbox" />
+              <span>{{ zh('维保类型') }}</span>
+            </label>
+            <select :value="batchEditForm.maintenanceType" :disabled="!batchEditToggles.maintenanceType" @change="changeBatchEditMaintenanceType($event.target.value)">
+              <option value="none">{{ zh('无维保') }}</option>
+              <option value="our_maintenance">{{ zh('我方维保') }}</option>
+              <option value="original_manufacturer">{{ zh('原厂维保') }}</option>
+            </select>
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.maintenancePartyId" type="checkbox" />
+              <span>{{ zh('维保方') }}</span>
+            </label>
+            <select v-model="batchEditForm.maintenancePartyId" :disabled="!batchEditToggles.maintenancePartyId || batchEditForm.maintenanceType === 'none'">
+              <option value="">{{ zh(batchEditForm.maintenanceType === 'none' ? '无维保' : '选择维保方') }}</option>
+              <option v-for="party in filteredBatchEditMaintenanceParties" :key="party.id" :value="String(party.id)">{{ zh(party.name || '未命名维保方') }}</option>
+            </select>
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.maintenanceStart" type="checkbox" />
+              <span>{{ zh('维保开始日期') }}</span>
+            </label>
+            <input v-model="batchEditForm.maintenanceStart" type="date" :disabled="!batchEditToggles.maintenanceStart" />
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.maintenanceEnd" type="checkbox" />
+              <span>{{ zh('维保截止日期') }}</span>
+            </label>
+            <input v-model="batchEditForm.maintenanceEnd" type="date" :disabled="!batchEditToggles.maintenanceEnd" />
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.warrantyUntil" type="checkbox" />
+              <span>{{ zh('质保截止日期') }}</span>
+            </label>
+            <input v-model="batchEditForm.warrantyUntil" type="date" :disabled="!batchEditToggles.warrantyUntil" />
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.location" type="checkbox" />
+              <span>{{ zh('安装位置') }}</span>
+            </label>
+            <input v-model="batchEditForm.location" type="text" :disabled="!batchEditToggles.location" :placeholder="zh('安装位置')" />
+          </section>
+
+          <section class="asset-batch-edit-field asset-editor-wide">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.remark" type="checkbox" />
+              <span>{{ zh('备注') }}</span>
+            </label>
+            <textarea v-model="batchEditForm.remark" rows="2" :disabled="!batchEditToggles.remark" :placeholder="zh('补充说明')"></textarea>
+          </section>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" :disabled="saving" @click="closeBatchEdit">{{ zh('取消') }}</button>
+          <button class="primary" type="button" :disabled="saving" @click="submitBatchEdit"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : '批量保存') }}</button>
         </footer>
       </div>
     </div>

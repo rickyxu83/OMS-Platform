@@ -6434,6 +6434,40 @@ h2 {
   border-radius: 24px;
 }
 
+.asset-batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: -6px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 72%);
+  color: #475569;
+  font-size: var(--type-muted);
+  font-weight: 800;
+}
+
+.asset-batch-toolbar label,
+.asset-toggle-row,
+.asset-editor-form .asset-toggle-row {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.asset-batch-toolbar input[type="checkbox"],
+.asset-record-select input[type="checkbox"],
+.asset-toggle-row input[type="checkbox"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+  accent-color: #2563eb;
+}
+
 .asset-stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -6553,6 +6587,20 @@ h2 {
   gap: 12px;
   align-items: flex-start;
   justify-content: space-between;
+}
+
+.asset-record-title-row {
+  display: flex;
+  min-width: 0;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.asset-record-select {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding-top: 2px;
 }
 
 .asset-record-actions {
@@ -6701,6 +6749,25 @@ h2 {
   grid-column: 1 / -1;
   display: grid;
   gap: 10px;
+}
+
+.asset-batch-edit-form {
+  align-content: start;
+}
+
+.asset-batch-edit-field {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 16px;
+  background: rgb(248 250 252 / 72%);
+}
+
+.asset-batch-edit-field .asset-toggle-row {
+  color: #334155;
+  font-size: var(--type-muted);
+  font-weight: 900;
 }
 
 .asset-editor-batch-table {
@@ -6853,6 +6920,10 @@ h2 {
 
   .asset-editor-shell-wide {
     width: min(980px, calc(100vw - 48px));
+  }
+
+  .asset-batch-edit-shell {
+    width: min(720px, calc(100vw - 48px));
   }
 
   .asset-editor-form {
