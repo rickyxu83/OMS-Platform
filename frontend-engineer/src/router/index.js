@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { unifiedLoginUrl } from '../config/app'
 import { api } from '../services/api'
 import { currentUser, getToken, isLoggedIn, saveUser } from '../services/auth'
 import EngineerLayout from '../layouts/EngineerLayout.vue'
 
 // 路由级代码分割:视图按需加载,避免全站打进一个 chunk(首屏体积)
-const LoginView = () => import('../views/LoginView.vue')
 const TasksView = () => import('../views/TasksView.vue')
 const ServiceSheetCreateView = () => import('../views/ServiceSheetCreateView.vue')
 const TaskDetailView = () => import('../views/TaskDetailView.vue')
@@ -20,7 +20,6 @@ const TimesheetsView = () => import('../views/TimesheetsView.vue')
 const ProfileView = () => import('../views/ProfileView.vue')
 
 const viewLoaders = [
-  LoginView,
   TasksView,
   ServiceSheetCreateView,
   TaskDetailView,
@@ -35,11 +34,28 @@ const viewLoaders = [
   TimesheetsView,
   ProfileView,
 ]
+const ExternalLoginRedirect = {
+  name: 'ExternalLoginRedirect',
+  render: () => null,
+}
+
+function redirectToUnifiedLogin(to) {
+  const redirectPath = typeof to.query.redirect === 'string' && to.query.redirect.startsWith('/')
+    ? to.query.redirect
+    : '/'
+  window.location.replace(unifiedLoginUrl(redirectPath))
+  return false
+}
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/login', name: 'login', component: LoginView },
+    {
+      path: '/login',
+      name: 'login',
+      component: ExternalLoginRedirect,
+      beforeEnter: redirectToUnifiedLogin,
+    },
     {
       path: '/',
       component: EngineerLayout,
@@ -126,7 +142,7 @@ router.beforeEach(async (to) => {
       saveUser(user)
       if (user?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     } catch {
-      if (!currentUser.value) return { name: 'login' }
+      if (!currentUser.value) return { name: 'login', query: { redirect: to.fullPath } }
       if (currentUser.value?.requiresOnboarding && to.name !== 'profile') return { name: 'profile' }
     }
   }

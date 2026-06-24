@@ -1,13 +1,15 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
-import { saveUser } from '../services/auth'
+import { clearSession, saveUser } from '../services/auth'
 import { aiDraftEnabled, setAiDraftEnabled } from '../services/engineer-preferences'
 
 const { zh } = usePreviewI18n()
+const router = useRouter()
 const loading = ref(false)
 const savingPassword = ref(false)
 const savingSignature = ref(false)
@@ -342,6 +344,12 @@ function toggleAiDraftEnabled() {
   message.value = aiDraftEnabled.value ? 'AI 填单已开启' : 'AI 填单已关闭'
 }
 
+function switchAccount() {
+  api.post('/auth/logout').catch(() => {})
+  clearSession()
+  router.push('/login')
+}
+
 onMounted(load)
 </script>
 
@@ -351,7 +359,7 @@ onMounted(load)
       <div>
         <BrandEyebrow text="工程师工作台 / 我的" title="我的" />
       </div>
-      <RouterLink class="ghost profile-login" to="/login"><PreviewIcon name="user" />{{ zh('切换账号') }}</RouterLink>
+      <button class="ghost profile-login" type="button" @click="switchAccount"><PreviewIcon name="logout" />{{ zh('切换账号') }}</button>
     </header>
 
     <section v-if="onboardingRequired" class="onboarding-card">
