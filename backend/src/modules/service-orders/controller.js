@@ -752,6 +752,20 @@ async function saveSignatureFile(connection, orderId, dataUrl, userId) {
   return result.insertId
 }
 
+async function validateReusableSignatureFile(connection, fileId) {
+  const id = Number(fileId || 0)
+  if (!id) return null
+  const [rows] = await connection.execute(
+    `SELECT id
+     FROM files
+     WHERE id = :id
+       AND owner_type = 'signature'
+     LIMIT 1`,
+    { id },
+  )
+  return rows[0] ? id : null
+}
+
 async function signatureDataUrl(fileId) {
   if (!fileId) return ''
   const rows = await query('SELECT storage_path, mime_type FROM files WHERE id = :id LIMIT 1', { id: fileId })
@@ -1725,6 +1739,7 @@ async function createSelfReport(req, res) {
     result,
     resultDescription,
     customerSignature,
+    customerSignatureFileId,
     engineerIds = [],
     parts = [],
   } = req.body || {}
@@ -1746,7 +1761,7 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
-  if (effectiveServiceMode === 'onsite' && !customerSignature) missing.push('客户手写签名')
+  if (effectiveServiceMode === 'onsite' && !customerSignature && !customerSignatureFileId) missing.push('客户手写签名')
 
   if (missing.length) {
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
@@ -1946,7 +1961,11 @@ async function createSelfReport(req, res) {
         : await saveWorkEntries(connection, orderResult.insertId, workEntries, workContent, req.user.id)
     const effectiveWorkContent = String(workContent || '').trim() || mergedWorkContent(savedWorkEntries, workContent)
 
-    const customerSignatureFileId = await saveSignatureFile(connection, orderResult.insertId, customerSignature, req.user.id)
+    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
+    if (customerSignatureFileId && !reusableSignatureFileId && !customerSignature) {
+      throw badRequest('历史签名文件不存在，请重新签名')
+    }
+    const savedSignatureFileId = reusableSignatureFileId || await saveSignatureFile(connection, orderResult.insertId, customerSignature, req.user.id)
 
     await connection.execute(
       `INSERT INTO service_reports (
@@ -1967,7 +1986,7 @@ async function createSelfReport(req, res) {
         result: normalizedResult,
         resultDescription: resultDescription || null,
         customerConfirmName: contactName || null,
-        customerSignatureFileId,
+        customerSignatureFileId: savedSignatureFileId,
       },
     )
 
@@ -2195,7 +2214,10 @@ async function latestCustomerSignature(req, res) {
     ? await signatureDataUrl(rows[0].customer_signature_file_id)
     : rows[0]?.customer_signature || ''
 
-  res.json({ customerSignature: signature })
+  res.json({
+    customerSignature: signature,
+    customerSignatureFileId: rows[0]?.customer_signature_file_id || null,
+  })
 }
 
 async function getSelfReportDraft(req, res) {
@@ -2345,6 +2367,7 @@ async function updateSelfReport(req, res) {
     resultDescription,
     customerConfirmName,
     customerSignature,
+    customerSignatureFileId,
     engineerIds = [],
     parts = [],
   } = req.body || {}
@@ -2375,7 +2398,7 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
-  if (effectiveServiceMode === 'onsite' && !customerSignature && !hasExistingSignature) missing.push('客户手写签名')
+  if (effectiveServiceMode === 'onsite' && !customerSignature && !customerSignatureFileId && !hasExistingSignature) missing.push('客户手写签名')
   const isInspectionSubmit = effectiveServiceMode === 'onsite' && (serviceType === 'inspect' || order.service_type === 'inspect')
   if (isInspectionSubmit && !(await hasInspectionDocument(req.params.id))) {
     missing.push('巡检文档')
@@ -2566,7 +2589,11 @@ async function updateSelfReport(req, res) {
     await replaceOrderEngineers(connection, req.params.id, normalizedEngineerIds, req.user.id)
     await pruneWorkEntriesToEngineers(connection, req.params.id, normalizedEngineerIds)
 
-    const savedSignatureFileId = await saveSignatureFile(connection, req.params.id, customerSignature, req.user.id)
+    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
+    if (customerSignatureFileId && !reusableSignatureFileId && !customerSignature) {
+      throw badRequest('历史签名文件不存在，请重新签名')
+    }
+    const savedSignatureFileId = reusableSignatureFileId || await saveSignatureFile(connection, req.params.id, customerSignature, req.user.id)
     const savedWorkEntries =
       effectiveServiceMode === 'office'
         ? []
@@ -2901,7 +2928,16 @@ async function remove(req, res) {
       `DELETE FROM files
        WHERE (owner_type = 'service_order' AND owner_id = :id)
           OR (owner_type = 'service_report' AND owner_id = :id)
-          OR (owner_type = 'signature' AND owner_id = :id)`,
+          OR (
+            owner_type = 'signature'
+            AND owner_id = :id
+            AND NOT EXISTS (
+              SELECT 1
+              FROM service_reports sr
+              WHERE sr.customer_signature_file_id = files.id
+                AND sr.service_order_id <> :id
+            )
+          )`,
       { id: req.params.id },
     )
     await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
@@ -2952,7 +2988,16 @@ async function bulkDelete(req, res) {
       `DELETE FROM files
        WHERE (owner_type = 'service_order' AND owner_id IN (${found.placeholders}))
           OR (owner_type = 'service_report' AND owner_id IN (${found.placeholders}))
-          OR (owner_type = 'signature' AND owner_id IN (${found.placeholders}))`,
+          OR (
+            owner_type = 'signature'
+            AND owner_id IN (${found.placeholders})
+            AND NOT EXISTS (
+              SELECT 1
+              FROM service_reports sr
+              WHERE sr.customer_signature_file_id = files.id
+                AND sr.service_order_id NOT IN (${found.placeholders})
+            )
+          )`,
       found.params,
     )
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)

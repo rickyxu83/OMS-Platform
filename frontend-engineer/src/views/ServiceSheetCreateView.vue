@@ -128,6 +128,7 @@ const downloadingInspectionDocId = ref(null)
 const signatureSection = ref(null)
 const signatureCanvas = ref(null)
 const customerSignature = ref('')
+const customerSignatureFileId = ref(null)
 const signatureDrawn = ref(false)
 const signaturePanelOpen = ref(false)
 const signatureHistory = ref([])
@@ -168,6 +169,8 @@ let drawingSignature = false
 let lastSignaturePoint = null
 let lastSignatureMidPoint = null
 let signatureBeforeOpen = ''
+let signatureFileIdBeforeOpen = null
+let signatureEdited = false
 let cancelFabMoved = false
 let cancelFabStartPointer = { x: 0, y: 0 }
 let cancelFabStartPosition = { x: 0, y: 0 }
@@ -448,6 +451,7 @@ function pageDraftStateSnapshot() {
     installDeviceState: currentInstallDeviceView(),
     servicePartState: currentServicePartView(),
     customerSignature: customerSignature.value,
+    customerSignatureFileId: customerSignatureFileId.value,
     __draftClientUpdatedAt: lastDraftClientUpdatedAt.value || new Date().toISOString(),
   }
 }
@@ -496,6 +500,7 @@ function applyDraftState(state = {}, { fallbackMode = 'onsite' } = {}) {
     ...(state.officeDraft || {}),
   }
   customerSignature.value = state.customerSignature || ''
+  customerSignatureFileId.value = state.customerSignatureFileId || null
   signatureDrawn.value = Boolean(customerSignature.value)
 }
 
@@ -849,6 +854,7 @@ function draftSnapshot() {
     installDeviceState: currentInstallDeviceView(),
     servicePartState: currentServicePartView(),
     customerSignature: customerSignature.value,
+    customerSignatureFileId: customerSignatureFileId.value,
     __draftId: isNewDraft ? createDraftId.value : '',
     __draftCreatedAt: isNewDraft ? undefined : '',
     __draftClientUpdatedAt: lastDraftClientUpdatedAt.value || new Date().toISOString(),
@@ -995,6 +1001,7 @@ async function restoreDraftIfPresent() {
     }
   }
   customerSignature.value = preferredDraft.payload.customerSignature || ''
+  customerSignatureFileId.value = preferredDraft.payload.customerSignatureFileId || null
   signatureDrawn.value = Boolean(customerSignature.value)
   if (!orderId) createDraftId.value = normalizeDraftItemId(preferredDraft.payload.__draftId || scopedDraftId || createDraftItemId())
   lastDraftClientUpdatedAt.value = preferredDraft.payload.__draftClientUpdatedAt || preferredDraft.updatedAt || ''
@@ -1107,6 +1114,7 @@ function onServiceModeChange() {
     serviceDraft.value.departureAt = ''
     serviceDraft.value.returnAt = ''
     customerSignature.value = ''
+    customerSignatureFileId.value = null
     signatureDrawn.value = false
     signaturePanelOpen.value = false
   }
@@ -1376,6 +1384,8 @@ async function unlockSignatureLandscape() {
 
 async function openSignaturePanel() {
   signatureBeforeOpen = customerSignature.value
+  signatureFileIdBeforeOpen = customerSignatureFileId.value
+  signatureEdited = false
   signatureHistory.value = []
   signaturePanelOpen.value = true
   await nextTick()
@@ -1389,8 +1399,10 @@ async function finishSignaturePanel() {
   endSignature()
   if (signatureCanvas.value && signatureDrawn.value) {
     customerSignature.value = signatureCanvas.value.toDataURL('image/png')
+    if (signatureEdited) customerSignatureFileId.value = null
   } else {
     customerSignature.value = ''
+    customerSignatureFileId.value = null
   }
   signatureDrawn.value = Boolean(customerSignature.value)
   signaturePanelOpen.value = false
@@ -1400,6 +1412,8 @@ async function finishSignaturePanel() {
 async function cancelSignaturePanel() {
   endSignature()
   customerSignature.value = signatureBeforeOpen
+  customerSignatureFileId.value = signatureFileIdBeforeOpen
+  signatureEdited = false
   signatureDrawn.value = Boolean(customerSignature.value)
   signaturePanelOpen.value = false
   await unlockSignatureLandscape()
@@ -1440,6 +1454,8 @@ function drawSignature(event) {
   ctx.stroke()
   lastSignaturePoint = point
   lastSignatureMidPoint = midPoint
+  signatureEdited = true
+  customerSignatureFileId.value = null
   signatureDrawn.value = true
 }
 
@@ -1459,6 +1475,8 @@ function clearSignature() {
   }
   signatureDrawn.value = false
   customerSignature.value = ''
+  customerSignatureFileId.value = null
+  signatureEdited = true
   signatureHistory.value = []
 }
 
@@ -1490,8 +1508,10 @@ function paintSignature(dataUrl) {
   image.src = dataUrl
 }
 
-function applyCustomerSignature(dataUrl) {
+function applyCustomerSignature(dataUrl, fileId = null) {
   customerSignature.value = dataUrl || ''
+  customerSignatureFileId.value = fileId || null
+  signatureEdited = false
   signatureDrawn.value = Boolean(customerSignature.value)
   if (signatureCanvas.value) {
     paintSignature(customerSignature.value)
@@ -1518,7 +1538,7 @@ async function useLatestCustomerSignature() {
       error.value = '没有找到该客户历史签名'
       return
     }
-    applyCustomerSignature(data.customerSignature)
+    applyCustomerSignature(data.customerSignature, data.customerSignatureFileId)
     message.value = '已复用该客户最近一次历史签名'
   } catch (err) {
     error.value = err.message || '历史签名读取失败'
@@ -1975,7 +1995,7 @@ function activeFieldErrorKeys() {
     keys.push('name', 'contactName', 'contactPhone', 'issueDescription', 'result')
   }
   if (!isRemoteLikeMode.value) {
-    keys.push('address', 'customerSignature')
+    keys.push('address', 'customerSignature', 'customerSignatureFileId')
   }
   if (showDeviceField.value) {
     keys.push('deviceName')
@@ -2419,6 +2439,7 @@ async function load() {
       }
       syncWorkEntries()
       customerSignature.value = report.customerSignature || ''
+      customerSignatureFileId.value = report.customerSignatureFileId || null
       signatureDrawn.value = Boolean(customerSignature.value)
     }
   } catch (err) {
@@ -2962,6 +2983,7 @@ function buildSubmitPayload() {
     actualEndAt: submitDateTimeValue(serviceDraft.value.actualEndAt),
     returnAt: submitDateTimeValue(serviceDraft.value.returnAt),
     customerSignature: effectiveServiceMode === 'remote' ? '' : customerSignature.value,
+    customerSignatureFileId: effectiveServiceMode === 'remote' ? null : customerSignatureFileId.value,
     parts,
   }
   if (isInstallOrder) {
@@ -3409,7 +3431,7 @@ watch(aiDraftEnabled, (enabled) => {
 })
 
 watch(
-  [selectedCustomer, selectedHistoryId, selectedDeviceId, selectedCoEngineerIds, formMode, onsiteDraft, remoteDraft, officeDraft, installDeviceList, servicePartList, customerSignature],
+  [selectedCustomer, selectedHistoryId, selectedDeviceId, selectedCoEngineerIds, formMode, onsiteDraft, remoteDraft, officeDraft, installDeviceList, servicePartList, customerSignature, customerSignatureFileId],
   () => scheduleDraftSave(),
   { deep: true },
 )
