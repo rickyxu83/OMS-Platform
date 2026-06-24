@@ -15,6 +15,7 @@ export function ChangePassword() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [loginAlias, setLoginAlias] = useState(String(user?.loginAlias || ""));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -30,10 +31,19 @@ export function ChangePassword() {
       setError("两次输入的新密码不一致");
       return;
     }
+    const normalizedAlias = loginAlias.trim();
+    if (normalizedAlias && normalizedAlias.includes("@")) {
+      setError("登录别名不能使用邮箱格式");
+      return;
+    }
+    if (normalizedAlias && !/^[A-Za-z0-9._-]{2,32}$/.test(normalizedAlias)) {
+      setError("登录别名仅支持 2-32 位字母、数字、点、下划线或短横线");
+      return;
+    }
 
     setSaving(true);
     try {
-      await api.put("/users/me", { currentPassword, newPassword });
+      await api.put("/users/me", { currentPassword, newPassword, loginAlias: normalizedAlias || null });
       setDone(true);
       window.setTimeout(() => logout(), 1200);
     } catch (err) {
@@ -71,6 +81,15 @@ export function ChangePassword() {
           <div className="space-y-2">
             <Label>确认新密码</Label>
             <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>登录别名</Label>
+            <Input
+              value={loginAlias}
+              onChange={(event) => setLoginAlias(event.target.value)}
+              placeholder="可选，2-32 位字母/数字/._-"
+            />
+            <p className="text-xs text-muted-foreground">设置后可用别名或邮箱账号登录。</p>
           </div>
           <Button className="w-full" type="submit" disabled={saving || done}>
             <Save className="h-4 w-4" />
