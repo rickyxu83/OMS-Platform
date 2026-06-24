@@ -830,6 +830,39 @@ function normalizeCustomerContactPhone(phone) {
   return normalizePhoneNumber(phone)
 }
 
+function cleanupStorageFiles(filePaths = []) {
+  for (const filePath of filePaths) {
+    if (filePath) fs.rm(filePath, { force: true }, () => {})
+  }
+}
+
+async function deleteFileRowsForOrderIds(connection, orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).map(Number).filter(Boolean))]
+  if (!ids.length) return []
+  const found = idParams(ids, 'fileOrderId')
+  const [rows] = await connection.execute(
+    `SELECT id, storage_path
+     FROM files
+     WHERE (owner_type = 'service_order' AND owner_id IN (${found.placeholders}))
+        OR (owner_type = 'service_report' AND owner_id IN (${found.placeholders}))
+        OR (
+          owner_type = 'signature'
+          AND owner_id IN (${found.placeholders})
+          AND NOT EXISTS (
+            SELECT 1
+            FROM service_reports sr
+            WHERE sr.customer_signature_file_id = files.id
+              AND sr.service_order_id NOT IN (${found.placeholders})
+          )
+        )`,
+    found.params,
+  )
+  if (!rows.length) return []
+  const fileIds = idParams(rows.map((row) => row.id), 'deleteFileId')
+  await connection.execute(`DELETE FROM files WHERE id IN (${fileIds.placeholders})`, fileIds.params)
+  return rows.map((row) => row.storage_path).filter(Boolean)
+}
+
 async function recordCustomerContact(connection, customerId, name, phone = null, engineerId = null) {
   if (!customerId || !name) return
   const normalizedPhone = normalizeCustomerContactPhone(phone)
@@ -2919,27 +2952,12 @@ async function remove(req, res) {
     await assertEngineerOwns(order, req.user)
   }
 
-  await transaction(async (connection) => {
+  const filePathsToCleanup = await transaction(async (connection) => {
     await ensureServiceReportWorkEntriesTable(connection)
     await ensureSelfReportDraftsTable(connection)
     await connection.execute('DELETE FROM service_report_work_entries WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
-    await connection.execute(
-      `DELETE FROM files
-       WHERE (owner_type = 'service_order' AND owner_id = :id)
-          OR (owner_type = 'service_report' AND owner_id = :id)
-          OR (
-            owner_type = 'signature'
-            AND owner_id = :id
-            AND NOT EXISTS (
-              SELECT 1
-              FROM service_reports sr
-              WHERE sr.customer_signature_file_id = files.id
-                AND sr.service_order_id <> :id
-            )
-          )`,
-      { id: req.params.id },
-    )
+    const deletedFilePaths = await deleteFileRowsForOrderIds(connection, [req.params.id])
     await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_engineers WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute(
@@ -2954,7 +2972,9 @@ async function remove(req, res) {
       previousStatus: order.status,
       source: engineerScopedRoles.has(req.user.role) ? 'engineer' : 'ops',
     })
+    return deletedFilePaths
   })
+  cleanupStorageFiles(filePathsToCleanup)
 
   res.status(204).end()
 }
@@ -2980,26 +3000,11 @@ async function bulkDelete(req, res) {
   const foundIds = rows.map((row) => Number(row.id))
   const found = idParams(foundIds, 'orderId')
 
-  await transaction(async (connection) => {
+  const filePathsToCleanup = await transaction(async (connection) => {
     await ensureServiceReportWorkEntriesTable(connection)
     await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${found.placeholders})`, found.params)
-    await connection.execute(
-      `DELETE FROM files
-       WHERE (owner_type = 'service_order' AND owner_id IN (${found.placeholders}))
-          OR (owner_type = 'service_report' AND owner_id IN (${found.placeholders}))
-          OR (
-            owner_type = 'signature'
-            AND owner_id IN (${found.placeholders})
-            AND NOT EXISTS (
-              SELECT 1
-              FROM service_reports sr
-              WHERE sr.customer_signature_file_id = files.id
-                AND sr.service_order_id NOT IN (${found.placeholders})
-            )
-          )`,
-      found.params,
-    )
+    const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_orders WHERE id IN (${found.placeholders})`, found.params)
@@ -3007,7 +3012,9 @@ async function bulkDelete(req, res) {
     for (const row of rows) {
       await writeAudit(connection, req.user.id, row.id, 'delete', { orderNo: row.order_no })
     }
+    return deletedFilePaths
   })
+  cleanupStorageFiles(filePathsToCleanup)
 
   res.json({ deleted: foundIds.length })
 }

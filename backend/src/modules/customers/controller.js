@@ -1,3 +1,4 @@
+const fs = require('fs')
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { customerNameKey } = require('../../utils/chinese')
@@ -365,6 +366,40 @@ function idParams(ids, prefix) {
   )
 }
 
+function cleanupStorageFiles(filePaths = []) {
+  for (const filePath of filePaths) {
+    if (filePath) fs.rm(filePath, { force: true }, () => {})
+  }
+}
+
+async function deleteFileRowsForOrderIds(connection, orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).map(Number).filter(Boolean))]
+  if (!ids.length) return []
+  const { params, placeholders } = idParams(ids, 'fileOrderId')
+  const list = placeholders.join(',')
+  const [rows] = await connection.execute(
+    `SELECT id, storage_path
+     FROM files
+     WHERE (owner_type = 'service_order' AND owner_id IN (${list}))
+        OR (owner_type = 'service_report' AND owner_id IN (${list}))
+        OR (
+          owner_type = 'signature'
+          AND owner_id IN (${list})
+          AND NOT EXISTS (
+            SELECT 1
+            FROM service_reports sr
+            WHERE sr.customer_signature_file_id = files.id
+              AND sr.service_order_id NOT IN (${list})
+          )
+        )`,
+    params,
+  )
+  if (!rows.length) return []
+  const fileIds = idParams(rows.map((row) => row.id), 'deleteFileId')
+  await connection.execute(`DELETE FROM files WHERE id IN (${fileIds.placeholders.join(',')})`, fileIds.params)
+  return rows.map((row) => row.storage_path).filter(Boolean)
+}
+
 function isForceDeleteRequest(req) {
   return ['1', 'true', 'yes'].includes(String(req.query?.force || '').toLowerCase())
 }
@@ -380,7 +415,7 @@ async function deleteCustomerContacts(connection, customerId) {
 }
 
 async function deleteServiceOrders(connection, orderIds) {
-  if (!orderIds.length) return
+  if (!orderIds.length) return []
   const { params, placeholders } = idParams(orderIds, 'orderId')
   const list = placeholders.join(',')
 
@@ -388,16 +423,11 @@ async function deleteServiceOrders(connection, orderIds) {
   await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM self_report_drafts WHERE service_order_id IN (${list})`, params)
-  await connection.execute(
-    `DELETE FROM files
-     WHERE (owner_type = 'service_order' AND owner_id IN (${list}))
-        OR (owner_type = 'service_report' AND owner_id IN (${list}))
-        OR (owner_type = 'signature' AND owner_id IN (${list}))`,
-    params,
-  )
+  const deletedFilePaths = await deleteFileRowsForOrderIds(connection, orderIds)
   await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_orders WHERE id IN (${list})`, params)
+  return deletedFilePaths
 }
 
 async function forceDeleteCustomer(connection, customerId) {
@@ -418,10 +448,11 @@ async function forceDeleteCustomer(connection, customerId) {
   }
   const orderIds = orderRows.map((row) => Number(row.id)).filter(Boolean)
 
+  let deletedFilePaths = []
   if (orderIds.length) {
     const orderIdParams = idParams(orderIds, 'linkedOrderId')
     await connection.execute(`UPDATE service_orders SET device_id = NULL WHERE id IN (${orderIdParams.placeholders.join(',')})`, orderIdParams.params)
-    await deleteServiceOrders(connection, orderIds)
+    deletedFilePaths = await deleteServiceOrders(connection, orderIds)
   }
 
   if (deviceIds.length) {
@@ -439,7 +470,7 @@ async function forceDeleteCustomer(connection, customerId) {
   await deleteCustomerContacts(connection, customerId)
   await connection.execute('DELETE FROM customers WHERE id = :customerId', { customerId })
 
-  return { deviceCount: deviceIds.length, serviceOrderCount: orderIds.length }
+  return { deviceCount: deviceIds.length, serviceOrderCount: orderIds.length, deletedFilePaths }
 }
 
 async function list(req, res) {
@@ -811,6 +842,8 @@ async function remove(req, res) {
   })
 
   if (forceDeleteResult) {
+    cleanupStorageFiles(forceDeleteResult.deletedFilePaths)
+    delete forceDeleteResult.deletedFilePaths
     res.json({ deleted: true, forced: true, ...forceDeleteResult })
     return
   }
