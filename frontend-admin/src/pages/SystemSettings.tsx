@@ -616,7 +616,7 @@ export function SystemSettings() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>结束显示</Label>
+                    <Label>结束显示（不填代表长期有效）</Label>
                     <Input
                       type="datetime-local"
                       value={announcementForm.endsAt}

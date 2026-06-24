@@ -101,8 +101,8 @@ function normalizeAnnouncementBody(body = {}) {
   if (title.length > 160) throw badRequest('公告标题不能超过 160 字')
   if (!contentMarkdown) throw badRequest('请填写公告内容')
   if (contentMarkdown.length > 10000) throw badRequest('公告内容不能超过 10000 字')
-  if (startsAt && endsAt && new Date(startsAt).getTime() > new Date(endsAt).getTime()) {
-    throw badRequest('结束时间不能早于开始时间')
+  if (startsAt && endsAt && new Date(startsAt).getTime() >= new Date(endsAt).getTime()) {
+    throw badRequest('结束时间必须晚于开始时间；不填结束时间代表长期有效')
   }
 
   return {
