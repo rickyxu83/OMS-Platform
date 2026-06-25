@@ -76,6 +76,40 @@ function customerPayload(row, contacts = []) {
   }
 }
 
+function normalizeContactName(value) {
+  return String(value || '').trim()
+}
+
+function normalizeContactPhone(value) {
+  const normalized = normalizePhoneNumber(value)
+  return normalized || (value ? String(value).trim() : null)
+}
+
+async function syncServiceOrderContactSnapshot(connection, customerId, previousContact, nextContact) {
+  const oldName = normalizeContactName(previousContact?.name)
+  const newName = normalizeContactName(nextContact?.name)
+  if (!oldName || !newName) return
+
+  const oldPhone = normalizeContactPhone(previousContact?.phone)
+  const newPhone = normalizeContactPhone(nextContact?.phone)
+  if (oldName === newName && oldPhone === newPhone) return
+
+  await connection.execute(
+    `UPDATE service_orders
+     SET contact_name = :newName,
+         contact_phone = :newPhone,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE customer_id = :customerId
+       AND TRIM(contact_name) = :oldName`,
+    {
+      customerId,
+      oldName,
+      newName,
+      newPhone,
+    },
+  )
+}
+
 async function loadContacts(customerIds) {
   if (!customerIds.length) return new Map()
 
@@ -230,12 +264,14 @@ async function replaceContacts(connection, customerId, contacts = []) {
     deduped.push(contact)
   }
 
-  const existingRows = await connection.execute('SELECT id FROM customer_contacts WHERE customer_id = :customerId', { customerId })
+  const existingRows = await connection.execute('SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId', { customerId })
+  const existingById = new Map(existingRows[0].map((row) => [Number(row.id), row]))
   const existingIds = new Set(existingRows[0].map((row) => Number(row.id)))
   const keptIds = []
 
   for (const contact of deduped) {
     if (contact.id && existingIds.has(contact.id)) {
+      const previousContact = existingById.get(contact.id)
       const [duplicateRows] = await connection.execute(
         `SELECT id
          FROM customer_contacts
@@ -253,6 +289,7 @@ async function replaceContacts(connection, customerId, contacts = []) {
          WHERE id = :id AND customer_id = :customerId`,
         { id: contact.id, customerId, name: contact.name, phone: contact.phone },
       )
+      await syncServiceOrderContactSnapshot(connection, customerId, previousContact, contact)
       keptIds.push(contact.id)
     } else {
       const [sameNameRows] = await connection.execute(
@@ -596,7 +633,10 @@ async function create(req, res) {
   let result
   try {
     result = await transaction(async (connection) => {
-      const [existingRows] = await connection.execute('SELECT id, code, salesperson FROM customers WHERE name_key = :nameKey LIMIT 1', { nameKey })
+      const [existingRows] = await connection.execute(
+        'SELECT id, code, salesperson, contact_name, contact_phone FROM customers WHERE name_key = :nameKey LIMIT 1',
+        { nameKey },
+      )
       if (existingRows[0]) {
         assertSalesCanAccessSalesperson(existingRows[0].salesperson, req.user, forbidden)
         const effectiveCode = code || existingRows[0].code || (await nextCustomerCode(connection))
@@ -640,6 +680,12 @@ async function create(req, res) {
         } else {
           await recordContact(connection, existingRows[0].id, contactName, normalizedContactPhone)
         }
+        await syncServiceOrderContactSnapshot(
+          connection,
+          existingRows[0].id,
+          { name: existingRows[0].contact_name, phone: existingRows[0].contact_phone },
+          { name: contactName, phone: normalizedContactPhone || contactPhone || null },
+        )
         return { insertId: existingRows[0].id }
       }
 
@@ -728,7 +774,7 @@ async function update(req, res) {
     mapAddress,
     remark,
   } = req.body || {}
-  const existing = await query('SELECT id, code, salesperson FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, code, salesperson, contact_name, contact_phone FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('客户不存在')
   }
@@ -781,6 +827,12 @@ async function update(req, res) {
       } else {
         await recordContact(connection, req.params.id, contactName, normalizedContactPhone)
       }
+      await syncServiceOrderContactSnapshot(
+        connection,
+        req.params.id,
+        { name: existing[0].contact_name, phone: existing[0].contact_phone },
+        { name: contactName, phone: normalizedContactPhone || contactPhone || null },
+      )
     })
   } catch (error) {
     throw duplicateCustomerError(error) || error

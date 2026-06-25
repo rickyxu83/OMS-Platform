@@ -241,6 +241,7 @@ const I18N = {
       mergeNeedTwo: "请先勾选 2 个客户再合并。",
       mergeSuccess: "已合并客户：{source} → {target}",
       mergeConfirm: "确认合并",
+      contactRenameConfirm: "联系人姓名已变更。保存后，该客户相关工单中的联系人姓名会一起更新（当前约 {count} 张工单）。请确认没有改错。",
       detailTitle: "客户详情",
       detailDescription: "客户基础信息、联系人、业务归属与地图坐标",
       serviceOrderCount: "服务次数",
@@ -406,6 +407,7 @@ const I18N = {
       mergeNeedTwo: "請先勾選 2 個客戶再合併。",
       mergeSuccess: "已合併客戶：{source} → {target}",
       mergeConfirm: "確認合併",
+      contactRenameConfirm: "聯絡人姓名已變更。儲存後，該客戶相關工單中的聯絡人姓名會一起更新（目前約 {count} 張工單）。請確認沒有改錯。",
       detailTitle: "客戶詳情",
       detailDescription: "客戶基礎資訊、聯絡人、業務歸屬與地圖座標",
       serviceOrderCount: "服務次數",
@@ -761,6 +763,31 @@ export function Customers() {
   const mergeSource = mergeTarget
     ? selectedCustomers.find((customer) => String(customer.id) !== String(mergeTarget.id)) || null
     : null;
+
+  function hasContactRename() {
+    if (editingId == null) return false;
+    const editingCustomer = customers.find((customer) => String(customer.id) === String(editingId));
+    if (!editingCustomer) return false;
+    const originalContacts = editingCustomer.contacts?.length
+      ? editingCustomer.contacts
+      : [{ name: editingCustomer.contactName || "", phone: editingCustomer.contactPhone || editingCustomer.phone || "" }];
+    const originalById = new Map(
+      originalContacts
+        .filter((contact) => contact.id != null)
+        .map((contact) => [String(contact.id), String(contact.name || "").trim()]),
+    );
+
+    return form.contacts.some((contact, index) => {
+      const nextName = contact.name.trim();
+      if (!nextName) return false;
+      if (contact.id != null) {
+        const previousName = originalById.get(String(contact.id));
+        return previousName != null && previousName !== nextName;
+      }
+      const previous = originalContacts[index];
+      return previous?.id == null && String(previous?.name || "").trim() !== nextName;
+    });
+  }
 
   function renderPhoneLink(phone?: string, stopPropagation = false) {
     const href = telHref(phone);
@@ -1220,6 +1247,12 @@ export function Customers() {
     if (!form.name.trim()) {
       setError(t.errors.nameRequired);
       return;
+    }
+    if (hasContactRename()) {
+      const editingCustomer = customers.find((customer) => String(customer.id) === String(editingId));
+      const count = Number(editingCustomer?.serviceOrderCount || 0);
+      const confirmMessage = interpolate(t.dialog.contactRenameConfirm, { count });
+      if (!window.confirm(confirmMessage)) return;
     }
     setSaving(true);
     setError("");
