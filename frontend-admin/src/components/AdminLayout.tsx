@@ -279,7 +279,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { lang, toggleLang } = useLanguage();
+  const { lang, setLang } = useLanguage();
   const currentUser = user || { name: "", role: "" };
   const currentPage = location.pathname.replace(/^\//, "") || "dashboard";
   const [sidebarOpen, setSidebarOpen] = useState(() => (
@@ -332,7 +332,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const handleLangToggle = () => {
     const nextLang = lang === "zh-CN" ? "zh-TW" : "zh-CN";
-    toggleLang();
+    setLang(nextLang);
     toast.success(nextLang === "zh-TW" ? STRINGS[nextLang].common.switchedToTw : STRINGS[nextLang].common.switchedToCn);
   };
 

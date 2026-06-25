@@ -684,14 +684,20 @@ function shouldSkipAttrElement(element: Element | null) {
 
 function translateTextNode(node: Text, enabled: boolean) {
   const current = node.nodeValue ?? ""
+  const hasStoredOriginal = textNodeOriginals.has(node)
   const storedOriginal = textNodeOriginals.get(node)
-  const original = storedOriginal ?? current
+  const original = hasStoredOriginal ? storedOriginal ?? "" : current
   if (!enabled) {
-    if (textNodeOriginals.has(node)) node.nodeValue = original
+    if (!hasStoredOriginal) return
+    const translatedOriginal = toTraditional(original)
+    if (current === translatedOriginal && current !== original) {
+      node.nodeValue = original
+    }
+    textNodeOriginals.delete(node)
     return
   }
   if (shouldSkipTextElement(node.parentElement)) return
-  if (storedOriginal) {
+  if (hasStoredOriginal) {
     const translatedStored = toTraditional(storedOriginal)
     if (current === translatedStored) return
     if (!hasHan(current)) return
@@ -707,30 +713,39 @@ function translateTextNode(node: Text, enabled: boolean) {
 }
 
 function translateElementAttrs(element: Element, enabled: boolean) {
+  const originals = attrOriginals.get(element)
+  if (!enabled) {
+    if (!originals) return
+    for (const attr of displayAttrs) {
+      const current = element.getAttribute(attr)
+      const original = originals[attr] ?? ""
+      const translatedOriginal = toTraditional(original)
+      if (current === translatedOriginal && current !== original) {
+        element.setAttribute(attr, original)
+      }
+    }
+    attrOriginals.delete(element)
+    return
+  }
   if (shouldSkipAttrElement(element)) return
-  const originals = attrOriginals.get(element) ?? {}
+  const nextOriginals = originals ?? {}
   for (const attr of displayAttrs) {
     const current = element.getAttribute(attr)
-    const original = originals[attr] ?? current ?? ""
-    if (!enabled) {
-      if (Object.prototype.hasOwnProperty.call(originals, attr)) element.setAttribute(attr, original)
-      continue
-    }
+    const hasStoredOriginal = Object.prototype.hasOwnProperty.call(nextOriginals, attr)
+    const original = hasStoredOriginal ? nextOriginals[attr] ?? "" : current ?? ""
     if (!current) continue
-    if (Object.prototype.hasOwnProperty.call(originals, attr)) {
+    if (hasStoredOriginal) {
       const translatedOriginal = toTraditional(original)
       if (current === translatedOriginal) continue
       if (!hasHan(current)) continue
-      originals[attr] = current
+      nextOriginals[attr] = current
       const translatedCurrent = toTraditional(current)
       if (current !== translatedCurrent) element.setAttribute(attr, translatedCurrent)
       continue
     }
     if (!hasHan(original)) continue
-    if (!Object.prototype.hasOwnProperty.call(originals, attr)) {
-      originals[attr] = current
-      attrOriginals.set(element, originals)
-    }
+    nextOriginals[attr] = current
+    attrOriginals.set(element, nextOriginals)
     const translated = toTraditional(original)
     if (current !== translated) element.setAttribute(attr, translated)
   }
