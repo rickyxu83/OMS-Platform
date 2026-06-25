@@ -29,6 +29,14 @@ interface AuditLog {
   };
 }
 
+interface UserOption {
+  id: string | number;
+  username?: string;
+  realName?: string;
+  name?: string;
+  status?: string;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   read: "查询",
   create: "新增",
@@ -56,6 +64,10 @@ function formatDateTime(value?: string) {
 
 function actorName(log: AuditLog) {
   return log.actorName || log.actorUsername || `用户 #${log.actorId ?? "-"}`;
+}
+
+function userOptionName(user: UserOption) {
+  return user.realName || user.name || user.username || `用户 #${user.id}`;
 }
 
 function resourceName(log: AuditLog) {
@@ -94,30 +106,42 @@ function downloadCsv(filename: string, content: string) {
 
 export function AuditLogs() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [actorFilter, setActorFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [riskyOnly, setRiskyOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams({
-        pageSize: "50",
+        page: String(page),
+        pageSize: String(pageSize),
         sortBy: "createdAt",
         sortDir: "desc",
       });
+      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+      if (actorFilter !== "all") params.set("actorId", actorFilter);
       if (actionFilter !== "all") params.set("action", actionFilter);
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+      if (riskyOnly) params.set("riskyOnly", "1");
       const data = await api.get(`/audit-logs?${params.toString()}`);
       setLogs((data?.items || []) as AuditLog[]);
       setTotal(Number(data?.total || 0));
+      const returnedPage = Number(data?.page || page);
+      const returnedPageSize = Number(data?.pageSize || pageSize);
+      if (Number.isFinite(returnedPage) && returnedPage > 0 && returnedPage !== page) setPage(returnedPage);
+      if (Number.isFinite(returnedPageSize) && returnedPageSize > 0 && returnedPageSize !== pageSize) setPageSize(returnedPageSize);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
@@ -127,20 +151,27 @@ export function AuditLogs() {
   }
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionFilter, from, to]);
+    api.get("/users?status=")
+      .then((data) => setUsers((data?.items || []) as UserOption[]))
+      .catch(() => setUsers([]));
+  }, []);
 
-  const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    return logs.filter((log) => {
-      if (riskyOnly && severityOf(log) === "ok") return false;
-      if (!keyword) return true;
-      return [actorName(log), log.action, log.targetType, log.resourceType, log.detail?.ip]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(keyword));
-    });
-  }, [logs, searchQuery, riskyOnly]);
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      load();
+    }, searchQuery.trim() ? 250 : 0);
+    return () => window.clearTimeout(timerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, searchQuery, actorFilter, actionFilter, from, to, riskyOnly]);
+
+  const filtered = logs;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageStart = total ? (page - 1) * pageSize + 1 : 0;
+  const pageEnd = total ? Math.min(total, page * pageSize) : 0;
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const stats = useMemo(() => {
     const loaded = logs.length;
@@ -224,10 +255,38 @@ export function AuditLogs() {
                   className="pl-9"
                   placeholder="搜索操作人、描述、IP…"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
                 />
               </div>
-              <Select value={actionFilter} onValueChange={setActionFilter}>
+              <Select
+                value={actorFilter}
+                onValueChange={(value) => {
+                  setActorFilter(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="全部人员" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部人员</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={String(user.id)} value={String(user.id)}>
+                      {userOptionName(user)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={actionFilter}
+                onValueChange={(value) => {
+                  setActionFilter(value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-full md:w-[150px]">
                   <SelectValue placeholder="全部动作" />
                 </SelectTrigger>
@@ -247,7 +306,10 @@ export function AuditLogs() {
                   id="audit-from"
                   type="date"
                   value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setPage(1);
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -256,14 +318,20 @@ export function AuditLogs() {
                   id="audit-to"
                   type="date"
                   value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setPage(1);
+                  }}
                 />
               </div>
               <div className="flex items-center gap-2 px-3 h-9 border border-border rounded-md">
                 <Switch
                   id="risky-only"
                   checked={riskyOnly}
-                  onCheckedChange={setRiskyOnly}
+                  onCheckedChange={(checked) => {
+                    setRiskyOnly(checked);
+                    setPage(1);
+                  }}
                 />
                 <Label htmlFor="risky-only" className="cursor-pointer text-sm">
                   仅看风险操作
@@ -273,10 +341,12 @@ export function AuditLogs() {
                 variant="outline"
                 onClick={() => {
                   setSearchQuery("");
+                  setActorFilter("all");
                   setActionFilter("all");
                   setFrom("");
                   setTo("");
                   setRiskyOnly(false);
+                  setPage(1);
                 }}
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
@@ -290,8 +360,11 @@ export function AuditLogs() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>审计日志 ({filtered.length})</CardTitle>
-            <CardDescription>按时间倒序展示当前筛选范围内的操作记录</CardDescription>
+            <CardTitle>审计日志 ({total})</CardTitle>
+            <CardDescription>
+              按时间倒序展示当前筛选范围内的操作记录
+              {total > 0 ? `，当前第 ${pageStart}-${pageEnd} 条` : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
@@ -362,6 +435,49 @@ export function AuditLogs() {
                 </div>
               )}
             </div>
+            <div className="mt-4 flex flex-col gap-3 border-t pt-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>每页</span>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[92px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="20">20 条</SelectItem>
+                    <SelectItem value="50">50 条</SelectItem>
+                    <SelectItem value="100">100 条</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span>共 {total} 条</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 md:justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={loading || page <= 1}
+                >
+                  上一页
+                </Button>
+                <span className="min-w-[92px] text-center text-sm text-muted-foreground">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={loading || page >= totalPages}
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -390,6 +506,16 @@ export function AuditLogs() {
               <div className="mt-1">
                 <Badge variant="outline">
                   {actionFilter === "all" ? "全部动作" : ACTION_LABELS[actionFilter] || actionFilter}
+                </Badge>
+              </div>
+            </div>
+            <div>
+              <Label className="text-muted-foreground">当前筛选人员</Label>
+              <div className="mt-1">
+                <Badge variant="outline">
+                  {actorFilter === "all"
+                    ? "全部人员"
+                    : userOptionName(users.find((user) => String(user.id) === actorFilter) || { id: actorFilter })}
                 </Badge>
               </div>
             </div>

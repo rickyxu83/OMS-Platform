@@ -1,4 +1,5 @@
 const { query } = require('../../config/db')
+const { badRequest } = require('../../utils/http-error')
 
 function parseDetailJson(value) {
   if (!value || typeof value !== 'string') return value || null
@@ -23,11 +24,36 @@ function auditPayload(row) {
   }
 }
 
+function normalizeDate(value, fieldName) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw badRequest(`${fieldName}格式不正确`)
+  }
+  return text
+}
+
 async function list(req, res) {
-  const { actorId = null, targetType = '', action = '', page = '1', pageSize = '50', sortBy = 'createdAt', sortDir = 'desc' } = req.query
+  const {
+    actorId = null,
+    targetType = '',
+    action = '',
+    keyword = '',
+    from = '',
+    to = '',
+    riskyOnly = '',
+    page = '1',
+    pageSize = '50',
+    sortBy = 'createdAt',
+    sortDir = 'desc',
+  } = req.query
   const normalizedPage = Math.max(1, Number(page) || 1)
   const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 50))
   const offset = (normalizedPage - 1) * normalizedPageSize
+  const fromDate = normalizeDate(from, '开始日期')
+  const toDate = normalizeDate(to, '结束日期')
+  const normalizedKeyword = String(keyword || '').trim()
+  const onlyRisky = ['1', 'true', 'yes'].includes(String(riskyOnly || '').toLowerCase())
   const sortColumns = {
     createdAt: 'al.created_at',
     actorName: 'u.real_name',
@@ -41,16 +67,38 @@ async function list(req, res) {
     actorId: actorId || null,
     targetType,
     action,
+    keyword: normalizedKeyword,
+    likeKeyword: `%${normalizedKeyword}%`,
+    fromDate,
+    toDate,
   }
   const prefersIdOrdering = sortBy === 'createdAt'
   const effectiveOrderBy = prefersIdOrdering ? 'al.id' : orderBy
+  const filters = `
+     WHERE (:actorId IS NULL OR al.actor_id = :actorId)
+       AND (:targetType = '' OR al.target_type = :targetType)
+       AND (:action = '' OR al.action = :action)
+       AND (:fromDate = '' OR al.created_at >= :fromDate)
+       AND (:toDate = '' OR al.created_at < DATE_ADD(:toDate, INTERVAL 1 DAY))
+       AND (
+         :keyword = ''
+         OR u.real_name LIKE :likeKeyword
+         OR u.username LIKE :likeKeyword
+         OR al.target_type LIKE :likeKeyword
+         OR al.action LIKE :likeKeyword
+         OR al.detail_json LIKE :likeKeyword
+       )
+       ${onlyRisky ? `AND (
+         al.action IN ('update', 'delete')
+         OR al.detail_json LIKE '%"statusCode":4%'
+         OR al.detail_json LIKE '%"statusCode":5%'
+       )` : ''}`
 
   const countRows = await query(
     `SELECT COUNT(*) AS total
      FROM audit_logs al
-     WHERE (:actorId IS NULL OR al.actor_id = :actorId)
-       AND (:targetType = '' OR al.target_type = :targetType)
-       AND (:action = '' OR al.action = :action)`,
+     JOIN users u ON u.id = al.actor_id
+     ${filters}`,
     params,
   )
   const rows = await query(
@@ -58,9 +106,7 @@ async function list(req, res) {
             al.target_type, al.target_id, al.action, al.detail_json, al.created_at
      FROM audit_logs al
      JOIN users u ON u.id = al.actor_id
-     WHERE (:actorId IS NULL OR al.actor_id = :actorId)
-       AND (:targetType = '' OR al.target_type = :targetType)
-       AND (:action = '' OR al.action = :action)
+     ${filters}
      ORDER BY ${effectiveOrderBy} ${orderDir}${effectiveOrderBy === 'al.id' ? '' : `, al.id ${orderDir}`}
      LIMIT ${normalizedPageSize} OFFSET ${offset}`,
     params,
