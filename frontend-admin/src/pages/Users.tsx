@@ -28,6 +28,7 @@ interface User {
   status?: string;
   phone?: string;
   email?: string;
+  lastLoginAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -502,8 +503,8 @@ export function Users() {
                           <div className="text-xs text-muted-foreground truncate">{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
                         </div>
                         <div>
-                          <div className="text-sm text-muted-foreground">创建时间</div>
-                          <div className="text-sm">{formatDateTime(user.createdAt)}</div>
+                          <div className="text-sm text-muted-foreground">上次登录时间</div>
+                          <div className="text-sm">{formatDateTime(user.lastLoginAt)}</div>
                         </div>
                         <div>
                           <Badge variant={STATUS_VARIANT[user.status || "active"] || "secondary"}>

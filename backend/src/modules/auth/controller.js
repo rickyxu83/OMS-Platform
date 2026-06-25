@@ -126,6 +126,7 @@ async function login(req, res) {
       `UPDATE users
        SET failed_login_count = 0,
            locked_until = NULL,
+           last_login_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = :id`,
       { id: existingUser.id },

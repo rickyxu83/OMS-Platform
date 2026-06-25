@@ -11,7 +11,7 @@ const { ensureUserLoginColumns } = require('./schema')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
-const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, created_at, updated_at'
+const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, last_login_at, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(ALL_ROLES)
 const allowedStatuses = new Set(['active', 'disabled'])
@@ -138,6 +138,7 @@ function userPayload(row) {
     requiresOnboarding: requiresOnboarding(row),
     avatarUrl: avatarUrl(row.avatar_path),
     hasAvatar,
+    lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

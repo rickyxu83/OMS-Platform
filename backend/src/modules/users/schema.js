@@ -71,7 +71,7 @@ async function ensureUserLoginColumns() {
      FROM information_schema.columns
      WHERE table_schema = DATABASE()
        AND table_name = 'users'
-       AND column_name IN ('email', 'login_alias')`,
+       AND column_name IN ('email', 'login_alias', 'last_login_at', 'locked_until')`,
   )
   const columns = new Set(rows.map((row) => row.columnName))
 
@@ -81,6 +81,11 @@ async function ensureUserLoginColumns() {
 
   if (!columns.has('login_alias')) {
     await query('ALTER TABLE users ADD COLUMN login_alias VARCHAR(64) NULL AFTER email')
+  }
+
+  if (!columns.has('last_login_at')) {
+    const afterColumn = columns.has('locked_until') ? 'locked_until' : 'status'
+    await query(`ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL AFTER ${afterColumn}`)
   }
 
   const indexRows = await query(
