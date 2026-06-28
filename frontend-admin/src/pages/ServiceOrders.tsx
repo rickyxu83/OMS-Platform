@@ -377,7 +377,7 @@ const SERVICE_MODE_SEARCH_ALIASES: Record<string, string> = {
   office: "内勤 内勤工作 office",
 };
 
-const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_112px_76px_128px]";
+const ORDER_LIST_GRID = "xl:grid-cols-[28px_minmax(140px,1fr)_88px_minmax(140px,1.35fr)_minmax(84px,0.8fr)_150px_76px_128px]";
 
 function formatDateTime(value?: string) {
   if (!value) return "-";
@@ -561,8 +561,8 @@ function serviceTimeRange(order: ServiceOrder) {
   const start = order.report?.actualStartAt || order.plannedStartAt || order.serviceAt;
   const end = order.report?.actualEndAt || order.plannedEndAt || "";
   return {
-    start: formatDateOnly(start),
-    end: formatDateOnly(end),
+    start: formatDateTime(start),
+    end: formatDateTime(end),
     full: formatDateRange(start, end),
   };
 }
