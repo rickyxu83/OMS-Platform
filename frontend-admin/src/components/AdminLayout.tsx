@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -298,6 +298,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
+  const layoutStyle = { "--admin-sidebar-width": sidebarOpen ? "16rem" : "0px" } as CSSProperties;
   const canSwitchEngineer = Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
 
@@ -433,7 +434,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       : "📣";
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background" style={layoutStyle}>
       {/* Sidebar */}
       <aside
         className={`${
@@ -499,8 +500,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </nav>
 
           {/* Sidebar Footer - Version Info */}
-          <div className="p-4 border-t border-sidebar-border/50 bg-sidebar-accent/10">
-            <div className="flex items-center justify-between px-2">
+          <div className="flex h-[76px] items-center border-t border-sidebar-border/50 bg-sidebar-accent/10 px-4">
+            <div className="flex w-full items-center justify-between px-2">
               <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
               <Badge variant="outline" className="text-xs h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
             </div>
