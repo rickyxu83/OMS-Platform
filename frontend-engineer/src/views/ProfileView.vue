@@ -1,15 +1,14 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import BrandEyebrow from '../components/BrandEyebrow.vue'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
+import { unifiedLoginUrl } from '../config/app'
 import { api } from '../services/api'
 import { clearSession, saveUser } from '../services/auth'
 import { aiDraftEnabled, setAiDraftEnabled } from '../services/engineer-preferences'
 
 const { zh } = usePreviewI18n()
-const router = useRouter()
 const loading = ref(false)
 const savingPassword = ref(false)
 const savingSignature = ref(false)
@@ -347,7 +346,9 @@ function toggleAiDraftEnabled() {
 function switchAccount() {
   api.post('/auth/logout').catch(() => {})
   clearSession()
-  router.push('/login')
+  window.setTimeout(() => {
+    window.location.replace(unifiedLoginUrl('/'))
+  }, 0)
 }
 
 onMounted(load)

@@ -75,7 +75,14 @@ export function saveUser(user) {
   currentUser.value = storedUser
 }
 
+export function releaseInteractionLocks() {
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement) activeElement.blur()
+  document.body.style.removeProperty('pointer-events')
+}
+
 export function clearSession() {
+  releaseInteractionLocks()
   clearOfflineCacheForCurrentSession()
   safeStorageRemove(localStorage, TOKEN_KEY)
   safeStorageRemove(localStorage, USER_KEY)

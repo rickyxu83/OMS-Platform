@@ -372,6 +372,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     }
   };
 
+  const logoutToLogin = () => {
+    setQuickNavOpen(false);
+    setFeedbackOpen(false);
+    setAnnouncementOpen(false);
+    logout();
+    window.setTimeout(() => {
+      window.location.replace("/login");
+    }, 0);
+  };
+
   const submitFeedback = async () => {
     const content = feedbackContent.trim();
     if (!content) {
@@ -562,10 +572,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
+              onClick={logoutToLogin}
               aria-label="退出登录"
             >
               <LogOut className="w-4 h-4" />
@@ -632,10 +639,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
+                onClick={logoutToLogin}
               >
                 <LogOut className="w-4 h-4" />
               </Button>

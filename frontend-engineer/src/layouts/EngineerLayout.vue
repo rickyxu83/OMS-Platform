@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
+import { unifiedLoginUrl } from '../config/app'
 import { api } from '../services/api'
 import { clearSession, currentUser } from '../services/auth'
 import { isOnline, probeNetwork, startNetworkWatch, stopNetworkWatch } from '../services/network'
@@ -116,11 +117,21 @@ function isNavActive(item) {
   return item.names.includes(route.name)
 }
 
+function redirectToLogin() {
+  window.setTimeout(() => {
+    window.location.replace(unifiedLoginUrl('/'))
+  }, 0)
+}
+
 function logout() {
   accountOpen.value = false
+  createModePickerOpen.value = false
+  feedbackOpen.value = false
+  exitConfirmOpen.value = false
+  announcementOpen.value = false
   api.post('/auth/logout').catch(() => {})
   clearSession()
-  router.push('/login')
+  redirectToLogin()
 }
 
 function goHome() {

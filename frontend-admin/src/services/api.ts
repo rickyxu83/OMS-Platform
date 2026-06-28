@@ -30,7 +30,15 @@ export function saveUser(user: Record<string, any> | null) {
   storage.setItem(USER_KEY, JSON.stringify(user))
 }
 
+export function releaseInteractionLocks() {
+  if (typeof document === 'undefined') return
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement) activeElement.blur()
+  document.body.style.removeProperty('pointer-events')
+}
+
 export function clearSession() {
+  releaseInteractionLocks()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   sessionStorage.removeItem(TOKEN_KEY)

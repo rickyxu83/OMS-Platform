@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { APP_VERSION, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { releaseInteractionLocks } from "@/services/api";
 
 export function Login() {
   const navigate = useNavigate();
@@ -95,6 +96,12 @@ export function Login() {
   const t = i18n[lang];
   const appVersion = APP_VERSION;
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
+
+  useEffect(() => {
+    releaseInteractionLocks();
+    const timer = window.setTimeout(releaseInteractionLocks, 80);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const enterWorkspace = (workspaceKey: string) => {
     const localTarget = goToWorkspace(workspaceKey);
