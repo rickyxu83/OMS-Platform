@@ -1743,7 +1743,7 @@ export function ServiceOrders() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>新增工单</DialogTitle>
             <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
@@ -1751,7 +1751,7 @@ export function ServiceOrders() {
           {error && createOpen ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           ) : null}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+          <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto py-2 pr-1 md:grid-cols-2">
             <div className="space-y-2">
               <Label>客户 *</Label>
               <Select value={createForm.customerId} onValueChange={(v) => setCreateForm({ ...createForm, customerId: v, deviceId: "" })}>
@@ -1864,7 +1864,7 @@ export function ServiceOrders() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={createOrder} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
@@ -1875,7 +1875,7 @@ export function ServiceOrders() {
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>派单 / 改派</DialogTitle>
             <DialogDescription>选择工程师后，工单会进入已派发状态并同步到工程师端。</DialogDescription>
@@ -1883,7 +1883,7 @@ export function ServiceOrders() {
           {error && assignOpen ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           ) : null}
-          <div className="space-y-4 py-2">
+          <div className="min-h-0 space-y-4 overflow-y-auto py-2 pr-1">
             <div className="space-y-2">
               <Label>工程师 *</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
@@ -1937,7 +1937,7 @@ export function ServiceOrders() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={assignOrderToEngineer} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
