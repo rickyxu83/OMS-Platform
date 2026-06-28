@@ -1687,7 +1687,9 @@ function mergeContacts(...contactGroups) {
       name,
       phone,
       useCount: Number(contact.useCount || 0) + Number(existing?.useCount || 0),
-      lastUsedAt: contact.lastUsedAt || contact.engineerLastUsedAt || existing?.lastUsedAt || '',
+      engineerUseCount: Number(contact.engineerUseCount || 0) + Number(existing?.engineerUseCount || 0),
+      engineerLastUsedAt: contact.engineerLastUsedAt || existing?.engineerLastUsedAt || '',
+      lastUsedAt: contact.lastUsedAt || existing?.lastUsedAt || '',
     })
   })
   return [...contacts.values()]
@@ -1775,7 +1777,9 @@ function contactsForCustomer(customer) {
       name,
       phone,
       weight: (existing?.weight || 0) + weight + Number(contact.useCount || 0),
-      lastUsedAt: contact.lastUsedAt || contact.engineerLastUsedAt || existing?.lastUsedAt || '',
+      engineerUseCount: Number(contact.engineerUseCount || 0) + Number(existing?.engineerUseCount || 0),
+      engineerLastUsedAt: contact.engineerLastUsedAt || existing?.engineerLastUsedAt || '',
+      lastUsedAt: contact.lastUsedAt || existing?.lastUsedAt || '',
     })
   }
 
@@ -1783,31 +1787,35 @@ function contactsForCustomer(customer) {
   if (customer.contactName) pushContact({ name: customer.contactName, phone: customer.contactPhone }, 1)
 
   return [...contacts.values()].sort((a, b) => {
+    const engineerTimeSort = String(b.engineerLastUsedAt || '').localeCompare(String(a.engineerLastUsedAt || ''))
+    if (engineerTimeSort) return engineerTimeSort
+    if (b.engineerUseCount !== a.engineerUseCount) return b.engineerUseCount - a.engineerUseCount
     if (b.weight !== a.weight) return b.weight - a.weight
     return String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''))
   })
 }
 
 function preferredContactForCustomer(customer) {
-  return contactsForCustomer(customer)[0] || {
-    name: customer.contactName || '',
-    phone: customer.contactPhone || '',
-  }
+  const contacts = contactsForCustomer(customer)
+  if (contacts.length <= 1) return contacts[0] || { name: '', phone: '' }
+
+  return contacts.find((contact) => contact.engineerLastUsedAt) || { name: '', phone: '' }
 }
 
 function applyCustomer(customer, sourceId = '') {
   const normalized = customerWithProfile(customer)
+  const availableContacts = contactsForCustomer(normalized)
   const contact = preferredContactForCustomer(normalized)
   const customerChanged = !sameCustomer(selectedCustomer.value, normalized)
   const nextCustomer = {
     ...normalized,
-    contactName: contact.name || normalized.contactName || '',
-    contactPhone: contact.phone || normalized.contactPhone || '',
+    contactName: contact.name || '',
+    contactPhone: contact.phone || '',
   }
   clearSignatureWhenContactChanged(activeCustomer.value.contactName, nextCustomer.contactName)
   selectedHistoryId.value = sourceId
   selectedCustomer.value = nextCustomer
-  showContactOptions.value = false
+  showContactOptions.value = !contact.name && availableContacts.length > 1
   showNearbyCompanies.value = false
   if (customerChanged && currentServiceMode.value === 'onsite' && serviceDraft.value.serviceType === 'install') {
     resetInstallDeviceSelection()
