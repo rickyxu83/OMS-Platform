@@ -1739,21 +1739,21 @@ function customerWithProfile(customer) {
   if (!profile) return normalized
 
   const normalizedProfile = normalizeCustomer(profile)
+  const profileContacts = mergeContacts(
+    normalizedProfile.contacts,
+    { name: normalizedProfile.contactName, phone: normalizedProfile.contactPhone },
+  )
   return {
-    ...normalizedProfile,
     ...normalized,
-    id: normalized.id || normalizedProfile.id,
-    name: normalized.name || normalizedProfile.name,
-    address: normalized.address || normalizedProfile.address,
-    mapAddress: normalized.mapAddress || normalizedProfile.mapAddress,
-    contactName: normalized.contactName || normalizedProfile.contactName,
-    contactPhone: normalized.contactPhone || normalizedProfile.contactPhone,
-    contacts: mergeContacts(
-      normalizedProfile.contacts,
-      normalized.contacts,
-      { name: normalizedProfile.contactName, phone: normalizedProfile.contactPhone },
-      { name: normalized.contactName, phone: normalized.contactPhone },
-    ),
+    ...normalizedProfile,
+    id: normalizedProfile.id || normalized.id,
+    name: normalizedProfile.name || normalized.name,
+    address: normalizedProfile.address || normalized.address,
+    mapAddress: normalizedProfile.mapAddress || normalized.mapAddress,
+    contactName: normalizedProfile.contactName || '',
+    contactPhone: normalizedProfile.contactPhone || '',
+    contacts: profileContacts,
+    source: normalized.source || normalizedProfile.source,
   }
 }
 
@@ -1763,8 +1763,6 @@ function contactKey(contact) {
 
 function contactsForCustomer(customer) {
   if (!customer?.id && !customer?.name) return []
-  const customerId = String(customer.id || '')
-  const customerName = customer.name || ''
   const contacts = new Map()
   const pushContact = (contact, weight = 0) => {
     const name = String(contact?.name || '').trim()
@@ -1783,22 +1781,6 @@ function contactsForCustomer(customer) {
 
   ;(customer.contacts || []).forEach((contact) => pushContact(contact, 1))
   if (customer.contactName) pushContact({ name: customer.contactName, phone: customer.contactPhone }, 1)
-  recentOrders.value
-    .filter((order) => {
-      if (customerId && String(order.customerId || '') === customerId) return true
-      return customerName && order.customerName === customerName
-    })
-    .forEach((order, index) => {
-      pushContact(
-        {
-          name: order.contactName || order.report?.customerName,
-          phone: order.contactPhone,
-          lastUsedAt: order.submittedAt || order.updatedAt || order.createdAt,
-        },
-        100 - index,
-      )
-      ;(order.contacts || []).forEach((contact) => pushContact(contact, 20))
-    })
 
   return [...contacts.values()].sort((a, b) => {
     if (b.weight !== a.weight) return b.weight - a.weight
@@ -2512,7 +2494,7 @@ function normalizeAiMatchText(value) {
 }
 
 function customerCandidateFromCustomer(customer, weight = 0) {
-  const normalized = normalizeCustomer(customer || {})
+  const normalized = customerWithProfile(customer || {})
   const contacts = contactsForCustomer(normalized)
   return {
     ...normalized,
