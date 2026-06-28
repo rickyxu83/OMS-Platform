@@ -1343,13 +1343,6 @@ export function ServiceOrders() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
-          <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>{t.actions.retry}</Button>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
