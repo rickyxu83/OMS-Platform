@@ -75,6 +75,23 @@ function statusLabel(status) {
   return labels[status] || status || '-'
 }
 
+function maintenanceTypeLabel(type) {
+  if (type === 'original_manufacturer') return '原厂维保'
+  if (type === 'our_maintenance') return '自维保'
+  if (type === 'none') return '无维保'
+  return '-'
+}
+
+function missingMaintenanceText(device) {
+  const missing = []
+  if (!device.maintenance_type || device.maintenance_type === 'none') missing.push('维保类型')
+  if (device.maintenance_type && device.maintenance_type !== 'none') {
+    if (!device.maintenance_start) missing.push('维保开始日期')
+    if (!device.maintenance_end) missing.push('维保结束日期')
+  }
+  return missing.join('、') || '维保信息'
+}
+
 function parseMailList(value) {
   return String(value || '')
     .split(/[,;\s，；]+/)
@@ -275,36 +292,107 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.name || d.model || d.serial_no || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.serial_no || '-')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.location || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(maintenanceTypeLabel(d.maintenance_type))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(d.maintenance_start || '').slice(0, 10) || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(d.maintenance_end || '').slice(0, 10) || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(missingMaintenanceText(d))}</td>
       </tr>`,
     )
     .join('')
 
-  const subject = `无维保信息提醒：${devices.length} 台客户设备未填写维保`
+  const subject = `维保信息待完善提醒：${devices.length} 台客户设备需补齐维保资料`
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
-      <h2 style="margin:0 0 12px">客户设备无维保信息提醒</h2>
-      <p>以下客户设备当前未填写维保信息，请根据客户实际情况跟进确认。</p>
+      <h2 style="margin:0 0 12px">客户设备维保信息待完善提醒</h2>
+      <p>以下客户设备当前缺少维保类型或维保周期，请根据客户实际情况跟进确认。</p>
       ${linkBlock}
-      <table style="border-collapse:collapse;width:100%;max-width:860px;font-size:14px">
+      <table style="border-collapse:collapse;width:100%;max-width:980px;font-size:14px">
         <thead>
           <tr style="background:#f1f5f9">
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户</th>
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">设备</th>
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">型号</th>
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">序列号</th>
-            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">位置</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">维保类型</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">开始日期</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">结束日期</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">待补内容</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒仅针对客户关联销售发送，用于补齐客户设备维保信息。</p>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒仅针对客户关联销售发送，用于补齐客户设备维保信息。系统每周一检查并提醒一次，相关信息补齐后将自动停止提醒。</p>
       ${mailFooter()}
     </div>
   `
 
   await transporter.sendMail({ from: mail.from, to, subject, html })
   return { sent: true, to, deviceCount: devices.length }
+}
+
+async function sendInspectionScheduleDateMissingMail(schedules = [], recipients = [], detailBaseUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const schedulesUrl = adminLink(detailBaseUrl, '/inspection-schedules')
+  const linkBlock = schedulesUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(schedulesUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看巡检计划</a></p>`
+    : ''
+  const cadenceLabel = { monthly: '每月', 'bi-monthly': '每两月', quarterly: '每季度' }
+  const rows = schedules
+    .map((schedule) => {
+      const missingFields = [
+        !schedule.next_run_anchor ? '开始日期' : '',
+        !schedule.end_date ? '结束日期' : '',
+      ].filter(Boolean).join('、') || '巡检日期'
+      return `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(schedule.customer_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(schedule.name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(schedule.device_names || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(cadenceLabel[schedule.cadence] || schedule.cadence || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(schedule.next_run_anchor || '').slice(0, 10) || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(schedule.end_date || '').slice(0, 10) || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(missingFields)}</td>
+      </tr>`
+    })
+    .join('')
+
+  const subject = `巡检日期待完善提醒：${schedules.length} 项巡检计划需补齐日期`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">巡检日期待完善提醒</h2>
+      <p>以下客户已建立巡检计划，但巡检起止日期尚未完整，请跟进补齐。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:980px;font-size:14px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">计划</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">设备</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">周期</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">开始日期</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">结束日期</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">待补内容</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒仅针对客户关联销售发送，用于补齐客户巡检计划日期。系统每周一检查并提醒一次，相关信息补齐后将自动停止提醒。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to, scheduleCount: schedules.length }
 }
 
 async function sendMissingCustomerSalespersonMail(customers = [], recipients = [], detailBaseUrl = '') {
@@ -594,6 +682,7 @@ module.exports = {
   sendMaintenanceExpiryMail,
   sendNoMaintenanceDevicesMail,
   sendMissingCustomerSalespersonMail,
+  sendInspectionScheduleDateMissingMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,

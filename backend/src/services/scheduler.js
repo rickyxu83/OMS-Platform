@@ -7,6 +7,7 @@ const {
   sendMaintenanceExpiryMail,
   sendNoMaintenanceDevicesMail,
   sendMissingCustomerSalespersonMail,
+  sendInspectionScheduleDateMissingMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
@@ -24,6 +25,7 @@ async function notificationSettings() {
     'notification.inspectionReminderEnabled',
     'notification.inspectionReminderDays',
     'notification.inspectionReminderRecipients',
+    'notification.inspectionScheduleDateMissingEnabled',
     'notification.inspectionOverdueEnabled',
     'notification.inspectionOverdueDays',
     'notification.inspectionOverdueRecipients',
@@ -41,6 +43,7 @@ async function notificationSettings() {
     inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
     inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
+    inspectionScheduleDateMissingEnabled: saved['notification.inspectionScheduleDateMissingEnabled'] !== 'false',
     inspectionOverdueEnabled: saved['notification.inspectionOverdueEnabled'] !== 'false',
     inspectionOverdueDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionOverdueDays'] || 1))),
     inspectionOverdueRecipients: String(saved['notification.inspectionOverdueRecipients'] || '').trim(),
@@ -353,26 +356,35 @@ function startScheduler() {
   })
 
   cron.schedule('30 8 * * 1', async () => {
-    console.log('[scheduler] Running no-maintenance device check...')
+    console.log('[scheduler] Running incomplete maintenance device check...')
     try {
       const nSettings = await notificationSettings()
       if (!nSettings.noMaintenanceReminderEnabled) {
-        console.log('[scheduler] No-maintenance device notification is disabled')
+        console.log('[scheduler] Incomplete maintenance device notification is disabled')
         return
       }
 
       const devices = await query(
-        `SELECT d.id, d.name, d.model, d.serial_no, d.location, d.maintenance_type,
+        `SELECT d.id, d.name, d.model, d.serial_no, d.location,
+                d.maintenance_type, d.maintenance_start, d.maintenance_end,
                 c.name AS customer_name, c.salesperson
          FROM devices d
          JOIN customers c ON c.id = d.customer_id
-         WHERE (d.maintenance_type IS NULL OR d.maintenance_type = '' OR d.maintenance_type = 'none')
+         WHERE (
+             d.maintenance_type IS NULL
+             OR d.maintenance_type = ''
+             OR d.maintenance_type = 'none'
+             OR (
+               d.maintenance_type <> 'none'
+               AND (d.maintenance_start IS NULL OR d.maintenance_end IS NULL)
+             )
+           )
            AND c.salesperson IS NOT NULL
            AND c.salesperson <> ''
          ORDER BY c.salesperson ASC, c.name ASC, d.model ASC, d.name ASC, d.id ASC`,
       )
       if (!devices.length) {
-        console.log('[scheduler] No devices without maintenance info')
+        console.log('[scheduler] No devices with incomplete maintenance info')
         return
       }
 
@@ -390,7 +402,7 @@ function startScheduler() {
         params,
       )
       if (!salespersonRows.length) {
-        console.warn('[scheduler] No salespeople with emails for no-maintenance devices')
+        console.warn('[scheduler] No salespeople with emails for incomplete maintenance devices')
       }
 
       for (const salesperson of salespersonRows) {
@@ -400,19 +412,19 @@ function startScheduler() {
         const result = await sendNoMaintenanceDevicesMail(scopedDevices, [salesperson], nSettings.serviceOrderAdminBaseUrl)
         if (result?.skipped) {
           skipped += 1
-          console.warn('[scheduler] No-maintenance device mail skipped', {
+          console.warn('[scheduler] Incomplete maintenance device mail skipped', {
             salesperson: salesperson.email,
             reason: result.reason,
             missing: result.missing,
           })
         } else {
           sent += 1
-          console.log(`[scheduler] No-maintenance device mail sent to ${salesperson.email}: ${result.deviceCount} devices`)
+          console.log(`[scheduler] Incomplete maintenance device mail sent to ${salesperson.email}: ${result.deviceCount} devices`)
         }
       }
-      console.log(`[scheduler] No-maintenance device notifications processed: sent=${sent}, skipped=${skipped}`)
+      console.log(`[scheduler] Incomplete maintenance device notifications processed: sent=${sent}, skipped=${skipped}`)
     } catch (error) {
-      console.error('[scheduler] No-maintenance device check failed', error?.message)
+      console.error('[scheduler] Incomplete maintenance device check failed', error?.message)
     }
   })
 
@@ -458,6 +470,75 @@ function startScheduler() {
       }
     } catch (error) {
       console.error('[scheduler] Missing customer salesperson check failed', error?.message)
+    }
+  })
+
+  cron.schedule('40 8 * * 1', async () => {
+    console.log('[scheduler] Running inspection schedule date completeness check...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.inspectionScheduleDateMissingEnabled) {
+        console.log('[scheduler] Inspection schedule date completeness notification is disabled')
+        return
+      }
+
+      const schedules = await query(
+        `SELECT s.id, s.name, s.cadence, s.next_run_anchor, s.end_date,
+                c.name AS customer_name, c.salesperson,
+                (SELECT GROUP_CONCAT(d2.name SEPARATOR '、')
+                 FROM inspection_schedule_devices sd2
+                 LEFT JOIN devices d2 ON d2.id = sd2.device_id
+                 WHERE sd2.schedule_id = s.id) AS device_names
+         FROM inspection_schedules s
+         JOIN customers c ON c.id = s.customer_id
+         WHERE s.active = 1
+           AND (s.next_run_anchor IS NULL OR s.end_date IS NULL)
+           AND c.salesperson IS NOT NULL
+           AND c.salesperson <> ''
+         ORDER BY c.salesperson ASC, c.name ASC, s.id ASC`,
+      )
+      if (!schedules.length) {
+        console.log('[scheduler] No inspection schedules with missing dates')
+        return
+      }
+
+      let sent = 0
+      let skipped = 0
+      const salespersonNames = [...new Set(schedules.map((s) => (s.salesperson || '').trim()).filter(Boolean))]
+      const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
+      const params = {}
+      salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
+      const salespersonRows = await query(
+        `SELECT email, real_name, username
+         FROM users
+         WHERE (real_name IN (${placeholders}) OR username IN (${placeholders}))
+           AND email IS NOT NULL AND email <> ''`,
+        params,
+      )
+      if (!salespersonRows.length) {
+        console.warn('[scheduler] No salespeople with emails for inspection schedules missing dates')
+      }
+
+      for (const salesperson of salespersonRows) {
+        const names = new Set([salesperson.real_name, salesperson.username].map((value) => String(value || '').trim()).filter(Boolean))
+        const scopedSchedules = schedules.filter((schedule) => names.has(String(schedule.salesperson || '').trim()))
+        if (!scopedSchedules.length) continue
+        const result = await sendInspectionScheduleDateMissingMail(scopedSchedules, [salesperson], nSettings.serviceOrderAdminBaseUrl)
+        if (result?.skipped) {
+          skipped += 1
+          console.warn('[scheduler] Inspection schedule date completeness mail skipped', {
+            salesperson: salesperson.email,
+            reason: result.reason,
+            missing: result.missing,
+          })
+        } else {
+          sent += 1
+          console.log(`[scheduler] Inspection schedule date completeness mail sent to ${salesperson.email}: ${result.scheduleCount} schedules`)
+        }
+      }
+      console.log(`[scheduler] Inspection schedule date completeness notifications processed: sent=${sent}, skipped=${skipped}`)
+    } catch (error) {
+      console.error('[scheduler] Inspection schedule date completeness check failed', error?.message)
     }
   })
 
@@ -623,7 +704,7 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), no-maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
+  console.log('[scheduler] Started: maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
 }
 
 module.exports = { startScheduler }

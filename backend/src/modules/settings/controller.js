@@ -34,6 +34,7 @@ const settingKeys = [
   'notification.inspectionReminderDays',
   'notification.inspectionReminderRecipients',
   'notification.inspectionReminderCron',
+  'notification.inspectionScheduleDateMissingEnabled',
   'notification.inspectionConfirmationEnabled',
   'notification.inspectionConfirmationRecipients',
   'notification.inspectionOverdueEnabled',
@@ -93,6 +94,7 @@ async function effectiveSettings() {
       inspectionReminderDays: saved['notification.inspectionReminderDays'] || '3',
       inspectionReminderRecipients: saved['notification.inspectionReminderRecipients'] || '',
       inspectionReminderCron: saved['notification.inspectionReminderCron'] || '0 7 * * *',
+      inspectionScheduleDateMissingEnabled: boolText(saved['notification.inspectionScheduleDateMissingEnabled'], true),
       inspectionConfirmationEnabled: boolText(saved['notification.inspectionConfirmationEnabled'], true),
       inspectionConfirmationRecipients: saved['notification.inspectionConfirmationRecipients'] || '',
       inspectionOverdueEnabled: boolText(saved['notification.inspectionOverdueEnabled'], true),
@@ -244,6 +246,7 @@ async function update(req, res) {
     next['notification.inspectionReminderDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionReminderDays || 3))))
     next['notification.inspectionReminderRecipients'] = String(n.inspectionReminderRecipients || '').trim()
     next['notification.inspectionReminderCron'] = String(n.inspectionReminderCron || '0 7 * * *').trim()
+    next['notification.inspectionScheduleDateMissingEnabled'] = String(n.inspectionScheduleDateMissingEnabled === true || n.inspectionScheduleDateMissingEnabled === 'true')
     next['notification.inspectionConfirmationEnabled'] = String(n.inspectionConfirmationEnabled === true || n.inspectionConfirmationEnabled === 'true')
     next['notification.inspectionConfirmationRecipients'] = String(n.inspectionConfirmationRecipients || '').trim()
     next['notification.inspectionOverdueEnabled'] = String(n.inspectionOverdueEnabled === true || n.inspectionOverdueEnabled === 'true')

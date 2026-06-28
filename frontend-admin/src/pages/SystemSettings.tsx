@@ -44,6 +44,7 @@ interface SettingsForm {
     inspectionReminderEnabled: boolean;
     inspectionReminderDays: string;
     inspectionReminderRecipients: string;
+    inspectionScheduleDateMissingEnabled: boolean;
     inspectionConfirmationEnabled: boolean;
     inspectionConfirmationRecipients: string;
     inspectionOverdueEnabled: boolean;
@@ -116,6 +117,7 @@ const emptyForm: SettingsForm = {
     inspectionReminderEnabled: true,
     inspectionReminderDays: "3",
     inspectionReminderRecipients: "",
+    inspectionScheduleDateMissingEnabled: true,
     inspectionConfirmationEnabled: true,
     inspectionConfirmationRecipients: "",
     inspectionOverdueEnabled: true,
@@ -447,6 +449,7 @@ export function SystemSettings() {
           inspectionReminderEnabled: toBool(n.inspectionReminderEnabled ?? true),
           inspectionReminderDays: String(n.inspectionReminderDays || "3"),
           inspectionReminderRecipients: n.inspectionReminderRecipients || "",
+          inspectionScheduleDateMissingEnabled: toBool(n.inspectionScheduleDateMissingEnabled ?? true),
           inspectionConfirmationEnabled: toBool(n.inspectionConfirmationEnabled ?? true),
           inspectionConfirmationRecipients: n.inspectionConfirmationRecipients || "",
           inspectionOverdueEnabled: toBool(n.inspectionOverdueEnabled ?? true),
@@ -1059,8 +1062,8 @@ export function SystemSettings() {
               </div>
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <div className="font-medium">无维保信息提醒</div>
-                  <div className="text-sm text-muted-foreground">每周汇总未填写维保信息的客户设备，只通知对应销售。</div>
+                  <div className="font-medium">维保信息待完善提醒</div>
+                  <div className="text-sm text-muted-foreground">每周汇总无维保类型，或已有维保类型但缺少维保周期的客户设备，只通知对应销售。</div>
                 </div>
                 <Switch
                   checked={form.notification.noMaintenanceReminderEnabled}
@@ -1085,6 +1088,19 @@ export function SystemSettings() {
                   users={recipientUsers}
                   onChange={(value) => setForm({ ...form, notification: { ...form.notification, missingCustomerSalespersonRecipients: value } })}
                   placeholder="assistant@example.com"
+                />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">巡检日期待完善提醒</div>
+                  <div className="text-sm text-muted-foreground">每周汇总已建立巡检但缺少起止日期的计划，只通知对应客户销售。</div>
+                </div>
+                <Switch
+                  checked={form.notification.inspectionScheduleDateMissingEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionScheduleDateMissingEnabled: c } })}
                 />
               </div>
 
@@ -1228,7 +1244,7 @@ export function SystemSettings() {
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                系统每天 07:00 检查巡检执行，08:00 检查维保到期，08:10 检查逾期巡检；每周一 08:30 检查无维保信息设备，08:35 检查客户缺少销售；每月 1 号 08:20 发送月度总结；销售服务单通知每 5 分钟检查一次到期队列。
+                系统每天 07:00 检查巡检执行，08:00 检查维保到期，08:10 检查逾期巡检；每周一 08:30 检查维保信息待完善设备，08:35 检查客户缺少销售，08:40 检查巡检日期待完善；每月 1 号 08:20 发送月度总结；销售服务单通知每 5 分钟检查一次到期队列。
               </div>
             </CardContent>
           </Card>
