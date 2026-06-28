@@ -161,6 +161,7 @@ async function list(req, res) {
          OR d.pn LIKE :likeKeyword
          OR d.serial_no LIKE :likeKeyword
          OR c.name LIKE :likeKeyword
+         OR mp.name LIKE :likeKeyword
          OR d.location LIKE :likeKeyword
          OR d.remark LIKE :likeKeyword
        )

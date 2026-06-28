@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -320,6 +320,7 @@ export function Devices() {
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerFilter, setCustomerFilter] = useState("all");
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -399,13 +400,15 @@ export function Devices() {
     const keyword = searchQuery.trim().toLowerCase();
     return devices.filter((d) => {
       const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
+      const status = d.status || "active";
       if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
+      if (statusFilter !== "all" && status !== statusFilter) return false;
       if (!keyword) return true;
-      return [d.name, d.model, d.serialNo, d.customerName]
+      return [d.name, d.model, d.serialNo, d.customerName, d.maintenancePartyName]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
-  }, [devices, maintenanceFilter, searchQuery]);
+  }, [devices, maintenanceFilter, searchQuery, statusFilter]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -457,6 +460,43 @@ export function Devices() {
       const visible = new Set(ids);
       return current.filter((id) => !visible.has(id));
     });
+  }
+
+  function filterByModel(event: MouseEvent, model?: string) {
+    event.stopPropagation();
+    const value = String(model || "").trim();
+    if (!value) return;
+    setSearchQuery(value);
+  }
+
+  function filterByCustomer(event: MouseEvent, device: Device) {
+    event.stopPropagation();
+    const customerId = device.customerId ? String(device.customerId) : "";
+    const customerName = String(device.customerName || "").trim();
+    if (customerId) {
+      setCustomerFilter(customerId);
+      return;
+    }
+    if (customerName) setSearchQuery(customerName);
+  }
+
+  function filterByMaintenanceParty(event: MouseEvent, partyName?: string) {
+    event.stopPropagation();
+    const value = String(partyName || "").trim();
+    if (!value) return;
+    setSearchQuery(value);
+  }
+
+  function filterByMaintenanceType(event: MouseEvent, maintenanceType?: string) {
+    event.stopPropagation();
+    const value = canonicalMaintenanceType(maintenanceType);
+    if (!value) return;
+    setMaintenanceFilter(value);
+  }
+
+  function filterByStatus(event: MouseEvent, status?: string) {
+    event.stopPropagation();
+    setStatusFilter(status || "active");
   }
 
   const selectedCustomer = useMemo(
@@ -897,12 +937,25 @@ export function Devices() {
                 <SelectItem value="none">无维保</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full md:w-[130px]">
+                <SelectValue placeholder="设备状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="active">{DEVICE_STATUS_LABELS.active}</SelectItem>
+                <SelectItem value="maintenance">{DEVICE_STATUS_LABELS.maintenance}</SelectItem>
+                <SelectItem value="inactive">{DEVICE_STATUS_LABELS.inactive}</SelectItem>
+                <SelectItem value="scrapped">{DEVICE_STATUS_LABELS.scrapped}</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               onClick={() => {
                 setSearchQuery("");
                 setCustomerFilter("all");
                 setMaintenanceFilter("all");
+                setStatusFilter("all");
               }}
             >
               <RotateCcw className="w-4 h-4 mr-2" />
@@ -974,7 +1027,7 @@ export function Devices() {
               <div className="space-y-2">
                 <div className="sticky top-0 z-10 hidden rounded-md border bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {canManageDevices ? <div className="w-4 shrink-0">选择</div> : null}
+                    {canManageDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
                     <div className="grid min-w-0 flex-1 grid-cols-5 gap-4">
                       <div>型号 / 客户</div>
@@ -1020,28 +1073,71 @@ export function Devices() {
                       <Server className="w-5 h-5 text-primary" />
                       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-5">
                         <div className="min-w-0">
-                          <div className="truncate font-medium" title={device.model || "-"}>{device.model || "-"}</div>
-                          <div className="truncate text-sm text-muted-foreground" title={device.customerName || "-"}>{device.customerName || "-"}</div>
+                          {device.model ? (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
+                              title={device.model}
+                              onClick={(event) => filterByModel(event, device.model)}
+                            >
+                              {device.model}
+                            </button>
+                          ) : (
+                            <div className="truncate font-medium">-</div>
+                          )}
+                          {device.customerName ? (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary hover:underline"
+                              title={device.customerName}
+                              onClick={(event) => filterByCustomer(event, device)}
+                            >
+                              {device.customerName}
+                            </button>
+                          ) : (
+                            <div className="truncate text-sm text-muted-foreground">-</div>
+                          )}
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs text-muted-foreground md:hidden">SN</div>
                           <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
                         </div>
                         <div>
-                          <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>
-                            {typeLabel}
-                          </Badge>
+                          <button type="button" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
+                            <Badge
+                              variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
+                              className={`cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
+                            >
+                              {typeLabel}
+                            </Badge>
+                          </button>
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-sm" title={device.maintenancePartyName || "-"}>{device.maintenancePartyName || "-"}</div>
+                          {device.maintenancePartyName ? (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left text-sm text-slate-900 hover:text-primary hover:underline"
+                              title={device.maintenancePartyName}
+                              onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
+                            >
+                              {device.maintenancePartyName}
+                            </button>
+                          ) : (
+                            <div className="truncate text-sm">-</div>
+                          )}
                           <div className="text-xs text-muted-foreground">
                             截止 {formatDate(device.maintenanceEnd)}
                           </div>
                         </div>
                         <div>
-                          <Badge variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}>
-                            {statusLabel}
-                          </Badge>
+                          <button type="button" onClick={(event) => filterByStatus(event, device.status)}>
+                            <Badge
+                              variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
+                              className={`cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
+                            >
+                              {statusLabel}
+                            </Badge>
+                          </button>
                         </div>
                       </div>
                     </div>

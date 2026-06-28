@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -894,6 +894,13 @@ export function Customers() {
     setLevelFilter((current) => (current === level ? "all" : level));
   }
 
+  function filterByCustomerName(event: MouseEvent, name?: string) {
+    event.stopPropagation();
+    const value = String(name || "").trim();
+    if (!value) return;
+    setSearchQuery(value);
+  }
+
   function toggleCustomerSelection(customerId: string | number, checked: boolean | "indeterminate") {
     const id = String(customerId);
     setSelectedCustomerIds((ids) => {
@@ -1543,7 +1550,18 @@ export function Customers() {
                           </TableCell>
                         ) : null}
                         <TableCell>
-                          <div className="font-medium">{c.name || t.misc.unknown}</div>
+                          {c.name ? (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
+                              title={c.name}
+                              onClick={(event) => filterByCustomerName(event, c.name)}
+                            >
+                              {c.name}
+                            </button>
+                          ) : (
+                            <div className="font-medium">{t.misc.unknown}</div>
+                          )}
                           {c.salesperson && (
                             <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
                           )}
