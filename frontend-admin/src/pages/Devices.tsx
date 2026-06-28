@@ -972,6 +972,21 @@ export function Devices() {
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
             ) : (
               <div className="space-y-2">
+                <div className="sticky top-0 z-10 hidden rounded-md border bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    {canManageDevices ? <div className="w-4 shrink-0">选择</div> : null}
+                    <div className="w-5 shrink-0" aria-hidden="true" />
+                    <div className="grid min-w-0 flex-1 grid-cols-6 gap-4">
+                      <div>设备 / 客户</div>
+                      <div>型号</div>
+                      <div>SN</div>
+                      <div>维保类型</div>
+                      <div>维保方 / 截止</div>
+                      <div>状态</div>
+                    </div>
+                  </div>
+                  {canManageDevices ? <div className="w-[132px] text-right">操作</div> : null}
+                </div>
               {filtered.map((device) => {
                 const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
                 const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
@@ -1010,11 +1025,11 @@ export function Devices() {
                           <div className="truncate text-sm text-muted-foreground" title={device.customerName || "-"}>{device.customerName || "-"}</div>
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground">型号</div>
+                          <div className="text-xs text-muted-foreground md:hidden">型号</div>
                           <div className="truncate text-sm" title={device.model || "-"}>{device.model || "-"}</div>
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground">SN</div>
+                          <div className="text-xs text-muted-foreground md:hidden">SN</div>
                           <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
                         </div>
                         <div>
