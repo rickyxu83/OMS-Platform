@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -664,7 +663,7 @@ export function MaintenanceParties() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             {initialLoading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
@@ -672,9 +671,8 @@ export function MaintenanceParties() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
             ) : (
-              <div className="overflow-x-auto rounded-md border">
-                <Table className="min-w-[980px]">
-                  <TableHeader className="sticky top-0 z-10 bg-muted/70 text-xs text-muted-foreground backdrop-blur [&_th]:font-medium [&_th]:text-muted-foreground">
+                <table className="w-full min-w-[980px] caption-bottom text-sm">
+                  <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                     <TableRow>
                       {canManageParties ? <TableHead className="w-10" /> : null}
                       <TableHead>{t.list.name}</TableHead>
@@ -802,8 +800,7 @@ export function MaintenanceParties() {
                       );
                     })}
                   </TableBody>
-                </Table>
-              </div>
+                </table>
             )}
           </div>
         </CardContent>

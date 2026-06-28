@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -1432,65 +1431,64 @@ export function Customers() {
                 </Button>
               ) : null}
             </div>
-            <div className="relative w-full md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder={t.list.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") load(searchQuery);
-                }}
-              />
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+              <div className="relative w-full md:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder={t.list.searchPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") load(searchQuery);
+                  }}
+                />
+              </div>
+              {canDeleteCustomer ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Checkbox
+                      checked={allFilteredCustomersSelected}
+                      onCheckedChange={toggleAllFilteredCustomers}
+                      disabled={deleting || filtered.length === 0}
+                      aria-label={t.list.selectAllCurrent}
+                    />
+                    {t.list.selectAllCurrent}
+                  </label>
+                  {selectedCustomerIds.length ? (
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting || merging}>
+                      {t.actions.clearSelection}
+                    </Button>
+                  ) : null}
+                  {canMergeCustomer ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openMergeDialog}
+                      disabled={deleting || merging || selectedCustomerIds.length !== 2}
+                    >
+                      {merging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                      {merging ? t.actions.merging : `${t.actions.merge}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={confirmBulkDelete}
+                    disabled={deleting || merging || !selectedCustomerIds.length}
+                  >
+                    {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {canDeleteCustomer ? (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-slate-50/70 px-3 py-2">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={allFilteredCustomersSelected}
-                  onCheckedChange={toggleAllFilteredCustomers}
-                  disabled={deleting || filtered.length === 0}
-                  aria-label={t.list.selectAllCurrent}
-                />
-                {t.list.selectAllCurrent}
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-	                {selectedCustomerIds.length ? (
-	                  <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting || merging}>
-	                    {t.actions.clearSelection}
-	                  </Button>
-	                ) : null}
-	                {canMergeCustomer ? (
-	                  <Button
-	                    variant="outline"
-	                    size="sm"
-	                    onClick={openMergeDialog}
-	                    disabled={deleting || merging || selectedCustomerIds.length !== 2}
-	                  >
-	                    {merging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
-	                    {merging ? t.actions.merging : `${t.actions.merge}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
-	                  </Button>
-	                ) : null}
-	                <Button
-	                  variant="ghost"
-	                  className="text-red-600 hover:text-red-700"
-	                  onClick={confirmBulkDelete}
-	                  disabled={deleting || merging || !selectedCustomerIds.length}
-	                >
-                  {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                  {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
-            <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[760px]">
-              <TableHeader className="sticky top-0 z-10 bg-muted/70 text-xs text-muted-foreground backdrop-blur [&_th]:font-medium [&_th]:text-muted-foreground">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+              <table className="w-full min-w-[760px] caption-bottom text-sm">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
                   {canDeleteCustomer ? <TableHead className="w-10" /> : null}
                   <TableHead>{t.list.name}</TableHead>
@@ -1635,8 +1633,7 @@ export function Customers() {
                   })
                 )}
               </TableBody>
-              </Table>
-            </div>
+              </table>
           </div>
         </CardContent>
       </Card>
