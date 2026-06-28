@@ -608,7 +608,7 @@ export function SystemSettings() {
   }
 
   return (
-    <div className="space-y-6 p-6 pb-20">
+    <div className="space-y-6 p-6 pb-16">
       <div>
         <div>
           <h1 className="text-3xl font-semibold">系统设置</h1>
@@ -1238,17 +1238,17 @@ export function SystemSettings() {
       )}
 
       {!loading && (
-        <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t bg-background/95 px-4 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:bottom-0 lg:left-[var(--admin-sidebar-width)]">
-          <div className="mx-auto flex min-h-14 max-w-screen-2xl flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between lg:h-14 lg:py-0">
-            <div className="text-sm text-muted-foreground">
+        <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t bg-background/95 px-4 shadow-[0_-8px_22px_rgba(15,23,42,0.07)] backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:bottom-0 lg:left-[var(--admin-sidebar-width)]">
+          <div className="mx-auto flex min-h-11 max-w-screen-2xl flex-col gap-1.5 py-1.5 sm:flex-row sm:items-center sm:justify-between lg:h-11 lg:py-0">
+            <div className="text-xs text-muted-foreground">
               修改系统配置后，点击保存才会生效。
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button variant="outline" onClick={load} disabled={loading || saving}>
+              <Button variant="outline" size="sm" onClick={load} disabled={loading || saving}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
               </Button>
-              <Button onClick={save} disabled={loading || saving}>
+              <Button size="sm" onClick={save} disabled={loading || saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 保存设置
               </Button>
