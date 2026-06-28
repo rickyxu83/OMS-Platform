@@ -21,6 +21,7 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const INSPECTION_SCHEDULE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"]);
 
@@ -113,7 +114,6 @@ export function InspectionSchedules() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Schedule | null>(null);
-  const [generationResult, setGenerationResult] = useState<{ generated?: number; skipped?: number } | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
@@ -627,10 +627,9 @@ export function InspectionSchedules() {
   async function generateDueSchedules() {
     setSaving(true);
     setError("");
-    setGenerationResult(null);
     try {
       const data = await api.post("/inspection-schedules/generate-due", {});
-      setGenerationResult({ generated: data?.generated ?? 0, skipped: data?.skipped ?? 0 });
+      toast.success(`已生成 ${data?.generated ?? 0} 张待确认巡检工单，跳过 ${data?.skipped ?? 0} 项；请到工单处理页确认并派发。`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成到期巡检单失败");
@@ -703,12 +702,6 @@ export function InspectionSchedules() {
       </div>
 
       <ErrorToast message={error} />
-
-      {generationResult && (
-        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm">
-          已生成 {generationResult.generated ?? 0} 张待确认巡检工单，跳过 {generationResult.skipped ?? 0} 项；请到工单处理页确认并派发。
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {stats.map((stat) => (

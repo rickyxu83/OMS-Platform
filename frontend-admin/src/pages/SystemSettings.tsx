@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
+import { toast } from "sonner";
 
 interface SettingsForm {
   ai: {
@@ -372,7 +373,6 @@ export function SystemSettings() {
   const [testingAi, setTestingAi] = useState(false);
   const [testingMail, setTestingMail] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
 
   async function loadAnnouncements() {
@@ -410,7 +410,6 @@ export function SystemSettings() {
   async function load() {
     setLoading(true);
     setError("");
-    setSaved("");
     try {
       const data = await api.get("/settings");
       const item = data?.item || {};
@@ -477,7 +476,6 @@ export function SystemSettings() {
   async function save() {
     setSaving(true);
     setError("");
-    setSaved("");
     try {
       await api.put("/settings", {
         ai: {
@@ -494,7 +492,7 @@ export function SystemSettings() {
         notification: form.notification,
         map: form.map,
       });
-      setSaved("设置已保存");
+      toast.success("设置已保存");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存设置失败");
@@ -506,10 +504,9 @@ export function SystemSettings() {
   async function testAi() {
     setTestingAi(true);
     setError("");
-    setSaved("");
     try {
       const data = await api.post("/settings/test-ai", { ai: form.ai });
-      setSaved(data?.message || "AI 连接测试成功");
+      toast.success(data?.message || "AI 连接测试成功");
     } catch (e) {
       setError(e instanceof Error ? e.message : "AI 连接测试失败");
     } finally {
@@ -520,10 +517,9 @@ export function SystemSettings() {
   async function testMail() {
     setTestingMail(true);
     setError("");
-    setSaved("");
     try {
       const data = await api.post("/settings/test-mail", { mail: form.mail, to: testRecipient.trim() || undefined });
-      setSaved(data?.message || "SMTP 测试邮件已发送");
+      toast.success(data?.message || "SMTP 测试邮件已发送");
     } catch (e) {
       setError(e instanceof Error ? e.message : "SMTP 测试失败");
     } finally {
@@ -568,7 +564,6 @@ export function SystemSettings() {
   async function saveAnnouncement() {
     setAnnouncementSaving(true);
     setError("");
-    setSaved("");
     try {
       const payload = {
         ...announcementForm,
@@ -580,7 +575,7 @@ export function SystemSettings() {
       } else {
         await api.post("/announcements", payload);
       }
-      setSaved(editingAnnouncementId ? "公告已更新" : "公告已发布");
+      toast.success(editingAnnouncementId ? "公告已更新" : "公告已发布");
       resetAnnouncementForm();
       await loadAnnouncements();
     } catch (e) {
@@ -594,10 +589,9 @@ export function SystemSettings() {
     if (!window.confirm("确定删除这条公告吗？已读记录也会一起删除。")) return;
     setAnnouncementSaving(true);
     setError("");
-    setSaved("");
     try {
       await api.delete(`/announcements/${id}`);
-      setSaved("公告已删除");
+      toast.success("公告已删除");
       if (editingAnnouncementId === id) resetAnnouncementForm();
       await loadAnnouncements();
     } catch (e) {
@@ -627,9 +621,6 @@ export function SystemSettings() {
       </div>
 
       <ErrorToast message={error} />
-      {saved && (
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">{saved}</div>
-      )}
 
       {!loading && (
         <div className="grid gap-3 md:grid-cols-3">

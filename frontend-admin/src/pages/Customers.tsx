@@ -28,6 +28,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
+import { toast } from "sonner";
 
 interface Customer {
   id: string | number;
@@ -653,7 +654,6 @@ export function Customers() {
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
   const [levelFilter, setLevelFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -909,7 +909,6 @@ export function Customers() {
   }
 
   function openCreate() {
-    setSuccessMessage("");
     setDeleteError("");
     setEditingId(null);
     setForm(EMPTY_FORM);
@@ -920,7 +919,6 @@ export function Customers() {
   }
 
   function openEdit(c: Customer) {
-    setSuccessMessage("");
     setDeleteError("");
     const latitude = normalizeCoordinate(c.latitude)
     const longitude = normalizeCoordinate(c.longitude)
@@ -1181,7 +1179,6 @@ export function Customers() {
 
   function openDelete(c: Customer) {
     setError("");
-    setSuccessMessage("");
     setDeleteError("");
     setDeletePreview(null);
     setDeletePreviewError("");
@@ -1191,7 +1188,6 @@ export function Customers() {
 
   function openMergeDialog() {
     setError("");
-    setSuccessMessage("");
     setMergeError("");
     if (selectedCustomers.length !== 2) {
       setError(t.dialog.mergeNeedTwo);
@@ -1216,7 +1212,6 @@ export function Customers() {
     const sourceName = mergeSource.name || `客户 #${mergeSource.id}`;
     setMerging(true);
     setError("");
-    setSuccessMessage("");
     setMergeError("");
     try {
       await api.post(`/customers/${mergeTarget.id}/merge`, { sourceCustomerId: mergeSource.id });
@@ -1229,7 +1224,7 @@ export function Customers() {
         setDetailTarget(null);
       }
       await load();
-      setSuccessMessage(interpolate(t.dialog.mergeSuccess, { source: sourceName, target: targetName }));
+      toast.success(interpolate(t.dialog.mergeSuccess, { source: sourceName, target: targetName }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.mergeFailed;
       setMergeError(msg);
@@ -1252,7 +1247,6 @@ export function Customers() {
     const customerName = deleteTarget.name || t.misc.unknown;
     setDeleting(true);
     setError("");
-    setSuccessMessage("");
     setDeleteError("");
     try {
       const data = await api.delete(`/customers/${deleteTarget.id}${canForceDeleteCustomer ? "?force=1" : ""}`);
@@ -1265,7 +1259,7 @@ export function Customers() {
             serviceOrderCount: Number(data.serviceOrderCount || 0),
           })
         : interpolate(t.dialog.deleteSuccess, { name: customerName });
-      setSuccessMessage(message);
+      toast.success(message);
     } catch (e) {
       const msg = e instanceof Error ? e.message : t.errors.deleteFailed;
       setDeleteError(msg);
@@ -1284,7 +1278,6 @@ export function Customers() {
     if (!window.confirm(confirmMessage)) return;
     setDeleting(true);
     setError("");
-    setSuccessMessage("");
     setDeleteError("");
     try {
       let deletedCount = 0;
@@ -1299,7 +1292,7 @@ export function Customers() {
       if (detailTarget && selectedCustomerIds.includes(String(detailTarget.id))) setDetailTarget(null);
       setSelectedCustomerIds([]);
       await load();
-      setSuccessMessage(canForceDeleteCustomer
+      toast.success(canForceDeleteCustomer
         ? interpolate(t.dialog.bulkDeleteSuccess, {
             count: deletedCount,
             deviceCount,
@@ -1389,13 +1382,6 @@ export function Customers() {
       </div>
 
       <ErrorToast message={error} />
-
-      {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm flex items-center gap-2">
-          <Check className="w-4 h-4" />
-          <span>{successMessage}</span>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {stats.map((stat) => (
