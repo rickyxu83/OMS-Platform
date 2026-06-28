@@ -14,6 +14,10 @@ const {
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 
+function deviceDisplaySql(alias = 'd') {
+  return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
+}
+
 async function notificationSettings() {
   const saved = await getSettings([
     'notification.maintenanceExpiryEnabled',
@@ -159,7 +163,7 @@ async function buildMonthlyOperationsReport(range) {
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
        so.issue_description, so.internal_note, so.planned_start_at, so.submitted_at, so.created_at,
        c.name AS customer_name, c.salesperson AS customer_salesperson,
-       COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+       ${deviceDisplaySql('d')} AS device_name,
        sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
        work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
@@ -485,7 +489,7 @@ function startScheduler() {
       const schedules = await query(
         `SELECT s.id, s.name, s.cadence, s.next_run_anchor, s.end_date,
                 c.name AS customer_name, c.salesperson,
-                (SELECT GROUP_CONCAT(d2.name SEPARATOR '、')
+                (SELECT GROUP_CONCAT(${deviceDisplaySql('d2')} SEPARATOR '、')
                  FROM inspection_schedule_devices sd2
                  LEFT JOIN devices d2 ON d2.id = sd2.device_id
                  WHERE sd2.schedule_id = s.id) AS device_names
@@ -555,7 +559,7 @@ function startScheduler() {
         `SELECT s.id, s.cadence, s.next_run_anchor, s.target_engineer_id,
                 c.name AS customer_name,
                 u.email AS engineer_email, u.real_name AS engineer_name,
-                (SELECT GROUP_CONCAT(d2.name SEPARATOR '、')
+                (SELECT GROUP_CONCAT(${deviceDisplaySql('d2')} SEPARATOR '、')
                  FROM inspection_schedule_devices sd2
                  LEFT JOIN devices d2 ON d2.id = sd2.device_id
                  WHERE sd2.schedule_id = s.id) AS device_names

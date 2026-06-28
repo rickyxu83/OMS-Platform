@@ -28,6 +28,10 @@ let selfReportDraftsTableReady = false
 let serviceOrderInspectionColumnsReady = false
 let servicePartsColumnsReady = false
 
+function deviceDisplaySql(alias = 'd') {
+  return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
+}
+
 const orderColumns = `
   so.id, so.order_no, so.customer_id, c.name AS customer_name, c.address AS customer_address,
   c.salesperson AS customer_salesperson,
@@ -45,7 +49,7 @@ const orderColumns = `
   COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone) AS contact_phone,
   so.contact_name AS order_contact_name, so.contact_phone AS order_contact_phone,
   so.device_id,
-  COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+  ${deviceDisplaySql('d')} AS device_name,
   so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
   u.real_name AS engineer_name, so.inspection_schedule_id, so.inspection_occurrence_date,
@@ -1169,7 +1173,7 @@ function buildListQueryParts(req) {
   const sortColumns = {
     orderNo: 'so.order_no',
     customerName: 'c.name',
-    deviceName: "COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, ''))",
+    deviceName: deviceDisplaySql('d'),
     serviceType: 'so.service_type',
     priority: 'so.priority',
     engineerName: 'u.real_name',
@@ -1362,7 +1366,7 @@ async function timesheetMonthly(req, res) {
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
        so.issue_description, so.internal_note, so.planned_start_at,
        so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson,
-       COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+       ${deviceDisplaySql('d')} AS device_name,
        sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
        work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
@@ -2112,7 +2116,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   const parts = await query(
     `SELECT sp.id, sp.service_order_id, sp.device_id, sp.action_type, sp.part_name, sp.part_no,
             sp.quantity, sp.unit, sp.remark, sp.created_at, sp.updated_at,
-            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
+            ${deviceDisplaySql('d')} AS device_name
      FROM service_parts sp
      LEFT JOIN devices d ON d.id = sp.device_id
      WHERE service_order_id = :id

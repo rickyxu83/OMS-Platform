@@ -14,6 +14,10 @@ const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
 let ensureCustomerLevelColumnPromise = null
 
+function deviceDisplaySql(alias = 'd') {
+  return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
+}
+
 async function ensureCustomerLevelColumn() {
   if (!ensureCustomerLevelColumnPromise) {
     ensureCustomerLevelColumnPromise = (async () => {
@@ -649,7 +653,7 @@ async function loadCustomerDeletePreview(customerId, user) {
     ),
     query(
       `SELECT DISTINCT so.id, so.order_no, so.status, so.service_mode, so.service_type,
-              COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+              ${deviceDisplaySql('d')} AS device_name,
               u.real_name AS engineer_name,
               target_u.real_name AS target_engineer_name,
               target_u.username AS target_engineer_username,
@@ -668,7 +672,7 @@ async function loadCustomerDeletePreview(customerId, user) {
       `SELECT DISTINCT s.id, s.name, s.cadence, s.active, s.next_run_anchor,
               u.real_name AS target_engineer_name,
               u.username AS target_engineer_username,
-              COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
+              ${deviceDisplaySql('d')} AS device_name
        FROM inspection_schedules s
        JOIN users u ON u.id = s.target_engineer_id
        LEFT JOIN devices d ON d.id = s.device_id

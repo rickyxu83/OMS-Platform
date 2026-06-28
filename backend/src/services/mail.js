@@ -92,6 +92,13 @@ function missingMaintenanceText(device) {
   return missing.join('、') || '维保信息'
 }
 
+function deviceDisplayName(device) {
+  const model = String(device?.model || '').trim()
+  const serialNo = String(device?.serial_no || device?.serialNo || '').trim()
+  const fallbackName = String(device?.name || device?.device_name || device?.deviceName || '').trim()
+  return [model, serialNo].filter(Boolean).join(' / ') || fallbackName || '-'
+}
+
 function parseMailList(value) {
   return String(value || '')
     .split(/[,;\s，；]+/)
@@ -233,7 +240,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
       (d) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.customer_name || '-')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || d.name || d.serial_no || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(deviceDisplayName(d))}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.serial_no || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(d.maintenance_end || '').slice(0, 10))}</td>
@@ -289,7 +296,7 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
       (d) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.customer_name || '-')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.name || d.model || d.serial_no || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(deviceDisplayName(d))}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.serial_no || '-')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(maintenanceTypeLabel(d.maintenance_type))}</td>

@@ -8,6 +8,10 @@ const allowedCadences = new Set(['monthly', 'bi-monthly', 'quarterly'])
 let inspectionSchedulesTableReady = false
 let inspectionOrderColumnsReady = false
 
+function deviceDisplaySql(alias = 'd') {
+  return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
+}
+
 const scheduleColumns = `
   s.id, s.name, s.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson,
   s.target_engineer_id, u.real_name AS target_engineer_name, u.username AS target_engineer_username,
@@ -59,7 +63,7 @@ async function loadScheduleDevices(scheduleIds, connection = null) {
   })
   const rows = await execute(
     `SELECT sd.schedule_id, sd.device_id,
-            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
+            ${deviceDisplaySql('d')} AS device_name
      FROM inspection_schedule_devices sd
      LEFT JOIN devices d ON d.id = sd.device_id
      WHERE sd.schedule_id IN (${placeholders.join(',')})`,
@@ -336,7 +340,7 @@ async function loadInspectionOrderForMail(orderId) {
   const rows = await query(
     `SELECT so.id, so.order_no, so.customer_id, c.name AS customer_name,
             so.device_id,
-            COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+            ${deviceDisplaySql('d')} AS device_name,
             so.issue_description,
             so.planned_start_at, so.planned_end_at
      FROM service_orders so
