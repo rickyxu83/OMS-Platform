@@ -139,6 +139,27 @@ function formatDateTime(value?: string) {
   return String(value).replace("T", " ").slice(0, 16);
 }
 
+function SettingsGroupHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+      <p className="text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function SettingsNavLink({ href, title, description }: { href: string; title: string; description: string }) {
+  return (
+    <a
+      href={href}
+      className="rounded-lg border bg-card px-4 py-3 text-sm shadow-sm transition-colors hover:border-primary hover:bg-accent/40"
+    >
+      <span className="block font-semibold text-foreground">{title}</span>
+      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
+    </a>
+  );
+}
+
 export function SystemSettings() {
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
@@ -382,6 +403,14 @@ export function SystemSettings() {
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">{saved}</div>
       )}
 
+      {!loading && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <SettingsNavLink href="#settings-integrations" title="集成与密钥" description="AI API、SMTP 邮件、高德地图 Key" />
+          <SettingsNavLink href="#settings-notifications" title="自动提醒" description="维保、巡检、销售服务单通知" />
+          <SettingsNavLink href="#settings-announcements" title="登录公告" description="登录弹窗、目标角色、有效时间" />
+        </div>
+      )}
+
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
@@ -390,11 +419,14 @@ export function SystemSettings() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="space-y-8">
+          <section id="settings-integrations" className="scroll-mt-6 space-y-4">
+            <SettingsGroupHeader title="集成与密钥" description="集中管理外部服务连接信息。密钥保存后仍以星号展示，保留原来的后端保护逻辑。" />
+            <div className="grid gap-6 xl:grid-cols-2">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
-                <CardTitle>AI 总结</CardTitle>
+                <CardTitle>AI 与 API Key</CardTitle>
                 <Button variant="outline" size="sm" onClick={testAi} disabled={loading || saving || testingAi}>
                   {testingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                   测试 AI
@@ -455,7 +487,7 @@ export function SystemSettings() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
-                <CardTitle>邮件通知</CardTitle>
+                <CardTitle>SMTP 邮件</CardTitle>
                 <Button variant="outline" size="sm" onClick={testMail} disabled={loading || saving || testingMail}>
                   {testingMail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   测试 SMTP
@@ -542,7 +574,58 @@ export function SystemSettings() {
             </CardContent>
           </Card>
 
-          <Card className="xl:col-span-2">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <MapPinned className="h-5 w-5 text-primary" />
+                <CardTitle>地图 API</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label>高德 Web 服务 API Key</Label>
+                <Input
+                  type="password"
+                  value={form.map.amapRestKey}
+                  onChange={(e) => setForm({ ...form, map: { ...form.map, amapRestKey: e.target.value } })}
+                  placeholder="用于客户地址搜索，保存后会以星号显示"
+                />
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>高德 JSAPI Key</Label>
+                  <Input
+                    type="password"
+                    value={form.map.amapJsapiKey}
+                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapJsapiKey: e.target.value } })}
+                    placeholder="用于管理端地图展示"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>高德 JSAPI 安全密钥</Label>
+                  <Input
+                    type="password"
+                    value={form.map.amapSecurityJsCode}
+                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapSecurityJsCode: e.target.value } })}
+                    placeholder="securityJsCode，保存后会以星号显示"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                后端地址搜索使用 Web 服务 API Key；仪表盘地图使用 Web 端 JSAPI Key 和该 Key 同一行的安全密钥。若高德启用了 Referer 白名单，请加入当前管理端域名。
+              </div>
+            </CardContent>
+          </Card>
+            </div>
+          </section>
+
+          <section id="settings-announcements" className="scroll-mt-6 space-y-4">
+            <SettingsGroupHeader title="登录公告" description="集中维护登录弹窗公告、目标角色和展示时间，公告内容支持 Markdown。" />
+          <Card>
             <CardHeader>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
@@ -721,9 +804,13 @@ export function SystemSettings() {
             </CardContent>
           </Card>
 
+          </section>
+
+          <section id="settings-notifications" className="scroll-mt-6 space-y-4">
+            <SettingsGroupHeader title="自动提醒" description="维护周期性邮件提醒和销售服务单延迟通知，不改变 SMTP 本身的账号配置。" />
           <Card>
             <CardHeader>
-              <CardTitle>通知提醒</CardTitle>
+              <CardTitle>通知规则</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center justify-between rounded-lg border p-3">
@@ -813,52 +900,7 @@ export function SystemSettings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <MapPinned className="h-5 w-5 text-primary" />
-                <CardTitle>地图服务</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label>高德 Web 服务 API Key</Label>
-                <Input
-                  type="password"
-                  value={form.map.amapRestKey}
-                  onChange={(e) => setForm({ ...form, map: { ...form.map, amapRestKey: e.target.value } })}
-                  placeholder="用于客户地址搜索，保存后会以星号显示"
-                />
-              </div>
-
-              <Separator />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>高德 JSAPI Key</Label>
-                  <Input
-                    type="password"
-                    value={form.map.amapJsapiKey}
-                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapJsapiKey: e.target.value } })}
-                    placeholder="用于管理端地图展示"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>高德 JSAPI 安全密钥</Label>
-                  <Input
-                    type="password"
-                    value={form.map.amapSecurityJsCode}
-                    onChange={(e) => setForm({ ...form, map: { ...form.map, amapSecurityJsCode: e.target.value } })}
-                    placeholder="securityJsCode，保存后会以星号显示"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                后端地址搜索使用 Web 服务 API Key；仪表盘地图使用 Web 端 JSAPI Key 和该 Key 同一行的安全密钥。若高德启用了 Referer 白名单，请加入当前管理端域名。
-              </div>
-            </CardContent>
-          </Card>
+          </section>
         </div>
       )}
     </div>
