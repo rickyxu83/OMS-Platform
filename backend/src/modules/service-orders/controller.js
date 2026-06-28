@@ -2076,7 +2076,7 @@ async function loadDetailItem(orderId, user, options = {}) {
      LEFT JOIN customer_contact_usage ccu
        ON ccu.customer_contact_id = cc.id AND ccu.engineer_id = :engineerId
      WHERE cc.customer_id = :customerId
-     ORDER BY engineer_use_count DESC, engineer_last_used_at DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC
+     ORDER BY engineer_last_used_at DESC, engineer_use_count DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC
      LIMIT 20`,
     { customerId: order.customer_id, engineerId: user.id },
   )
@@ -2108,6 +2108,8 @@ async function loadDetailItem(orderId, user, options = {}) {
       phone: contact.phone,
       useCount: contact.use_count,
       lastUsedAt: contact.last_used_at,
+      engineerUseCount: Number(contact.engineer_use_count || 0),
+      engineerLastUsedAt: contact.engineer_last_used_at,
     })),
     parts: parts.map((part) => ({
       id: part.id,

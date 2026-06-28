@@ -1741,10 +1741,7 @@ function customerWithProfile(customer) {
   if (!profile) return normalized
 
   const normalizedProfile = normalizeCustomer(profile)
-  const profileContacts = mergeContacts(
-    normalizedProfile.contacts,
-    { name: normalizedProfile.contactName, phone: normalizedProfile.contactPhone },
-  )
+  const profileContacts = mergeContacts(normalizedProfile.contacts)
   return {
     ...normalized,
     ...normalizedProfile,
@@ -1784,7 +1781,6 @@ function contactsForCustomer(customer) {
   }
 
   ;(customer.contacts || []).forEach((contact) => pushContact(contact, 1))
-  if (customer.contactName) pushContact({ name: customer.contactName, phone: customer.contactPhone }, 1)
 
   return [...contacts.values()].sort((a, b) => {
     const engineerTimeSort = String(b.engineerLastUsedAt || '').localeCompare(String(a.engineerLastUsedAt || ''))

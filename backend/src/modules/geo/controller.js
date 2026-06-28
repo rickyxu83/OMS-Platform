@@ -295,7 +295,7 @@ async function searchCompanies(req, res) {
          LEFT JOIN customer_contact_usage ccu
            ON ccu.customer_contact_id = cc.id AND ccu.engineer_id = :engineerId
          WHERE cc.customer_id IN (${customers.map((_, index) => `:customerId${index}`).join(',')})
-         ORDER BY cc.customer_id ASC, engineer_use_count DESC, engineer_last_used_at DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC`,
+         ORDER BY cc.customer_id ASC, engineer_last_used_at DESC, engineer_use_count DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC`,
         customers.reduce((params, customer, index) => {
           params[`customerId${index}`] = customer.id
           params.engineerId = req.user.id
@@ -311,6 +311,8 @@ async function searchCompanies(req, res) {
       phone: normalizePhoneNumber(contact.phone) || contact.phone || '',
       useCount: contact.use_count,
       lastUsedAt: contact.last_used_at,
+      engineerUseCount: Number(contact.engineer_use_count || 0),
+      engineerLastUsedAt: contact.engineer_last_used_at,
     })
     return groups
   }, new Map())
