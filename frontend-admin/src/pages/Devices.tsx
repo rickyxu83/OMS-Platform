@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -118,6 +119,8 @@ const MAINTENANCE_TYPE_BADGE: Record<string, "default" | "secondary" | "info" | 
   original_manufacturer: "info",
   our_maintenance: "purple",
 };
+
+const MAINTENANCE_TYPE_HELP = "维保类型用于区分设备当前由谁负责保障：无维保表示暂不纳入维保；我方维保表示由本公司负责服务和巡检；原厂维保表示主要由原厂或指定维保方负责。";
 
 const MAINTENANCE_TYPE_ALIASES: Record<string, string> = {
   vendor: "original_manufacturer",
@@ -1410,7 +1413,10 @@ export function Devices() {
                 </>
               )}
               <div className="space-y-2">
-                <Label>维保类型</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>维保类型</Label>
+                  <HelpTooltip label={MAINTENANCE_TYPE_HELP} />
+                </div>
                 <Select
                   value={form.maintenanceType}
                   onValueChange={(v) => setForm((prev) => ({
@@ -1595,7 +1601,10 @@ export function Devices() {
                 onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, maintenanceType: v === true }))}
               />
               <div className="flex-1 space-y-1.5">
-                <Label>维保类型</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>维保类型</Label>
+                  <HelpTooltip label={MAINTENANCE_TYPE_HELP} />
+                </div>
                 <Select
                   value={batchEditForm.maintenanceType}
                   onValueChange={(v) => setBatchEditForm((f) => ({

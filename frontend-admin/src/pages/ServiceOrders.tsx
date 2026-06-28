@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
@@ -354,6 +355,8 @@ const PRIORITY_LABELS: Record<string, string> = {
   high: "高",
   urgent: "紧急",
 };
+
+const PRIORITY_HELP = "优先级用于提示工程师和调度处理顺序：普通按常规安排，高和紧急需要优先关注；它不会改变工单状态，也不代表审批结果。";
 
 const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
   onsite: "success",
@@ -1813,7 +1816,10 @@ export function ServiceOrders() {
               )}
             </div>
             <div className="space-y-2">
-              <Label>优先级</Label>
+              <div className="flex items-center gap-1.5">
+                <Label>优先级</Label>
+                <HelpTooltip label={PRIORITY_HELP} />
+              </div>
               <Select value={createForm.priority} onValueChange={(v) => setCreateForm({ ...createForm, priority: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

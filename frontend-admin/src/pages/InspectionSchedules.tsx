@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -78,6 +79,8 @@ const CADENCE_LABELS: Record<string, string> = {
   quarterly: "每季度",
   weekly: "每周",
 };
+
+const CADENCE_HELP = "巡检周期用于控制系统生成巡检工单的频率；系统会结合下次生成日期，按每月、每两月或每季度继续安排后续巡检。";
 
 const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary"> = {
   monthly: "info",
@@ -1171,7 +1174,10 @@ export function InspectionSchedules() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label>巡检周期 *</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>巡检周期 *</Label>
+                  <HelpTooltip label={CADENCE_HELP} />
+                </div>
                 <Select value={form.cadence} onValueChange={(v) => setForm({ ...form, cadence: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="选择周期" />

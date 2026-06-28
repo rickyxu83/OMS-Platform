@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, CircleHelp } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
@@ -1488,7 +1489,12 @@ export function Customers() {
                   <TableHead>{t.list.name}</TableHead>
                   <TableHead>{t.list.contact}</TableHead>
                   <TableHead>{t.list.phone}</TableHead>
-                  <TableHead>{t.list.level}</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1.5">
+                      {t.list.level}
+                      <HelpTooltip label={t.dialog.levelHelp} />
+                    </span>
+                  </TableHead>
                   <TableHead>{t.list.address}</TableHead>
                   <TableHead className="w-[160px] text-right">{t.list.action}</TableHead>
                 </TableRow>
@@ -2150,16 +2156,7 @@ export function Customers() {
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5">
                   <Label htmlFor="cust-level">{t.dialog.level}</Label>
-                  <span
-                    className="group relative inline-flex"
-                    tabIndex={0}
-                    aria-label={t.dialog.levelHelp}
-                  >
-                    <CircleHelp className="h-4 w-4 cursor-help text-muted-foreground transition-colors group-hover:text-primary group-focus:text-primary" />
-                    <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-72 rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus:opacity-100 sm:left-1/2 sm:-translate-x-1/2">
-                      {t.dialog.levelHelp}
-                    </span>
-                  </span>
+                  <HelpTooltip label={t.dialog.levelHelp} />
                 </div>
                 <Select value={form.level} onValueChange={(value) => setForm({ ...form, level: value })}>
                   <SelectTrigger id="cust-level">
