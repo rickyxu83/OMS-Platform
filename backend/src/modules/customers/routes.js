@@ -11,6 +11,7 @@ const customerMergeRoles = ROLE_GROUPS.customerMerge
 
 router.get('/', controller.list)
 router.post('/', requireRoles(...customerWriteRoles), controller.create)
+router.get('/:id/delete-preview', requireRoles(...customerDeleteRoles), controller.deletePreview)
 router.get('/:id', controller.detail)
 router.put('/:id', requireRoles(...customerWriteRoles), controller.update)
 router.delete('/:id', requireRoles(...customerDeleteRoles), controller.remove)

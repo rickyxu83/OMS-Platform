@@ -16,6 +16,9 @@ const deleting = ref(false)
 const error = ref('')
 const successMessage = ref('')
 const deleteError = ref('')
+const deletePreview = ref(null)
+const deletePreviewLoading = ref(false)
+const deletePreviewError = ref('')
 const searchQuery = ref('')
 const dialogOpen = ref(false)
 const deleteTarget = ref(null)
@@ -45,6 +48,7 @@ const filteredCustomers = computed(() => {
 })
 
 const hasCoordinates = computed(() => Number.isFinite(Number(form.value.latitude)) && Number.isFinite(Number(form.value.longitude)))
+const deletePreviewCounts = computed(() => deletePreview.value?.counts || {})
 
 function emptyForm() {
   return {
@@ -80,6 +84,42 @@ function contactsFor(customer) {
     return [{ name: customer.contactName || '联系人', phone: customer.contactPhone || '' }]
   }
   return []
+}
+
+const ORDER_STATUS_LABELS = {
+  draft: '草稿',
+  pending_confirmation: '待确认',
+  assigned: '已派发',
+  in_progress: '进行中',
+  submitted: '已结案',
+  approved: '已审核',
+  archived: '已归档',
+  cancelled: '已作废',
+  rejected: '已退回',
+}
+
+function formatPreviewDate(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 16) : '未维护时间'
+}
+
+function previewDeviceName(device) {
+  return device?.model || device?.name || device?.serialNo || `设备 #${device?.id || ''}`
+}
+
+function previewOrderTitle(order) {
+  return order?.orderNo || `工单 #${order?.id || ''}`
+}
+
+function previewOrderMeta(order) {
+  return [ORDER_STATUS_LABELS[order?.status] || order?.status || '未知状态', order?.deviceName, order?.engineerName, formatPreviewDate(order?.serviceAt || order?.createdAt)]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function previewScheduleMeta(schedule) {
+  return [schedule?.active ? '启用' : '停用', schedule?.cadence, schedule?.targetEngineerName, formatPreviewDate(schedule?.nextRunAnchor)]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function telHref(phone) {
@@ -147,16 +187,34 @@ function closeDialog() {
   dialogOpen.value = false
 }
 
+async function loadDeletePreview(customerId) {
+  deletePreviewLoading.value = true
+  deletePreviewError.value = ''
+  try {
+    const data = await api.get(`/customers/${customerId}/delete-preview`)
+    deletePreview.value = data?.item || null
+  } catch (err) {
+    deletePreviewError.value = err.message || '关联数据加载失败'
+  } finally {
+    deletePreviewLoading.value = false
+  }
+}
+
 function openDeleteConfirm(customer) {
   error.value = ''
   successMessage.value = ''
   deleteError.value = ''
+  deletePreview.value = null
+  deletePreviewError.value = ''
   deleteTarget.value = customer
+  loadDeletePreview(customer.id)
 }
 
 function closeDeleteConfirm() {
   if (deleting.value) return
   deleteError.value = ''
+  deletePreview.value = null
+  deletePreviewError.value = ''
   deleteTarget.value = null
 }
 
@@ -578,7 +636,57 @@ onBeforeUnmount(() => {
         </header>
         <div class="exit-confirm-body">
           <p>{{ zh('删除后客户档案和联系人将不可恢复。若该客户已关联设备或服务记录，系统会阻止删除。') }}</p>
-          <p>{{ zh('如果提示已有服务记录关联，请先删除关联的服务记录，再删除客户。') }}</p>
+          <section class="delete-impact-panel">
+            <p v-if="deletePreviewLoading" class="muted compact">{{ zh('正在检查关联数据…') }}</p>
+            <p v-else-if="deletePreviewError" class="form-error asset-delete-error">{{ zh(deletePreviewError) }}</p>
+            <template v-else-if="deletePreview">
+              <div class="delete-impact-summary">
+                <span>{{ zh('设备') }} <b>{{ deletePreviewCounts.devices || 0 }}</b></span>
+                <span>{{ zh('工单') }} <b>{{ deletePreviewCounts.serviceOrders || 0 }}</b></span>
+                <span>{{ zh('巡检计划') }} <b>{{ deletePreviewCounts.inspectionSchedules || 0 }}</b></span>
+                <span>{{ zh('联系人') }} <b>{{ deletePreviewCounts.contacts || 0 }}</b></span>
+              </div>
+              <details v-if="deletePreviewCounts.devices" class="delete-impact-details">
+                <summary>{{ zh('关联设备') }}（{{ deletePreviewCounts.devices }}）</summary>
+                <ul>
+                  <li v-for="device in deletePreview.items.devices" :key="`delete-device-${device.id}`">
+                    <strong>{{ zh(previewDeviceName(device)) }}</strong>
+                    <span>SN: {{ device.serialNo || zh('未维护') }}</span>
+                  </li>
+                </ul>
+                <p v-if="deletePreviewCounts.devices > deletePreview.items.devices.length" class="muted compact">{{ zh(`另有 ${deletePreviewCounts.devices - deletePreview.items.devices.length} 条未展示`) }}</p>
+              </details>
+              <details v-if="deletePreviewCounts.serviceOrders" class="delete-impact-details">
+                <summary>{{ zh('关联工单') }}（{{ deletePreviewCounts.serviceOrders }}）</summary>
+                <ul>
+                  <li v-for="order in deletePreview.items.serviceOrders" :key="`delete-order-${order.id}`">
+                    <strong>{{ zh(previewOrderTitle(order)) }}</strong>
+                    <span>{{ zh(previewOrderMeta(order)) }}</span>
+                  </li>
+                </ul>
+                <p v-if="deletePreviewCounts.serviceOrders > deletePreview.items.serviceOrders.length" class="muted compact">{{ zh(`另有 ${deletePreviewCounts.serviceOrders - deletePreview.items.serviceOrders.length} 条未展示`) }}</p>
+              </details>
+              <details v-if="deletePreviewCounts.inspectionSchedules" class="delete-impact-details">
+                <summary>{{ zh('关联巡检计划') }}（{{ deletePreviewCounts.inspectionSchedules }}）</summary>
+                <ul>
+                  <li v-for="schedule in deletePreview.items.inspectionSchedules" :key="`delete-schedule-${schedule.id}`">
+                    <strong>{{ zh(schedule.name || `巡检计划 #${schedule.id}`) }}</strong>
+                    <span>{{ zh(previewScheduleMeta(schedule)) }}</span>
+                  </li>
+                </ul>
+                <p v-if="deletePreviewCounts.inspectionSchedules > deletePreview.items.inspectionSchedules.length" class="muted compact">{{ zh(`另有 ${deletePreviewCounts.inspectionSchedules - deletePreview.items.inspectionSchedules.length} 条未展示`) }}</p>
+              </details>
+              <details v-if="deletePreviewCounts.contacts" class="delete-impact-details">
+                <summary>{{ zh('联系人') }}（{{ deletePreviewCounts.contacts }}）</summary>
+                <ul>
+                  <li v-for="contact in deletePreview.items.contacts" :key="`delete-contact-${contact.id}`">
+                    <strong>{{ zh(contact.name || '未命名联系人') }}</strong>
+                    <span>{{ contact.phone || zh('未维护电话') }}</span>
+                  </li>
+                </ul>
+              </details>
+            </template>
+          </section>
           <p v-if="deleteError" class="form-error asset-delete-error">{{ zh(deleteError) }}</p>
         </div>
         <footer class="signature-modal-actions">

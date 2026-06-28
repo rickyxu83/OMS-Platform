@@ -48,6 +48,8 @@ function contactPayload(row) {
     phone: normalizePhoneNumber(row.phone) || row.phone,
     useCount: row.use_count,
     lastUsedAt: row.last_used_at,
+    engineerUseCount: Number(row.engineer_use_count || 0),
+    engineerLastUsedAt: row.engineer_last_used_at,
   }
 }
 
@@ -110,18 +112,22 @@ async function syncServiceOrderContactSnapshot(connection, customerId, previousC
   )
 }
 
-async function loadContacts(customerIds) {
+async function loadContacts(customerIds, engineerId = null) {
   if (!customerIds.length) return new Map()
 
   const params = customerIds.reduce((values, id, index) => {
     values[`customerId${index}`] = id
     return values
-  }, {})
+  }, { engineerId: Number(engineerId || 0) || null })
   const rows = await query(
-    `SELECT id, customer_id, name, phone, use_count, last_used_at
-     FROM customer_contacts
-     WHERE customer_id IN (${customerIds.map((_, index) => `:customerId${index}`).join(',')})
-     ORDER BY customer_id ASC, use_count DESC, last_used_at DESC, id DESC`,
+    `SELECT cc.id, cc.customer_id, cc.name, cc.phone, cc.use_count, cc.last_used_at,
+            COALESCE(ccu.use_count, 0) AS engineer_use_count,
+            ccu.last_used_at AS engineer_last_used_at
+     FROM customer_contacts cc
+     LEFT JOIN customer_contact_usage ccu
+       ON ccu.customer_contact_id = cc.id AND ccu.engineer_id = :engineerId
+     WHERE cc.customer_id IN (${customerIds.map((_, index) => `:customerId${index}`).join(',')})
+     ORDER BY cc.customer_id ASC, engineer_last_used_at DESC, engineer_use_count DESC, cc.use_count DESC, cc.last_used_at DESC, cc.id DESC`,
     params,
   )
 
@@ -403,6 +409,41 @@ function idParams(ids, prefix) {
   )
 }
 
+async function ensureInspectionScheduleDevicesForPreview() {
+  const nameRows = await query(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'inspection_schedules'
+       AND COLUMN_NAME = 'name'`,
+  )
+  if (Number(nameRows[0]?.total || 0) === 0) {
+    await query('ALTER TABLE inspection_schedules ADD COLUMN name VARCHAR(160) NULL AFTER id')
+  }
+  await query(
+    `CREATE TABLE IF NOT EXISTS inspection_schedule_devices (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      schedule_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_schedule_device (schedule_id, device_id),
+      KEY idx_schedule_devices_device (device_id),
+      CONSTRAINT fk_customer_preview_schedule_devices_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+      CONSTRAINT fk_customer_preview_schedule_devices_device FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await query(
+    `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
+     SELECT s.id, s.device_id FROM inspection_schedules s
+     WHERE s.device_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM inspection_schedule_devices d
+         WHERE d.schedule_id = s.id AND d.device_id = s.device_id
+       )`,
+  )
+}
+
 function cleanupStorageFiles(filePaths = []) {
   for (const filePath of filePaths) {
     if (filePath) fs.rm(filePath, { force: true }, () => {})
@@ -510,6 +551,157 @@ async function forceDeleteCustomer(connection, customerId) {
   return { deviceCount: deviceIds.length, serviceOrderCount: orderIds.length, deletedFilePaths }
 }
 
+function relationPreviewPayload({ customer, counts, devices, serviceOrders, inspectionSchedules, contacts }) {
+  return {
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      code: customer.code,
+    },
+    counts: {
+      devices: Number(counts.device_count || 0),
+      serviceOrders: Number(counts.service_order_count || 0),
+      inspectionSchedules: Number(counts.inspection_schedule_count || 0),
+      contacts: Number(counts.contact_count || 0),
+    },
+    items: {
+      devices: devices.map((row) => ({
+        id: row.id,
+        name: row.name,
+        model: row.model,
+        serialNo: row.serial_no,
+        maintenanceType: row.maintenance_type,
+        maintenanceEnd: row.maintenance_end,
+      })),
+      serviceOrders: serviceOrders.map((row) => ({
+        id: row.id,
+        orderNo: row.order_no,
+        status: row.status,
+        serviceMode: row.service_mode,
+        serviceType: row.service_type,
+        deviceName: row.device_name,
+        engineerName: row.engineer_name || row.target_engineer_name || row.target_engineer_username,
+        serviceAt: row.planned_start_at || row.submitted_at || row.created_at,
+        createdAt: row.created_at,
+      })),
+      inspectionSchedules: inspectionSchedules.map((row) => ({
+        id: row.id,
+        name: row.name,
+        cadence: row.cadence,
+        active: Boolean(row.active),
+        nextRunAnchor: row.next_run_anchor,
+        targetEngineerName: row.target_engineer_name || row.target_engineer_username,
+        deviceName: row.device_name,
+      })),
+      contacts: contacts.map((row) => ({
+        id: row.id,
+        name: row.name,
+        phone: normalizePhoneNumber(row.phone) || row.phone,
+        useCount: Number(row.use_count || 0),
+      })),
+    },
+    previewLimit: 8,
+  }
+}
+
+async function loadCustomerDeletePreview(customerId, user) {
+  await ensureInspectionScheduleDevicesForPreview()
+  const customers = await query(
+    `SELECT id, name, code, salesperson
+     FROM customers
+     WHERE id = :customerId
+     LIMIT 1`,
+    { customerId },
+  )
+  const customer = customers[0]
+  if (!customer) throw notFound('客户不存在')
+  assertSalesCanAccessSalesperson(customer.salesperson, user, forbidden)
+
+  const counts = (await query(
+    `SELECT
+       (SELECT COUNT(*) FROM devices WHERE customer_id = :customerId) AS device_count,
+       (SELECT COUNT(DISTINCT so.id)
+        FROM service_orders so
+        WHERE so.customer_id = :customerId
+           OR so.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)) AS service_order_count,
+       (SELECT COUNT(DISTINCT s.id)
+        FROM inspection_schedules s
+        WHERE s.customer_id = :customerId
+           OR s.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)
+           OR EXISTS (
+             SELECT 1
+             FROM inspection_schedule_devices sd
+             JOIN devices d ON d.id = sd.device_id
+             WHERE sd.schedule_id = s.id AND d.customer_id = :customerId
+           )) AS inspection_schedule_count,
+       (SELECT COUNT(*) FROM customer_contacts WHERE customer_id = :customerId) AS contact_count`,
+    { customerId },
+  ))[0] || {}
+
+  const [devices, serviceOrders, inspectionSchedules, contacts] = await Promise.all([
+    query(
+      `SELECT id, name, model, serial_no, maintenance_type, maintenance_end
+       FROM devices
+       WHERE customer_id = :customerId
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 8`,
+      { customerId },
+    ),
+    query(
+      `SELECT DISTINCT so.id, so.order_no, so.status, so.service_mode, so.service_type,
+              COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+              u.real_name AS engineer_name,
+              target_u.real_name AS target_engineer_name,
+              target_u.username AS target_engineer_username,
+              so.planned_start_at, so.submitted_at, so.created_at
+       FROM service_orders so
+       LEFT JOIN devices d ON d.id = so.device_id
+       LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
+       WHERE so.customer_id = :customerId
+          OR so.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)
+       ORDER BY so.created_at DESC, so.id DESC
+       LIMIT 8`,
+      { customerId },
+    ),
+    query(
+      `SELECT DISTINCT s.id, s.name, s.cadence, s.active, s.next_run_anchor,
+              u.real_name AS target_engineer_name,
+              u.username AS target_engineer_username,
+              COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name
+       FROM inspection_schedules s
+       JOIN users u ON u.id = s.target_engineer_id
+       LEFT JOIN devices d ON d.id = s.device_id
+       WHERE s.customer_id = :customerId
+          OR s.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)
+          OR EXISTS (
+            SELECT 1
+            FROM inspection_schedule_devices sd
+            JOIN devices linked_d ON linked_d.id = sd.device_id
+            WHERE sd.schedule_id = s.id AND linked_d.customer_id = :customerId
+          )
+       ORDER BY s.active DESC, s.next_run_anchor ASC, s.id DESC
+       LIMIT 8`,
+      { customerId },
+    ),
+    query(
+      `SELECT id, name, phone, use_count
+       FROM customer_contacts
+       WHERE customer_id = :customerId
+       ORDER BY use_count DESC, last_used_at DESC, id DESC
+       LIMIT 8`,
+      { customerId },
+    ),
+  ])
+
+  return relationPreviewPayload({ customer, counts, devices, serviceOrders, inspectionSchedules, contacts })
+}
+
+async function deletePreview(req, res) {
+  const item = await loadCustomerDeletePreview(Number(req.params.id), req.user)
+  res.json({ item })
+}
+
 async function list(req, res) {
   await ensureCustomerLevelColumn()
   const { salesperson = '', mine = '' } = req.query
@@ -600,7 +792,7 @@ async function list(req, res) {
   )
 
   await cleanupDuplicateContacts(rows.map((row) => row.id))
-  const contactsByCustomer = await loadContacts(rows.map((row) => row.id))
+  const contactsByCustomer = await loadContacts(rows.map((row) => row.id), req.user.id)
   res.json({ items: rows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [])) })
 }
 
@@ -751,7 +943,7 @@ async function detail(req, res) {
   assertSalesCanAccessSalesperson(rows[0].salesperson, req.user, forbidden)
 
   await cleanupDuplicateContacts([rows[0].id])
-  const contactsByCustomer = await loadContacts([rows[0].id])
+  const contactsByCustomer = await loadContacts([rows[0].id], req.user.id)
   res.json({ item: customerPayload(rows[0], contactsByCustomer.get(rows[0].id) || []) })
 }
 
@@ -1064,6 +1256,7 @@ module.exports = {
   create,
   detail,
   update,
+  deletePreview,
   remove,
   merge,
   devices,

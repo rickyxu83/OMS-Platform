@@ -65,7 +65,9 @@ function customerDeviceLabel(device: CustomerDevice) {
 
 interface CustomerSchedule {
   id: string | number;
+  name?: string;
   deviceNames?: string[];
+  deviceName?: string;
   targetEngineerName?: string;
   cadence?: string;
   nextRunAnchor?: string;
@@ -89,6 +91,22 @@ interface CustomerInsight {
   devices: CustomerDevice[];
   schedules: CustomerSchedule[];
   orders: CustomerOrder[];
+}
+
+interface CustomerDeletePreview {
+  counts: {
+    devices?: number;
+    serviceOrders?: number;
+    inspectionSchedules?: number;
+    contacts?: number;
+  };
+  items: {
+    devices: CustomerDevice[];
+    serviceOrders: CustomerOrder[];
+    inspectionSchedules: CustomerSchedule[];
+    contacts: Array<{ id: string | number; name?: string; phone?: string; useCount?: number }>;
+  };
+  previewLimit?: number;
 }
 
 interface GeoCandidate {
@@ -227,6 +245,15 @@ const I18N = {
       deleteSafeWarning: "有关联数据的客户不会被删除，请先处理关联设备、工单或巡检计划。",
       deleteServiceCount: "当前客户已有 {count} 条工单记录。",
       deleteNoServiceCount: "系统会再次检查是否有关联设备或工单。",
+      deleteChecking: "正在检查关联数据…",
+      deletePreviewFailed: "关联数据加载失败",
+      deleteImpactDevices: "设备",
+      deleteImpactOrders: "工单",
+      deleteImpactSchedules: "巡检计划",
+      deleteImpactContacts: "联系人",
+      deleteImpactMore: "另有 {count} 条未展示",
+      enabled: "启用",
+      disabled: "停用",
       deleteSuccess: "已删除客户：{name}",
       deleteForceSuccess: "已删除客户：{name}（同时清理 {deviceCount} 台设备、{serviceOrderCount} 张工单）",
       bulkDeleteConfirm: "确认强制删除选中的 {count} 个客户？会一并删除关联设备、工单、巡检计划和联系人，操作不可恢复。",
@@ -393,6 +420,15 @@ const I18N = {
       deleteSafeWarning: "有關聯資料的客戶不會被刪除，請先處理關聯設備、工單或巡檢計畫。",
       deleteServiceCount: "目前客戶已有 {count} 條工單記錄。",
       deleteNoServiceCount: "系統會再次檢查是否有關聯設備或工單。",
+      deleteChecking: "正在檢查關聯資料…",
+      deletePreviewFailed: "關聯資料載入失敗",
+      deleteImpactDevices: "設備",
+      deleteImpactOrders: "工單",
+      deleteImpactSchedules: "巡檢計畫",
+      deleteImpactContacts: "聯絡人",
+      deleteImpactMore: "另有 {count} 條未展示",
+      enabled: "啟用",
+      disabled: "停用",
       deleteSuccess: "已刪除客戶：{name}",
       deleteForceSuccess: "已刪除客戶：{name}（同時清理 {deviceCount} 台設備、{serviceOrderCount} 張工單）",
       bulkDeleteConfirm: "確認強制刪除選中的 {count} 個客戶？會一併刪除關聯設備、工單、巡檢計畫和聯絡人，操作不可恢復。",
@@ -592,6 +628,21 @@ function orderStatusLabel(order: CustomerOrder) {
   return order.displayStatus || ORDER_STATUS_LABELS[status] || status || "-";
 }
 
+function previewOrderMeta(order: CustomerOrder) {
+  return [orderStatusLabel(order), order.deviceName, formatDate(order.serviceAt || order.createdAt)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function previewScheduleMeta(schedule: CustomerSchedule, labels: { enabled: string; disabled: string }) {
+  return [
+    schedule.active ? labels.enabled : labels.disabled,
+    schedule.cadence,
+    schedule.targetEngineerName,
+    formatDate(schedule.nextRunAnchor),
+  ].filter(Boolean).join(" · ");
+}
+
 export function Customers() {
   const { lang } = useLanguage();
   const { user } = useAuth();
@@ -608,6 +659,9 @@ export function Customers() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [deletePreview, setDeletePreview] = useState<CustomerDeletePreview | null>(null);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
+  const [deletePreviewError, setDeletePreviewError] = useState("");
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState("");
@@ -1111,11 +1165,27 @@ export function Customers() {
     });
   }
 
+  async function loadDeletePreview(customerId: string | number) {
+    setDeletePreviewLoading(true);
+    setDeletePreviewError("");
+    try {
+      const data = await api.get(`/customers/${customerId}/delete-preview`);
+      setDeletePreview((data?.item || null) as CustomerDeletePreview | null);
+    } catch (e) {
+      setDeletePreviewError(e instanceof Error ? e.message : t.dialog.deletePreviewFailed);
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  }
+
   function openDelete(c: Customer) {
     setError("");
     setSuccessMessage("");
     setDeleteError("");
+    setDeletePreview(null);
+    setDeletePreviewError("");
     setDeleteTarget(c);
+    loadDeletePreview(c.id).catch(() => undefined);
   }
 
   function openMergeDialog() {
@@ -1171,6 +1241,8 @@ export function Customers() {
   function closeDelete() {
     if (deleting) return;
     setDeleteError("");
+    setDeletePreview(null);
+    setDeletePreviewError("");
     setDeleteTarget(null);
   }
 
@@ -2161,7 +2233,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) closeDelete(); }}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-600" />
@@ -2175,11 +2247,96 @@ export function Customers() {
             </div>
             <div className="rounded-lg border bg-slate-50 p-3 text-slate-700">
               <div className="font-medium text-slate-900">{deleteTarget?.name || t.misc.unknown}</div>
-              <div className="mt-1 text-muted-foreground">
-                {Number(deleteTarget?.serviceOrderCount || 0) > 0
-                  ? interpolate(t.dialog.deleteServiceCount, { count: Number(deleteTarget?.serviceOrderCount || 0) })
-                  : t.dialog.deleteNoServiceCount}
-              </div>
+              {deletePreviewLoading ? (
+                <div className="mt-2 text-muted-foreground">
+                  <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                  {t.dialog.deleteChecking}
+                </div>
+              ) : deletePreviewError ? (
+                <div className="mt-2 rounded-md border border-red-100 bg-red-50 p-2 text-red-600">{deletePreviewError}</div>
+              ) : deletePreview ? (() => {
+                const counts = deletePreview.counts || {};
+                const items = deletePreview.items;
+                const summaryItems = [
+                  [t.dialog.deleteImpactDevices, Number(counts.devices || 0)],
+                  [t.dialog.deleteImpactOrders, Number(counts.serviceOrders || 0)],
+                  [t.dialog.deleteImpactSchedules, Number(counts.inspectionSchedules || 0)],
+                  [t.dialog.deleteImpactContacts, Number(counts.contacts || 0)],
+                ] as const;
+                return (
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {summaryItems.map(([label, count]) => (
+                        <div key={label} className="rounded-md border bg-white px-3 py-2">
+                          <div className="text-xs text-muted-foreground">{label}</div>
+                          <div className="text-base font-semibold text-slate-900">{count}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {Number(counts.devices || 0) > 0 ? (
+                      <details className="rounded-md border bg-white">
+                        <summary className="cursor-pointer px-3 py-2 font-medium">{t.dialog.deleteImpactDevices}（{Number(counts.devices || 0)}）</summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {items.devices.map((device) => (
+                            <div key={`delete-device-${device.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                              <div className="font-medium text-slate-900">{customerDeviceLabel(device)}</div>
+                              <div className="text-xs text-muted-foreground">SN: {device.serialNo || t.misc.unknown}</div>
+                            </div>
+                          ))}
+                          {Number(counts.devices || 0) > items.devices.length ? <div className="text-xs text-muted-foreground">{interpolate(t.dialog.deleteImpactMore, { count: Number(counts.devices || 0) - items.devices.length })}</div> : null}
+                        </div>
+                      </details>
+                    ) : null}
+                    {Number(counts.serviceOrders || 0) > 0 ? (
+                      <details className="rounded-md border bg-white">
+                        <summary className="cursor-pointer px-3 py-2 font-medium">{t.dialog.deleteImpactOrders}（{Number(counts.serviceOrders || 0)}）</summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {items.serviceOrders.map((order) => (
+                            <div key={`delete-order-${order.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                              <div className="font-medium text-slate-900">{order.orderNo || `#${order.id}`}</div>
+                              <div className="text-xs text-muted-foreground">{previewOrderMeta(order)}</div>
+                            </div>
+                          ))}
+                          {Number(counts.serviceOrders || 0) > items.serviceOrders.length ? <div className="text-xs text-muted-foreground">{interpolate(t.dialog.deleteImpactMore, { count: Number(counts.serviceOrders || 0) - items.serviceOrders.length })}</div> : null}
+                        </div>
+                      </details>
+                    ) : null}
+                    {Number(counts.inspectionSchedules || 0) > 0 ? (
+                      <details className="rounded-md border bg-white">
+                        <summary className="cursor-pointer px-3 py-2 font-medium">{t.dialog.deleteImpactSchedules}（{Number(counts.inspectionSchedules || 0)}）</summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {items.inspectionSchedules.map((schedule) => (
+                            <div key={`delete-schedule-${schedule.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                              <div className="font-medium text-slate-900">{schedule.name || `#${schedule.id}`}</div>
+                              <div className="text-xs text-muted-foreground">{previewScheduleMeta(schedule, { enabled: t.dialog.enabled, disabled: t.dialog.disabled })}</div>
+                            </div>
+                          ))}
+                          {Number(counts.inspectionSchedules || 0) > items.inspectionSchedules.length ? <div className="text-xs text-muted-foreground">{interpolate(t.dialog.deleteImpactMore, { count: Number(counts.inspectionSchedules || 0) - items.inspectionSchedules.length })}</div> : null}
+                        </div>
+                      </details>
+                    ) : null}
+                    {Number(counts.contacts || 0) > 0 ? (
+                      <details className="rounded-md border bg-white">
+                        <summary className="cursor-pointer px-3 py-2 font-medium">{t.dialog.deleteImpactContacts}（{Number(counts.contacts || 0)}）</summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {items.contacts.map((contact) => (
+                            <div key={`delete-contact-${contact.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                              <div className="font-medium text-slate-900">{contact.name || t.misc.unknown}</div>
+                              <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                );
+              })() : (
+                <div className="mt-1 text-muted-foreground">
+                  {Number(deleteTarget?.serviceOrderCount || 0) > 0
+                    ? interpolate(t.dialog.deleteServiceCount, { count: Number(deleteTarget?.serviceOrderCount || 0) })
+                    : t.dialog.deleteNoServiceCount}
+                </div>
+              )}
             </div>
             {deleteError ? (
               <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-600">
