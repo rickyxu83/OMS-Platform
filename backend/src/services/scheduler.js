@@ -19,6 +19,8 @@ async function notificationSettings() {
     'notification.maintenanceExpiryDays',
     'notification.maintenanceExpiryRecipients',
     'notification.noMaintenanceReminderEnabled',
+    'notification.missingCustomerSalespersonEnabled',
+    'notification.missingCustomerSalespersonRecipients',
     'notification.inspectionReminderEnabled',
     'notification.inspectionReminderDays',
     'notification.inspectionReminderRecipients',
@@ -34,6 +36,8 @@ async function notificationSettings() {
     maintenanceExpiryDays: Math.max(1, Math.min(365, Number(saved['notification.maintenanceExpiryDays'] || 30))),
     maintenanceExpiryRecipients: String(saved['notification.maintenanceExpiryRecipients'] || '').trim(),
     noMaintenanceReminderEnabled: saved['notification.noMaintenanceReminderEnabled'] !== 'false',
+    missingCustomerSalespersonEnabled: saved['notification.missingCustomerSalespersonEnabled'] !== 'false',
+    missingCustomerSalespersonRecipients: String(saved['notification.missingCustomerSalespersonRecipients'] || '').trim(),
     inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
     inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
@@ -416,6 +420,11 @@ function startScheduler() {
     console.log('[scheduler] Running missing customer salesperson check...')
     try {
       const nSettings = await notificationSettings()
+      if (!nSettings.missingCustomerSalespersonEnabled) {
+        console.log('[scheduler] Missing customer salesperson notification is disabled')
+        return
+      }
+
       const customers = await query(
         `SELECT id, name, code, address, contact_name, contact_phone, salesperson
          FROM customers
@@ -432,21 +441,13 @@ function startScheduler() {
         return
       }
 
-      const assistantRows = await query(
-        `SELECT email, real_name, username
-         FROM users
-         WHERE role = 'assistant'
-           AND status = 'active'
-           AND email IS NOT NULL
-           AND email <> ''
-         ORDER BY real_name ASC, username ASC`,
-      )
-      if (!assistantRows.length) {
-        console.warn('[scheduler] No active assistants with emails for missing customer salesperson mail')
+      const recipients = recipientList(nSettings.missingCustomerSalespersonRecipients)
+      if (!recipients.length) {
+        console.warn('[scheduler] No configured recipients for missing customer salesperson mail')
         return
       }
 
-      const result = await sendMissingCustomerSalespersonMail(customers, assistantRows, nSettings.serviceOrderAdminBaseUrl)
+      const result = await sendMissingCustomerSalespersonMail(customers, recipients, nSettings.serviceOrderAdminBaseUrl)
       if (result?.skipped) {
         console.warn('[scheduler] Missing customer salesperson mail skipped', {
           reason: result.reason,
