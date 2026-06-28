@@ -976,9 +976,8 @@ export function Devices() {
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {canManageDevices ? <div className="w-4 shrink-0">选择</div> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
-                    <div className="grid min-w-0 flex-1 grid-cols-6 gap-4">
-                      <div>设备 / 客户</div>
-                      <div>型号</div>
+                    <div className="grid min-w-0 flex-1 grid-cols-5 gap-4">
+                      <div>型号 / 客户</div>
                       <div>SN</div>
                       <div>维保类型</div>
                       <div>维保方 / 截止</div>
@@ -1019,14 +1018,10 @@ export function Devices() {
                         </div>
                       ) : null}
                       <Server className="w-5 h-5 text-primary" />
-                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-5">
                         <div className="min-w-0">
-                          <div className="truncate font-medium" title={deviceDisplayName(device)}>{deviceDisplayName(device)}</div>
+                          <div className="truncate font-medium" title={device.model || "-"}>{device.model || "-"}</div>
                           <div className="truncate text-sm text-muted-foreground" title={device.customerName || "-"}>{device.customerName || "-"}</div>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground md:hidden">型号</div>
-                          <div className="truncate text-sm" title={device.model || "-"}>{device.model || "-"}</div>
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs text-muted-foreground md:hidden">SN</div>
@@ -1096,7 +1091,7 @@ export function Devices() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
                         <div className="text-lg font-semibold leading-7 text-slate-900">
-                          {deviceDisplayName(detailTarget)}
+                          {detailTarget.model || "-"}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.customerName || "-"}</div>
                       </div>
