@@ -253,6 +253,20 @@ CREATE TABLE service_report_work_entries (
   CONSTRAINT fk_service_report_work_entries_engineer_id FOREIGN KEY (engineer_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE service_order_sales_notifications (
+  service_order_id BIGINT UNSIGNED NOT NULL,
+  due_at DATETIME NOT NULL,
+  status ENUM('pending', 'sending', 'sent', 'skipped', 'failed') NOT NULL DEFAULT 'pending',
+  attempts INT NOT NULL DEFAULT 0,
+  sent_at DATETIME NULL,
+  last_error VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (service_order_id),
+  KEY idx_sales_notifications_due (status, due_at),
+  CONSTRAINT fk_service_order_sales_notifications_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE self_report_drafts (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   engineer_id BIGINT UNSIGNED NOT NULL,

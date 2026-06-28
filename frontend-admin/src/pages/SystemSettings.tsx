@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { ErrorToast } from "@/components/ErrorToast";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 
@@ -37,6 +38,9 @@ interface SettingsForm {
     maintenanceExpiryRecipients: string;
     inspectionReminderEnabled: boolean;
     inspectionReminderDays: string;
+    serviceOrderSalesNotifyEnabled: boolean;
+    serviceOrderSalesDelayMinutes: string;
+    serviceOrderAdminBaseUrl: string;
   };
   map: {
     amapRestKey: string;
@@ -86,6 +90,9 @@ const emptyForm: SettingsForm = {
     maintenanceExpiryRecipients: "",
     inspectionReminderEnabled: true,
     inspectionReminderDays: "3",
+    serviceOrderSalesNotifyEnabled: false,
+    serviceOrderSalesDelayMinutes: "60",
+    serviceOrderAdminBaseUrl: "",
   },
   map: {
     amapRestKey: "",
@@ -196,6 +203,9 @@ export function SystemSettings() {
           maintenanceExpiryRecipients: n.maintenanceExpiryRecipients || "",
           inspectionReminderEnabled: toBool(n.inspectionReminderEnabled ?? true),
           inspectionReminderDays: String(n.inspectionReminderDays || "3"),
+          serviceOrderSalesNotifyEnabled: toBool(n.serviceOrderSalesNotifyEnabled),
+          serviceOrderSalesDelayMinutes: String(n.serviceOrderSalesDelayMinutes || "60"),
+          serviceOrderAdminBaseUrl: n.serviceOrderAdminBaseUrl || "",
         },
         map: {
           amapRestKey: item.map?.amapRestKey || "",
@@ -367,9 +377,7 @@ export function SystemSettings() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-600">{error}</div>
-      )}
+      <ErrorToast message={error} />
       {saved && (
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">{saved}</div>
       )}
@@ -768,8 +776,39 @@ export function SystemSettings() {
                 />
               </div>
 
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">销售服务单通知</div>
+                  <div className="text-sm text-muted-foreground">工程师提交或修改服务单后，延迟发送给客户关联销售。</div>
+                </div>
+                <Switch
+                  checked={form.notification.serviceOrderSalesNotifyEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, serviceOrderSalesNotifyEnabled: c } })}
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>延迟发送分钟数</Label>
+                  <Input
+                    type="number" min="5" max="1440"
+                    value={form.notification.serviceOrderSalesDelayMinutes}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, serviceOrderSalesDelayMinutes: e.target.value } })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>OMS 管理端地址</Label>
+                  <Input
+                    value={form.notification.serviceOrderAdminBaseUrl}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, serviceOrderAdminBaseUrl: e.target.value } })}
+                    placeholder="https://admin.example.com"
+                  />
+                </div>
+              </div>
+
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                系统每天 08:00 检查维保到期，07:00 检查巡检执行。保存后次日生效。
+                系统每天 08:00 检查维保到期，07:00 检查巡检执行；销售服务单通知每 5 分钟检查一次到期队列。
               </div>
             </CardContent>
           </Card>

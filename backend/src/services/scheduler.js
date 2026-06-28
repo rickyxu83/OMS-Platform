@@ -2,6 +2,7 @@ const cron = require('node-cron')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
 const { sendMaintenanceExpiryMail, sendInspectionReminderMail } = require('./mail')
+const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 
 async function notificationSettings() {
   const saved = await getSettings([
@@ -172,7 +173,19 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), inspection reminder (07:00)')
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const result = await processDueSalesServiceOrderNotifications(20)
+      if (result?.skipped) return
+      if (result?.processed) {
+        console.log(`[scheduler] Sales service-order notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Sales service-order notification check failed', error?.message)
+    }
+  })
+
+  console.log('[scheduler] Started: maintenance expiry (08:00), inspection reminder (07:00), sales service-order notifications (every 5 minutes)')
 }
 
 module.exports = { startScheduler }

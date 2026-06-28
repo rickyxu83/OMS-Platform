@@ -29,6 +29,24 @@ function missingMailFields(mail) {
   return ['host', 'port', 'from', 'user', 'password'].filter((key) => !mail[key])
 }
 
+function mailTransporter(mail) {
+  return nodemailer.createTransport({
+    host: mail.host,
+    port: Number(mail.port || 465),
+    secure: mail.secure === 'true',
+    auth: {
+      user: mail.user,
+      pass: mail.password,
+    },
+  })
+}
+
+function serviceModeLabel(mode) {
+  if (mode === 'office') return '内勤'
+  if (mode === 'remote') return '远程'
+  return '现场'
+}
+
 async function sendAssignmentMail(order, engineers = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -47,15 +65,7 @@ async function sendAssignmentMail(order, engineers = []) {
     }
   }
 
-  const transporter = nodemailer.createTransport({
-    host: mail.host,
-    port: Number(mail.port || 465),
-    secure: mail.secure === 'true',
-    auth: {
-      user: mail.user,
-      pass: mail.password,
-    },
-  })
+  const transporter = mailTransporter(mail)
 
   const subject = `派单通知：${order.order_no || order.orderNo || order.id} / ${order.customer_name || order.customerName || ''}`
   const html = `
@@ -99,15 +109,7 @@ async function sendInspectionConfirmationMail(order, recipients = []) {
     }
   }
 
-  const transporter = nodemailer.createTransport({
-    host: mail.host,
-    port: Number(mail.port || 465),
-    secure: mail.secure === 'true',
-    auth: {
-      user: mail.user,
-      pass: mail.password,
-    },
-  })
+  const transporter = mailTransporter(mail)
 
   const subject = `巡检待确认：${order.order_no || order.orderNo || order.id} / ${order.customer_name || order.customerName || ''}`
   const html = `
@@ -145,12 +147,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
   const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
   if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
 
-  const transporter = nodemailer.createTransport({
-    host: mail.host,
-    port: Number(mail.port || 465),
-    secure: mail.secure === 'true',
-    auth: { user: mail.user, pass: mail.password },
-  })
+  const transporter = mailTransporter(mail)
 
   const subject = `维保到期提醒：${devices.length} 台设备即将过保`
   const rows = devices
@@ -203,12 +200,7 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
   const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
   if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
 
-  const transporter = nodemailer.createTransport({
-    host: mail.host,
-    port: Number(mail.port || 465),
-    secure: mail.secure === 'true',
-    auth: { user: mail.user, pass: mail.password },
-  })
+  const transporter = mailTransporter(mail)
 
   const cadenceLabel = { monthly: '每月', 'bi-monthly': '每两月', quarterly: '每季度' }
   const rows = schedules
@@ -247,9 +239,57 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
   return { sent: true, to, scheduleCount: schedules.length }
 }
 
+async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients)
+  if (!to.length) {
+    return {
+      skipped: true,
+      reason: 'no_recipient_email',
+      recipientIds: recipients.map((recipient) => recipient.id).filter(Boolean),
+    }
+  }
+
+  const transporter = mailTransporter(mail)
+  const orderNo = order.order_no || order.orderNo || order.id
+  const customerName = order.customer_name || order.customerName || '-'
+  const subject = `服务单更新：${orderNo} / ${customerName}`
+  const linkBlock = detailUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看 OMS 工单详情</a></p>`
+    : '<p style="color:#64748b">请登录 OMS 管理端查看工单详情。</p>'
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">客户服务单已更新</h2>
+      <p>你负责的客户有一张服务单已由工程师提交或更新，请查看服务进展。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:760px">
+        <tr><td style="padding:6px 0;color:#64748b;width:96px">Case ID</td><td>${htmlEscape(orderNo)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">客户</td><td>${htmlEscape(customerName)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">联系人</td><td>${htmlEscape(order.contact_name || order.contactName || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务方式</td><td>${htmlEscape(serviceModeLabel(order.service_mode || order.serviceMode))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">工程师</td><td>${htmlEscape(order.engineer_name || order.engineerName || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务时间</td><td>${htmlEscape(formatTime(order.actual_start_at || order.actualStartAt || order.submitted_at || order.submittedAt))} 至 ${htmlEscape(formatTime(order.actual_end_at || order.actualEndAt || order.updated_at || order.updatedAt))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">问题/事项</td><td>${htmlEscape(order.issue_description || order.issueDescription || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">处理摘要</td><td>${htmlEscape(order.work_content || order.workContent || order.result_description || order.resultDescription || '-')}</td></tr>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该邮件延迟发送，用于合并工程师提交后的连续修改。</p>
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
   sendMaintenanceExpiryMail,
   sendInspectionReminderMail,
+  sendSalesServiceOrderMail,
 }

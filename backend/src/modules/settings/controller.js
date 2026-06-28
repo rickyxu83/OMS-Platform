@@ -30,6 +30,9 @@ const settingKeys = [
   'notification.inspectionReminderEnabled',
   'notification.inspectionReminderDays',
   'notification.inspectionReminderCron',
+  'notification.serviceOrderSalesNotifyEnabled',
+  'notification.serviceOrderSalesDelayMinutes',
+  'notification.serviceOrderAdminBaseUrl',
 ]
 
 function boolText(value, fallback = false) {
@@ -75,6 +78,9 @@ async function effectiveSettings() {
       inspectionReminderEnabled: boolText(saved['notification.inspectionReminderEnabled'], true),
       inspectionReminderDays: saved['notification.inspectionReminderDays'] || '3',
       inspectionReminderCron: saved['notification.inspectionReminderCron'] || '0 7 * * *',
+      serviceOrderSalesNotifyEnabled: boolText(saved['notification.serviceOrderSalesNotifyEnabled'], false),
+      serviceOrderSalesDelayMinutes: saved['notification.serviceOrderSalesDelayMinutes'] || '60',
+      serviceOrderAdminBaseUrl: saved['notification.serviceOrderAdminBaseUrl'] || '',
     },
   }
 }
@@ -212,6 +218,9 @@ async function update(req, res) {
     next['notification.inspectionReminderEnabled'] = String(n.inspectionReminderEnabled === true || n.inspectionReminderEnabled === 'true')
     next['notification.inspectionReminderDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionReminderDays || 3))))
     next['notification.inspectionReminderCron'] = String(n.inspectionReminderCron || '0 7 * * *').trim()
+    next['notification.serviceOrderSalesNotifyEnabled'] = String(n.serviceOrderSalesNotifyEnabled === true || n.serviceOrderSalesNotifyEnabled === 'true')
+    next['notification.serviceOrderSalesDelayMinutes'] = String(Math.max(5, Math.min(1440, Number(n.serviceOrderSalesDelayMinutes || 60))))
+    next['notification.serviceOrderAdminBaseUrl'] = String(n.serviceOrderAdminBaseUrl || '').trim().replace(/\/+$/, '')
   }
 
   await setSettings(next, req.user.id)

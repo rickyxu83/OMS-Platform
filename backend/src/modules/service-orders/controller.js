@@ -7,6 +7,7 @@ const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail } = require('../../services/mail')
+const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
@@ -1042,6 +1043,20 @@ function triggerAssignmentMail(order, orderId = order?.id) {
     })
 }
 
+async function queueSalesServiceOrderNotificationSafely(orderId) {
+  try {
+    const result = await queueSalesServiceOrderNotification(orderId)
+    if (result?.skipped && !['sales_service_order_notify_disabled', 'no_customer_salesperson'].includes(result.reason)) {
+      console.warn('[mail] sales service-order notification queue skipped', {
+        orderId,
+        reason: result.reason || 'unknown',
+      })
+    }
+  } catch (error) {
+    console.error('[mail] sales service-order notification queue failed', { orderId, message: error?.message })
+  }
+}
+
 async function attachReports(rows) {
   const orderIds = rows.map((row) => Number(row.id)).filter(Boolean)
   if (!orderIds.length) return rows
@@ -2043,6 +2058,7 @@ async function createSelfReport(req, res) {
     }
   })
 
+  await queueSalesServiceOrderNotificationSafely(created.id)
   res.status(201).json(created)
 }
 
@@ -2767,6 +2783,7 @@ async function updateSelfReport(req, res) {
     )
   })
 
+  await queueSalesServiceOrderNotificationSafely(req.params.id)
   res.status(204).end()
 }
 
