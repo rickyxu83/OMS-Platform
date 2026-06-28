@@ -662,10 +662,6 @@ function taskCardHint(task) {
   return ''
 }
 
-function showDesktopDangerAction(task) {
-  return String(task.status || '') !== 'submitted'
-}
-
 function isStoredDraftTask(task) {
   return ['draft_local', 'draft_sync'].includes(String(task.status || ''))
 }
@@ -1108,7 +1104,6 @@ onBeforeUnmount(() => {
               <PreviewIcon name="edit" />
             </button>
             <button
-              v-if="showDesktopDangerAction(task)"
               type="button"
               class="task-desktop-action task-desktop-action-danger"
               :aria-label="zh(dangerActionLabel(task))"
