@@ -602,7 +602,7 @@ export function SystemSettings() {
   }
 
   return (
-    <div className="space-y-6 p-6 pb-28">
+    <div className="space-y-6 p-6 pb-20">
       <div>
         <div>
           <h1 className="text-3xl font-semibold">系统设置</h1>
@@ -1213,7 +1213,7 @@ export function SystemSettings() {
 
       {!loading && (
         <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t bg-background/95 px-4 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:bottom-0 lg:left-[var(--admin-sidebar-width)]">
-          <div className="mx-auto flex min-h-[76px] max-w-screen-2xl flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between lg:h-[76px] lg:py-0">
+          <div className="mx-auto flex min-h-14 max-w-screen-2xl flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between lg:h-14 lg:py-0">
             <div className="text-sm text-muted-foreground">
               修改系统配置后，点击保存才会生效。
             </div>

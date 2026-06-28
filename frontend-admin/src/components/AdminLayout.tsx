@@ -500,7 +500,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </nav>
 
           {/* Sidebar Footer - Version Info */}
-          <div className="flex h-[76px] items-center border-t border-sidebar-border/50 bg-sidebar-accent/10 px-4">
+          <div className="flex h-14 items-center border-t border-sidebar-border/50 bg-sidebar-accent/10 px-4">
             <div className="flex w-full items-center justify-between px-2">
               <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
               <Badge variant="outline" className="text-xs h-4 py-0 px-1.5 font-mono opacity-70 border-sidebar-border/50">{appVersion}</Badge>
