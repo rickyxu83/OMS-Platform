@@ -451,10 +451,10 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
     ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;color:#2563eb;text-decoration:none;padding:9px 10px">月报导出</a>` : ''}</p>`
     : ''
   const themeRows = Array.isArray(summary.keyThemes) ? summary.keyThemes.map((item) => `${item.theme || '主题'}：${item.details || ''}`) : []
-  const subject = `月度 AI 营运总结：${report.label || report.month || ''}`
+  const subject = `月度营运总结：${report.label || report.month || ''}`
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
-      <h2 style="margin:0 0 12px">月度 AI 营运总结</h2>
+      <h2 style="margin:0 0 12px">月度营运总结</h2>
       <p style="margin:0 0 8px;color:#64748b">统计期间：${htmlEscape(report.label || '-')}</p>
       ${linkBlock}
       <div style="display:block;max-width:760px;margin:14px 0">
@@ -468,6 +468,9 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
         </table>
       </div>
       <div style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">${htmlEscape(summaryText)}</div>
+      <div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:13px;line-height:1.7">
+        AI 免责说明：本摘要由系统基于 OMS 已记录数据自动整理，可能使用 AI 辅助生成，仅供内部管理参考；请以 OMS 原始工单、月报记录和人工判断为准。
+      </div>
       ${summarySection('重点主题', themeRows)}
       ${summarySection('客户影响', summary.customerImpact)}
       ${summarySection('风险信号', summary.riskSignals)}

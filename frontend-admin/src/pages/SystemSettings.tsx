@@ -1162,8 +1162,8 @@ export function SystemSettings() {
 
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <div className="font-medium">月度 AI 营运总结</div>
-                  <div className="text-sm text-muted-foreground">每月 1 号发送上个月的运营摘要和基础统计。</div>
+                  <div className="font-medium">月度营运总结</div>
+                  <div className="text-sm text-muted-foreground">每月 1 号发送上个月的营运摘要和基础统计，可使用 AI 生成摘要，邮件包含 AI 免责说明。</div>
                 </div>
                 <Switch
                   checked={form.notification.monthlyOperationsSummaryEnabled}
