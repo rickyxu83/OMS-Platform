@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -278,8 +278,12 @@ function formatHeaderTime(value: Date) {
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const { user, logout } = useAuth();
   const { lang, setLang } = useLanguage();
+  const contentRef = useRef<HTMLElement | null>(null);
+  const previousLocationKeyRef = useRef(location.key);
+  const scrollPositionsRef = useRef(new Map<string, number>());
   const currentUser = user || { name: "", role: "" };
   const currentPage = location.pathname.replace(/^\//, "") || "dashboard";
   const [sidebarOpen, setSidebarOpen] = useState(() => (
@@ -301,6 +305,31 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const layoutStyle = { "--admin-sidebar-width": sidebarOpen ? "16rem" : "0px" } as CSSProperties;
   const canSwitchEngineer = Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    const previousKey = previousLocationKeyRef.current;
+    if (previousKey && previousKey !== location.key) {
+      scrollPositionsRef.current.set(previousKey, content.scrollTop);
+    }
+
+    const nextTop = navigationType === "POP"
+      ? scrollPositionsRef.current.get(location.key) ?? 0
+      : 0;
+
+    const restoreScroll = () => {
+      contentRef.current?.scrollTo({ top: nextTop, left: 0, behavior: "auto" });
+    };
+    const frame = window.requestAnimationFrame(restoreScroll);
+    const timers = [50, 150, 300].map((delay) => window.setTimeout(restoreScroll, delay));
+    previousLocationKeyRef.current = location.key;
+    return () => {
+      window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [location.key, navigationType]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -648,7 +677,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-20 lg:pb-0">
+        <main ref={contentRef} className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-20 lg:pb-0">
           {children}
         </main>
 
