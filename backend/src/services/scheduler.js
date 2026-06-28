@@ -1,7 +1,13 @@
 const cron = require('node-cron')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
-const { sendMaintenanceExpiryMail, sendInspectionReminderMail } = require('./mail')
+const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
+const {
+  sendMaintenanceExpiryMail,
+  sendInspectionReminderMail,
+  sendInspectionOverdueMail,
+  sendMonthlyOperationsSummaryMail,
+} = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 
 async function notificationSettings() {
@@ -11,6 +17,13 @@ async function notificationSettings() {
     'notification.maintenanceExpiryRecipients',
     'notification.inspectionReminderEnabled',
     'notification.inspectionReminderDays',
+    'notification.inspectionReminderRecipients',
+    'notification.inspectionOverdueEnabled',
+    'notification.inspectionOverdueDays',
+    'notification.inspectionOverdueRecipients',
+    'notification.monthlyOperationsSummaryEnabled',
+    'notification.monthlyOperationsSummaryRecipients',
+    'notification.serviceOrderAdminBaseUrl',
   ])
   return {
     maintenanceExpiryEnabled: saved['notification.maintenanceExpiryEnabled'] !== 'false',
@@ -18,6 +31,243 @@ async function notificationSettings() {
     maintenanceExpiryRecipients: String(saved['notification.maintenanceExpiryRecipients'] || '').trim(),
     inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
     inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
+    inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
+    inspectionOverdueEnabled: saved['notification.inspectionOverdueEnabled'] !== 'false',
+    inspectionOverdueDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionOverdueDays'] || 1))),
+    inspectionOverdueRecipients: String(saved['notification.inspectionOverdueRecipients'] || '').trim(),
+    monthlyOperationsSummaryEnabled: saved['notification.monthlyOperationsSummaryEnabled'] !== 'false',
+    monthlyOperationsSummaryRecipients: String(saved['notification.monthlyOperationsSummaryRecipients'] || '').trim(),
+    serviceOrderAdminBaseUrl: String(saved['notification.serviceOrderAdminBaseUrl'] || '').trim().replace(/\/+$/, ''),
+  }
+}
+
+function recipientList(value) {
+  return String(value || '')
+    .split(/[,;\s，；]+/)
+    .map((email) => email.trim())
+    .filter(Boolean)
+    .map((email) => ({ email }))
+}
+
+function serviceModeLabel(mode) {
+  if (mode === 'office') return '内勤'
+  if (mode === 'remote') return '远程'
+  return '现场'
+}
+
+function timesheetType(serviceType, serviceMode = 'onsite') {
+  if (serviceMode === 'office') return ['内部工作', '其他']
+  if (serviceMode === 'remote') return ['远程服务', '排障']
+  const map = {
+    install: ['售后服务', '安装'],
+    repair: ['维护服务', '排障'],
+    maintain: ['维护服务', '保养'],
+    inspect: ['维护服务', '巡检'],
+    training: ['售后服务', '培训'],
+    other: ['维护服务', '其他'],
+  }
+  return map[serviceType] || map.other
+}
+
+function joinWorkContent(...values) {
+  const parts = []
+  const seen = new Set()
+  for (const value of values) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    parts.push(text)
+  }
+  return parts.join('\n')
+}
+
+function shanghaiDateParts(date = new Date()) {
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  }
+}
+
+function previousMonthRange() {
+  const now = shanghaiDateParts()
+  const previousMonth = new Date(Date.UTC(now.year, now.month - 2, 1))
+  const year = previousMonth.getUTCFullYear()
+  const month = previousMonth.getUTCMonth() + 1
+  const monthText = `${year}-${String(month).padStart(2, '0')}`
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return {
+    month: monthText,
+    startDate: `${monthText}-01`,
+    endDate: `${monthText}-${String(lastDay).padStart(2, '0')}`,
+    label: monthText,
+  }
+}
+
+async function ensureTimesheetManualEntriesTable() {
+  await query(
+    `CREATE TABLE IF NOT EXISTS timesheet_manual_entries (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      engineer_id BIGINT UNSIGNED NOT NULL,
+      entry_date DATE NOT NULL,
+      category VARCHAR(64) NOT NULL,
+      customer_project VARCHAR(128) NULL,
+      work_content TEXT NOT NULL,
+      progress VARCHAR(64) NULL,
+      remark VARCHAR(255) NULL,
+      created_by BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_timesheet_manual_entries_engineer_date (engineer_id, entry_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+}
+
+async function ensureServiceReportWorkEntriesTable() {
+  await query(
+    `CREATE TABLE IF NOT EXISTS service_report_work_entries (
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      engineer_id BIGINT UNSIGNED NOT NULL,
+      work_content TEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (service_order_id, engineer_id),
+      KEY idx_service_report_work_entries_engineer_id (engineer_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+}
+
+async function buildMonthlyOperationsReport(range) {
+  await ensureTimesheetManualEntriesTable()
+  await ensureServiceReportWorkEntriesTable()
+  const serviceRows = await query(
+    `SELECT
+       so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
+       so.issue_description, so.internal_note, so.planned_start_at, so.submitted_at, so.created_at,
+       c.name AS customer_name, c.salesperson AS customer_salesperson,
+       COALESCE(NULLIF(d.model, ''), NULLIF(d.name, ''), NULLIF(d.serial_no, '')) AS device_name,
+       sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
+       work_entries.work_content AS work_entries_content,
+       u.real_name AS engineer_name
+     FROM service_orders so
+     JOIN customers c ON c.id = so.customer_id
+     LEFT JOIN devices d ON d.id = so.device_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     LEFT JOIN users u ON u.id = so.assigned_engineer_id
+     LEFT JOIN (
+       SELECT srwe.service_order_id,
+              GROUP_CONCAT(CONCAT(COALESCE(uwe.real_name, uwe.username, '工程师'), '：', srwe.work_content) SEPARATOR '\n\n') AS work_content
+       FROM service_report_work_entries srwe
+       JOIN users uwe ON uwe.id = srwe.engineer_id
+       GROUP BY srwe.service_order_id
+     ) work_entries ON work_entries.service_order_id = so.id
+     WHERE DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) >= :startDate
+       AND DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate
+       AND so.status <> 'cancelled'
+     ORDER BY COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at), so.id`,
+    range,
+  )
+  const manualRows = await query(
+    `SELECT tme.id, tme.engineer_id, tme.entry_date, tme.category, tme.customer_project,
+            tme.work_content, tme.progress, tme.remark, u.real_name AS engineer_name
+     FROM timesheet_manual_entries tme
+     JOIN users u ON u.id = tme.engineer_id
+     WHERE tme.entry_date >= :startDate
+       AND tme.entry_date <= :endDate
+     ORDER BY tme.entry_date, u.real_name, tme.id`,
+    range,
+  )
+  const participantRows = await query(
+    `SELECT DISTINCT participants.engineer_id, u.real_name
+     FROM (
+       SELECT service_order_id, engineer_id FROM service_order_engineers
+       UNION
+       SELECT id AS service_order_id, assigned_engineer_id AS engineer_id
+       FROM service_orders
+       WHERE assigned_engineer_id IS NOT NULL
+     ) participants
+     JOIN service_orders so ON so.id = participants.service_order_id
+     JOIN users u ON u.id = participants.engineer_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     WHERE DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) >= :startDate
+       AND DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate
+       AND so.status <> 'cancelled'`,
+    range,
+  )
+
+  const engineerNames = new Set(participantRows.map((row) => row.real_name).filter(Boolean))
+  const customerNames = new Set(serviceRows.map((row) => row.customer_name).filter(Boolean))
+  let totalHours = 0
+  const serviceItems = serviceRows.map((row) => {
+    const date = String(row.actual_start_at || row.planned_start_at || row.submitted_at || row.created_at).slice(0, 10)
+    const [workNature, fallbackCategory] = timesheetType(row.service_type, row.service_mode)
+    const workHours = Number(row.work_hours || 1) || 1
+    totalHours += workHours
+    if (row.engineer_name) engineerNames.add(row.engineer_name)
+    return {
+      source: 'service_order',
+      serviceOrderId: row.id,
+      orderNo: row.order_no,
+      serviceMode: row.service_mode || 'onsite',
+      engineerName: row.engineer_name || '工程师',
+      date,
+      workNature,
+      category: row.timesheet_category || fallbackCategory || serviceModeLabel(row.service_mode),
+      customerName: row.customer_name,
+      productName: row.service_mode === 'office' ? row.internal_note || '' : row.device_name || '',
+      workContent: joinWorkContent(
+        row.work_entries_content,
+        row.work_content,
+        row.fault_summary,
+        row.result_description,
+        row.issue_description,
+      ),
+      salesperson: row.timesheet_salesperson || row.customer_salesperson || '',
+      progress:
+        {
+          resolved: '已完成',
+          unresolved: '未完成',
+          follow_up_required: '搁置中',
+        }[row.result] || '已完成',
+      workHours,
+      remark: row.order_no,
+    }
+  })
+  const manualItems = manualRows.map((row) => {
+    const workHours = 1
+    totalHours += workHours
+    if (row.engineer_name) engineerNames.add(row.engineer_name)
+    return {
+      source: 'manual',
+      manualEntryId: row.id,
+      serviceMode: 'manual',
+      engineerName: row.engineer_name || '工程师',
+      date: String(row.entry_date).slice(0, 10),
+      workNature: '内部工作',
+      category: row.category,
+      customerName: row.customer_project || '',
+      productName: row.customer_project || '',
+      workContent: row.work_content,
+      salesperson: '',
+      progress: row.progress || '已完成',
+      workHours,
+      remark: row.remark || '',
+    }
+  })
+  const items = [...serviceItems, ...manualItems].sort((left, right) => String(left.date).localeCompare(String(right.date)))
+  const workSummary = await generateTimesheetWorkSummary({ ...range, items })
+  return {
+    ...range,
+    stats: {
+      serviceOrders: serviceRows.length,
+      customers: customerNames.size,
+      engineers: engineerNames.size,
+      workHours: Number(totalHours.toFixed(1)),
+    },
+    items,
+    workSummary,
   }
 }
 
@@ -46,32 +296,7 @@ function startScheduler() {
         return
       }
 
-      let adminRows
-      if (nSettings.maintenanceExpiryRecipients) {
-        const emails = nSettings.maintenanceExpiryRecipients.split(/[,;\s]+/).filter(Boolean)
-        if (emails.length) {
-          const placeholders = emails.map((_, i) => `:email${i}`).join(',')
-          const params = {}
-          emails.forEach((email, i) => { params[`email${i}`] = email })
-          adminRows = await query(
-            `SELECT email FROM users WHERE email IN (${placeholders})`,
-            params,
-          )
-          if (adminRows.length < emails.length) {
-            const found = new Set(adminRows.map((r) => r.email))
-            const missing = emails.filter((e) => !found.has(e))
-            if (missing.length) {
-              console.warn('[scheduler] Some configured recipients not found in users table:', missing)
-            }
-          }
-        } else {
-          adminRows = []
-        }
-      } else {
-        adminRows = await query(
-          `SELECT email FROM users WHERE email IS NOT NULL AND email <> '' AND role IN ('admin', 'operations_director')`,
-        )
-      }
+      const configuredRows = recipientList(nSettings.maintenanceExpiryRecipients)
 
       const salespersonNames = [...new Set(devices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
       let salespersonRows = []
@@ -90,7 +315,7 @@ function startScheduler() {
         }
       }
 
-      const allRecipients = [...adminRows, ...salespersonRows]
+      const allRecipients = [...configuredRows, ...salespersonRows]
       const seen = new Set()
       const deduped = allRecipients.filter((r) => {
         const key = r.email.toLowerCase().trim()
@@ -168,8 +393,103 @@ function startScheduler() {
           console.log(`[scheduler] Inspection reminder sent to ${group.email}: ${result.scheduleCount} schedules`)
         }
       }
+
+      const configuredRecipients = recipientList(nSettings.inspectionReminderRecipients)
+      if (configuredRecipients.length) {
+        const result = await sendInspectionReminderMail(schedules, configuredRecipients)
+        if (result?.skipped) {
+          console.warn('[scheduler] Inspection reminder summary mail skipped', {
+            reason: result.reason,
+          })
+        } else {
+          console.log(`[scheduler] Inspection reminder summary sent: ${result.scheduleCount} schedules to ${result.to}`)
+        }
+      }
     } catch (error) {
       console.error('[scheduler] Inspection reminder check failed', error?.message)
+    }
+  })
+
+  cron.schedule('10 8 * * *', async () => {
+    console.log('[scheduler] Running overdue inspection check...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.inspectionOverdueEnabled) {
+        console.log('[scheduler] Inspection overdue notification is disabled')
+        return
+      }
+      const recipients = recipientList(nSettings.inspectionOverdueRecipients)
+      if (!recipients.length) {
+        console.warn('[scheduler] No configured recipients for overdue inspection mail')
+        return
+      }
+
+      const orders = await query(
+        `SELECT *
+         FROM (
+           SELECT so.id, so.order_no, so.customer_id, c.name AS customer_name,
+                  so.status, so.planned_start_at, so.planned_end_at, so.inspection_occurrence_date,
+                  u.real_name AS engineer_name,
+                  target_u.real_name AS target_engineer_name,
+                  DATEDIFF(CURDATE(), DATE(COALESCE(so.planned_end_at, so.planned_start_at, so.inspection_occurrence_date))) AS overdue_days
+           FROM service_orders so
+           JOIN customers c ON c.id = so.customer_id
+           LEFT JOIN users u ON u.id = so.assigned_engineer_id
+           LEFT JOIN users target_u ON target_u.id = so.target_engineer_id
+           WHERE so.inspection_schedule_id IS NOT NULL
+             AND so.service_type = 'inspect'
+             AND so.status NOT IN ('submitted', 'approved', 'archived', 'cancelled')
+             AND COALESCE(so.planned_end_at, so.planned_start_at, so.inspection_occurrence_date) IS NOT NULL
+         ) overdue_orders
+         WHERE overdue_days >= :overdueDays
+         ORDER BY overdue_days DESC, planned_end_at ASC, id ASC`,
+        { overdueDays: nSettings.inspectionOverdueDays },
+      )
+      if (!orders.length) {
+        console.log(`[scheduler] No overdue inspection orders over ${nSettings.inspectionOverdueDays} days`)
+        return
+      }
+
+      const result = await sendInspectionOverdueMail(orders, recipients, nSettings.serviceOrderAdminBaseUrl)
+      if (result?.skipped) {
+        console.warn('[scheduler] Overdue inspection mail skipped', {
+          reason: result.reason,
+          missing: result.missing,
+        })
+      } else {
+        console.log(`[scheduler] Overdue inspection mail sent: ${result.orderCount} orders to ${result.to}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Overdue inspection check failed', error?.message)
+    }
+  })
+
+  cron.schedule('20 8 1 * *', async () => {
+    console.log('[scheduler] Running monthly operations summary...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.monthlyOperationsSummaryEnabled) {
+        console.log('[scheduler] Monthly operations summary is disabled')
+        return
+      }
+      const recipients = recipientList(nSettings.monthlyOperationsSummaryRecipients)
+      if (!recipients.length) {
+        console.warn('[scheduler] No configured recipients for monthly operations summary')
+        return
+      }
+
+      const report = await buildMonthlyOperationsReport(previousMonthRange())
+      const result = await sendMonthlyOperationsSummaryMail(report, recipients, nSettings.serviceOrderAdminBaseUrl)
+      if (result?.skipped) {
+        console.warn('[scheduler] Monthly operations summary skipped', {
+          reason: result.reason,
+          missing: result.missing,
+        })
+      } else {
+        console.log(`[scheduler] Monthly operations summary sent for ${result.month} to ${result.to}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Monthly operations summary failed', error?.message)
     }
   })
 
@@ -185,7 +505,7 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), inspection reminder (07:00), sales service-order notifications (every 5 minutes)')
+  console.log('[scheduler] Started: maintenance expiry (08:00), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
 }
 
 module.exports = { startScheduler }

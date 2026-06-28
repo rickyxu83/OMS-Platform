@@ -29,7 +29,15 @@ const settingKeys = [
   'notification.maintenanceExpiryCron',
   'notification.inspectionReminderEnabled',
   'notification.inspectionReminderDays',
+  'notification.inspectionReminderRecipients',
   'notification.inspectionReminderCron',
+  'notification.inspectionConfirmationEnabled',
+  'notification.inspectionConfirmationRecipients',
+  'notification.inspectionOverdueEnabled',
+  'notification.inspectionOverdueDays',
+  'notification.inspectionOverdueRecipients',
+  'notification.monthlyOperationsSummaryEnabled',
+  'notification.monthlyOperationsSummaryRecipients',
   'notification.serviceOrderSalesNotifyEnabled',
   'notification.serviceOrderSalesDelayMinutes',
   'notification.serviceOrderAdminBaseUrl',
@@ -77,7 +85,15 @@ async function effectiveSettings() {
       maintenanceExpiryCron: saved['notification.maintenanceExpiryCron'] || '0 8 * * *',
       inspectionReminderEnabled: boolText(saved['notification.inspectionReminderEnabled'], true),
       inspectionReminderDays: saved['notification.inspectionReminderDays'] || '3',
+      inspectionReminderRecipients: saved['notification.inspectionReminderRecipients'] || '',
       inspectionReminderCron: saved['notification.inspectionReminderCron'] || '0 7 * * *',
+      inspectionConfirmationEnabled: boolText(saved['notification.inspectionConfirmationEnabled'], true),
+      inspectionConfirmationRecipients: saved['notification.inspectionConfirmationRecipients'] || '',
+      inspectionOverdueEnabled: boolText(saved['notification.inspectionOverdueEnabled'], true),
+      inspectionOverdueDays: saved['notification.inspectionOverdueDays'] || '1',
+      inspectionOverdueRecipients: saved['notification.inspectionOverdueRecipients'] || '',
+      monthlyOperationsSummaryEnabled: boolText(saved['notification.monthlyOperationsSummaryEnabled'], true),
+      monthlyOperationsSummaryRecipients: saved['notification.monthlyOperationsSummaryRecipients'] || '',
       serviceOrderSalesNotifyEnabled: boolText(saved['notification.serviceOrderSalesNotifyEnabled'], false),
       serviceOrderSalesDelayMinutes: saved['notification.serviceOrderSalesDelayMinutes'] || '60',
       serviceOrderAdminBaseUrl: saved['notification.serviceOrderAdminBaseUrl'] || '',
@@ -217,7 +233,15 @@ async function update(req, res) {
     next['notification.maintenanceExpiryCron'] = String(n.maintenanceExpiryCron || '0 8 * * *').trim()
     next['notification.inspectionReminderEnabled'] = String(n.inspectionReminderEnabled === true || n.inspectionReminderEnabled === 'true')
     next['notification.inspectionReminderDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionReminderDays || 3))))
+    next['notification.inspectionReminderRecipients'] = String(n.inspectionReminderRecipients || '').trim()
     next['notification.inspectionReminderCron'] = String(n.inspectionReminderCron || '0 7 * * *').trim()
+    next['notification.inspectionConfirmationEnabled'] = String(n.inspectionConfirmationEnabled === true || n.inspectionConfirmationEnabled === 'true')
+    next['notification.inspectionConfirmationRecipients'] = String(n.inspectionConfirmationRecipients || '').trim()
+    next['notification.inspectionOverdueEnabled'] = String(n.inspectionOverdueEnabled === true || n.inspectionOverdueEnabled === 'true')
+    next['notification.inspectionOverdueDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionOverdueDays || 1))))
+    next['notification.inspectionOverdueRecipients'] = String(n.inspectionOverdueRecipients || '').trim()
+    next['notification.monthlyOperationsSummaryEnabled'] = String(n.monthlyOperationsSummaryEnabled === true || n.monthlyOperationsSummaryEnabled === 'true')
+    next['notification.monthlyOperationsSummaryRecipients'] = String(n.monthlyOperationsSummaryRecipients || '').trim()
     next['notification.serviceOrderSalesNotifyEnabled'] = String(n.serviceOrderSalesNotifyEnabled === true || n.serviceOrderSalesNotifyEnabled === 'true')
     next['notification.serviceOrderSalesDelayMinutes'] = String(Math.max(5, Math.min(1440, Number(n.serviceOrderSalesDelayMinutes || 60))))
     next['notification.serviceOrderAdminBaseUrl'] = String(n.serviceOrderAdminBaseUrl || '').trim().replace(/\/+$/, '')

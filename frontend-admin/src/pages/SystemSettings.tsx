@@ -38,6 +38,14 @@ interface SettingsForm {
     maintenanceExpiryRecipients: string;
     inspectionReminderEnabled: boolean;
     inspectionReminderDays: string;
+    inspectionReminderRecipients: string;
+    inspectionConfirmationEnabled: boolean;
+    inspectionConfirmationRecipients: string;
+    inspectionOverdueEnabled: boolean;
+    inspectionOverdueDays: string;
+    inspectionOverdueRecipients: string;
+    monthlyOperationsSummaryEnabled: boolean;
+    monthlyOperationsSummaryRecipients: string;
     serviceOrderSalesNotifyEnabled: boolean;
     serviceOrderSalesDelayMinutes: string;
     serviceOrderAdminBaseUrl: string;
@@ -90,6 +98,14 @@ const emptyForm: SettingsForm = {
     maintenanceExpiryRecipients: "",
     inspectionReminderEnabled: true,
     inspectionReminderDays: "3",
+    inspectionReminderRecipients: "",
+    inspectionConfirmationEnabled: true,
+    inspectionConfirmationRecipients: "",
+    inspectionOverdueEnabled: true,
+    inspectionOverdueDays: "1",
+    inspectionOverdueRecipients: "",
+    monthlyOperationsSummaryEnabled: true,
+    monthlyOperationsSummaryRecipients: "",
     serviceOrderSalesNotifyEnabled: false,
     serviceOrderSalesDelayMinutes: "60",
     serviceOrderAdminBaseUrl: "",
@@ -224,6 +240,14 @@ export function SystemSettings() {
           maintenanceExpiryRecipients: n.maintenanceExpiryRecipients || "",
           inspectionReminderEnabled: toBool(n.inspectionReminderEnabled ?? true),
           inspectionReminderDays: String(n.inspectionReminderDays || "3"),
+          inspectionReminderRecipients: n.inspectionReminderRecipients || "",
+          inspectionConfirmationEnabled: toBool(n.inspectionConfirmationEnabled ?? true),
+          inspectionConfirmationRecipients: n.inspectionConfirmationRecipients || "",
+          inspectionOverdueEnabled: toBool(n.inspectionOverdueEnabled ?? true),
+          inspectionOverdueDays: String(n.inspectionOverdueDays || "1"),
+          inspectionOverdueRecipients: n.inspectionOverdueRecipients || "",
+          monthlyOperationsSummaryEnabled: toBool(n.monthlyOperationsSummaryEnabled ?? true),
+          monthlyOperationsSummaryRecipients: n.monthlyOperationsSummaryRecipients || "",
           serviceOrderSalesNotifyEnabled: toBool(n.serviceOrderSalesNotifyEnabled),
           serviceOrderSalesDelayMinutes: String(n.serviceOrderSalesDelayMinutes || "60"),
           serviceOrderAdminBaseUrl: n.serviceOrderAdminBaseUrl || "",
@@ -816,7 +840,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <div className="font-medium">维保到期预警</div>
-                  <div className="text-sm text-muted-foreground">设备维保到期前发送邮件通知，默认同时抄送客户销售负责人。</div>
+                  <div className="text-sm text-muted-foreground">设备维保到期前发送邮件通知客户销售负责人和固定收件人。</div>
                 </div>
                 <Switch
                   checked={form.notification.maintenanceExpiryEnabled}
@@ -833,7 +857,7 @@ export function SystemSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>额外收件人</Label>
+                  <Label>固定收件人</Label>
                   <Input
                     value={form.notification.maintenanceExpiryRecipients}
                     onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: e.target.value } })}
@@ -847,19 +871,102 @@ export function SystemSettings() {
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <div className="font-medium">巡检执行提醒</div>
-                  <div className="text-sm text-muted-foreground">巡检计划执行前发送邮件给工程师。</div>
+                  <div className="text-sm text-muted-foreground">巡检计划执行前发送邮件给工程师，并可同步给指定管理邮箱。</div>
                 </div>
                 <Switch
                   checked={form.notification.inspectionReminderEnabled}
                   onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionReminderEnabled: c } })}
                 />
               </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>提前提醒天数</Label>
+                  <Input
+                    type="number" min="1" max="365"
+                    value={form.notification.inspectionReminderDays}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionReminderDays: e.target.value } })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>同步收件人</Label>
+                  <Input
+                    value={form.notification.inspectionReminderRecipients}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionReminderRecipients: e.target.value } })}
+                    placeholder="supervisor@example.com"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">巡检待确认通知</div>
+                  <div className="text-sm text-muted-foreground">巡检计划生成待确认工单后，发送给指定确认人邮箱。</div>
+                </div>
+                <Switch
+                  checked={form.notification.inspectionConfirmationEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionConfirmationEnabled: c } })}
+                />
+              </div>
               <div className="space-y-2">
-                <Label>提前提醒天数</Label>
+                <Label>确认通知收件人</Label>
                 <Input
-                  type="number" min="1" max="365"
-                  value={form.notification.inspectionReminderDays}
-                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionReminderDays: e.target.value } })}
+                  value={form.notification.inspectionConfirmationRecipients}
+                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionConfirmationRecipients: e.target.value } })}
+                  placeholder="supervisor@example.com"
+                />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">巡检逾期未提交</div>
+                  <div className="text-sm text-muted-foreground">巡检工单超过计划时间仍未提交时，发送每日汇总提醒。</div>
+                </div>
+                <Switch
+                  checked={form.notification.inspectionOverdueEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionOverdueEnabled: c } })}
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>逾期天数阈值</Label>
+                  <Input
+                    type="number" min="1" max="365"
+                    value={form.notification.inspectionOverdueDays}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionOverdueDays: e.target.value } })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>逾期提醒收件人</Label>
+                  <Input
+                    value={form.notification.inspectionOverdueRecipients}
+                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionOverdueRecipients: e.target.value } })}
+                    placeholder="supervisor@example.com"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">月度 AI 营运总结</div>
+                  <div className="text-sm text-muted-foreground">每月 1 号发送上个月的运营摘要和基础统计。</div>
+                </div>
+                <Switch
+                  checked={form.notification.monthlyOperationsSummaryEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryEnabled: c } })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>月度总结收件人</Label>
+                <Input
+                  value={form.notification.monthlyOperationsSummaryRecipients}
+                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryRecipients: e.target.value } })}
+                  placeholder="ops@example.com, supervisor@example.com, sales@example.com"
                 />
               </div>
 
@@ -895,7 +1002,7 @@ export function SystemSettings() {
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                系统每天 08:00 检查维保到期，07:00 检查巡检执行；销售服务单通知每 5 分钟检查一次到期队列。
+                系统每天 07:00 检查巡检执行，08:00 检查维保到期，08:10 检查逾期巡检；每月 1 号 08:20 发送月度总结；销售服务单通知每 5 分钟检查一次到期队列。
               </div>
             </CardContent>
           </Card>

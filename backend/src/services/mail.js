@@ -16,7 +16,7 @@ function formatTime(value) {
 function recipientEmails(engineers = []) {
   const seen = new Set()
   return engineers
-    .map((engineer) => String(engineer.email || '').trim())
+    .map((engineer) => String(engineer?.email || engineer || '').trim())
     .filter((email) => {
       const key = email.toLowerCase()
       if (!email || seen.has(key)) return false
@@ -45,6 +45,58 @@ function serviceModeLabel(mode) {
   if (mode === 'office') return '内勤'
   if (mode === 'remote') return '远程'
   return '现场'
+}
+
+function serviceTypeLabel(type) {
+  const labels = {
+    install: '安装',
+    repair: '排障',
+    maintain: '保养',
+    inspect: '巡检',
+    training: '培训',
+    remote: '远程支持',
+    other: '其他',
+  }
+  return labels[type] || type || '-'
+}
+
+function statusLabel(status) {
+  const labels = {
+    draft: '草稿',
+    pending_confirmation: '待确认',
+    assigned: '已派单',
+    in_progress: '处理中',
+    submitted: '待审核',
+    rejected: '已退回',
+    approved: '已审核',
+    archived: '已归档',
+    cancelled: '已取消',
+  }
+  return labels[status] || status || '-'
+}
+
+function parseMailList(value) {
+  return String(value || '')
+    .split(/[,;\s，；]+/)
+    .map((email) => email.trim())
+    .filter(Boolean)
+}
+
+function adminLink(baseUrl, path) {
+  const base = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!base) return ''
+  const suffix = String(path || '').startsWith('/') ? path : `/${path || ''}`
+  return `${base}${suffix}`
+}
+
+function mailFooter() {
+  const year = new Date().getFullYear()
+  return `
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;line-height:1.7">
+        <div style="font-weight:700;color:#475569">OMS Platform 运维智管 · 敦阳（宁波）科技有限公司</div>
+        <div>本邮件由 OMS Platform 自动发送，请勿直接回复。工单详情仅对授权账号开放，如无法访问请联系系统管理员。</div>
+        <div>© ${year} 敦阳（宁波）科技有限公司。保留所有权利。</div>
+      </div>`
 }
 
 async function sendAssignmentMail(order, engineers = []) {
@@ -79,6 +131,7 @@ async function sendAssignmentMail(order, engineers = []) {
         <tr><td style="padding:6px 0;color:#64748b">服务需求</td><td>${htmlEscape(order.issue_description || order.issueDescription || '-')}</td></tr>
       </table>
       <p style="color:#64748b">如工单附带装机清单、报错截图或客户资料，可在工单详情页下载查看。</p>
+      ${mailFooter()}
     </div>
   `
 
@@ -94,13 +147,15 @@ async function sendAssignmentMail(order, engineers = []) {
 async function sendInspectionConfirmationMail(order, recipients = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
+  const notification = settings.notification || {}
   if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
-  if (mail.assignNotifyEnabled !== 'true') return { skipped: true, reason: 'assign_notify_disabled' }
+  if (notification.inspectionConfirmationEnabled !== 'true') return { skipped: true, reason: 'inspection_confirmation_disabled' }
 
   const missing = missingMailFields(mail)
   if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
 
-  const to = recipientEmails(recipients)
+  const configured = parseMailList(notification.inspectionConfirmationRecipients)
+  const to = recipientEmails(recipients.length ? recipients : configured)
   if (!to.length) {
     return {
       skipped: true,
@@ -112,10 +167,15 @@ async function sendInspectionConfirmationMail(order, recipients = []) {
   const transporter = mailTransporter(mail)
 
   const subject = `巡检待确认：${order.order_no || order.orderNo || order.id} / ${order.customer_name || order.customerName || ''}`
+  const detailUrl = adminLink(notification.serviceOrderAdminBaseUrl, `/service-orders?orderId=${encodeURIComponent(order.id)}`)
+  const linkBlock = detailUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看并确认巡检工单</a></p>`
+    : ''
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
       <h2 style="margin:0 0 12px">巡检工单待确认</h2>
       <p>系统已根据巡检计划生成待确认工单，请登录管理端确认并派发。</p>
+      ${linkBlock}
       <table style="border-collapse:collapse;width:100%;max-width:680px">
         <tr><td style="padding:6px 0;color:#64748b;width:96px">Case ID</td><td>${htmlEscape(order.order_no || order.orderNo || order.id)}</td></tr>
         <tr><td style="padding:6px 0;color:#64748b">客户</td><td>${htmlEscape(order.customer_name || order.customerName || '-')}</td></tr>
@@ -124,6 +184,7 @@ async function sendInspectionConfirmationMail(order, recipients = []) {
         <tr><td style="padding:6px 0;color:#64748b">巡检说明</td><td>${htmlEscape(order.issue_description || order.issueDescription || '-')}</td></tr>
       </table>
       <p style="color:#64748b">确认后，该巡检工单会派发到工程师端。</p>
+      ${mailFooter()}
     </div>
   `
 
@@ -167,7 +228,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
       <h2 style="margin:0 0 12px">维保到期提醒</h2>
-      <p>以下 ${devices.length} 台设备的维保服务将在 <strong>30 天内</strong>到期，请及时安排续保或评估风险。</p>
+      <p>以下 ${devices.length} 台设备的维保服务即将到期，请及时安排续保或评估风险。</p>
       <table style="border-collapse:collapse;width:100%;max-width:800px;font-size:14px">
         <thead>
           <tr style="background:#f1f5f9">
@@ -182,6 +243,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
         <tbody>${rows}</tbody>
       </table>
       <p style="margin-top:16px;color:#64748b;font-size:13px">请登录管理端查看设备详情，及时处理续保事宜。</p>
+      ${mailFooter()}
     </div>
   `
 
@@ -219,7 +281,7 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
       <h2 style="margin:0 0 12px">巡检执行提醒</h2>
-      <p>以下巡检计划将在 <strong>3 天内</strong>到达执行日期，请提前安排并登录工程师端查看。</p>
+      <p>以下巡检计划即将到达执行日期，请提前安排并登录工程师端查看。</p>
       <table style="border-collapse:collapse;width:100%;max-width:800px;font-size:14px">
         <thead>
           <tr style="background:#f1f5f9">
@@ -232,11 +294,135 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
         <tbody>${rows}</tbody>
       </table>
       <p style="margin-top:16px;color:#64748b;font-size:13px">如有需要，可登录管理端调整巡检计划。</p>
+      ${mailFooter()}
     </div>
   `
 
   await transporter.sendMail({ from: mail.from, to, subject, html })
   return { sent: true, to, scheduleCount: schedules.length }
+}
+
+async function sendInspectionOverdueMail(orders = [], recipients = [], detailBaseUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const rows = orders
+    .map((order) => {
+      const detailUrl = adminLink(detailBaseUrl, `/service-orders?orderId=${encodeURIComponent(order.id)}`)
+      const orderText = detailUrl
+        ? `<a href="${htmlEscape(detailUrl)}" style="color:#2563eb;text-decoration:none">${htmlEscape(order.order_no || order.id)}</a>`
+        : htmlEscape(order.order_no || order.id)
+      return `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${orderText}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(order.customer_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(order.engineer_name || order.target_engineer_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(formatTime(order.planned_end_at || order.planned_start_at || order.inspection_occurrence_date))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(String(order.overdue_days || 0))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(statusLabel(order.status))}</td>
+      </tr>`
+    })
+    .join('')
+
+  const subject = `巡检逾期提醒：${orders.length} 张巡检工单未提交`
+  const listUrl = adminLink(detailBaseUrl, '/service-orders?status=in_progress')
+  const linkBlock = listUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(listUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看巡检工单列表</a></p>`
+    : ''
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">巡检逾期未提交提醒</h2>
+      <p>以下巡检工单已超过计划时间且尚未提交，请跟进确认。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">Case ID</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">工程师</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">计划结束</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">逾期天数</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">状态</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to, orderCount: orders.length }
+}
+
+function summarySection(title, items = []) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : []
+  if (!rows.length) return ''
+  return `
+    <div style="margin-top:16px">
+      <div style="font-weight:700;margin-bottom:6px">${htmlEscape(title)}</div>
+      <ul style="margin:0;padding-left:20px;color:#334155">${rows.map((item) => `<li>${htmlEscape(item)}</li>`).join('')}</ul>
+    </div>`
+}
+
+async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailBaseUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const stats = report.stats || {}
+  const ai = report.workSummary || {}
+  const summary = ai.summary || {}
+  const summaryText = summary.executiveSummary || ai.reason || '本月暂无可生成 AI 摘要的工作内容，以下为系统基础统计。'
+  const dashboardUrl = adminLink(detailBaseUrl, '/dashboard')
+  const timesheetUrl = adminLink(detailBaseUrl, `/timesheets?month=${encodeURIComponent(report.month || '')}`)
+  const linkBlock = dashboardUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;color:#2563eb;text-decoration:none;padding:9px 10px">月报导出</a>` : ''}</p>`
+    : ''
+  const themeRows = Array.isArray(summary.keyThemes) ? summary.keyThemes.map((item) => `${item.theme || '主题'}：${item.details || ''}`) : []
+  const subject = `月度 AI 营运总结：${report.label || report.month || ''}`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">月度 AI 营运总结</h2>
+      <p style="margin:0 0 8px;color:#64748b">统计期间：${htmlEscape(report.label || '-')}</p>
+      ${linkBlock}
+      <div style="display:block;max-width:760px;margin:14px 0">
+        <table style="border-collapse:collapse;width:100%;font-size:14px">
+          <tr style="background:#f8fafc">
+            <td style="padding:10px 12px;border:1px solid #e2e8f0">工单数<br><strong style="font-size:20px;color:#0f172a">${htmlEscape(stats.serviceOrders || 0)}</strong></td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0">服务客户<br><strong style="font-size:20px;color:#0f172a">${htmlEscape(stats.customers || 0)}</strong></td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0">参与工程师<br><strong style="font-size:20px;color:#0f172a">${htmlEscape(stats.engineers || 0)}</strong></td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0">登记工时<br><strong style="font-size:20px;color:#0f172a">${htmlEscape(stats.workHours || 0)}</strong></td>
+          </tr>
+        </table>
+      </div>
+      <div style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">${htmlEscape(summaryText)}</div>
+      ${summarySection('重点主题', themeRows)}
+      ${summarySection('客户影响', summary.customerImpact)}
+      ${summarySection('风险信号', summary.riskSignals)}
+      ${summarySection('后续建议', summary.followUpRecommendations)}
+      ${summary.coverageNotes ? `<p style="margin-top:16px;color:#64748b;font-size:13px">${htmlEscape(summary.coverageNotes)}</p>` : ''}
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to, month: report.month }
 }
 
 async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '') {
@@ -279,6 +465,7 @@ async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '')
         <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">处理摘要</td><td>${htmlEscape(order.work_content || order.workContent || order.result_description || order.resultDescription || '-')}</td></tr>
       </table>
       <p style="margin-top:16px;color:#64748b;font-size:13px">该邮件延迟发送，用于合并工程师提交后的连续修改。</p>
+      ${mailFooter()}
     </div>
   `
 
@@ -291,5 +478,7 @@ module.exports = {
   sendInspectionConfirmationMail,
   sendMaintenanceExpiryMail,
   sendInspectionReminderMail,
+  sendInspectionOverdueMail,
+  sendMonthlyOperationsSummaryMail,
   sendSalesServiceOrderMail,
 }

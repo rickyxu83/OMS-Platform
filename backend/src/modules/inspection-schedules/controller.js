@@ -349,23 +349,11 @@ async function loadInspectionOrderForMail(orderId) {
   return rows[0] || null
 }
 
-async function loadEngineeringSupervisorsForMail() {
-  return query(
-    `SELECT id, real_name AS realName, username, email
-     FROM users
-     WHERE role = 'engineering_supervisor'
-       AND status = 'active'
-       AND email IS NOT NULL
-       AND email <> ''
-     ORDER BY real_name ASC, username ASC`,
-  )
-}
-
 function triggerInspectionConfirmationMail(orderId) {
-  Promise.all([loadInspectionOrderForMail(orderId), loadEngineeringSupervisorsForMail()])
-    .then(([order, recipients]) => {
+  loadInspectionOrderForMail(orderId)
+    .then((order) => {
       if (!order) return { skipped: true, reason: 'order_not_found' }
-      return sendInspectionConfirmationMail(order, recipients)
+      return sendInspectionConfirmationMail(order)
     })
     .then((result) => {
       if (result?.skipped) {
