@@ -169,6 +169,7 @@ let draftTimer = null
 let draftSyncTimer = null
 let draftCountdownTimer = null
 let statusClockTimer = null
+let submitTouchHandledAt = 0
 let drawingSignature = false
 let lastSignaturePoint = null
 let lastSignatureMidPoint = null
@@ -3102,6 +3103,39 @@ async function submitServiceSheet() {
   }
 }
 
+function releaseActiveFormControl() {
+  if (typeof document === 'undefined') return
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement)) return
+  const tagName = active.tagName
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+    active.blur()
+  }
+}
+
+function closeSubmitBlockingOverlays() {
+  showNearbyCompanies.value = false
+  showContactOptions.value = false
+  showCoEngineerOptions.value = false
+  showDeviceModelSuggestions.value = false
+}
+
+function requestSubmitServiceSheet(event) {
+  const now = Date.now()
+  if (event?.type === 'click' && now - submitTouchHandledAt < 500) return
+  if (event?.type === 'touchend') {
+    submitTouchHandledAt = now
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  if (saving.value || loading.value || uploadingInspectionDocs.value) return
+  closeSubmitBlockingOverlays()
+  releaseActiveFormControl()
+  window.requestAnimationFrame(() => {
+    submitServiceSheet()
+  })
+}
+
 async function focusField(field) {
   const refs = {
     name: customerNameInput,
@@ -4271,7 +4305,15 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
         </div>
       </div>
       <button class="ghost" type="button" @click="saveDraft"><PreviewIcon name="save" />{{ zh('保存草稿') }}</button>
-      <button class="primary" :disabled="saving || loading || uploadingInspectionDocs" @click="submitServiceSheet"><PreviewIcon name="send" />{{ zh(submitButtonLabel) }}</button>
+      <button
+        class="primary"
+        type="button"
+        :disabled="saving || loading || uploadingInspectionDocs"
+        @touchend="requestSubmitServiceSheet"
+        @click="requestSubmitServiceSheet"
+      >
+        <PreviewIcon name="send" />{{ zh(submitButtonLabel) }}
+      </button>
     </footer>
   </main>
 </template>
