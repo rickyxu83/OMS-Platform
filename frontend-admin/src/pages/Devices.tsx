@@ -1029,7 +1029,7 @@ export function Devices() {
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {canManageDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
-                    <div className="grid min-w-0 flex-1 grid-cols-5 gap-4">
+                    <div className="grid min-w-0 flex-1 grid-cols-5 gap-4 text-center">
                       <div>型号 / 客户</div>
                       <div>SN</div>
                       <div>维保类型</div>
@@ -1037,7 +1037,7 @@ export function Devices() {
                       <div>状态</div>
                     </div>
                   </div>
-                  {canManageDevices ? <div className="w-[132px] text-right">操作</div> : null}
+                  {canManageDevices ? <div className="w-[132px] text-center">操作</div> : null}
                 </div>
               {filtered.map((device) => {
                 const maintenanceType = canonicalMaintenanceType(device.maintenanceType);

@@ -1490,18 +1490,18 @@ export function Customers() {
               <table className="w-full min-w-[760px] caption-bottom text-sm">
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
-                  {canDeleteCustomer ? <TableHead className="w-10" /> : null}
-                  <TableHead>{t.list.name}</TableHead>
-                  <TableHead>{t.list.contact}</TableHead>
-                  <TableHead>{t.list.phone}</TableHead>
-                  <TableHead>
-                    <span className="inline-flex items-center gap-1.5">
+                  {canDeleteCustomer ? <TableHead className="w-10 text-center" /> : null}
+                  <TableHead className="text-center">{t.list.name}</TableHead>
+                  <TableHead className="text-center">{t.list.contact}</TableHead>
+                  <TableHead className="text-center">{t.list.phone}</TableHead>
+                  <TableHead className="text-center">
+                    <span className="inline-flex items-center justify-center gap-1.5">
                       {t.list.level}
                       <HelpTooltip label={t.dialog.levelHelp} />
                     </span>
                   </TableHead>
-                  <TableHead>{t.list.address}</TableHead>
-                  <TableHead className="w-[160px] text-right">{t.list.action}</TableHead>
+                  <TableHead className="text-center">{t.list.address}</TableHead>
+                  <TableHead className="w-[160px] text-center">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

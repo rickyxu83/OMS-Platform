@@ -674,14 +674,14 @@ export function MaintenanceParties() {
                 <table className="w-full min-w-[980px] caption-bottom text-sm">
                   <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                     <TableRow>
-                      {canManageParties ? <TableHead className="w-10" /> : null}
-                      <TableHead>{t.list.name}</TableHead>
-                      <TableHead className="w-[130px]">{t.list.type}</TableHead>
-                      <TableHead>{t.list.contacts}</TableHead>
-                      <TableHead>{t.list.phone}</TableHead>
-                      <TableHead>{t.list.website}</TableHead>
-                      <TableHead className="w-[110px]">{t.list.updatedAt}</TableHead>
-                      {canManageParties ? <TableHead className="w-[150px] text-right">{t.list.action}</TableHead> : null}
+                      {canManageParties ? <TableHead className="w-10 text-center" /> : null}
+                      <TableHead className="text-center">{t.list.name}</TableHead>
+                      <TableHead className="w-[130px] text-center">{t.list.type}</TableHead>
+                      <TableHead className="text-center">{t.list.contacts}</TableHead>
+                      <TableHead className="text-center">{t.list.phone}</TableHead>
+                      <TableHead className="text-center">{t.list.website}</TableHead>
+                      <TableHead className="w-[110px] text-center">{t.list.updatedAt}</TableHead>
+                      {canManageParties ? <TableHead className="w-[150px] text-center">{t.list.action}</TableHead> : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
