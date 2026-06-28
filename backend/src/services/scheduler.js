@@ -29,6 +29,7 @@ async function notificationSettings() {
     'notification.inspectionReminderEnabled',
     'notification.inspectionReminderDays',
     'notification.inspectionReminderRecipients',
+    'notification.inspectionReminderSalesNotifyEnabled',
     'notification.inspectionScheduleDateMissingEnabled',
     'notification.inspectionOverdueEnabled',
     'notification.inspectionOverdueDays',
@@ -47,6 +48,7 @@ async function notificationSettings() {
     inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
     inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
+    inspectionReminderSalesNotifyEnabled: saved['notification.inspectionReminderSalesNotifyEnabled'] !== 'false',
     inspectionScheduleDateMissingEnabled: saved['notification.inspectionScheduleDateMissingEnabled'] !== 'false',
     inspectionOverdueEnabled: saved['notification.inspectionOverdueEnabled'] !== 'false',
     inspectionOverdueDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionOverdueDays'] || 1))),
@@ -557,7 +559,7 @@ function startScheduler() {
 
       const schedules = await query(
         `SELECT s.id, s.cadence, s.next_run_anchor, s.target_engineer_id,
-                c.name AS customer_name,
+                c.name AS customer_name, c.salesperson,
                 u.email AS engineer_email, u.real_name AS engineer_name,
                 (SELECT GROUP_CONCAT(${deviceDisplaySql('d2')} SEPARATOR '、')
                  FROM inspection_schedule_devices sd2
@@ -606,6 +608,47 @@ function startScheduler() {
           })
         } else {
           console.log(`[scheduler] Inspection reminder summary sent: ${result.scheduleCount} schedules to ${result.to}`)
+        }
+      }
+
+      if (nSettings.inspectionReminderSalesNotifyEnabled) {
+        const salespersonNames = [...new Set(schedules.map((schedule) => String(schedule.salesperson || '').trim()).filter(Boolean))]
+        if (salespersonNames.length) {
+          const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
+          const params = {}
+          salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
+          const salespersonRows = await query(
+            `SELECT email, real_name, username, login_alias
+             FROM users
+             WHERE status = 'active'
+               AND role IN ('sales', 'sales_supervisor')
+               AND email IS NOT NULL AND email <> ''
+               AND (
+                 real_name IN (${placeholders})
+                 OR username IN (${placeholders})
+                 OR email IN (${placeholders})
+                 OR login_alias IN (${placeholders})
+               )`,
+            params,
+          )
+          if (!salespersonRows.length) {
+            console.warn('[scheduler] No salespeople with emails for inspection reminder')
+          }
+
+          for (const salesperson of salespersonRows) {
+            const identities = new Set([salesperson.real_name, salesperson.username, salesperson.email, salesperson.login_alias].map((value) => String(value || '').trim()).filter(Boolean))
+            const scopedSchedules = schedules.filter((schedule) => identities.has(String(schedule.salesperson || '').trim()))
+            if (!scopedSchedules.length) continue
+            const result = await sendInspectionReminderMail(scopedSchedules, [salesperson])
+            if (result?.skipped) {
+              console.warn('[scheduler] Inspection reminder sales mail skipped', {
+                salesperson: salesperson.email,
+                reason: result.reason,
+              })
+            } else {
+              console.log(`[scheduler] Inspection reminder sent to salesperson ${salesperson.email}: ${result.scheduleCount} schedules`)
+            }
+          }
         }
       }
     } catch (error) {

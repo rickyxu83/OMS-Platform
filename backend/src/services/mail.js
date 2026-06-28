@@ -488,7 +488,7 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
       <h2 style="margin:0 0 12px">巡检执行提醒</h2>
-      <p>以下巡检计划即将到达执行日期，请提前安排并登录工程师端查看。</p>
+      <p>以下巡检计划即将到达执行日期，请提前协调执行安排与客户沟通。</p>
       <table style="border-collapse:collapse;width:100%;max-width:800px;font-size:14px">
         <thead>
           <tr style="background:#f1f5f9">
@@ -500,7 +500,7 @@ async function sendInspectionReminderMail(schedules = [], recipients = []) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:16px;color:#64748b;font-size:13px">如有需要，可登录管理端调整巡检计划。</p>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒会发送给执行工程师；系统设置开启后，也会同步给客户关联销售和指定管理收件人。</p>
       ${mailFooter()}
     </div>
   `
