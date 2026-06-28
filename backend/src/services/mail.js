@@ -307,6 +307,62 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
   return { sent: true, to, deviceCount: devices.length }
 }
 
+async function sendMissingCustomerSalespersonMail(customers = [], recipients = [], detailBaseUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const customersUrl = adminLink(detailBaseUrl, '/customers')
+  const linkBlock = customersUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(customersUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看客户台账</a></p>`
+    : ''
+  const rows = customers
+    .map(
+      (customer) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(customer.name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(customer.code || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(customer.contact_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(customer.contact_phone || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(customer.address || '-')}</td>
+      </tr>`,
+    )
+    .join('')
+
+  const subject = `客户缺少销售提醒：${customers.length} 个客户未填写销售`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">客户缺少销售提醒</h2>
+      <p>以下客户档案尚未填写销售人员，请补齐客户销售归属，避免后续通知无法送达对应销售。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:920px;font-size:14px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户编号</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">联系人</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">联系电话</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">地址</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒发送给助理，用于补齐客户销售归属。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to, customerCount: customers.length }
+}
+
 async function sendInspectionReminderMail(schedules = [], recipients = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -537,6 +593,7 @@ module.exports = {
   sendInspectionConfirmationMail,
   sendMaintenanceExpiryMail,
   sendNoMaintenanceDevicesMail,
+  sendMissingCustomerSalespersonMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,

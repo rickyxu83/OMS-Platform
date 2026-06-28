@@ -2,9 +2,11 @@ const cron = require('node-cron')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
 const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
+const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../modules/customers/internal')
 const {
   sendMaintenanceExpiryMail,
   sendNoMaintenanceDevicesMail,
+  sendMissingCustomerSalespersonMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
@@ -370,11 +372,9 @@ function startScheduler() {
         return
       }
 
+      let sent = 0
+      let skipped = 0
       const salespersonNames = [...new Set(devices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
-      if (!salespersonNames.length) {
-        console.warn('[scheduler] No salesperson assigned for no-maintenance devices')
-        return
-      }
       const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
       const params = {}
       salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
@@ -387,11 +387,8 @@ function startScheduler() {
       )
       if (!salespersonRows.length) {
         console.warn('[scheduler] No salespeople with emails for no-maintenance devices')
-        return
       }
 
-      let sent = 0
-      let skipped = 0
       for (const salesperson of salespersonRows) {
         const names = new Set([salesperson.real_name, salesperson.username].map((value) => String(value || '').trim()).filter(Boolean))
         const scopedDevices = devices.filter((device) => names.has(String(device.salesperson || '').trim()))
@@ -412,6 +409,54 @@ function startScheduler() {
       console.log(`[scheduler] No-maintenance device notifications processed: sent=${sent}, skipped=${skipped}`)
     } catch (error) {
       console.error('[scheduler] No-maintenance device check failed', error?.message)
+    }
+  })
+
+  cron.schedule('35 8 * * 1', async () => {
+    console.log('[scheduler] Running missing customer salesperson check...')
+    try {
+      const nSettings = await notificationSettings()
+      const customers = await query(
+        `SELECT id, name, code, address, contact_name, contact_phone, salesperson
+         FROM customers
+         WHERE (salesperson IS NULL OR salesperson = '')
+           AND NOT (name = :internalCustomerName OR name_key = :internalCustomerNameKey)
+         ORDER BY updated_at DESC, id DESC`,
+        {
+          internalCustomerName: INTERNAL_CUSTOMER_NAME,
+          internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
+        },
+      )
+      if (!customers.length) {
+        console.log('[scheduler] No customers missing salesperson')
+        return
+      }
+
+      const assistantRows = await query(
+        `SELECT email, real_name, username
+         FROM users
+         WHERE role = 'assistant'
+           AND status = 'active'
+           AND email IS NOT NULL
+           AND email <> ''
+         ORDER BY real_name ASC, username ASC`,
+      )
+      if (!assistantRows.length) {
+        console.warn('[scheduler] No active assistants with emails for missing customer salesperson mail')
+        return
+      }
+
+      const result = await sendMissingCustomerSalespersonMail(customers, assistantRows, nSettings.serviceOrderAdminBaseUrl)
+      if (result?.skipped) {
+        console.warn('[scheduler] Missing customer salesperson mail skipped', {
+          reason: result.reason,
+          missing: result.missing,
+        })
+      } else {
+        console.log(`[scheduler] Missing customer salesperson mail sent: ${result.customerCount} customers to ${result.to}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Missing customer salesperson check failed', error?.message)
     }
   })
 
@@ -577,7 +622,7 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), no-maintenance devices (08:30 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
+  console.log('[scheduler] Started: maintenance expiry (08:00), no-maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
 }
 
 module.exports = { startScheduler }
