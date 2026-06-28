@@ -1490,7 +1490,7 @@ export function Customers() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[760px]">
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-muted/70 text-xs text-muted-foreground backdrop-blur [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   {canDeleteCustomer ? <TableHead className="w-10" /> : null}
                   <TableHead>{t.list.name}</TableHead>

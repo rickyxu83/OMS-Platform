@@ -674,7 +674,7 @@ export function MaintenanceParties() {
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <Table className="min-w-[980px]">
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 z-10 bg-muted/70 text-xs text-muted-foreground backdrop-blur [&_th]:font-medium [&_th]:text-muted-foreground">
                     <TableRow>
                       {canManageParties ? <TableHead className="w-10" /> : null}
                       <TableHead>{t.list.name}</TableHead>
