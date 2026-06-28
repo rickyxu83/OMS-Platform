@@ -64,6 +64,10 @@ interface ServiceOrder {
 }
 
 interface ServiceReport {
+  departureAt?: string;
+  actualStartAt?: string;
+  actualEndAt?: string;
+  returnAt?: string;
   workContent?: string;
   workEntries?: ServiceReportWorkEntry[];
   result?: string;
@@ -551,6 +555,16 @@ function formatDateRange(start?: string, end?: string) {
   if (!start && !end) return "-";
   if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
   return formatDateTime(start || end);
+}
+
+function serviceTimeRange(order: ServiceOrder) {
+  const start = order.report?.actualStartAt || order.plannedStartAt || order.serviceAt;
+  const end = order.report?.actualEndAt || order.plannedEndAt || "";
+  return {
+    start: formatDateOnly(start),
+    end: formatDateOnly(end),
+    full: formatDateRange(start, end),
+  };
 }
 
 function DetailField({ label, value, muted = false }: { label: string; value?: string; muted?: boolean }) {
@@ -1474,6 +1488,7 @@ export function ServiceOrders() {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                 const workflowStatus = getWorkflowStatus(order);
+                const serviceTime = serviceTimeRange(order);
                 const canConfirmInspection = canManageOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
                 const canAssign = canManageOrders && workflowStatus !== "cancelled" && workflowStatus !== "submitted";
                 const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
@@ -1541,11 +1556,11 @@ export function ServiceOrders() {
                         <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
                           <div>
                             <span className="text-muted-foreground">开始：</span>
-                            <span>{formatDateOnly(order.plannedStartAt)}</span>
+                            <span>{serviceTime.start}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">结束：</span>
-                            <span>{formatDateOnly(order.plannedEndAt)}</span>
+                            <span>{serviceTime.end}</span>
                           </div>
                         </div>
 
@@ -1637,6 +1652,7 @@ export function ServiceOrders() {
             const typeLabel = t.type[detailOrder.serviceType as keyof typeof t.type] || detailOrder.serviceType || "-";
             const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
             const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
+            const serviceTime = serviceTimeRange(detailOrder);
             const inspectionDocuments = (detailOrder.files || []).filter((file) => file.purpose === "inspection_document");
             const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
             return (
@@ -1658,6 +1674,7 @@ export function ServiceOrders() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
+                  <DetailField label="服务时间" value={serviceTime.full} />
                   <DetailField label="计划时间" value={formatDateRange(detailOrder.plannedStartAt, detailOrder.plannedEndAt)} />
                   <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
                   <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
