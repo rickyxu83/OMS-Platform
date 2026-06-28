@@ -1,6 +1,10 @@
 const nodemailer = require('nodemailer')
 const { effectiveSettings } = require('../modules/settings/controller')
 
+const MAIL_ACTION_COLOR = '#7c3aed'
+const MAIL_BUTTON_STYLE = `display:inline-block;background:${MAIL_ACTION_COLOR};color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px`
+const MAIL_LINK_STYLE = `color:${MAIL_ACTION_COLOR};text-decoration:none`
+
 function htmlEscape(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -193,7 +197,7 @@ async function sendInspectionConfirmationMail(order, recipients = []) {
   const subject = `巡检待确认：${order.order_no || order.orderNo || order.id} / ${order.customer_name || order.customerName || ''}`
   const detailUrl = adminLink(notification.serviceOrderAdminBaseUrl, `/service-orders?orderId=${encodeURIComponent(order.id)}`)
   const linkBlock = detailUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看并确认巡检工单</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">查看并确认巡检工单</a></p>`
     : ''
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
@@ -289,7 +293,7 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
   const transporter = mailTransporter(mail)
   const devicesUrl = adminLink(detailBaseUrl, '/devices')
   const linkBlock = devicesUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(devicesUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看设备台账</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(devicesUrl)}" style="${MAIL_BUTTON_STYLE}">查看设备台账</a></p>`
     : ''
   const rows = devices
     .map(
@@ -351,7 +355,7 @@ async function sendInspectionScheduleDateMissingMail(schedules = [], recipients 
   const transporter = mailTransporter(mail)
   const schedulesUrl = adminLink(detailBaseUrl, '/inspection-schedules')
   const linkBlock = schedulesUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(schedulesUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看巡检计划</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(schedulesUrl)}" style="${MAIL_BUTTON_STYLE}">查看巡检计划</a></p>`
     : ''
   const cadenceLabel = { monthly: '每月', 'bi-monthly': '每两月', quarterly: '每季度' }
   const rows = schedules
@@ -416,7 +420,7 @@ async function sendMissingCustomerSalespersonMail(customers = [], recipients = [
   const transporter = mailTransporter(mail)
   const customersUrl = adminLink(detailBaseUrl, '/customers')
   const linkBlock = customersUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(customersUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看客户台账</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(customersUrl)}" style="${MAIL_BUTTON_STYLE}">查看客户台账</a></p>`
     : ''
   const rows = customers
     .map(
@@ -525,7 +529,7 @@ async function sendInspectionOverdueMail(orders = [], recipients = [], detailBas
     .map((order) => {
       const detailUrl = adminLink(detailBaseUrl, `/service-orders?orderId=${encodeURIComponent(order.id)}`)
       const orderText = detailUrl
-        ? `<a href="${htmlEscape(detailUrl)}" style="color:#2563eb;text-decoration:none">${htmlEscape(order.order_no || order.id)}</a>`
+        ? `<a href="${htmlEscape(detailUrl)}" style="${MAIL_LINK_STYLE}">${htmlEscape(order.order_no || order.id)}</a>`
         : htmlEscape(order.order_no || order.id)
       return `
       <tr>
@@ -542,7 +546,7 @@ async function sendInspectionOverdueMail(orders = [], recipients = [], detailBas
   const subject = `巡检逾期提醒：${orders.length} 张巡检工单未提交`
   const listUrl = adminLink(detailBaseUrl, '/service-orders?status=in_progress')
   const linkBlock = listUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(listUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看巡检工单列表</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(listUrl)}" style="${MAIL_BUTTON_STYLE}">查看巡检工单列表</a></p>`
     : ''
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
@@ -599,7 +603,7 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
   const dashboardUrl = adminLink(detailBaseUrl, '/dashboard')
   const timesheetUrl = adminLink(detailBaseUrl, `/timesheets?month=${encodeURIComponent(report.month || '')}`)
   const linkBlock = dashboardUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;color:#2563eb;text-decoration:none;padding:9px 10px">月报导出</a>` : ''}</p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="${MAIL_BUTTON_STYLE}">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;${MAIL_LINK_STYLE};padding:9px 10px">月报导出</a>` : ''}</p>`
     : ''
   const themeRows = Array.isArray(summary.keyThemes) ? summary.keyThemes.map((item) => `${item.theme || '主题'}：${item.details || ''}`) : []
   const subject = `月度营运总结：${report.label || report.month || ''}`
@@ -657,7 +661,7 @@ async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '')
   const customerName = order.customer_name || order.customerName || '-'
   const subject = `服务单更新：${orderNo} / ${customerName}`
   const linkBlock = detailUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看 OMS 工单详情</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">查看 OMS 工单详情</a></p>`
     : '<p style="color:#64748b">请登录 OMS 管理端查看工单详情。</p>'
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
