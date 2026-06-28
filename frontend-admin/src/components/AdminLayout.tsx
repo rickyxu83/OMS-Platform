@@ -83,7 +83,7 @@ const STRINGS: Record<AppLang, {
 }> = {
   "zh-CN": {
     brand: {
-      title: "OMS Platform",
+      title: "OMS · 运维智管",
       subtitle: "运维智管",
       version: "系统版本",
     },
@@ -142,7 +142,7 @@ const STRINGS: Record<AppLang, {
   },
   "zh-TW": {
     brand: {
-      title: "OMS Platform",
+      title: "OMS · 運維智管",
       subtitle: "運維智管",
       version: "系統版本",
     },
@@ -443,17 +443,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       >
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="h-[76px] flex items-center px-6 border-b border-sidebar-border/50">
-            <div className="flex items-center gap-3">
+          <div className="flex h-16 items-center border-b border-sidebar-border/50 px-5">
+            <div className="flex items-center gap-2.5">
               <div className="admin-brand-mark">
                 <img src={logoSrc} alt="" aria-hidden="true" />
               </div>
-              <div>
-                <span className="font-bold text-base leading-tight block text-sidebar-foreground">
-                  <span className="block">{strings.brand.title}</span>
-                  <span className="block">{strings.brand.subtitle}</span>
+              <div className="min-w-0">
+                <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
+                  {strings.brand.title}
                 </span>
-                <span className="text-xs text-muted-foreground uppercase font-semibold">{strings.common.systemName}</span>
+                <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
               </div>
             </div>
           </div>
