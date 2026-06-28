@@ -469,7 +469,7 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
       </div>
       <div style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">${htmlEscape(summaryText)}</div>
       <div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:13px;line-height:1.7">
-        AI 免责说明：本摘要由系统基于 OMS 已记录数据自动整理，可能使用 AI 辅助生成，仅供内部管理参考；请以 OMS 原始工单、月报记录和人工判断为准。
+        AI 免责说明：本摘要由系统基于 OMS 已记录数据自动整理，并由 AI 辅助生成，仅供内部管理参考；请以 OMS 原始工单、月报记录和人工判断为准。
       </div>
       ${summarySection('重点主题', themeRows)}
       ${summarySection('客户影响', summary.customerImpact)}
