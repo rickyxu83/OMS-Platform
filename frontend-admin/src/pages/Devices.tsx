@@ -1016,7 +1016,7 @@ export function Devices() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             {initialLoading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
@@ -1024,8 +1024,8 @@ export function Devices() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
             ) : (
-              <div className="space-y-2">
-                <div className="sticky top-0 z-10 hidden rounded-md border bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
+              <div className="min-w-[760px]">
+                <div className="sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {canManageDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
@@ -1049,7 +1049,7 @@ export function Devices() {
                     key={device.id}
                     role="button"
                     tabIndex={0}
-                    className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
+                    className="flex cursor-pointer flex-col gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
                     onClick={() => openDetail(device)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;

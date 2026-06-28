@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1548,27 +1548,32 @@ export function Customers() {
                           </TableCell>
                         ) : null}
                         <TableCell>
-                          {c.name ? (
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
-                              title={c.name}
-                              onClick={(event) => filterByCustomerName(event, c.name)}
-                            >
-                              {c.name}
-                            </button>
-                          ) : (
-                            <div className="font-medium">{t.misc.unknown}</div>
-                          )}
-                          {c.salesperson && (
-                            <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
-                          )}
-                          {c.latitude && c.longitude ? (
-                            <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                              <MapPin className="w-3 h-3" />
-                              {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
+                          <div className="flex min-w-0 items-start gap-2">
+                            <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <div className="min-w-0">
+                              {c.name ? (
+                                <button
+                                  type="button"
+                                  className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
+                                  title={c.name}
+                                  onClick={(event) => filterByCustomerName(event, c.name)}
+                                >
+                                  {c.name}
+                                </button>
+                              ) : (
+                                <div className="font-medium">{t.misc.unknown}</div>
+                              )}
+                              {c.salesperson && (
+                                <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
+                              )}
+                              {c.latitude && c.longitude ? (
+                                <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>{c.contactName || t.misc.unknown}</TableCell>
                         <TableCell>{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
