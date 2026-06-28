@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bell, Loader2, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles } from "lucide-react";
+import { Bell, Loader2, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -74,6 +75,15 @@ interface AnnouncementItem extends AnnouncementForm {
   updatedAt?: string;
 }
 
+interface RecipientUser {
+  id: number;
+  username: string;
+  realName: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
 const emptyForm: SettingsForm = {
   ai: {
     workSummaryEnabled: false,
@@ -143,8 +153,41 @@ const roleOptions = [
 
 const quickEmoji = ["📣", "⚠️", "✅", "🛠️", "📌", "📝", "🚀", "💡"];
 
+const emailSplitPattern = /[,;\s，；]+/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function toBool(value: unknown) {
   return value === true || value === "true";
+}
+
+function roleLabel(role?: string) {
+  return roleOptions.find(([value]) => value === role)?.[1] || role || "未指定角色";
+}
+
+function parseRecipientEmails(value: string) {
+  const seen = new Set<string>();
+  return String(value || "")
+    .split(emailSplitPattern)
+    .map((email) => email.trim())
+    .filter((email) => {
+      const key = email.toLowerCase();
+      if (!email || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function serializeRecipientEmails(emails: string[]) {
+  const seen = new Set<string>();
+  return emails
+    .map((email) => email.trim())
+    .filter((email) => {
+      const key = email.toLowerCase();
+      if (!email || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(", ");
 }
 
 function toDateTimeInput(value?: string) {
@@ -178,10 +221,150 @@ function SettingsNavLink({ href, title, description }: { href: string; title: st
   );
 }
 
+function RecipientPicker({
+  value,
+  users,
+  onChange,
+  placeholder = "external@example.com",
+}: {
+  value: string;
+  users: RecipientUser[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [manualEmail, setManualEmail] = useState("");
+  const [selectedUser, setSelectedUser] = useState("");
+  const [selectedRole, setSelectedRole] = useState("");
+  const emails = parseRecipientEmails(value);
+  const emailSet = new Set(emails.map((email) => email.toLowerCase()));
+  const emailUsers = users
+    .filter((user) => user.email)
+    .sort((left, right) => String(left.realName || left.username).localeCompare(String(right.realName || right.username), "zh-Hans-CN"));
+
+  function updateEmails(nextEmails: string[]) {
+    onChange(serializeRecipientEmails(nextEmails));
+  }
+
+  function addEmails(nextEmails: string[]) {
+    updateEmails([...emails, ...nextEmails]);
+  }
+
+  function removeEmail(email: string) {
+    updateEmails(emails.filter((item) => item.toLowerCase() !== email.toLowerCase()));
+  }
+
+  function addManualEmail() {
+    const candidates = parseRecipientEmails(manualEmail);
+    if (!candidates.length) return;
+    addEmails(candidates);
+    setManualEmail("");
+  }
+
+  function addRole(role: string) {
+    const roleEmails = emailUsers.filter((user) => user.role === role).map((user) => user.email);
+    if (roleEmails.length) addEmails(roleEmails);
+    setSelectedRole("");
+  }
+
+  function userLabel(user: RecipientUser) {
+    return `${user.realName || user.username} / ${roleLabel(user.role)} / ${user.email}`;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="min-h-10 rounded-md border bg-white px-2 py-2">
+        {emails.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {emails.map((email) => {
+              const matched = emailUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
+              return (
+                <Badge key={email} variant={matched ? "secondary" : emailPattern.test(email) ? "outline" : "warning"} className="max-w-full gap-1">
+                  <span className="max-w-[220px] truncate">
+                    {matched ? `${matched.realName || matched.username} · ${email}` : email}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-sm opacity-70 hover:opacity-100 focus:outline-none"
+                    onClick={() => removeEmail(email)}
+                    aria-label={`移除 ${email}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">未选择收件人</div>
+        )}
+      </div>
+      <div className="grid gap-2 lg:grid-cols-3">
+        <Select
+          value={selectedUser}
+          onValueChange={(email) => {
+            setSelectedUser(email);
+            if (email) addEmails([email]);
+            window.setTimeout(() => setSelectedUser(""), 0);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="添加用户邮箱" />
+          </SelectTrigger>
+          <SelectContent>
+            {emailUsers.map((user) => (
+              <SelectItem key={user.id} value={user.email} disabled={emailSet.has(user.email.toLowerCase())}>
+                {userLabel(user)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={selectedRole}
+          onValueChange={(role) => {
+            setSelectedRole(role);
+            if (role) addRole(role);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="按角色添加" />
+          </SelectTrigger>
+          <SelectContent>
+            {roleOptions.map(([role, label]) => {
+              const count = emailUsers.filter((user) => user.role === role && !emailSet.has(user.email.toLowerCase())).length;
+              return (
+                <SelectItem key={role} value={role} disabled={count === 0}>
+                  {label}（{count}）
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+        <div className="flex gap-2">
+          <Input
+            value={manualEmail}
+            onChange={(event) => setManualEmail(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addManualEmail();
+              }
+            }}
+            placeholder={placeholder}
+          />
+          <Button type="button" variant="outline" size="icon" onClick={addManualEmail} aria-label="添加邮箱">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SystemSettings() {
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [recipientUsers, setRecipientUsers] = useState<RecipientUser[]>([]);
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -207,6 +390,21 @@ export function SystemSettings() {
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     })));
+  }
+
+  async function loadRecipientUsers() {
+    const data = await api.get("/users?status=active");
+    const items = Array.isArray(data?.items) ? data.items : [];
+    setRecipientUsers(items
+      .map((item: any) => ({
+        id: Number(item.id),
+        username: item.username || "",
+        realName: item.realName || "",
+        email: item.email || "",
+        role: item.role || "",
+        status: item.status || "",
+      }))
+      .filter((item: RecipientUser) => item.email));
   }
 
   async function load() {
@@ -261,7 +459,10 @@ export function SystemSettings() {
           amapSecurityJsCode: item.map?.amapSecurityJsCode || "",
         },
       });
-      await loadAnnouncements();
+      await Promise.all([
+        loadAnnouncements(),
+        loadRecipientUsers().catch(() => setRecipientUsers([])),
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载设置失败");
     } finally {
@@ -861,9 +1062,10 @@ export function SystemSettings() {
                 </div>
                 <div className="space-y-2">
                   <Label>固定收件人</Label>
-                  <Input
+                  <RecipientPicker
                     value={form.notification.maintenanceExpiryRecipients}
-                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: e.target.value } })}
+                    users={recipientUsers}
+                    onChange={(value) => setForm({ ...form, notification: { ...form.notification, maintenanceExpiryRecipients: value } })}
                     placeholder="user1@example.com, user2@example.com"
                   />
                 </div>
@@ -902,9 +1104,10 @@ export function SystemSettings() {
                 </div>
                 <div className="space-y-2">
                   <Label>同步收件人</Label>
-                  <Input
+                  <RecipientPicker
                     value={form.notification.inspectionReminderRecipients}
-                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionReminderRecipients: e.target.value } })}
+                    users={recipientUsers}
+                    onChange={(value) => setForm({ ...form, notification: { ...form.notification, inspectionReminderRecipients: value } })}
                     placeholder="supervisor@example.com"
                   />
                 </div>
@@ -924,9 +1127,10 @@ export function SystemSettings() {
               </div>
               <div className="space-y-2">
                 <Label>确认通知收件人</Label>
-                <Input
+                <RecipientPicker
                   value={form.notification.inspectionConfirmationRecipients}
-                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionConfirmationRecipients: e.target.value } })}
+                  users={recipientUsers}
+                  onChange={(value) => setForm({ ...form, notification: { ...form.notification, inspectionConfirmationRecipients: value } })}
                   placeholder="supervisor@example.com"
                 />
               </div>
@@ -954,9 +1158,10 @@ export function SystemSettings() {
                 </div>
                 <div className="space-y-2">
                   <Label>逾期提醒收件人</Label>
-                  <Input
+                  <RecipientPicker
                     value={form.notification.inspectionOverdueRecipients}
-                    onChange={(e) => setForm({ ...form, notification: { ...form.notification, inspectionOverdueRecipients: e.target.value } })}
+                    users={recipientUsers}
+                    onChange={(value) => setForm({ ...form, notification: { ...form.notification, inspectionOverdueRecipients: value } })}
                     placeholder="supervisor@example.com"
                   />
                 </div>
@@ -976,9 +1181,10 @@ export function SystemSettings() {
               </div>
               <div className="space-y-2">
                 <Label>月度总结收件人</Label>
-                <Input
+                <RecipientPicker
                   value={form.notification.monthlyOperationsSummaryRecipients}
-                  onChange={(e) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryRecipients: e.target.value } })}
+                  users={recipientUsers}
+                  onChange={(value) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryRecipients: value } })}
                   placeholder="ops@example.com, supervisor@example.com, sales@example.com"
                 />
               </div>
