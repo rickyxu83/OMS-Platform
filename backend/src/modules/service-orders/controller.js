@@ -2367,6 +2367,7 @@ async function updateSelfReport(req, res) {
   assertEditable(order)
 
   const {
+    customerId,
     customerName,
     customerAddress,
     customerLatitude,
@@ -2454,13 +2455,87 @@ async function updateSelfReport(req, res) {
     await ensureSelfReportDraftsTable(connection)
     let effectiveCustomerId = order.customer_id
     let customerChanged = false
-    if (shouldSyncCustomerProfile) {
+    const requestedCustomerId = Number(customerId || 0) || null
+    if (effectiveServiceMode === 'office') {
+      if (requestedCustomerId) {
+        const [matchedCustomers] = await connection.execute(
+          'SELECT id FROM customers WHERE id = :customerId LIMIT 1',
+          { customerId: requestedCustomerId },
+        )
+        if (!matchedCustomers[0]) {
+          throw badRequest('客户不存在或已删除')
+        }
+        effectiveCustomerId = matchedCustomers[0].id
+      } else {
+        const nameKey = customerNameKey(customerName)
+        const [matchedCustomers] = await connection.execute(
+          'SELECT id FROM customers WHERE name_key = :nameKey LIMIT 1',
+          { nameKey },
+        )
+        if (matchedCustomers[0]) {
+          effectiveCustomerId = matchedCustomers[0].id
+        } else {
+          const customerCode = await nextCustomerCode(connection)
+          const [customerResult] = await connection.execute(
+            `INSERT INTO customers (name, name_key, code)
+             VALUES (:customerName, :nameKey, :customerCode)`,
+            {
+              customerName,
+              nameKey,
+              customerCode,
+            },
+          )
+          effectiveCustomerId = customerResult.insertId
+        }
+      }
+      customerChanged = Number(effectiveCustomerId) !== Number(order.customer_id)
+    } else if (shouldSyncCustomerProfile) {
       const nameKey = customerNameKey(customerName)
-      const [matchedCustomers] = await connection.execute(
-        'SELECT id FROM customers WHERE name_key = :nameKey LIMIT 1',
-        { nameKey },
-      )
-      effectiveCustomerId = matchedCustomers[0]?.id || order.customer_id
+      if (requestedCustomerId) {
+        const [matchedCustomers] = await connection.execute(
+          'SELECT id FROM customers WHERE id = :customerId LIMIT 1',
+          { customerId: requestedCustomerId },
+        )
+        if (!matchedCustomers[0]) {
+          throw badRequest('客户不存在或已删除')
+        }
+        effectiveCustomerId = matchedCustomers[0].id
+      } else {
+        const [matchedCustomers] = await connection.execute(
+          'SELECT id FROM customers WHERE name_key = :nameKey LIMIT 1',
+          { nameKey },
+        )
+        if (matchedCustomers[0]) {
+          effectiveCustomerId = matchedCustomers[0].id
+        } else {
+          const customerCode = await nextCustomerCode(connection)
+          const [customerResult] = await connection.execute(
+            `INSERT INTO customers (
+             name, name_key, code, address, contact_name, contact_phone, latitude, longitude,
+             map_provider, map_poi_id, map_poi_name, map_address
+           )
+           VALUES (
+             :customerName, :nameKey, :customerCode, :customerAddress, :contactName, :contactPhone, :customerLatitude, :customerLongitude,
+             :customerMapProvider, :customerMapPoiId, :customerMapPoiName, :customerMapAddress
+           )`,
+            {
+              customerName,
+              nameKey,
+              customerCode,
+              customerAddress: customerAddress || null,
+              contactName: contactName || customerConfirmName || null,
+              contactPhone: customerProfileContactPhone || null,
+              customerLatitude: customerLatitude || null,
+              customerLongitude: customerLongitude || null,
+              customerMapProvider: customerMapProvider || null,
+              customerMapPoiId: customerMapPoiId || null,
+              customerMapPoiName: customerMapPoiName || null,
+              customerMapAddress: customerMapAddress || null,
+            },
+          )
+          effectiveCustomerId = customerResult.insertId
+        }
+      }
       const isSwitchingCustomer = Number(effectiveCustomerId) !== Number(order.customer_id)
       customerChanged = isSwitchingCustomer
       if (isSwitchingCustomer) {
