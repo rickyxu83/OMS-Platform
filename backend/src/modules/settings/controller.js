@@ -27,6 +27,7 @@ const settingKeys = [
   'notification.maintenanceExpiryDays',
   'notification.maintenanceExpiryRecipients',
   'notification.maintenanceExpiryCron',
+  'notification.noMaintenanceReminderEnabled',
   'notification.inspectionReminderEnabled',
   'notification.inspectionReminderDays',
   'notification.inspectionReminderRecipients',
@@ -83,6 +84,7 @@ async function effectiveSettings() {
       maintenanceExpiryDays: saved['notification.maintenanceExpiryDays'] || '30',
       maintenanceExpiryRecipients: saved['notification.maintenanceExpiryRecipients'] || '',
       maintenanceExpiryCron: saved['notification.maintenanceExpiryCron'] || '0 8 * * *',
+      noMaintenanceReminderEnabled: boolText(saved['notification.noMaintenanceReminderEnabled'], true),
       inspectionReminderEnabled: boolText(saved['notification.inspectionReminderEnabled'], true),
       inspectionReminderDays: saved['notification.inspectionReminderDays'] || '3',
       inspectionReminderRecipients: saved['notification.inspectionReminderRecipients'] || '',
@@ -231,6 +233,7 @@ async function update(req, res) {
     next['notification.maintenanceExpiryDays'] = String(Math.max(1, Math.min(365, Number(n.maintenanceExpiryDays || 30))))
     next['notification.maintenanceExpiryRecipients'] = String(n.maintenanceExpiryRecipients || '').trim()
     next['notification.maintenanceExpiryCron'] = String(n.maintenanceExpiryCron || '0 8 * * *').trim()
+    next['notification.noMaintenanceReminderEnabled'] = String(n.noMaintenanceReminderEnabled === true || n.noMaintenanceReminderEnabled === 'true')
     next['notification.inspectionReminderEnabled'] = String(n.inspectionReminderEnabled === true || n.inspectionReminderEnabled === 'true')
     next['notification.inspectionReminderDays'] = String(Math.max(1, Math.min(365, Number(n.inspectionReminderDays || 3))))
     next['notification.inspectionReminderRecipients'] = String(n.inspectionReminderRecipients || '').trim()

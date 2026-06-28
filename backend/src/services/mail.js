@@ -251,6 +251,62 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
   return { sent: true, to, deviceCount: devices.length }
 }
 
+async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detailBaseUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const devicesUrl = adminLink(detailBaseUrl, '/devices')
+  const linkBlock = devicesUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(devicesUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px">查看设备台账</a></p>`
+    : ''
+  const rows = devices
+    .map(
+      (d) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.customer_name || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.name || d.model || d.serial_no || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.model || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.serial_no || '-')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${htmlEscape(d.location || '-')}</td>
+      </tr>`,
+    )
+    .join('')
+
+  const subject = `无维保信息提醒：${devices.length} 台客户设备未填写维保`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">客户设备无维保信息提醒</h2>
+      <p>以下客户设备当前未填写维保信息，请根据客户实际情况跟进确认。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:860px;font-size:14px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">客户</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">设备</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">型号</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">序列号</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0">位置</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒仅针对客户关联销售发送，用于补齐客户设备维保信息。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to, deviceCount: devices.length }
+}
+
 async function sendInspectionReminderMail(schedules = [], recipients = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -477,6 +533,7 @@ module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
   sendMaintenanceExpiryMail,
+  sendNoMaintenanceDevicesMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,

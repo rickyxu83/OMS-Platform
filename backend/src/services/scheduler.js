@@ -4,6 +4,7 @@ const { getSettings } = require('../modules/settings/store')
 const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
 const {
   sendMaintenanceExpiryMail,
+  sendNoMaintenanceDevicesMail,
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
@@ -15,6 +16,7 @@ async function notificationSettings() {
     'notification.maintenanceExpiryEnabled',
     'notification.maintenanceExpiryDays',
     'notification.maintenanceExpiryRecipients',
+    'notification.noMaintenanceReminderEnabled',
     'notification.inspectionReminderEnabled',
     'notification.inspectionReminderDays',
     'notification.inspectionReminderRecipients',
@@ -29,6 +31,7 @@ async function notificationSettings() {
     maintenanceExpiryEnabled: saved['notification.maintenanceExpiryEnabled'] !== 'false',
     maintenanceExpiryDays: Math.max(1, Math.min(365, Number(saved['notification.maintenanceExpiryDays'] || 30))),
     maintenanceExpiryRecipients: String(saved['notification.maintenanceExpiryRecipients'] || '').trim(),
+    noMaintenanceReminderEnabled: saved['notification.noMaintenanceReminderEnabled'] !== 'false',
     inspectionReminderEnabled: saved['notification.inspectionReminderEnabled'] !== 'false',
     inspectionReminderDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionReminderDays'] || 3))),
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
@@ -343,6 +346,75 @@ function startScheduler() {
     }
   })
 
+  cron.schedule('30 8 * * 1', async () => {
+    console.log('[scheduler] Running no-maintenance device check...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.noMaintenanceReminderEnabled) {
+        console.log('[scheduler] No-maintenance device notification is disabled')
+        return
+      }
+
+      const devices = await query(
+        `SELECT d.id, d.name, d.model, d.serial_no, d.location, d.maintenance_type,
+                c.name AS customer_name, c.salesperson
+         FROM devices d
+         JOIN customers c ON c.id = d.customer_id
+         WHERE (d.maintenance_type IS NULL OR d.maintenance_type = '' OR d.maintenance_type = 'none')
+           AND c.salesperson IS NOT NULL
+           AND c.salesperson <> ''
+         ORDER BY c.salesperson ASC, c.name ASC, d.model ASC, d.name ASC, d.id ASC`,
+      )
+      if (!devices.length) {
+        console.log('[scheduler] No devices without maintenance info')
+        return
+      }
+
+      const salespersonNames = [...new Set(devices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
+      if (!salespersonNames.length) {
+        console.warn('[scheduler] No salesperson assigned for no-maintenance devices')
+        return
+      }
+      const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
+      const params = {}
+      salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
+      const salespersonRows = await query(
+        `SELECT email, real_name, username
+         FROM users
+         WHERE (real_name IN (${placeholders}) OR username IN (${placeholders}))
+           AND email IS NOT NULL AND email <> ''`,
+        params,
+      )
+      if (!salespersonRows.length) {
+        console.warn('[scheduler] No salespeople with emails for no-maintenance devices')
+        return
+      }
+
+      let sent = 0
+      let skipped = 0
+      for (const salesperson of salespersonRows) {
+        const names = new Set([salesperson.real_name, salesperson.username].map((value) => String(value || '').trim()).filter(Boolean))
+        const scopedDevices = devices.filter((device) => names.has(String(device.salesperson || '').trim()))
+        if (!scopedDevices.length) continue
+        const result = await sendNoMaintenanceDevicesMail(scopedDevices, [salesperson], nSettings.serviceOrderAdminBaseUrl)
+        if (result?.skipped) {
+          skipped += 1
+          console.warn('[scheduler] No-maintenance device mail skipped', {
+            salesperson: salesperson.email,
+            reason: result.reason,
+            missing: result.missing,
+          })
+        } else {
+          sent += 1
+          console.log(`[scheduler] No-maintenance device mail sent to ${salesperson.email}: ${result.deviceCount} devices`)
+        }
+      }
+      console.log(`[scheduler] No-maintenance device notifications processed: sent=${sent}, skipped=${skipped}`)
+    } catch (error) {
+      console.error('[scheduler] No-maintenance device check failed', error?.message)
+    }
+  })
+
   cron.schedule('0 7 * * *', async () => {
     console.log('[scheduler] Running inspection reminder check...')
     try {
@@ -505,7 +577,7 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
+  console.log('[scheduler] Started: maintenance expiry (08:00), no-maintenance devices (08:30 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
 }
 
 module.exports = { startScheduler }
