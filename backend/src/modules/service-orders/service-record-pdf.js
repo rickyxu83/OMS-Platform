@@ -556,7 +556,7 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
     text(doc, fonts, '已记录本次内勤工作结果，可导出留底。', 226, 762, { size: 13, color: '#334155' })
   }
 
-  fillRect(doc, 68, 832, 682, 100, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })
+  fillRect(doc, 68, 832, 682, 106, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })
   strokeLine(doc, 250, 876, 568, 876, { stroke: line, width: 1.4 })
   const timeSteps = [
     [204, '01', '开始时间', actualStart],
@@ -566,13 +566,16 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
     fillCircle(doc, cx, 876, 14, primary)
     text(doc, fonts, idx, cx, 881, { size: 12, color: '#ffffff', anchor: 'middle', boxWidth: 28 })
     text(doc, fonts, label, cx, 904, { size: 14, color: '#1f2937', anchor: 'middle', boxWidth: 150 })
-    text(doc, fonts, cleanText(value), cx, 928, { size: 13, color: '#334155', anchor: 'middle', boxWidth: 170 })
+    text(doc, fonts, cleanText(value), cx, 920, { size: 13, color: '#334155', anchor: 'middle', boxWidth: 170 })
   })
 
   const signatureBaseY = 968
+  const hasEngineerSignature = (item.engineers || []).some((engineer) => engineer.engineerSignature)
   text(doc, fonts, '工程师确认', 92, signatureBaseY + 36, { size: 16, color: '#0f172a' })
   drawRemoteEngineerSignatures(doc, fonts, item, { x: 198, y: signatureBaseY + 4, width: 260, height: 58 })
-  text(doc, fonts, engineerNames(item) || '待补签', 92, signatureBaseY + 76, { size: 14.5, color: '#64748b' })
+  if (!hasEngineerSignature) {
+    text(doc, fonts, engineerNames(item) || '待补签', 92, signatureBaseY + 76, { size: 14.5, color: '#64748b' })
+  }
 
   text(doc, fonts, '• 说明：本 PDF 由技术服务电子化系统生成，供内勤工作归档留底。', 78, 1082, { size: 13, color: '#334155' })
   text(doc, fonts, cleanText(item.orderNo || item.id || '', '-'), 750, 1082, { size: 12, color: '#64748b', anchor: 'end', boxWidth: 200 })
