@@ -12,6 +12,10 @@ import { displayReportWorkContent } from '../services/work-content'
 
 const { zh } = usePreviewI18n()
 const route = useRoute()
+const SUPPORTED_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip'
+const SUPPORTED_ATTACHMENT_HINT = '支持 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 图片、ZIP，单个文件不超过 20MB。'
+const SUPPORTED_ATTACHMENT_EXTENSIONS = new Set(SUPPORTED_ATTACHMENT_ACCEPT.split(','))
+const SUPPORTED_ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024
 const loading = ref(false)
 const error = ref('')
 const task = ref(null)
@@ -78,6 +82,19 @@ function formatFileSize(value) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
+function validateAttachmentFiles(files) {
+  const invalidType = files.find((file) => {
+    const name = file?.name || ''
+    const dotIndex = name.lastIndexOf('.')
+    const extension = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : ''
+    return !SUPPORTED_ATTACHMENT_EXTENSIONS.has(extension)
+  })
+  if (invalidType) return `附件类型不支持：${invalidType.name}。${SUPPORTED_ATTACHMENT_HINT}`
+  const oversized = files.find((file) => Number(file?.size || 0) > SUPPORTED_ATTACHMENT_MAX_SIZE)
+  if (oversized) return `附件超过 20MB：${oversized.name}`
+  return ''
+}
+
 function partActionLabel(value) {
   if (value === 'replacement') return '配件更换'
   if (value === 'installation') return '配件安装'
@@ -125,7 +142,16 @@ function chooseInspectionDocuments() {
 }
 
 function onInspectionDocumentsSelected(event) {
-  inspectionDocFiles.value = Array.from(event.target.files || [])
+  const files = Array.from(event.target.files || [])
+  const fileError = validateAttachmentFiles(files)
+  if (fileError) {
+    inspectionDocFiles.value = []
+    if (inspectionDocInput.value) inspectionDocInput.value.value = ''
+    error.value = fileError
+    return
+  }
+  error.value = ''
+  inspectionDocFiles.value = files
 }
 
 function clearInspectionDocuments() {
@@ -135,6 +161,11 @@ function clearInspectionDocuments() {
 
 async function uploadInspectionDocuments() {
   if (!isInspectionTask.value || !task.value?.id || !inspectionDocFiles.value.length || uploadingInspectionDocs.value) return
+  const fileError = validateAttachmentFiles(inspectionDocFiles.value)
+  if (fileError) {
+    error.value = fileError
+    return
+  }
   uploadingInspectionDocs.value = true
   error.value = ''
   try {
@@ -180,7 +211,7 @@ onMounted(load)
       </div>
     </header>
 
-    <p v-if="error" class="form-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
+    <p v-if="error" class="form-error floating-error">{{ zh(error) }} <button type="button" @click="load">{{ zh('重试') }}</button></p>
     <p v-else-if="loading" class="muted">{{ zh('正在加载服务记录详情…') }}</p>
 
     <template v-if="task">
@@ -245,11 +276,12 @@ onMounted(load)
 
         <article v-if="isInspectionTask" class="form-section detail-card inspection-document-card">
           <h2>{{ zh('巡检文档') }}</h2>
-          <p class="muted compact">{{ zh('上传巡检报告、现场照片、检查表或客户确认资料，管理端可在工单详情中查看。') }}</p>
+          <p class="muted compact">{{ zh('上传巡检报告、现场照片、检查表或客户确认资料，管理端可在工单详情中查看。') }}{{ zh(SUPPORTED_ATTACHMENT_HINT) }}</p>
           <input
             ref="inspectionDocInput"
             type="file"
             multiple
+            :accept="SUPPORTED_ATTACHMENT_ACCEPT"
             hidden
             @change="onInspectionDocumentsSelected"
           />

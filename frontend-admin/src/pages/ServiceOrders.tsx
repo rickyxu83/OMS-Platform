@@ -26,6 +26,7 @@ import {
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
+import { toast } from "sonner";
 
 interface ServiceOrder {
   id: string | number;
@@ -125,8 +126,26 @@ interface DeviceOption {
   customerId?: string | number;
 }
 
+const ORDER_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
+const ORDER_ATTACHMENT_HINT = "支持 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 图片、ZIP，单个文件不超过 20MB。";
+const ORDER_ATTACHMENT_EXTENSIONS = new Set(ORDER_ATTACHMENT_ACCEPT.split(","));
+const ORDER_ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024;
+
 function deviceOptionLabel(device: DeviceOption) {
   return device.model || device.name || device.serialNo || `设备 #${device.id}`;
+}
+
+function validateOrderFiles(files: File[]) {
+  const invalidType = files.find((file) => {
+    const name = file.name || "";
+    const dotIndex = name.lastIndexOf(".");
+    const extension = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+    return !ORDER_ATTACHMENT_EXTENSIONS.has(extension);
+  });
+  if (invalidType) return `附件类型不支持：${invalidType.name}。${ORDER_ATTACHMENT_HINT}`;
+  const oversized = files.find((file) => file.size > ORDER_ATTACHMENT_MAX_SIZE);
+  if (oversized) return `附件超过 20MB：${oversized.name}`;
+  return "";
 }
 
 const I18N = {
@@ -631,6 +650,10 @@ export function ServiceOrders() {
     ]).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+
   async function load() {
     const seq = ++loadSeqRef.current;
     setLoading(true);
@@ -1077,8 +1100,15 @@ export function ServiceOrders() {
       setError("请选择客户、服务类型并填写问题描述");
       return;
     }
+    const fileError = validateOrderFiles(createFiles);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
     setSaving(true);
     setError("");
+    let createdOrderId: string | number | null = null;
+    const shouldAssignAfterFiles = createFiles.length > 0 && createForm.engineerId && createForm.engineerId !== "none";
     try {
       const created = await api.post("/service-orders", {
         customerId: Number(createForm.customerId),
@@ -1086,15 +1116,39 @@ export function ServiceOrders() {
         serviceMode: createForm.serviceMode,
         serviceType: createForm.serviceMode === "onsite" ? createForm.serviceType : "other",
         timesheetCategory: createForm.serviceMode === "onsite" ? null : createForm.timesheetCategory || "其他",
-        engineerId: createForm.engineerId && createForm.engineerId !== "none" ? Number(createForm.engineerId) : undefined,
+        engineerId: shouldAssignAfterFiles ? undefined : createForm.engineerId && createForm.engineerId !== "none" ? Number(createForm.engineerId) : undefined,
         plannedStartAt: createForm.plannedStartAt || undefined,
         plannedEndAt: createForm.plannedEndAt || undefined,
         priority: createForm.priority,
         issueDescription: createForm.issueDescription.trim(),
         internalNote: createForm.internalNote.trim() || null,
       });
-      if (createFiles.length && created?.id) {
-        await uploadOrderFiles(created.id, createFiles);
+      createdOrderId = created?.id || null;
+      if (createFiles.length && !createdOrderId) {
+        throw new Error("工单创建后未返回编号，附件未上传");
+      }
+      if (createdOrderId && (createFiles.length || shouldAssignAfterFiles)) {
+        try {
+          if (createFiles.length) await uploadOrderFiles(createdOrderId, createFiles);
+          if (shouldAssignAfterFiles) {
+            await api.post(`/service-orders/${createdOrderId}/assign`, {
+              primaryEngineerId: Number(createForm.engineerId),
+              engineerIds: [Number(createForm.engineerId)],
+              plannedStartAt: createForm.plannedStartAt || undefined,
+              plannedEndAt: createForm.plannedEndAt || undefined,
+            });
+          }
+        } catch (postCreateError) {
+          try {
+            await api.delete(`/service-orders/${createdOrderId}`);
+          } catch (rollbackError) {
+            const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : "附件上传或派单失败";
+            const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : "自动删除失败";
+            throw new Error(`${postCreateMessage}；工单已创建但自动删除失败：${rollbackMessage}`);
+          }
+          const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : "附件上传或派单失败";
+          throw new Error(`${postCreateMessage}；工单已自动取消创建`);
+        }
       }
       setCreateOpen(false);
       setCreateFiles([]);
@@ -1183,6 +1237,11 @@ export function ServiceOrders() {
   async function assignOrderToEngineer() {
     if (!assignOrder?.id || !assignForm.engineerIds.length) {
       setError("请至少选择一位派发工程师");
+      return;
+    }
+    const fileError = validateOrderFiles(assignFiles);
+    if (fileError) {
+      setError(fileError);
       return;
     }
     setSaving(true);
@@ -1689,6 +1748,9 @@ export function ServiceOrders() {
             <DialogTitle>新增工单</DialogTitle>
             <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
           </DialogHeader>
+          {error && createOpen ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          ) : null}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
             <div className="space-y-2">
               <Label>客户 *</Label>
@@ -1789,9 +1851,10 @@ export function ServiceOrders() {
               <Input
                 type="file"
                 multiple
+                accept={ORDER_ATTACHMENT_ACCEPT}
                 onChange={(event) => setCreateFiles(Array.from(event.target.files || []))}
               />
-              <p className="text-xs text-muted-foreground">选择工程师后可随工单派发给工程师查看；未派发时附件会先保存到工单中。</p>
+              <p className="text-xs text-muted-foreground">选择工程师后可随工单派发给工程师查看；未派发时附件会先保存到工单中。{ORDER_ATTACHMENT_HINT}</p>
               {createFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {createFiles.map((file) => (
@@ -1817,6 +1880,9 @@ export function ServiceOrders() {
             <DialogTitle>派单 / 改派</DialogTitle>
             <DialogDescription>选择工程师后，工单会进入已派发状态并同步到工程师端。</DialogDescription>
           </DialogHeader>
+          {error && assignOpen ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          ) : null}
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>工程师 *</Label>
@@ -1858,9 +1924,10 @@ export function ServiceOrders() {
               <Input
                 type="file"
                 multiple
+                accept={ORDER_ATTACHMENT_ACCEPT}
                 onChange={(event) => setAssignFiles(Array.from(event.target.files || []))}
               />
-              <p className="text-xs text-muted-foreground">可上传装机设备清单、报错截图、客户资料等，工程师可在工单详情中下载查看。</p>
+              <p className="text-xs text-muted-foreground">可上传装机设备清单、报错截图、客户资料等，工程师可在工单详情中下载查看。{ORDER_ATTACHMENT_HINT}</p>
               {assignFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {assignFiles.map((file) => (

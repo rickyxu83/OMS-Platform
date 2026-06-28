@@ -39,6 +39,10 @@ import {
 const { zh } = usePreviewI18n()
 const route = useRoute()
 const router = useRouter()
+const SUPPORTED_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip'
+const SUPPORTED_ATTACHMENT_HINT = '支持 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 图片、ZIP，单个文件不超过 20MB。'
+const SUPPORTED_ATTACHMENT_EXTENSIONS = new Set(SUPPORTED_ATTACHMENT_ACCEPT.split(','))
+const SUPPORTED_ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -1880,14 +1884,37 @@ function formatFileSize(value) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
+function validateAttachmentFiles(files) {
+  const invalidType = files.find((file) => {
+    const name = file?.name || ''
+    const dotIndex = name.lastIndexOf('.')
+    const extension = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : ''
+    return !SUPPORTED_ATTACHMENT_EXTENSIONS.has(extension)
+  })
+  if (invalidType) return `附件类型不支持：${invalidType.name}。${SUPPORTED_ATTACHMENT_HINT}`
+  const oversized = files.find((file) => Number(file?.size || 0) > SUPPORTED_ATTACHMENT_MAX_SIZE)
+  if (oversized) return `附件超过 20MB：${oversized.name}`
+  return ''
+}
+
 function chooseInspectionDocuments() {
   if (uploadingInspectionDocs.value) return
   inspectionDocInput.value?.click()
 }
 
 function onInspectionDocumentsSelected(event) {
-  inspectionDocFiles.value = Array.from(event.target.files || [])
+  const files = Array.from(event.target.files || [])
+  const fileError = validateAttachmentFiles(files)
+  if (fileError) {
+    inspectionDocFiles.value = []
+    if (inspectionDocInput.value) inspectionDocInput.value.value = ''
+    error.value = fileError
+    retryableError.value = false
+    return
+  }
+  inspectionDocFiles.value = files
   if (inspectionDocFiles.value.length) {
+    error.value = ''
     clearFieldError('inspectionDocument')
   }
 }
@@ -1908,6 +1935,10 @@ function appendInspectionDocuments(files) {
 
 async function uploadPendingInspectionDocuments() {
   if (!inspectionDocFiles.value.length) return
+  const fileError = validateAttachmentFiles(inspectionDocFiles.value)
+  if (fileError) {
+    throw new Error(fileError)
+  }
   if (!isInspectionOrder.value || !route.params.id) {
     throw new Error('请先保存草稿，进入已派发巡检工单后上传巡检文档')
   }
@@ -3493,7 +3524,7 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
       </div>
     </header>
 
-    <p v-if="error" class="form-error">
+    <p v-if="error" class="form-error floating-error">
       {{ zh(error) }}
       <button v-if="retryableError" type="button" @click="load">{{ zh('重试') }}</button>
     </p>
@@ -4039,9 +4070,11 @@ watch(draftDirty, () => emitDraftDirtyState(), { immediate: true })
           ref="inspectionDocInput"
           type="file"
           multiple
+          :accept="SUPPORTED_ATTACHMENT_ACCEPT"
           hidden
           @change="onInspectionDocumentsSelected"
         />
+        <p class="muted compact">{{ zh(SUPPORTED_ATTACHMENT_HINT) }}</p>
         <div class="inspection-document-actions">
           <button class="ghost" type="button" :disabled="uploadingInspectionDocs || saving" @click="chooseInspectionDocuments">
             <PreviewIcon name="new" />{{ zh('选择文档') }}

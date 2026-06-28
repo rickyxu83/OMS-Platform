@@ -2775,6 +2775,18 @@ h2 {
   font-weight: 800;
 }
 
+.floating-error {
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 90;
+  width: min(520px, calc(100vw - 28px));
+  margin: 0;
+  border: 1px solid #fecaca;
+  box-shadow: 0 18px 40px rgb(127 29 29 / 18%);
+  transform: translateX(-50%);
+}
+
 .muted,
 .empty-state {
   color: #64748b;
