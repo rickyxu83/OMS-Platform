@@ -2175,9 +2175,6 @@ async function detail(req, res) {
 
 async function exportPdf(req, res) {
   const item = await loadDetailItem(req.params.id, req.user, { mine: isMineRequest(req) })
-  if (item.serviceMode === 'office') {
-    throw badRequest('内勤记录不生成单独服务表，请在月报中统一导出')
-  }
   if (!item.report) {
     throw badRequest('请先填写并提交服务记录')
   }
@@ -2219,14 +2216,14 @@ async function exportPdfBatch(req, res) {
   const eligible = []
   for (const row of rows) {
     const item = await loadDetailItem(row.id, req.user, { mine: isMineRequest(req) })
-    if (item.serviceMode === 'office' || !item.report) continue
+    if (!item.report) continue
     eligible.push(item)
   }
 
   if (!eligible.length) {
     throw badRequest(selectedIds.length
-      ? '所选工单中没有可导出的服务记录（需已提交且非内勤）'
-      : '当前筛选条件下没有可导出的服务记录（需已提交且非内勤）')
+      ? '所选工单中没有可导出的服务记录（需已提交）'
+      : '当前筛选条件下没有可导出的服务记录（需已提交）')
   }
 
   const pdfFilename = `service-records-${shanghaiDateKey(0)}.pdf`

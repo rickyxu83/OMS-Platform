@@ -80,11 +80,20 @@ function isRemoteSheet(item) {
   return serviceMode(item) === 'remote'
 }
 
+function isOfficeSheet(item) {
+  return serviceMode(item) === 'office'
+}
+
 function contactDisplay(item) {
   const name = item.contactName || item.report?.customerName || item.report?.customerConfirmName || ''
   const phone = item.contactPhone || ''
   if (name && phone) return `${name} / ${phone}`
   return name || phone || '-'
+}
+
+function officeCategoryDisplay(item) {
+  const category = String(item.timesheetCategory || item.timesheet_category || item.serviceCategory || '').trim()
+  return category || '其他事项'
 }
 
 function engineerNames(item) {
@@ -474,6 +483,101 @@ function drawSheet(doc, fonts, item, logoImage) {
   text(doc, fonts, cleanText(item.orderNo || item.id || '', '-'), 750, footerY, { size: 12, color: '#64748b', anchor: 'end', boxWidth: 200 })
 }
 
+function drawOfficeSheet(doc, fonts, item, logoImage) {
+  const report = item.report || {}
+  const actualStart = formatDateTime(report.actualStartAt || item.plannedStartAt || item.submittedAt)
+  const actualEnd = formatDateTime(report.actualEndAt || item.plannedEndAt || item.updatedAt || item.submittedAt)
+  const finishedDate = formatDateTime(report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
+  const relatedName = cleanText(item.customerName, '敦阳科技内勤')
+  const category = officeCategoryDisplay(item)
+  const matter = cleanText(item.internalNote || item.deviceName || item.issueDescription, '内勤工作')
+  const workContent = exportWorkContent(report, item) || cleanText(item.issueDescription, '未填写工作内容')
+  const resultStatus = cleanText(resultDisplay(item), '已完成')
+  const resultDescription = String(report.resultDescription || item.resultDescription || '').trim()
+  const salesperson = String(item.timesheetSalesperson || item.timesheet_salesperson || '').trim()
+
+  const primary = '#6b3fa0'
+  const line = '#e7def3'
+
+  fillRect(doc, 0, 0, 794, 1123, { fill: '#ffffff' })
+  fillRect(doc, 30, 28, 734, 1067, { rx: 16, fill: '#ffffff', stroke: '#e2e8f0' })
+
+  if (logoImage) {
+    try {
+      doc.image(logoImage, 68 * SCALE, 58 * SCALE, { fit: [330 * SCALE, 53 * SCALE], align: 'left', valign: 'center' })
+    } catch {
+      text(doc, fonts, '敦阳（宁波）科技有限公司', 68, 88, { size: 18, color: '#0f766e' })
+    }
+  } else {
+    text(doc, fonts, '敦阳（宁波）科技有限公司', 68, 88, { size: 18, color: '#0f766e' })
+  }
+  text(doc, fonts, '内勤工作记录', 750, 92, { size: 31, color: '#111827', anchor: 'end', boxWidth: 560 })
+  strokeLine(doc, 68, 130, 750, 130, { stroke: primary, width: 2.2 })
+  strokeLine(doc, 68, 135, 750, 135, { stroke: line, width: 1 })
+
+  const cell = (x, y, w, labelW, label, value, valuePad = 12) => {
+    fillRect(doc, x, y, w, 46, { fill: '#ffffff', stroke: '#d6dee8' })
+    fillRect(doc, x, y, labelW, 46, { fill: '#f8fafc', stroke: '#d6dee8' })
+    text(doc, fonts, label, x + 16, y + 29, { size: 14, color: '#1f2937' })
+    text(doc, fonts, cleanText(value), x + labelW + 18, y + 29, {
+      size: 15,
+      color: '#0f172a',
+      ellipsis: true,
+      boxWidth: x + w - (x + labelW + 18) - valuePad,
+    })
+  }
+  cell(68, 158, 390, 122, '关联客户', relatedName)
+  cell(458, 158, 292, 102, '工程师', engineerNames(item) || '-')
+  cell(68, 204, 390, 122, 'Case号', item.orderNo || item.id || '-')
+  cell(458, 204, 292, 102, '填写日期', cleanText(finishedDate, '-'))
+  cell(68, 250, 390, 122, '内勤类别', category)
+  cell(458, 250, 292, 102, '业务人员', salesperson || '-')
+
+  fillRect(doc, 68, 318, 682, 118, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
+  text(doc, fonts, '具体事项', 92, 352, { size: 15.5, color: '#0f172a' })
+  textLines(doc, fonts, matter, 92, 396, { maxWidth: 634, maxChars: 66, maxLines: 2, lineHeight: 30 })
+
+  fillRect(doc, 68, 462, 682, 344, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })
+  fillRect(doc, 68, 462, 138, 344, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
+  fillRect(doc, 196, 462, 10, 344, { fill: '#f8fafc' })
+  text(doc, fonts, '工作内容', 88, 498, { size: 15.5, color: '#0f172a' })
+  const workGuideLines = [76, 102, 128, 154, 180, 206, 232]
+  workGuideLines.forEach((offset) => strokeLine(doc, 226, 462 + offset, 726, 462 + offset, { stroke: '#e2e8f0', width: 1 }))
+  textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
+
+  strokeLine(doc, 206, 696, 726, 696, { stroke: line, width: 1.4 })
+  text(doc, fonts, '工作结果', 88, 732, { size: 14, color: primary })
+  text(doc, fonts, resultStatus, 226, 732, { size: 15, color: '#0f172a' })
+  strokeLine(doc, 226, 752, 726, 752, { stroke: '#e2e8f0', width: 1 })
+  strokeLine(doc, 226, 780, 726, 780, { stroke: '#e2e8f0', width: 1 })
+  if (resultDescription) {
+    textLines(doc, fonts, resultDescription, 226, 762, { maxWidth: 500, maxChars: 41, maxLines: 2, lineHeight: 26 })
+  } else {
+    text(doc, fonts, '已记录本次内勤工作结果，可导出留底。', 226, 762, { size: 13, color: '#334155' })
+  }
+
+  fillRect(doc, 68, 832, 682, 100, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })
+  strokeLine(doc, 250, 876, 568, 876, { stroke: line, width: 1.4 })
+  const timeSteps = [
+    [204, '01', '开始时间', actualStart],
+    [614, '02', '结束时间', actualEnd],
+  ]
+  timeSteps.forEach(([cx, idx, label, value]) => {
+    fillCircle(doc, cx, 876, 14, primary)
+    text(doc, fonts, idx, cx, 881, { size: 12, color: '#ffffff', anchor: 'middle', boxWidth: 28 })
+    text(doc, fonts, label, cx, 904, { size: 14, color: '#1f2937', anchor: 'middle', boxWidth: 150 })
+    text(doc, fonts, cleanText(value), cx, 928, { size: 13, color: '#334155', anchor: 'middle', boxWidth: 170 })
+  })
+
+  const signatureBaseY = 968
+  text(doc, fonts, '工程师确认', 92, signatureBaseY + 36, { size: 16, color: '#0f172a' })
+  drawRemoteEngineerSignatures(doc, fonts, item, { x: 198, y: signatureBaseY + 4, width: 260, height: 58 })
+  text(doc, fonts, engineerNames(item) || '待补签', 92, signatureBaseY + 76, { size: 14.5, color: '#64748b' })
+
+  text(doc, fonts, '• 说明：本 PDF 由技术服务电子化系统生成，供内勤工作归档留底。', 78, 1082, { size: 13, color: '#334155' })
+  text(doc, fonts, cleanText(item.orderNo || item.id || '', '-'), 750, 1082, { size: 12, color: '#64748b', anchor: 'end', boxWidth: 200 })
+}
+
 // 每个文档把 logo 只 openImage 一次，避免逐页重复嵌入(否则 80 页会塞 80 份 PNG)。
 function openLogo(doc) {
   const buffer = getLogoBuffer()
@@ -486,11 +590,16 @@ function openLogo(doc) {
 }
 
 function drawServiceRecord(doc, fonts, item, logoImage) {
+  if (isOfficeSheet(item)) {
+    drawOfficeSheet(doc, fonts, item, logoImage)
+    return
+  }
   drawSheet(doc, fonts, item, logoImage)
 }
 
 function buildServiceRecordPdf(item) {
-  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${item.orderNo || item.id || 'service-record'} 技术服务记录单` } })
+  const title = isOfficeSheet(item) ? '内勤工作记录' : '技术服务记录单'
+  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${item.orderNo || item.id || 'service-record'} ${title}` } })
   const fonts = registerFonts(doc)
   drawServiceRecord(doc, fonts, item, openLogo(doc))
   doc.end()
@@ -500,7 +609,7 @@ function buildServiceRecordPdf(item) {
 // 批量导出：所有工单合成一个多页 PDF。字体只注册/子集化一次、logo 只嵌入一次，
 // 相比逐单生成独立 PDF（每份都要重新解析 18.6MB 中文字体）快约一个数量级。
 function buildServiceRecordsPdf(items) {
-  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: '技术服务记录单（批量导出）' } })
+  const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: '服务记录（批量导出）' } })
   const fonts = registerFonts(doc)
   const logoImage = openLogo(doc)
   items.forEach((item, index) => {
