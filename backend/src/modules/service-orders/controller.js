@@ -144,6 +144,7 @@ function serviceOrderSearchClause(index) {
 
 function orderPayload(row) {
   const targetEngineerName = row.target_engineer_name || row.target_engineer_username
+  const report = reportPayload(row.report)
   return {
     id: row.id,
     orderNo: row.order_no,
@@ -171,7 +172,7 @@ function orderPayload(row) {
     confirmedBy: row.confirmed_by,
     confirmedByName: row.confirmed_by_name,
     confirmedAt: row.confirmed_at,
-    serviceAt: row.planned_start_at || row.submitted_at || row.created_at,
+    serviceAt: report?.actualStartAt || report?.actualEndAt || row.planned_start_at || row.submitted_at || row.created_at,
     engineers: row.engineers || [],
     plannedStartAt: row.planned_start_at,
     plannedEndAt: row.planned_end_at,
@@ -181,7 +182,7 @@ function orderPayload(row) {
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
     reviewComment: row.review_comment,
-    report: reportPayload(row.report),
+    report,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1153,6 +1154,18 @@ function buildListQueryParts(req) {
   } else if (status) {
     statusWhereSql = 'so.status = :status'
   }
+  const serviceTimeSql = `COALESCE(
+    (
+      SELECT sr.actual_start_at
+      FROM service_reports sr
+      WHERE sr.service_order_id = so.id
+      ORDER BY sr.id DESC
+      LIMIT 1
+    ),
+    so.planned_start_at,
+    so.submitted_at,
+    so.created_at
+  )`
   const sortColumns = {
     orderNo: 'so.order_no',
     customerName: 'c.name',
@@ -1161,8 +1174,8 @@ function buildListQueryParts(req) {
     priority: 'so.priority',
     engineerName: 'u.real_name',
     status: 'so.status',
-    serviceAt: 'COALESCE(so.planned_start_at, so.submitted_at, so.created_at)',
-    plannedStartAt: 'COALESCE(so.planned_start_at, so.submitted_at, so.created_at)',
+    serviceAt: serviceTimeSql,
+    plannedStartAt: serviceTimeSql,
     createdAt: 'so.id',
   }
   const sortColumn = sortColumns[sortBy] || sortColumns.createdAt
@@ -1186,8 +1199,8 @@ function buildListQueryParts(req) {
     WHERE ${statusWhereSql}
       AND (:customerId IS NULL OR so.customer_id = :customerId)
       AND (:customer = '' OR c.name LIKE :likeCustomer)
-      AND (:startDate = '' OR DATE(COALESCE(so.planned_start_at, so.submitted_at, so.created_at)) >= :startDate)
-      AND (:endDate = '' OR DATE(COALESCE(so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate)
+      AND (:startDate = '' OR DATE(${serviceTimeSql}) >= :startDate)
+      AND (:endDate = '' OR DATE(${serviceTimeSql}) <= :endDate)
       AND (
         :engineerId IS NULL
         OR so.assigned_engineer_id = :engineerId
