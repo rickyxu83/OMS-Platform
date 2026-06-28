@@ -602,7 +602,7 @@ export function SystemSettings() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6 pb-28">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold">系统设置</h1>
@@ -1218,6 +1218,26 @@ export function SystemSettings() {
           </Card>
 
           </section>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              修改系统配置后，点击保存才会生效。
+            </div>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button variant="outline" onClick={load} disabled={loading || saving}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                刷新
+              </Button>
+              <Button onClick={save} disabled={loading || saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                保存设置
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
