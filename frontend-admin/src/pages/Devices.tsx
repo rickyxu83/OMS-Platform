@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -839,12 +840,7 @@ export function Devices() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
-          <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={() => load(searchQuery)}>重试</Button>
-        </div>
-      )}
+      <ErrorToast message={error} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {stats.map((stat) => (

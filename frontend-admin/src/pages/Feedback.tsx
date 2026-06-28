@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -124,11 +125,7 @@ export function Feedback() {
         </Button>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      <ErrorToast message={error} />
 
       <Card>
         <CardContent className="pt-6">

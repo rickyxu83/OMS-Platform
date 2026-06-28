@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 
@@ -289,12 +290,7 @@ export function Timesheets() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center justify-between">
-          <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>重试</Button>
-        </div>
-      )}
+      <ErrorToast message={error} />
 
       <Card>
         <CardContent className="pt-6">

@@ -23,10 +23,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ErrorToast } from "@/components/ErrorToast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
-import { toast } from "sonner";
 
 interface ServiceOrder {
   id: string | number;
@@ -649,10 +649,6 @@ export function ServiceOrders() {
       api.get("/users/engineers").then((data) => setEngineers(data?.items || [])).catch(() => setEngineers([])),
     ]).catch(() => undefined);
   }, []);
-
-  useEffect(() => {
-    if (error) toast.error(error);
-  }, [error]);
 
   async function load() {
     const seq = ++loadSeqRef.current;
@@ -1342,6 +1338,8 @@ export function ServiceOrders() {
           ) : null}
         </div>
       </div>
+
+      <ErrorToast message={error} />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {stats.map((stat) => (
