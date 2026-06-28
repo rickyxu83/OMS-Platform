@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft } from "lucide-react";
+import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, CircleHelp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -233,6 +233,7 @@ const I18N = {
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
       level: "客户等级",
+      levelHelp: "客户等级用于内部识别客户优先级：普通客户为常规维护对象；重点客户为需重点跟进或服务频次较高的客户；VIP 客户为高价值或重点保障客户；潜在客户为仍在培育或尚未稳定合作的客户。",
       locate: "定位查找",
       contacts: "联系人列表",
       contactName: "联系人姓名",
@@ -408,6 +409,7 @@ const I18N = {
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
       level: "客戶等級",
+      levelHelp: "客戶等級用於內部識別客戶優先級：普通客戶為常規維護對象；重點客戶為需重點跟進或服務頻次較高的客戶；VIP 客戶為高價值或重點保障客戶；潛在客戶為仍在培育或尚未穩定合作的客戶。",
       locate: "定位查找",
       contacts: "聯絡人列表",
       contactName: "聯絡人姓名",
@@ -2146,7 +2148,19 @@ export function Customers() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cust-level">{t.dialog.level}</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="cust-level">{t.dialog.level}</Label>
+                  <span
+                    className="group relative inline-flex"
+                    tabIndex={0}
+                    aria-label={t.dialog.levelHelp}
+                  >
+                    <CircleHelp className="h-4 w-4 cursor-help text-muted-foreground transition-colors group-hover:text-primary group-focus:text-primary" />
+                    <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-72 rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus:opacity-100 sm:left-1/2 sm:-translate-x-1/2">
+                      {t.dialog.levelHelp}
+                    </span>
+                  </span>
+                </div>
                 <Select value={form.level} onValueChange={(value) => setForm({ ...form, level: value })}>
                   <SelectTrigger id="cust-level">
                     <SelectValue />
