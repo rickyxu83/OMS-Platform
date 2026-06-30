@@ -5,6 +5,7 @@ const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
+const { normalizeAlias } = require('../device-model-catalog/normalize')
 
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -341,6 +342,66 @@ function isDuplicateEntryError(error) {
   return error?.code === 'ER_DUP_ENTRY' || /duplicate/i.test(String(error?.message || ''))
 }
 
+function shouldConfirmModelCorrections(value) {
+  return ['1', 'true', 'yes'].includes(String(value || '').trim().toLowerCase())
+}
+
+async function resolveImportModel(rawModel) {
+  const model = String(rawModel || '').trim()
+  if (!model) return null
+  const normalizedModel = normalizeAlias(model)
+  const rows = await query(
+    `SELECT matched.id,
+            matched.canonical_model,
+            matched.part_number,
+            matched.brand,
+            matched.category,
+            matched.match_type,
+            matched.match_rank
+     FROM (
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category,
+              '标准型号' AS match_type, 10 AS match_rank
+       FROM device_model_catalog c
+       WHERE c.is_active = 1
+         AND LOWER(c.canonical_model) = LOWER(:model)
+
+       UNION ALL
+
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category,
+              'PN' AS match_type, 9 AS match_rank
+       FROM device_model_catalog c
+       WHERE c.is_active = 1
+         AND LOWER(COALESCE(c.part_number, '')) = LOWER(:model)
+
+       UNION ALL
+
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category,
+              '别名' AS match_type, 8 AS match_rank
+       FROM device_model_aliases a
+       JOIN device_model_catalog c ON c.id = a.catalog_id
+       WHERE c.is_active = 1
+         AND a.normalized_alias = :normalizedModel
+     ) AS matched
+     ORDER BY matched.match_rank DESC, matched.canonical_model ASC`,
+    { model, normalizedModel },
+  )
+
+  const bestById = new Map()
+  for (const row of rows) {
+    const existing = bestById.get(row.id)
+    if (!existing || Number(row.match_rank) > Number(existing.match_rank)) {
+      bestById.set(row.id, row)
+    }
+  }
+  const matches = [...bestById.values()]
+  if (!matches.length) return null
+  const canonicalKeys = new Set(matches.map((row) => String(row.canonical_model || '').trim().toLowerCase()).filter(Boolean))
+  if (canonicalKeys.size > 1) {
+    throw badRequest('设备型号匹配到多个标准型号，请使用更准确的型号')
+  }
+  return matches[0]
+}
+
 async function ensureDeviceIdentityColumns() {
   if (deviceIdentityColumnsReady) return
 
@@ -581,10 +642,48 @@ async function importDevices(req, res) {
     return counts
   }, new Map())
   const duplicateSnKeys = new Set([...snCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+  const confirmModelCorrections = shouldConfirmModelCorrections(req.body?.confirmModelCorrections)
+  const skipModelCorrections = shouldConfirmModelCorrections(req.body?.skipModelCorrections)
+  const modelCorrections = []
+
+  for (const row of rows) {
+    try {
+      const matchedModel = await resolveImportModel(row.model)
+      const canonicalModel = String(matchedModel?.canonical_model || '').trim()
+      if (!canonicalModel || canonicalModel === row.model) continue
+      row.correctedModel = canonicalModel
+      modelCorrections.push({
+        rowNumber: row.rowNumber,
+        sn: row.serialNo || '',
+        inputModel: row.model,
+        canonicalModel,
+        matchType: matchedModel.match_type,
+        brand: matchedModel.brand,
+        category: matchedModel.category,
+        partNumber: String(matchedModel.part_number || '').trim(),
+      })
+    } catch (error) {
+      row.skipImport = true
+      errors.push(importRowError(row, error.message || '设备型号匹配失败'))
+    }
+  }
+
+  if (modelCorrections.length && !confirmModelCorrections && !skipModelCorrections) {
+    res.json({
+      requiresModelConfirmation: true,
+      created: 0,
+      failed: errors.length,
+      errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
+      modelCorrections,
+    })
+    return
+  }
 
   let created = 0
   for (const row of rows) {
     try {
+      if (row.skipImport) continue
+      if (confirmModelCorrections && row.correctedModel) row.model = row.correctedModel
       if (duplicateSnKeys.has(row.serialNo.toLowerCase())) {
         throw badRequest('导入文件内 SN 重复')
       }

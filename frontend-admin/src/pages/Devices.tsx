@@ -111,10 +111,23 @@ interface ImportErrorRow {
   message?: string;
 }
 
+interface ImportModelCorrection {
+  rowNumber: number;
+  sn?: string;
+  inputModel?: string;
+  canonicalModel?: string;
+  matchType?: string;
+  brand?: string;
+  category?: string;
+  partNumber?: string;
+}
+
 interface ImportResult {
   created: number;
   failed: number;
   errors: ImportErrorRow[];
+  requiresModelConfirmation?: boolean;
+  modelCorrections?: ImportModelCorrection[];
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
@@ -1004,7 +1017,7 @@ export function Devices() {
     setImportOpen(true);
   }
 
-  async function submitImport() {
+  async function submitImport(mode: "check" | "confirm" | "skip" = "check") {
     if (!importFile) {
       setError("请选择要导入的 Excel 文件");
       return;
@@ -1015,13 +1028,18 @@ export function Devices() {
     try {
       const formData = new FormData();
       formData.append("file", importFile);
+      if (mode === "confirm") formData.append("confirmModelCorrections", "1");
+      if (mode === "skip") formData.append("skipModelCorrections", "1");
       const data = await api.postForm("/devices/import", formData);
-      setImportResult({
+      const result = {
         created: Number(data?.created || 0),
         failed: Number(data?.failed || 0),
         errors: Array.isArray(data?.errors) ? data.errors : [],
-      });
-      await load();
+        requiresModelConfirmation: Boolean(data?.requiresModelConfirmation),
+        modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
+      };
+      setImportResult(result);
+      if (!result.requiresModelConfirmation) await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "导入失败");
     } finally {
@@ -1975,16 +1993,37 @@ export function Devices() {
             </div>
             {importResult ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-md border bg-emerald-50 px-3 py-2">
-                    <div className="text-xs text-emerald-700">成功导入</div>
-                    <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                {importResult.requiresModelConfirmation && importResult.modelCorrections?.length ? (
+                  <div className="rounded-md border border-violet-200 bg-violet-50/80">
+                    <div className="border-b border-violet-200 px-3 py-2 text-sm font-medium text-violet-900">
+                      发现 {importResult.modelCorrections.length} 行设备型号可自动纠正
+                    </div>
+                    <div className="max-h-64 overflow-auto divide-y divide-violet-100">
+                      {importResult.modelCorrections.map((item, index) => (
+                        <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_1fr_1fr_96px] md:items-center">
+                          <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
+                          <span className="truncate text-muted-foreground" title={item.inputModel || ""}>原型号：{item.inputModel || "-"}</span>
+                          <span className="truncate text-violet-900" title={item.canonicalModel || ""}>标准型号：{item.canonicalModel || "-"}</span>
+                          <span className="text-xs text-muted-foreground">{item.matchType || "型号库"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-2 text-xs text-violet-900">
+                      确认后，以上行会按标准型号写入；未列出的行保持 Excel 原值。
+                    </div>
                   </div>
-                  <div className="rounded-md border bg-red-50 px-3 py-2">
-                    <div className="text-xs text-red-700">失败行数</div>
-                    <div className="mt-1 text-xl font-semibold text-red-800">{importResult.failed}</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-md border bg-emerald-50 px-3 py-2">
+                      <div className="text-xs text-emerald-700">成功导入</div>
+                      <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                    </div>
+                    <div className="rounded-md border bg-red-50 px-3 py-2">
+                      <div className="text-xs text-red-700">失败行数</div>
+                      <div className="mt-1 text-xl font-semibold text-red-800">{importResult.failed}</div>
+                    </div>
                   </div>
-                </div>
+                )}
                 {importResult.errors.length ? (
                   <div className="rounded-md border">
                     <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">失败明细</div>
@@ -2006,6 +2045,11 @@ export function Devices() {
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
               关闭
             </Button>
+            {importResult?.requiresModelConfirmation ? (
+              <Button variant="outline" onClick={() => submitImport("skip")} disabled={importing || !importFile}>
+                按原型号导入
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={async () => {
@@ -2021,9 +2065,12 @@ export function Devices() {
               <Download className="w-4 h-4 mr-2" />
               下载模板
             </Button>
-            <Button onClick={submitImport} disabled={importing || !importFile}>
+            <Button
+              onClick={() => submitImport(importResult?.requiresModelConfirmation ? "confirm" : "check")}
+              disabled={importing || !importFile}
+            >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-              {importing ? "导入中…" : "开始导入"}
+              {importing ? "导入中…" : importResult?.requiresModelConfirmation ? "自动纠正并导入" : "开始导入"}
             </Button>
           </DialogFooter>
         </DialogContent>
