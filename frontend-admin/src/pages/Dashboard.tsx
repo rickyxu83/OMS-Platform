@@ -482,6 +482,13 @@ function compactText(value?: string, fallback = "-") {
   return text || fallback;
 }
 
+function orderMainContent(order: Order, fallback = "-") {
+  if (order.serviceMode === "office") {
+    return compactText(order.internalNote || order.displayTitle || order.deviceName || order.issueDescription, fallback);
+  }
+  return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
+}
+
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -624,7 +631,7 @@ export function Dashboard() {
       customer: shortCompanyName(customerName, t.recent.unnamedCustomer),
       status,
       statusLabel: normalizeStatus(status, t.status),
-      title: o.issueDescription || o.displayTitle || o.deviceName || t.recent.serviceRecord,
+      title: orderMainContent(o, t.recent.serviceRecord),
       engineer: o.engineerName || t.recent.unnamedEngineer,
       date: o.createdAt ? o.createdAt.split(" ")[0] : "",
     };
@@ -925,7 +932,7 @@ export function Dashboard() {
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
             <DialogDescription>
-              {previewOrder ? `${textValue(previewOrder.customerName)} · ${compactText(previewOrder.issueDescription, "")}` : ""}
+              {previewOrder ? `${textValue(previewOrder.customerName)} · ${orderMainContent(previewOrder, "")}` : ""}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">

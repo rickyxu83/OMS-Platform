@@ -438,6 +438,13 @@ function compactText(value?: string, fallback = "-") {
   return text || fallback;
 }
 
+function orderMainContent(order: ServiceOrder, fallback = "-") {
+  if (order.serviceMode === "office") {
+    return compactText(order.internalNote || order.displayTitle || order.deviceName || order.issueDescription, fallback);
+  }
+  return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
+}
+
 function isBusinessRole(role?: string) {
   return role === "sales" || role === "sales_supervisor";
 }
@@ -1552,7 +1559,7 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{compactText(order.issueDescription)}</span>
+                          <span className="block truncate text-sm font-medium">{orderMainContent(order)}</span>
                         </div>
 
                         <div className="min-w-0 text-sm">
@@ -1661,7 +1668,7 @@ export function ServiceOrders() {
           <DialogHeader>
             <DialogTitle>{detailOrder ? displayId(detailOrder) : "工单详情"}</DialogTitle>
             <DialogDescription>
-              {detailOrder ? `${textValue(detailOrder.customerName)} · ${compactText(detailOrder.issueDescription, "")}` : ""}
+              {detailOrder ? `${textValue(detailOrder.customerName)} · ${orderMainContent(detailOrder, "")}` : ""}
             </DialogDescription>
           </DialogHeader>
           {detailOrder && (() => {
