@@ -201,9 +201,51 @@ function normalizeSummary(value, coverageNotes) {
   }
 }
 
+function audienceGuidance(scope = {}) {
+  if (scope.type === 'sales') {
+    return [
+      '收件对象：销售人员。',
+      '写作目标：帮助销售理解自己负责客户的服务状态、风险、续保或跟进机会。',
+      '重点：按客户归纳服务事项、客户影响、待销售跟进的沟通点；不要写成工程技术流水账。',
+      '风险和建议要能直接转化为客户沟通、续保提醒、资源协调或内部升级动作。',
+    ]
+  }
+  if (scope.type === 'engineer') {
+    return [
+      '收件对象：工程师。',
+      '写作目标：帮助工程师在月报会议中向老板汇报本月工作成果、处理难点和需要协调的事项。',
+      '重点：突出完成了什么、支撑了哪些客户、解决了哪些问题、哪些事项需要继续跟进。',
+      '建议要适合工程师汇报使用，避免销售口吻，避免泛泛而谈。',
+    ]
+  }
+  return [
+    '收件对象：老板或经营管理层。',
+    '写作目标：提供全局经营视角，帮助老板快速理解本月服务运营状态、客户影响、风险和管理动作。',
+    '重点：归纳跨客户、跨工程师的工作重点、资源投入、异常风险和下月管理建议。',
+    '语言要像管理层简报，不要写成个人日报或工单流水账。',
+  ]
+}
+
+function summaryCompletenessError(summary, scope = {}) {
+  const type = scope.type || 'overall'
+  const minimums = type === 'overall'
+    ? { keyThemes: 3, customerImpact: 2, riskSignals: 1, followUpRecommendations: 2 }
+    : { keyThemes: 2, customerImpact: 1, riskSignals: 1, followUpRecommendations: 2 }
+  const missing = []
+  if (String(summary.executiveSummary || '').trim().length < 80) missing.push('executiveSummary')
+  for (const [key, minCount] of Object.entries(minimums)) {
+    const value = Array.isArray(summary[key]) ? summary[key] : []
+    if (value.length < minCount) missing.push(`${key}<${minCount}`)
+  }
+  return missing.length ? `AI summary incomplete: ${missing.join(', ')}` : ''
+}
+
 function buildPrompt(payload) {
+  const scope = payload.scope || {}
   return [
     '你是企业服务运营管理报告助手。请基于输入 JSON 中的工单和手工记录工作内容，为管理层生成客观、可执行的运营摘要。',
+    '',
+    ...audienceGuidance(scope),
     '',
     '重要要求：',
     '- 只依据输入数据，不编造客户、工程师、故障、风险或结论。',
@@ -215,7 +257,8 @@ function buildPrompt(payload) {
     '- keyThemes[].details 不要以“涉及”“包括”等词开头；避免连续罗列超过 4 个名词或事项。',
     '- 对零散事项要先归纳再举例，例如“本期安装与扩容工作集中在网络、服务器和存储资源交付，京隆科技与世巨科技是主要服务对象。”',
     '- customerImpact、riskSignals、followUpRecommendations 也要使用完整句子，每条 20 到 60 个汉字，避免口号式短语。',
-    '- 如果证据不足，请明确说明“记录未体现”或“数据不足”。',
+    '- 如果某类风险或建议证据不足，也要输出一条完整句子说明“记录未体现明显风险”或“当前数据不足以判断”，不要留空数组。',
+    '- executiveSummary 至少 120 个汉字；keyThemes 至少 3 条（个人范围至少 2 条）；customerImpact 至少 2 条（个人范围至少 1 条）；riskSignals 至少 1 条；followUpRecommendations 至少 2 条。',
     '- 使用简体中文。',
     '- 只输出 JSON，不要 Markdown，不要代码块。',
     '',
@@ -288,6 +331,7 @@ async function generateTimesheetWorkSummary(payload) {
       endDate: payload.endDate,
       label: payload.label,
     },
+    scope: payload.scope || { type: 'overall', name: '', description: '总览月报' },
     statistics: {
       totalRecords: Array.isArray(payload.items) ? payload.items.length : 0,
       includedWorkContentRecords: normalized.records.length,
@@ -310,12 +354,15 @@ async function generateTimesheetWorkSummary(payload) {
       }
       const parsed = parseJsonText(rawContent)
       const summarySource = parsed || { executiveSummary: rawContent }
+      const summary = normalizeSummary(summarySource, coverageNotes)
+      const incompleteReason = summaryCompletenessError(summary, payload.scope || {})
+      if (incompleteReason) throw new Error(incompleteReason)
       return {
         ok: true,
         available: true,
         provider: aiSettings.provider,
         attempts: attempt,
-        summary: normalizeSummary(summarySource, coverageNotes),
+        summary,
         usage: {
           model: aiSettings.model,
           inputTokens: data?.usage?.prompt_tokens ?? data?.usage?.input_tokens ?? null,

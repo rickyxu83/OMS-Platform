@@ -584,6 +584,31 @@ function summarySection(title, items = []) {
     </div>`
 }
 
+function monthlySummarySectionLabels(scopeType) {
+  if (scopeType === 'sales') {
+    return {
+      themes: '客户服务重点',
+      impact: '客户影响与机会',
+      risks: '客户风险信号',
+      followUp: '销售跟进建议',
+    }
+  }
+  if (scopeType === 'engineer') {
+    return {
+      themes: '本月工作重点',
+      impact: '服务成效',
+      risks: '问题与风险',
+      followUp: '月会汇报建议',
+    }
+  }
+  return {
+    themes: '经营重点',
+    impact: '客户影响',
+    risks: '风险信号',
+    followUp: '管理建议',
+  }
+}
+
 async function sendMonthlySummaryFailureMail({ transporter, mail, report, recipients, reason, options }) {
   const alertTo = 'oms@starkgrp.com'
   const title = options.title || '月度营运总结'
@@ -662,6 +687,7 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
   const title = options.title || '月度营运总结'
   const description = options.description || report.scope?.description || ''
   const scopeName = report.scope?.name || ''
+  const sectionLabels = monthlySummarySectionLabels(report.scope?.type)
   const dashboardUrl = adminLink(detailBaseUrl, '/dashboard')
   const timesheetUrl = adminLink(detailBaseUrl, `/timesheets?month=${encodeURIComponent(report.month || '')}`)
   const linkBlock = options.showLinks === false ? '' : dashboardUrl
@@ -690,10 +716,10 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
       <div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:13px;line-height:1.7">
         AI 免责说明：本摘要由系统基于 OMS 已记录数据自动整理，并由 AI 辅助生成，仅供内部管理参考；请以 OMS 原始工单、月报记录和人工判断为准。
       </div>
-      ${summarySection('重点主题', themeRows)}
-      ${summarySection('客户影响', summary.customerImpact)}
-      ${summarySection('风险信号', summary.riskSignals)}
-      ${summarySection('后续建议', summary.followUpRecommendations)}
+      ${summarySection(sectionLabels.themes, themeRows)}
+      ${summarySection(sectionLabels.impact, summary.customerImpact)}
+      ${summarySection(sectionLabels.risks, summary.riskSignals)}
+      ${summarySection(sectionLabels.followUp, summary.followUpRecommendations)}
       ${summary.coverageNotes ? `<p style="margin-top:16px;color:#64748b;font-size:13px">${htmlEscape(summary.coverageNotes)}</p>` : ''}
       ${mailFooter()}
     </div>

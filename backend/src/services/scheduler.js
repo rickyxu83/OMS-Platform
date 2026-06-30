@@ -180,7 +180,12 @@ function monthlyReportStats(items) {
 
 async function finalizeMonthlyOperationsReport(range, items, scope = {}) {
   const sortedItems = [...items].sort((left, right) => String(left.date).localeCompare(String(right.date)))
-  const workSummary = await generateTimesheetWorkSummary({ ...range, label: scope.label || range.label, items: sortedItems })
+  const workSummary = await generateTimesheetWorkSummary({
+    ...range,
+    label: scope.label || range.label,
+    scope: scope.type ? scope : { type: 'overall', name: '', description: '总览月报' },
+    items: sortedItems,
+  })
   return {
     ...range,
     label: scope.label || range.label,
