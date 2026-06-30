@@ -1487,19 +1487,19 @@ export function Customers() {
         </CardHeader>
         <CardContent className="pt-6">
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-              <table className="w-full min-w-[1080px] table-fixed caption-bottom text-sm">
+              <table className="w-full min-w-[1180px] table-fixed caption-bottom text-sm">
               <colgroup>
-                {canDeleteCustomer ? <col className="w-10" /> : null}
-                <col className="w-[30%]" />
-                <col className="w-[120px]" />
-                <col className="w-[160px]" />
-                <col className="w-[120px]" />
+                {canDeleteCustomer ? <col className="w-11" /> : null}
+                <col className="w-[360px]" />
+                <col className="w-[108px]" />
+                <col className="w-[150px]" />
+                <col className="w-[112px]" />
                 <col />
-                <col className="w-[160px]" />
+                <col className="w-[176px]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
-                  {canDeleteCustomer ? <TableHead className="w-10 text-center" /> : null}
+                  {canDeleteCustomer ? <TableHead className="w-11 text-center" /> : null}
                   <TableHead>{t.list.name}</TableHead>
                   <TableHead className="text-center">{t.list.contact}</TableHead>
                   <TableHead className="text-center">{t.list.phone}</TableHead>
@@ -1510,7 +1510,7 @@ export function Customers() {
                     </span>
                   </TableHead>
                   <TableHead>{t.list.address}</TableHead>
-                  <TableHead className="w-[160px] text-right pr-6">{t.list.action}</TableHead>
+                  <TableHead className="w-[176px] text-right pr-5">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1584,7 +1584,9 @@ export function Customers() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">{c.contactName || t.misc.unknown}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="truncate" title={c.contactName || t.misc.unknown}>{c.contactName || t.misc.unknown}</div>
+                        </TableCell>
                         <TableCell className="text-center tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
                         <TableCell className="text-center">
                           <Badge
@@ -1607,7 +1609,7 @@ export function Customers() {
                             {lvLabel}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                        <TableCell className="truncate text-muted-foreground">
                           {c.address || t.misc.unknown}
                         </TableCell>
                         <TableCell className="text-right">

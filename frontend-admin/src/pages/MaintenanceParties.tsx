@@ -663,16 +663,25 @@ export function MaintenanceParties() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
             ) : (
-                <table className="w-full min-w-[870px] caption-bottom text-sm">
+                <table className="w-full min-w-[1040px] table-fixed caption-bottom text-sm">
+                  <colgroup>
+                    {canDeleteParties ? <col className="w-11" /> : null}
+                    <col className="w-[320px]" />
+                    <col className="w-[128px]" />
+                    <col className="w-[150px]" />
+                    <col className="w-[190px]" />
+                    <col />
+                    {canManageParties ? <col className="w-[168px]" /> : null}
+                  </colgroup>
                   <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                     <TableRow>
-                      {canDeleteParties ? <TableHead className="w-10 text-center" /> : null}
-                      <TableHead className="text-center">{t.list.name}</TableHead>
-                      <TableHead className="w-[130px] text-center">{t.list.type}</TableHead>
+                      {canDeleteParties ? <TableHead className="w-11 text-center" /> : null}
+                      <TableHead>{t.list.name}</TableHead>
+                      <TableHead className="w-[128px] text-center">{t.list.type}</TableHead>
                       <TableHead className="text-center">{t.list.contacts}</TableHead>
                       <TableHead className="text-center">{t.list.phone}</TableHead>
-                      <TableHead className="text-center">{t.list.website}</TableHead>
-                      {canManageParties ? <TableHead className="w-[150px] text-center">{t.list.action}</TableHead> : null}
+                      <TableHead>{t.list.website}</TableHead>
+                      {canManageParties ? <TableHead className="w-[168px] text-right pr-5">{t.list.action}</TableHead> : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -706,7 +715,7 @@ export function MaintenanceParties() {
                               />
                             </TableCell>
                           ) : null}
-                          <TableCell>
+                          <TableCell className="min-w-0">
                             <div className="flex min-w-0 items-center gap-2">
                               <Wrench className="h-4 w-4 shrink-0 text-primary" />
                               <div className="min-w-0">
@@ -730,7 +739,7 @@ export function MaintenanceParties() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-center">
                             <button type="button" onClick={(event) => filterByPartyType(event, p.partyType)}>
                               <Badge
                                 variant={TYPE_VARIANT[p.partyType || ""] || "secondary"}
@@ -740,13 +749,13 @@ export function MaintenanceParties() {
                               </Badge>
                             </button>
                           </TableCell>
-                          <TableCell>
-                            <div className="max-w-[220px] truncate text-sm" title={contactNamesText(contacts, t.misc.unknown)}>
+                          <TableCell className="text-center">
+                            <div className="truncate text-sm" title={contactNamesText(contacts, t.misc.unknown)}>
                               {contactNamesText(contacts, t.misc.unknown)}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex max-w-[220px] flex-wrap gap-x-2 gap-y-1">
+                          <TableCell className="text-center">
+                            <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
                               {phones.length
                                 ? phones.slice(0, 3).map((phone, index) => (
                                     <span key={`${phone}-${index}`} className="text-sm">
@@ -756,10 +765,10 @@ export function MaintenanceParties() {
                                 : <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="min-w-0">
                             {p.officialWebsite ? (
                               <a
-                                className="block max-w-[220px] truncate text-sm text-primary hover:underline"
+                                className="block truncate text-sm text-primary hover:underline"
                                 href={officialWebsiteHref(p.officialWebsite)}
                                 target="_blank"
                                 rel="noreferrer"
