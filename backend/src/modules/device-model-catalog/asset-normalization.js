@@ -634,6 +634,21 @@ function shouldDowngradeAiCandidateToSuggestion(inputModel, search, candidate) {
   return !hasSearchBrandEvidence(search, /深信服|sangfor/i)
 }
 
+function productLineSuggestion(inputModel) {
+  const hint = productLineHints(inputModel)[0]
+  if (!hint) return null
+  return {
+    brand: '深信服',
+    category: hint.category,
+    canonicalModel: hint.suggestedCanonicalModel,
+    partNumber: hint.suggestedPartNumber,
+    aliases: normalizeAiAliases([hint.suggestedPartNumber, ...likelyModelVariants(inputModel)], inputModel),
+    confidence: 0.25,
+    reason: 'AI 未能确认具体型号；根据产品线提示仅给出低置信候选，需人工确认。',
+    sourceProvider: 'ai',
+  }
+}
+
 function inferAiSuggestionFromReason(payload, inputModel) {
   const reason = normalizeText(payload?.reason) || ''
   if (!reason || !/深信服|sangfor/i.test(reason)) return null
@@ -766,6 +781,9 @@ async function discoverAiCandidate(inputModel, search) {
         reason: candidate.reason || '产品线提示可作为候选，但搜索摘要未提供品牌证据，需人工确认。',
       }
       candidate = null
+    }
+    if (!candidate && !suggestion) {
+      suggestion = productLineSuggestion(inputModel)
     }
     return {
       candidate,
