@@ -509,6 +509,12 @@ function normalizeAiAliases(value, inputModel) {
   return deduplicateAliases([inputModel, ...aliases.map((alias) => normalizeText(alias)).filter(Boolean)])
 }
 
+function normalizeAiBrand(value) {
+  const brand = normalizeText(value)
+  if (/深信服|sangfor/i.test(brand || '')) return '深信服'
+  return brand
+}
+
 function modelCore(value) {
   return compactAlias(value)
     .replace(/\b(hpe|hp|hewlettpackardenterprise|dell|emc|lenovo|ibm|cisco|huawei|h3c|netapp|sangfor)\b/g, '')
@@ -529,7 +535,7 @@ function aiCandidateRelatesToInput(candidate, inputModel) {
 
 function normalizeAiCandidatePayload(payload, inputModel) {
   if (!payload) return null
-  const brand = normalizeText(payload.brand)
+  const brand = normalizeAiBrand(payload.brand)
   const category = normalizeText(payload.category)?.toLowerCase()
   const canonicalModel = normalizeText(payload.canonicalModel)
   const partNumber = normalizeText(payload.partNumber) || ''
@@ -613,7 +619,7 @@ function productLineHints(inputModel) {
     AD: '应用交付 / 负载均衡',
   }
   return [{
-    brand: '深信服 / Sangfor',
+    brand: '深信服',
     category: 'network',
     productLine: line,
     description: descriptions[line],
