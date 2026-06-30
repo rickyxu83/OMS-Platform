@@ -27,6 +27,7 @@ interface Device {
   model?: string;
   pn?: string;
   serialNo?: string;
+  mrNo?: string;
   customerId?: string | number;
   customerName?: string;
   maintenanceType?: string;
@@ -87,6 +88,7 @@ interface DeviceForm {
   model: string;
   pn: string;
   serialNo: string;
+  mrNo: string;
   maintenanceType: string;
   maintenancePartyId: string;
   maintenanceStart: string;
@@ -100,6 +102,7 @@ interface BatchDeviceRow {
   name: string;
   model: string;
   serialNo: string;
+  mrNo: string;
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
@@ -146,6 +149,7 @@ function createEmptyDeviceForm(overrides: Partial<DeviceForm> = {}): DeviceForm 
     model: "",
     pn: "",
     serialNo: "",
+    mrNo: "",
     maintenanceType: "none",
     maintenancePartyId: "",
     maintenanceStart: "",
@@ -162,6 +166,7 @@ function createEmptyBatchRow(): BatchDeviceRow {
     name: "",
     model: "",
     serialNo: "",
+    mrNo: "",
   };
 }
 
@@ -171,6 +176,7 @@ interface BatchEditForm {
   maintenanceStart: string;
   maintenanceEnd: string;
   warrantyUntil: string;
+  mrNo: string;
   location: string;
   remark: string;
 }
@@ -181,6 +187,7 @@ interface BatchEditToggles {
   maintenanceStart: boolean;
   maintenanceEnd: boolean;
   warrantyUntil: boolean;
+  mrNo: boolean;
   location: boolean;
   remark: boolean;
 }
@@ -192,6 +199,7 @@ function createEmptyBatchEditForm(): BatchEditForm {
     maintenanceStart: "",
     maintenanceEnd: "",
     warrantyUntil: "",
+    mrNo: "",
     location: "",
     remark: "",
   };
@@ -204,6 +212,7 @@ function createEmptyBatchEditToggles(): BatchEditToggles {
     maintenanceStart: false,
     maintenanceEnd: false,
     warrantyUntil: false,
+    mrNo: false,
     location: false,
     remark: false,
   };
@@ -214,7 +223,7 @@ function createInitialBatchRows(count = 3) {
 }
 
 function batchRowHasInput(row: BatchDeviceRow) {
-  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim());
+  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim() || row.mrNo.trim());
 }
 
 function formatDate(value?: string) {
@@ -405,7 +414,7 @@ export function Devices() {
       if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
       if (!keyword) return true;
-      return [d.name, d.model, d.serialNo, d.customerName, d.maintenancePartyName]
+      return [d.name, d.model, d.pn, d.serialNo, d.mrNo, d.customerName, d.maintenancePartyName]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(keyword));
     });
@@ -573,6 +582,7 @@ export function Devices() {
       model: device.model || "",
       pn: device.pn || "",
       serialNo: device.serialNo || "",
+      mrNo: device.mrNo || "",
       maintenanceType,
       maintenancePartyId: resolveMaintenancePartyId(parties, maintenanceType, device.maintenancePartyId),
       maintenanceStart: inputDate(device.maintenanceStart),
@@ -658,6 +668,7 @@ export function Devices() {
             name: row.name.trim(),
             model: row.model.trim() || defaultModel,
             serialNo: row.serialNo.trim(),
+            mrNo: row.mrNo.trim(),
             hasInput: batchRowHasInput(row),
           }))
           .filter((row) => row.hasInput);
@@ -683,6 +694,7 @@ export function Devices() {
             name: row.name || null,
             model: row.model,
             serialNo: row.serialNo || undefined,
+            mrNo: row.mrNo || undefined,
           });
           createdCount += 1;
         }
@@ -701,6 +713,7 @@ export function Devices() {
           model: form.model.trim(),
           pn: form.pn.trim() || undefined,
           serialNo: form.serialNo.trim() || undefined,
+          mrNo: form.mrNo.trim() || undefined,
         };
         if (editingId) {
           await api.put(`/devices/${editingId}`, payload);
@@ -835,6 +848,7 @@ export function Devices() {
     if (batchEditToggles.maintenanceStart) fields.maintenanceStart = batchEditForm.maintenanceStart || null;
     if (batchEditToggles.maintenanceEnd) fields.maintenanceEnd = batchEditForm.maintenanceEnd || null;
     if (batchEditToggles.warrantyUntil) fields.warrantyUntil = batchEditForm.warrantyUntil || null;
+    if (batchEditToggles.mrNo) fields.mrNo = batchEditForm.mrNo.trim() || null;
     if (batchEditToggles.location) fields.location = batchEditForm.location.trim() || null;
     if (batchEditToggles.remark) fields.remark = batchEditForm.remark.trim() || null;
 
@@ -906,7 +920,7 @@ export function Devices() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索设备名称、型号、序列号…"
+                placeholder="搜索设备名称、型号、序列号、MR单…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -1029,14 +1043,15 @@ export function Devices() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
             ) : (
-              <div className="min-w-[760px]">
+              <div className="min-w-[860px]">
                 <div className="sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {canSelectDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
-                    <div className="grid min-w-0 flex-1 grid-cols-5 gap-4 text-center">
+                    <div className="grid min-w-0 flex-1 grid-cols-6 gap-4 text-center">
                       <div>型号 / 客户</div>
                       <div>SN</div>
+                      <div>MR单</div>
                       <div>维保类型</div>
                       <div>维保方 / 截止</div>
                       <div>状态</div>
@@ -1076,7 +1091,7 @@ export function Devices() {
                         </div>
                       ) : null}
                       <Server className="w-5 h-5 text-primary" />
-                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-5">
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
                         <div className="min-w-0">
                           {device.model ? (
                             <button
@@ -1106,6 +1121,10 @@ export function Devices() {
                         <div className="min-w-0">
                           <div className="text-xs text-muted-foreground md:hidden">SN</div>
                           <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground md:hidden">MR单</div>
+                          <div className="truncate text-sm" title={device.mrNo || "-"}>{device.mrNo || "-"}</div>
                         </div>
                         <div>
                           <button type="button" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
@@ -1205,7 +1224,7 @@ export function Devices() {
                         <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>{typeLabel}</Badge>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">型号</div>
                         <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.model || "-"}</div>
@@ -1213,6 +1232,10 @@ export function Devices() {
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">SN</div>
                         <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.serialNo || "-"}</div>
+                      </div>
+                      <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
+                        <div className="text-xs text-muted-foreground">MR单</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.mrNo || "-"}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">维保方</div>
@@ -1358,7 +1381,7 @@ export function Devices() {
         }}
       >
         <DialogContent
-          className={`max-h-[85vh] overflow-y-auto ${!editingId && createMode === "bulk" ? "sm:max-w-[920px]" : "sm:max-w-[640px]"}`}
+          className={`max-h-[85vh] overflow-y-auto ${!editingId && createMode === "bulk" ? "sm:max-w-[980px]" : "sm:max-w-[640px]"}`}
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <DialogHeader>
@@ -1525,6 +1548,14 @@ export function Devices() {
                       placeholder="序列号；多个值用 ; 隔开"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>MR单</Label>
+                    <Input
+                      value={form.mrNo}
+                      onChange={(e) => setForm({ ...form, mrNo: e.target.value })}
+                      placeholder="MR单号，可不填"
+                    />
+                  </div>
                 </>
               )}
               <div className="space-y-2">
@@ -1634,15 +1665,16 @@ export function Devices() {
                     </Button>
                   </div>
                   <div className="rounded-md border">
-                    <div className="hidden grid-cols-[1fr_1.25fr_1fr_44px] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                    <div className="hidden grid-cols-[1fr_1.2fr_1fr_1fr_44px] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
                       <span>主机名</span>
                       <span>型号</span>
                       <span>SN *</span>
+                      <span>MR单</span>
                       <span />
                     </div>
                     <div className="divide-y">
                       {batchRows.map((row, index) => (
-                        <div key={index} className="grid grid-cols-1 gap-2 p-3 md:grid-cols-[1fr_1.25fr_1fr_44px]">
+                        <div key={index} className="grid grid-cols-1 gap-2 p-3 md:grid-cols-[1fr_1.2fr_1fr_1fr_44px]">
                           <Input
                             value={row.name}
                             onChange={(e) => updateBatchRow(index, "name", e.target.value)}
@@ -1657,6 +1689,11 @@ export function Devices() {
                             value={row.serialNo}
                             onChange={(e) => updateBatchRow(index, "serialNo", e.target.value)}
                             placeholder="SN 必填；多个值用 ; 隔开"
+                          />
+                          <Input
+                            value={row.mrNo}
+                            onChange={(e) => updateBatchRow(index, "mrNo", e.target.value)}
+                            placeholder="MR单，可不填"
                           />
                           <Button
                             type="button"
@@ -1814,6 +1851,22 @@ export function Devices() {
                   value={batchEditForm.warrantyUntil}
                   onChange={(e) => setBatchEditForm((f) => ({ ...f, warrantyUntil: e.target.value }))}
                   disabled={!batchEditToggles.warrantyUntil}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={batchEditToggles.mrNo}
+                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, mrNo: v === true }))}
+              />
+              <div className="flex-1 space-y-1.5">
+                <Label>MR单</Label>
+                <Input
+                  value={batchEditForm.mrNo}
+                  onChange={(e) => setBatchEditForm((f) => ({ ...f, mrNo: e.target.value }))}
+                  disabled={!batchEditToggles.mrNo}
+                  placeholder="MR单号，可留空清除"
                 />
               </div>
             </div>

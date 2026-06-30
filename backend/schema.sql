@@ -102,6 +102,7 @@ CREATE TABLE devices (
   model VARCHAR(128) NOT NULL,
   pn VARCHAR(128) NULL,
   serial_no VARCHAR(128) NULL,
+  mr_no VARCHAR(128) NULL,
   remark TEXT NULL,
   location VARCHAR(255) NULL,
   warranty_until DATE NULL,

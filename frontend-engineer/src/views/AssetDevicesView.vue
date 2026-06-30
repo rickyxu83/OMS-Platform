@@ -71,7 +71,7 @@ const filteredDevices = computed(() => {
   return devices.value.filter((item) => {
     if (customerFilter.value && String(item.customerId || '') !== customerFilter.value) return false
     if (!keyword) return true
-    return [item.customerName, item.name, item.model, item.pn, item.serialNo, item.location, item.remark]
+    return [item.customerName, item.name, item.model, item.pn, item.serialNo, item.mrNo, item.location, item.remark]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(keyword))
   })
@@ -129,6 +129,7 @@ function emptyForm() {
     model: '',
     pn: '',
     serialNo: '',
+    mrNo: '',
     maintenanceType: 'none',
     maintenancePartyId: '',
     maintenanceStart: '',
@@ -146,6 +147,7 @@ function emptyBatchEditForm() {
     maintenanceStart: '',
     maintenanceEnd: '',
     warrantyUntil: '',
+    mrNo: '',
     location: '',
     remark: '',
   }
@@ -158,6 +160,7 @@ function emptyBatchEditToggles() {
     maintenanceStart: false,
     maintenanceEnd: false,
     warrantyUntil: false,
+    mrNo: false,
     location: false,
     remark: false,
   }
@@ -168,6 +171,7 @@ function createEmptyBatchRow() {
     name: '',
     model: '',
     serialNo: '',
+    mrNo: '',
   }
 }
 
@@ -176,7 +180,7 @@ function createInitialBatchRows(count = 3) {
 }
 
 function batchRowHasInput(row) {
-  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim())
+  return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim() || row.mrNo.trim())
 }
 
 function customerLabel(customer) {
@@ -283,6 +287,7 @@ function openEdit(device) {
     model: device.model || '',
     pn: device.pn || '',
     serialNo: device.serialNo || '',
+    mrNo: device.mrNo || '',
     maintenanceType,
     maintenancePartyId: resolveMaintenancePartyId(maintenanceType, device.maintenancePartyId),
     maintenanceStart: inputDate(device.maintenanceStart),
@@ -375,6 +380,7 @@ async function submitBatchEdit() {
   if (batchEditToggles.value.maintenanceStart) fields.maintenanceStart = batchEditForm.value.maintenanceStart || null
   if (batchEditToggles.value.maintenanceEnd) fields.maintenanceEnd = batchEditForm.value.maintenanceEnd || null
   if (batchEditToggles.value.warrantyUntil) fields.warrantyUntil = batchEditForm.value.warrantyUntil || null
+  if (batchEditToggles.value.mrNo) fields.mrNo = batchEditForm.value.mrNo.trim() || null
   if (batchEditToggles.value.location) fields.location = batchEditForm.value.location.trim() || null
   if (batchEditToggles.value.remark) fields.remark = batchEditForm.value.remark.trim() || null
 
@@ -445,6 +451,7 @@ async function saveDevice() {
           name: row.name.trim(),
           model: row.model.trim() || defaultModel,
           serialNo: row.serialNo.trim(),
+          mrNo: row.mrNo.trim(),
           hasInput: batchRowHasInput(row),
         }))
         .filter((row) => row.hasInput)
@@ -471,6 +478,7 @@ async function saveDevice() {
           name: row.name || null,
           model: row.model,
           serialNo: row.serialNo || undefined,
+          mrNo: row.mrNo || undefined,
         })
         createdCount += 1
       }
@@ -489,6 +497,7 @@ async function saveDevice() {
         model: form.value.model.trim(),
         pn: form.value.pn.trim() || undefined,
         serialNo: form.value.serialNo.trim() || undefined,
+        mrNo: form.value.mrNo.trim() || undefined,
       }
       if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
       else await api.post('/devices', payload)
@@ -617,7 +626,7 @@ watch(filteredDevices, (items) => {
     <section class="asset-toolbar">
       <label class="asset-search-box">
         <PreviewIcon name="eye" />
-        <input v-model="searchQuery" type="search" :placeholder="zh('搜索设备、型号、序列号、客户')" @keydown.enter="loadDevices" />
+        <input v-model="searchQuery" type="search" :placeholder="zh('搜索设备、型号、序列号、MR单、客户')" @keydown.enter="loadDevices" />
       </label>
       <select v-model="customerFilter" class="asset-select" @change="loadDevices">
         <option value="">{{ zh('全部客户') }}</option>
@@ -677,7 +686,9 @@ watch(filteredDevices, (items) => {
         </header>
         <p class="asset-record-line">
           <PreviewIcon name="devices" />
-          <span class="asset-ellipsis" :title="`${device.model || '未维护型号'} · SN: ${device.serialNo || '未维护'}`">{{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}</span>
+          <span class="asset-ellipsis" :title="`${device.model || '未维护型号'} · SN: ${device.serialNo || '未维护'}${device.mrNo ? ` · MR: ${device.mrNo}` : ''}`">
+            {{ zh(device.model || '未维护型号') }} · SN: {{ device.serialNo || zh('未维护') }}<template v-if="device.mrNo"> · MR: {{ device.mrNo }}</template>
+          </span>
         </p>
         <p class="asset-record-line">
           <PreviewIcon name="pin" />
@@ -780,6 +791,7 @@ watch(filteredDevices, (items) => {
               </div>
             </label>
             <label>{{ zh('序列号 SN *') }}<input v-model="form.serialNo" type="text" :placeholder="zh('序列号必填；多个值用 ; 隔开')" /></label>
+            <label>{{ zh('MR单') }}<input v-model="form.mrNo" type="text" :placeholder="zh('MR单号，可不填')" /></label>
           </template>
           <label>{{ zh('维保类型') }}
             <select :value="form.maintenanceType" @change="changeMaintenanceType($event.target.value)">
@@ -819,6 +831,7 @@ watch(filteredDevices, (items) => {
                 <span>{{ zh('主机名') }}</span>
                 <span>{{ zh('型号') }}</span>
                 <span>{{ zh('SN *') }}</span>
+                <span>{{ zh('MR单') }}</span>
                 <span></span>
               </div>
               <div
@@ -843,6 +856,12 @@ watch(filteredDevices, (items) => {
                   type="text"
                   :placeholder="zh('SN 必填；多个值用 ; 隔开')"
                   @input="updateBatchRow(index, 'serialNo', $event.target.value)"
+                />
+                <input
+                  :value="row.mrNo"
+                  type="text"
+                  :placeholder="zh('MR单，可不填')"
+                  @input="updateBatchRow(index, 'mrNo', $event.target.value)"
                 />
                 <button class="ghost asset-editor-row-remove" type="button" :disabled="saving" :aria-label="zh(`删除第 ${index + 1} 行`)" @click="removeBatchRow(index)">
                   <PreviewIcon name="trash" />
@@ -913,6 +932,14 @@ watch(filteredDevices, (items) => {
               <span>{{ zh('质保截止日期') }}</span>
             </label>
             <input v-model="batchEditForm.warrantyUntil" type="date" :disabled="!batchEditToggles.warrantyUntil" />
+          </section>
+
+          <section class="asset-batch-edit-field">
+            <label class="asset-toggle-row">
+              <input v-model="batchEditToggles.mrNo" type="checkbox" />
+              <span>{{ zh('MR单') }}</span>
+            </label>
+            <input v-model="batchEditForm.mrNo" type="text" :disabled="!batchEditToggles.mrNo" :placeholder="zh('MR单号，可留空清除')" />
           </section>
 
           <section class="asset-batch-edit-field">

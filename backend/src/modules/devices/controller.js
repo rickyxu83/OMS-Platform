@@ -92,11 +92,15 @@ async function ensureDeviceIdentityColumns() {
      FROM information_schema.COLUMNS
      WHERE table_schema = DATABASE()
        AND table_name = 'devices'
-       AND column_name IN ('name')`,
+       AND column_name IN ('name', 'mr_no')`,
   )
   const nameColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'name')
   if (nameColumn && String(nameColumn.is_nullable || '').toUpperCase() !== 'YES') {
     await query('ALTER TABLE devices MODIFY COLUMN name VARCHAR(128) NULL')
+  }
+  const mrNoColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'mr_no')
+  if (!mrNoColumn) {
+    await query('ALTER TABLE devices ADD COLUMN mr_no VARCHAR(128) NULL AFTER serial_no')
   }
 
   deviceIdentityColumnsReady = true
@@ -160,6 +164,7 @@ function devicePayload(row) {
     model: row.model,
     pn: row.pn,
     serialNo: row.serial_no,
+    mrNo: row.mr_no,
     remark: row.remark,
     maintenanceType: row.maintenance_type,
     maintenancePartyId: row.maintenance_party_id,
@@ -177,11 +182,12 @@ function devicePayload(row) {
 }
 
 async function list(req, res) {
+  await ensureDeviceIdentityColumns()
   const { customerId = null } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
   const salesScope = buildSalesCustomerScope(req.user, 'c')
   const rows = await query(
-    `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no,
+    `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
             d.installation_source_service_order_id, d.location, d.warranty_until, d.created_at, d.updated_at
@@ -196,6 +202,7 @@ async function list(req, res) {
          OR d.model LIKE :likeKeyword
          OR d.pn LIKE :likeKeyword
          OR d.serial_no LIKE :likeKeyword
+         OR d.mr_no LIKE :likeKeyword
          OR c.name LIKE :likeKeyword
          OR mp.name LIKE :likeKeyword
          OR d.location LIKE :likeKeyword
@@ -222,6 +229,7 @@ async function create(req, res) {
     model,
     pn,
     serialNo,
+    mrNo,
     remark,
     maintenanceType,
     maintenancePartyId,
@@ -244,11 +252,11 @@ async function create(req, res) {
   const result = await query(
     `INSERT INTO devices (
        customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
-       maintenance_start, maintenance_end, location, warranty_until
+       mr_no, maintenance_start, maintenance_end, location, warranty_until
      )
      VALUES (
        :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
-       :maintenanceStart, :maintenanceEnd, :location, :warrantyUntil
+       :mrNo, :maintenanceStart, :maintenanceEnd, :location, :warrantyUntil
      )`,
     {
       customerId,
@@ -256,6 +264,7 @@ async function create(req, res) {
       model: normalizedModel,
       pn: normalizeText(pn),
       serialNo: normalizedSerialNo,
+      mrNo: normalizeText(mrNo),
       remark: remark || null,
       maintenanceType: normalizedMaintenanceType,
       maintenancePartyId: normalizedMaintenancePartyId,
@@ -270,9 +279,10 @@ async function create(req, res) {
 }
 
 async function detail(req, res) {
+  await ensureDeviceIdentityColumns()
   await ensureDevicePartHistoryColumns()
   const rows = await query(
-    `SELECT d.id, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name, d.model, d.pn, d.serial_no,
+    `SELECT d.id, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name, d.model, d.pn, d.serial_no, d.mr_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
             d.installation_source_service_order_id, d.location, d.warranty_until, d.created_at, d.updated_at
@@ -332,6 +342,7 @@ async function detail(req, res) {
 }
 
 async function batchUpdate(req, res) {
+  await ensureDeviceIdentityColumns()
   const { ids, fields = {} } = req.body || {}
   if (!Array.isArray(ids) || ids.length === 0) {
     throw badRequest('请选择至少一台设备')
@@ -392,6 +403,10 @@ async function batchUpdate(req, res) {
     setClauses.push('pn = :pn')
     params.pn = normalizeText(fields.pn)
   }
+  if (Object.prototype.hasOwnProperty.call(fields, 'mrNo')) {
+    setClauses.push('mr_no = :mrNo')
+    params.mrNo = normalizeText(fields.mrNo)
+  }
   if (Object.prototype.hasOwnProperty.call(fields, 'location')) {
     setClauses.push('location = :location')
     params.location = normalizeText(fields.location)
@@ -420,6 +435,7 @@ async function update(req, res) {
     model,
     pn,
     serialNo,
+    mrNo,
     remark,
     maintenanceType,
     maintenancePartyId,
@@ -460,6 +476,7 @@ async function update(req, res) {
          model = :model,
          pn = :pn,
          serial_no = :serialNo,
+         mr_no = :mrNo,
          remark = :remark,
          maintenance_type = :maintenanceType,
          maintenance_party_id = :maintenancePartyId,
@@ -476,6 +493,7 @@ async function update(req, res) {
       model: normalizedModel,
       pn: pn || null,
       serialNo: serialNo || null,
+      mrNo: normalizeText(mrNo),
       remark: remark || null,
       maintenanceType: normalizedMaintenanceType,
       maintenancePartyId: normalizedMaintenancePartyId,

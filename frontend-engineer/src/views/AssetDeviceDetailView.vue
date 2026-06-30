@@ -141,6 +141,7 @@ onMounted(() => {
           <p><span>{{ zh('型号') }}</span><b>{{ zh(device.model || '未维护') }}</b></p>
           <p><span>{{ zh('PN') }}</span><b>{{ device.pn || zh('未维护') }}</b></p>
           <p><span>{{ zh('序列号') }}</span><b>{{ device.serialNo || zh('未维护') }}</b></p>
+          <p><span>{{ zh('MR单') }}</span><b>{{ device.mrNo || zh('未维护') }}</b></p>
           <p><span>{{ zh('设备位置') }}</span><b>{{ zh(device.location || '未维护') }}</b></p>
           <p><span>{{ zh('备注') }}</span><b>{{ zh(device.remark || '未维护') }}</b></p>
         </div>

@@ -6807,7 +6807,7 @@ h2 {
 .asset-editor-batch-head,
 .asset-editor-batch-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr) minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr) minmax(0, 1fr) minmax(0, 1fr) 44px;
   gap: 8px;
   align-items: center;
 }
