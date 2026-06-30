@@ -492,7 +492,7 @@ function modelNormalizationJobPayload(job) {
 function buildModelNormalizationJobMessage(normalization, updated) {
   const baseMessage = buildModelNormalizationMessage(normalization)
   if (normalization?.needsConfirmation) {
-    return baseMessage || `AI 建议可能是 ${normalization.canonicalModel}，需人工确认后应用`
+    return baseMessage || `后台搜索建议可能是 ${normalization.canonicalModel}，需人工确认后应用`
   }
   if (canApplyModelNormalization(normalization) && !updated) {
     return `${baseMessage || `已找到标准型号 ${normalization.canonicalModel}`}，设备型号已变化，未自动覆盖`
@@ -506,27 +506,13 @@ async function runModelNormalizationJob(jobId) {
   if (!job) return
 
   try {
-    const result = await normalizeDeviceModelForAsset(job.inputModel)
+    const result = await normalizeDeviceModelForAsset(job.inputModel, { requireConfirmation: true })
     const normalization = result.normalization || {}
-    let updated = false
-
-    if (canApplyModelNormalization(normalization) && !normalization.needsConfirmation) {
-      const updateResult = await query(
-        `UPDATE devices
-         SET model = :model
-         WHERE id = :id AND model = :inputModel`,
-        {
-          id: job.deviceId,
-          model: result.model,
-          inputModel: job.inputModel,
-        },
-      )
-      updated = Number(updateResult?.affectedRows || 0) > 0
-    }
+    const updated = false
 
     Object.assign(job, {
       status: 'completed',
-      canonicalModel: result.model || normalization.canonicalModel || job.inputModel,
+      canonicalModel: normalization.canonicalModel || result.model || job.inputModel,
       updated,
       modelNormalization: normalization,
       message: buildModelNormalizationJobMessage(normalization, updated),
@@ -560,7 +546,7 @@ function startModelNormalizationJob(deviceId, inputModel) {
     canonicalModel: '',
     updated: false,
     modelNormalization: null,
-    message: '设备已保存，正在后台搜索并校正型号',
+    message: '设备已保存，正在后台搜索型号，结果需确认后应用',
     error: '',
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),

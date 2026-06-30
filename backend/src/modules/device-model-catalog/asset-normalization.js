@@ -864,18 +864,22 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
   const catalogMatch = await findCatalogMatch(inputModel)
   if (catalogMatch) {
     const finalModel = normalizeText(catalogMatch.canonical_model) || inputModel
-    const action = finalModel === inputModel ? 'matched' : 'corrected'
+    const action = options.requireConfirmation === true && finalModel !== inputModel
+      ? 'suggested_correction'
+      : (finalModel === inputModel ? 'matched' : 'corrected')
     return {
-      model: finalModel,
+      model: action === 'suggested_correction' ? inputModel : finalModel,
       catalogItem: catalogMatch,
       normalization: normalizationPayload({
         inputModel,
         finalModel,
         action,
         source: 'catalog',
-        matchType: catalogMatch.match_type,
+        matchType: action === 'suggested_correction' ? `${catalogMatch.match_type || '型号库'}待确认` : catalogMatch.match_type,
         item: catalogMatch,
-        message: action === 'corrected' ? `已按型号库标准纠正为 ${finalModel}` : '',
+        message: action === 'suggested_correction'
+          ? `后台搜索建议可能是 ${finalModel}，需人工确认后应用`
+          : (action === 'corrected' ? `已按型号库标准纠正为 ${finalModel}` : ''),
       }),
     }
   }
@@ -896,6 +900,28 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
 
   const discovered = await discoverOnlineCandidate(inputModel)
   if (discovered.candidate) {
+    if (options.requireConfirmation === true && options.confirmAiSuggestion !== true) {
+      const finalModel = normalizeText(discovered.candidate.canonicalModel) || inputModel
+      const source = discovered.candidate.sourceProvider === 'ai'
+        ? 'ai'
+        : (discovered.candidate.onlineVerified ? 'online' : 'local')
+      const matchType = discovered.candidate.sourceProvider === 'ai'
+        ? 'AI 待确认'
+        : (discovered.candidate.onlineVerified ? '网上搜索待确认' : '本地规则待确认')
+      return {
+        model: inputModel,
+        catalogItem: null,
+        normalization: normalizationPayload({
+          inputModel,
+          finalModel,
+          action: 'suggested_correction',
+          source,
+          matchType,
+          item: discovered.candidate,
+          message: `后台搜索建议可能是 ${finalModel}，需人工确认后应用`,
+        }),
+      }
+    }
     const item = await upsertCatalogCandidate(discovered.candidate, inputModel, discovered.sourceReference)
     const finalModel = normalizeText(item.canonical_model) || inputModel
     const action = finalModel === inputModel ? 'created' : 'created_corrected'
