@@ -53,13 +53,20 @@ function stripHtml(value) {
   return decodeHtml(String(value || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
 }
 
-function normalizeDuckDuckGoUrl(value) {
+function normalizeBingUrl(value) {
   const href = decodeHtml(value)
   if (!href) return ''
   try {
-    const url = new URL(href, 'https://duckduckgo.com')
-    const uddg = url.searchParams.get('uddg')
-    return uddg ? decodeURIComponent(uddg) : url.toString()
+    const url = new URL(href, 'https://www.bing.com')
+    const encodedTarget = url.searchParams.get('u')
+    if (encodedTarget) {
+      const normalized = encodedTarget.replace(/^a1/i, '').replace(/-/g, '+').replace(/_/g, '/')
+      try {
+        const decoded = Buffer.from(normalized, 'base64').toString('utf8')
+        if (/^https?:\/\//i.test(decoded)) return decoded
+      } catch {}
+    }
+    return url.toString()
   } catch {
     return href
   }
@@ -67,21 +74,18 @@ function normalizeDuckDuckGoUrl(value) {
 
 function extractSearchResults(html) {
   const results = []
-  const anchorPattern = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+  const itemPattern = /<li[^>]+class="[^"]*\bb_algo\b[^"]*"[^>]*>([\s\S]*?)<\/li>/gi
   let match
-  while ((match = anchorPattern.exec(html)) && results.length < 8) {
+  while ((match = itemPattern.exec(html)) && results.length < 8) {
+    const itemHtml = match[1]
+    const anchor = itemHtml.match(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/i)
+    if (!anchor) continue
+    const snippet = itemHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/i)
     results.push({
-      title: stripHtml(match[2]),
-      url: normalizeDuckDuckGoUrl(match[1]),
-      snippet: '',
+      title: stripHtml(anchor[2]),
+      url: normalizeBingUrl(anchor[1]),
+      snippet: snippet ? stripHtml(snippet[1]) : '',
     })
-  }
-
-  const snippetPattern = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
-  let snippetIndex = 0
-  while ((match = snippetPattern.exec(html)) && snippetIndex < results.length) {
-    results[snippetIndex].snippet = stripHtml(match[1])
-    snippetIndex += 1
   }
 
   return results.filter((result) => result.title || result.snippet)
@@ -99,13 +103,14 @@ async function fetchSearchEvidence(inputModel) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const searchQuery = `"${inputModel}" device model server storage network`
-  const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(searchQuery)}&setmkt=en-US&setlang=en-US&cc=US`
 
   try {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
         accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'en-US,en;q=0.9',
         'user-agent': 'OMSDeviceModelNormalizer/1.0',
       },
     })
