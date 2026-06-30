@@ -340,6 +340,7 @@ async function downloadDeviceImportTemplate() {
   const worksheet = workbook.addWorksheet("设备导入模板", {
     views: [{ state: "frozen", ySplit: 1 }],
   });
+  const requiredHeaders = new Set(["客户ID", "客户名称", "设备型号*", "SN*"]);
   worksheet.columns = [
     { header: "客户ID", key: "customerId", width: 12 },
     { header: "客户名称", key: "customerName", width: 24 },
@@ -378,9 +379,15 @@ async function downloadDeviceImportTemplate() {
   };
   worksheet.getRow(1).height = 24;
   worksheet.getRow(1).eachCell((cell) => {
+    const required = requiredHeaders.has(String(cell.value || ""));
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: required ? "FFB91C1C" : "FF0F766E" } };
     cell.alignment = { vertical: "middle", horizontal: "center" };
+    if (required) {
+      cell.note = String(cell.value) === "客户ID" || String(cell.value) === "客户名称"
+        ? "客户ID 和客户名称二选一必填；优先按客户ID匹配。"
+        : "必填项，不能为空。";
+    }
   });
   worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
@@ -400,17 +407,22 @@ async function downloadDeviceImportTemplate() {
   const help = workbook.addWorksheet("字段说明");
   help.columns = [
     { header: "字段", key: "field", width: 18 },
+    { header: "是否必填", key: "required", width: 14 },
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户ID / 客户名称", "二选一必填；优先按客户ID匹配，否则按客户名称精确匹配已有客户。"],
-    ["设备型号*", "必填。"],
-    ["SN*", "必填；导入文件内重复或系统内已存在时，该行失败并跳过。"],
-    ["维保类型", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
-    ["维保方ID / 维保方名称", "有维保方时优先按ID匹配，否则按名称和维保类型匹配已有维保方。"],
-    ["日期字段", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
-  ].forEach(([field, description]) => help.addRow({ field, description }));
-  help.getRow(1).font = { bold: true };
+    ["客户ID / 客户名称", "二选一必填", "优先按客户ID匹配，否则按客户名称精确匹配已有客户。"],
+    ["设备型号*", "必填", "不能为空。"],
+    ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
+    ["维保类型", "选填", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
+    ["维保方ID / 维保方名称", "有维保时选填", "有维保方时优先按ID匹配，否则按名称和维保类型匹配已有维保方。"],
+    ["日期字段", "选填", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
+  ].forEach(([field, required, description]) => help.addRow({ field, required, description }));
+  help.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  help.getRow(1).eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  });
 
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "设备资产导入模板.xlsx");
