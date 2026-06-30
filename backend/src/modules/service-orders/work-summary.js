@@ -12,6 +12,18 @@ function fallback(reason = FALLBACK_REASON) {
   }
 }
 
+function retryAttempts() {
+  return Math.max(1, Math.min(10, Number(env.ai.summaryRetryAttempts || 3)))
+}
+
+function retryDelayMs() {
+  return Math.max(0, Math.min(60000, Number(env.ai.summaryRetryDelayMs || 1500)))
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function trimText(value, maxLength) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
@@ -287,30 +299,42 @@ async function generateTimesheetWorkSummary(payload) {
 
   const coverageNotes = `摘要基于 ${normalized.records.length} 条有工作内容的记录生成${normalized.omittedRecords ? `，另有 ${normalized.omittedRecords} 条因数量限制未发送给 AI` : ''}。`
 
-  try {
-    const { data, text } = await callProvider(requestPayload, aiSettings)
-    const rawContent = extractTextFromProviderResponse(data) || text
-    const parsed = parseJsonText(rawContent)
-    const summarySource = parsed || { executiveSummary: rawContent }
-    return {
-      ok: true,
-      available: true,
-      provider: aiSettings.provider,
-      summary: normalizeSummary(summarySource, coverageNotes),
-      usage: {
-        model: aiSettings.model,
-        inputTokens: data?.usage?.prompt_tokens ?? data?.usage?.input_tokens ?? null,
-        outputTokens: data?.usage?.completion_tokens ?? data?.usage?.output_tokens ?? null,
-      },
+  const attempts = retryAttempts()
+  let lastError = null
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const { data, text } = await callProvider(requestPayload, aiSettings)
+      const rawContent = extractTextFromProviderResponse(data) || text
+      if (!String(rawContent || '').trim()) {
+        throw new Error('AI provider returned empty summary content')
+      }
+      const parsed = parseJsonText(rawContent)
+      const summarySource = parsed || { executiveSummary: rawContent }
+      return {
+        ok: true,
+        available: true,
+        provider: aiSettings.provider,
+        attempts: attempt,
+        summary: normalizeSummary(summarySource, coverageNotes),
+        usage: {
+          model: aiSettings.model,
+          inputTokens: data?.usage?.prompt_tokens ?? data?.usage?.input_tokens ?? null,
+          outputTokens: data?.usage?.completion_tokens ?? data?.usage?.output_tokens ?? null,
+        },
+      }
+    } catch (error) {
+      lastError = error
+      console.error('[ai-work-summary] provider request failed', {
+        provider: aiSettings.provider,
+        attempt,
+        attempts,
+        message: error?.message,
+        name: error?.name,
+      })
+      if (attempt < attempts) await sleep(retryDelayMs())
     }
-  } catch (error) {
-    console.error('[ai-work-summary] provider request failed', {
-      provider: aiSettings.provider,
-      message: error?.message,
-      name: error?.name,
-    })
-    return fallback()
   }
+  return fallback(`${FALLBACK_REASON} 已重试 ${attempts} 次，最后错误：${lastError?.message || 'unknown'}`)
 }
 
 module.exports = {

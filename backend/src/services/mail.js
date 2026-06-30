@@ -584,6 +584,36 @@ function summarySection(title, items = []) {
     </div>`
 }
 
+async function sendMonthlySummaryFailureMail({ transporter, mail, report, recipients, reason, options }) {
+  const alertTo = 'oms@starkgrp.com'
+  const title = options.title || '月度营运总结'
+  const scopeName = report.scope?.name || ''
+  const stats = report.stats || {}
+  const intendedRecipients = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  const subject = `月报发送失败：${title} / ${report.label || report.month || '-'}${scopeName ? ` / ${scopeName}` : ''}`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">月报发送失败</h2>
+      <p>系统未能生成可用的 AI 月报摘要，因此已跳过向原收件人发送月报。</p>
+      <table style="border-collapse:collapse;width:100%;max-width:760px">
+        <tr><td style="padding:6px 0;color:#64748b;width:120px">月报类型</td><td>${htmlEscape(title)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">统计期间</td><td>${htmlEscape(report.label || report.month || '-')}</td></tr>
+        ${scopeName ? `<tr><td style="padding:6px 0;color:#64748b">统计范围</td><td>${htmlEscape(scopeName)}</td></tr>` : ''}
+        <tr><td style="padding:6px 0;color:#64748b">失败原因</td><td>${htmlEscape(reason || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">原收件人数</td><td>${htmlEscape(intendedRecipients.length)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">工单数</td><td>${htmlEscape(stats.serviceOrders || 0)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务客户</td><td>${htmlEscape(stats.customers || 0)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">参与工程师</td><td>${htmlEscape(stats.engineers || 0)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">登记工时</td><td>${htmlEscape(stats.workHours || 0)}</td></tr>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">请检查 AI 服务配置、网络连通性或模型响应耗时后重试。</p>
+      ${mailFooter()}
+    </div>
+  `
+  await transporter.sendMail({ from: mail.from, to: alertTo, subject, html })
+  return { to: [alertTo] }
+}
+
 async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailBaseUrl = '', options = {}) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -599,7 +629,36 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
   const stats = report.stats || {}
   const ai = report.workSummary || {}
   const summary = ai.summary || {}
-  const summaryText = summary.executiveSummary || ai.reason || '本月暂无可生成 AI 摘要的工作内容，以下为系统基础统计。'
+  const summaryText = String(summary.executiveSummary || '').trim()
+  if (!ai.available || !summaryText) {
+    let failureNoticeTo = []
+    let failureNoticeError = ''
+    try {
+      const failure = await sendMonthlySummaryFailureMail({
+        transporter,
+        mail,
+        report,
+        recipients,
+        reason: ai.reason || 'AI summary is required before sending monthly operations summary',
+        options,
+      })
+      failureNoticeTo = failure.to
+    } catch (error) {
+      failureNoticeError = error?.message || 'failure_notice_send_failed'
+      console.error('[mail] monthly summary failure notice failed', {
+        month: report.month,
+        scope: report.scope?.name,
+        message: failureNoticeError,
+      })
+    }
+    return {
+      skipped: true,
+      reason: 'monthly_summary_unavailable',
+      detail: ai.reason || 'AI summary is required before sending monthly operations summary',
+      failureNoticeTo,
+      failureNoticeError,
+    }
+  }
   const title = options.title || '月度营运总结'
   const description = options.description || report.scope?.description || ''
   const scopeName = report.scope?.name || ''
