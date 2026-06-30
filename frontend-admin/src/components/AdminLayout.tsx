@@ -39,7 +39,7 @@ interface NavItem {
   label: string;
   icon: any;
   path: string;
-  requiredRoles?: string[];
+  requiredPermissions?: string[];
 }
 
 interface NavGroup {
@@ -51,7 +51,7 @@ interface NavConfigItem {
   labelKey: string;
   icon: any;
   path: string;
-  requiredRoles?: string[];
+  requiredPermissions?: string[];
 }
 
 const STRINGS: Record<AppLang, {
@@ -211,22 +211,22 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "orders",
     items: [
-      { labelKey: "service-orders", icon: FileText, path: "service-orders" },
-      { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules" },
+      { labelKey: "service-orders", icon: FileText, path: "service-orders", requiredPermissions: ["order.view"] },
+      { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules", requiredPermissions: ["inspection.view"] },
     ],
   },
   {
     groupKey: "assets",
     items: [
-      { labelKey: "customers", icon: Users, path: "customers" },
-      { labelKey: "devices", icon: Server, path: "devices" },
-      { labelKey: "maintenance-parties", icon: Building2, path: "maintenance-parties" },
+      { labelKey: "customers", icon: Users, path: "customers", requiredPermissions: ["customer.view"] },
+      { labelKey: "devices", icon: Server, path: "devices", requiredPermissions: ["device.view"] },
+      { labelKey: "maintenance-parties", icon: Building2, path: "maintenance-parties", requiredPermissions: ["maintenance-party.view"] },
     ],
   },
   {
     groupKey: "reports",
     items: [
-      { labelKey: "timesheets", icon: BarChart3, path: "timesheets" },
+      { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
     ],
   },
   {
@@ -236,24 +236,25 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
         labelKey: "users",
         icon: Settings,
         path: "users",
-        requiredRoles: ["admin", "dispatcher", "operations_director", "engineering_supervisor", "administrative_supervisor", "sales_supervisor"],
+        requiredPermissions: ["user.view"],
       },
       {
         labelKey: "audit-logs",
         icon: Shield,
         path: "audit-logs",
-        requiredRoles: ["admin", "operations_director", "engineering_supervisor"],
+        requiredPermissions: ["audit-log.view"],
       },
       {
         labelKey: "settings",
         icon: Settings,
         path: "settings",
-        requiredRoles: ["admin", "operations_director", "engineering_supervisor"],
+        requiredPermissions: ["settings.view"],
       },
       {
         labelKey: "feedback",
         icon: MessageSquare,
         path: "feedback",
+        requiredPermissions: ["feedback.manage"],
       },
     ],
   },
@@ -279,7 +280,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const { lang, setLang } = useLanguage();
   const contentRef = useRef<HTMLElement | null>(null);
   const previousLocationKeyRef = useRef(location.key);
@@ -366,9 +367,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     toast.success(nextLang === "zh-TW" ? STRINGS[nextLang].common.switchedToTw : STRINGS[nextLang].common.switchedToCn);
   };
 
-  const hasAccess = (requiredRoles?: string[]) => {
-    if (!requiredRoles) return true;
-    return requiredRoles.includes(currentUser.role);
+  const hasAccess = (requiredPermissions?: string[]) => {
+    if (!requiredPermissions) return true;
+    return hasPermission(...requiredPermissions);
   };
 
   const navGroups: NavGroup[] = useMemo(() => (
@@ -378,12 +379,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         label: strings.pages[item.labelKey],
         icon: item.icon,
         path: item.path,
-        requiredRoles: item.requiredRoles,
+        requiredPermissions: item.requiredPermissions,
       })),
     }))
   ), [strings]);
 
-  const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredRoles));
+  const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
   const filteredNavItems = searchQuery
     ? allNavItems.filter(item =>
@@ -489,7 +490,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
             {navGroups.map((group) => {
-              const visibleItems = group.items.filter(item => hasAccess(item.requiredRoles));
+              const visibleItems = group.items.filter(item => hasAccess(item.requiredPermissions));
               if (visibleItems.length === 0) return null;
 
               return (

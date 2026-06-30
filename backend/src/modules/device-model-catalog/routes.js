@@ -1,11 +1,10 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
-const { ROLE_GROUPS } = require('../../permissions/roles')
+const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
 router.get('/suggestions', controller.suggest)
-router.post('/entries', requireRoles(...ROLE_GROUPS.deviceModelCatalogWrite), controller.upsertEntry)
+router.post('/entries', requirePermission('device.model.catalog'), controller.upsertEntry)
 
 module.exports = router

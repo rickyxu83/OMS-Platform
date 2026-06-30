@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken')
 const env = require('../config/env')
 const { query } = require('../config/db')
 const { ROLE_GROUPS } = require('../permissions/roles')
+const { hasAnyPermission } = require('../permissions/store')
 const { forbidden, unauthorized } = require('../utils/http-error')
 const { ensureUserLoginColumns } = require('../modules/users/schema')
 
@@ -75,6 +76,26 @@ function requireRoles(...roles) {
   }
 }
 
+function requirePermission(...permissions) {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        next(unauthorized())
+        return
+      }
+
+      if (!await hasAnyPermission(req.user.role, permissions)) {
+        next(forbidden())
+        return
+      }
+
+      next()
+    } catch (error) {
+      next(error)
+    }
+  }
+}
+
 function requireEngineerOnboardingComplete(req, res, next) {
   if (!req.user) {
     next(unauthorized())
@@ -97,5 +118,6 @@ function requireEngineerOnboardingComplete(req, res, next) {
 module.exports = {
   authenticate,
   requireRoles,
+  requirePermission,
   requireEngineerOnboardingComplete,
 }

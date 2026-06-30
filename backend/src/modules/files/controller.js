@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { ROLE_GROUPS } = require('../../permissions/roles')
+const { hasAnyPermission, hasPermission } = require('../../permissions/store')
 const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
@@ -91,10 +92,6 @@ const uploadMiddleware = multer({
 }).single('file')
 
 const orderFileOwnerTypes = new Set(['service_order', 'service_report', 'signature'])
-// 查看（下载）与管理（上传/删除）分别对齐服务单的查看/操作角色组；
-// 工程师不在组内，只能访问被指派的服务单
-const orderFileViewRoles = new Set(ROLE_GROUPS.serviceOrderView)
-const orderFileManageRoles = new Set(ROLE_GROUPS.serviceOrderOps)
 const filePurposes = new Set(['general', 'inspection_document'])
 let filePurposeColumnReady = false
 
@@ -165,13 +162,14 @@ async function isSalesScopedOrder(orderId, user) {
 }
 
 async function canAccessOrderFile(orderId, user, action, req) {
-  const allowedRoles = action === 'view' ? orderFileViewRoles : orderFileManageRoles
-  if (user.role === 'sales' && action === 'view') return isSalesScopedOrder(orderId, user)
-  if (user.role === 'engineer' || (isMineRequest(req) && engineerScopedRoles.has(user.role))) {
+  const canView = await hasPermission(user.role, 'order.view')
+  const canManage = await hasAnyPermission(user.role, ['order.create', 'order.edit', 'order.assign'])
+  const canOwn = await hasPermission(user.role, 'order.engineer.own')
+  if (user.role === 'sales' && action === 'view') return canView && isSalesScopedOrder(orderId, user)
+  if (canOwn && (user.role === 'engineer' || (isMineRequest(req) && engineerScopedRoles.has(user.role)))) {
     return isAssignedEngineer(orderId, user)
   }
-  if (allowedRoles.has(user.role)) return true
-  return false
+  return action === 'view' ? canView : canManage
 }
 
 async function assertCanAccessOwner(ownerType, ownerId, user, action, req) {

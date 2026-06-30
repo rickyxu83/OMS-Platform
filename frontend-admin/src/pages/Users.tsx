@@ -34,6 +34,23 @@ interface User {
   updatedAt?: string;
 }
 
+interface PermissionRole {
+  key: string;
+  label: string;
+}
+
+interface PermissionItem {
+  key: string;
+  label: string;
+}
+
+interface PermissionPayload {
+  roles: PermissionRole[];
+  permissions: PermissionItem[];
+  matrix: Record<string, Record<string, boolean>>;
+  rolePermissions?: Record<string, { label: string; permissions: PermissionItem[] }>;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   assistant: "助理",
@@ -74,7 +91,7 @@ function formatDateTime(value?: string) {
 }
 
 export function Users() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasPermission } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -84,8 +101,10 @@ export function Users() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
-  const [permData, setPermData] = useState<Record<string, { label: string; permissions: { key: string; label: string }[] }> | null>(null);
+  const [permData, setPermData] = useState<PermissionPayload | null>(null);
+  const [permDraft, setPermDraft] = useState<Record<string, Record<string, boolean>>>({});
   const [loadingPerms, setLoadingPerms] = useState(false);
+  const [savingPerms, setSavingPerms] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | number | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [form, setForm] = useState({
@@ -98,7 +117,10 @@ export function Users() {
     email: "",
     status: "active",
   });
-  const canManageUsers = currentUser?.role === "admin";
+  const canCreateUsers = hasPermission("user.create");
+  const canEditUsers = hasPermission("user.edit");
+  const canDeleteUsers = hasPermission("user.delete");
+  const canManagePermissions = hasPermission("permission.manage");
 
   async function load() {
     setLoading(true);
@@ -147,14 +169,49 @@ export function Users() {
   }, [users]);
 
   const permissionRows = useMemo(() => {
-    const rows = new Map<string, string>();
-    Object.values(permData || {}).forEach((role) => {
-      role.permissions.forEach((permission) => {
-        if (!rows.has(permission.key)) rows.set(permission.key, permission.label);
-      });
-    });
-    return Array.from(rows, ([key, label]) => ({ key, label }));
+    return permData?.permissions || [];
   }, [permData]);
+
+  async function loadPermissions(openAfterLoad = false) {
+    setLoadingPerms(true);
+    try {
+      const data = await api.get("/roles/permissions");
+      const payload = data as PermissionPayload;
+      setPermData(payload);
+      setPermDraft(JSON.parse(JSON.stringify(payload.matrix || {})));
+      if (openAfterLoad) setPermDialogOpen(true);
+    } catch {
+      setError("加载权限目录失败");
+    } finally {
+      setLoadingPerms(false);
+    }
+  }
+
+  function togglePermission(role: string, permission: string, checked: boolean | "indeterminate") {
+    if (!canManagePermissions || role === "admin") return;
+    setPermDraft((current) => ({
+      ...current,
+      [role]: {
+        ...(current[role] || {}),
+        [permission]: checked === true,
+      },
+    }));
+  }
+
+  async function savePermissions() {
+    if (!canManagePermissions || savingPerms) return;
+    setSavingPerms(true);
+    setError("");
+    try {
+      const payload = await api.put("/roles/permissions", { matrix: permDraft }) as PermissionPayload;
+      setPermData(payload);
+      setPermDraft(JSON.parse(JSON.stringify(payload.matrix || {})));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存权限失败");
+    } finally {
+      setSavingPerms(false);
+    }
+  }
 
   const selectableFilteredUserIds = useMemo(() => (
     filtered
@@ -327,18 +384,12 @@ export function Users() {
           </Button>
           <Button variant="outline" onClick={async () => {
             if (permData) { setPermDialogOpen(true); return }
-            setLoadingPerms(true);
-            try {
-              const data = await api.get("/roles/permissions");
-              setPermData(data as Record<string, { label: string; permissions: { key: string; label: string }[] }>);
-              setPermDialogOpen(true);
-            } catch { setError("加载权限目录失败") }
-            finally { setLoadingPerms(false) }
+            await loadPermissions(true);
           }}>
             <Shield className="w-4 h-4 mr-2" />
-            权限说明
+            权限配置
           </Button>
-          {canManageUsers ? (
+          {canCreateUsers ? (
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />
               新增成员
@@ -416,7 +467,7 @@ export function Users() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>成员列表 ({filtered.length})</CardTitle>
-            {canManageUsers ? (
+            {canDeleteUsers ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
@@ -465,7 +516,7 @@ export function Users() {
                     className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1">
-                      {canManageUsers ? (
+                      {canDeleteUsers ? (
                         <Checkbox
                           checked={selected}
                           onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
@@ -509,32 +560,36 @@ export function Users() {
                         </div>
                       </div>
                     </div>
-                    {canManageUsers ? (
+                    {canEditUsers || canDeleteUsers ? (
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                          onClick={() => openEdit(user)}
-                          disabled={saving}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          编辑
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                          onClick={() => toggleStatus(user)}
-                          disabled={saving || String(currentUser?.id) === String(user.id)}
-                        >
-                          {user.status === "active" ? (
-                            <UserX className="w-4 h-4 mr-1" />
-                          ) : (
-                            <UserCheck className="w-4 h-4 mr-1" />
-                          )}
-                          {user.status === "active" ? "停用" : "启用"}
-                        </Button>
+                        {canEditUsers ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={() => openEdit(user)}
+                            disabled={saving}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            编辑
+                          </Button>
+                        ) : null}
+                        {(user.status === "active" ? canDeleteUsers : canEditUsers) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={() => toggleStatus(user)}
+                            disabled={saving || String(currentUser?.id) === String(user.id)}
+                          >
+                            {user.status === "active" ? (
+                              <UserX className="w-4 h-4 mr-1" />
+                            ) : (
+                              <UserCheck className="w-4 h-4 mr-1" />
+                            )}
+                            {user.status === "active" ? "停用" : "启用"}
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -638,11 +693,11 @@ export function Users() {
       </Dialog>
 
       <Dialog open={permDialogOpen} onOpenChange={setPermDialogOpen}>
-        <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[960px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>角色权限目录</DialogTitle>
+            <DialogTitle>角色权限配置</DialogTitle>
             <DialogDescription>
-              各角色可访问的功能模块对照表
+              管理员为内置超管，权限固定开启；其他角色保存后立即生效
             </DialogDescription>
           </DialogHeader>
           {loadingPerms ? (
@@ -655,8 +710,8 @@ export function Users() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">功能模块</th>
-                    {Object.values(permData).map((role) => (
-                      <th key={role.label} className="text-center py-2 px-2 font-medium text-muted-foreground text-xs">
+                    {permData.roles.map((role) => (
+                      <th key={role.key} className="text-center py-2 px-2 font-medium text-muted-foreground text-xs">
                         {role.label}
                       </th>
                     ))}
@@ -669,15 +724,17 @@ export function Users() {
                     return (
                       <tr key={permKey} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="py-2 px-3 text-sm">{permLabel}</td>
-                        {Object.values(permData).map((role) => {
-                          const has = role.permissions.some((p) => p.key === permKey);
+                        {permData.roles.map((role) => {
+                          const checked = Boolean(permDraft[role.key]?.[permKey]);
+                          const disabled = !canManagePermissions || role.key === "admin" || savingPerms;
                           return (
-                            <td key={role.label} className="text-center py-2 px-2">
-                              {has ? (
-                                <span className="text-emerald-600 font-bold">✓</span>
-                              ) : (
-                                <span className="text-muted-foreground/30">—</span>
-                              )}
+                            <td key={role.key} className="text-center py-2 px-2">
+                              <Checkbox
+                                checked={checked}
+                                disabled={disabled}
+                                aria-label={`${role.label} ${permLabel}`}
+                                onCheckedChange={(value) => togglePermission(role.key, permKey, value)}
+                              />
                             </td>
                           );
                         })}
@@ -687,6 +744,18 @@ export function Users() {
                 </tbody>
               </table>
             </div>
+          ) : null}
+          {canManagePermissions ? (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => loadPermissions(false)} disabled={loadingPerms || savingPerms}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                重新加载
+              </Button>
+              <Button onClick={savePermissions} disabled={savingPerms || loadingPerms}>
+                {savingPerms ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                {savingPerms ? "保存中…" : "保存权限"}
+              </Button>
+            </DialogFooter>
           ) : null}
         </DialogContent>
       </Dialog>

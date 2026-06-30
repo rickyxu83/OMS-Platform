@@ -28,16 +28,6 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 
-const MAINTENANCE_PARTY_MANAGE_ROLES = new Set([
-  "admin",
-  "assistant",
-  "dispatcher",
-  "operations_director",
-  "engineering_supervisor",
-  "sales",
-  "sales_supervisor",
-]);
-
 interface Party {
   id: string | number;
   name?: string;
@@ -291,8 +281,11 @@ function contactPhones(contacts: Array<{ name?: string; phone?: string }>, fallb
 
 export function MaintenanceParties() {
   const { lang } = useLanguage();
-  const { user } = useAuth();
-  const canManageParties = MAINTENANCE_PARTY_MANAGE_ROLES.has(String(user?.role || ""));
+  const { hasPermission } = useAuth();
+  const canCreateParties = hasPermission("maintenance-party.create");
+  const canEditParties = hasPermission("maintenance-party.edit");
+  const canDeleteParties = hasPermission("maintenance-party.delete");
+  const canManageParties = canEditParties || canDeleteParties;
   const t = I18N[lang];
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
@@ -559,7 +552,7 @@ export function MaintenanceParties() {
             <RefreshCw className="w-4 h-4 mr-2" />
             {t.actions.refresh}
           </Button>
-          {canManageParties ? (
+          {canCreateParties ? (
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />
               {t.actions.create}
@@ -634,7 +627,7 @@ export function MaintenanceParties() {
                 </span>
               ) : null}
             </div>
-            {canManageParties ? (
+            {canDeleteParties ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
@@ -675,7 +668,7 @@ export function MaintenanceParties() {
                 <table className="w-full min-w-[980px] caption-bottom text-sm">
                   <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                     <TableRow>
-                      {canManageParties ? <TableHead className="w-10 text-center" /> : null}
+                      {canDeleteParties ? <TableHead className="w-10 text-center" /> : null}
                       <TableHead className="text-center">{t.list.name}</TableHead>
                       <TableHead className="w-[130px] text-center">{t.list.type}</TableHead>
                       <TableHead className="text-center">{t.list.contacts}</TableHead>
@@ -706,7 +699,7 @@ export function MaintenanceParties() {
                             }
                           }}
                         >
-                          {canManageParties ? (
+                          {canDeleteParties ? (
                             <TableCell onClick={(event) => event.stopPropagation()}>
                               <Checkbox
                                 checked={selected}
@@ -786,14 +779,18 @@ export function MaintenanceParties() {
                           {canManageParties ? (
                             <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                               <div className="inline-flex gap-2">
-                                <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
-                                  <Pencil className="w-4 h-4 mr-1" />
-                                  {t.actions.edit}
-                                </Button>
-                                <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
-                                  <Trash2 className="w-4 h-4 mr-1" />
-                                  {t.actions.delete}
-                                </Button>
+                                {canEditParties ? (
+                                  <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
+                                    <Pencil className="w-4 h-4 mr-1" />
+                                    {t.actions.edit}
+                                  </Button>
+                                ) : null}
+                                {canDeleteParties ? (
+                                  <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    {t.actions.delete}
+                                  </Button>
+                                ) : null}
                               </div>
                             </TableCell>
                           ) : null}
@@ -890,7 +887,7 @@ export function MaintenanceParties() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
-            {detailTarget && canManageParties ? (
+            {detailTarget && canEditParties ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

@@ -38,6 +38,42 @@ async function ensureMaintenancePartyExists(maintenancePartyId) {
   }
 }
 
+async function customerSalesperson(customerId) {
+  const rows = await query('SELECT id, salesperson FROM customers WHERE id = :id LIMIT 1', { id: customerId })
+  if (!rows[0]) {
+    throw badRequest('客户不存在')
+  }
+  return rows[0].salesperson
+}
+
+async function assertSalesCanUseCustomer(customerId, user) {
+  if (user?.role !== 'sales') return
+  const salesperson = await customerSalesperson(customerId)
+  assertSalesCanAccessSalesperson(salesperson, user, forbidden)
+}
+
+async function assertSalesCanUpdateDevices(deviceIds, user) {
+  if (user?.role !== 'sales') return
+  const ids = [...new Set(deviceIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+  if (!ids.length) return
+  const params = {}
+  const placeholders = ids.map((id, index) => {
+    const key = `accessDeviceId${index}`
+    params[key] = id
+    return `:${key}`
+  }).join(', ')
+  const rows = await query(
+    `SELECT d.id, c.salesperson AS customer_salesperson
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     WHERE d.id IN (${placeholders})`,
+    params,
+  )
+  for (const row of rows) {
+    assertSalesCanAccessSalesperson(row.customer_salesperson, user, forbidden)
+  }
+}
+
 function normalizeDate(value) {
   const text = String(value || '').trim()
   return text || null
@@ -199,6 +235,7 @@ async function create(req, res) {
   if (!customerId || !normalizedModel || !normalizedSerialNo) {
     throw badRequest('客户、设备型号和 S/N 序列号不能为空')
   }
+  await assertSalesCanUseCustomer(customerId, req.user)
   const normalizedName = normalizeText(name)
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)
@@ -303,6 +340,7 @@ async function batchUpdate(req, res) {
   if (numericIds.length === 0) {
     throw badRequest('设备 ID 不合法')
   }
+  await assertSalesCanUpdateDevices(numericIds, req.user)
 
   const setClauses = []
   const params = {}
@@ -396,9 +434,20 @@ async function update(req, res) {
   if (!normalizedModel) {
     throw badRequest('设备型号不能为空')
   }
-  const existing = await query('SELECT id FROM devices WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query(
+    `SELECT d.id, d.customer_id, c.salesperson AS customer_salesperson
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     WHERE d.id = :id
+     LIMIT 1`,
+    { id: req.params.id },
+  )
   if (!existing[0]) {
     throw notFound('设备不存在')
+  }
+  assertSalesCanAccessSalesperson(existing[0].customer_salesperson, req.user, forbidden)
+  if (customerId && String(customerId) !== String(existing[0].customer_id)) {
+    await assertSalesCanUseCustomer(customerId, req.user)
   }
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)

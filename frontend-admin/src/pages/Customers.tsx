@@ -649,7 +649,7 @@ function previewScheduleMeta(schedule: CustomerSchedule, labels: { enabled: stri
 
 export function Customers() {
   const { lang } = useLanguage();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -687,10 +687,10 @@ export function Customers() {
   const [addressLocating, setAddressLocating] = useState(false);
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const userRole = String(user?.role || "");
-  const canManageCustomer = CUSTOMER_DELETE_ROLES.has(userRole);
-  const canDeleteCustomer = canManageCustomer;
-  const canForceDeleteCustomer = CUSTOMER_FORCE_DELETE_ROLES.has(userRole);
-  const canMergeCustomer = CUSTOMER_MERGE_ROLES.has(userRole);
+  const canManageCustomer = hasPermission("customer.create", "customer.edit");
+  const canDeleteCustomer = hasPermission("customer.delete");
+  const canForceDeleteCustomer = canDeleteCustomer;
+  const canMergeCustomer = hasPermission("customer.merge");
   const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };

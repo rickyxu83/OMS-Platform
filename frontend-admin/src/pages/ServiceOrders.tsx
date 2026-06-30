@@ -602,7 +602,7 @@ function DetailBlock({ label, value }: { label: string; value?: string }) {
 
 export function ServiceOrders() {
   const { lang } = useLanguage();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -650,8 +650,12 @@ export function ServiceOrders() {
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
   const userRole = String(user?.role || "");
   const isBusinessUser = isBusinessRole(userRole);
-  const canManageOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(userRole);
-  const canDeleteOrders = canManageOrders;
+  const canCreateOrders = hasPermission("order.create");
+  const canEditOrders = hasPermission("order.edit");
+  const canAssignOrders = hasPermission("order.assign");
+  const canApproveOrders = hasPermission("order.approve");
+  const canDeleteOrders = hasPermission("order.delete");
+  const canBulkDeleteOrders = hasPermission("order.bulk-delete");
   const statusOptions = [
     { value: "all", label: t.filters.all },
     { value: "draft", label: t.status.draft },
@@ -1199,7 +1203,7 @@ export function ServiceOrders() {
 
   async function bulkDeleteOrders() {
     if (!selectedIds.length) return;
-    const canUseBulkDeleteEndpoint = user?.role === "admin";
+    const canUseBulkDeleteEndpoint = canBulkDeleteOrders;
     const message = canUseBulkDeleteEndpoint
       ? `确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联。`
       : `确认删除选中的 ${selectedIds.length} 张工单？只有未提交且符合当前角色权限的工单可以删除。`;
@@ -1357,7 +1361,7 @@ export function ServiceOrders() {
               批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
             </Button>
           ) : null}
-          {canManageOrders ? (
+          {canCreateOrders ? (
             <Button onClick={openCreateOrder} disabled={saving}>
               <Plus className="w-4 h-4 mr-2" />
               新增工单
@@ -1502,8 +1506,8 @@ export function ServiceOrders() {
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                 const workflowStatus = getWorkflowStatus(order);
                 const serviceTime = serviceTimeRange(order);
-                const canConfirmInspection = canManageOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
-                const canAssign = canManageOrders && workflowStatus !== "cancelled" && workflowStatus !== "submitted";
+                const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
+                const canAssign = canAssignOrders && workflowStatus !== "cancelled" && workflowStatus !== "submitted";
                 const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
                 return (
                   <div

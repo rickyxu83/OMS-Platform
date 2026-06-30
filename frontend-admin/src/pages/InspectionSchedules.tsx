@@ -24,8 +24,6 @@ import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-const INSPECTION_SCHEDULE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"]);
-
 interface Schedule {
   id: string | number;
   name?: string;
@@ -101,8 +99,8 @@ function inputDate(value?: string) {
 }
 
 export function InspectionSchedules() {
-  const { user } = useAuth();
-  const canManageSchedules = INSPECTION_SCHEDULE_MANAGE_ROLES.has(String(user?.role || ""));
+  const { hasPermission } = useAuth();
+  const canManageSchedules = hasPermission("inspection.create", "inspection.edit", "inspection.delete", "inspection.generate");
   const [searchParams, setSearchParams] = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);

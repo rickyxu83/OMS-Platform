@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface SettingsForm {
@@ -409,6 +410,9 @@ function RecipientPicker({
 }
 
 export function SystemSettings() {
+  const { hasPermission } = useAuth();
+  const canEditSettings = hasPermission("settings.edit");
+  const canManageAnnouncements = hasPermission("announcement.manage");
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
@@ -510,7 +514,7 @@ export function SystemSettings() {
         },
       });
       await Promise.all([
-        loadAnnouncements(),
+        canManageAnnouncements ? loadAnnouncements().catch(() => setAnnouncements([])) : Promise.resolve(setAnnouncements([])),
         loadRecipientUsers().catch(() => setRecipientUsers([])),
       ]);
     } catch (e) {
@@ -613,6 +617,7 @@ export function SystemSettings() {
   }
 
   async function saveAnnouncement() {
+    if (!canManageAnnouncements) return;
     setAnnouncementSaving(true);
     setError("");
     try {
@@ -637,6 +642,7 @@ export function SystemSettings() {
   }
 
   async function deleteAnnouncement(id: number) {
+    if (!canManageAnnouncements) return;
     if (!window.confirm("确定删除这条公告吗？已读记录也会一起删除。")) return;
     setAnnouncementSaving(true);
     setError("");
@@ -687,7 +693,7 @@ export function SystemSettings() {
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>AI 与 API Key</CardTitle>
-                <Button variant="outline" size="sm" onClick={testAi} disabled={loading || saving || testingAi}>
+                <Button variant="outline" size="sm" onClick={testAi} disabled={!canEditSettings || loading || saving || testingAi}>
                   {testingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                   测试 AI
                 </Button>
@@ -748,7 +754,7 @@ export function SystemSettings() {
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>SMTP 邮件</CardTitle>
-                <Button variant="outline" size="sm" onClick={testMail} disabled={loading || saving || testingMail}>
+                <Button variant="outline" size="sm" onClick={testMail} disabled={!canEditSettings || loading || saving || testingMail}>
                   {testingMail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   测试 SMTP
                 </Button>
@@ -892,7 +898,7 @@ export function SystemSettings() {
                   <Bell className="h-5 w-5 text-primary" />
                   <CardTitle>登录公告</CardTitle>
                 </div>
-                <Button variant="outline" size="sm" onClick={resetAnnouncementForm} disabled={announcementSaving}>
+                <Button variant="outline" size="sm" onClick={resetAnnouncementForm} disabled={!canManageAnnouncements || announcementSaving}>
                   <Plus className="mr-2 h-4 w-4" />
                   新公告
                 </Button>
@@ -1005,11 +1011,11 @@ export function SystemSettings() {
 
                 <div className="flex flex-wrap justify-end gap-2">
                   {editingAnnouncementId && (
-                    <Button variant="outline" onClick={resetAnnouncementForm} disabled={announcementSaving}>
+                    <Button variant="outline" onClick={resetAnnouncementForm} disabled={!canManageAnnouncements || announcementSaving}>
                       取消编辑
                     </Button>
                   )}
-                  <Button onClick={saveAnnouncement} disabled={announcementSaving}>
+                  <Button onClick={saveAnnouncement} disabled={!canManageAnnouncements || announcementSaving}>
                     {announcementSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     {editingAnnouncementId ? "更新公告" : "发布公告"}
                   </Button>
@@ -1043,10 +1049,10 @@ export function SystemSettings() {
                             </div>
                           </div>
                           <div className="flex shrink-0 gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => editAnnouncement(item)} disabled={announcementSaving} aria-label="编辑公告">
+                            <Button variant="ghost" size="icon" onClick={() => editAnnouncement(item)} disabled={!canManageAnnouncements || announcementSaving} aria-label="编辑公告">
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => deleteAnnouncement(item.id)} disabled={announcementSaving} aria-label="删除公告">
+                            <Button variant="ghost" size="icon" onClick={() => deleteAnnouncement(item.id)} disabled={!canManageAnnouncements || announcementSaving} aria-label="删除公告">
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
                           </div>
@@ -1284,7 +1290,7 @@ export function SystemSettings() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
               </Button>
-              <Button size="sm" onClick={save} disabled={loading || saving}>
+              <Button size="sm" onClick={save} disabled={!canEditSettings || loading || saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 保存设置
               </Button>

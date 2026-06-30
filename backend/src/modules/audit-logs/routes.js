@@ -1,10 +1,9 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
-const { ROLE_GROUPS } = require('../../permissions/roles')
+const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
-router.get('/', requireRoles(...ROLE_GROUPS.auditLogs), controller.list)
+router.get('/', requirePermission('audit-log.view'), controller.list)
 
 module.exports = router

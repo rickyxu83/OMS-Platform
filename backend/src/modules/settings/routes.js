@@ -1,16 +1,13 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
-const { ROLE_GROUPS } = require('../../permissions/roles')
+const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
-const settingsRoles = ROLE_GROUPS.settings
-
-router.get('/', requireRoles(...settingsRoles), controller.list)
-router.get('/public-map', requireRoles(...ROLE_GROUPS.adminWorkspace), controller.publicMapSettings)
-router.put('/', requireRoles(...settingsRoles), controller.update)
-router.post('/test-ai', requireRoles(...settingsRoles), controller.testAi)
-router.post('/test-mail', requireRoles(...settingsRoles), controller.testMail)
+router.get('/', requirePermission('settings.view'), controller.list)
+router.get('/public-map', requirePermission('workspace.admin'), controller.publicMapSettings)
+router.put('/', requirePermission('settings.edit'), controller.update)
+router.post('/test-ai', requirePermission('settings.edit'), controller.testAi)
+router.post('/test-mail', requirePermission('settings.edit'), controller.testMail)
 
 module.exports = router

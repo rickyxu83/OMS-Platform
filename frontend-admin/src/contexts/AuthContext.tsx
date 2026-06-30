@@ -11,6 +11,7 @@ interface User {
   id?: string
   name: string
   role: string
+  permissions?: string[]
   availableWorkspaces?: WorkspaceOption[]
   defaultWorkspace?: string
   [key: string]: any
@@ -28,6 +29,7 @@ interface AuthContextType {
   login: (username: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => void
   isAuthenticated: boolean
+  hasPermission: (...permissions: string[]) => boolean
 }
 
 const AuthContext = createContext<AuthContextType>(null!)
@@ -40,6 +42,13 @@ function hasAdminWorkspace(user?: User | null) {
   const workspaces = availableWorkspaces(user)
   if (workspaces.length > 0) return workspaces.some((workspace) => workspace.key === 'admin')
   return Boolean(user?.role && ADMIN_ACCESS_ROLES.includes(user.role))
+}
+
+export function userHasPermission(user: User | null | undefined, ...permissions: string[]) {
+  if (!permissions.length) return true
+  if (user?.role === 'admin') return true
+  const granted = new Set(Array.isArray(user?.permissions) ? user.permissions : [])
+  return permissions.some((permission) => granted.has(permission))
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -83,8 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false)
   }, [])
 
+  const hasPermission = useCallback((...permissions: string[]) => userHasPermission(user, ...permissions), [user])
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated, hasPermission }}>
       {children}
     </AuthContext.Provider>
   )

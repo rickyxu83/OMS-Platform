@@ -9,8 +9,6 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
-const FEEDBACK_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales_supervisor", "sales"]);
-
 interface FeedbackItem {
   id: string | number;
   type: "problem" | "suggestion";
@@ -52,8 +50,8 @@ function submitterName(item: FeedbackItem) {
 }
 
 export function Feedback() {
-  const { user } = useAuth();
-  const canManageFeedback = FEEDBACK_MANAGE_ROLES.has(String(user?.role || ""));
+  const { hasPermission } = useAuth();
+  const canManageFeedback = hasPermission("feedback.manage");
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("open");

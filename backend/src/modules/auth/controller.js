@@ -2,7 +2,12 @@ const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const env = require('../../config/env')
 const { transaction } = require('../../config/db')
-const { ROLE_GROUPS, getAvailableWorkspaces, getDefaultWorkspace } = require('../../permissions/roles')
+const { ROLE_GROUPS } = require('../../permissions/roles')
+const {
+  getAvailableWorkspacesForRole,
+  getDefaultWorkspaceForRole,
+  listPermissionsForRole,
+} = require('../../permissions/store')
 const { badRequest, unauthorized } = require('../../utils/http-error')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { ensureUserLoginColumns } = require('../users/schema')
@@ -44,10 +49,13 @@ function clearSessionCookie(req, res) {
   res.clearCookie(env.sessionCookieName || 'oms_platform_token', options)
 }
 
-function publicUser(user) {
+async function publicUser(user) {
   const hasEngineerSignature = Boolean(user.engineer_signature)
   const mustChangePassword = Boolean(user.must_change_password)
   const hasAvatar = Boolean(user.avatar_path)
+  const permissionDetails = await listPermissionsForRole(user.role)
+  const availableWorkspaces = await getAvailableWorkspacesForRole(user.role)
+  const defaultWorkspace = await getDefaultWorkspaceForRole(user.role)
   return {
     id: user.id,
     username: user.username,
@@ -60,15 +68,17 @@ function publicUser(user) {
     hasEngineerSignature,
     mustChangePassword,
     requiresOnboarding: mustChangePassword || (ROLE_GROUPS.engineerWorkspace.includes(user.role) && !hasEngineerSignature),
-    availableWorkspaces: getAvailableWorkspaces(user.role),
-    defaultWorkspace: getDefaultWorkspace(user.role),
+    availableWorkspaces,
+    defaultWorkspace,
+    permissions: permissionDetails.map((permission) => permission.key),
+    permissionDetails,
     avatarUrl: hasAvatar ? `/api/v1/avatars/${String(user.avatar_path).split(/[\\/]/).pop()}` : '',
     hasAvatar,
   }
 }
 
-function sessionPayload(user) {
-  const safeUser = publicUser(user)
+async function sessionPayload(user) {
+  const safeUser = await publicUser(user)
   return {
     user: safeUser,
     availableWorkspaces: safeUser.availableWorkspaces,
@@ -155,12 +165,12 @@ async function login(req, res) {
 
   res.json({
     token,
-    ...sessionPayload(user),
+    ...await sessionPayload(user),
   })
 }
 
-function me(req, res) {
-  res.json(sessionPayload(req.user))
+async function me(req, res) {
+  res.json(await sessionPayload(req.user))
 }
 
 function logout(req, res) {

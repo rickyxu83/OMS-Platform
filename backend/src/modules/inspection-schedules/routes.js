@@ -1,19 +1,15 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
-const { ROLE_GROUPS } = require('../../permissions/roles')
+const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
-const opsRoles = ROLE_GROUPS.inspectionScheduleOps
-const viewRoles = ROLE_GROUPS.inspectionScheduleView
-
-router.get('/', requireRoles(...viewRoles), controller.list)
-router.post('/bulk', requireRoles(...opsRoles), controller.createBulk)
-router.post('/', requireRoles(...opsRoles), controller.create)
-router.post('/generate-due', requireRoles(...opsRoles), controller.generateDue)
-router.get('/:id', requireRoles(...viewRoles), controller.detail)
-router.put('/:id', requireRoles(...opsRoles), controller.update)
-router.delete('/:id', requireRoles(...opsRoles), controller.remove)
+router.get('/', requirePermission('inspection.view'), controller.list)
+router.post('/bulk', requirePermission('inspection.create'), controller.createBulk)
+router.post('/', requirePermission('inspection.create'), controller.create)
+router.post('/generate-due', requirePermission('inspection.generate'), controller.generateDue)
+router.get('/:id', requirePermission('inspection.view'), controller.detail)
+router.put('/:id', requirePermission('inspection.edit'), controller.update)
+router.delete('/:id', requirePermission('inspection.delete'), controller.remove)
 
 module.exports = router

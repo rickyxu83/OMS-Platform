@@ -20,10 +20,17 @@ const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module)
 const Feedback = lazy(() => import("@/pages/Feedback").then((module) => ({ default: module.Feedback })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
-const ROUTE_ACCESS_ROLES: Record<string, string[]> = {
-  users: ["admin", "dispatcher", "operations_director", "engineering_supervisor", "administrative_supervisor", "sales_supervisor"],
-  "audit-logs": ["admin", "operations_director", "engineering_supervisor"],
-  settings: ["admin", "operations_director", "engineering_supervisor"],
+const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
+  "service-orders": ["order.view"],
+  "inspection-schedules": ["inspection.view"],
+  customers: ["customer.view"],
+  devices: ["device.view"],
+  "maintenance-parties": ["maintenance-party.view"],
+  timesheets: ["timesheet.view"],
+  users: ["user.view"],
+  "audit-logs": ["audit-log.view"],
+  settings: ["settings.view"],
+  feedback: ["feedback.manage"],
 }
 
 const CHUNK_RELOAD_KEY = "oms-admin:chunk-reload"
@@ -61,8 +68,8 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
   }
 }
 
-function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: string[] }) {
-  const { isAuthenticated, user, loading } = useAuth()
+function ProtectedRoute({ children, allowPermissions }: { children: ReactNode; allowPermissions?: string[] }) {
+  const { isAuthenticated, user, loading, hasPermission } = useAuth()
   const location = useLocation()
   const { lang } = useLanguage()
 
@@ -82,7 +89,7 @@ function ProtectedRoute({ children, allow }: { children: ReactNode; allow?: stri
     return <Navigate to="/change-password" replace />
   }
 
-  if (allow && user && !allow.includes(user.role)) {
+  if (allowPermissions && user && !hasPermission(...allowPermissions)) {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -98,9 +105,9 @@ function PageLoading() {
   )
 }
 
-function ProtectedAdminPage({ children, allow }: { children: ReactNode; allow?: string[] }) {
+function ProtectedAdminPage({ children, allowPermissions }: { children: ReactNode; allowPermissions?: string[] }) {
   return (
-    <ProtectedRoute allow={allow}>
+    <ProtectedRoute allowPermissions={allowPermissions}>
       <Suspense fallback={<PageLoading />}>
         <AdminLayout>
           {children}
@@ -148,7 +155,7 @@ export default function App() {
           <Route
             path="/service-orders"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-orders"]}>
                 <ServiceOrders />
               </ProtectedAdminPage>
             }
@@ -156,7 +163,7 @@ export default function App() {
           <Route
             path="/inspection-schedules"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["inspection-schedules"]}>
                 <InspectionSchedules />
               </ProtectedAdminPage>
             }
@@ -164,7 +171,7 @@ export default function App() {
           <Route
             path="/customers"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.customers}>
                 <Customers />
               </ProtectedAdminPage>
             }
@@ -172,7 +179,7 @@ export default function App() {
           <Route
             path="/devices"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.devices}>
                 <Devices />
               </ProtectedAdminPage>
             }
@@ -180,7 +187,7 @@ export default function App() {
           <Route
             path="/maintenance-parties"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["maintenance-parties"]}>
                 <MaintenanceParties />
               </ProtectedAdminPage>
             }
@@ -188,7 +195,7 @@ export default function App() {
           <Route
             path="/timesheets"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.timesheets}>
                 <Timesheets />
               </ProtectedAdminPage>
             }
@@ -196,7 +203,7 @@ export default function App() {
           <Route
             path="/users"
             element={
-              <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES.users}>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.users}>
                 <Users />
               </ProtectedAdminPage>
             }
@@ -204,7 +211,7 @@ export default function App() {
           <Route
             path="/audit-logs"
             element={
-              <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES["audit-logs"]}>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["audit-logs"]}>
                 <AuditLogs />
               </ProtectedAdminPage>
             }
@@ -212,7 +219,7 @@ export default function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedAdminPage allow={ROUTE_ACCESS_ROLES.settings}>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.settings}>
                 <SystemSettings />
               </ProtectedAdminPage>
             }
@@ -220,7 +227,7 @@ export default function App() {
           <Route
             path="/feedback"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.feedback}>
                 <Feedback />
               </ProtectedAdminPage>
             }

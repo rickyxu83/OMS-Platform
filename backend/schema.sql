@@ -344,6 +344,18 @@ CREATE TABLE system_settings (
   CONSTRAINT fk_system_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE role_permissions (
+  role_key VARCHAR(64) NOT NULL,
+  permission_key VARCHAR(128) NOT NULL,
+  enabled TINYINT(1) NOT NULL DEFAULT 0,
+  updated_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (role_key, permission_key),
+  KEY idx_role_permissions_permission_key (permission_key),
+  KEY idx_role_permissions_updated_by (updated_by),
+  CONSTRAINT fk_role_permissions_updated_by FOREIGN KEY (updated_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE audit_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   actor_id BIGINT UNSIGNED NOT NULL,

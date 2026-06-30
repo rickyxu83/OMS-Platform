@@ -1,18 +1,14 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
-const { ROLE_GROUPS } = require('../../permissions/roles')
+const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
-const deviceWriteRoles = ROLE_GROUPS.deviceWrite
-const deviceDeleteRoles = ROLE_GROUPS.deviceDelete
-
-router.get('/', controller.list)
-router.post('/', requireRoles(...deviceWriteRoles), controller.create)
-router.get('/:id', controller.detail)
-router.put('/batch', requireRoles(...deviceWriteRoles), controller.batchUpdate)
-router.put('/:id', requireRoles(...deviceWriteRoles), controller.update)
-router.delete('/:id', requireRoles(...deviceDeleteRoles), controller.remove)
+router.get('/', requirePermission('device.view'), controller.list)
+router.post('/', requirePermission('device.create'), controller.create)
+router.get('/:id', requirePermission('device.view'), controller.detail)
+router.put('/batch', requirePermission('device.edit'), controller.batchUpdate)
+router.put('/:id', requirePermission('device.edit'), controller.update)
+router.delete('/:id', requirePermission('device.delete'), controller.remove)
 
 module.exports = router

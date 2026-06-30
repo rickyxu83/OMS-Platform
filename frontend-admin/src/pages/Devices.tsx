@@ -21,8 +21,6 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
-const DEVICE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales", "sales_supervisor"]);
-
 interface Device {
   id: string | number;
   name?: string;
@@ -304,8 +302,11 @@ function mergeCustomers(current: Customer[], incoming: Customer[]) {
 }
 
 export function Devices() {
-  const { user } = useAuth();
-  const canManageDevices = DEVICE_MANAGE_ROLES.has(String(user?.role || ""));
+  const { hasPermission } = useAuth();
+  const canCreateDevices = hasPermission("device.create");
+  const canEditDevices = hasPermission("device.edit");
+  const canDeleteDevices = hasPermission("device.delete");
+  const canSelectDevices = canEditDevices || canDeleteDevices;
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
@@ -868,7 +869,7 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          {canManageDevices ? (
+          {canCreateDevices ? (
             <>
               <Button variant="outline" onClick={openBulkCreate}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -977,7 +978,7 @@ export function Devices() {
                 </span>
               ) : null}
             </div>
-            {canManageDevices ? (
+            {canEditDevices || canDeleteDevices ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
@@ -993,24 +994,28 @@ export function Devices() {
                     清空选择
                   </Button>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={openBatchEdit}
-                  disabled={saving || !selectedDeviceIds.length}
-                >
-                  <Edit3 className="w-4 h-4 mr-2" />
-                  批量编辑{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={bulkDeleteDevices}
-                  disabled={saving || !selectedDeviceIds.length}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
-                </Button>
+                {canEditDevices ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={openBatchEdit}
+                    disabled={saving || !selectedDeviceIds.length}
+                  >
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    批量编辑{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+                  </Button>
+                ) : null}
+                {canDeleteDevices ? (
+                  <Button
+                    variant="ghost"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={bulkDeleteDevices}
+                    disabled={saving || !selectedDeviceIds.length}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1027,7 +1032,7 @@ export function Devices() {
               <div className="min-w-[760px]">
                 <div className="sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {canManageDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
+                    {canSelectDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
                     <div className="w-5 shrink-0" aria-hidden="true" />
                     <div className="grid min-w-0 flex-1 grid-cols-5 gap-4 text-center">
                       <div>型号 / 客户</div>
@@ -1037,7 +1042,7 @@ export function Devices() {
                       <div>状态</div>
                     </div>
                   </div>
-                  {canManageDevices ? <div className="w-[132px] text-center">操作</div> : null}
+                  {canSelectDevices ? <div className="w-[132px] text-center">操作</div> : null}
                 </div>
               {filtered.map((device) => {
                 const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
@@ -1060,7 +1065,7 @@ export function Devices() {
                     }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {canManageDevices ? (
+                      {canSelectDevices ? (
                         <div onClick={(event) => event.stopPropagation()}>
                           <Checkbox
                             checked={selected}
@@ -1141,16 +1146,20 @@ export function Devices() {
                         </div>
                       </div>
                     </div>
-                    {canManageDevices ? (
+                    {canEditDevices || canDeleteDevices ? (
                       <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
-                          <Pencil className="w-4 h-4 mr-1" />
-                          编辑
-                        </Button>
-                        <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          删除
-                        </Button>
+                        {canEditDevices ? (
+                          <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
+                            <Pencil className="w-4 h-4 mr-1" />
+                            编辑
+                          </Button>
+                        ) : null}
+                        {canDeleteDevices ? (
+                          <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            删除
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1324,7 +1333,7 @@ export function Devices() {
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               关闭
             </Button>
-            {detailTarget && canManageDevices ? (
+            {detailTarget && canEditDevices ? (
               <Button onClick={() => {
                 const target = detailTarget;
                 setDetailTarget(null);

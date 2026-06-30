@@ -1,14 +1,9 @@
 const express = require('express')
 const controller = require('./controller')
-const { requireRoles } = require('../../middleware/auth')
+const { requirePermission } = require('../../middleware/auth')
 const { aiSummaryLimiter } = require('../../middleware/rate-limit')
-const { ROLE_GROUPS } = require('../../permissions/roles')
 
 const router = express.Router()
-
-const opsRoles = ROLE_GROUPS.serviceOrderOps
-const viewRoles = ROLE_GROUPS.serviceOrderView
-const engineerRoles = ROLE_GROUPS.serviceOrderEngineer
 
 function limitWhenWorkSummaryRequested(req, res, next) {
   if (String(req.query.includeWorkSummary || '') === '1') {
@@ -18,29 +13,29 @@ function limitWhenWorkSummaryRequested(req, res, next) {
   next()
 }
 
-router.get('/stats/overview', requireRoles(...viewRoles), controller.statsOverview)
-router.get('/timesheet/monthly', requireRoles(...engineerRoles, ...viewRoles), limitWhenWorkSummaryRequested, controller.timesheetMonthly)
-router.post('/timesheet/manual-entries', requireRoles(...engineerRoles), controller.createTimesheetManualEntry)
-router.delete('/timesheet/manual-entries/:id', requireRoles(...engineerRoles), controller.deleteTimesheetManualEntry)
-router.get('/customer-signature/latest', requireRoles(...engineerRoles), controller.latestCustomerSignature)
-router.get('/self-report/ai-draft/status', requireRoles(...engineerRoles), controller.aiSelfReportDraftStatus)
-router.get('/draft/self-report', requireRoles(...engineerRoles), controller.getSelfReportDraft)
-router.put('/draft/self-report', requireRoles(...engineerRoles), controller.saveSelfReportDraft)
-router.delete('/draft/self-report', requireRoles(...engineerRoles), controller.deleteSelfReportDraft)
-router.post('/bulk-delete', requireRoles('admin'), controller.bulkDelete)
-router.get('/', requireRoles(...engineerRoles, ...viewRoles), controller.list)
-router.post('/', requireRoles(...opsRoles), controller.create)
-router.post('/:id/confirm-inspection', requireRoles(...opsRoles), controller.confirmInspectionOrder)
-router.post('/:id/assign', requireRoles(...opsRoles), controller.assign)
-router.post('/:id/transition', requireRoles(...opsRoles), controller.transition)
-router.post('/self-report/ai-draft', requireRoles(...engineerRoles), aiSummaryLimiter, controller.aiSelfReportDraft)
-router.post('/self-report', requireRoles(...engineerRoles), controller.createSelfReport)
-router.get('/:id/export-pdf', requireRoles(...engineerRoles, ...viewRoles), controller.exportPdf)
-router.get('/export-pdf-batch', requireRoles(...viewRoles), controller.exportPdfBatch)
-router.get('/:id', controller.detail)
-router.post('/:id/cancel', requireRoles(...engineerRoles), controller.cancelByEngineer)
-router.put('/:id/self-report', requireRoles(...engineerRoles), controller.updateSelfReport)
-router.put('/:id', requireRoles(...opsRoles), controller.update)
-router.delete('/:id', requireRoles(...engineerRoles, ...opsRoles), controller.remove)
+router.get('/stats/overview', requirePermission('order.view'), controller.statsOverview)
+router.get('/timesheet/monthly', requirePermission('order.engineer.own', 'timesheet.view'), limitWhenWorkSummaryRequested, controller.timesheetMonthly)
+router.post('/timesheet/manual-entries', requirePermission('order.engineer.own'), controller.createTimesheetManualEntry)
+router.delete('/timesheet/manual-entries/:id', requirePermission('order.engineer.own'), controller.deleteTimesheetManualEntry)
+router.get('/customer-signature/latest', requirePermission('order.engineer.own'), controller.latestCustomerSignature)
+router.get('/self-report/ai-draft/status', requirePermission('order.engineer.own'), controller.aiSelfReportDraftStatus)
+router.get('/draft/self-report', requirePermission('order.engineer.own'), controller.getSelfReportDraft)
+router.put('/draft/self-report', requirePermission('order.engineer.own'), controller.saveSelfReportDraft)
+router.delete('/draft/self-report', requirePermission('order.engineer.own'), controller.deleteSelfReportDraft)
+router.post('/bulk-delete', requirePermission('order.bulk-delete'), controller.bulkDelete)
+router.get('/', requirePermission('order.engineer.own', 'order.view'), controller.list)
+router.post('/', requirePermission('order.create'), controller.create)
+router.post('/:id/confirm-inspection', requirePermission('order.assign'), controller.confirmInspectionOrder)
+router.post('/:id/assign', requirePermission('order.assign'), controller.assign)
+router.post('/:id/transition', requirePermission('order.edit', 'order.approve'), controller.transition)
+router.post('/self-report/ai-draft', requirePermission('order.engineer.own'), aiSummaryLimiter, controller.aiSelfReportDraft)
+router.post('/self-report', requirePermission('order.engineer.own'), controller.createSelfReport)
+router.get('/:id/export-pdf', requirePermission('order.engineer.own', 'order.view'), controller.exportPdf)
+router.get('/export-pdf-batch', requirePermission('order.view'), controller.exportPdfBatch)
+router.get('/:id', requirePermission('order.engineer.own', 'order.view'), controller.detail)
+router.post('/:id/cancel', requirePermission('order.engineer.own'), controller.cancelByEngineer)
+router.put('/:id/self-report', requirePermission('order.engineer.own'), controller.updateSelfReport)
+router.put('/:id', requirePermission('order.edit'), controller.update)
+router.delete('/:id', requirePermission('order.delete'), controller.remove)
 
 module.exports = router
