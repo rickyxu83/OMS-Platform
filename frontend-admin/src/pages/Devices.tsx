@@ -376,8 +376,8 @@ async function downloadDeviceImportTemplate() {
   worksheet.getRow(1).height = 24;
   worksheet.getRow(1).eachCell((cell) => {
     const required = requiredHeaders.has(String(cell.value || ""));
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: required ? "FFB91C1C" : "FF0F766E" } };
+    cell.font = { bold: true, color: { argb: required ? "FF7F1D1D" : "FF4C1D95" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
@@ -415,10 +415,11 @@ async function downloadDeviceImportTemplate() {
     ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
     ["质保截止", "选填", "设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。"],
     ["日期字段", "选填", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
+    ["填写建议", "说明", "只需先填客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后再在系统中批量补齐或修改。"],
   ].forEach(([field, required, description]) => help.addRow({ field, required, description }));
-  help.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  help.getRow(1).font = { bold: true, color: { argb: "FF4C1D95" } };
   help.getRow(1).eachCell((cell) => {
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
     cell.alignment = { vertical: "middle", horizontal: "center" };
   });
 
@@ -1919,7 +1920,8 @@ export function Devices() {
           ) : null}
           <div className="space-y-4 py-2">
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
-              必填字段为客户、设备型号和 SN。客户名称必须和系统内一模一样，否则该行会导入失败；重复 SN 会跳过该行。
+              只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
+              客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
