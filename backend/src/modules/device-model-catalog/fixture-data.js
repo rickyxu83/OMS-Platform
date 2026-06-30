@@ -166,11 +166,11 @@ function hdsVspModel(model, extraAliases = []) {
 }
 
 function lenovoNetappThinkSystemStorageModel(model, extraAliases = []) {
-  return storageModel('LenovoNetapp', `LenovoNetapp ThinkSystem ${model}`, model, [
+  return storageModel('Lenovo', `Lenovo ThinkSystem ${model}`, model, [
     `LenovoNetapp ${model}`,
+    `LenovoNetapp ThinkSystem ${model}`,
     `Lenovo NetApp ${model}`,
     `Lenovo NetApp ThinkSystem ${model}`,
-    `Lenovo ThinkSystem ${model}`,
     `Lenovo ${model}`,
     `ThinkSystem ${model}`,
     ...(Array.isArray(extraAliases) ? extraAliases : []),
@@ -970,6 +970,25 @@ const HUAWEI_ROUTER_FIXTURE_DATA = [
   huaweiRouterModel('NetEngine 8000 M8', ['NE8000 M8', 'NetEngine8000 M8']),
 ]
 
+const HUAWEI_LEGACY_NETWORK_FIXTURE_DATA = [
+  huaweiSwitchModel('CE5880-48T4S-EI', [
+    'CloudEngine 5880',
+    'Huawei CloudEngine 5880',
+    'CloudEngine CE5880-48T4S-EI',
+    'Huawei CloudEngine CE5880-48T4S-EI',
+    'CE5880',
+  ]),
+  huaweiSwitchModel('CE6881-48S6CQ', [
+    'CloudEngine 6881',
+    'Huawei CloudEngine 6881',
+    'CloudEngine CE6881-48S6CQ',
+    'Huawei CloudEngine CE6881-48S6CQ',
+    'CE6881',
+  ]),
+  huaweiSwitchModel('S5731-H48P4XC', ['Huawei CloudEngine S5731-H48P4XC']),
+  huaweiSwitchModel('S5735S-L48P4X-A', ['Huawei CloudEngine S5735S-L48P4X-A']),
+]
+
 const PALO_ALTO_NETWORKS_FIXTURE_DATA = [
   ...[
     'PA-220',
@@ -1187,6 +1206,21 @@ const CISCO_UCS_ADDITIONAL_SERVER_FIXTURE_DATA = [
     `Cisco ${model}`,
     model,
   ])),
+]
+
+const VMWARE_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  serverModel('VMware', 'VMware vSphere 7 Enterprise Plus', 'VS7-EPL', [
+    'vSphere 7 Enterprise Plus',
+    'VMware vSphere 7',
+    'vSphere 7',
+    'ESXi 7 Enterprise Plus',
+  ]),
+  serverModel('VMware', 'VMware vSphere 8 Standard', 'VS8-STD', [
+    'vSphere 8 Standard',
+    'VMware vSphere 8',
+    'vSphere 8',
+    'ESXi 8 Standard',
+  ]),
 ]
 
 const CISCO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
@@ -1972,6 +2006,7 @@ module.exports = mergeFixtureData([
   ...LENOVO_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...IBM_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...CISCO_UCS_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...VMWARE_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...DELL_EMC_VNX_FIXTURE_DATA,
   ...DELL_STORAGE_FIXTURE_DATA,
   ...DELL_EMC_STORAGE_FIXTURE_DATA,
@@ -1992,6 +2027,7 @@ module.exports = mergeFixtureData([
   ...HUAWEI_NETWORK_SECURITY_FIXTURE_DATA,
   ...HUAWEI_SWITCH_FIXTURE_DATA,
   ...HUAWEI_ROUTER_FIXTURE_DATA,
+  ...HUAWEI_LEGACY_NETWORK_FIXTURE_DATA,
   ...HUAWEI_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...PALO_ALTO_NETWORKS_FIXTURE_DATA,
   ...PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA,

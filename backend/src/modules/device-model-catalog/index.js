@@ -7,7 +7,7 @@ const { ingestFixtureData } = require('./ingest')
 async function initializeDeviceModelCatalog() {
   await ensureDeviceModelCatalogTable()
   await ensureDeviceModelAliasesTable()
-  await ingestFixtureData(query, FIXTURE_DATA)
+  await ingestFixtureData(query, FIXTURE_DATA, 'approved-v1', { deactivateMissingFixtures: true })
   console.log('[device-model-catalog] Tables ensured')
 }
 

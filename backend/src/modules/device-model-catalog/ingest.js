@@ -18,9 +18,42 @@ function resolveQuery(db) {
   return defaultQuery
 }
 
-async function ingestFixtureData(db, fixtures, providerScope = 'approved-v1') {
+function fixtureKey(fixture) {
+  return [
+    String(fixture?.brand || '').trim().toLowerCase(),
+    String(fixture?.category || '').trim().toLowerCase(),
+    String(fixture?.canonicalModel || fixture?.canonical_model || '').trim().toLowerCase(),
+  ].join('|')
+}
+
+async function deactivateMissingFixtureRows(runQuery, fixtures) {
+  const activeKeys = new Set(fixtures.map(fixtureKey).filter((key) => key !== '||'))
+  const rows = await runQuery(
+    `SELECT id, brand, category, canonical_model
+     FROM device_model_catalog
+     WHERE source_provider = 'fixture'
+       AND is_active = 1`,
+  )
+  const staleRows = Array.isArray(rows)
+    ? rows.filter((row) => !activeKeys.has(fixtureKey(row)))
+    : []
+
+  for (const row of staleRows) {
+    await runQuery(
+      `UPDATE device_model_catalog
+       SET is_active = 0,
+           synced_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [row.id],
+    )
+  }
+
+  return staleRows.length
+}
+
+async function ingestFixtureData(db, fixtures, providerScope = 'approved-v1', options = {}) {
   const runQuery = resolveQuery(db)
-  const summary = { inserted: 0, updated: 0, skipped: 0 }
+  const summary = { inserted: 0, updated: 0, skipped: 0, deactivated: 0 }
 
   if (!Array.isArray(fixtures) || fixtures.length === 0) {
     return summary
@@ -90,6 +123,10 @@ async function ingestFixtureData(db, fixtures, providerScope = 'approved-v1') {
       console.error('[device-model-catalog] ingest error:', error.message)
       summary.skipped += 1 + deduplicateAliases(fixture.aliases).length
     }
+  }
+
+  if (options.deactivateMissingFixtures) {
+    summary.deactivated = await deactivateMissingFixtureRows(runQuery, fixtures)
   }
 
   return summary

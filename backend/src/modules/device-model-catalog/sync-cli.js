@@ -58,7 +58,7 @@ async function run() {
     await ensureDeviceModelAliasesTable()
 
     if (providerName === 'fixture' || providerName === 'fixture-fail-once') {
-      const result = await ingestFixtureData(query, FIXTURE_DATA, scope)
+      const result = await ingestFixtureData(query, FIXTURE_DATA, scope, { deactivateMissingFixtures: true })
 
       if (providerName === 'fixture-fail-once') {
         throw new Error('Simulated provider failure after ingest')
@@ -80,6 +80,7 @@ async function run() {
         inserted: result.inserted,
         updated: result.updated,
         skipped: result.skipped,
+        deactivated: result.deactivated,
         snapshotPath,
       }))
       return
