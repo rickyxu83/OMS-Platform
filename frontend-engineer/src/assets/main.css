@@ -6798,7 +6798,7 @@ h2 {
 
 .asset-editor-batch-table {
   display: grid;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgb(148 163 184 / 18%);
   border-radius: 16px;
   background: rgb(255 255 255 / 70%);

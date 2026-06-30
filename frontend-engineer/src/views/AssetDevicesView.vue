@@ -31,10 +31,13 @@ const customerSearchLoading = ref(false)
 const modelSuggestions = ref([])
 const modelLoading = ref(false)
 const modelDropdownOpen = ref(false)
+const modelSearchTarget = ref('form')
+const modelSuggestionsTarget = ref('')
 const modelComboRef = ref(null)
 
 let customerSearchTimer = null
 let modelSearchTimer = null
+let modelSearchRequestId = 0
 
 const maintenanceLabels = {
   none: '无维保',
@@ -308,6 +311,10 @@ function updateBatchRow(index, field, value) {
   ))
 }
 
+function batchModelTarget(index) {
+  return `batch:${index}`
+}
+
 function addBatchRow() {
   batchRows.value = [...batchRows.value, createEmptyBatchRow()]
 }
@@ -315,6 +322,9 @@ function addBatchRow() {
 function removeBatchRow(index) {
   const next = batchRows.value.filter((_, rowIndex) => rowIndex !== index)
   batchRows.value = next.length ? next : [createEmptyBatchRow()]
+  if (isBatchModelTarget(modelSearchTarget.value)) {
+    modelDropdownOpen.value = false
+  }
 }
 
 function changeMaintenanceType(value) {
@@ -423,7 +433,7 @@ async function saveDevice() {
     customerDropdownOpen.value = true
     return
   }
-  if (!form.value.model.trim()) {
+  if ((editingId.value || createMode.value !== 'bulk') && !form.value.model.trim()) {
     error.value = '请输入设备型号'
     return
   }
@@ -553,11 +563,49 @@ function onCustomerInput() {
   scheduleCustomerSearch(customerInput.value)
 }
 
-function scheduleModelSearch(value) {
-  window.clearTimeout(modelSearchTimer)
+function suggestionModelName(suggestion) {
+  return suggestion?.canonicalModel || suggestion?.officialName || ''
+}
+
+function suggestionMetaText(suggestion) {
+  return [suggestion?.brand || suggestion?.vendor, suggestion?.partNumber, suggestion?.category].filter(Boolean).join(' · ') || '标准型号'
+}
+
+function isBatchModelTarget(target) {
+  return String(target || '').startsWith('batch:')
+}
+
+function isModelDropdownVisible(target = 'form') {
+  return modelDropdownOpen.value
+    && modelSearchTarget.value === target
+    && modelSuggestionsTarget.value === target
+    && (modelLoading.value || modelSuggestions.value.length)
+}
+
+function focusModelField(value, target = 'form') {
+  modelSearchTarget.value = target
   const keyword = String(value || '').trim()
+  if (modelSuggestionsTarget.value === target && (modelLoading.value || modelSuggestions.value.length)) {
+    modelDropdownOpen.value = true
+    return
+  }
+  if (keyword.length >= 2) {
+    scheduleModelSearch(keyword, target)
+  } else {
+    modelDropdownOpen.value = false
+  }
+}
+
+function scheduleModelSearch(value, target = 'form') {
+  window.clearTimeout(modelSearchTimer)
+  const searchTarget = target
+  const keyword = String(value || '').trim()
+  modelSearchTarget.value = searchTarget
+  modelSuggestionsTarget.value = searchTarget
+  const requestId = ++modelSearchRequestId
   if (keyword.length < 2) {
     modelSuggestions.value = []
+    modelLoading.value = false
     modelDropdownOpen.value = false
     return
   }
@@ -566,24 +614,39 @@ function scheduleModelSearch(value) {
     modelLoading.value = true
     try {
       const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`)
-      modelSuggestions.value = data?.items || []
+      if (requestId === modelSearchRequestId && modelSearchTarget.value === searchTarget) {
+        modelSuggestions.value = data?.items || []
+      }
     } catch {
-      modelSuggestions.value = []
+      if (requestId === modelSearchRequestId && modelSearchTarget.value === searchTarget) {
+        modelSuggestions.value = []
+      }
     } finally {
-      modelLoading.value = false
+      if (requestId === modelSearchRequestId && modelSearchTarget.value === searchTarget) {
+        modelLoading.value = false
+      }
     }
   }, 250)
 }
 
-function applyModelSuggestion(suggestion) {
-  form.value.model = suggestion.canonicalModel || suggestion.officialName || form.value.model
-  form.value.pn = suggestion.partNumber || form.value.pn
+function applyModelSuggestion(suggestion, target = modelSearchTarget.value) {
+  const nextModel = suggestionModelName(suggestion)
+  if (isBatchModelTarget(target)) {
+    const index = Number(String(target).slice('batch:'.length))
+    if (Number.isInteger(index) && batchRows.value[index]) {
+      updateBatchRow(index, 'model', nextModel || batchRows.value[index].model)
+    }
+  } else {
+    form.value.model = nextModel || form.value.model
+    form.value.pn = suggestion.partNumber || form.value.pn
+  }
   modelSuggestions.value = []
   modelDropdownOpen.value = false
 }
 
 function handleModelOutsidePointer(event) {
   if (!modelDropdownOpen.value) return
+  if (event.target?.closest?.('.asset-model-combo')) return
   if (modelComboRef.value?.contains?.(event.target)) return
   modelDropdownOpen.value = false
 }
@@ -741,25 +804,25 @@ watch(filteredDevices, (items) => {
             </div>
           </label>
           <label v-if="!editingId && createMode === 'bulk'" class="asset-editor-wide">{{ zh('默认设备型号') }}
-            <div ref="modelComboRef" class="asset-combo-field">
+            <div ref="modelComboRef" class="asset-combo-field asset-model-combo">
               <input
                 v-model="form.model"
                 type="text"
                 :placeholder="zh('同型号设备可在这里填一次，每行也可单独覆盖')"
                 autocomplete="off"
-                @focus="modelDropdownOpen = Boolean(modelLoading || modelSuggestions.length)"
-                @input="scheduleModelSearch(form.model)"
+                @focus="focusModelField(form.model)"
+                @input="scheduleModelSearch($event.target.value)"
               />
-              <div v-if="modelDropdownOpen && (modelLoading || modelSuggestions.length)" class="asset-dropdown">
+              <div v-if="isModelDropdownVisible()" class="asset-dropdown">
                 <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
                 <button
                   v-for="(suggestion, index) in modelSuggestions"
-                  :key="`${suggestion.canonicalModel || suggestion.officialName}-${suggestion.partNumber}-${index}`"
+                  :key="`${suggestionModelName(suggestion)}-${suggestion.partNumber}-${index}`"
                   type="button"
                   @click="applyModelSuggestion(suggestion)"
                 >
-                  <strong>{{ zh(suggestion.canonicalModel || suggestion.officialName || '标准型号') }}</strong>
-                  <span>{{ zh([suggestion.brand || suggestion.vendor, suggestion.partNumber, suggestion.category].filter(Boolean).join(' · ') || '标准型号') }}</span>
+                  <strong>{{ zh(suggestionModelName(suggestion) || '标准型号') }}</strong>
+                  <span>{{ zh(suggestionMetaText(suggestion)) }}</span>
                 </button>
               </div>
             </div>
@@ -767,25 +830,25 @@ watch(filteredDevices, (items) => {
           <template v-else>
             <label>{{ zh('主机名') }}<input v-model="form.name" type="text" :placeholder="zh('例如 sz5eap01；多个值用 ; 隔开，可不填')" /></label>
             <label>{{ zh('设备型号 *') }}
-              <div ref="modelComboRef" class="asset-combo-field">
+              <div ref="modelComboRef" class="asset-combo-field asset-model-combo">
                 <input
                   v-model="form.model"
                   type="text"
                   :placeholder="zh('例如 PowerEdge R740')"
                   autocomplete="off"
-                  @focus="modelDropdownOpen = Boolean(modelLoading || modelSuggestions.length)"
-                  @input="scheduleModelSearch(form.model)"
+                  @focus="focusModelField(form.model)"
+                  @input="scheduleModelSearch($event.target.value)"
                 />
-                <div v-if="modelDropdownOpen && (modelLoading || modelSuggestions.length)" class="asset-dropdown">
+                <div v-if="isModelDropdownVisible()" class="asset-dropdown">
                   <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
                   <button
                     v-for="(suggestion, index) in modelSuggestions"
-                    :key="`${suggestion.canonicalModel || suggestion.officialName}-${suggestion.partNumber}-${index}`"
+                    :key="`${suggestionModelName(suggestion)}-${suggestion.partNumber}-${index}`"
                     type="button"
                     @click="applyModelSuggestion(suggestion)"
                   >
-                    <strong>{{ zh(suggestion.canonicalModel || suggestion.officialName || '标准型号') }}</strong>
-                    <span>{{ zh([suggestion.brand || suggestion.vendor, suggestion.partNumber, suggestion.category].filter(Boolean).join(' · ') || '标准型号') }}</span>
+                    <strong>{{ zh(suggestionModelName(suggestion) || '标准型号') }}</strong>
+                    <span>{{ zh(suggestionMetaText(suggestion)) }}</span>
                   </button>
                 </div>
               </div>
@@ -845,12 +908,28 @@ watch(filteredDevices, (items) => {
                   :placeholder="zh(`第 ${index + 1} 台主机名；多个值用 ; 隔开`)"
                   @input="updateBatchRow(index, 'name', $event.target.value)"
                 />
-                <input
-                  :value="row.model"
-                  type="text"
-                  :placeholder="zh('型号，空则用默认型号')"
-                  @input="updateBatchRow(index, 'model', $event.target.value)"
-                />
+                <div class="asset-combo-field asset-model-combo">
+                  <input
+                    :value="row.model"
+                    type="text"
+                    :placeholder="zh('型号，空则用默认型号')"
+                    autocomplete="off"
+                    @focus="focusModelField(row.model, batchModelTarget(index))"
+                    @input="updateBatchRow(index, 'model', $event.target.value); scheduleModelSearch($event.target.value, batchModelTarget(index))"
+                  />
+                  <div v-if="isModelDropdownVisible(batchModelTarget(index))" class="asset-dropdown">
+                    <div v-if="modelLoading" class="asset-dropdown-status">{{ zh('搜索型号中…') }}</div>
+                    <button
+                      v-for="(suggestion, suggestionIndex) in modelSuggestions"
+                      :key="`${suggestionModelName(suggestion)}-${suggestion.partNumber}-${suggestionIndex}`"
+                      type="button"
+                      @click="applyModelSuggestion(suggestion, batchModelTarget(index))"
+                    >
+                      <strong>{{ zh(suggestionModelName(suggestion) || '标准型号') }}</strong>
+                      <span>{{ zh(suggestionMetaText(suggestion)) }}</span>
+                    </button>
+                  </div>
+                </div>
                 <input
                   :value="row.serialNo"
                   type="text"
