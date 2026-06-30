@@ -602,6 +602,27 @@ function likelyModelVariants(inputModel) {
   return deduplicateAliases(variants).slice(0, 3)
 }
 
+function productLineHints(inputModel) {
+  const input = normalizeText(inputModel) || ''
+  const match = input.match(/^(?:Sangfor\s+|深信服\s*)?(AC|AF|AD)\s*[-\s]?\s*([A-Z0-9]+(?:-[A-Z0-9]+)*)$/i)
+  if (!match) return []
+  const line = match[1].toUpperCase()
+  const descriptions = {
+    AC: '上网行为管理 / IAM',
+    AF: '下一代防火墙 / NGAF',
+    AD: '应用交付 / 负载均衡',
+  }
+  return [{
+    brand: '深信服 / Sangfor',
+    category: 'network',
+    productLine: line,
+    description: descriptions[line],
+    suggestedCanonicalModel: `深信服 ${input}`,
+    suggestedPartNumber: input,
+    confidenceRange: '0.25-0.65，仅可作为人工确认候选',
+  }]
+}
+
 function inferAiSuggestionFromReason(payload, inputModel) {
   const reason = normalizeText(payload?.reason) || ''
   if (!reason || !/深信服|sangfor/i.test(reason)) return null
@@ -636,6 +657,7 @@ function buildAiLookupPrompt(inputModel, search) {
     '- 如果你能确认它是已知企业硬件型号，允许 matched=true，并给出标准品牌、类别和型号。',
     '- 如果只是猜测、型号可能对应多款设备、或无法确定完整标准名称，matched 必须为 false。',
     '- 如果不能自动确认，但存在唯一最可能候选，请在 matched=false 时输出 suggestedCandidate；系统会交给用户人工确认，不会自动写库。',
+    '- 产品线提示只能用于 suggestedCandidate，不能作为 matched=true 的依据；搜索证据不足时 confidence 设为 0.25-0.65。',
     '- 只处理服务器、存储、网络设备；不要处理软件、耗材、许可证、线缆、普通配件。',
     '- canonicalModel 必须包含品牌和完整标准型号，例如 "HPE BladeSystem c7000 Enclosure"。',
     '- 如果输入型号包含后缀或变体标记，且无法证明应删除，请在 canonicalModel 中保留完整后缀，并在 reason 说明需人工确认。',
@@ -663,6 +685,9 @@ function buildAiLookupPrompt(inputModel, search) {
     '',
     '可尝试的型号变体：',
     JSON.stringify(likelyModelVariants(inputModel)),
+    '',
+    '产品线提示（仅用于低置信人工确认候选）：',
+    JSON.stringify(productLineHints(inputModel)),
     '',
     '搜索摘要：',
     JSON.stringify(evidence),
