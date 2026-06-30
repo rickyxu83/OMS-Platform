@@ -7,6 +7,7 @@ const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('..
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { normalizeAlias } = require('../device-model-catalog/normalize')
 const {
+  findCatalogMatch,
   normalizeDeviceModelForAsset,
   shouldReportNormalization,
 } = require('../device-model-catalog/asset-normalization')
@@ -14,6 +15,9 @@ const {
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
 let devicePartHistoryColumnsReady = false
+const modelNormalizationJobs = new Map()
+const modelNormalizationJobTtlMs = 60 * 60 * 1000
+const modelNormalizationJobMaxCount = 500
 const importHeaderAliases = Object.freeze({
   customerId: ['客户id', '客户ID', 'customerid', 'customer_id'],
   customerName: ['客户名称', '客户', 'customername', 'customer_name'],
@@ -400,16 +404,19 @@ async function resolveImportModel(rawModel) {
   const matches = [...bestById.values()]
   if (!matches.length) {
     const normalizationResult = await normalizeDeviceModelForAsset(model)
-    const item = normalizationResult?.catalogItem
-    if (!item) return null
+    const item = normalizationResult?.catalogItem || normalizationResult?.normalization
+    if (!item || normalizationResult?.normalization?.action === 'not_found') return null
     return {
-      id: item.id,
-      canonical_model: item.canonical_model || normalizationResult.model,
-      part_number: item.part_number || '',
+      id: item.id || null,
+      canonical_model: item.canonical_model || item.canonicalModel || normalizationResult.model,
+      part_number: item.part_number || item.partNumber || '',
       brand: item.brand || '',
       category: item.category || '',
       match_type: normalizationResult.normalization?.matchType || '在线匹配',
       match_rank: 1,
+      confidence: normalizationResult.normalization?.confidence,
+      reason: normalizationResult.normalization?.reason || '',
+      needs_confirmation: normalizationResult.normalization?.needsConfirmation ? 1 : 0,
     }
   }
   const canonicalKeys = new Set(matches.map((row) => String(row.canonical_model || '').trim().toLowerCase()).filter(Boolean))
@@ -424,8 +431,146 @@ function buildModelNormalizationMessage(normalization) {
   if (normalization.message) return normalization.message
   if (normalization.action === 'corrected') return `已按型号库标准纠正为 ${normalization.canonicalModel}`
   if (normalization.action === 'created_corrected') return `型号库未命中，已规范为 ${normalization.canonicalModel} 并加入型号库`
+  if (normalization.action === 'suggested_correction') return `AI 建议可能是 ${normalization.canonicalModel}，需人工确认后应用`
   if (normalization.action === 'created') return '型号库未命中，已加入型号库'
   return '型号库未命中，已按原型号保存'
+}
+
+function localCatalogNormalization(inputModel, catalogMatch) {
+  const finalModel = normalizeText(catalogMatch?.canonical_model) || inputModel
+  const action = finalModel === inputModel ? 'matched' : 'corrected'
+  return {
+    model: finalModel,
+    catalogItem: catalogMatch,
+    normalization: {
+      action,
+      inputModel,
+      canonicalModel: finalModel,
+      corrected: finalModel !== inputModel,
+      source: 'catalog',
+      matchType: catalogMatch?.match_type || '',
+      brand: catalogMatch?.brand || '',
+      category: catalogMatch?.category || '',
+      partNumber: normalizeText(catalogMatch?.part_number) || '',
+      message: action === 'corrected' ? `已按型号库标准纠正为 ${finalModel}` : '',
+    },
+  }
+}
+
+function cleanupModelNormalizationJobs() {
+  const now = Date.now()
+  for (const [id, job] of modelNormalizationJobs.entries()) {
+    if (now - Number(job.createdAtMs || 0) > modelNormalizationJobTtlMs) {
+      modelNormalizationJobs.delete(id)
+    }
+  }
+
+  const overflow = modelNormalizationJobs.size - modelNormalizationJobMaxCount
+  if (overflow <= 0) return
+  const oldest = [...modelNormalizationJobs.values()]
+    .sort((left, right) => Number(left.createdAtMs || 0) - Number(right.createdAtMs || 0))
+    .slice(0, overflow)
+  oldest.forEach((job) => modelNormalizationJobs.delete(job.id))
+}
+
+function modelNormalizationJobPayload(job) {
+  return {
+    id: job.id,
+    status: job.status,
+    deviceId: job.deviceId,
+    inputModel: job.inputModel,
+    canonicalModel: job.canonicalModel || '',
+    updated: Boolean(job.updated),
+    modelNormalization: job.modelNormalization || null,
+    message: job.message || '',
+    error: job.error || '',
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  }
+}
+
+function buildModelNormalizationJobMessage(normalization, updated) {
+  const baseMessage = buildModelNormalizationMessage(normalization)
+  if (normalization?.needsConfirmation) {
+    return baseMessage || `AI 建议可能是 ${normalization.canonicalModel}，需人工确认后应用`
+  }
+  if (canApplyModelNormalization(normalization) && !updated) {
+    return `${baseMessage || `已找到标准型号 ${normalization.canonicalModel}`}，设备型号已变化，未自动覆盖`
+  }
+  if (baseMessage) return baseMessage
+  return '型号后台搜索完成'
+}
+
+async function runModelNormalizationJob(jobId) {
+  const job = modelNormalizationJobs.get(jobId)
+  if (!job) return
+
+  try {
+    const result = await normalizeDeviceModelForAsset(job.inputModel)
+    const normalization = result.normalization || {}
+    let updated = false
+
+    if (canApplyModelNormalization(normalization) && !normalization.needsConfirmation) {
+      const updateResult = await query(
+        `UPDATE devices
+         SET model = :model
+         WHERE id = :id AND model = :inputModel`,
+        {
+          id: job.deviceId,
+          model: result.model,
+          inputModel: job.inputModel,
+        },
+      )
+      updated = Number(updateResult?.affectedRows || 0) > 0
+    }
+
+    Object.assign(job, {
+      status: 'completed',
+      canonicalModel: result.model || normalization.canonicalModel || job.inputModel,
+      updated,
+      modelNormalization: normalization,
+      message: buildModelNormalizationJobMessage(normalization, updated),
+      updatedAt: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.error('Device model normalization background job failed', {
+      jobId,
+      deviceId: job.deviceId,
+      inputModel: job.inputModel,
+      error,
+    })
+    Object.assign(job, {
+      status: 'failed',
+      updated: false,
+      message: '型号后台搜索失败，请稍后在型号校正中处理',
+      error: error?.message || '型号后台搜索失败',
+      updatedAt: new Date().toISOString(),
+    })
+  }
+}
+
+function startModelNormalizationJob(deviceId, inputModel) {
+  cleanupModelNormalizationJobs()
+  const now = new Date()
+  const job = {
+    id: `dmn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
+    status: 'pending',
+    deviceId,
+    inputModel,
+    canonicalModel: '',
+    updated: false,
+    modelNormalization: null,
+    message: '设备已保存，正在后台搜索并校正型号',
+    error: '',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    createdAtMs: now.getTime(),
+  }
+  modelNormalizationJobs.set(job.id, job)
+  setTimeout(() => {
+    runModelNormalizationJob(job.id)
+  }, 0)
+  return modelNormalizationJobPayload(job)
 }
 
 function normalizeDeviceIds(value, maxCount = 200) {
@@ -438,7 +583,7 @@ function normalizeDeviceIds(value, maxCount = 200) {
 }
 
 function canApplyModelNormalization(normalization) {
-  return Boolean(['corrected', 'created_corrected'].includes(normalization?.action)
+  return Boolean(['corrected', 'created_corrected', 'suggested_correction'].includes(normalization?.action)
     && normalizeText(normalization?.canonicalModel)
     && normalizeText(normalization?.canonicalModel) !== normalizeText(normalization?.inputModel))
 }
@@ -458,6 +603,9 @@ function modelNormalizationIssuePayload(device, normalization, applied = false) 
     brand: normalization.brand || '',
     category: normalization.category || '',
     partNumber: normalization.partNumber || '',
+    confidence: normalization.confidence,
+    reason: normalization.reason || '',
+    needsConfirmation: Boolean(normalization.needsConfirmation),
     message: buildModelNormalizationMessage(normalization),
     canApply: canApplyModelNormalization(normalization),
     applied,
@@ -714,7 +862,10 @@ async function create(req, res) {
   if (existingDevice[0]) {
     throw badRequest('SN 已存在')
   }
-  const modelNormalizationResult = await normalizeDeviceModelForAsset(normalizedModel)
+  const catalogMatch = await findCatalogMatch(normalizedModel)
+  const modelNormalizationResult = catalogMatch
+    ? localCatalogNormalization(normalizedModel, catalogMatch)
+    : { model: normalizedModel, normalization: null }
   const effectiveModel = modelNormalizationResult.model
 
   const result = await query(
@@ -743,11 +894,16 @@ async function create(req, res) {
     },
   )
 
-  res.status(201).json({
+  const payload = {
     id: result.insertId,
     modelNormalization: modelNormalizationResult.normalization,
     message: buildModelNormalizationMessage(modelNormalizationResult.normalization),
-  })
+  }
+  if (!catalogMatch) {
+    payload.modelNormalizationJob = startModelNormalizationJob(result.insertId, normalizedModel)
+  }
+
+  res.status(201).json(payload)
 }
 
 async function importDevices(req, res) {
@@ -821,6 +977,9 @@ async function importDevices(req, res) {
         brand: matchedModel.brand,
         category: matchedModel.category,
         partNumber: String(matchedModel.part_number || '').trim(),
+        confidence: matchedModel.confidence,
+        reason: matchedModel.reason || '',
+        needsConfirmation: Boolean(matchedModel.needs_confirmation),
       })
     } catch (error) {
       row.skipImport = true
@@ -843,7 +1002,10 @@ async function importDevices(req, res) {
   for (const row of rows) {
     try {
       if (row.skipImport) continue
-      if (confirmModelCorrections && row.correctedModel) row.model = row.correctedModel
+      if (confirmModelCorrections && row.correctedModel) {
+        const confirmedNormalization = await normalizeDeviceModelForAsset(row.model, { confirmAiSuggestion: true })
+        row.model = confirmedNormalization.model || row.correctedModel
+      }
       if (duplicateSnKeys.has(row.serialNo.toLowerCase())) {
         throw badRequest('导入文件内 SN 重复')
       }
@@ -915,7 +1077,7 @@ async function applyModelNormalizations(req, res) {
     const cacheKey = model.toLowerCase()
     let result = cache.get(cacheKey)
     if (!result) {
-      result = await normalizeDeviceModelForAsset(model)
+      result = await normalizeDeviceModelForAsset(model, { confirmAiSuggestion: true })
       cache.set(cacheKey, result)
     }
     const normalization = result.normalization
@@ -939,6 +1101,15 @@ async function applyModelNormalizations(req, res) {
     ...summarizeModelNormalization(devices.length, items),
     items,
   })
+}
+
+async function modelNormalizationJob(req, res) {
+  cleanupModelNormalizationJobs()
+  const job = modelNormalizationJobs.get(String(req.params.id || ''))
+  if (!job) {
+    throw notFound('型号后台搜索任务不存在或已过期')
+  }
+  res.json({ item: modelNormalizationJobPayload(job) })
 }
 
 async function detail(req, res) {
@@ -1200,6 +1371,7 @@ module.exports = {
   importDevices,
   previewModelNormalizations,
   applyModelNormalizations,
+  modelNormalizationJob,
   detail,
   batchUpdate,
   update,

@@ -439,6 +439,9 @@ function normalizationPayload({ inputModel, finalModel, action, source, matchTyp
     brand: item?.brand || '',
     category: item?.category || '',
     partNumber: normalizeText(item?.part_number || item?.partNumber) || '',
+    confidence: item?.confidence === undefined || item?.confidence === null ? null : Number(item.confidence),
+    reason: normalizeText(item?.reason) || '',
+    needsConfirmation: action === 'suggested_correction',
     message: message || '',
   }
 }
@@ -490,15 +493,15 @@ function aiCandidateRelatesToInput(candidate, inputModel) {
   return values.some((value) => value.includes(inputCore) || inputCore.includes(value))
 }
 
-function normalizeAiCandidate(payload, inputModel) {
-  if (!payload || payload.matched !== true) return null
+function normalizeAiCandidatePayload(payload, inputModel) {
+  if (!payload) return null
   const brand = normalizeText(payload.brand)
   const category = normalizeText(payload.category)?.toLowerCase()
   const canonicalModel = normalizeText(payload.canonicalModel)
   const partNumber = normalizeText(payload.partNumber) || ''
   const confidence = Number(payload.confidence || 0)
   if (!brand || !canonicalModel || !catalogCategories.has(category)) return null
-  if (!Number.isFinite(confidence) || confidence < Number(process.env.DEVICE_MODEL_AI_LOOKUP_MIN_CONFIDENCE || defaultAiLookupConfidence)) return null
+  if (!Number.isFinite(confidence) || confidence <= 0) return null
 
   const candidate = {
     brand,
@@ -507,9 +510,40 @@ function normalizeAiCandidate(payload, inputModel) {
     partNumber,
     aliases: normalizeAiAliases(payload.aliases, inputModel),
     confidence,
+    reason: normalizeText(payload.reason) || '',
     sourceProvider: 'ai',
   }
+  const inputCore = modelCore(inputModel)
+  const partNumberCore = modelCore(candidate.partNumber)
+  const canonicalCore = modelCore(candidate.canonicalModel)
+  if (inputCore && partNumberCore.includes(inputCore) && !canonicalCore.includes(inputCore)) {
+    const partNumberHasBrand = normalizeAlias(candidate.partNumber).startsWith(normalizeAlias(brand))
+    candidate.canonicalModel = titleCaseKnownWords(partNumberHasBrand ? candidate.partNumber : `${brand} ${candidate.partNumber}`)
+  }
   if (!aiCandidateRelatesToInput(candidate, inputModel)) return null
+  return candidate
+}
+
+function normalizeAiCandidate(payload, inputModel) {
+  if (!payload || payload.matched !== true) return null
+  const candidate = normalizeAiCandidatePayload(payload, inputModel)
+  if (!candidate) return null
+  if (candidate.confidence < Number(process.env.DEVICE_MODEL_AI_LOOKUP_MIN_CONFIDENCE || defaultAiLookupConfidence)) return null
+  return candidate
+}
+
+function normalizeAiSuggestion(payload, inputModel) {
+  const minSuggestionConfidence = Number(process.env.DEVICE_MODEL_AI_SUGGESTION_MIN_CONFIDENCE || 0.25)
+  const candidatePayload = payload?.matched === false && payload?.suggestedCandidate
+    ? {
+      ...payload.suggestedCandidate,
+      reason: payload.suggestedCandidate.reason || payload.reason,
+    }
+    : payload
+  const candidate = normalizeAiCandidatePayload(candidatePayload, inputModel)
+  if (!candidate) return null
+  if (candidate.confidence < minSuggestionConfidence) return null
+  if (candidate.confidence >= Number(process.env.DEVICE_MODEL_AI_LOOKUP_MIN_CONFIDENCE || defaultAiLookupConfidence)) return null
   return candidate
 }
 
@@ -528,8 +562,10 @@ function buildAiLookupPrompt(inputModel, search) {
     '- 可以结合搜索摘要和你自身的公开硬件型号知识判断；搜索摘要为空不代表必须失败。',
     '- 如果你能确认它是已知企业硬件型号，允许 matched=true，并给出标准品牌、类别和型号。',
     '- 如果只是猜测、型号可能对应多款设备、或无法确定完整标准名称，matched 必须为 false。',
+    '- 如果不能自动确认，但存在唯一最可能候选，请在 matched=false 时输出 suggestedCandidate；系统会交给用户人工确认，不会自动写库。',
     '- 只处理服务器、存储、网络设备；不要处理软件、耗材、许可证、线缆、普通配件。',
     '- canonicalModel 必须包含品牌和完整标准型号，例如 "HPE BladeSystem c7000 Enclosure"。',
+    '- 如果输入型号包含后缀或变体标记，且无法证明应删除，请在 canonicalModel 中保留完整后缀，并在 reason 说明需人工确认。',
     '- aliases 只放明确等价的写法，必须包含输入型号本身。',
     '- confidence 使用 0 到 1；可确认的已知型号应 >= 0.78，低于 0.78 会被系统拒绝。',
     '- 只输出 JSON，不要 Markdown，不要代码块。',
@@ -547,7 +583,7 @@ function buildAiLookupPrompt(inputModel, search) {
     '}',
     '',
     '无法确定时输出：',
-    '{ "matched": false, "reason": "string" }',
+    '{ "matched": false, "reason": "string", "suggestedCandidate": { "brand": "string", "category": "server|storage|network", "canonicalModel": "string", "partNumber": "string", "aliases": ["string"], "confidence": 0.0, "reason": "string" } }',
     '',
     '输入型号：',
     inputModel,
@@ -611,6 +647,7 @@ async function discoverAiCandidate(inputModel, search) {
     const payload = await callAiLookupProvider(inputModel, search, aiSettings)
     return {
       candidate: normalizeAiCandidate(payload, inputModel),
+      suggestion: normalizeAiSuggestion(payload, inputModel),
       raw: payload,
     }
   } catch (error) {
@@ -640,6 +677,7 @@ async function discoverOnlineCandidate(inputModel) {
   if (!candidate) {
     return {
       candidate: null,
+      suggestion: aiLookup?.suggestion || null,
       searched: search.searched,
       disabled: search.disabled,
       error: search.error || aiLookup?.error,
@@ -725,6 +763,43 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
     }
   }
 
+  if (discovered.suggestion) {
+    if (options.confirmAiSuggestion === true) {
+      const item = await upsertCatalogCandidate(discovered.suggestion, inputModel, 'device-asset-ai-confirmed')
+      const finalModel = normalizeText(item.canonical_model) || inputModel
+      const action = finalModel === inputModel ? 'created' : 'created_corrected'
+      return {
+        model: finalModel,
+        catalogItem: item,
+        normalization: normalizationPayload({
+          inputModel,
+          finalModel,
+          action,
+          source: 'ai',
+          matchType: 'AI 人工确认',
+          item,
+          message: action === 'created_corrected'
+            ? `已确认 AI 候选，并规范为 ${finalModel} 加入型号库`
+            : '已确认 AI 候选，并加入型号库',
+        }),
+      }
+    }
+
+    return {
+      model: inputModel,
+      catalogItem: null,
+      normalization: normalizationPayload({
+        inputModel,
+        finalModel: discovered.suggestion.canonicalModel,
+        action: 'suggested_correction',
+        source: 'ai',
+        matchType: 'AI 待确认',
+        item: discovered.suggestion,
+        message: `AI 建议可能是 ${discovered.suggestion.canonicalModel}，需人工确认后应用`,
+      }),
+    }
+  }
+
   return {
     model: inputModel,
     catalogItem: null,
@@ -741,7 +816,7 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
 }
 
 function shouldReportNormalization(normalization) {
-  return ['corrected', 'created', 'created_corrected', 'not_found'].includes(normalization?.action)
+  return ['corrected', 'created', 'created_corrected', 'suggested_correction', 'not_found'].includes(normalization?.action)
 }
 
 module.exports = {

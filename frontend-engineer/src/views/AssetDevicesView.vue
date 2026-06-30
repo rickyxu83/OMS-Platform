@@ -45,10 +45,17 @@ const modelDropdownOpen = ref(false)
 const modelSearchTarget = ref('form')
 const modelSuggestionsTarget = ref('')
 const modelComboRef = ref(null)
+const modelNormalizationToast = ref(null)
 
 let customerSearchTimer = null
 let modelSearchTimer = null
 let modelSearchRequestId = 0
+let modelNormalizationToastTimer = null
+let modelNormalizationDisposed = false
+const modelNormalizationPollTimers = []
+
+const MODEL_NORMALIZATION_JOB_POLL_MS = 2000
+const MODEL_NORMALIZATION_JOB_TIMEOUT_MS = 90000
 
 const maintenanceLabels = {
   none: '无维保',
@@ -200,12 +207,14 @@ function batchRowHasInput(row) {
 function modelNormalizationMessage(payload) {
   const normalization = payload?.modelNormalization || {}
   const action = String(normalization.action || '')
-  if (!['corrected', 'created', 'created_corrected', 'not_found'].includes(action)) return ''
+  if (!['corrected', 'created', 'created_corrected', 'suggested_correction', 'not_found'].includes(action)) return ''
   return String(payload?.message || normalization.message || '').trim()
     || (action === 'corrected'
       ? `已按型号库标准纠正为 ${normalization.canonicalModel || '标准型号'}`
       : action === 'created_corrected'
         ? `型号库未命中，已规范为 ${normalization.canonicalModel || '标准型号'} 并加入型号库`
+        : action === 'suggested_correction'
+          ? `AI 建议可能是 ${normalization.canonicalModel || '标准型号'}，需人工确认后应用`
         : action === 'created'
           ? '型号库未命中，已加入型号库'
           : '型号库未命中，未能在线确认，已按原型号保存')
@@ -219,9 +228,120 @@ function formatModelNormalizationMessages(messages) {
   return `${unique.slice(0, 2).join('；')}；另有 ${unique.length - 2} 条型号校对结果已应用`
 }
 
+function extractModelNormalizationJob(payload) {
+  const job = payload?.modelNormalizationJob || null
+  return job?.id ? job : null
+}
+
+function modelNormalizationJobMessage(job) {
+  const normalization = job?.modelNormalization || {}
+  const action = String(normalization.action || '')
+  return String(job?.message || normalization.message || '').trim()
+    || (action === 'corrected'
+      ? `已按型号库标准纠正为 ${normalization.canonicalModel || job?.canonicalModel || '标准型号'}`
+      : action === 'created_corrected'
+        ? `型号库未命中，已规范为 ${normalization.canonicalModel || job?.canonicalModel || '标准型号'} 并加入型号库`
+        : action === 'suggested_correction'
+          ? `AI 建议可能是 ${normalization.canonicalModel || job?.canonicalModel || '标准型号'}，需人工确认后应用`
+        : action === 'created'
+          ? '型号库未命中，已加入型号库'
+          : action === 'not_found'
+            ? '型号库未命中，未能在线确认，已按原型号保存'
+            : '型号后台搜索完成')
+}
+
+function summarizeModelNormalizationJobs(jobs) {
+  const completed = jobs.filter((job) => job.status === 'completed')
+  const failed = jobs.filter((job) => job.status === 'failed')
+  const updated = completed.filter((job) => job.updated).length
+  const catalogAdded = completed.filter((job) => ['created', 'created_corrected'].includes(String(job.modelNormalization?.action || ''))).length
+  const unresolved = completed.filter((job) => job.modelNormalization?.action === 'not_found').length
+  const suggested = completed.filter((job) => job.modelNormalization?.action === 'suggested_correction').length
+  const parts = [`完成 ${completed.length} 个`]
+  if (updated) parts.push(`纠正 ${updated} 台`)
+  if (catalogAdded) parts.push(`入库 ${catalogAdded} 个`)
+  if (suggested) parts.push(`待确认 ${suggested} 个`)
+  if (unresolved) parts.push(`未确认 ${unresolved} 个`)
+  if (failed.length) parts.push(`失败 ${failed.length} 个`)
+  return `型号后台搜索完成：${parts.join('，')}`
+}
+
+function setModelNormalizationToast(status, message) {
+  window.clearTimeout(modelNormalizationToastTimer)
+  modelNormalizationToast.value = { status, message }
+  if (status !== 'pending') {
+    modelNormalizationToastTimer = window.setTimeout(() => {
+      modelNormalizationToast.value = null
+    }, 9000)
+  }
+}
+
+function delayModelNormalizationJobPoll(ms) {
+  if (modelNormalizationDisposed) return Promise.resolve()
+  return new Promise((resolve) => {
+    const timerId = window.setTimeout(() => {
+      const index = modelNormalizationPollTimers.indexOf(timerId)
+      if (index >= 0) modelNormalizationPollTimers.splice(index, 1)
+      resolve()
+    }, ms)
+    modelNormalizationPollTimers.push(timerId)
+  })
+}
+
+async function waitForModelNormalizationJob(job) {
+  const jobId = String(job?.id || '')
+  const startedAt = Date.now()
+  while (!modelNormalizationDisposed && Date.now() - startedAt < MODEL_NORMALIZATION_JOB_TIMEOUT_MS) {
+    try {
+      const data = await api.get(`/devices/model-normalization-jobs/${encodeURIComponent(jobId)}`)
+      const item = data?.item || {}
+      if (item.status && item.status !== 'pending') return item
+    } catch (err) {
+      return {
+        ...job,
+        status: 'failed',
+        message: err?.message || '型号后台搜索失败',
+      }
+    }
+    await delayModelNormalizationJobPoll(MODEL_NORMALIZATION_JOB_POLL_MS)
+  }
+  return {
+    ...job,
+    status: 'failed',
+    message: '型号后台搜索超时，请稍后刷新或使用型号校正',
+  }
+}
+
+function trackModelNormalizationJobs(jobs) {
+  const uniqueJobs = [...new Map(jobs.filter((job) => job?.id).map((job) => [String(job.id), job])).values()]
+  if (!uniqueJobs.length) return
+  setModelNormalizationToast(
+    'pending',
+    uniqueJobs.length === 1
+      ? `正在后台搜索型号：${uniqueJobs[0].inputModel || '设备型号'}`
+      : `正在后台搜索 ${uniqueJobs.length} 个设备型号`,
+  )
+
+  Promise.all(uniqueJobs.map(waitForModelNormalizationJob)).then(async (results) => {
+    if (modelNormalizationDisposed) return
+    if (results.length === 1) {
+      const result = results[0]
+      const action = String(result.modelNormalization?.action || '')
+      const status = result.status === 'failed' ? 'error' : (['not_found', 'suggested_correction'].includes(action) ? 'warning' : 'success')
+      setModelNormalizationToast(status, modelNormalizationJobMessage(result))
+    } else {
+      const failed = results.some((job) => job.status === 'failed')
+      const unresolved = results.some((job) => ['not_found', 'suggested_correction'].includes(String(job.modelNormalization?.action || '')))
+      setModelNormalizationToast(failed ? 'error' : (unresolved ? 'warning' : 'success'), summarizeModelNormalizationJobs(results))
+    }
+    if (results.some((job) => job.updated)) await loadDevices()
+  })
+}
+
 function existingModelIssueLabel(action) {
   if (action === 'corrected') return '型号库纠正'
   if (action === 'created_corrected') return '在线规范'
+  if (action === 'suggested_correction') return 'AI 待确认'
   if (action === 'created') return '已补入型号库'
   if (action === 'not_found') return '未确认'
   return '需核对'
@@ -229,6 +349,7 @@ function existingModelIssueLabel(action) {
 
 function existingModelIssueClass(action) {
   if (action === 'not_found') return 'warning'
+  if (action === 'suggested_correction') return 'correctable'
   if (action === 'created') return 'info'
   return 'correctable'
 }
@@ -763,6 +884,7 @@ async function saveDevice() {
   error.value = ''
   let createdCount = 0
   const normalizationMessages = []
+  const normalizationJobs = []
   try {
     const type = canonicalMaintenanceType(form.value.maintenanceType)
     const commonPayload = {
@@ -815,6 +937,8 @@ async function saveDevice() {
         })
         const message = modelNormalizationMessage(data)
         if (message) normalizationMessages.push(message)
+        const job = extractModelNormalizationJob(data)
+        if (job) normalizationJobs.push(job)
         createdCount += 1
       }
     } else {
@@ -840,10 +964,13 @@ async function saveDevice() {
         const data = await api.post('/devices', payload)
         const message = modelNormalizationMessage(data)
         if (message) normalizationMessages.push(message)
+        const job = extractModelNormalizationJob(data)
+        if (job) normalizationJobs.push(job)
       }
     }
     dialogOpen.value = false
     successMessage.value = formatModelNormalizationMessages(normalizationMessages)
+    trackModelNormalizationJobs(normalizationJobs)
     await loadDevices()
   } catch (err) {
     const message = err.message || '保存失败'
@@ -994,8 +1121,13 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  modelNormalizationDisposed = true
   document.removeEventListener('pointerdown', handleModelOutsidePointer)
+  window.clearTimeout(customerSearchTimer)
   window.clearTimeout(modelSearchTimer)
+  window.clearTimeout(modelNormalizationToastTimer)
+  modelNormalizationPollTimers.forEach((timerId) => window.clearTimeout(timerId))
+  modelNormalizationPollTimers.splice(0)
 })
 
 watch(filteredDevices, (items) => {
@@ -1007,6 +1139,16 @@ watch(filteredDevices, (items) => {
 
 <template>
   <main class="engineer-shell asset-shell">
+    <div
+      v-if="modelNormalizationToast"
+      :class="['asset-model-normalization-toast', `is-${modelNormalizationToast.status}`]"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="asset-model-normalization-toast-dot" aria-hidden="true"></span>
+      <span>{{ zh(modelNormalizationToast.message) }}</span>
+    </div>
+
     <header class="topbar asset-topbar">
       <div>
         <BrandEyebrow text="客户与资产 / 设备资产" title="设备资产" />

@@ -7521,6 +7521,99 @@ h2 {
   font-weight: 800;
 }
 
+.asset-model-normalization-toast {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 86;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 10px 14px;
+  border: 1px solid rgb(148 163 184 / 34%);
+  border-radius: 12px;
+  color: #0f172a;
+  background: rgb(255 255 255 / 96%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 90%),
+    0 18px 38px rgb(15 23 42 / 15%);
+  font-size: var(--type-muted);
+  font-weight: 850;
+  line-height: 1.45;
+  animation: asset-model-normalization-toast-in 180ms ease-out both;
+}
+
+.asset-model-normalization-toast.is-pending {
+  border-color: rgb(96 165 250 / 42%);
+}
+
+.asset-model-normalization-toast.is-success {
+  border-color: rgb(34 197 94 / 38%);
+}
+
+.asset-model-normalization-toast.is-warning {
+  border-color: rgb(245 158 11 / 44%);
+}
+
+.asset-model-normalization-toast.is-error {
+  border-color: rgb(239 68 68 / 42%);
+}
+
+.asset-model-normalization-toast-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #3b82f6;
+  box-shadow: 0 0 0 4px rgb(59 130 246 / 12%);
+}
+
+.asset-model-normalization-toast.is-pending .asset-model-normalization-toast-dot {
+  animation: asset-model-normalization-toast-pulse 1.1s ease-in-out infinite;
+}
+
+.asset-model-normalization-toast.is-success .asset-model-normalization-toast-dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgb(22 163 74 / 12%);
+}
+
+.asset-model-normalization-toast.is-warning .asset-model-normalization-toast-dot {
+  background: #d97706;
+  box-shadow: 0 0 0 4px rgb(217 119 6 / 13%);
+}
+
+.asset-model-normalization-toast.is-error .asset-model-normalization-toast-dot {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgb(220 38 38 / 12%);
+}
+
+@keyframes asset-model-normalization-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes asset-model-normalization-toast-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.48;
+    transform: scale(0.78);
+  }
+}
+
 .asset-delete-error {
   margin: 10px 0 0;
 }
