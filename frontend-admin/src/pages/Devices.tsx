@@ -1863,7 +1863,8 @@ export function Devices() {
                         <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
                         </div>
-                      ) : modelSuggestions.map((suggestion, index) => (
+                      ) : null}
+                      {modelSuggestions.map((suggestion, index) => (
                         <button
                           key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
                           type="button"
@@ -1911,7 +1912,8 @@ export function Devices() {
                           <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
                             <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
                           </div>
-                        ) : modelSuggestions.map((suggestion, index) => (
+                        ) : null}
+                        {modelSuggestions.map((suggestion, index) => (
                           <button
                             key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
                             type="button"
