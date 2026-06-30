@@ -83,7 +83,7 @@ export function releaseInteractionLocks() {
 
 export function clearSession() {
   releaseInteractionLocks()
-  clearOfflineCacheForCurrentSession()
+  clearOfflineCacheForCurrentSession({ preserveDrafts: true })
   safeStorageRemove(localStorage, TOKEN_KEY)
   safeStorageRemove(localStorage, USER_KEY)
   resetSessionTheme()

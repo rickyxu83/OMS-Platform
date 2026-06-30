@@ -3236,6 +3236,15 @@ function emitDraftDirtyState() {
   window.dispatchEvent(new CustomEvent('rc-form-dirty-state', { detail: { dirty: draftDirty.value } }))
 }
 
+function flushDraftBeforePageExit() {
+  if (saving.value || loading.value || draftHydrating.value || !draftDirty.value) return
+  persistDraft({ waitForRemote: false }).catch(() => {})
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') flushDraftBeforePageExit()
+}
+
 function handleCurrentDraftDiscarded() {
   window.clearTimeout(draftTimer)
   window.clearTimeout(draftSyncTimer)
@@ -3424,11 +3433,10 @@ onMounted(async () => {
   }
   applyRouteServiceMode()
   await load()
-  if (route.query.resume === '1') {
-    restoreDraftIfPresent()
-  }
+  const shouldRestoreDraft = route.query.resume === '1' || Boolean(route.query.draftId) || Boolean(route.params.id)
+  if (shouldRestoreDraft) await restoreDraftIfPresent()
   await nextTick()
-  if (route.query.resume === '1') {
+  if (shouldRestoreDraft && draftRestored.value) {
     await scrollToCustomerPreview({ behavior: 'auto' })
   }
   resizeSignatureCanvas()
@@ -3437,6 +3445,8 @@ onMounted(async () => {
   window.addEventListener('resize', resizeSignatureCanvas)
   window.addEventListener('storage', refreshPendingSyncQueue)
   window.addEventListener('rc-discard-current-draft', handleCurrentDraftDiscarded)
+  window.addEventListener('pagehide', flushDraftBeforePageExit)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   document.addEventListener('pointerdown', handleDocumentPointerDown)
   window.addEventListener('resize', syncCancelFabPositionToViewport)
   emitDraftDirtyState()
@@ -3453,6 +3463,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeSignatureCanvas)
   window.removeEventListener('storage', refreshPendingSyncQueue)
   window.removeEventListener('rc-discard-current-draft', handleCurrentDraftDiscarded)
+  window.removeEventListener('pagehide', flushDraftBeforePageExit)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
   window.removeEventListener('resize', syncCancelFabPositionToViewport)
   stopCancelFabDrag()

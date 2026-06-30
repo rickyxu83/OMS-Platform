@@ -3,6 +3,7 @@ import { safeStorageGet } from './safe-storage'
 const CACHE_PREFIX = 'oms-platform-engineer-offline-cache:'
 const TOKEN_KEY = 'oms-platform-token'
 const USER_KEY = 'oms-platform-user'
+const DRAFT_KEY_MARKER = ':draft:'
 
 function hashValue(value) {
   let hash = 5381
@@ -13,18 +14,73 @@ function hashValue(value) {
   return (hash >>> 0).toString(36)
 }
 
+function readCurrentUser() {
+  const rawUser = safeStorageGet(localStorage, USER_KEY, '')
+  if (!rawUser) return null
+  try {
+    return JSON.parse(rawUser)
+  } catch {
+    return null
+  }
+}
+
+function userScope(user) {
+  if (!user || typeof user !== 'object') return ''
+  if (user.id) return `id:${user.id}`
+  if (user.username) return `username:${user.username}`
+  return ''
+}
+
 function getCurrentScope() {
   const token = safeStorageGet(localStorage, TOKEN_KEY, '')
-  const rawUser = safeStorageGet(localStorage, USER_KEY, '')
-  if (!token || !rawUser) return 'anonymous'
+  const user = readCurrentUser()
+  const accountScope = userScope(user)
+  if (accountScope) return accountScope
+  if (!token) return 'anonymous'
 
+  return `token:${hashValue(token)}`
+}
+
+function currentAccountScope() {
+  const user = readCurrentUser()
+  return userScope(user)
+}
+
+function isDraftCacheKey(key) {
+  return String(key || '').includes(DRAFT_KEY_MARKER)
+}
+
+function parseCacheEntry(raw, storageKey = '') {
+  if (!raw) return null
   try {
-    const user = JSON.parse(rawUser)
-    const userKey = user?.id ? `id:${user.id}` : user?.username ? `username:${user.username}` : 'unknown'
-    return `${userKey}:${hashValue(token)}`
+    const parsed = JSON.parse(raw)
+    return {
+      storageKey,
+      updatedAt: parsed?.updatedAt || '',
+      data: parsed?.data ?? null,
+    }
   } catch {
-    return `token:${hashValue(token)}`
+    return null
   }
+}
+
+function findLegacyDraftEntry(key) {
+  if (!isDraftCacheKey(key)) return null
+
+  const suffix = `:${key}`
+  const accountScope = currentAccountScope()
+  const matches = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const storageKey = localStorage.key(index)
+    if (!storageKey?.startsWith(CACHE_PREFIX) || !storageKey.endsWith(suffix)) continue
+    const scopedPart = storageKey.slice(CACHE_PREFIX.length, -suffix.length)
+    if (accountScope && scopedPart !== accountScope && !scopedPart.startsWith(`${accountScope}:`)) continue
+    if (!accountScope && scopedPart !== 'anonymous' && !scopedPart.startsWith('token:')) continue
+    const entry = parseCacheEntry(localStorage.getItem(storageKey), storageKey)
+    if (entry) matches.push(entry)
+  }
+  matches.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
+  return matches[0] || null
 }
 
 function cacheKey(scope, key) {
@@ -71,32 +127,26 @@ function removeOldestCacheEntries(scope, limit = 4) {
 }
 
 export function readOfflineCache(key, fallback = null) {
-  const raw = localStorage.getItem(cacheKey(getCurrentScope(), key))
-  if (!raw) return fallback
+  const targetKey = cacheKey(getCurrentScope(), key)
+  const entry = parseCacheEntry(localStorage.getItem(targetKey), targetKey)
+  if (entry) return entry.data ?? fallback
+  if (localStorage.getItem(targetKey)) localStorage.removeItem(targetKey)
 
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed?.data ?? fallback
-  } catch {
-    localStorage.removeItem(cacheKey(getCurrentScope(), key))
-    return fallback
-  }
+  const legacyEntry = findLegacyDraftEntry(key)
+  return legacyEntry?.data ?? fallback
 }
 
 export function readOfflineCacheMeta(key) {
-  const raw = localStorage.getItem(cacheKey(getCurrentScope(), key))
-  if (!raw) return null
+  const targetKey = cacheKey(getCurrentScope(), key)
+  const entry = parseCacheEntry(localStorage.getItem(targetKey), targetKey)
+  if (entry) return { updatedAt: entry.updatedAt, data: entry.data }
+  if (localStorage.getItem(targetKey)) localStorage.removeItem(targetKey)
 
-  try {
-    const parsed = JSON.parse(raw)
-    return {
-      updatedAt: parsed?.updatedAt || '',
-      data: parsed?.data ?? null,
-    }
-  } catch {
-    localStorage.removeItem(cacheKey(getCurrentScope(), key))
-    return null
-  }
+  const legacyEntry = findLegacyDraftEntry(key)
+  if (!legacyEntry) return null
+  writeOfflineCache(key, legacyEntry.data)
+  localStorage.removeItem(legacyEntry.storageKey)
+  return { updatedAt: legacyEntry.updatedAt, data: legacyEntry.data }
 }
 
 export function writeOfflineCache(key, data) {
@@ -124,12 +174,13 @@ export function removeOfflineCache(key) {
   localStorage.removeItem(cacheKey(getCurrentScope(), key))
 }
 
-export function clearOfflineCacheForScope(scope) {
+export function clearOfflineCacheForScope(scope, { preserveDrafts = false } = {}) {
   for (const key of scopedCacheKeys(scope || getCurrentScope())) {
+    if (preserveDrafts && isDraftCacheKey(key)) continue
     localStorage.removeItem(key)
   }
 }
 
-export function clearOfflineCacheForCurrentSession() {
-  clearOfflineCacheForScope(getCurrentScope())
+export function clearOfflineCacheForCurrentSession(options = {}) {
+  clearOfflineCacheForScope(getCurrentScope(), options)
 }

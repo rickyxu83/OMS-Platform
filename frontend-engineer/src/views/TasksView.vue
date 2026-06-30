@@ -12,7 +12,6 @@ import {
   listCreateDraftBuckets,
   mergeScopedDraftPayload,
   removeLocalSelfReportDraft,
-  readLocalSelfReportDraft,
   removeScopedDraftPayload,
   saveRemoteSelfReportDraft,
   writeLocalSelfReportDraft,
@@ -202,10 +201,6 @@ function withDraftClientUpdatedAt(payload, clientUpdatedAt) {
   }
 }
 
-function deletedDraftTime(remoteDraft) {
-  return toDraftTimestamp(remoteDraft?.payload?.__draftDeletedAt || remoteDraft?.clientUpdatedAt || remoteDraft?.updatedAt)
-}
-
 function isSubmittedCreateDraftPayload(payload) {
   return Boolean(payload?.__submittedBridge) || Number(payload?.__submittedOrderId || 0) > 0
 }
@@ -221,12 +216,6 @@ async function migrateLocalDraftEntries(entries) {
       const orderId = entry.routeInfo.orderId
       const clientUpdatedAt = draftClientUpdatedAt(entry)
       try {
-        const remoteDraft = await fetchRemoteSelfReportDraft(orderId).catch(() => null)
-        if (remoteDraft?.payload?.__draftDeleted) {
-          localStorage.removeItem(entry.key)
-          hiddenLocalKeys.add(entry.key)
-          return
-        }
         await saveRemoteSelfReportDraft(orderId, withDraftClientUpdatedAt(entry.payload, clientUpdatedAt), clientUpdatedAt)
         localStorage.removeItem(entry.key)
         hiddenLocalKeys.add(entry.key)
@@ -240,30 +229,22 @@ async function migrateLocalDraftEntries(entries) {
   if (createEntries.length) {
     try {
       const remoteDraft = await fetchRemoteSelfReportDraft(null).catch(() => null)
-      const newestLocalTime = Math.max(...createEntries.map((entry) => toDraftTimestamp(draftClientUpdatedAt(entry))))
-      if (remoteDraft?.payload?.__draftDeleted && deletedDraftTime(remoteDraft) >= newestLocalTime) {
+      let remotePayload = remoteDraft?.payload || null
+      let newestClientUpdatedAt = remoteDraft?.clientUpdatedAt || remoteDraft?.updatedAt || ''
+      createEntries.forEach((entry) => {
+        const clientUpdatedAt = draftClientUpdatedAt(entry)
+        const payload = withDraftClientUpdatedAt(entry.payload, clientUpdatedAt)
+        remotePayload = mergeScopedDraftPayload(remotePayload, null, entry.mode, payload, clientUpdatedAt, entry.draftId)
+        if (toDraftTimestamp(clientUpdatedAt) > toDraftTimestamp(newestClientUpdatedAt)) {
+          newestClientUpdatedAt = clientUpdatedAt
+        }
+      })
+      if (remotePayload) {
+        await saveRemoteSelfReportDraft(null, remotePayload, newestClientUpdatedAt || new Date().toISOString())
         createEntries.forEach((entry) => {
           localStorage.removeItem(entry.key)
           hiddenLocalKeys.add(entry.key)
         })
-      } else {
-        let remotePayload = remoteDraft?.payload || null
-        let newestClientUpdatedAt = remoteDraft?.clientUpdatedAt || remoteDraft?.updatedAt || ''
-        createEntries.forEach((entry) => {
-          const clientUpdatedAt = draftClientUpdatedAt(entry)
-          const payload = withDraftClientUpdatedAt(entry.payload, clientUpdatedAt)
-          remotePayload = mergeScopedDraftPayload(remotePayload, null, entry.mode, payload, clientUpdatedAt, entry.draftId)
-          if (toDraftTimestamp(clientUpdatedAt) > toDraftTimestamp(newestClientUpdatedAt)) {
-            newestClientUpdatedAt = clientUpdatedAt
-          }
-        })
-        if (remotePayload) {
-          await saveRemoteSelfReportDraft(null, remotePayload, newestClientUpdatedAt || new Date().toISOString())
-          createEntries.forEach((entry) => {
-            localStorage.removeItem(entry.key)
-            hiddenLocalKeys.add(entry.key)
-          })
-        }
       }
     } catch {
       // Keep local create drafts when account sync is unavailable.
@@ -335,12 +316,8 @@ async function loadLocalDraftTasks({ remoteOrderIds = [] } = {}) {
     const remoteCreateDraft = await fetchRemoteSelfReportDraft(null)
     const remoteBuckets = listCreateDraftBuckets(remoteCreateDraft?.payload)
     if (remoteCreateDraft?.payload?.__draftDeleted && !remoteBuckets.length) {
-      const localCreateDraft = readLocalSelfReportDraft(null)
-      const localUpdatedAt = Date.parse(String(localCreateDraft?.data?.__draftClientUpdatedAt || localCreateDraft?.updatedAt || '')) || 0
-      const deletedAt = Date.parse(String(remoteCreateDraft.payload.__draftDeletedAt || remoteCreateDraft.clientUpdatedAt || remoteCreateDraft.updatedAt || '')) || 0
-      if (deletedAt >= localUpdatedAt) {
-        await clearSelfReportDraft(null)
-      }
+      // Do not let a remote tombstone remove local create drafts that may not have synced yet.
+      // The form restore flow will clear stale account tombstones when there is no local draft.
     } else if (remoteCreateDraft?.payload) {
       const submittedRemoteDrafts = []
       remoteBuckets.forEach(({ mode, payload, draftId, createdAt, updatedAt }) => {

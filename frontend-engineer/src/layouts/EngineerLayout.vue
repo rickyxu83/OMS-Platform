@@ -152,6 +152,13 @@ function currentDraftId() {
   return normalizeDraftItemId(route.query.draftId)
 }
 
+function currentLatestLocalDraftId() {
+  if (currentDraftOrderId()) return ''
+  const localDraft = readLocalSelfReportDraft(null)
+  const mode = currentDraftMode()
+  return listCreateDraftBuckets(localDraft?.data).find((item) => item.mode === mode)?.draftId || ''
+}
+
 function hasCurrentLocalDraft() {
   const orderId = currentDraftOrderId()
   const localDraft = readLocalSelfReportDraft(orderId)
@@ -438,7 +445,7 @@ async function acknowledgeAnnouncement() {
 async function discardDraftAndExit() {
   window.dispatchEvent(new CustomEvent('rc-discard-current-draft'))
   const orderId = currentDraftOrderId()
-  const draftId = currentDraftId()
+  const draftId = currentDraftId() || currentLatestLocalDraftId()
   if (orderId || draftId || hasCurrentLocalDraft()) {
     await clearSelfReportDraft(orderId, currentDraftMode(), draftId).catch(() => {})
   }
