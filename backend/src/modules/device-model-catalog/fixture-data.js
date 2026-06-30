@@ -298,6 +298,85 @@ function ciscoNexusModel(model, partNumber, aliases = []) {
   ])
 }
 
+function arubaNetworkModel(canonicalModel, partNumber, aliases = []) {
+  return networkModel('Aruba', canonicalModel, partNumber, [
+    `HPE ${canonicalModel}`,
+    `HP ${canonicalModel}`,
+    `HPE Aruba ${partNumber}`,
+    `HP Aruba ${partNumber}`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaSwitchModel(model, aliases = []) {
+  return arubaNetworkModel(`Aruba ${model}`, model, [
+    model.replace(/\s+/g, ''),
+    `Aruba ${model} Switch`,
+    `Aruba Switch ${model}`,
+    `${model} 交换机`,
+    `Aruba ${model} 交换机`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaCxSwitchModel(model, aliases = []) {
+  return arubaSwitchModel(`CX ${model}`, [
+    `ArubaCX ${model}`,
+    `Aruba CX${model}`,
+    `AOS-CX ${model}`,
+    `ArubaOS-CX ${model}`,
+    `CX${model}`,
+    `${model} CX`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaApModel(model, aliases = []) {
+  const apNumber = String(model || '').replace(/^AP-/i, '')
+  return arubaNetworkModel(`Aruba ${model}`, model, [
+    `Aruba ${apNumber}`,
+    `Aruba IAP-${apNumber}`,
+    `IAP-${apNumber}`,
+    `AP${apNumber}`,
+    `${apNumber} AP`,
+    `${model} 无线AP`,
+    `Aruba ${model} 无线AP`,
+    `Aruba ${apNumber} 无线AP`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaInstantOnApModel(model, aliases = []) {
+  return arubaNetworkModel(`Aruba Instant On ${model}`, model, [
+    `Instant On ${model}`,
+    `Aruba ${model}`,
+    `${model} 无线AP`,
+    `Instant On ${model} 无线AP`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaControllerModel(model, aliases = []) {
+  return arubaNetworkModel(`Aruba ${model} Mobility Controller`, model, [
+    `Aruba ${model}`,
+    `Aruba Controller ${model}`,
+    `Aruba Mobility Controller ${model}`,
+    `${model} 控制器`,
+    `Aruba ${model} 控制器`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function arubaGatewayModel(model, aliases = []) {
+  return arubaNetworkModel(`Aruba ${model} Gateway`, model, [
+    `Aruba ${model}`,
+    `Aruba Gateway ${model}`,
+    `${model} 网关`,
+    `Aruba ${model} 网关`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 const DELL_EMC_VNX_FIXTURE_DATA = [
   ...['5100', '5300', '5500', '5700', '7500'].map(dellEmcVnxModel),
   ...['5200', '5400', '5600', '5800', '7600', '8000'].map(dellEmcVnxModel),
@@ -1241,6 +1320,99 @@ const LENOVO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
   ])),
 ]
 
+const ARUBA_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    '2530',
+    '2540',
+    '2930F',
+    '2930M',
+    '3810M',
+    '5400R',
+  ].map(arubaSwitchModel),
+  ...[
+    '4100i',
+    '6000',
+    '6100',
+    '6200F',
+    '6200M',
+    '6300F',
+    '6300M',
+    '6400',
+    '8320',
+    '8325',
+    '8360',
+    '8400',
+  ].map(arubaCxSwitchModel),
+  ...[
+    'Instant On 1430',
+    'Instant On 1830',
+    'Instant On 1930',
+    'Instant On 1960',
+  ].map(arubaSwitchModel),
+  ...[
+    'AP-203R',
+    'AP-205',
+    'AP-207',
+    'AP-215',
+    'AP-225',
+    'AP-303',
+    'AP-305',
+    'AP-315',
+    'AP-325',
+    'AP-335',
+    'AP-345',
+    'AP-365',
+    'AP-367',
+    'AP-374',
+    'AP-375',
+    'AP-377',
+    'AP-387',
+    'AP-503',
+    'AP-505',
+    'AP-505H',
+    'AP-515',
+    'AP-518',
+    'AP-535',
+    'AP-555',
+    'AP-565',
+    'AP-567',
+    'AP-575',
+    'AP-577',
+    'AP-584',
+    'AP-585',
+    'AP-587',
+    'AP-615',
+    'AP-635',
+    'AP-655',
+    'AP-675',
+  ].map(arubaApModel),
+  ...[
+    'AP11',
+    'AP12',
+    'AP15',
+    'AP17',
+    'AP22',
+    'AP25',
+    'AP32',
+  ].map(arubaInstantOnApModel),
+  ...[
+    '7005',
+    '7010',
+    '7024',
+    '7030',
+    '7205',
+    '7210',
+    '7220',
+    '7240XM',
+  ].map(arubaControllerModel),
+  ...[
+    '9004',
+    '9012',
+    '9240',
+    '9240XM',
+  ].map(arubaGatewayModel),
+]
+
 const PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
   ...['PA-5450', 'PA-5455', 'PA-7500'].map(paloAltoFirewallModel),
   ...['PA-3410', 'PA-3420', 'PA-3430', 'PA-3440'].map(paloAltoFirewallModel),
@@ -1712,6 +1884,7 @@ module.exports = mergeFixtureData([
   ...H3C_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...DELL_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...LENOVO_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...ARUBA_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...BROCADE_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...F5_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...IMPORTED_FIXTURE_DATA,
