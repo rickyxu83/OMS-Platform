@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3 } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +103,18 @@ interface BatchDeviceRow {
   model: string;
   serialNo: string;
   mrNo: string;
+}
+
+interface ImportErrorRow {
+  rowNumber: number;
+  sn?: string;
+  message?: string;
+}
+
+interface ImportResult {
+  created: number;
+  failed: number;
+  errors: ImportErrorRow[];
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
@@ -315,6 +327,95 @@ function mergeCustomers(current: Customer[], incoming: Customer[]) {
   return [...merged.values()];
 }
 
+async function downloadDeviceImportTemplate() {
+  const [{ Workbook }, { saveAs }] = await Promise.all([
+    import("exceljs"),
+    import("file-saver"),
+  ]);
+  const workbook = new Workbook();
+  workbook.creator = "OMS Platform";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const worksheet = workbook.addWorksheet("设备导入模板", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  worksheet.columns = [
+    { header: "客户ID", key: "customerId", width: 12 },
+    { header: "客户名称", key: "customerName", width: 24 },
+    { header: "主机名", key: "name", width: 20 },
+    { header: "设备型号*", key: "model", width: 24 },
+    { header: "PN", key: "pn", width: 18 },
+    { header: "SN*", key: "serialNo", width: 22 },
+    { header: "MR单", key: "mrNo", width: 18 },
+    { header: "维保类型", key: "maintenanceType", width: 16 },
+    { header: "维保方ID", key: "maintenancePartyId", width: 12 },
+    { header: "维保方名称", key: "maintenancePartyName", width: 24 },
+    { header: "维保开始", key: "maintenanceStart", width: 14 },
+    { header: "维保截止", key: "maintenanceEnd", width: 14 },
+    { header: "质保截止", key: "warrantyUntil", width: 14 },
+    { header: "位置", key: "location", width: 24 },
+    { header: "备注", key: "remark", width: 28 },
+  ];
+  worksheet.addRow({
+    customerName: "示例客户有限公司",
+    name: "host-01",
+    model: "PowerEdge R740",
+    pn: "示例PN",
+    serialNo: "SN-EXAMPLE-001",
+    mrNo: "MR-001",
+    maintenanceType: "我方维保",
+    maintenancePartyName: "示例维保方",
+    maintenanceStart: "2026-01-01",
+    maintenanceEnd: "2026-12-31",
+    warrantyUntil: "2026-12-31",
+    location: "机房 A01",
+    remark: "删除示例行后再导入",
+  });
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: worksheet.columns.length },
+  };
+  worksheet.getRow(1).height = 24;
+  worksheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  });
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD9E2EC" } },
+        left: { style: "thin", color: { argb: "FFD9E2EC" } },
+        bottom: { style: "thin", color: { argb: "FFD9E2EC" } },
+        right: { style: "thin", color: { argb: "FFD9E2EC" } },
+      };
+      cell.alignment = { vertical: "middle", wrapText: true };
+      if (rowNumber > 1) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+      }
+    });
+  });
+
+  const help = workbook.addWorksheet("字段说明");
+  help.columns = [
+    { header: "字段", key: "field", width: 18 },
+    { header: "说明", key: "description", width: 72 },
+  ];
+  [
+    ["客户ID / 客户名称", "二选一必填；优先按客户ID匹配，否则按客户名称精确匹配已有客户。"],
+    ["设备型号*", "必填。"],
+    ["SN*", "必填；导入文件内重复或系统内已存在时，该行失败并跳过。"],
+    ["维保类型", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
+    ["维保方ID / 维保方名称", "有维保方时优先按ID匹配，否则按名称和维保类型匹配已有维保方。"],
+    ["日期字段", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
+  ].forEach(([field, description]) => help.addRow({ field, description }));
+  help.getRow(1).font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "设备资产导入模板.xlsx");
+}
+
 export function Devices() {
   const { hasPermission } = useAuth();
   const canCreateDevices = hasPermission("device.create");
@@ -355,6 +456,11 @@ export function Devices() {
   const [batchEditOpen, setBatchEditOpen] = useState(false);
   const [batchEditForm, setBatchEditForm] = useState<BatchEditForm>(() => createEmptyBatchEditForm());
   const [batchEditToggles, setBatchEditToggles] = useState<BatchEditToggles>(() => createEmptyBatchEditToggles());
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const filteredMaintenanceParties = useMemo(
     () => parties.filter((party) => maintenancePartyMatchesType(party, form.maintenanceType)),
     [parties, form.maintenanceType],
@@ -843,6 +949,39 @@ export function Devices() {
     setBatchEditOpen(true);
   }
 
+  function openImportDialog() {
+    setError("");
+    setImportFile(null);
+    setImportResult(null);
+    if (importFileInputRef.current) importFileInputRef.current.value = "";
+    setImportOpen(true);
+  }
+
+  async function submitImport() {
+    if (!importFile) {
+      setError("请选择要导入的 Excel 文件");
+      return;
+    }
+    setImporting(true);
+    setError("");
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const data = await api.postForm("/devices/import", formData);
+      setImportResult({
+        created: Number(data?.created || 0),
+        failed: Number(data?.failed || 0),
+        errors: Array.isArray(data?.errors) ? data.errors : [],
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导入失败");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function submitBatchEdit() {
     const fields: Record<string, unknown> = {};
     if (batchEditToggles.maintenanceType) {
@@ -893,6 +1032,24 @@ export function Devices() {
           </Button>
           {canCreateDevices ? (
             <>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setError("");
+                  try {
+                    await downloadDeviceImportTemplate();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "模板下载失败");
+                  }
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                下载模板
+              </Button>
+              <Button variant="outline" onClick={openImportDialog}>
+                <Upload className="w-4 h-4 mr-2" />
+                导入 Excel
+              </Button>
               <Button variant="outline" onClick={openBulkCreate}>
                 <Plus className="w-4 h-4 mr-2" />
                 批量新增
@@ -1726,7 +1883,104 @@ export function Devices() {
         </DialogContent>
       </Dialog>
 
-      
+      <Dialog
+        open={importOpen}
+        onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) {
+            setError("");
+            setImportFile(null);
+            setImportResult(null);
+            if (importFileInputRef.current) importFileInputRef.current.value = "";
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+          <DialogHeader>
+            <DialogTitle>导入设备资产</DialogTitle>
+            <DialogDescription>
+              上传按模板填写的 .xlsx 文件；有效行会写入，失败行会返回原因。
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
+              必填字段为客户、设备型号和 SN。客户和维保方只匹配已有资料；重复 SN 会跳过该行。
+            </div>
+            <div className="space-y-2">
+              <Label>Excel 文件 *</Label>
+              <Input
+                ref={importFileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                disabled={importing}
+                onChange={(event) => {
+                  setImportResult(null);
+                  setImportFile(event.target.files?.[0] || null);
+                }}
+              />
+              <div className="text-xs text-muted-foreground">单次最多 1000 行，文件不超过 5MB。</div>
+            </div>
+            {importResult ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-md border bg-emerald-50 px-3 py-2">
+                    <div className="text-xs text-emerald-700">成功导入</div>
+                    <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                  </div>
+                  <div className="rounded-md border bg-red-50 px-3 py-2">
+                    <div className="text-xs text-red-700">失败行数</div>
+                    <div className="mt-1 text-xl font-semibold text-red-800">{importResult.failed}</div>
+                  </div>
+                </div>
+                {importResult.errors.length ? (
+                  <div className="rounded-md border">
+                    <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">失败明细</div>
+                    <div className="max-h-64 overflow-auto divide-y">
+                      {importResult.errors.map((item, index) => (
+                        <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_1fr_1.4fr] md:items-center">
+                          <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
+                          <span className="truncate text-muted-foreground" title={item.sn || ""}>SN：{item.sn || "-"}</span>
+                          <span className="text-red-600">{item.message || "导入失败"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
+              关闭
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setError("");
+                try {
+                  await downloadDeviceImportTemplate();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "模板下载失败");
+                }
+              }}
+              disabled={importing}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              下载模板
+            </Button>
+            <Button onClick={submitImport} disabled={importing || !importFile}>
+              {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+              {importing ? "导入中…" : "开始导入"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={batchEditOpen}
         onOpenChange={(open) => {

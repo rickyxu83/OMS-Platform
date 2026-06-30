@@ -1,3 +1,6 @@
+const path = require('path')
+const multer = require('multer')
+const ExcelJS = require('exceljs')
 const { query } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
@@ -6,6 +9,93 @@ const { normalizePhoneNumber } = require('../../utils/phone')
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
 let devicePartHistoryColumnsReady = false
+const importHeaderAliases = Object.freeze({
+  customerId: ['客户id', '客户ID', 'customerid', 'customer_id'],
+  customerName: ['客户名称', '客户', 'customername', 'customer_name'],
+  name: ['主机名', '设备名称', 'name', 'hostname'],
+  model: ['设备型号', '型号', 'model'],
+  pn: ['PN', 'pn', 'partnumber', 'part_number'],
+  serialNo: ['SN', 'sn', 'S/N', '序列号', '设备序列号', 'serialno', 'serial_no', 'serialnumber'],
+  mrNo: ['MR单', 'MR', 'mr', 'mrno', 'mr_no'],
+  maintenanceType: ['维保类型', '维护类型', 'maintenancetype', 'maintenance_type'],
+  maintenancePartyId: ['维保方ID', '维保方id', 'maintenancepartyid', 'maintenance_party_id'],
+  maintenancePartyName: ['维保方名称', '维保方', 'maintenancepartyname', 'maintenance_party_name'],
+  maintenanceStart: ['维保开始', '维保开始日期', 'maintenancestart', 'maintenance_start'],
+  maintenanceEnd: ['维保截止', '维保结束', '维保截止日期', 'maintenanceend', 'maintenance_end'],
+  warrantyUntil: ['质保截止', '质保截止日期', 'warrantyuntil', 'warranty_until'],
+  location: ['位置', '安装位置', 'location'],
+  remark: ['备注', 'remark'],
+})
+
+const importHeaderLookup = Object.freeze(Object.entries(importHeaderAliases).reduce((lookup, [field, aliases]) => {
+  aliases.forEach((alias) => { lookup[normalizeHeader(alias)] = field })
+  return lookup
+}, {}))
+
+const maintenanceTypeImportAliases = Object.freeze({
+  '': 'none',
+  none: 'none',
+  无维保: 'none',
+  暂无维保: 'none',
+  原厂维保: 'original_manufacturer',
+  厂商维保: 'original_manufacturer',
+  vendor: 'original_manufacturer',
+  originalmanufacturer: 'original_manufacturer',
+  original_manufacturer: 'original_manufacturer',
+  我方维保: 'our_maintenance',
+  自维保: 'our_maintenance',
+  our: 'our_maintenance',
+  ourmaintenance: 'our_maintenance',
+  our_maintenance: 'our_maintenance',
+})
+
+function originalNameUtf8(file) {
+  return Buffer.from(file?.originalname || '', 'latin1').toString('utf8')
+}
+
+function importFileFilter(_req, file, cb) {
+  const originalName = originalNameUtf8(file)
+  const extension = path.extname(originalName || file.originalname || '').toLowerCase()
+  const mimeType = String(file.mimetype || '').toLowerCase()
+  const allowedMimeTypes = new Set([
+    'application/octet-stream',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ])
+  if (extension !== '.xlsx') {
+    cb(badRequest('请上传 .xlsx 格式的导入文件'))
+    return
+  }
+  if (mimeType && !allowedMimeTypes.has(mimeType)) {
+    cb(badRequest('导入文件 MIME 类型不支持'))
+    return
+  }
+  cb(null, true)
+}
+
+const rawUploadImportMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fields: 2,
+    parts: 4,
+  },
+  fileFilter: importFileFilter,
+}).single('file')
+
+function uploadImportMiddleware(req, res, next) {
+  rawUploadImportMiddleware(req, res, (error) => {
+    if (!error) {
+      next()
+      return
+    }
+    if (error instanceof multer.MulterError) {
+      next(badRequest(error.code === 'LIMIT_FILE_SIZE' ? '导入文件不能超过 5MB' : '导入文件不符合上传限制'))
+      return
+    }
+    next(error)
+  })
+}
 
 function maintenancePartyPayload(row) {
   if (!row.maintenance_party_id) return null
@@ -82,6 +172,173 @@ function normalizeDate(value) {
 function normalizeText(value) {
   const text = String(value || '').trim()
   return text || null
+}
+
+function normalizeHeader(value) {
+  return String(value || '').replace(/\s+/g, '').replace(/[*/：:]/g, '').toLowerCase()
+}
+
+function cellValueToText(cell) {
+  const value = cell?.value
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return formatDateValue(value)
+  if (typeof value === 'object') {
+    if (Object.prototype.hasOwnProperty.call(value, 'result')) return String(value.result ?? '').trim()
+    if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || '').join('').trim()
+    if (Object.prototype.hasOwnProperty.call(value, 'text')) return String(value.text ?? '').trim()
+    if (Object.prototype.hasOwnProperty.call(value, 'hyperlink')) return String(value.text || value.hyperlink || '').trim()
+  }
+  return String(value).trim()
+}
+
+function formatDateValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizeImportDate(cell, fieldLabel) {
+  const value = cell?.value
+  if (value === null || value === undefined || String(value).trim?.() === '') return null
+  if (value instanceof Date) return formatDateValue(value)
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(Math.round((value - 25569) * 86400 * 1000))
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10)
+  }
+  const text = cellValueToText(cell)
+  if (!text) return null
+  const matched = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (!matched) {
+    throw badRequest(`${fieldLabel}格式应为 YYYY-MM-DD`)
+  }
+  const [, year, month, day] = matched
+  const normalized = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  const date = new Date(`${normalized}T00:00:00`)
+  if (
+    Number.isNaN(date.getTime())
+    || date.getFullYear() !== Number(year)
+    || date.getMonth() + 1 !== Number(month)
+    || date.getDate() !== Number(day)
+  ) {
+    throw badRequest(`${fieldLabel}不是有效日期`)
+  }
+  return normalized
+}
+
+function normalizeImportMaintenanceType(value) {
+  const text = String(value || '').trim()
+  const key = text.replace(/\s+/g, '').toLowerCase()
+  return normalizeMaintenanceType(maintenanceTypeImportAliases[text] || maintenanceTypeImportAliases[key] || text || 'none')
+}
+
+function normalizeImportId(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  const id = Number(text)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+function importRowHasInput(row, headerMap) {
+  return Object.values(headerMap).some((column) => cellValueToText(row.getCell(column)))
+}
+
+function parseImportHeader(worksheet) {
+  const headerMap = {}
+  worksheet.getRow(1).eachCell((cell, columnNumber) => {
+    const field = importHeaderLookup[normalizeHeader(cellValueToText(cell))]
+    if (field && !headerMap[field]) headerMap[field] = columnNumber
+  })
+  if (!headerMap.model || !headerMap.serialNo) {
+    throw badRequest('导入模板缺少必填表头：设备型号、SN')
+  }
+  if (!headerMap.customerId && !headerMap.customerName) {
+    throw badRequest('导入模板缺少客户表头：客户ID 或 客户名称')
+  }
+  return headerMap
+}
+
+function getImportText(row, headerMap, field) {
+  const column = headerMap[field]
+  return column ? cellValueToText(row.getCell(column)) : ''
+}
+
+function parseImportRow(row, headerMap) {
+  const maintenanceType = normalizeImportMaintenanceType(getImportText(row, headerMap, 'maintenanceType'))
+  return {
+    rowNumber: row.number,
+    customerId: normalizeImportId(getImportText(row, headerMap, 'customerId')),
+    customerName: normalizeText(getImportText(row, headerMap, 'customerName')),
+    name: normalizeText(getImportText(row, headerMap, 'name')),
+    model: normalizeText(getImportText(row, headerMap, 'model')),
+    pn: normalizeText(getImportText(row, headerMap, 'pn')),
+    serialNo: normalizeText(getImportText(row, headerMap, 'serialNo')),
+    mrNo: normalizeText(getImportText(row, headerMap, 'mrNo')),
+    remark: normalizeText(getImportText(row, headerMap, 'remark')),
+    maintenanceType,
+    maintenancePartyId: normalizeImportId(getImportText(row, headerMap, 'maintenancePartyId')),
+    maintenancePartyName: normalizeText(getImportText(row, headerMap, 'maintenancePartyName')),
+    maintenanceStart: normalizeImportDate(headerMap.maintenanceStart ? row.getCell(headerMap.maintenanceStart) : null, '维保开始'),
+    maintenanceEnd: normalizeImportDate(headerMap.maintenanceEnd ? row.getCell(headerMap.maintenanceEnd) : null, '维保截止'),
+    warrantyUntil: normalizeImportDate(headerMap.warrantyUntil ? row.getCell(headerMap.warrantyUntil) : null, '质保截止'),
+    location: normalizeText(getImportText(row, headerMap, 'location')),
+  }
+}
+
+async function findImportCustomer(row, user) {
+  let customer = null
+  if (row.customerId) {
+    const rows = await query('SELECT id, name, salesperson FROM customers WHERE id = :id LIMIT 1', { id: row.customerId })
+    customer = rows[0] || null
+  } else if (row.customerName) {
+    const rows = await query('SELECT id, name, salesperson FROM customers WHERE name = :name LIMIT 2', { name: row.customerName })
+    if (rows.length > 1) throw badRequest('客户名称匹配到多条记录，请改用客户ID')
+    customer = rows[0] || null
+  }
+  if (!customer) throw badRequest('客户不存在，请先维护客户资料')
+  assertSalesCanAccessSalesperson(customer.salesperson, user, forbidden)
+  return customer
+}
+
+async function findImportMaintenanceParty(row) {
+  if (row.maintenanceType === 'none') return null
+  let party = null
+  if (row.maintenancePartyId) {
+    const rows = await query(
+      'SELECT id, name, party_type FROM maintenance_parties WHERE id = :id LIMIT 1',
+      { id: row.maintenancePartyId },
+    )
+    party = rows[0] || null
+    if (party && party.party_type !== row.maintenanceType) {
+      throw badRequest('维保方类型与维保类型不一致')
+    }
+  } else if (row.maintenancePartyName) {
+    const rows = await query(
+      `SELECT id, name, party_type
+       FROM maintenance_parties
+       WHERE name = :name AND party_type = :partyType
+       LIMIT 2`,
+      { name: row.maintenancePartyName, partyType: row.maintenanceType },
+    )
+    if (rows.length > 1) throw badRequest('维保方名称匹配到多条记录，请改用维保方ID')
+    party = rows[0] || null
+  }
+  if (!party && (row.maintenancePartyId || row.maintenancePartyName)) {
+    throw badRequest('维保方不存在，请先维护维保方资料')
+  }
+  return party
+}
+
+function importRowError(row, message) {
+  return {
+    rowNumber: row.rowNumber,
+    sn: row.serialNo || '',
+    message,
+  }
+}
+
+function isDuplicateEntryError(error) {
+  return error?.code === 'ER_DUP_ENTRY' || /duplicate/i.test(String(error?.message || ''))
 }
 
 async function ensureDeviceIdentityColumns() {
@@ -276,6 +533,104 @@ async function create(req, res) {
   )
 
   res.status(201).json({ id: result.insertId })
+}
+
+async function importDevices(req, res) {
+  await ensureDeviceIdentityColumns()
+  if (!req.file?.buffer?.length) {
+    throw badRequest('导入文件不能为空')
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  try {
+    await workbook.xlsx.load(req.file.buffer)
+  } catch {
+    throw badRequest('导入文件无法解析，请确认是有效的 .xlsx 文件')
+  }
+  const worksheet = workbook.worksheets[0]
+  if (!worksheet) {
+    throw badRequest('导入文件没有工作表')
+  }
+  if (worksheet.rowCount > 1001) {
+    throw badRequest('一次最多导入 1000 行设备')
+  }
+
+  const headerMap = parseImportHeader(worksheet)
+  const rows = []
+  const errors = []
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber)
+    if (!importRowHasInput(row, headerMap)) continue
+    try {
+      const item = parseImportRow(row, headerMap)
+      if (!item.model) throw badRequest('设备型号不能为空')
+      if (!item.serialNo) throw badRequest('SN 不能为空')
+      if (!item.customerId && !item.customerName) throw badRequest('客户ID或客户名称不能为空')
+      rows.push(item)
+    } catch (error) {
+      errors.push({ rowNumber, sn: getImportText(row, headerMap, 'serialNo'), message: error.message || '行数据不合法' })
+    }
+  }
+
+  if (!rows.length && !errors.length) {
+    throw badRequest('导入文件没有可导入的数据行')
+  }
+
+  const snCounts = rows.reduce((counts, row) => {
+    const key = row.serialNo.toLowerCase()
+    counts.set(key, (counts.get(key) || 0) + 1)
+    return counts
+  }, new Map())
+  const duplicateSnKeys = new Set([...snCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+
+  let created = 0
+  for (const row of rows) {
+    try {
+      if (duplicateSnKeys.has(row.serialNo.toLowerCase())) {
+        throw badRequest('导入文件内 SN 重复')
+      }
+      const existing = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: row.serialNo })
+      if (existing[0]) {
+        throw badRequest('SN 已存在，已跳过')
+      }
+      const customer = await findImportCustomer(row, req.user)
+      const maintenanceParty = await findImportMaintenanceParty(row)
+      const result = await query(
+        `INSERT INTO devices (
+           customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
+           mr_no, maintenance_start, maintenance_end, location, warranty_until
+         )
+         VALUES (
+           :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
+           :mrNo, :maintenanceStart, :maintenanceEnd, :location, :warrantyUntil
+         )`,
+        {
+          customerId: customer.id,
+          name: row.name,
+          model: row.model,
+          pn: row.pn,
+          serialNo: row.serialNo,
+          mrNo: row.mrNo,
+          remark: row.remark,
+          maintenanceType: row.maintenanceType,
+          maintenancePartyId: maintenanceParty?.id || null,
+          maintenanceStart: row.maintenanceStart,
+          maintenanceEnd: row.maintenanceEnd,
+          location: row.location,
+          warrantyUntil: row.warrantyUntil,
+        },
+      )
+      if (result.insertId) created += 1
+    } catch (error) {
+      errors.push(importRowError(row, isDuplicateEntryError(error) ? 'SN 已存在，已跳过' : error.message || '导入失败'))
+    }
+  }
+
+  res.json({
+    created,
+    failed: errors.length,
+    errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
+  })
 }
 
 async function detail(req, res) {
@@ -531,8 +886,10 @@ async function remove(req, res) {
 }
 
 module.exports = {
+  uploadImportMiddleware,
   list,
   create,
+  importDevices,
   detail,
   batchUpdate,
   update,
