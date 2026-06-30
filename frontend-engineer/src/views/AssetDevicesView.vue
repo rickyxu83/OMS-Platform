@@ -665,7 +665,7 @@ async function compareExistingDeviceModels() {
     modelCompareOpen.value = true
     if (!result.items.length) successMessage.value = '当前设备型号均已匹配型号库'
   } catch (err) {
-    error.value = err.message || '型号比对失败'
+    error.value = err.message || '型号校正失败'
   } finally {
     modelComparing.value = false
   }
@@ -1027,7 +1027,7 @@ watch(filteredDevices, (items) => {
         <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
       </select>
       <button class="ghost" type="button" :disabled="loading" @click="loadDevices"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
-      <button class="ghost" type="button" :disabled="loading || modelComparing || !filteredDevices.length" @click="compareExistingDeviceModels"><PreviewIcon name="eye" />{{ zh(modelComparing ? `比对 ${modelCompareProgress}%` : '比对型号') }}</button>
+      <button class="ghost" type="button" :disabled="loading || modelComparing || !filteredDevices.length" @click="compareExistingDeviceModels"><PreviewIcon name="eye" />{{ zh(modelComparing ? `校正 ${modelCompareProgress}%` : '型号校正') }}</button>
       <button class="ghost" type="button" @click="downloadDeviceImportTemplate"><PreviewIcon name="download" />{{ zh('下载模板') }}</button>
       <button class="ghost" type="button" @click="openImportDialog"><PreviewIcon name="download" />{{ zh('导入 Excel') }}</button>
       <button class="ghost" type="button" @click="openBulkCreate"><PreviewIcon name="new" />{{ zh('批量新增') }}</button>
@@ -1291,12 +1291,12 @@ watch(filteredDevices, (items) => {
       </div>
     </div>
 
-    <div v-if="modelCompareOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('现有设备型号比对')" @click.self="closeModelCompareDialog">
+    <div v-if="modelCompareOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('设备型号校正')" @click.self="closeModelCompareDialog">
       <div class="signature-modal-shell asset-editor-shell asset-model-compare-shell">
         <header class="signature-modal-head">
           <div>
             <p>{{ zh('设备资产') }}</p>
-            <h2>{{ zh('现有设备型号比对') }}</h2>
+            <h2>{{ zh('设备型号校正') }}</h2>
           </div>
         </header>
         <p v-if="error" class="form-error">{{ zh(error) }}</p>

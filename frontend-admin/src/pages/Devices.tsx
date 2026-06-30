@@ -1205,7 +1205,7 @@ export function Devices() {
       setModelCompareOpen(true);
       if (!result.items.length) toast.success("当前设备型号均已匹配型号库");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "型号比对失败");
+      setError(e instanceof Error ? e.message : "型号校正失败");
     } finally {
       setModelComparing(false);
     }
@@ -1284,7 +1284,7 @@ export function Devices() {
           {canEditDevices ? (
             <Button variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
               {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {modelComparing ? `比对 ${modelCompareProgress}%` : "比对型号"}
+              {modelComparing ? `校正 ${modelCompareProgress}%` : "型号校正"}
             </Button>
           ) : null}
           {canCreateDevices ? (
@@ -2152,7 +2152,7 @@ export function Devices() {
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[820px]">
           <DialogHeader>
-            <DialogTitle>现有设备型号比对</DialogTitle>
+            <DialogTitle>设备型号校正</DialogTitle>
             <DialogDescription>
               {selectedDeviceIds.length ? `已选择 ${selectedDeviceIds.length} 台设备` : `当前列表 ${filtered.length} 台设备`}
             </DialogDescription>
