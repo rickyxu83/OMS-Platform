@@ -6796,6 +6796,184 @@ h2 {
   font-weight: 900;
 }
 
+.asset-import-shell {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.asset-import-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px;
+  overscroll-behavior: contain;
+}
+
+.asset-import-hint,
+.asset-import-corrections,
+.asset-import-errors,
+.asset-import-summary,
+.asset-import-file {
+  border: 1px solid rgb(148 163 184 / 20%);
+  border-radius: 16px;
+  background: rgb(248 250 252 / 72%);
+}
+
+.asset-import-hint {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  color: #64748b;
+  font-size: var(--type-muted);
+  font-weight: 750;
+  line-height: 1.75;
+}
+
+.asset-import-hint strong {
+  color: #172033;
+  font-size: var(--type-body);
+  font-weight: 950;
+}
+
+.asset-import-file {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  color: #334155;
+  font-size: var(--type-muted);
+  font-weight: 900;
+}
+
+.asset-import-file span,
+.asset-import-corrections p {
+  color: #64748b;
+  font-size: var(--type-caption);
+  font-weight: 750;
+  line-height: 1.55;
+}
+
+.asset-import-file input[type="file"] {
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 14px;
+  background: #fff;
+  color: #172033;
+  font-size: var(--type-muted);
+}
+
+.asset-import-corrections {
+  overflow: hidden;
+  background: rgb(245 243 255 / 82%);
+  border-color: rgb(196 181 253 / 70%);
+}
+
+.asset-import-corrections header,
+.asset-import-errors header {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgb(196 181 253 / 55%);
+  color: #4c1d95;
+  font-size: var(--type-muted);
+  font-weight: 950;
+}
+
+.asset-import-correction-list,
+.asset-import-error-list {
+  display: grid;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.asset-import-correction-row,
+.asset-import-error-row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgb(196 181 253 / 24%);
+  color: #64748b;
+  font-size: var(--type-muted);
+}
+
+.asset-import-correction-row {
+  grid-template-columns: 84px minmax(140px, 0.82fr) minmax(220px, 1.4fr);
+}
+
+.asset-import-error-row {
+  grid-template-columns: 84px minmax(120px, 0.8fr) minmax(220px, 1.4fr);
+}
+
+.asset-import-correction-row strong,
+.asset-import-error-row strong {
+  color: #172033;
+  font-weight: 950;
+}
+
+.asset-import-correction-row span,
+.asset-import-error-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-import-correction-row span:last-child {
+  color: #4c1d95;
+  font-weight: 850;
+}
+
+.asset-import-corrections p {
+  padding: 10px 14px;
+}
+
+.asset-import-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.asset-import-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.asset-import-summary span {
+  color: #64748b;
+  font-size: var(--type-caption);
+  font-weight: 850;
+}
+
+.asset-import-summary strong {
+  color: #172033;
+  font-size: 1.4rem;
+  font-weight: 950;
+}
+
+.asset-import-errors {
+  overflow: hidden;
+  background: rgb(254 242 242 / 82%);
+  border-color: rgb(254 202 202 / 70%);
+}
+
+.asset-import-errors header {
+  border-bottom-color: rgb(254 202 202 / 70%);
+  color: #991b1b;
+}
+
+.asset-import-error-row {
+  border-bottom-color: rgb(254 202 202 / 40%);
+}
+
+.asset-import-error-row span:last-child {
+  color: #b91c1c;
+  font-weight: 850;
+}
+
 .asset-editor-batch-table {
   display: grid;
   overflow: visible;
@@ -7037,6 +7215,13 @@ h2 {
     -webkit-overflow-scrolling: touch;
   }
 
+  .asset-import-body {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 2px max(24px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+
   .asset-editor-form {
     grid-template-columns: 1fr;
   }
@@ -7047,6 +7232,17 @@ h2 {
 
   .asset-editor-batch-row {
     grid-template-columns: 1fr;
+  }
+
+  .asset-import-correction-row,
+  .asset-import-error-row,
+  .asset-import-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-import-correction-row span,
+  .asset-import-error-row span {
+    white-space: normal;
   }
 
   .asset-editor-row-remove {
@@ -7087,7 +7283,7 @@ h2 {
     z-index: 2;
     bottom: 0;
     display: grid;
-    grid-template-columns: 1fr 1.2fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin: 0 -2px;
     padding: 10px 2px max(12px, env(safe-area-inset-bottom));

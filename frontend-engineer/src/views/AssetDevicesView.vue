@@ -14,6 +14,7 @@ const parties = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
+const successMessage = ref('')
 const searchQuery = ref('')
 const customerFilter = ref('')
 const dialogOpen = ref(false)
@@ -25,6 +26,11 @@ const selectedDeviceIds = ref([])
 const batchEditOpen = ref(false)
 const batchEditForm = ref(emptyBatchEditForm())
 const batchEditToggles = ref(emptyBatchEditToggles())
+const importOpen = ref(false)
+const importFile = ref(null)
+const importing = ref(false)
+const importResult = ref(null)
+const importFileInputRef = ref(null)
 const customerInput = ref('')
 const customerDropdownOpen = ref(false)
 const customerSearchLoading = ref(false)
@@ -186,6 +192,28 @@ function batchRowHasInput(row) {
   return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim() || row.mrNo.trim())
 }
 
+function modelNormalizationMessage(payload) {
+  const normalization = payload?.modelNormalization || {}
+  const action = String(normalization.action || '')
+  if (!['corrected', 'created', 'created_corrected', 'not_found'].includes(action)) return ''
+  return String(payload?.message || normalization.message || '').trim()
+    || (action === 'corrected'
+      ? `已按型号库标准纠正为 ${normalization.canonicalModel || '标准型号'}`
+      : action === 'created_corrected'
+        ? `型号库未命中，已规范为 ${normalization.canonicalModel || '标准型号'} 并加入型号库`
+        : action === 'created'
+          ? '型号库未命中，已加入型号库'
+          : '型号库未命中，未能在线确认，已按原型号保存')
+}
+
+function formatModelNormalizationMessages(messages) {
+  const unique = [...new Set(messages.map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!unique.length) return ''
+  if (unique.length === 1) return unique[0]
+  if (unique.length === 2) return unique.join('；')
+  return `${unique.slice(0, 2).join('；')}；另有 ${unique.length - 2} 条型号校对结果已应用`
+}
+
 function customerLabel(customer) {
   if (!customer) return ''
   return customer.name || `客户 #${customer.id}`
@@ -203,6 +231,142 @@ function mergeCustomers(current, incoming) {
     merged.set(key, { ...(merged.get(key) || {}), ...customer })
   })
   return [...merged.values()]
+}
+
+async function downloadDeviceImportTemplate() {
+  const [{ Workbook }, { saveAs }] = await Promise.all([
+    import('exceljs'),
+    import('file-saver'),
+  ])
+  const workbook = new Workbook()
+  workbook.creator = 'OMS Platform'
+  workbook.created = new Date()
+  workbook.modified = new Date()
+
+  const headerRowNumber = 4
+  const worksheet = workbook.addWorksheet('设备导入模板', {
+    views: [{ state: 'frozen', ySplit: headerRowNumber }],
+  })
+  const requiredHeaders = new Set(['客户名称', '设备型号*', 'SN*'])
+  worksheet.columns = [
+    { key: 'customerName', width: 24 },
+    { key: 'name', width: 20 },
+    { key: 'model', width: 24 },
+    { key: 'serialNo', width: 22 },
+    { key: 'mrNo', width: 18 },
+    { key: 'maintenanceType', width: 16 },
+    { key: 'maintenancePartyName', width: 24 },
+    { key: 'maintenanceStart', width: 14 },
+    { key: 'maintenanceEnd', width: 14 },
+    { key: 'warrantyUntil', width: 14 },
+    { key: 'location', width: 24 },
+    { key: 'remark', width: 28 },
+  ]
+  worksheet.mergeCells('A1:L1')
+  worksheet.mergeCells('A2:L2')
+  worksheet.mergeCells('A3:L3')
+  worksheet.getCell('A1').value = '设备资产导入提示'
+  worksheet.getCell('A2').value = '只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。'
+  worksheet.getCell('A3').value = '客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。'
+  ;[1, 2, 3].forEach((rowNumber) => {
+    const row = worksheet.getRow(rowNumber)
+    row.height = rowNumber === 1 ? 26 : 22
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFC4B5FD' } },
+        left: { style: 'thin', color: { argb: 'FFC4B5FD' } },
+        bottom: { style: 'thin', color: { argb: 'FFC4B5FD' } },
+        right: { style: 'thin', color: { argb: 'FFC4B5FD' } },
+      }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowNumber === 1 ? 'FFDDD6FE' : 'FFF5F3FF' } }
+      cell.font = { bold: rowNumber === 1, color: { argb: rowNumber === 3 ? 'FF7F1D1D' : 'FF4C1D95' } }
+    })
+  })
+  worksheet.getRow(headerRowNumber).values = [
+    '客户名称',
+    '主机名',
+    '设备型号*',
+    'SN*',
+    'MR单',
+    '维保类型',
+    '维保方名称',
+    '维保开始',
+    '维保截止',
+    '质保截止',
+    '位置',
+    '备注',
+  ]
+  worksheet.addRow({
+    customerName: '示例客户有限公司',
+    name: 'host-01',
+    model: 'PowerEdge R740',
+    serialNo: 'SN-EXAMPLE-001',
+    mrNo: 'MR-001',
+    maintenanceType: '我方维保',
+    maintenancePartyName: '示例维保方',
+    maintenanceStart: '2026-01-01',
+    maintenanceEnd: '2026-12-31',
+    warrantyUntil: '2026-12-31',
+    location: '机房 A01',
+    remark: '删除示例行后再导入',
+  })
+  worksheet.autoFilter = {
+    from: { row: headerRowNumber, column: 1 },
+    to: { row: headerRowNumber, column: worksheet.columns.length },
+  }
+  worksheet.getRow(headerRowNumber).height = 24
+  worksheet.getRow(headerRowNumber).eachCell((cell) => {
+    const required = requiredHeaders.has(String(cell.value || ''))
+    cell.font = { bold: true, color: { argb: required ? 'FF7F1D1D' : 'FF4C1D95' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    if (required) {
+      cell.note = String(cell.value) === '客户名称'
+        ? '必填项，必须和系统内客户名称一模一样，否则该行会导入失败。'
+        : '必填项，不能为空。'
+    }
+  })
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD9E2EC' } },
+        left: { style: 'thin', color: { argb: 'FFD9E2EC' } },
+        bottom: { style: 'thin', color: { argb: 'FFD9E2EC' } },
+        right: { style: 'thin', color: { argb: 'FFD9E2EC' } },
+      }
+      cell.alignment = { vertical: 'middle', wrapText: true }
+      if (rowNumber > headerRowNumber) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }
+      }
+    })
+  })
+
+  const help = workbook.addWorksheet('字段说明')
+  help.columns = [
+    { header: '字段', key: 'field', width: 18 },
+    { header: '是否必填', key: 'required', width: 14 },
+    { header: '说明', key: 'description', width: 72 },
+  ]
+  ;[
+    ['客户名称', '必填', '必须和系统内客户名称一模一样，否则该行会导入失败。'],
+    ['设备型号*', '必填', '不能为空。'],
+    ['SN*', '必填', '不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。'],
+    ['维保类型', '选填', '可填：无维保、原厂维保、我方维保；空值按无维保处理。'],
+    ['维保方名称', '有维保时选填', '按名称和维保类型匹配已有维保方。'],
+    ['维保截止', '选填', '当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。'],
+    ['质保截止', '选填', '设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。'],
+    ['日期字段', '选填', '使用 YYYY-MM-DD 格式，例如 2026-12-31。'],
+    ['填写建议', '说明', '只需先填客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后再在系统中批量补齐或修改。'],
+  ].forEach(([field, required, description]) => help.addRow({ field, required, description }))
+  help.getRow(1).font = { bold: true, color: { argb: 'FF4C1D95' } }
+  help.getRow(1).eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  })
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), '设备资产导入模板.xlsx')
 }
 
 function selectedCustomerLabel(customerId, fallback = '') {
@@ -259,6 +423,7 @@ async function loadDevices() {
 }
 
 function openCreate() {
+  successMessage.value = ''
   createMode.value = 'single'
   editingId.value = null
   form.value = { ...emptyForm(), customerId: customerFilter.value || '' }
@@ -270,6 +435,7 @@ function openCreate() {
 }
 
 function openBulkCreate() {
+  successMessage.value = ''
   createMode.value = 'bulk'
   editingId.value = null
   form.value = { ...emptyForm(), customerId: customerFilter.value || '' }
@@ -281,6 +447,7 @@ function openBulkCreate() {
 }
 
 function openEdit(device) {
+  successMessage.value = ''
   createMode.value = 'single'
   editingId.value = device.id
   const maintenanceType = canonicalMaintenanceType(device.maintenanceType)
@@ -377,6 +544,58 @@ function closeBatchEdit() {
   error.value = ''
 }
 
+function openImportDialog() {
+  error.value = ''
+  successMessage.value = ''
+  importFile.value = null
+  importResult.value = null
+  if (importFileInputRef.value) importFileInputRef.value.value = ''
+  importOpen.value = true
+}
+
+function closeImportDialog() {
+  if (importing.value) return
+  importOpen.value = false
+  error.value = ''
+  importFile.value = null
+  importResult.value = null
+  if (importFileInputRef.value) importFileInputRef.value.value = ''
+}
+
+async function submitImport(mode = 'check') {
+  if (!importFile.value) {
+    error.value = '请选择要导入的 Excel 文件'
+    return
+  }
+  importing.value = true
+  error.value = ''
+  successMessage.value = ''
+  importResult.value = null
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile.value)
+    if (mode === 'confirm') formData.append('confirmModelCorrections', '1')
+    if (mode === 'skip') formData.append('skipModelCorrections', '1')
+    const data = await api.postForm('/devices/import', formData)
+    const result = {
+      created: Number(data?.created || 0),
+      failed: Number(data?.failed || 0),
+      errors: Array.isArray(data?.errors) ? data.errors : [],
+      requiresModelConfirmation: Boolean(data?.requiresModelConfirmation),
+      modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
+    }
+    importResult.value = result
+    if (!result.requiresModelConfirmation) {
+      successMessage.value = `导入完成：成功 ${result.created} 台，失败 ${result.failed} 行`
+      await loadDevices()
+    }
+  } catch (err) {
+    error.value = err.message || '导入失败'
+  } finally {
+    importing.value = false
+  }
+}
+
 async function submitBatchEdit() {
   const fields = {}
   if (batchEditToggles.value.maintenanceType) {
@@ -419,6 +638,7 @@ function closeDialog() {
 }
 
 async function saveDevice() {
+  successMessage.value = ''
   let effectiveCustomerId = form.value.customerId
   if (!effectiveCustomerId && customerInput.value.trim()) {
     const normalizedInput = normalizeCustomerSearchText(customerInput.value)
@@ -440,6 +660,7 @@ async function saveDevice() {
   saving.value = true
   error.value = ''
   let createdCount = 0
+  const normalizationMessages = []
   try {
     const type = canonicalMaintenanceType(form.value.maintenanceType)
     const commonPayload = {
@@ -483,13 +704,15 @@ async function saveDevice() {
       }
 
       for (const row of rows) {
-        await api.post('/devices', {
+        const data = await api.post('/devices', {
           ...commonPayload,
           name: row.name || null,
           model: row.model,
           serialNo: row.serialNo || undefined,
           mrNo: row.mrNo || undefined,
         })
+        const message = modelNormalizationMessage(data)
+        if (message) normalizationMessages.push(message)
         createdCount += 1
       }
     } else {
@@ -509,10 +732,16 @@ async function saveDevice() {
         serialNo: form.value.serialNo.trim() || undefined,
         mrNo: form.value.mrNo.trim() || undefined,
       }
-      if (editingId.value) await api.put(`/devices/${editingId.value}`, payload)
-      else await api.post('/devices', payload)
+      if (editingId.value) {
+        await api.put(`/devices/${editingId.value}`, payload)
+      } else {
+        const data = await api.post('/devices', payload)
+        const message = modelNormalizationMessage(data)
+        if (message) normalizationMessages.push(message)
+      }
     }
     dialogOpen.value = false
+    successMessage.value = formatModelNormalizationMessages(normalizationMessages)
     await loadDevices()
   } catch (err) {
     const message = err.message || '保存失败'
@@ -696,6 +925,8 @@ watch(filteredDevices, (items) => {
         <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
       </select>
       <button class="ghost" type="button" :disabled="loading" @click="loadDevices"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
+      <button class="ghost" type="button" @click="downloadDeviceImportTemplate"><PreviewIcon name="download" />{{ zh('下载模板') }}</button>
+      <button class="ghost" type="button" @click="openImportDialog"><PreviewIcon name="download" />{{ zh('导入 Excel') }}</button>
       <button class="ghost" type="button" @click="openBulkCreate"><PreviewIcon name="new" />{{ zh('批量新增') }}</button>
       <button class="primary" type="button" @click="openCreate"><PreviewIcon name="new" />{{ zh('新增设备') }}</button>
     </section>
@@ -716,6 +947,7 @@ watch(filteredDevices, (items) => {
     </section>
 
     <p v-if="error" class="form-error">{{ zh(error) }}</p>
+    <p v-if="successMessage" class="asset-save-message"><PreviewIcon name="check" />{{ zh(successMessage) }}</p>
     <p v-if="loading" class="muted">{{ zh('正在加载设备资产…') }}</p>
 
     <section class="asset-card-list">
@@ -952,6 +1184,89 @@ watch(filteredDevices, (items) => {
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
           <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : editingId ? '保存修改' : createMode === 'bulk' ? '批量保存' : '保存') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <div v-if="importOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('导入设备资产')" @click.self="closeImportDialog">
+      <div class="signature-modal-shell asset-editor-shell asset-import-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('设备资产') }}</p>
+            <h2>{{ zh('导入设备资产') }}</h2>
+          </div>
+        </header>
+        <p v-if="error" class="form-error">{{ zh(error) }}</p>
+        <div class="asset-import-body">
+          <section class="asset-import-hint">
+            <strong>{{ zh('先导入最小必填信息即可') }}</strong>
+            <p>{{ zh('只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。') }}</p>
+            <p>{{ zh('客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。') }}</p>
+          </section>
+
+          <label class="asset-import-file">{{ zh('Excel 文件 *') }}
+            <input
+              ref="importFileInputRef"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              :disabled="importing"
+              @change="importResult = null; importFile = $event.target.files?.[0] || null"
+            />
+            <span>{{ zh('单次最多 1000 行，文件不超过 5MB。') }}</span>
+          </label>
+
+          <section v-if="importResult?.requiresModelConfirmation && importResult.modelCorrections?.length" class="asset-import-corrections">
+            <header>{{ zh(`发现 ${importResult.modelCorrections.length} 行设备型号可自动纠正`) }}</header>
+            <div class="asset-import-correction-list">
+              <div
+                v-for="(item, index) in importResult.modelCorrections"
+                :key="`${item.rowNumber}-${item.sn || ''}-${index}`"
+                class="asset-import-correction-row"
+              >
+                <strong>{{ zh(`第 ${item.rowNumber} 行`) }}</strong>
+                <span :title="item.inputModel || ''">{{ zh(`原型号：${item.inputModel || '-'}`) }}</span>
+                <span :title="item.canonicalModel || ''">{{ zh(`标准型号：${item.canonicalModel || '-'}`) }}</span>
+              </div>
+            </div>
+            <p>{{ zh('确认后，以上行会按标准型号写入；未列出的行保持 Excel 原值。') }}</p>
+          </section>
+
+          <section v-else-if="importResult" class="asset-import-summary">
+            <div>
+              <span>{{ zh('成功导入') }}</span>
+              <strong>{{ importResult.created }}</strong>
+            </div>
+            <div>
+              <span>{{ zh('失败行数') }}</span>
+              <strong>{{ importResult.failed }}</strong>
+            </div>
+          </section>
+
+          <section v-if="importResult?.errors?.length" class="asset-import-errors">
+            <header>{{ zh('失败明细') }}</header>
+            <div class="asset-import-error-list">
+              <div
+                v-for="(item, index) in importResult.errors"
+                :key="`${item.rowNumber}-${item.sn || ''}-${index}`"
+                class="asset-import-error-row"
+              >
+                <strong>{{ zh(`第 ${item.rowNumber} 行`) }}</strong>
+                <span>{{ zh(`SN：${item.sn || '-'}`) }}</span>
+                <span>{{ zh(item.message || '导入失败') }}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" :disabled="importing" @click="closeImportDialog">{{ zh('关闭') }}</button>
+          <button v-if="importResult?.requiresModelConfirmation" class="ghost" type="button" :disabled="importing || !importFile" @click="submitImport('skip')">
+            {{ zh('按原型号导入') }}
+          </button>
+          <button class="ghost" type="button" :disabled="importing" @click="downloadDeviceImportTemplate"><PreviewIcon name="download" />{{ zh('下载模板') }}</button>
+          <button class="primary" type="button" :disabled="importing || !importFile" @click="submitImport(importResult?.requiresModelConfirmation ? 'confirm' : 'check')">
+            <PreviewIcon name="download" />
+            {{ zh(importing ? '导入中…' : importResult?.requiresModelConfirmation ? '自动纠正并导入' : '开始导入') }}
+          </button>
         </footer>
       </div>
     </div>
