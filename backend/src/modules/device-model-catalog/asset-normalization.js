@@ -100,32 +100,54 @@ async function fetchSearchEvidence(inputModel) {
   }
 
   const timeoutMs = Math.max(500, Number(process.env.DEVICE_MODEL_ONLINE_LOOKUP_TIMEOUT_MS || defaultLookupTimeoutMs))
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  const searchQuery = `"${inputModel}" device model server storage network`
-  const url = `https://www.bing.com/search?q=${encodeURIComponent(searchQuery)}&setmkt=en-US&setlang=en-US&cc=US`
+  const model = normalizeText(inputModel)
+  const searchQueries = deduplicateAliases([
+    model,
+    model ? `"${model}"` : '',
+  ]).filter(Boolean)
+  const results = []
+  const seen = new Set()
+  const errors = []
+  let searched = false
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        accept: 'text/html,application/xhtml+xml',
-        'accept-language': 'en-US,en;q=0.9',
-        'user-agent': 'OMSDeviceModelNormalizer/1.0',
-      },
-    })
-    if (!response.ok) {
-      return { searched: true, error: `HTTP ${response.status}`, results: [] }
+  for (const searchQuery of searchQueries) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const url = `https://www.bing.com/search?q=${encodeURIComponent(searchQuery)}&setmkt=en-US&setlang=en-US&cc=US`
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'accept-language': 'en-US,en;q=0.9',
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        },
+      })
+      searched = true
+      if (!response.ok) {
+        errors.push(`HTTP ${response.status}`)
+        continue
+      }
+      const html = await response.text()
+      for (const result of extractSearchResults(html)) {
+        const key = `${result.title}\n${result.url}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        results.push({ ...result, query: searchQuery })
+      }
+    } catch (error) {
+      searched = true
+      errors.push(error.name === 'AbortError' ? 'lookup timeout' : (error.message || 'lookup failed'))
+    } finally {
+      clearTimeout(timeout)
     }
-    const html = await response.text()
-    return {
-      searched: true,
-      results: extractSearchResults(html),
-    }
-  } catch (error) {
-    return { searched: true, error: error.message || 'lookup failed', results: [] }
-  } finally {
-    clearTimeout(timeout)
+  }
+
+  return {
+    searched,
+    error: results.length ? undefined : errors[0],
+    results,
   }
 }
 
@@ -165,6 +187,9 @@ function inferBrandCategory(text) {
     if (/\bbrocade|broadcom\b/.test(lower)) return { brand: 'Brocade', category: 'network' }
     if (/\baruba\b/.test(lower)) return { brand: 'HPE', category: 'network' }
     return { brand: 'H3C', category: 'network' }
+  }
+  if (/\bsangfor\b|深信服/i.test(lower)) {
+    return { brand: 'Sangfor', category: 'network' }
   }
   if (/\b(huawei|oceanstor|cloudengine|s\d{4,5})\b/.test(lower)) {
     return { brand: 'Huawei', category: /\boceanstor\b/.test(lower) ? 'storage' : 'network' }
@@ -244,6 +269,14 @@ function extractKnownModel(inputModel, evidenceText) {
 
   match = text.match(/\b(?:Cisco\s+)?Nexus\s+([0-9]{4,5}[A-Z0-9-]*)\b/i)
   if (match) return extracted('Cisco', 'network', `Cisco Nexus ${match[1].toUpperCase()}`, match[1].toUpperCase())
+
+  match = input.match(/^(?:Sangfor\s+|深信服\s*)?(AC|AF|AD)\s*[-\s]?\s*([A-Z0-9]+(?:-[A-Z0-9]+)*)$/i)
+    || text.match(/\b(?:Sangfor\s+|深信服\s*)?(AC|AF|AD)\s*[-\s]?\s*([A-Z0-9]+(?:-[A-Z0-9]+)*)\b/i)
+  if (match && (inferred.brand === 'Sangfor' || /\bsangfor\b|深信服/i.test(text))) {
+    const line = match[1].toUpperCase()
+    const model = match[2].toUpperCase()
+    return extracted('Sangfor', 'network', `Sangfor ${line} ${model}`, `${line}-${model}`)
+  }
 
   match = text.match(/\b(?:H3C\s+)?(S[0-9]{4,5}(?:-[A-Z0-9-]+)?)\b/i)
   if (match && (inferred.brand === 'H3C' || /\bh3c\b/i.test(text))) {
@@ -690,11 +723,48 @@ async function discoverAiCandidate(inputModel, search) {
   }
 }
 
+function mergeSearchEvidence(searches, preferredSearch = null) {
+  const ordered = preferredSearch
+    ? [preferredSearch, ...searches.filter((search) => search !== preferredSearch)]
+    : searches
+  const results = []
+  const seen = new Set()
+
+  for (const search of ordered) {
+    for (const result of search?.results || []) {
+      const key = `${result.title}\n${result.url}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      results.push(result)
+    }
+  }
+
+  const searched = searches.some((search) => search?.searched)
+  const disabled = searches.length > 0 && searches.every((search) => search?.disabled)
+  const error = searches.map((search) => search?.error).find(Boolean)
+  return { searched, disabled, error, results }
+}
+
 async function discoverOnlineCandidate(inputModel) {
   const localCandidate = extractKnownModel(inputModel, '')
-  const search = await fetchSearchEvidence(inputModel)
-  const evidence = search.results.map((result) => `${result.title} ${result.snippet}`).join(' ')
-  const onlineCandidate = evidence ? extractKnownModel(inputModel, evidence) : null
+  const searches = []
+  let matchedSearch = null
+  let onlineCandidate = null
+  const modelsToSearch = deduplicateAliases([inputModel, ...likelyModelVariants(inputModel)]).slice(0, 3)
+
+  for (const model of modelsToSearch) {
+    const currentSearch = await fetchSearchEvidence(model)
+    searches.push(currentSearch)
+    const evidence = currentSearch.results.map((result) => `${result.title} ${result.snippet}`).join(' ')
+    onlineCandidate = evidence ? extractKnownModel(inputModel, evidence) : null
+    if (onlineCandidate) {
+      matchedSearch = currentSearch
+      break
+    }
+    if (currentSearch.disabled) break
+  }
+
+  const search = mergeSearchEvidence(searches, matchedSearch)
   let candidate = localCandidate || onlineCandidate
   const usedOnlineCandidate = !localCandidate && Boolean(onlineCandidate)
   let usedAiCandidate = false
