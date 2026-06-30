@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { Plus, RefreshCw, Search, Building2, Loader2, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Search, Wrench, Loader2, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,7 +83,6 @@ const I18N = {
       contacts: "联系人",
       phone: "电话",
       website: "官网",
-      updatedAt: "最近更新",
       action: "操作",
       contactLine: "联系人：{contact} · 电话：{phone}",
       officialWebsite: "官网地址：{url}",
@@ -172,7 +171,6 @@ const I18N = {
       contacts: "聯絡人",
       phone: "電話",
       website: "官網",
-      updatedAt: "最近更新",
       action: "操作",
       contactLine: "聯絡人：{contact} · 電話：{phone}",
       officialWebsite: "官網地址：{url}",
@@ -665,7 +663,7 @@ export function MaintenanceParties() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
             ) : (
-                <table className="w-full min-w-[980px] caption-bottom text-sm">
+                <table className="w-full min-w-[870px] caption-bottom text-sm">
                   <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                     <TableRow>
                       {canDeleteParties ? <TableHead className="w-10 text-center" /> : null}
@@ -674,7 +672,6 @@ export function MaintenanceParties() {
                       <TableHead className="text-center">{t.list.contacts}</TableHead>
                       <TableHead className="text-center">{t.list.phone}</TableHead>
                       <TableHead className="text-center">{t.list.website}</TableHead>
-                      <TableHead className="w-[110px] text-center">{t.list.updatedAt}</TableHead>
                       {canManageParties ? <TableHead className="w-[150px] text-center">{t.list.action}</TableHead> : null}
                     </TableRow>
                   </TableHeader>
@@ -711,7 +708,7 @@ export function MaintenanceParties() {
                           ) : null}
                           <TableCell>
                             <div className="flex min-w-0 items-center gap-2">
-                              <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                              <Wrench className="h-4 w-4 shrink-0 text-primary" />
                               <div className="min-w-0">
                                 {p.name ? (
                                   <button
@@ -775,7 +772,6 @@ export function MaintenanceParties() {
                               <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm">{formatDate(p.updatedAt)}</TableCell>
                           {canManageParties ? (
                             <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                               <div className="inline-flex gap-2">

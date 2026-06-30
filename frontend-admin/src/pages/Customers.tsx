@@ -1487,11 +1487,20 @@ export function Customers() {
         </CardHeader>
         <CardContent className="pt-6">
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-              <table className="w-full min-w-[760px] caption-bottom text-sm">
+              <table className="w-full min-w-[1080px] table-fixed caption-bottom text-sm">
+              <colgroup>
+                {canDeleteCustomer ? <col className="w-10" /> : null}
+                <col className="w-[30%]" />
+                <col className="w-[120px]" />
+                <col className="w-[160px]" />
+                <col className="w-[120px]" />
+                <col />
+                <col className="w-[160px]" />
+              </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
                   {canDeleteCustomer ? <TableHead className="w-10 text-center" /> : null}
-                  <TableHead className="text-center">{t.list.name}</TableHead>
+                  <TableHead>{t.list.name}</TableHead>
                   <TableHead className="text-center">{t.list.contact}</TableHead>
                   <TableHead className="text-center">{t.list.phone}</TableHead>
                   <TableHead className="text-center">
@@ -1500,8 +1509,8 @@ export function Customers() {
                       <HelpTooltip label={t.dialog.levelHelp} />
                     </span>
                   </TableHead>
-                  <TableHead className="text-center">{t.list.address}</TableHead>
-                  <TableHead className="w-[160px] text-center">{t.list.action}</TableHead>
+                  <TableHead>{t.list.address}</TableHead>
+                  <TableHead className="w-[160px] text-right pr-6">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1547,7 +1556,7 @@ export function Customers() {
                             />
                           </TableCell>
                         ) : null}
-                        <TableCell>
+                        <TableCell className="min-w-0">
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0">
@@ -1575,9 +1584,9 @@ export function Customers() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{c.contactName || t.misc.unknown}</TableCell>
-                        <TableCell>{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">{c.contactName || t.misc.unknown}</TableCell>
+                        <TableCell className="text-center tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
+                        <TableCell className="text-center">
                           <Badge
                             role="button"
                             tabIndex={0}
