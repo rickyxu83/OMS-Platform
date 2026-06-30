@@ -1491,9 +1491,9 @@ export function Customers() {
               <colgroup>
                 {canDeleteCustomer ? <col className="w-11" /> : null}
                 <col className="w-[288px]" />
-                <col className="w-[108px]" />
-                <col className="w-[150px]" />
-                <col className="w-[112px]" />
+                <col className="w-[132px]" />
+                <col className="w-[176px]" />
+                <col className="w-[128px]" />
                 <col />
                 <col className="w-[176px]" />
               </colgroup>
