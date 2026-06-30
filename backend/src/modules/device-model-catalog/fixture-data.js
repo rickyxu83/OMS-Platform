@@ -102,6 +102,59 @@ function networkModel(brand, canonicalModel, partNumber, aliases = []) {
   }
 }
 
+function serverModel(brand, canonicalModel, partNumber, aliases = []) {
+  return {
+    brand,
+    category: 'server',
+    canonicalModel,
+    partNumber,
+    aliases: [
+      canonicalModel,
+      partNumber,
+      partNumber ? `${brand} ${partNumber}` : '',
+      ...(Array.isArray(aliases) ? aliases : []),
+    ].filter(Boolean),
+  }
+}
+
+function hpeProLiantModel(model, aliases = []) {
+  return serverModel('HPE', `HPE ProLiant ${model}`, model, [
+    `HP ProLiant ${model}`,
+    `HPE ${model}`,
+    `HP ${model}`,
+    model,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function dellPowerEdgeModel(model, aliases = []) {
+  return serverModel('Dell', `Dell PowerEdge ${model}`, model, [
+    `PowerEdge ${model}`,
+    `Dell ${model}`,
+    `PE ${model}`,
+    model,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function lenovoThinkSystemServerModel(model, aliases = []) {
+  return serverModel('Lenovo', `Lenovo ThinkSystem ${model}`, model, [
+    `Lenovo ${model}`,
+    `ThinkSystem ${model}`,
+    model,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function ibmPowerServerModel(model, aliases = []) {
+  return serverModel('IBM', `IBM Power System ${model}`, model, [
+    `IBM ${model}`,
+    `Power ${model}`,
+    `Power System ${model}`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 function hdsVspModel(model, extraAliases = []) {
   return storageModel('HDS', `HDS VSP ${model}`, model, [
     `VSP ${model}`,
@@ -526,6 +579,179 @@ const NETAPP_STORAGE_FIXTURE_DATA = [
   )),
 ]
 
+const HPE_STORAGE_FIXTURE_DATA = [
+  ...['1040', '1050', '1060', '2042', '2052', '2062'].map((model) => storageModel('HPE', `HPE MSA ${model}`, `MSA ${model}`, [
+    `HPE Modular Smart Array ${model}`,
+    `HP MSA ${model}`,
+    `MSA${model}`,
+  ])),
+  ...['7200', '7400', '7440', '7450'].map((model) => storageModel('HPE', `HPE 3PAR StoreServ ${model}`, model, [
+    `HP 3PAR ${model}`,
+    `HPE 3PAR ${model}`,
+    `StoreServ ${model}`,
+    `3PAR ${model}`,
+  ])),
+  ...['CS300', 'CS500', 'CS700', 'AF20Q', 'AF60', 'AF80', 'HF20C', 'HF40C', 'HF60', 'HF60C'].map((model) => storageModel('HPE', `HPE Nimble ${model}`, model, [
+    `Nimble ${model}`,
+    `HPE Nimble Storage ${model}`,
+  ])),
+  ...['A630', 'A650', 'C630', 'C650'].map((model) => storageModel('HPE', `HPE Primera ${model}`, model, [
+    `Primera ${model}`,
+    `HPE Primera Storage ${model}`,
+  ])),
+  ...['5010', '5030', '5050', '5070', '6010', '6030', '6050', '6070', '9060', '9080'].map((model) => storageModel('HPE', `HPE Alletra ${model}`, model, [
+    `Alletra ${model}`,
+    `HPE Alletra Storage ${model}`,
+  ])),
+  ...['3620', '3640', '5200', '5250', '5650'].map((model) => storageModel('HPE', `HPE StoreOnce ${model}`, model, [
+    `StoreOnce ${model}`,
+    `HP StoreOnce ${model}`,
+  ])),
+]
+
+const HUAWEI_STORAGE_FIXTURE_DATA = [
+  ...[
+    '2600 V3',
+    '2600 V5',
+    '2800 V3',
+    '2800 V5',
+    '5300 V3',
+    '5600 V3',
+    '5600 V5',
+    '5800 V3',
+    '5800 V5',
+    '18500 V3',
+    '18500 V5',
+    '18800 V5',
+  ].map((model) => storageModel('Huawei', `Huawei OceanStor ${model}`, model, [
+    `OceanStor ${model}`,
+    `华为 OceanStor ${model}`,
+    `华为 ${model}`,
+  ])),
+  ...['5110F', '5210', '5310F', '5510', '5510F', '5610', '6810', '6810F'].map((model) => storageModel(
+    'Huawei',
+    `Huawei OceanStor ${model}`,
+    model,
+    [`OceanStor ${model}`, `华为 OceanStor ${model}`],
+  )),
+  ...['3000 V6', '5000 V6', '6000 V6', '8000 V6', '18000 V6'].map((model) => storageModel('Huawei', `Huawei OceanStor Dorado ${model}`, model, [
+    `OceanStor Dorado ${model}`,
+    `Dorado ${model}`,
+    `华为 Dorado ${model}`,
+  ])),
+]
+
+const IBM_FLASHSYSTEM_FIXTURE_DATA = [
+  ...['5010', '5030', '5100', '5200', '5300', '7200', '7300', '9100', '9200', '9500'].map((model) => storageModel(
+    'IBM',
+    `IBM FlashSystem ${model}`,
+    model,
+    [`FlashSystem ${model}`, `IBM ${model}`, `${model} 存储`],
+  )),
+  ...['DS3512', 'DS3524', 'DS5020', 'DS8000', 'DS8870', 'DS8880', 'DS8900F'].map((model) => storageModel('IBM', `IBM ${model}`, model, [
+    `IBM System Storage ${model}`,
+    `${model} 存储`,
+  ])),
+  storageModel('IBM', 'IBM SAN Volume Controller', 'SVC', ['IBM SVC', 'SAN Volume Controller', 'SVC 存储虚拟化']),
+]
+
+const NETAPP_ADDITIONAL_STORAGE_FIXTURE_DATA = [
+  ...['A700s', 'C30', 'C60', 'C80'].map((model) => netAppAffModel(model, [`AFF ${model} All Flash`])),
+  ...['2240', '2520', '8020', '8040', '8060', '8080'].map(netAppFasModel),
+  ...['A150', 'A250', 'A400', 'A700', 'A800'].map((model) => storageModel('NetApp', `NetApp ASA ${model}`, `ASA ${model}`, [
+    `NetApp ${model} ASA`,
+    `ASA ${model}`,
+  ])),
+  ...['2812', '4012', '4060'].map(netAppEModel),
+]
+
+const LENOVO_ADDITIONAL_STORAGE_FIXTURE_DATA = [
+  ...[
+    'DM3000H',
+    'DM5000H',
+    'DM5000F',
+    'DM7000H',
+    'DM7000F',
+    'DM7100H',
+    'DM7100F',
+    'DE2000H',
+    'DE4000F',
+    'DE6000F',
+    'DE6400H',
+    'DE6400F',
+    'DE6600H',
+    'DE6600F',
+  ].map((model) => storageModel('Lenovo', `Lenovo ThinkSystem ${model}`, model, [
+    `Lenovo ${model}`,
+    `ThinkSystem ${model}`,
+  ])),
+]
+
+const QNAP_STORAGE_FIXTURE_DATA = [
+  ...[
+    'TS-453D',
+    'TS-464',
+    'TS-873A',
+    'TVS-h874',
+    'TS-h973AX',
+    'TS-h1277XU-RP',
+    'TS-h1283XU-RP',
+    'TS-h1683XU-RP',
+    'TS-h3087XU-RP',
+  ].map((model) => storageModel('QNAP', `QNAP ${model}`, model, [
+    model.replace(/-/g, ' '),
+    `${model} NAS`,
+  ])),
+]
+
+const SYNOLOGY_STORAGE_FIXTURE_DATA = [
+  ...[
+    'DS923+',
+    'DS1522+',
+    'DS1821+',
+    'DS1823xs+',
+    'RS1221+',
+    'RS3621xs+',
+    'RS4021xs+',
+    'SA3400',
+    'SA3600',
+    'SA6400',
+    'FS2500',
+    'FS3600',
+    'FS6400',
+    'UC3200',
+  ].map((model) => storageModel('Synology', `Synology ${model}`, model, [
+    model.replace('+', ' Plus'),
+    `${model} NAS`,
+  ])),
+]
+
+const PURE_STORAGE_FIXTURE_DATA = [
+  ...['X10', 'X20', 'X50', 'X70', 'X90'].map((model) => storageModel('Pure Storage', `Pure Storage FlashArray//${model}`, `FlashArray//${model}`, [
+    `FlashArray ${model}`,
+    `Pure ${model}`,
+    `Pure Storage ${model}`,
+  ])),
+  ...['C40', 'C60', 'C70', 'C90'].map((model) => storageModel('Pure Storage', `Pure Storage FlashArray//${model}`, `FlashArray//${model}`, [
+    `FlashArray ${model}`,
+    `Pure ${model}`,
+    `Pure Storage ${model}`,
+  ])),
+  ...['S200', 'S500'].map((model) => storageModel('Pure Storage', `Pure Storage FlashBlade//${model}`, `FlashBlade//${model}`, [
+    `FlashBlade ${model}`,
+    `Pure FlashBlade ${model}`,
+  ])),
+  storageModel('Pure Storage', 'Pure Storage FlashArray//E', 'FlashArray//E', ['FlashArray E', 'Pure FlashArray E']),
+]
+
+const INSPUR_STORAGE_FIXTURE_DATA = [
+  ...['AS2200G2', 'AS2600G2', 'AS5300G5', 'AS5500G5', 'AS5600G2', 'AS6800G2'].map((model) => storageModel('Inspur', `Inspur ${model}`, model, [
+    `浪潮 ${model}`,
+    `浪潮存储 ${model}`,
+  ])),
+  storageModel('Inspur', 'Inspur AS13000G5', 'AS13000G5', ['浪潮 AS13000G5', '浪潮分布式存储 AS13000G5']),
+]
+
 const HUAWEI_NETWORK_SECURITY_FIXTURE_DATA = [
   ...[
     'USG6305E',
@@ -718,6 +944,381 @@ const CISCO_NEXUS_FIXTURE_DATA = [
   ciscoNexusModel('5672UP-16G', 'N5K-C5672UP-16G', ['Nexus 5672 UP 16G', 'Cisco Nexus 5672UP 16G', '5672UP-16G']),
   ciscoNexusModel('5696Q', 'N5K-C5696Q', ['Nexus 5696 Q', 'Cisco Nexus 5696 Q', '5696Q']),
 ]
+
+const HPE_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  ...[
+    'DL20 Gen10',
+    'DL20 Gen11',
+    'DL160 Gen10',
+    'DL180 Gen10',
+    'DL325 Gen10',
+    'DL325 Gen11',
+    'DL345 Gen10',
+    'DL345 Gen11',
+    'DL360 Gen9',
+    'DL360 Gen10',
+    'DL360 Gen10 Plus',
+    'DL360 Gen11',
+    'DL365 Gen10 Plus',
+    'DL365 Gen11',
+    'DL380 Gen9',
+    'DL380 Gen10',
+    'DL380 Gen10 Plus',
+    'DL380 Gen11',
+    'DL385 Gen10',
+    'DL385 Gen10 Plus',
+    'DL385 Gen11',
+    'DL560 Gen10',
+    'DL580 Gen10',
+    'ML30 Gen10',
+    'ML30 Gen11',
+    'ML350 Gen10',
+    'MicroServer Gen10 Plus',
+  ].map(hpeProLiantModel),
+  ...['480 Gen10', '480 Gen11', '660 Gen10'].map((model) => serverModel('HPE', `HPE Synergy ${model}`, `Synergy ${model}`, [
+    `Synergy ${model}`,
+    `HPE Synergy ${model}`,
+  ])),
+]
+
+const DELL_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  ...[
+    'R230',
+    'R240',
+    'R250',
+    'R330',
+    'R340',
+    'R350',
+    'R430',
+    'R440',
+    'R450',
+    'R530',
+    'R540',
+    'R550',
+    'R630',
+    'R640',
+    'R650',
+    'R650xs',
+    'R660',
+    'R730',
+    'R730xd',
+    'R740',
+    'R740xd',
+    'R750',
+    'R750xs',
+    'R760',
+    'R760xs',
+    'R7625',
+    'R840',
+    'R940',
+    'R940xa',
+    'T340',
+    'T440',
+    'T550',
+    'T640',
+    'M640',
+    'MX740c',
+    'MX750c',
+    'XR11',
+    'XR12',
+  ].map(dellPowerEdgeModel),
+]
+
+const LENOVO_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  ...[
+    'SR250',
+    'SR530',
+    'SR550',
+    'SR570',
+    'SR590',
+    'SR630',
+    'SR630 V2',
+    'SR630 V3',
+    'SR635',
+    'SR645',
+    'SR650',
+    'SR650 V2',
+    'SR650 V3',
+    'SR655',
+    'SR665',
+    'SR670 V2',
+    'SR850',
+    'SR850 V2',
+    'SR860',
+    'SR860 V2',
+    'ST250',
+    'ST550',
+  ].map(lenovoThinkSystemServerModel),
+]
+
+const IBM_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  ...['S814', 'S822', 'S824', 'S914', 'S922', 'S924', 'S1022', 'S1024', 'E950', 'E980', 'E1050', 'E1080'].map(ibmPowerServerModel),
+]
+
+const CISCO_UCS_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  ...[
+    'C220 M5',
+    'C220 M6',
+    'C220 M7',
+    'C240 M5',
+    'C240 M6',
+    'C240 M7',
+    'C480 M5',
+    'B200 M5',
+    'B200 M6',
+    'X210c M6',
+    'X210c M7',
+    'X410c M7',
+  ].map((model) => serverModel('Cisco', `Cisco UCS ${model}`, `UCS ${model}`, [
+    `Cisco ${model}`,
+    model,
+  ])),
+]
+
+const CISCO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    'Catalyst 1000-24T',
+    'Catalyst 1000-48T',
+    'Catalyst 2960X-24TS',
+    'Catalyst 2960X-48TS',
+    'Catalyst 3650-24TS',
+    'Catalyst 3650-48TS',
+    'Catalyst 3850-24T',
+    'Catalyst 3850-48T',
+    'Catalyst 9200-24T',
+    'Catalyst 9200-48T',
+    'Catalyst 9300-24T',
+    'Catalyst 9300-48T',
+    'Catalyst 9400',
+    'Catalyst 9500-24Y4C',
+    'Catalyst 9500-40X',
+    'Catalyst 9600',
+    'Catalyst 8200',
+    'Catalyst 8300',
+    'Catalyst 8500',
+  ].map((model) => networkModel('Cisco', `Cisco ${model}`, model, [
+    model.replace(/^Catalyst\s+/i, 'C'),
+    `${model} 交换机`,
+  ])),
+  ...[
+    'ISR 4321',
+    'ISR 4331',
+    'ISR 4351',
+    'ISR 4431',
+    'ISR 4451-X',
+    'ASR 1001-X',
+    'ASR 1002-X',
+  ].map((model) => networkModel('Cisco', `Cisco ${model}`, model, [
+    model.replace(/\s+/g, ''),
+    `${model} 路由器`,
+  ])),
+  ...[
+    'Firepower 1010',
+    'Firepower 1120',
+    'Firepower 1140',
+    'Firepower 1150',
+    'Firepower 2110',
+    'Firepower 2120',
+    'Firepower 2130',
+    'Firepower 2140',
+    'Firepower 4110',
+    'Firepower 4120',
+    'Firepower 4140',
+  ].map((model) => networkModel('Cisco', `Cisco ${model}`, model, [
+    model.replace(/\s+/g, ''),
+    `${model} 防火墙`,
+  ])),
+  ...['ASA 5506-X', 'ASA 5516-X', 'ASA 5525-X', 'ASA 5545-X'].map((model) => networkModel('Cisco', `Cisco ${model}`, model, [
+    model.replace(/\s+/g, ''),
+    `${model} 防火墙`,
+  ])),
+  ...[
+    'MX64',
+    'MX67',
+    'MX68',
+    'MX75',
+    'MX84',
+    'MX85',
+    'MX95',
+    'MX105',
+    'MX250',
+    'MX450',
+    'MS120-24',
+    'MS225-48',
+    'MS250-48',
+    'MR36',
+    'MR44',
+    'MR46',
+    'MR56',
+  ].map((model) => networkModel('Cisco', `Cisco Meraki ${model}`, model, [
+    `Meraki ${model}`,
+  ])),
+]
+
+const HUAWEI_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    'S5731-S24T4X',
+    'S5731-S48T4X',
+    'S5732-H24S6Q',
+    'S5732-H48S6Q',
+    'S6730-H24X6C',
+    'S6730-H48X6C',
+    'S6730-S24X6Q',
+    'S6730-S48X6Q',
+    'S12700E-4',
+    'S12700E-8',
+    'S16700-4',
+    'S16700-8',
+  ].map(huaweiSwitchModel),
+  ...['CE6857F', 'CE6865', 'CE6881E', 'CE6885', 'CE8851', 'CE9860'].map((model) => huaweiSwitchModel(model, [
+    `Huawei CloudEngine ${model}`,
+    `CloudEngine ${model}`,
+  ])),
+  ...['AR6120E', 'AR6280K', 'AR8140', 'AR8700'].map(huaweiRouterModel),
+  ...['USG6615E', 'USG6625E', 'USG6635E', 'USG6655E', 'USG6716F', 'USG6720F'].map(huaweiFirewallModel),
+]
+
+const H3C_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    'S5120V2-28P',
+    'S5120V2-52P',
+    'S5130S-28P',
+    'S5130S-52P',
+    'S5130S-28S',
+    'S5130S-52S',
+    'S5560X-30C',
+    'S5560X-54C',
+    'S6520X-30QC',
+    'S6520X-54QC',
+    'S6520X-30HF',
+    'S6800-54QF',
+    'S6850-56HF',
+    'S9820-64H',
+    'S12504X-AF',
+    'S12508X-AF',
+  ].map((model) => networkModel('H3C', `H3C ${model}`, model, [
+    model.replace(/-/g, ' '),
+    `${model} 交换机`,
+  ])),
+  ...['MSR3610', 'MSR3620', 'MSR3640', 'MSR5660'].map((model) => networkModel('H3C', `H3C ${model}`, model, [
+    `${model} 路由器`,
+  ])),
+  ...['F1000-AI-20', 'F1000-AI-30', 'F1000-AI-55', 'F5000-AI-15', 'F5000-AI-40'].map((model) => networkModel('H3C', `H3C SecPath ${model}`, model, [
+    `H3C ${model}`,
+    `SecPath ${model}`,
+    `${model} 防火墙`,
+  ])),
+]
+
+const DELL_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    'S3048',
+    'S4048',
+    'S4128F-ON',
+    'S4128T-ON',
+    'S4148F-ON',
+    'S4148T-ON',
+    'S4248FB-ON',
+    'S5232F-ON',
+    'S5248F-ON',
+    'S5296F-ON',
+    'Z9100-ON',
+    'Z9264F-ON',
+    'Z9332F-ON',
+    'Z9432F-ON',
+  ].map((model) => networkModel('Dell', `Dell PowerSwitch ${model}`, model, [
+    `Dell Networking ${model}`,
+    `PowerSwitch ${model}`,
+    model.replace('-ON', ''),
+  ])),
+]
+
+const LENOVO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...['NE1032', 'NE1072', 'NE2572', 'NE2580', 'NE10032', 'G8272', 'G8296', 'G8332', 'G8052'].map((model) => networkModel('Lenovo', `Lenovo ThinkSystem ${model}`, model, [
+    `Lenovo ${model}`,
+    `ThinkSystem ${model}`,
+    `RackSwitch ${model}`,
+  ])),
+]
+
+const PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...['PA-5450', 'PA-5455', 'PA-7500'].map(paloAltoFirewallModel),
+  ...['PA-3410', 'PA-3420', 'PA-3430', 'PA-3440'].map(paloAltoFirewallModel),
+]
+
+const FORTINET_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    '40F',
+    '60E',
+    '60F',
+    '80E',
+    '80F',
+    '100E',
+    '100F',
+    '200E',
+    '200F',
+    '300E',
+    '400E',
+    '400F',
+    '600E',
+    '600F',
+    '1000F',
+    '1800F',
+    '2600F',
+    '3000F',
+  ].map((model) => networkModel('Fortinet', `Fortinet FortiGate ${model}`, `FortiGate-${model}`, [
+    `FortiGate ${model}`,
+    `FG-${model}`,
+    `FGT-${model}`,
+    `${model} 防火墙`,
+  ])),
+  ...['124F', '248E', '248F', '424E', '424F', '448E', '448F'].map((model) => networkModel('Fortinet', `Fortinet FortiSwitch ${model}`, `FortiSwitch-${model}`, [
+    `FortiSwitch ${model}`,
+    `FS-${model}`,
+  ])),
+]
+
+const BROCADE_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...['6505', '6510', '6520', '7840', 'G620', 'G630', 'G720', 'X6-4', 'X6-8', 'X7-4', 'X7-8'].map((model) => networkModel('Brocade', `Brocade ${model}`, model, [
+    `Brocade Switch ${model}`,
+    `Brocade Gen 6 ${model}`,
+    `Brocade Gen 7 ${model}`,
+    `${model} SAN 交换机`,
+  ])),
+]
+
+const F5_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...['i2600', 'i2800', 'i4600', 'i4800', 'i5600', 'i5800', 'i7600', 'i7800', 'i10600', 'i10800'].map((model) => networkModel('F5', `F5 BIG-IP ${model}`, model, [
+    `BIG-IP ${model}`,
+    `BIG IP ${model}`,
+    `${model} 负载均衡`,
+  ])),
+  ...['r2600', 'r2800', 'r4600', 'r4800', 'r5600', 'r5800', 'r10600', 'r10800'].map((model) => networkModel('F5', `F5 BIG-IP ${model}`, model, [
+    `BIG-IP ${model}`,
+    `F5 rSeries ${model}`,
+    `${model} 负载均衡`,
+  ])),
+  networkModel('F5', 'F5 BIG-IP VE', 'BIG-IP VE', ['F5 VE', 'BIG-IP Virtual Edition', 'F5 虚拟负载均衡']),
+]
+
+function mergeFixtureData(fixtures) {
+  const merged = new Map()
+  for (const fixture of fixtures) {
+    const key = [
+      String(fixture.brand || '').toLowerCase(),
+      String(fixture.category || '').toLowerCase(),
+      String(fixture.canonicalModel || '').toLowerCase(),
+    ].join('|')
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, { ...fixture, aliases: [...(fixture.aliases || [])] })
+      continue
+    }
+    existing.partNumber = existing.partNumber || fixture.partNumber
+    existing.aliases = [...(existing.aliases || []), ...(fixture.aliases || [])]
+  }
+  return [...merged.values()]
+}
 
 const BASE_FIXTURE_DATA = [
   {
@@ -1074,21 +1675,44 @@ const BASE_FIXTURE_DATA = [
   },
 ]
 
-module.exports = [
+module.exports = mergeFixtureData([
   ...BASE_FIXTURE_DATA,
+  ...HPE_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...DELL_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...LENOVO_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...IBM_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...CISCO_UCS_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...DELL_EMC_VNX_FIXTURE_DATA,
   ...DELL_STORAGE_FIXTURE_DATA,
   ...DELL_EMC_STORAGE_FIXTURE_DATA,
   ...IBM_STORAGE_V_SERIES_FIXTURE_DATA,
+  ...IBM_FLASHSYSTEM_FIXTURE_DATA,
   ...HDS_STORAGE_FIXTURE_DATA,
   ...LENOVO_NETAPP_STORAGE_FIXTURE_DATA,
   ...LENOVO_STORAGE_FIXTURE_DATA,
+  ...LENOVO_ADDITIONAL_STORAGE_FIXTURE_DATA,
   ...NETAPP_STORAGE_FIXTURE_DATA,
+  ...NETAPP_ADDITIONAL_STORAGE_FIXTURE_DATA,
+  ...HPE_STORAGE_FIXTURE_DATA,
+  ...HUAWEI_STORAGE_FIXTURE_DATA,
+  ...QNAP_STORAGE_FIXTURE_DATA,
+  ...SYNOLOGY_STORAGE_FIXTURE_DATA,
+  ...PURE_STORAGE_FIXTURE_DATA,
+  ...INSPUR_STORAGE_FIXTURE_DATA,
   ...HUAWEI_NETWORK_SECURITY_FIXTURE_DATA,
   ...HUAWEI_SWITCH_FIXTURE_DATA,
   ...HUAWEI_ROUTER_FIXTURE_DATA,
+  ...HUAWEI_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...PALO_ALTO_NETWORKS_FIXTURE_DATA,
+  ...PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...FORTINET_ADC_FIXTURE_DATA,
+  ...FORTINET_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...CISCO_NEXUS_FIXTURE_DATA,
+  ...CISCO_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...H3C_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...DELL_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...LENOVO_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...BROCADE_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...F5_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...IMPORTED_FIXTURE_DATA,
-]
+])
