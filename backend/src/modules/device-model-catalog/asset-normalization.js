@@ -541,10 +541,39 @@ function normalizeAiSuggestion(payload, inputModel) {
     }
     : payload
   const candidate = normalizeAiCandidatePayload(candidatePayload, inputModel)
+    || inferAiSuggestionFromReason(payload, inputModel)
   if (!candidate) return null
   if (candidate.confidence < minSuggestionConfidence) return null
   if (candidate.confidence >= Number(process.env.DEVICE_MODEL_AI_LOOKUP_MIN_CONFIDENCE || defaultAiLookupConfidence)) return null
   return candidate
+}
+
+function likelyModelVariants(inputModel) {
+  const input = normalizeText(inputModel) || ''
+  const variants = []
+  const suffixMatch = input.match(/^(.+-[A-Z]*\d+[A-Z0-9]*)(-[A-Z]{1,4})$/i)
+  if (suffixMatch) variants.push(suffixMatch[1])
+  const compactVariant = input.replace(/-/g, '')
+  if (compactVariant && compactVariant !== input) variants.push(compactVariant)
+  return deduplicateAliases(variants).slice(0, 3)
+}
+
+function inferAiSuggestionFromReason(payload, inputModel) {
+  const reason = normalizeText(payload?.reason) || ''
+  if (!reason || !/深信服|sangfor/i.test(reason)) return null
+  const variants = likelyModelVariants(inputModel)
+  const model = variants[0] || normalizeText(inputModel)
+  if (!model || !/^AC[-\s]?\d/i.test(model)) return null
+  return {
+    brand: '深信服',
+    category: 'network',
+    canonicalModel: `深信服 ${model}`,
+    partNumber: normalizeText(inputModel) || model,
+    aliases: normalizeAiAliases([inputModel, model, `Sangfor ${model}`], inputModel),
+    confidence: 0.25,
+    reason,
+    sourceProvider: 'ai',
+  }
 }
 
 function buildAiLookupPrompt(inputModel, search) {
@@ -587,6 +616,9 @@ function buildAiLookupPrompt(inputModel, search) {
     '',
     '输入型号：',
     inputModel,
+    '',
+    '可尝试的型号变体：',
+    JSON.stringify(likelyModelVariants(inputModel)),
     '',
     '搜索摘要：',
     JSON.stringify(evidence),
