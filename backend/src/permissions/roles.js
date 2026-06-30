@@ -32,13 +32,13 @@ const ROLE_GROUPS = Object.freeze({
   customerWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerDelete: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerMerge: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),
-  deviceWrite: Object.freeze([...OPERATION_ROLES, 'engineer']),
+  deviceWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   deviceDelete: OPERATION_ROLES,
   deviceModelCatalogWrite: OPERATION_ROLES,
   inspectionScheduleOps: OPERATION_ROLES,
   inspectionScheduleView: VIEW_ROLES,
-  maintenancePartyWrite: Object.freeze([...OPERATION_ROLES, 'sales_supervisor', 'engineer']),
-  maintenancePartyDelete: Object.freeze([...OPERATION_ROLES, 'sales_supervisor']),
+  maintenancePartyWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
+  maintenancePartyDelete: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor']),
 })
 
 const WORKSPACES = Object.freeze({

@@ -21,7 +21,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
-const DEVICE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"]);
+const DEVICE_MANAGE_ROLES = new Set(["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor", "sales", "sales_supervisor"]);
 
 interface Device {
   id: string | number;

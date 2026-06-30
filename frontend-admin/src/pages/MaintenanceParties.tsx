@@ -34,6 +34,7 @@ const MAINTENANCE_PARTY_MANAGE_ROLES = new Set([
   "dispatcher",
   "operations_director",
   "engineering_supervisor",
+  "sales",
   "sales_supervisor",
 ]);
 
