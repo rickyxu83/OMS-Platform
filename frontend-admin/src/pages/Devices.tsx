@@ -2000,11 +2000,10 @@ export function Devices() {
                     </div>
                     <div className="max-h-64 overflow-auto divide-y divide-violet-100">
                       {importResult.modelCorrections.map((item, index) => (
-                        <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_1fr_1fr_96px] md:items-center">
+                        <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
                           <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
                           <span className="truncate text-muted-foreground" title={item.inputModel || ""}>原型号：{item.inputModel || "-"}</span>
                           <span className="truncate text-violet-900" title={item.canonicalModel || ""}>标准型号：{item.canonicalModel || "-"}</span>
-                          <span className="text-xs text-muted-foreground">{item.matchType || "型号库"}</span>
                         </div>
                       ))}
                     </div>
