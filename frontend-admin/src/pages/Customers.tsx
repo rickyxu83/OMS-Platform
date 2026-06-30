@@ -1490,7 +1490,7 @@ export function Customers() {
               <table className="w-full min-w-[1180px] table-fixed caption-bottom text-sm">
               <colgroup>
                 {canDeleteCustomer ? <col className="w-11" /> : null}
-                <col className="w-[360px]" />
+                <col className="w-[288px]" />
                 <col className="w-[108px]" />
                 <col className="w-[150px]" />
                 <col className="w-[112px]" />
@@ -1559,7 +1559,7 @@ export function Customers() {
                         <TableCell className="min-w-0">
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               {c.name ? (
                                 <button
                                   type="button"
@@ -1570,10 +1570,10 @@ export function Customers() {
                                   {c.name}
                                 </button>
                               ) : (
-                                <div className="font-medium">{t.misc.unknown}</div>
+                                <div className="truncate font-medium">{t.misc.unknown}</div>
                               )}
                               {c.salesperson && (
-                                <div className="text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
+                                <div className="truncate text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
                               )}
                               {c.latitude && c.longitude ? (
                                 <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
