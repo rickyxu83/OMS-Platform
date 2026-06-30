@@ -36,6 +36,8 @@ async function notificationSettings() {
     'notification.inspectionOverdueRecipients',
     'notification.monthlyOperationsSummaryEnabled',
     'notification.monthlyOperationsSummaryRecipients',
+    'notification.monthlyOperationsSummarySalesEnabled',
+    'notification.monthlyOperationsSummaryEngineersEnabled',
     'notification.serviceOrderAdminBaseUrl',
   ])
   return {
@@ -55,6 +57,8 @@ async function notificationSettings() {
     inspectionOverdueRecipients: String(saved['notification.inspectionOverdueRecipients'] || '').trim(),
     monthlyOperationsSummaryEnabled: saved['notification.monthlyOperationsSummaryEnabled'] !== 'false',
     monthlyOperationsSummaryRecipients: String(saved['notification.monthlyOperationsSummaryRecipients'] || '').trim(),
+    monthlyOperationsSummarySalesEnabled: saved['notification.monthlyOperationsSummarySalesEnabled'] === 'true',
+    monthlyOperationsSummaryEngineersEnabled: saved['notification.monthlyOperationsSummaryEngineersEnabled'] === 'true',
     serviceOrderAdminBaseUrl: String(saved['notification.serviceOrderAdminBaseUrl'] || '').trim().replace(/\/+$/, ''),
   }
 }
@@ -99,6 +103,21 @@ function joinWorkContent(...values) {
   return parts.join('\n')
 }
 
+function normalizeIdentity(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function userIdentitySet(user) {
+  return new Set([user.real_name, user.username, user.email, user.login_alias]
+    .map(normalizeIdentity)
+    .filter(Boolean))
+}
+
+function identityMatches(value, identities) {
+  const normalized = normalizeIdentity(value)
+  return Boolean(normalized && identities.has(normalized))
+}
+
 function shanghaiDateParts(date = new Date()) {
   const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000)
   return {
@@ -120,6 +139,49 @@ function previousMonthRange() {
     startDate: `${monthText}-01`,
     endDate: `${monthText}-${String(lastDay).padStart(2, '0')}`,
     label: monthText,
+  }
+}
+
+function monthlyReportStats(items) {
+  const serviceOrderIds = new Set()
+  const customerNames = new Set()
+  const engineerKeys = new Set()
+  let totalHours = 0
+
+  for (const item of items) {
+    if (item.source === 'service_order' && item.serviceOrderId) {
+      serviceOrderIds.add(String(item.serviceOrderId))
+    }
+    if (item.customerName) customerNames.add(String(item.customerName))
+
+    const engineerIds = Array.isArray(item.engineerIds) ? item.engineerIds : []
+    if (engineerIds.length) {
+      engineerIds.forEach((id) => engineerKeys.add(`id:${id}`))
+    } else if (item.engineerName) {
+      engineerKeys.add(`name:${item.engineerName}`)
+    }
+
+    totalHours += Number(item.workHours || 0) || 0
+  }
+
+  return {
+    serviceOrders: serviceOrderIds.size,
+    customers: customerNames.size,
+    engineers: engineerKeys.size,
+    workHours: Number(totalHours.toFixed(1)),
+  }
+}
+
+async function finalizeMonthlyOperationsReport(range, items, scope = {}) {
+  const sortedItems = [...items].sort((left, right) => String(left.date).localeCompare(String(right.date)))
+  const workSummary = await generateTimesheetWorkSummary({ ...range, label: scope.label || range.label, items: sortedItems })
+  return {
+    ...range,
+    label: scope.label || range.label,
+    scope,
+    stats: monthlyReportStats(sortedItems),
+    items: sortedItems,
+    workSummary,
   }
 }
 
@@ -163,6 +225,7 @@ async function buildMonthlyOperationsReport(range) {
   const serviceRows = await query(
     `SELECT
        so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
+       so.assigned_engineer_id,
        so.issue_description, so.internal_note, so.planned_start_at, so.submitted_at, so.created_at,
        c.name AS customer_name, c.salesperson AS customer_salesperson,
        ${deviceDisplaySql('d')} AS device_name,
@@ -198,7 +261,7 @@ async function buildMonthlyOperationsReport(range) {
     range,
   )
   const participantRows = await query(
-    `SELECT DISTINCT participants.engineer_id, u.real_name
+    `SELECT DISTINCT participants.service_order_id, participants.engineer_id, u.real_name, u.username, u.email
      FROM (
        SELECT service_order_id, engineer_id FROM service_order_engineers
        UNION
@@ -214,22 +277,60 @@ async function buildMonthlyOperationsReport(range) {
        AND so.status <> 'cancelled'`,
     range,
   )
+  const workEntryRows = await query(
+    `SELECT srwe.service_order_id, srwe.engineer_id, srwe.work_content,
+            COALESCE(u.real_name, u.username, '工程师') AS engineer_name
+     FROM service_report_work_entries srwe
+     JOIN service_orders so ON so.id = srwe.service_order_id
+     JOIN users u ON u.id = srwe.engineer_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     WHERE DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) >= :startDate
+       AND DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) <= :endDate
+       AND so.status <> 'cancelled'`,
+    range,
+  )
 
-  const engineerNames = new Set(participantRows.map((row) => row.real_name).filter(Boolean))
-  const customerNames = new Set(serviceRows.map((row) => row.customer_name).filter(Boolean))
-  let totalHours = 0
+  const participantsByOrder = new Map()
+  for (const row of participantRows) {
+    const orderId = String(row.service_order_id)
+    if (!participantsByOrder.has(orderId)) participantsByOrder.set(orderId, [])
+    participantsByOrder.get(orderId).push({
+      id: Number(row.engineer_id),
+      name: row.real_name || row.username || '工程师',
+      email: row.email || '',
+    })
+  }
+
+  const workEntriesByOrder = new Map()
+  for (const row of workEntryRows) {
+    const orderId = String(row.service_order_id)
+    const engineerId = String(row.engineer_id)
+    if (!workEntriesByOrder.has(orderId)) workEntriesByOrder.set(orderId, new Map())
+    const existing = workEntriesByOrder.get(orderId).get(engineerId)
+    const content = joinWorkContent(existing, row.work_content)
+    workEntriesByOrder.get(orderId).set(engineerId, content)
+  }
+
   const serviceItems = serviceRows.map((row) => {
     const date = String(row.actual_start_at || row.planned_start_at || row.submitted_at || row.created_at).slice(0, 10)
     const [workNature, fallbackCategory] = timesheetType(row.service_type, row.service_mode)
     const workHours = Number(row.work_hours || 1) || 1
-    totalHours += workHours
-    if (row.engineer_name) engineerNames.add(row.engineer_name)
+    const participants = participantsByOrder.get(String(row.id)) || []
+    const engineerIds = participants.map((engineer) => engineer.id).filter(Boolean)
+    const engineerNames = participants.map((engineer) => engineer.name).filter(Boolean)
+    const workEntriesMap = workEntriesByOrder.get(String(row.id)) || new Map()
+    const workEntriesByEngineer = {}
+    for (const [engineerId, content] of workEntriesMap.entries()) {
+      workEntriesByEngineer[engineerId] = content
+    }
     return {
       source: 'service_order',
       serviceOrderId: row.id,
       orderNo: row.order_no,
       serviceMode: row.service_mode || 'onsite',
-      engineerName: row.engineer_name || '工程师',
+      engineerIds,
+      engineerNames,
+      engineerName: engineerNames.join('、') || row.engineer_name || '工程师',
       date,
       workNature,
       category: row.timesheet_category || fallbackCategory || serviceModeLabel(row.service_mode),
@@ -242,6 +343,11 @@ async function buildMonthlyOperationsReport(range) {
         row.result_description,
         row.issue_description,
       ),
+      workEntriesByEngineer,
+      reportWorkContent: row.work_content,
+      faultSummary: row.fault_summary,
+      resultDescription: row.result_description,
+      issueDescription: row.issue_description,
       salesperson: row.timesheet_salesperson || row.customer_salesperson || '',
       progress:
         {
@@ -255,11 +361,11 @@ async function buildMonthlyOperationsReport(range) {
   })
   const manualItems = manualRows.map((row) => {
     const workHours = 1
-    totalHours += workHours
-    if (row.engineer_name) engineerNames.add(row.engineer_name)
     return {
       source: 'manual',
       manualEntryId: row.id,
+      engineerIds: [Number(row.engineer_id)].filter(Boolean),
+      engineerNames: [row.engineer_name || '工程师'],
       serviceMode: 'manual',
       engineerName: row.engineer_name || '工程师',
       date: String(row.entry_date).slice(0, 10),
@@ -274,19 +380,154 @@ async function buildMonthlyOperationsReport(range) {
       remark: row.remark || '',
     }
   })
-  const items = [...serviceItems, ...manualItems].sort((left, right) => String(left.date).localeCompare(String(right.date)))
-  const workSummary = await generateTimesheetWorkSummary({ ...range, items })
-  return {
-    ...range,
-    stats: {
-      serviceOrders: serviceRows.length,
-      customers: customerNames.size,
-      engineers: engineerNames.size,
-      workHours: Number(totalHours.toFixed(1)),
-    },
-    items,
-    workSummary,
+  return finalizeMonthlyOperationsReport(range, [...serviceItems, ...manualItems])
+}
+
+async function activeUsersByRoles(roles) {
+  const params = {}
+  const placeholders = roles.map((role, index) => {
+    const key = `role${index}`
+    params[key] = role
+    return `:${key}`
+  }).join(', ')
+  return query(
+    `SELECT id, username, real_name, email, login_alias, role
+     FROM users
+     WHERE status = 'active'
+       AND role IN (${placeholders})
+       AND email IS NOT NULL AND email <> ''
+     ORDER BY real_name ASC, username ASC`,
+    params,
+  )
+}
+
+function monthlySalesItemsForUser(items, user) {
+  const identities = userIdentitySet(user)
+  return items.filter((item) => item.source === 'service_order' && identityMatches(item.salesperson, identities))
+}
+
+function monthlyEngineerItemsForUser(items, user) {
+  const engineerId = String(user.id)
+  const engineerName = user.real_name || user.username || '工程师'
+  return items
+    .filter((item) => (Array.isArray(item.engineerIds) ? item.engineerIds : []).map(String).includes(engineerId))
+    .map((item) => {
+      if (item.source !== 'service_order') {
+        return {
+          ...item,
+          engineerIds: [Number(user.id)],
+          engineerNames: [engineerName],
+          engineerName,
+        }
+      }
+      return {
+        ...item,
+        engineerIds: [Number(user.id)],
+        engineerNames: [engineerName],
+        engineerName,
+        workContent: joinWorkContent(
+          item.workEntriesByEngineer?.[engineerId],
+          item.reportWorkContent,
+          item.faultSummary,
+          item.resultDescription,
+          item.issueDescription,
+        ),
+      }
+    })
+}
+
+async function sendMonthlyScopedSummaries({ report, users, itemsForUser, mailOptions, detailBaseUrl }) {
+  let sent = 0
+  let skipped = 0
+  let failed = 0
+
+  for (const user of users) {
+    const items = itemsForUser(report.items, user)
+    if (!items.length) {
+      skipped += 1
+      continue
+    }
+    const displayName = user.real_name || user.username || user.email
+    try {
+      const scopedReport = await finalizeMonthlyOperationsReport(
+        report,
+        items,
+        {
+          type: mailOptions.scopeType,
+          name: displayName,
+          label: report.label,
+          description: mailOptions.scopeDescription,
+        },
+      )
+      const result = await sendMonthlyOperationsSummaryMail(
+        scopedReport,
+        [user],
+        detailBaseUrl,
+        {
+          title: mailOptions.title,
+          subjectPrefix: mailOptions.subjectPrefix,
+          description: mailOptions.description,
+          showLinks: false,
+        },
+      )
+      if (result?.skipped) {
+        skipped += 1
+        console.warn('[scheduler] Monthly scoped summary skipped', {
+          recipient: user.email,
+          scope: mailOptions.scopeType,
+          reason: result.reason,
+          missing: result.missing,
+        })
+      } else {
+        sent += 1
+      }
+    } catch (error) {
+      failed += 1
+      console.error('[scheduler] Monthly scoped summary failed', {
+        recipient: user.email,
+        scope: mailOptions.scopeType,
+        message: error?.message,
+      })
+    }
   }
+
+  return { sent, skipped, failed }
+}
+
+async function sendMonthlySalesSummaries(report, nSettings) {
+  const salespeople = await activeUsersByRoles(['sales', 'sales_supervisor'])
+  if (!salespeople.length) return { sent: 0, skipped: 0, failed: 0 }
+  return sendMonthlyScopedSummaries({
+    report,
+    users: salespeople,
+    itemsForUser: monthlySalesItemsForUser,
+    detailBaseUrl: nSettings.serviceOrderAdminBaseUrl,
+    mailOptions: {
+      scopeType: 'sales',
+      title: '销售月度客户营运总结',
+      subjectPrefix: '销售月度客户营运总结',
+      scopeDescription: '仅包含该销售负责客户在统计期间内产生的服务工单。',
+      description: '以下内容为你负责客户的上月服务工单摘要，供客户跟进、续保沟通和风险预判使用。',
+    },
+  })
+}
+
+async function sendMonthlyEngineerSummaries(report, nSettings) {
+  const engineers = await activeUsersByRoles(['engineer', 'engineering_supervisor'])
+  if (!engineers.length) return { sent: 0, skipped: 0, failed: 0 }
+  return sendMonthlyScopedSummaries({
+    report,
+    users: engineers,
+    itemsForUser: monthlyEngineerItemsForUser,
+    detailBaseUrl: nSettings.serviceOrderAdminBaseUrl,
+    mailOptions: {
+      scopeType: 'engineer',
+      title: '工程师月度工单总结',
+      subjectPrefix: '工程师月度工单总结',
+      scopeDescription: '仅包含该工程师在统计期间内参与或负责的服务工单及手工工时记录。',
+      description: '以下内容为你上月参与或负责工单的工作摘要，供复盘工作重点和后续事项使用。',
+    },
+  })
 }
 
 function startScheduler() {
@@ -719,20 +960,34 @@ function startScheduler() {
         return
       }
       const recipients = recipientList(nSettings.monthlyOperationsSummaryRecipients)
-      if (!recipients.length) {
-        console.warn('[scheduler] No configured recipients for monthly operations summary')
+      if (!recipients.length && !nSettings.monthlyOperationsSummarySalesEnabled && !nSettings.monthlyOperationsSummaryEngineersEnabled) {
+        console.warn('[scheduler] No configured recipients or scoped monthly operations summary targets')
         return
       }
 
       const report = await buildMonthlyOperationsReport(previousMonthRange())
-      const result = await sendMonthlyOperationsSummaryMail(report, recipients, nSettings.serviceOrderAdminBaseUrl)
-      if (result?.skipped) {
-        console.warn('[scheduler] Monthly operations summary skipped', {
-          reason: result.reason,
-          missing: result.missing,
-        })
+      if (recipients.length) {
+        const result = await sendMonthlyOperationsSummaryMail(report, recipients, nSettings.serviceOrderAdminBaseUrl)
+        if (result?.skipped) {
+          console.warn('[scheduler] Monthly operations summary skipped', {
+            reason: result.reason,
+            missing: result.missing,
+          })
+        } else {
+          console.log(`[scheduler] Monthly operations summary sent for ${result.month} to ${result.to}`)
+        }
       } else {
-        console.log(`[scheduler] Monthly operations summary sent for ${result.month} to ${result.to}`)
+        console.log('[scheduler] Monthly operations summary fixed recipients are not configured')
+      }
+
+      if (nSettings.monthlyOperationsSummarySalesEnabled) {
+        const salesResult = await sendMonthlySalesSummaries(report, nSettings)
+        console.log(`[scheduler] Monthly sales summaries processed: sent=${salesResult.sent}, skipped=${salesResult.skipped}, failed=${salesResult.failed}`)
+      }
+
+      if (nSettings.monthlyOperationsSummaryEngineersEnabled) {
+        const engineerResult = await sendMonthlyEngineerSummaries(report, nSettings)
+        console.log(`[scheduler] Monthly engineer summaries processed: sent=${engineerResult.sent}, skipped=${engineerResult.skipped}, failed=${engineerResult.failed}`)
       }
     } catch (error) {
       console.error('[scheduler] Monthly operations summary failed', error?.message)

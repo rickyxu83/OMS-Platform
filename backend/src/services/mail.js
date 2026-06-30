@@ -584,7 +584,7 @@ function summarySection(title, items = []) {
     </div>`
 }
 
-async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailBaseUrl = '') {
+async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailBaseUrl = '', options = {}) {
   const settings = await effectiveSettings()
   const mail = settings.mail
   if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
@@ -600,17 +600,22 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
   const ai = report.workSummary || {}
   const summary = ai.summary || {}
   const summaryText = summary.executiveSummary || ai.reason || '本月暂无可生成 AI 摘要的工作内容，以下为系统基础统计。'
+  const title = options.title || '月度营运总结'
+  const description = options.description || report.scope?.description || ''
+  const scopeName = report.scope?.name || ''
   const dashboardUrl = adminLink(detailBaseUrl, '/dashboard')
   const timesheetUrl = adminLink(detailBaseUrl, `/timesheets?month=${encodeURIComponent(report.month || '')}`)
-  const linkBlock = dashboardUrl
+  const linkBlock = options.showLinks === false ? '' : dashboardUrl
     ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="${MAIL_BUTTON_STYLE}">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;${MAIL_LINK_STYLE};padding:9px 10px">月报导出</a>` : ''}</p>`
     : ''
   const themeRows = Array.isArray(summary.keyThemes) ? summary.keyThemes.map((item) => `${item.theme || '主题'}：${item.details || ''}`) : []
-  const subject = `月度营运总结：${report.label || report.month || ''}`
+  const subject = `${options.subjectPrefix || title}：${report.label || report.month || ''}${scopeName ? ` / ${scopeName}` : ''}`
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
-      <h2 style="margin:0 0 12px">月度营运总结</h2>
+      <h2 style="margin:0 0 12px">${htmlEscape(title)}</h2>
       <p style="margin:0 0 8px;color:#64748b">统计期间：${htmlEscape(report.label || '-')}</p>
+      ${scopeName ? `<p style="margin:0 0 8px;color:#64748b">统计范围：${htmlEscape(scopeName)}</p>` : ''}
+      ${description ? `<p style="margin:0 0 10px;color:#475569">${htmlEscape(description)}</p>` : ''}
       ${linkBlock}
       <div style="display:block;max-width:760px;margin:14px 0">
         <table style="border-collapse:collapse;width:100%;font-size:14px">

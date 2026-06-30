@@ -43,6 +43,8 @@ const settingKeys = [
   'notification.inspectionOverdueRecipients',
   'notification.monthlyOperationsSummaryEnabled',
   'notification.monthlyOperationsSummaryRecipients',
+  'notification.monthlyOperationsSummarySalesEnabled',
+  'notification.monthlyOperationsSummaryEngineersEnabled',
   'notification.serviceOrderSalesNotifyEnabled',
   'notification.serviceOrderSalesDelayMinutes',
   'notification.serviceOrderAdminBaseUrl',
@@ -104,6 +106,8 @@ async function effectiveSettings() {
       inspectionOverdueRecipients: saved['notification.inspectionOverdueRecipients'] || '',
       monthlyOperationsSummaryEnabled: boolText(saved['notification.monthlyOperationsSummaryEnabled'], true),
       monthlyOperationsSummaryRecipients: saved['notification.monthlyOperationsSummaryRecipients'] || '',
+      monthlyOperationsSummarySalesEnabled: boolText(saved['notification.monthlyOperationsSummarySalesEnabled'], false),
+      monthlyOperationsSummaryEngineersEnabled: boolText(saved['notification.monthlyOperationsSummaryEngineersEnabled'], false),
       serviceOrderSalesNotifyEnabled: boolText(saved['notification.serviceOrderSalesNotifyEnabled'], false),
       serviceOrderSalesDelayMinutes: saved['notification.serviceOrderSalesDelayMinutes'] || '60',
       serviceOrderAdminBaseUrl: saved['notification.serviceOrderAdminBaseUrl'] || '',
@@ -257,6 +261,8 @@ async function update(req, res) {
     next['notification.inspectionOverdueRecipients'] = String(n.inspectionOverdueRecipients || '').trim()
     next['notification.monthlyOperationsSummaryEnabled'] = String(n.monthlyOperationsSummaryEnabled === true || n.monthlyOperationsSummaryEnabled === 'true')
     next['notification.monthlyOperationsSummaryRecipients'] = String(n.monthlyOperationsSummaryRecipients || '').trim()
+    next['notification.monthlyOperationsSummarySalesEnabled'] = String(n.monthlyOperationsSummarySalesEnabled === true || n.monthlyOperationsSummarySalesEnabled === 'true')
+    next['notification.monthlyOperationsSummaryEngineersEnabled'] = String(n.monthlyOperationsSummaryEngineersEnabled === true || n.monthlyOperationsSummaryEngineersEnabled === 'true')
     next['notification.serviceOrderSalesNotifyEnabled'] = String(n.serviceOrderSalesNotifyEnabled === true || n.serviceOrderSalesNotifyEnabled === 'true')
     next['notification.serviceOrderSalesDelayMinutes'] = String(Math.max(5, Math.min(1440, Number(n.serviceOrderSalesDelayMinutes || 60))))
     next['notification.serviceOrderAdminBaseUrl'] = String(n.serviceOrderAdminBaseUrl || '').trim().replace(/\/+$/, '')

@@ -54,6 +54,8 @@ interface SettingsForm {
     inspectionOverdueRecipients: string;
     monthlyOperationsSummaryEnabled: boolean;
     monthlyOperationsSummaryRecipients: string;
+    monthlyOperationsSummarySalesEnabled: boolean;
+    monthlyOperationsSummaryEngineersEnabled: boolean;
     serviceOrderSalesNotifyEnabled: boolean;
     serviceOrderSalesDelayMinutes: string;
     serviceOrderAdminBaseUrl: string;
@@ -128,6 +130,8 @@ const emptyForm: SettingsForm = {
     inspectionOverdueRecipients: "",
     monthlyOperationsSummaryEnabled: true,
     monthlyOperationsSummaryRecipients: "",
+    monthlyOperationsSummarySalesEnabled: false,
+    monthlyOperationsSummaryEngineersEnabled: false,
     serviceOrderSalesNotifyEnabled: false,
     serviceOrderSalesDelayMinutes: "60",
     serviceOrderAdminBaseUrl: "",
@@ -503,6 +507,8 @@ export function SystemSettings() {
           inspectionOverdueRecipients: n.inspectionOverdueRecipients || "",
           monthlyOperationsSummaryEnabled: toBool(n.monthlyOperationsSummaryEnabled ?? true),
           monthlyOperationsSummaryRecipients: n.monthlyOperationsSummaryRecipients || "",
+          monthlyOperationsSummarySalesEnabled: toBool(n.monthlyOperationsSummarySalesEnabled),
+          monthlyOperationsSummaryEngineersEnabled: toBool(n.monthlyOperationsSummaryEngineersEnabled),
           serviceOrderSalesNotifyEnabled: toBool(n.serviceOrderSalesNotifyEnabled),
           serviceOrderSalesDelayMinutes: String(n.serviceOrderSalesDelayMinutes || "60"),
           serviceOrderAdminBaseUrl: n.serviceOrderAdminBaseUrl || "",
@@ -1257,14 +1263,38 @@ export function SystemSettings() {
                   checked={form.notification.monthlyOperationsSummaryEnabled}
                   onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryEnabled: c } })}
                 >
-                  <div className="space-y-2">
-                    <Label>月度总结收件人</Label>
-                    <RecipientPicker
-                      value={form.notification.monthlyOperationsSummaryRecipients}
-                      users={recipientUsers}
-                      onChange={(value) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryRecipients: value } })}
-                      placeholder="ops@example.com, supervisor@example.com, sales@example.com"
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>月度总结收件人</Label>
+                      <RecipientPicker
+                        value={form.notification.monthlyOperationsSummaryRecipients}
+                        users={recipientUsers}
+                        onChange={(value) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryRecipients: value } })}
+                        placeholder="ops@example.com, supervisor@example.com, sales@example.com"
+                      />
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="flex min-h-16 items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
+                        <span>
+                          <span className="block font-medium">推送给客户销售</span>
+                          <span className="block text-sm text-muted-foreground">按客户销售归属发送各自客户月度总结。</span>
+                        </span>
+                        <Switch
+                          checked={form.notification.monthlyOperationsSummarySalesEnabled}
+                          onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummarySalesEnabled: c } })}
+                        />
+                      </label>
+                      <label className="flex min-h-16 items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
+                        <span>
+                          <span className="block font-medium">推送给参与工程师</span>
+                          <span className="block text-sm text-muted-foreground">按参与或负责工单发送各自月度工单总结。</span>
+                        </span>
+                        <Switch
+                          checked={form.notification.monthlyOperationsSummaryEngineersEnabled}
+                          onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, monthlyOperationsSummaryEngineersEnabled: c } })}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </NotificationRule>
               </NotificationGroup>
