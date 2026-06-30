@@ -299,6 +299,83 @@ function fortinetFortiGateModel(model, aliases = []) {
   ])
 }
 
+function sangforNetworkModel(productLine, model, aliases = []) {
+  const normalizedLine = String(productLine || '').trim()
+  const normalizedModel = String(model || '').trim()
+  const partNumber = `${normalizedLine}-${normalizedModel}`
+  return networkModel('Sangfor', `Sangfor ${normalizedLine} ${normalizedModel}`, partNumber, [
+    `Sangfor ${partNumber}`,
+    `SANGFOR ${partNumber}`,
+    `Sangfor ${normalizedLine}-${normalizedModel}`,
+    `Sangfor ${normalizedLine} ${normalizedModel}`,
+    `深信服 ${partNumber}`,
+    `深信服 ${normalizedLine}-${normalizedModel}`,
+    `深信服 ${normalizedLine} ${normalizedModel}`,
+    `深信服${partNumber}`,
+    `深信服${normalizedLine}${normalizedModel}`,
+    partNumber,
+    `${normalizedLine}-${normalizedModel}`,
+    `${normalizedLine} ${normalizedModel}`,
+    `${normalizedLine}${normalizedModel}`,
+    normalizedModel,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function sangforAfModel(model, aliases = []) {
+  return sangforNetworkModel('AF', model, [
+    `${model} 防火墙`,
+    `AF-${model} 防火墙`,
+    `Sangfor AF-${model} 防火墙`,
+    `深信服 AF-${model} 防火墙`,
+    `深信服下一代防火墙 ${model}`,
+    '深信服防火墙',
+    'Sangfor NGAF',
+    'NGAF',
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function sangforAcModel(model, aliases = []) {
+  return sangforNetworkModel('AC', model, [
+    `${model} 上网行为管理`,
+    `AC-${model} 上网行为管理`,
+    `Sangfor AC-${model} 上网行为管理`,
+    `深信服 AC-${model} 上网行为管理`,
+    '深信服上网行为管理',
+    'Sangfor IAM',
+    'IAM',
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function sangforAdModel(model, aliases = []) {
+  return sangforNetworkModel('AD', model, [
+    `${model} 负载均衡`,
+    `AD-${model} 负载均衡`,
+    `Sangfor AD-${model} 负载均衡`,
+    `深信服 AD-${model} 负载均衡`,
+    `${model} 应用交付`,
+    `AD-${model} 应用交付`,
+    '深信服应用交付',
+    '深信服负载均衡',
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
+function sangforVpnModel(model, aliases = []) {
+  return sangforNetworkModel('SSL VPN', model, [
+    `SSL VPN-${model}`,
+    `SSLVPN-${model}`,
+    `Sangfor SSL VPN ${model}`,
+    `深信服 SSL VPN ${model}`,
+    `深信服 SSLVPN ${model}`,
+    `${model} VPN`,
+    '深信服 VPN',
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 function ciscoNexusModel(model, partNumber, aliases = []) {
   const compact = String(model || '').replace(/\s+/g, '')
   return networkModel('Cisco', `Cisco Nexus ${model}`, partNumber || compact, [
@@ -1602,6 +1679,62 @@ const FORTINET_ADDITIONAL_NETWORK_FIXTURE_DATA = [
   ])),
 ]
 
+const SANGFOR_ADDITIONAL_NETWORK_FIXTURE_DATA = [
+  ...[
+    '1000',
+    '1200',
+    '1500',
+    '1800',
+    '2000',
+    '2200',
+    '2500',
+    '3000',
+    '5000',
+    '6000',
+    '8000',
+  ].map(sangforAfModel),
+  ...[
+    '1000',
+    '1200',
+    '1500',
+    '1800',
+    '2000',
+    '2200',
+    '2500',
+    '3000',
+    '5000',
+  ].map(sangforAcModel),
+  ...[
+    '1000',
+    '1200',
+    '1600',
+    '2000',
+    '2500',
+    '3000',
+    '4000',
+    '5000',
+    '6000',
+  ].map(sangforAdModel),
+  ...[
+    '1000',
+    '1500',
+    '2000',
+    '3000',
+    '5000',
+  ].map(sangforVpnModel),
+  networkModel('Sangfor', 'Sangfor aCloud HCI', 'aCloud HCI', [
+    'Sangfor HCI',
+    'SANGFOR HCI',
+    'Sangfor aCloud',
+    '深信服 aCloud',
+    '深信服 HCI',
+    '深信服超融合',
+    '深信服云计算',
+    'aCloud',
+    'HCI',
+  ]),
+]
+
 const BROCADE_ADDITIONAL_NETWORK_FIXTURE_DATA = [
   ...['6505', '6510', '6520', '7840', 'G620', 'G630', 'G720', 'X6-4', 'X6-8', 'X7-4', 'X7-8'].map((model) => networkModel('Brocade', `Brocade ${model}`, model, [
     `Brocade Switch ${model}`,
@@ -2033,6 +2166,7 @@ module.exports = mergeFixtureData([
   ...PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...FORTINET_ADC_FIXTURE_DATA,
   ...FORTINET_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...SANGFOR_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...CISCO_NEXUS_FIXTURE_DATA,
   ...CISCO_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...H3C_ADDITIONAL_NETWORK_FIXTURE_DATA,
