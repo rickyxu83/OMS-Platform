@@ -38,6 +38,21 @@ function dellEmcVnxeModel(model) {
   }
 }
 
+function dellStorageModel(brand, family, model, extraAliases = []) {
+  const familyCompact = String(family || '').replace(/\s+/g, '')
+  const modelText = String(model || '').trim()
+  return storageModel(brand, `${brand} ${family} ${modelText}`, modelText, [
+    `${family} ${modelText}`,
+    `${familyCompact} ${modelText}`,
+    `${familyCompact}${modelText}`,
+    modelText,
+    brand === 'Dell EMC' ? `Dell ${family} ${modelText}` : '',
+    brand === 'Dell EMC' ? `EMC ${family} ${modelText}` : '',
+    `${modelText} 存储`,
+    ...(Array.isArray(extraAliases) ? extraAliases : []),
+  ].filter(Boolean))
+}
+
 function ibmStorwizeVSeriesModel(model, extraAliases = []) {
   return {
     brand: 'IBM',
@@ -234,6 +249,160 @@ const DELL_EMC_VNX_FIXTURE_DATA = [
   ...['5100', '5300', '5500', '5700', '7500'].map(dellEmcVnxModel),
   ...['5200', '5400', '5600', '5800', '7600', '8000'].map(dellEmcVnxModel),
   ...['3100', '3150', '3200', '3300'].map(dellEmcVnxeModel),
+]
+
+const DELL_STORAGE_FIXTURE_DATA = [
+  ...['ME4012', 'ME4024', 'ME4084', 'ME5084'].map((model) => dellStorageModel('Dell', 'PowerVault', model)),
+  ...[
+    'MD1200',
+    'MD1220',
+    'MD1400',
+    'MD1420',
+    'MD3200',
+    'MD3220',
+    'MD3260',
+    'MD3200i',
+    'MD3220i',
+    'MD3260i',
+    'MD3400',
+    'MD3420',
+    'MD3460',
+    'MD3600i',
+    'MD3620i',
+    'MD3660i',
+    'MD3600f',
+    'MD3620f',
+    'MD3660f',
+    'MD3800i',
+    'MD3820i',
+    'MD3860i',
+    'MD3800f',
+    'MD3820f',
+    'MD3860f',
+  ].map((model) => dellStorageModel('Dell', 'PowerVault', model)),
+  ...[
+    '500T',
+    '1000X',
+    '3000T',
+    '3000X',
+    '3200T',
+    '5000T',
+    '5000X',
+    '5200T',
+    '7000T',
+    '7000X',
+    '9000T',
+    '9000X',
+    '9200T',
+  ].map((model) => dellStorageModel('Dell', 'PowerStore', model)),
+]
+
+const DELL_EMC_STORAGE_FIXTURE_DATA = [
+  ...[
+    'PS4100',
+    'PS4110',
+    'PS4210',
+    'PS6100',
+    'PS6110',
+    'PS6210',
+    'PS6500',
+    'PS6510',
+    'PS6610',
+  ].map((model) => dellStorageModel('Dell EMC', 'EqualLogic', model, [
+    `Dell EqualLogic ${model}`,
+    `EqualLogic ${model}`,
+  ])),
+  ...[
+    'SCv2000',
+    'SCv2020',
+    'SCv2080',
+    'SC4020',
+    'SC5020',
+    'SC5020F',
+    'SC7020',
+    'SC7020F',
+    'SC8000',
+    'SC9000',
+  ].map((model) => storageModel('Dell EMC', `Dell EMC ${model}`, model, [
+    `Dell EMC SC Series ${model}`,
+    `Dell SC ${model}`,
+    `Dell Compellent ${model}`,
+    `Compellent ${model}`,
+    model.replace(/^SCv/i, 'SCv '),
+  ])),
+  ...[
+    '300',
+    '300F',
+    '350F',
+    '400',
+    '400F',
+    '450F',
+    '500',
+    '500F',
+    '550F',
+    '600',
+    '600F',
+    '650F',
+  ].map((model) => dellStorageModel('Dell EMC', 'Unity', model, [
+    `Dell Unity ${model}`,
+    `EMC Unity ${model}`,
+  ])),
+  ...['380F', '480F', '680', '680F', '880F'].map((model) => dellStorageModel('Dell EMC', 'Unity XT', model, [
+    `Dell Unity XT ${model}`,
+    `EMC Unity XT ${model}`,
+  ])),
+  ...[
+    'A200',
+    'A300',
+    'H400',
+    'H500',
+    'H600',
+    'H700',
+    'F200',
+    'F600',
+    'F800',
+    'F900',
+  ].map((model) => dellStorageModel('Dell EMC', 'PowerScale', model, [
+    `Dell PowerScale ${model}`,
+    `Isilon ${model}`,
+  ])),
+  ...['NL400', 'S210', 'X410'].map((model) => dellStorageModel('Dell EMC', 'Isilon', model, [
+    `EMC Isilon ${model}`,
+    `Dell Isilon ${model}`,
+  ])),
+  ...[
+    'DD2500',
+    'DD3300',
+    'DD4200',
+    'DD4500',
+    'DD6300',
+    'DD6400',
+    'DD6800',
+    'DD6900',
+    'DD7200',
+    'DD9300',
+    'DD9400',
+    'DD9500',
+    'DD9800',
+    'DD9900',
+  ].map((model) => dellStorageModel('Dell EMC', 'Data Domain', model, [
+    `Dell Data Domain ${model}`,
+    `EMC Data Domain ${model}`,
+    model.replace(/^DD/i, 'DD '),
+  ])),
+  ...['2000', '2500', '8000', '8500'].map((model) => dellStorageModel('Dell EMC', 'PowerMax', model, [
+    `Dell PowerMax ${model}`,
+    `EMC PowerMax ${model}`,
+  ])),
+  ...['250F', '450F', '850F', '950F'].map((model) => dellStorageModel('Dell EMC', 'VMAX', model, [
+    `EMC VMAX ${model}`,
+    `Dell VMAX ${model}`,
+  ])),
+  ...['X1', 'X2-S', 'X2-R'].map((model) => dellStorageModel('Dell EMC', 'XtremIO', model, [
+    `EMC XtremIO ${model}`,
+    `Dell XtremIO ${model}`,
+    model.replace('-', ' '),
+  ])),
 ]
 
 const IBM_STORAGE_V_SERIES_FIXTURE_DATA = [
@@ -908,6 +1077,8 @@ const BASE_FIXTURE_DATA = [
 module.exports = [
   ...BASE_FIXTURE_DATA,
   ...DELL_EMC_VNX_FIXTURE_DATA,
+  ...DELL_STORAGE_FIXTURE_DATA,
+  ...DELL_EMC_STORAGE_FIXTURE_DATA,
   ...IBM_STORAGE_V_SERIES_FIXTURE_DATA,
   ...HDS_STORAGE_FIXTURE_DATA,
   ...LENOVO_NETAPP_STORAGE_FIXTURE_DATA,
