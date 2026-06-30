@@ -1,22 +1,22 @@
-const TOKEN_KEY = 'oms-platform-token'
+const LEGACY_TOKEN_KEY = 'oms-platform-token'
 const USER_KEY = 'oms-platform-user'
 
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
-    || sessionStorage.getItem(TOKEN_KEY)
+function clearLegacyToken() {
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
+  sessionStorage.removeItem(LEGACY_TOKEN_KEY)
 }
 
 export function getCurrentUser(): Record<string, any> | null {
+  clearLegacyToken()
   const raw = localStorage.getItem(USER_KEY)
     || sessionStorage.getItem(USER_KEY)
   if (!raw) return null
   try { return JSON.parse(raw) } catch { return null }
 }
 
-export function saveSession(token: string, user?: Record<string, any>, remember = true) {
+export function saveSession(user?: Record<string, any>, remember = true) {
   const storage = remember ? localStorage : sessionStorage
   clearSession()
-  storage.setItem(TOKEN_KEY, token)
   if (user) storage.setItem(USER_KEY, JSON.stringify(user))
 }
 
@@ -26,7 +26,7 @@ export function saveUser(user: Record<string, any> | null) {
     sessionStorage.removeItem(USER_KEY)
     return
   }
-  const storage = localStorage.getItem(TOKEN_KEY) ? localStorage : sessionStorage
+  const storage = localStorage.getItem(USER_KEY) ? localStorage : sessionStorage
   storage.setItem(USER_KEY, JSON.stringify(user))
 }
 
@@ -39,14 +39,9 @@ export function releaseInteractionLocks() {
 
 export function clearSession() {
   releaseInteractionLocks()
-  localStorage.removeItem(TOKEN_KEY)
+  clearLegacyToken()
   localStorage.removeItem(USER_KEY)
-  sessionStorage.removeItem(TOKEN_KEY)
   sessionStorage.removeItem(USER_KEY)
-}
-
-export function isLoggedIn(): boolean {
-  return !!getToken()
 }
 
 function resolveApiBase(): string {
@@ -64,12 +59,10 @@ function resolveApiBase(): string {
 
 export async function request(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers as Record<string, string> || {})
-  const token = getToken()
 
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
-  if (token) headers.set('Authorization', `Bearer ${token}`)
 
   const API_BASE = resolveApiBase()
   let response: Response
@@ -97,8 +90,6 @@ export async function request(path: string, options: RequestInit = {}) {
 
 export async function download(path: string): Promise<Blob> {
   const headers = new Headers()
-  const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
 
   const API_BASE = resolveApiBase()
   let response: Response

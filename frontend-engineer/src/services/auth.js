@@ -3,9 +3,13 @@ import { clearOfflineCacheForCurrentSession } from './offline-cache'
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from './safe-storage'
 import { ensureSessionTheme, resetSessionTheme } from './session-theme'
 
-const TOKEN_KEY = 'oms-platform-token'
+const LEGACY_TOKEN_KEY = 'oms-platform-token'
 const USER_KEY = 'oms-platform-user'
 const REMEMBER_USERNAME_KEY = 'oms-platform-engineer-remember-username'
+
+function clearLegacyToken() {
+  safeStorageRemove(localStorage, LEGACY_TOKEN_KEY)
+}
 
 function compactUser(user) {
   if (!user || typeof user !== 'object') return null
@@ -21,30 +25,28 @@ function readStoredUser() {
   try {
     return JSON.parse(raw)
   } catch {
-    safeStorageRemove(localStorage, TOKEN_KEY)
+    clearLegacyToken()
     safeStorageRemove(localStorage, USER_KEY)
     return null
   }
 }
 
+clearLegacyToken()
+
 export const currentUser = ref(readStoredUser())
 
-export function getToken() {
-  return safeStorageGet(localStorage, TOKEN_KEY, '')
-}
-
 export function getCurrentUser() {
+  clearLegacyToken()
   currentUser.value = readStoredUser()
   return currentUser.value
 }
 
-export function saveSession({ token, user }) {
-  safeStorageSet(localStorage, TOKEN_KEY, token)
-  ensureSessionTheme({ force: true })
+export function saveSession({ user }) {
   if (user) {
     const storedUser = compactUser(user)
     safeStorageSet(localStorage, USER_KEY, JSON.stringify(storedUser))
     currentUser.value = storedUser
+    ensureSessionTheme({ force: true, user: storedUser })
   }
 }
 
@@ -84,12 +86,12 @@ export function releaseInteractionLocks() {
 export function clearSession() {
   releaseInteractionLocks()
   clearOfflineCacheForCurrentSession({ preserveDrafts: true })
-  safeStorageRemove(localStorage, TOKEN_KEY)
+  clearLegacyToken()
   safeStorageRemove(localStorage, USER_KEY)
   resetSessionTheme()
   currentUser.value = null
 }
 
 export function isLoggedIn() {
-  return Boolean(getToken())
+  return Boolean(getCurrentUser())
 }

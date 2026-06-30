@@ -1,4 +1,4 @@
-import { clearSession, getToken } from './auth'
+import { clearSession } from './auth'
 import { resolveApiBase } from './api-base'
 import { readOfflineCache, writeOfflineCache } from './offline-cache'
 import { setNetworkOnline } from './network'
@@ -21,14 +21,12 @@ function requestCacheKey(path) {
 
 export async function request(path, options = {}) {
   const headers = new Headers(options.headers || {})
-  const token = getToken()
   const method = String(options.method || 'GET').toUpperCase()
   const canUseCache = method === 'GET' && cacheablePath(path)
 
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
-  if (token) headers.set('Authorization', `Bearer ${token}`)
 
   let response
   try {

@@ -1,18 +1,8 @@
 import { safeStorageGet } from './safe-storage'
 
 const CACHE_PREFIX = 'oms-platform-engineer-offline-cache:'
-const TOKEN_KEY = 'oms-platform-token'
 const USER_KEY = 'oms-platform-user'
 const DRAFT_KEY_MARKER = ':draft:'
-
-function hashValue(value) {
-  let hash = 5381
-  const text = String(value || '')
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash << 5) + hash) ^ text.charCodeAt(index)
-  }
-  return (hash >>> 0).toString(36)
-}
 
 function readCurrentUser() {
   const rawUser = safeStorageGet(localStorage, USER_KEY, '')
@@ -32,13 +22,10 @@ function userScope(user) {
 }
 
 function getCurrentScope() {
-  const token = safeStorageGet(localStorage, TOKEN_KEY, '')
   const user = readCurrentUser()
   const accountScope = userScope(user)
   if (accountScope) return accountScope
-  if (!token) return 'anonymous'
-
-  return `token:${hashValue(token)}`
+  return 'anonymous'
 }
 
 function currentAccountScope() {

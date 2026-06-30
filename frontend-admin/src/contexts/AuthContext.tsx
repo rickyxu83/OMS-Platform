@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { api, saveSession, clearSession, getCurrentUser, getToken, isLoggedIn } from '@/services/api'
+import { api, saveSession, clearSession, getCurrentUser } from '@/services/api'
 import type { WorkspaceOption } from '@/config/app'
 
 const ADMIN_ACCESS_ROLES = [
@@ -55,7 +55,7 @@ export function userHasPermission(user: User | null | undefined, ...permissions:
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getCurrentUser() as User | null)
   const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(isLoggedIn())
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   useEffect(() => {
     const verify = async () => {
@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
     const data = await api.post('/auth/login', { username, password })
-    saveSession(data.token, data.user, remember)
+    saveSession(data.user, remember)
     setUser(data.user)
     setIsAuthenticated(hasAdminWorkspace(data.user))
     return {

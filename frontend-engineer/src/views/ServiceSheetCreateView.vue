@@ -6,7 +6,7 @@ import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { resolveApiBase } from '../services/api-base'
-import { currentUser, getToken } from '../services/auth'
+import { currentUser } from '../services/auth'
 import { aiDraftEnabled } from '../services/engineer-preferences'
 import { readOfflineCacheMeta } from '../services/offline-cache'
 import { isOnline } from '../services/network'
@@ -1978,9 +1978,7 @@ async function downloadInspectionDocument(file) {
   error.value = ''
   retryableError.value = false
   try {
-    const token = getToken()
     const response = await fetch(`${resolveApiBase()}/files/${file.id}?mine=1`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
     })
     if (!response.ok) throw new Error('巡检文档下载失败')

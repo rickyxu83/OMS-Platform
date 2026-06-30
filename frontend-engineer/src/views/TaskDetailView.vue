@@ -6,7 +6,6 @@ import PreviewIcon from '../components/PreviewIcon.vue'
 import { usePreviewI18n } from '../composables/usePreviewI18n'
 import { api } from '../services/api'
 import { resolveApiBase } from '../services/api-base'
-import { getToken } from '../services/auth'
 import { normalizePreviewServiceMode, previewServiceTypeLabel, previewTimesheetCategoryLabel } from '../services/service-mode'
 import { displayReportWorkContent } from '../services/work-content'
 
@@ -114,9 +113,7 @@ async function downloadFile(file) {
   downloadingFileId.value = file.id
   error.value = ''
   try {
-    const token = getToken()
     const response = await fetch(`${resolveApiBase()}/files/${file.id}?mine=1`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
     })
     if (!response.ok) throw new Error('附件下载失败')

@@ -1,7 +1,7 @@
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from './safe-storage'
 
-const TOKEN_KEY = 'oms-platform-token'
 const THEME_KEY = 'oms-platform-engineer:session-theme'
+const USER_KEY = 'oms-platform-user'
 
 const palettes = [
   ['47 35 111', '37 99 235', '249 115 22', '244 63 94'],
@@ -11,22 +11,39 @@ const palettes = [
   ['99 102 241', '20 184 166', '245 158 11', '244 63 94'],
 ]
 
-function tokenHash(token) {
+function sessionSeedHash(seed) {
   let hash = 0
-  for (let index = 0; index < token.length; index += 1) {
-    hash = (hash * 31 + token.charCodeAt(index)) >>> 0
+  const text = String(seed || '')
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0
   }
   return String(hash)
 }
 
-function pickTheme(token) {
+function pickTheme(seed) {
   const palette = palettes[Math.floor(Math.random() * palettes.length)]
   const offset = Math.floor(Math.random() * palette.length)
   const colors = palette.map((_, index) => palette[(index + offset) % palette.length])
   return {
-    tokenHash: tokenHash(token),
+    sessionHash: sessionSeedHash(seed),
     colors,
   }
+}
+
+function readStoredUser() {
+  const raw = safeStorageGet(localStorage, USER_KEY, '')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function sessionSeed(user = readStoredUser()) {
+  if (user?.id) return `id:${user.id}`
+  if (user?.username) return `username:${user.username}`
+  return ''
 }
 
 function readTheme() {
@@ -53,12 +70,13 @@ export function applySessionTheme(theme = readTheme()) {
   style.setProperty('--engineer-session-orb-c', `rgb(${c} / 18%)`)
 }
 
-export function ensureSessionTheme({ force = false } = {}) {
-  const token = safeStorageGet(localStorage, TOKEN_KEY, '')
-  if (!token) return
-  const currentHash = tokenHash(token)
+export function ensureSessionTheme({ force = false, user = null } = {}) {
+  const seed = sessionSeed(user)
+  if (!seed) return
+  const currentHash = sessionSeedHash(seed)
   const existing = readTheme()
-  const theme = !force && existing?.tokenHash === currentHash ? existing : pickTheme(token)
+  const existingHash = existing?.sessionHash || existing?.tokenHash
+  const theme = !force && existingHash === currentHash ? existing : pickTheme(seed)
   safeStorageSet(localStorage, THEME_KEY, JSON.stringify(theme))
   applySessionTheme(theme)
 }

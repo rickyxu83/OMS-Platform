@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { unifiedLoginUrl } from '../config/app'
 import { api } from '../services/api'
-import { currentUser, getToken, isLoggedIn, saveUser } from '../services/auth'
+import { currentUser, saveUser } from '../services/auth'
 import EngineerLayout from '../layouts/EngineerLayout.vue'
 
 // 路由级代码分割:视图按需加载,避免全站打进一个 chunk(首屏体积)
@@ -129,15 +129,13 @@ function isEngineerUser(user) {
 }
 
 // /auth/me 会话校验缓存:60s 内的路由跳转不重复请求,且并发跳转共享同一个在途请求。
-// 缓存按 token 区分(登出/换号自动失效);onboarding 未完成时不缓存,确保完成后立即放行。
+// onboarding 未完成时不缓存,确保完成后立即放行。
 const AUTH_ME_TTL_MS = 60_000
-let sessionCache = { token: '', user: null, fetchedAt: 0 }
+let sessionCache = { user: null, fetchedAt: 0 }
 let sessionPending = null
 
 async function fetchSessionUser() {
-  const token = getToken()
   const cacheUsable = sessionCache.user
-    && sessionCache.token === token
     && !sessionCache.user.requiresOnboarding
     && Date.now() - sessionCache.fetchedAt < AUTH_ME_TTL_MS
   if (cacheUsable) return sessionCache.user
@@ -146,7 +144,7 @@ async function fetchSessionUser() {
     sessionPending = api
       .get('/auth/me')
       .then((data) => {
-        sessionCache = { token, user: data.user, fetchedAt: Date.now() }
+        sessionCache = { user: data.user, fetchedAt: Date.now() }
         return data.user
       })
       .finally(() => {
@@ -157,8 +155,6 @@ async function fetchSessionUser() {
 }
 
 router.beforeEach(async (to) => {
-  if (to.name === 'login' && isLoggedIn()) return { name: 'tasks' }
-
   if (to.name !== 'login') {
     try {
       const user = await fetchSessionUser()

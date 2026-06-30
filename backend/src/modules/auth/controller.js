@@ -164,7 +164,6 @@ async function login(req, res) {
   setSessionCookie(req, res, token)
 
   res.json({
-    token,
     ...await sessionPayload(user),
   })
 }
