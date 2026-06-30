@@ -14,6 +14,12 @@ const {
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 
+const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
+
+function scheduleCron(expression, task) {
+  return cron.schedule(expression, task, { timezone: SCHEDULER_TIMEZONE })
+}
+
 function deviceDisplaySql(alias = 'd') {
   return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
 }
@@ -531,7 +537,7 @@ async function sendMonthlyEngineerSummaries(report, nSettings) {
 }
 
 function startScheduler() {
-  cron.schedule('0 8 * * *', async () => {
+  scheduleCron('0 8 * * *', async () => {
     console.log('[scheduler] Running maintenance expiry check...')
     try {
       const nSettings = await notificationSettings()
@@ -602,7 +608,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('30 8 * * 1', async () => {
+  scheduleCron('30 8 * * 1', async () => {
     console.log('[scheduler] Running incomplete maintenance device check...')
     try {
       const nSettings = await notificationSettings()
@@ -675,7 +681,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('35 8 * * 1', async () => {
+  scheduleCron('35 8 * * 1', async () => {
     console.log('[scheduler] Running missing customer salesperson check...')
     try {
       const nSettings = await notificationSettings()
@@ -720,7 +726,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('40 8 * * 1', async () => {
+  scheduleCron('40 8 * * 1', async () => {
     console.log('[scheduler] Running inspection schedule date completeness check...')
     try {
       const nSettings = await notificationSettings()
@@ -789,7 +795,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('0 7 * * *', async () => {
+  scheduleCron('0 7 * * *', async () => {
     console.log('[scheduler] Running inspection reminder check...')
     try {
       const nSettings = await notificationSettings()
@@ -897,7 +903,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('10 8 * * *', async () => {
+  scheduleCron('10 8 * * *', async () => {
     console.log('[scheduler] Running overdue inspection check...')
     try {
       const nSettings = await notificationSettings()
@@ -951,7 +957,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('20 8 1 * *', async () => {
+  scheduleCron('20 8 1 * *', async () => {
     console.log('[scheduler] Running monthly operations summary...')
     try {
       const nSettings = await notificationSettings()
@@ -994,7 +1000,7 @@ function startScheduler() {
     }
   })
 
-  cron.schedule('*/5 * * * *', async () => {
+  scheduleCron('*/5 * * * *', async () => {
     try {
       const result = await processDueSalesServiceOrderNotifications(20)
       if (result?.skipped) return
@@ -1006,7 +1012,7 @@ function startScheduler() {
     }
   })
 
-  console.log('[scheduler] Started: maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)')
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)`)
 }
 
 module.exports = { startScheduler }
