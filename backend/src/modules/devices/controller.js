@@ -244,18 +244,18 @@ function importRowHasInput(row, headerMap) {
 }
 
 function parseImportHeader(worksheet) {
-  const headerMap = {}
-  worksheet.getRow(1).eachCell((cell, columnNumber) => {
-    const field = importHeaderLookup[normalizeHeader(cellValueToText(cell))]
-    if (field && !headerMap[field]) headerMap[field] = columnNumber
-  })
-  if (!headerMap.model || !headerMap.serialNo) {
-    throw badRequest('导入模板缺少必填表头：设备型号、SN')
+  const maxHeaderRows = Math.min(10, worksheet.rowCount)
+  for (let rowNumber = 1; rowNumber <= maxHeaderRows; rowNumber += 1) {
+    const headerMap = {}
+    worksheet.getRow(rowNumber).eachCell((cell, columnNumber) => {
+      const field = importHeaderLookup[normalizeHeader(cellValueToText(cell))]
+      if (field && !headerMap[field]) headerMap[field] = columnNumber
+    })
+    if (headerMap.model && headerMap.serialNo && (headerMap.customerId || headerMap.customerName)) {
+      return { headerMap, headerRowNumber: rowNumber }
+    }
   }
-  if (!headerMap.customerId && !headerMap.customerName) {
-    throw badRequest('导入模板缺少客户表头：客户ID 或 客户名称')
-  }
-  return headerMap
+  throw badRequest('导入模板缺少必填表头：客户名称、设备型号、SN')
 }
 
 function getImportText(row, headerMap, field) {
@@ -551,14 +551,13 @@ async function importDevices(req, res) {
   if (!worksheet) {
     throw badRequest('导入文件没有工作表')
   }
-  if (worksheet.rowCount > 1001) {
+  const { headerMap, headerRowNumber } = parseImportHeader(worksheet)
+  if (worksheet.rowCount - headerRowNumber > 1000) {
     throw badRequest('一次最多导入 1000 行设备')
   }
-
-  const headerMap = parseImportHeader(worksheet)
   const rows = []
   const errors = []
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber)
     if (!importRowHasInput(row, headerMap)) continue
     try {

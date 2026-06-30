@@ -337,23 +337,59 @@ async function downloadDeviceImportTemplate() {
   workbook.created = new Date();
   workbook.modified = new Date();
 
+  const headerRowNumber = 4;
   const worksheet = workbook.addWorksheet("设备导入模板", {
-    views: [{ state: "frozen", ySplit: 1 }],
+    views: [{ state: "frozen", ySplit: headerRowNumber }],
   });
   const requiredHeaders = new Set(["客户名称", "设备型号*", "SN*"]);
   worksheet.columns = [
-    { header: "客户名称", key: "customerName", width: 24 },
-    { header: "主机名", key: "name", width: 20 },
-    { header: "设备型号*", key: "model", width: 24 },
-    { header: "SN*", key: "serialNo", width: 22 },
-    { header: "MR单", key: "mrNo", width: 18 },
-    { header: "维保类型", key: "maintenanceType", width: 16 },
-    { header: "维保方名称", key: "maintenancePartyName", width: 24 },
-    { header: "维保开始", key: "maintenanceStart", width: 14 },
-    { header: "维保截止", key: "maintenanceEnd", width: 14 },
-    { header: "质保截止", key: "warrantyUntil", width: 14 },
-    { header: "位置", key: "location", width: 24 },
-    { header: "备注", key: "remark", width: 28 },
+    { key: "customerName", width: 24 },
+    { key: "name", width: 20 },
+    { key: "model", width: 24 },
+    { key: "serialNo", width: 22 },
+    { key: "mrNo", width: 18 },
+    { key: "maintenanceType", width: 16 },
+    { key: "maintenancePartyName", width: 24 },
+    { key: "maintenanceStart", width: 14 },
+    { key: "maintenanceEnd", width: 14 },
+    { key: "warrantyUntil", width: 14 },
+    { key: "location", width: 24 },
+    { key: "remark", width: 28 },
+  ];
+  worksheet.mergeCells("A1:L1");
+  worksheet.mergeCells("A2:L2");
+  worksheet.mergeCells("A3:L3");
+  worksheet.getCell("A1").value = "设备资产导入提示";
+  worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
+  worksheet.getCell("A3").value = "客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。";
+  [1, 2, 3].forEach((rowNumber) => {
+    const row = worksheet.getRow(rowNumber);
+    row.height = rowNumber === 1 ? 26 : 22;
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFC4B5FD" } },
+        left: { style: "thin", color: { argb: "FFC4B5FD" } },
+        bottom: { style: "thin", color: { argb: "FFC4B5FD" } },
+        right: { style: "thin", color: { argb: "FFC4B5FD" } },
+      };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowNumber === 1 ? "FFDDD6FE" : "FFF5F3FF" } };
+      cell.font = { bold: rowNumber === 1, color: { argb: rowNumber === 3 ? "FF7F1D1D" : "FF4C1D95" } };
+    });
+  });
+  worksheet.getRow(headerRowNumber).values = [
+    "客户名称",
+    "主机名",
+    "设备型号*",
+    "SN*",
+    "MR单",
+    "维保类型",
+    "维保方名称",
+    "维保开始",
+    "维保截止",
+    "质保截止",
+    "位置",
+    "备注",
   ];
   worksheet.addRow({
     customerName: "示例客户有限公司",
@@ -370,11 +406,11 @@ async function downloadDeviceImportTemplate() {
     remark: "删除示例行后再导入",
   });
   worksheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: worksheet.columns.length },
+    from: { row: headerRowNumber, column: 1 },
+    to: { row: headerRowNumber, column: worksheet.columns.length },
   };
-  worksheet.getRow(1).height = 24;
-  worksheet.getRow(1).eachCell((cell) => {
+  worksheet.getRow(headerRowNumber).height = 24;
+  worksheet.getRow(headerRowNumber).eachCell((cell) => {
     const required = requiredHeaders.has(String(cell.value || ""));
     cell.font = { bold: true, color: { argb: required ? "FF7F1D1D" : "FF4C1D95" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
@@ -394,7 +430,7 @@ async function downloadDeviceImportTemplate() {
         right: { style: "thin", color: { argb: "FFD9E2EC" } },
       };
       cell.alignment = { vertical: "middle", wrapText: true };
-      if (rowNumber > 1) {
+      if (rowNumber > headerRowNumber) {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
       }
     });
