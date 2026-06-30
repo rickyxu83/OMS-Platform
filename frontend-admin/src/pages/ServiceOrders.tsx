@@ -438,6 +438,14 @@ function compactText(value?: string, fallback = "-") {
   return text || fallback;
 }
 
+function isBusinessRole(role?: string) {
+  return role === "sales" || role === "sales_supervisor";
+}
+
+function isDunyangName(value?: string) {
+  return /敦[阳陽]/u.test(String(value || ""));
+}
+
 const COLLAB_ACK_MARKER = "⁣⁤⁣";
 const COMMON_WORK_LABELS = new Set(["共同内容", "共同处理", "公共内容"]);
 
@@ -640,7 +648,9 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
-  const canManageOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(String(user?.role || ""));
+  const userRole = String(user?.role || "");
+  const isBusinessUser = isBusinessRole(userRole);
+  const canManageOrders = ["admin", "assistant", "dispatcher", "operations_director", "engineering_supervisor"].includes(userRole);
   const canDeleteOrders = canManageOrders;
   const statusOptions = [
     { value: "all", label: t.filters.all },
@@ -1658,6 +1668,8 @@ export function ServiceOrders() {
             const serviceTime = serviceTimeRange(detailOrder);
             const inspectionDocuments = (detailOrder.files || []).filter((file) => file.purpose === "inspection_document");
             const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
+            const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
+            const showInternalNote = !isBusinessUser;
             return (
               <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
                 <div className="flex flex-wrap gap-2">
@@ -1682,12 +1694,12 @@ export function ServiceOrders() {
                   <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
                   <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
                   <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
-                  <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} />
+                  {showTimesheetSalesperson ? <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} /> : null}
                   <DetailField label="工时类别" value={detailOrder.timesheetCategory} />
                 </div>
 
                 <DetailBlock label={t.detail.issueDescription} value={detailOrder.issueDescription} />
-                <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} />
+                {showInternalNote ? <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} /> : null}
 
                 {inspectionDocuments.length ? (
                   <div>

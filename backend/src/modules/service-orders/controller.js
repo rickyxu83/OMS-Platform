@@ -62,6 +62,33 @@ const orderColumns = `
 
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor'])
 const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
+const businessRoles = new Set(['sales', 'sales_supervisor'])
+
+function isBusinessRole(user) {
+  return businessRoles.has(user?.role)
+}
+
+function isDunyangName(value) {
+  return /敦[阳陽]/u.test(String(value || ''))
+}
+
+function isBusinessHiddenOfficeOrder(order) {
+  return String(order?.service_mode || '') === 'office' && isDunyangName(order?.customer_name)
+}
+
+function buildBusinessOrderVisibilityScope(user, serviceOrderAlias = 'so', customerAlias = 'c') {
+  if (!isBusinessRole(user)) return { sql: '', params: {} }
+  return {
+    sql: `AND NOT (
+        ${serviceOrderAlias}.service_mode = 'office'
+        AND (${customerAlias}.name LIKE :businessHiddenCompanySimplified OR ${customerAlias}.name LIKE :businessHiddenCompanyTraditional)
+      )`,
+    params: {
+      businessHiddenCompanySimplified: '%敦阳%',
+      businessHiddenCompanyTraditional: '%敦陽%',
+    },
+  }
+}
 
 async function hasInspectionDocument(orderId) {
   await ensureFilePurposeColumn()
@@ -146,7 +173,9 @@ function serviceOrderSearchClause(index) {
         )`
 }
 
-function orderPayload(row) {
+function orderPayload(row, viewer = null) {
+  const businessViewer = isBusinessRole(viewer)
+  const hideDunyangSalesperson = businessViewer && isDunyangName(row.timesheet_salesperson)
   const targetEngineerName = row.target_engineer_name || row.target_engineer_username
   const report = reportPayload(row.report)
   return {
@@ -162,7 +191,7 @@ function orderPayload(row) {
     serviceMode: row.service_mode || 'onsite',
     serviceType: row.service_type,
     timesheetCategory: row.timesheet_category,
-    timesheetSalesperson: row.timesheet_salesperson,
+    timesheetSalesperson: hideDunyangSalesperson ? null : row.timesheet_salesperson,
     priority: row.priority,
     status: publicStatus(row.status),
     workflowStatus: row.status,
@@ -180,7 +209,7 @@ function orderPayload(row) {
     engineers: row.engineers || [],
     plannedStartAt: row.planned_start_at,
     plannedEndAt: row.planned_end_at,
-    internalNote: row.internal_note,
+    internalNote: businessViewer ? null : row.internal_note,
     createdBy: row.created_by,
     submittedAt: row.submitted_at,
     reviewedBy: row.reviewed_by,
@@ -1122,6 +1151,10 @@ async function assertEngineerOwns(order, user) {
 }
 
 async function assertCanViewOrder(order, user, options = {}) {
+  if (isBusinessRole(user) && isBusinessHiddenOfficeOrder(order)) {
+    throw forbidden('无权查看公司内勤工单')
+  }
+
   if (user.role === 'sales') {
     assertSalesCanAccessSalesperson(order.customer_salesperson, user, forbidden)
     return
@@ -1150,6 +1183,7 @@ function buildListQueryParts(req) {
   const canListBroadly = isBroadRole && !mineQuery
   const effectiveEngineerId = (mineQuery || isEngineer) ? req.user.id : canListBroadly ? engineerId || null : null
   const salesScope = buildSalesCustomerScope(req.user, 'c')
+  const businessVisibilityScope = buildBusinessOrderVisibilityScope(req.user, 'so', 'c')
   let statusWhereSql = '1 = 1'
   if (status === 'draft') {
     statusWhereSql = "so.status IN ('draft', 'assigned', 'rejected')"
@@ -1214,6 +1248,7 @@ function buildListQueryParts(req) {
         )
       )
       ${salesScope.sql}
+      ${businessVisibilityScope.sql}
       AND (${keywordWhereSql})
   `
   const params = {
@@ -1227,6 +1262,7 @@ function buildListQueryParts(req) {
     likeCustomer: `%${customer}%`,
     ...keywordParams,
     ...salesScope.params,
+    ...businessVisibilityScope.params,
   }
   return { params, fromAndWhere, sortColumn, sortDirection }
 }
@@ -1251,7 +1287,7 @@ async function list(req, res) {
   )
 
   res.json({
-    items: (await attachReports(await attachEngineers(rows))).map(orderPayload),
+    items: (await attachReports(await attachEngineers(rows))).map((row) => orderPayload(row, req.user)),
     total: Number(countRows[0].total),
     page: normalizedPage,
     pageSize: normalizedPageSize,
@@ -1261,6 +1297,11 @@ async function list(req, res) {
 async function statsOverview(req, res) {
   await ensureServiceOrderInspectionColumns()
   const salesScope = buildSalesCustomerScope(req.user, 'c')
+  const businessVisibilityScope = buildBusinessOrderVisibilityScope(req.user, 'so', 'c')
+  const visibilityParams = {
+    ...salesScope.params,
+    ...businessVisibilityScope.params,
+  }
 
   const [summaryRows, trendRows, recentRows] = await Promise.all([
     query(
@@ -1274,8 +1315,9 @@ async function statsOverview(req, res) {
        FROM service_orders so
        JOIN customers c ON c.id = so.customer_id
        WHERE 1 = 1
-       ${salesScope.sql}`,
-      salesScope.params,
+       ${salesScope.sql}
+       ${businessVisibilityScope.sql}`,
+      visibilityParams,
     ),
     query(
       `SELECT DATE(COALESCE(so.submitted_at, so.created_at)) AS service_date, COUNT(*) AS total
@@ -1283,9 +1325,10 @@ async function statsOverview(req, res) {
        JOIN customers c ON c.id = so.customer_id
        WHERE DATE(COALESCE(so.submitted_at, so.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
        ${salesScope.sql}
+       ${businessVisibilityScope.sql}
        GROUP BY service_date
        ORDER BY service_date ASC`,
-      salesScope.params,
+      visibilityParams,
     ),
     query(
       `SELECT ${orderColumns}
@@ -1297,9 +1340,10 @@ async function statsOverview(req, res) {
        LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
        WHERE 1 = 1
        ${salesScope.sql}
+       ${businessVisibilityScope.sql}
        ORDER BY so.id DESC
        LIMIT 8`,
-      salesScope.params,
+      visibilityParams,
     ),
   ])
 
@@ -1309,8 +1353,9 @@ async function statsOverview(req, res) {
      JOIN service_orders so ON so.id = soe.service_order_id
      JOIN customers c ON c.id = so.customer_id
      WHERE DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
-     ${salesScope.sql}`,
-    salesScope.params,
+     ${salesScope.sql}
+     ${businessVisibilityScope.sql}`,
+    visibilityParams,
   )
 
   const trendMap = new Map(trendRows.map((row) => [String(row.service_date).slice(0, 10), Number(row.total)]))
@@ -1332,7 +1377,7 @@ async function statsOverview(req, res) {
       monthEngineerVisits: Number(engineerRows[0]?.total || 0),
     },
     trend,
-    recent: (await attachEngineers(recentRows)).map(orderPayload),
+    recent: (await attachEngineers(recentRows)).map((row) => orderPayload(row, req.user)),
   })
 }
 
@@ -1360,6 +1405,7 @@ async function timesheetMonthly(req, res) {
       ? "AND (c.salesperson IS NULL OR c.salesperson = '')"
       : 'AND c.salesperson = :salesperson'
     : ''
+  const businessVisibilityScope = buildBusinessOrderVisibilityScope(req.user, 'so', 'c')
 
   const rows = await query(
     `SELECT
@@ -1396,6 +1442,7 @@ async function timesheetMonthly(req, res) {
        ${customerFilterSql}
        ${salespersonFilterSql}
        ${salesScope.sql}
+       ${businessVisibilityScope.sql}
      ORDER BY u.real_name, COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at), so.id`,
     {
       engineerId: filterEngineerId,
@@ -1404,6 +1451,7 @@ async function timesheetMonthly(req, res) {
       startDate,
       endDate,
       ...salesScope.params,
+      ...businessVisibilityScope.params,
     },
   )
   const shouldExcludeManualRows = req.user.role === 'sales' || Boolean(filterCustomerId || filterSalesperson)
@@ -2132,7 +2180,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   )
 
   return {
-    ...orderPayload(order),
+    ...orderPayload(order, user),
     report: reportPayload(report),
     contacts: contacts.map((contact) => ({
       id: contact.id,
