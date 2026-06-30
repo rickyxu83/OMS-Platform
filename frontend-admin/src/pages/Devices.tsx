@@ -340,17 +340,14 @@ async function downloadDeviceImportTemplate() {
   const worksheet = workbook.addWorksheet("设备导入模板", {
     views: [{ state: "frozen", ySplit: 1 }],
   });
-  const requiredHeaders = new Set(["客户ID", "客户名称", "设备型号*", "SN*"]);
+  const requiredHeaders = new Set(["客户名称", "设备型号*", "SN*"]);
   worksheet.columns = [
-    { header: "客户ID", key: "customerId", width: 12 },
     { header: "客户名称", key: "customerName", width: 24 },
     { header: "主机名", key: "name", width: 20 },
     { header: "设备型号*", key: "model", width: 24 },
-    { header: "PN", key: "pn", width: 18 },
     { header: "SN*", key: "serialNo", width: 22 },
     { header: "MR单", key: "mrNo", width: 18 },
     { header: "维保类型", key: "maintenanceType", width: 16 },
-    { header: "维保方ID", key: "maintenancePartyId", width: 12 },
     { header: "维保方名称", key: "maintenancePartyName", width: 24 },
     { header: "维保开始", key: "maintenanceStart", width: 14 },
     { header: "维保截止", key: "maintenanceEnd", width: 14 },
@@ -362,7 +359,6 @@ async function downloadDeviceImportTemplate() {
     customerName: "示例客户有限公司",
     name: "host-01",
     model: "PowerEdge R740",
-    pn: "示例PN",
     serialNo: "SN-EXAMPLE-001",
     mrNo: "MR-001",
     maintenanceType: "我方维保",
@@ -384,8 +380,8 @@ async function downloadDeviceImportTemplate() {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: required ? "FFB91C1C" : "FF0F766E" } };
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
-      cell.note = String(cell.value) === "客户ID" || String(cell.value) === "客户名称"
-        ? "客户ID 和客户名称二选一必填；优先按客户ID匹配。"
+      cell.note = String(cell.value) === "客户名称"
+        ? "必填项，按客户名称精确匹配已有客户。"
         : "必填项，不能为空。";
     }
   });
@@ -411,11 +407,13 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户ID / 客户名称", "二选一必填", "优先按客户ID匹配，否则按客户名称精确匹配已有客户。"],
+    ["客户名称", "必填", "按客户名称精确匹配已有客户。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
-    ["维保方ID / 维保方名称", "有维保时选填", "有维保方时优先按ID匹配，否则按名称和维保类型匹配已有维保方。"],
+    ["维保方名称", "有维保时选填", "按名称和维保类型匹配已有维保方。"],
+    ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
+    ["质保截止", "选填", "设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。"],
     ["日期字段", "选填", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
   ].forEach(([field, required, description]) => help.addRow({ field, required, description }));
   help.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
