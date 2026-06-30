@@ -623,6 +623,17 @@ function productLineHints(inputModel) {
   }]
 }
 
+function hasSearchBrandEvidence(search, brandPattern) {
+  const evidence = (search?.results || []).map((result) => `${result.title} ${result.snippet}`).join(' ')
+  return brandPattern.test(evidence)
+}
+
+function shouldDowngradeAiCandidateToSuggestion(inputModel, search, candidate) {
+  if (!candidate || !productLineHints(inputModel).length) return false
+  if (!/深信服|sangfor/i.test(candidate.brand || candidate.canonicalModel || candidate.reason || '')) return false
+  return !hasSearchBrandEvidence(search, /深信服|sangfor/i)
+}
+
 function inferAiSuggestionFromReason(payload, inputModel) {
   const reason = normalizeText(payload?.reason) || ''
   if (!reason || !/深信服|sangfor/i.test(reason)) return null
@@ -746,9 +757,19 @@ async function discoverAiCandidate(inputModel, search) {
 
   try {
     const payload = await callAiLookupProvider(inputModel, search, aiSettings)
+    let candidate = normalizeAiCandidate(payload, inputModel)
+    let suggestion = normalizeAiSuggestion(payload, inputModel)
+    if (shouldDowngradeAiCandidateToSuggestion(inputModel, search, candidate)) {
+      suggestion = {
+        ...candidate,
+        confidence: Math.min(Number(candidate.confidence || 0.65), 0.65),
+        reason: candidate.reason || '产品线提示可作为候选，但搜索摘要未提供品牌证据，需人工确认。',
+      }
+      candidate = null
+    }
     return {
-      candidate: normalizeAiCandidate(payload, inputModel),
-      suggestion: normalizeAiSuggestion(payload, inputModel),
+      candidate,
+      suggestion,
       raw: payload,
     }
   } catch (error) {
