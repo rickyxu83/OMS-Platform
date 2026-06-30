@@ -23,6 +23,9 @@ const ROLE_PERMISSION_BASELINES = Object.freeze({
   sales: BUSINESS_ASSET_PERMISSIONS,
   sales_supervisor: BUSINESS_ASSET_PERMISSIONS,
 })
+const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = Object.freeze([
+  'workspace.engineer',
+])
 
 let tableReady = false
 let cache = null
@@ -54,7 +57,11 @@ function cloneDefaultMatrix() {
 function forceAdminSuperuser(matrix) {
   if (!matrix.admin) matrix.admin = {}
   for (const key of PERMISSION_KEYS) {
+    if (ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS.includes(key)) continue
     matrix.admin[key] = true
+  }
+  for (const key of ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS) {
+    if (permissionSet.has(key)) matrix.admin[key] = false
   }
   return matrix
 }

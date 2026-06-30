@@ -6,6 +6,7 @@ const ADMIN_ACCESS_ROLES = [
   'admin', 'assistant', 'dispatcher', 'operations_director',
   'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales',
 ]
+const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = new Set(['workspace.engineer'])
 
 interface User {
   id?: string
@@ -46,7 +47,7 @@ function hasAdminWorkspace(user?: User | null) {
 
 export function userHasPermission(user: User | null | undefined, ...permissions: string[]) {
   if (!permissions.length) return true
-  if (user?.role === 'admin') return true
+  if (user?.role === 'admin') return permissions.some((permission) => !ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS.has(permission))
   const granted = new Set(Array.isArray(user?.permissions) ? user.permissions : [])
   return permissions.some((permission) => granted.has(permission))
 }

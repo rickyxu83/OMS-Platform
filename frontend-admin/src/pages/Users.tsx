@@ -697,7 +697,7 @@ export function Users() {
           <DialogHeader>
             <DialogTitle>角色权限配置</DialogTitle>
             <DialogDescription>
-              管理员为内置超管，权限固定开启；其他角色保存后立即生效
+              管理员为内置超管，管理端权限固定开启；工程师工作台仅开放给工程师和工程主管
             </DialogDescription>
           </DialogHeader>
           {loadingPerms ? (
