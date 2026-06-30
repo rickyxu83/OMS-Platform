@@ -381,7 +381,7 @@ async function downloadDeviceImportTemplate() {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
-        ? "必填项，按客户名称精确匹配已有客户。"
+        ? "必填项，必须和系统内客户名称一模一样，否则该行会导入失败。"
         : "必填项，不能为空。";
     }
   });
@@ -407,7 +407,7 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户名称", "必填", "按客户名称精确匹配已有客户。"],
+    ["客户名称", "必填", "必须和系统内客户名称一模一样，否则该行会导入失败。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
@@ -1919,7 +1919,7 @@ export function Devices() {
           ) : null}
           <div className="space-y-4 py-2">
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
-              必填字段为客户、设备型号和 SN。客户和维保方只匹配已有资料；重复 SN 会跳过该行。
+              必填字段为客户、设备型号和 SN。客户名称必须和系统内一模一样，否则该行会导入失败；重复 SN 会跳过该行。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
