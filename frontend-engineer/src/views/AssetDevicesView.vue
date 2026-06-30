@@ -33,6 +33,7 @@ const importResult = ref(null)
 const importFileInputRef = ref(null)
 const modelCompareOpen = ref(false)
 const modelComparing = ref(false)
+const modelCompareProgress = ref(0)
 const modelApplying = ref(false)
 const modelCompareResult = ref(null)
 const customerInput = ref('')
@@ -640,11 +641,26 @@ async function compareExistingDeviceModels() {
     return
   }
   modelComparing.value = true
+  modelCompareProgress.value = 0
   error.value = ''
   successMessage.value = ''
   try {
-    const data = await api.post('/devices/model-normalizations/preview', { ids })
-    const result = normalizeModelCompareResult(data)
+    const result = normalizeModelCompareResult({})
+    const chunkSize = 10
+    for (let start = 0; start < ids.length; start += chunkSize) {
+      const chunk = ids.slice(start, start + chunkSize)
+      const data = await api.post('/devices/model-normalizations/preview', { ids: chunk })
+      const part = normalizeModelCompareResult(data)
+      result.scanned += part.scanned
+      result.matched += part.matched
+      result.issueCount += part.issueCount
+      result.correctableCount += part.correctableCount
+      result.unresolvedCount += part.unresolvedCount
+      result.catalogCreatedCount += part.catalogCreatedCount
+      result.items.push(...part.items)
+      modelCompareProgress.value = Math.min(99, Math.round(((start + chunk.length) / ids.length) * 100))
+    }
+    modelCompareProgress.value = 100
     modelCompareResult.value = result
     modelCompareOpen.value = true
     if (!result.items.length) successMessage.value = '当前设备型号均已匹配型号库'
@@ -1011,7 +1027,7 @@ watch(filteredDevices, (items) => {
         <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
       </select>
       <button class="ghost" type="button" :disabled="loading" @click="loadDevices"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
-      <button class="ghost" type="button" :disabled="loading || modelComparing || !filteredDevices.length" @click="compareExistingDeviceModels"><PreviewIcon name="eye" />{{ zh(modelComparing ? '比对中…' : '比对现有型号') }}</button>
+      <button class="ghost" type="button" :disabled="loading || modelComparing || !filteredDevices.length" @click="compareExistingDeviceModels"><PreviewIcon name="eye" />{{ zh(modelComparing ? `比对 ${modelCompareProgress}%` : '比对型号') }}</button>
       <button class="ghost" type="button" @click="downloadDeviceImportTemplate"><PreviewIcon name="download" />{{ zh('下载模板') }}</button>
       <button class="ghost" type="button" @click="openImportDialog"><PreviewIcon name="download" />{{ zh('导入 Excel') }}</button>
       <button class="ghost" type="button" @click="openBulkCreate"><PreviewIcon name="new" />{{ zh('批量新增') }}</button>

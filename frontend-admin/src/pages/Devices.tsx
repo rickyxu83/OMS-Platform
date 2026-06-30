@@ -604,6 +604,7 @@ export function Devices() {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [modelComparing, setModelComparing] = useState(false);
+  const [modelCompareProgress, setModelCompareProgress] = useState(0);
   const [modelApplying, setModelApplying] = useState(false);
   const [modelCompareResult, setModelCompareResult] = useState<ExistingModelNormalizationResult | null>(null);
   const filteredMaintenanceParties = useMemo(
@@ -1173,10 +1174,33 @@ export function Devices() {
       return;
     }
     setModelComparing(true);
+    setModelCompareProgress(0);
     setError("");
     try {
-      const data = await api.post("/devices/model-normalizations/preview", { ids });
-      const result = normalizeModelCompareResult(data);
+      const result: ExistingModelNormalizationResult = {
+        scanned: 0,
+        matched: 0,
+        issueCount: 0,
+        correctableCount: 0,
+        unresolvedCount: 0,
+        catalogCreatedCount: 0,
+        items: [],
+      };
+      const chunkSize = 10;
+      for (let start = 0; start < ids.length; start += chunkSize) {
+        const chunk = ids.slice(start, start + chunkSize);
+        const data = await api.post("/devices/model-normalizations/preview", { ids: chunk });
+        const part = normalizeModelCompareResult(data);
+        result.scanned += part.scanned;
+        result.matched += part.matched;
+        result.issueCount += part.issueCount;
+        result.correctableCount += part.correctableCount;
+        result.unresolvedCount += part.unresolvedCount;
+        result.catalogCreatedCount += part.catalogCreatedCount;
+        result.items.push(...part.items);
+        setModelCompareProgress(Math.min(99, Math.round(((start + chunk.length) / ids.length) * 100)));
+      }
+      setModelCompareProgress(100);
       setModelCompareResult(result);
       setModelCompareOpen(true);
       if (!result.items.length) toast.success("当前设备型号均已匹配型号库");
@@ -1260,7 +1284,7 @@ export function Devices() {
           {canEditDevices ? (
             <Button variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
               {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {modelComparing ? "比对中…" : "比对现有型号"}
+              {modelComparing ? `比对 ${modelCompareProgress}%` : "比对型号"}
             </Button>
           ) : null}
           {canCreateDevices ? (
