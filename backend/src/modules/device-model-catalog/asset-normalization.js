@@ -511,7 +511,8 @@ function normalizeAiAliases(value, inputModel) {
 
 function modelCore(value) {
   return compactAlias(value)
-    .replace(/\b(hpe|hp|hewlettpackardenterprise|dell|emc|lenovo|ibm|cisco|huawei|h3c|netapp)\b/g, '')
+    .replace(/\b(hpe|hp|hewlettpackardenterprise|dell|emc|lenovo|ibm|cisco|huawei|h3c|netapp|sangfor)\b/g, '')
+    .replace(/深信服/g, '')
     .replace(/\b(proliant|poweredge|thinksystem|bladesystem|oceanstor|catalyst|nexus|ucs|enclosure)\b/g, '')
 }
 
@@ -546,12 +547,22 @@ function normalizeAiCandidatePayload(payload, inputModel) {
     reason: normalizeText(payload.reason) || '',
     sourceProvider: 'ai',
   }
+  if (!normalizeAlias(candidate.canonicalModel).startsWith(normalizeAlias(brand))) {
+    candidate.canonicalModel = titleCaseKnownWords(`${brand} ${candidate.canonicalModel}`)
+  }
   const inputCore = modelCore(inputModel)
   const partNumberCore = modelCore(candidate.partNumber)
-  const canonicalCore = modelCore(candidate.canonicalModel)
+  let canonicalCore = modelCore(candidate.canonicalModel)
   if (inputCore && partNumberCore.includes(inputCore) && !canonicalCore.includes(inputCore)) {
     const partNumberHasBrand = normalizeAlias(candidate.partNumber).startsWith(normalizeAlias(brand))
     candidate.canonicalModel = titleCaseKnownWords(partNumberHasBrand ? candidate.partNumber : `${brand} ${candidate.partNumber}`)
+    canonicalCore = modelCore(candidate.canonicalModel)
+  }
+  if (inputCore && canonicalCore && inputCore.includes(canonicalCore) && likelyModelVariants(inputModel).length) {
+    const input = normalizeText(inputModel)
+    const inputHasBrand = normalizeAlias(input).startsWith(normalizeAlias(brand))
+    candidate.canonicalModel = titleCaseKnownWords(inputHasBrand ? input : `${brand} ${input}`)
+    if (!candidate.partNumber) candidate.partNumber = input
   }
   if (!aiCandidateRelatesToInput(candidate, inputModel)) return null
   return candidate
@@ -595,7 +606,7 @@ function inferAiSuggestionFromReason(payload, inputModel) {
   const reason = normalizeText(payload?.reason) || ''
   if (!reason || !/深信服|sangfor/i.test(reason)) return null
   const variants = likelyModelVariants(inputModel)
-  const model = variants[0] || normalizeText(inputModel)
+  const model = normalizeText(inputModel) || variants[0]
   if (!model || !/^AC[-\s]?\d/i.test(model)) return null
   return {
     brand: '深信服',
