@@ -20,6 +20,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 interface Device {
   id: string | number;
@@ -128,6 +129,17 @@ interface ImportResult {
   errors: ImportErrorRow[];
   requiresModelConfirmation?: boolean;
   modelCorrections?: ImportModelCorrection[];
+}
+
+interface ModelNormalizationResult {
+  action?: string;
+  canonicalModel?: string;
+  message?: string;
+}
+
+interface ModelNormalizationNotice {
+  action: string;
+  message: string;
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
@@ -327,6 +339,36 @@ function partQuantityText(item: DevicePartHistory) {
 function compactText(value?: string, maxLength = 120) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+function modelNormalizationNotice(payload: unknown): ModelNormalizationNotice | null {
+  const data = (payload || {}) as { modelNormalization?: ModelNormalizationResult; message?: string };
+  const normalization = data.modelNormalization || {};
+  const action = String(normalization.action || "");
+  if (!["corrected", "created", "created_corrected", "not_found"].includes(action)) return null;
+  const message = String(data.message || normalization.message || "").trim()
+    || (action === "corrected"
+      ? `已按型号库标准纠正为 ${normalization.canonicalModel || "标准型号"}`
+      : action === "created_corrected"
+        ? `型号库未命中，已规范为 ${normalization.canonicalModel || "标准型号"} 并加入型号库`
+        : action === "created"
+          ? "型号库未命中，已加入型号库"
+          : "型号库未命中，未能在线确认，已按原型号保存");
+  return { action, message };
+}
+
+function showModelNormalizationNotices(notices: ModelNormalizationNotice[]) {
+  const seen = new Set<string>();
+  const unique = notices.filter((notice) => {
+    if (!notice.message || seen.has(notice.message)) return false;
+    seen.add(notice.message);
+    return true;
+  });
+  unique.slice(0, 3).forEach((notice) => {
+    if (notice.action === "not_found") toast.warning(notice.message);
+    else toast.info(notice.message);
+  });
+  if (unique.length > 3) toast.info(`另有 ${unique.length - 3} 条型号校对结果已应用`);
 }
 
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
@@ -821,6 +863,7 @@ export function Devices() {
     setSaving(true);
     setError("");
     let createdCount = 0;
+    const normalizationNotices: ModelNormalizationNotice[] = [];
     try {
       const maintenanceType = canonicalMaintenanceType(form.maintenanceType);
       const commonPayload: Record<string, unknown> = {
@@ -863,13 +906,15 @@ export function Devices() {
         }
 
         for (const row of rows) {
-          await api.post("/devices", {
+          const data = await api.post("/devices", {
             ...commonPayload,
             name: row.name || null,
             model: row.model,
             serialNo: row.serialNo || undefined,
             mrNo: row.mrNo || undefined,
           });
+          const notice = modelNormalizationNotice(data);
+          if (notice) normalizationNotices.push(notice);
           createdCount += 1;
         }
       } else {
@@ -892,10 +937,13 @@ export function Devices() {
         if (editingId) {
           await api.put(`/devices/${editingId}`, payload);
         } else {
-          await api.post("/devices", payload);
+          const data = await api.post("/devices", payload);
+          const notice = modelNormalizationNotice(data);
+          if (notice) normalizationNotices.push(notice);
         }
       }
       setDialogOpen(false);
+      showModelNormalizationNotices(normalizationNotices);
       await load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "保存失败";

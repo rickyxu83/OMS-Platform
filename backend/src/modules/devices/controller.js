@@ -6,6 +6,10 @@ const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { normalizeAlias } = require('../device-model-catalog/normalize')
+const {
+  normalizeDeviceModelForAsset,
+  shouldReportNormalization,
+} = require('../device-model-catalog/asset-normalization')
 
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -402,6 +406,15 @@ async function resolveImportModel(rawModel) {
   return matches[0]
 }
 
+function buildModelNormalizationMessage(normalization) {
+  if (!normalization || !shouldReportNormalization(normalization)) return ''
+  if (normalization.message) return normalization.message
+  if (normalization.action === 'corrected') return `已按型号库标准纠正为 ${normalization.canonicalModel}`
+  if (normalization.action === 'created_corrected') return `型号库未命中，已规范为 ${normalization.canonicalModel} 并加入型号库`
+  if (normalization.action === 'created') return '型号库未命中，已加入型号库'
+  return '型号库未命中，已按原型号保存'
+}
+
 async function ensureDeviceIdentityColumns() {
   if (deviceIdentityColumnsReady) return
 
@@ -566,6 +579,12 @@ async function create(req, res) {
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)
   await ensureMaintenancePartyExists(normalizedMaintenancePartyId)
+  const existingDevice = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: normalizedSerialNo })
+  if (existingDevice[0]) {
+    throw badRequest('SN 已存在')
+  }
+  const modelNormalizationResult = await normalizeDeviceModelForAsset(normalizedModel)
+  const effectiveModel = modelNormalizationResult.model
 
   const result = await query(
     `INSERT INTO devices (
@@ -579,7 +598,7 @@ async function create(req, res) {
     {
       customerId,
       name: normalizedName,
-      model: normalizedModel,
+      model: effectiveModel,
       pn: normalizeText(pn),
       serialNo: normalizedSerialNo,
       mrNo: normalizeText(mrNo),
@@ -593,7 +612,11 @@ async function create(req, res) {
     },
   )
 
-  res.status(201).json({ id: result.insertId })
+  res.status(201).json({
+    id: result.insertId,
+    modelNormalization: modelNormalizationResult.normalization,
+    message: buildModelNormalizationMessage(modelNormalizationResult.normalization),
+  })
 }
 
 async function importDevices(req, res) {

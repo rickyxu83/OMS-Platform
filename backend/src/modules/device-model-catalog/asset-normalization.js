@@ -1,0 +1,541 @@
+const { query } = require('../../config/db')
+const { badRequest } = require('../../utils/http-error')
+const { ensureDeviceModelCatalogTable, ensureDeviceModelAliasesTable } = require('./schema')
+const { normalizeAlias, deduplicateAliases } = require('./normalize')
+
+const catalogCategories = new Set(['server', 'storage', 'network'])
+const defaultLookupTimeoutMs = 2500
+
+function normalizeText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ') || null
+}
+
+function compactAlias(value) {
+  return normalizeAlias(value).replace(/\s+/g, '')
+}
+
+function titleCaseKnownWords(value) {
+  return String(value || '')
+    .replace(/\bpoweredge\b/gi, 'PowerEdge')
+    .replace(/\bproliant\b/gi, 'ProLiant')
+    .replace(/\bthinksystem\b/gi, 'ThinkSystem')
+    .replace(/\bpowervault\b/gi, 'PowerVault')
+    .replace(/\bpowerstore\b/gi, 'PowerStore')
+    .replace(/\boceanstor\b/gi, 'OceanStor')
+    .replace(/\bcatalyst\b/gi, 'Catalyst')
+    .replace(/\bnexus\b/gi, 'Nexus')
+    .replace(/\bgen\s*(\d+)/gi, 'Gen$1')
+    .replace(/\bg\s*(\d+)/gi, 'Gen$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function decodeHtml(value) {
+  return String(value || '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+function stripHtml(value) {
+  return decodeHtml(String(value || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+}
+
+function normalizeDuckDuckGoUrl(value) {
+  const href = decodeHtml(value)
+  if (!href) return ''
+  try {
+    const url = new URL(href, 'https://duckduckgo.com')
+    const uddg = url.searchParams.get('uddg')
+    return uddg ? decodeURIComponent(uddg) : url.toString()
+  } catch {
+    return href
+  }
+}
+
+function extractSearchResults(html) {
+  const results = []
+  const anchorPattern = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+  let match
+  while ((match = anchorPattern.exec(html)) && results.length < 8) {
+    results.push({
+      title: stripHtml(match[2]),
+      url: normalizeDuckDuckGoUrl(match[1]),
+      snippet: '',
+    })
+  }
+
+  const snippetPattern = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
+  let snippetIndex = 0
+  while ((match = snippetPattern.exec(html)) && snippetIndex < results.length) {
+    results[snippetIndex].snippet = stripHtml(match[1])
+    snippetIndex += 1
+  }
+
+  return results.filter((result) => result.title || result.snippet)
+}
+
+async function fetchSearchEvidence(inputModel) {
+  if (process.env.DEVICE_MODEL_ONLINE_LOOKUP_DISABLED === '1' || process.env.DEVICE_MODEL_SYNC_DISABLE_NETWORK === '1') {
+    return { searched: false, disabled: true, results: [] }
+  }
+  if (typeof fetch !== 'function') {
+    return { searched: false, disabled: true, results: [] }
+  }
+
+  const timeoutMs = Math.max(500, Number(process.env.DEVICE_MODEL_ONLINE_LOOKUP_TIMEOUT_MS || defaultLookupTimeoutMs))
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const searchQuery = `"${inputModel}" device model server storage network`
+  const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': 'OMSDeviceModelNormalizer/1.0',
+      },
+    })
+    if (!response.ok) {
+      return { searched: true, error: `HTTP ${response.status}`, results: [] }
+    }
+    const html = await response.text()
+    return {
+      searched: true,
+      results: extractSearchResults(html),
+    }
+  } catch (error) {
+    return { searched: true, error: error.message || 'lookup failed', results: [] }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function normalizeModelToken(value) {
+  return String(value || '').replace(/\s+/g, '').toUpperCase()
+}
+
+function inferBrandCategory(text) {
+  const lower = String(text || '').toLowerCase()
+
+  if (/\b(hpe|hewlett packard enterprise|proliant|synergy)\b/.test(lower)) {
+    return { brand: 'HPE', category: 'server' }
+  }
+  if (/\b(poweredge|idrac)\b/.test(lower) || /\bdell\b/.test(lower) && /\b(server|r\d{3}|t\d{3}|c\d{3})\b/.test(lower)) {
+    return { brand: 'Dell', category: 'server' }
+  }
+  if (/\b(dell emc|emc|powerstore|powervault|unity|vnx|vnxe)\b/.test(lower)) {
+    return { brand: 'Dell EMC', category: 'storage' }
+  }
+  if (/\b(thinksystem|lenovo)\b/.test(lower)) {
+    return { brand: 'Lenovo', category: /\b(de|dm|storage)\b/.test(lower) ? 'storage' : 'server' }
+  }
+  if (/\b(netapp|aff|fas)\b/.test(lower)) {
+    return { brand: 'NetApp', category: 'storage' }
+  }
+  if (/\b(hitachi vantara|hds|v\s*sp)\b/.test(lower)) {
+    return { brand: 'HDS', category: 'storage' }
+  }
+  if (/\b(qnap|synology)\b/.test(lower)) {
+    return { brand: /\bqnap\b/.test(lower) ? 'QNAP' : 'Synology', category: 'storage' }
+  }
+  if (/\b(cisco|catalyst|nexus|ucs)\b/.test(lower)) {
+    return { brand: 'Cisco', category: /\bucs\b/.test(lower) ? 'server' : 'network' }
+  }
+  if (/\b(h3c|aruba|brocade|broadcom|f5|big-ip)\b/.test(lower)) {
+    if (/\bf5|big-ip\b/.test(lower)) return { brand: 'F5', category: 'network' }
+    if (/\bbrocade|broadcom\b/.test(lower)) return { brand: 'Brocade', category: 'network' }
+    if (/\baruba\b/.test(lower)) return { brand: 'HPE', category: 'network' }
+    return { brand: 'H3C', category: 'network' }
+  }
+  if (/\b(huawei|oceanstor|cloudengine|s\d{4,5})\b/.test(lower)) {
+    return { brand: 'Huawei', category: /\boceanstor\b/.test(lower) ? 'storage' : 'network' }
+  }
+
+  return { brand: '', category: '' }
+}
+
+function extracted(brand, category, canonicalModel, partNumber = '') {
+  const model = normalizeText(canonicalModel)
+  if (!model || !catalogCategories.has(category)) return null
+  return {
+    brand,
+    category,
+    canonicalModel: titleCaseKnownWords(model),
+    partNumber: normalizeText(partNumber) || '',
+  }
+}
+
+function extractKnownModel(inputModel, evidenceText) {
+  const input = normalizeText(inputModel) || ''
+  const text = normalizeText(`${evidenceText || ''} ${input}`) || input
+  const inferred = inferBrandCategory(text)
+
+  let match = text.match(/\b(?:HPE|HP|Hewlett Packard Enterprise)?\s*(?:ProLiant\s+)?((?:DL|ML|BL|XL)\s*\d{2,4})\s*(?:(?:Gen|G)\s*(\d{1,2})(?:\s*(Plus))?)?\b/i)
+  if (match && (inferred.brand === 'HPE' || /\b(proliant|hpe|hewlett|hp)\b/i.test(text))) {
+    const model = normalizeModelToken(match[1])
+    const gen = match[2] ? ` Gen${match[2]}${match[3] ? ' Plus' : ''}` : ''
+    return extracted('HPE', 'server', `HPE ProLiant ${model}${gen}`, `${model}${gen.replace(/\s+/g, '')}`)
+  }
+
+  match = text.match(/\b(?:Dell\s+EMC\s+|Dell\s+)?PowerStore\s+([0-9]{3,4}[A-Z]?)\b/i)
+  if (match) return extracted('Dell EMC', 'storage', `Dell EMC PowerStore ${match[1].toUpperCase()}`, `PowerStore ${match[1].toUpperCase()}`)
+
+  match = text.match(/\b(?:Dell\s+EMC\s+|Dell\s+|EMC\s+)?Unity\s*(?:XT\s*)?([0-9]{3,4}[A-Z]?)\b/i)
+  if (match) return extracted('Dell EMC', 'storage', `Dell EMC Unity XT ${match[1].toUpperCase()}`, `Unity XT ${match[1].toUpperCase()}`)
+
+  match = text.match(/\b(?:Dell\s+EMC\s+|Dell\s+|EMC\s+)?(VNXe?)\s*-?\s*([0-9]{3,4})\b/i)
+  if (match) return extracted('Dell EMC', 'storage', `Dell EMC ${match[1]} ${match[2]}`, `${match[1]}${match[2]}`)
+
+  match = text.match(/\b(?:Dell\s+)?(?:PowerEdge\s+)?([RCTM][0-9]{3,4}(?:xd2?|xa|xs|s|t)?)\b/i)
+  if (match && (inferred.brand === 'Dell' || /\b(poweredge|dell)\b/i.test(text))) {
+    const model = match[1].toUpperCase()
+    return extracted('Dell', 'server', `Dell PowerEdge ${model}`, model)
+  }
+
+  match = text.match(/\b(?:Lenovo\s+)?(?:ThinkSystem\s+)?((?:SR|ST|SN|SD)\s*\d{3,4}(?:\s*V\d)?)\b/i)
+  if (match && (inferred.brand === 'Lenovo' || /\b(thinksystem|lenovo)\b/i.test(text))) {
+    const model = match[1].replace(/\s+/g, ' ').toUpperCase()
+    return extracted('Lenovo', 'server', `Lenovo ThinkSystem ${model}`, model)
+  }
+
+  match = text.match(/\b(?:IBM\s+)?(?:Power\s+)?(S[0-9]{3,4}|E[0-9]{3,4})\b/i)
+  if (match && /\b(ibm|power)\b/i.test(text)) {
+    const model = match[1].toUpperCase()
+    return extracted('IBM', 'server', `IBM Power ${model}`, model)
+  }
+
+  match = text.match(/\b(?:NetApp\s+)?(AFF|FAS)\s*-?\s*([A-Z]?[0-9]{3,4})\b/i)
+  if (match && (inferred.brand === 'NetApp' || /\b(netapp|aff|fas)\b/i.test(text))) {
+    const family = match[1].toUpperCase()
+    const model = match[2].toUpperCase()
+    return extracted('NetApp', 'storage', `NetApp ${family} ${model}`, `${family}${model}`)
+  }
+
+  match = text.match(/\b(?:Huawei\s+)?OceanStor\s+([A-Z0-9 -]{3,24})\b/i)
+  if (match) {
+    const model = match[1].replace(/\s+/g, ' ').trim().toUpperCase()
+    return extracted('Huawei', 'storage', `Huawei OceanStor ${model}`, model)
+  }
+
+  match = text.match(/\b(?:Cisco\s+)?(?:Catalyst\s+)?(C?\d{4}(?:-\d{2,3}[A-Z0-9-]+)?)\b/i)
+  if (match && (inferred.brand === 'Cisco' || /\b(cisco|catalyst)\b/i.test(text))) {
+    const model = match[1].replace(/^C(?=\d{4})/i, '').toUpperCase()
+    return extracted('Cisco', 'network', `Cisco Catalyst ${model}`, model)
+  }
+
+  match = text.match(/\b(?:Cisco\s+)?Nexus\s+([0-9]{4,5}[A-Z0-9-]*)\b/i)
+  if (match) return extracted('Cisco', 'network', `Cisco Nexus ${match[1].toUpperCase()}`, match[1].toUpperCase())
+
+  match = text.match(/\b(?:H3C\s+)?(S[0-9]{4,5}(?:-[A-Z0-9-]+)?)\b/i)
+  if (match && (inferred.brand === 'H3C' || /\bh3c\b/i.test(text))) {
+    const model = match[1].toUpperCase()
+    return extracted('H3C', 'network', `H3C ${model}`, model)
+  }
+
+  match = text.match(/\b(?:Huawei\s+)?(?:CloudEngine\s+)?(S[0-9]{4,5}(?:-[A-Z0-9-]+)?)\b/i)
+  if (match && (inferred.brand === 'Huawei' || /\b(huawei|cloudengine)\b/i.test(text))) {
+    const model = match[1].toUpperCase()
+    return extracted('Huawei', 'network', `Huawei ${model}`, model)
+  }
+
+  if (inferred.brand && inferred.category && catalogCategories.has(inferred.category)) {
+    const brandPattern = new RegExp(`^${escapeRegExp(inferred.brand)}\\s+`, 'i')
+    const modelWithoutBrand = titleCaseKnownWords(input.replace(brandPattern, '').trim())
+    if (modelWithoutBrand) {
+      return extracted(inferred.brand, inferred.category, `${inferred.brand} ${modelWithoutBrand}`, modelWithoutBrand)
+    }
+  }
+
+  return null
+}
+
+function aliasesForCandidate(candidate, inputModel) {
+  const aliases = [candidate.canonicalModel, candidate.partNumber, inputModel]
+  const canonical = candidate.canonicalModel
+
+  if (candidate.brand === 'Dell' && /PowerEdge/i.test(canonical)) {
+    const model = canonical.replace(/^Dell\s+PowerEdge\s+/i, '')
+    aliases.push(model, `PowerEdge ${model}`, `Dell ${model}`)
+  } else if (candidate.brand === 'HPE' && /ProLiant/i.test(canonical)) {
+    const model = canonical.replace(/^HPE\s+ProLiant\s+/i, '')
+    aliases.push(model, `HPE ${model}`, `HP ${model}`, model.replace(/\s+/g, ''))
+  } else if (candidate.brand === 'Lenovo' && /ThinkSystem/i.test(canonical)) {
+    const model = canonical.replace(/^Lenovo\s+ThinkSystem\s+/i, '')
+    aliases.push(model, `ThinkSystem ${model}`)
+  } else if (candidate.brand === 'Dell EMC') {
+    aliases.push(canonical.replace(/^Dell\s+EMC\s+/i, ''), canonical.replace(/^Dell\s+/i, ''))
+  } else if (candidate.brand) {
+    aliases.push(canonical.replace(new RegExp(`^${escapeRegExp(candidate.brand)}\\s+`, 'i'), ''))
+  }
+
+  return deduplicateAliases(aliases)
+}
+
+async function findCatalogMatch(rawModel) {
+  const model = normalizeText(rawModel)
+  if (!model) return null
+
+  await ensureDeviceModelCatalogTable()
+  await ensureDeviceModelAliasesTable()
+
+  const normalizedModel = normalizeAlias(model)
+  const compactNormalizedModel = compactAlias(model)
+  const rows = await query(
+    `SELECT matched.id,
+            matched.canonical_model,
+            matched.part_number,
+            matched.brand,
+            matched.category,
+            matched.source_provider,
+            matched.match_type,
+            matched.match_rank
+     FROM (
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category, c.source_provider,
+              '标准型号' AS match_type, 10 AS match_rank
+       FROM device_model_catalog c
+       WHERE c.is_active = 1
+         AND LOWER(c.canonical_model) = LOWER(:model)
+
+       UNION ALL
+
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category, c.source_provider,
+              'PN' AS match_type, 9 AS match_rank
+       FROM device_model_catalog c
+       WHERE c.is_active = 1
+         AND LOWER(COALESCE(c.part_number, '')) = LOWER(:model)
+
+       UNION ALL
+
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category, c.source_provider,
+              '别名' AS match_type, 8 AS match_rank
+       FROM device_model_aliases a
+       JOIN device_model_catalog c ON c.id = a.catalog_id
+       WHERE c.is_active = 1
+         AND a.normalized_alias = :normalizedModel
+
+       UNION ALL
+
+       SELECT c.id, c.canonical_model, c.part_number, c.brand, c.category, c.source_provider,
+              '别名' AS match_type, 7 AS match_rank
+       FROM device_model_aliases a
+       JOIN device_model_catalog c ON c.id = a.catalog_id
+       WHERE c.is_active = 1
+         AND :compactNormalizedModel <> ''
+         AND REPLACE(a.normalized_alias, ' ', '') = :compactNormalizedModel
+     ) AS matched
+     ORDER BY matched.match_rank DESC, matched.canonical_model ASC`,
+    { model, normalizedModel, compactNormalizedModel },
+  )
+
+  const bestById = new Map()
+  for (const row of rows) {
+    const existing = bestById.get(row.id)
+    if (!existing || Number(row.match_rank) > Number(existing.match_rank)) {
+      bestById.set(row.id, row)
+    }
+  }
+
+  const matches = [...bestById.values()]
+  if (!matches.length) return null
+
+  const canonicalKeys = new Set(matches.map((row) => String(row.canonical_model || '').trim().toLowerCase()).filter(Boolean))
+  if (canonicalKeys.size > 1) {
+    throw badRequest('设备型号匹配到多个标准型号，请使用更准确的型号')
+  }
+
+  return matches[0]
+}
+
+async function upsertCatalogCandidate(candidate, inputModel, sourceReference) {
+  await ensureDeviceModelCatalogTable()
+  await ensureDeviceModelAliasesTable()
+
+  await query(
+    `INSERT INTO device_model_catalog (
+       brand, category, canonical_model, part_number, source_provider, source_reference,
+       confidence, is_active, synced_at
+     ) VALUES (
+       :brand, :category, :canonicalModel, :partNumber, 'online', :sourceReference,
+       :confidence, 1, CURRENT_TIMESTAMP
+     )
+     ON DUPLICATE KEY UPDATE
+       part_number = COALESCE(VALUES(part_number), part_number),
+       source_reference = COALESCE(VALUES(source_reference), source_reference),
+       is_active = 1,
+       synced_at = CURRENT_TIMESTAMP`,
+    {
+      brand: candidate.brand,
+      category: candidate.category,
+      canonicalModel: candidate.canonicalModel,
+      partNumber: candidate.partNumber || null,
+      sourceReference: sourceReference || 'device-asset-online-lookup',
+      confidence: candidate.onlineVerified ? 0.75 : 0.55,
+    },
+  )
+
+  const rows = await query(
+    `SELECT id, brand, category, canonical_model, part_number, source_provider
+     FROM device_model_catalog
+     WHERE brand = :brand AND category = :category AND canonical_model = :canonicalModel
+     LIMIT 1`,
+    {
+      brand: candidate.brand,
+      category: candidate.category,
+      canonicalModel: candidate.canonicalModel,
+    },
+  )
+  const item = rows[0]
+  if (!item) throw badRequest('型号库写入失败')
+
+  for (const alias of aliasesForCandidate(candidate, inputModel)) {
+    const normalizedAlias = normalizeAlias(alias)
+    if (!normalizedAlias) continue
+    await query(
+      `INSERT IGNORE INTO device_model_aliases (
+         catalog_id, normalized_alias, provider_scope
+       ) VALUES (
+         :catalogId, :normalizedAlias, 'approved-v1'
+       )`,
+      { catalogId: item.id, normalizedAlias },
+    )
+  }
+
+  return item
+}
+
+function normalizationPayload({ inputModel, finalModel, action, source, matchType, item, message }) {
+  return {
+    action,
+    inputModel,
+    canonicalModel: finalModel,
+    corrected: finalModel !== inputModel,
+    source,
+    matchType: matchType || '',
+    brand: item?.brand || '',
+    category: item?.category || '',
+    partNumber: normalizeText(item?.part_number || item?.partNumber) || '',
+    message: message || '',
+  }
+}
+
+async function discoverOnlineCandidate(inputModel) {
+  const localCandidate = extractKnownModel(inputModel, '')
+  const search = await fetchSearchEvidence(inputModel)
+  const evidence = search.results.map((result) => `${result.title} ${result.snippet}`).join(' ')
+  const onlineCandidate = evidence ? extractKnownModel(inputModel, evidence) : null
+  const candidate = localCandidate || onlineCandidate
+  const usedOnlineCandidate = !localCandidate && Boolean(onlineCandidate)
+  if (!candidate) {
+    return {
+      candidate: null,
+      searched: search.searched,
+      disabled: search.disabled,
+      error: search.error,
+    }
+  }
+
+  return {
+    candidate: {
+      ...candidate,
+      onlineVerified: Boolean(usedOnlineCandidate && search.results.length),
+    },
+    searched: search.searched,
+    disabled: search.disabled,
+    error: search.error,
+    sourceReference: search.results[0]?.url || '',
+  }
+}
+
+async function normalizeDeviceModelForAsset(rawModel, options = {}) {
+  const inputModel = normalizeText(rawModel)
+  if (!inputModel) throw badRequest('设备型号不能为空')
+
+  const catalogMatch = await findCatalogMatch(inputModel)
+  if (catalogMatch) {
+    const finalModel = normalizeText(catalogMatch.canonical_model) || inputModel
+    const action = finalModel === inputModel ? 'matched' : 'corrected'
+    return {
+      model: finalModel,
+      catalogItem: catalogMatch,
+      normalization: normalizationPayload({
+        inputModel,
+        finalModel,
+        action,
+        source: 'catalog',
+        matchType: catalogMatch.match_type,
+        item: catalogMatch,
+        message: action === 'corrected' ? `已按型号库标准纠正为 ${finalModel}` : '',
+      }),
+    }
+  }
+
+  if (options.allowOnlineLookup === false) {
+    return {
+      model: inputModel,
+      catalogItem: null,
+      normalization: normalizationPayload({
+        inputModel,
+        finalModel: inputModel,
+        action: 'not_found',
+        source: 'none',
+        message: '型号库未命中，已按原型号保存',
+      }),
+    }
+  }
+
+  const discovered = await discoverOnlineCandidate(inputModel)
+  if (discovered.candidate) {
+    const item = await upsertCatalogCandidate(discovered.candidate, inputModel, discovered.sourceReference)
+    const finalModel = normalizeText(item.canonical_model) || inputModel
+    const action = finalModel === inputModel ? 'created' : 'created_corrected'
+    return {
+      model: finalModel,
+      catalogItem: item,
+      normalization: normalizationPayload({
+        inputModel,
+        finalModel,
+        action,
+        source: discovered.candidate.onlineVerified ? 'online' : 'local',
+        matchType: discovered.candidate.onlineVerified ? '网上搜索' : '本地规则',
+        item,
+        message: action === 'created_corrected'
+          ? `型号库未命中，已规范为 ${finalModel} 并加入型号库`
+          : '型号库未命中，已加入型号库',
+      }),
+    }
+  }
+
+  return {
+    model: inputModel,
+    catalogItem: null,
+    normalization: normalizationPayload({
+      inputModel,
+      finalModel: inputModel,
+      action: 'not_found',
+      source: discovered.searched ? 'online' : 'none',
+      message: discovered.disabled
+        ? '型号库未命中，在线检索未启用，已按原型号保存'
+        : '型号库未命中，未能在线确认具体型号，已按原型号保存',
+    }),
+  }
+}
+
+function shouldReportNormalization(normalization) {
+  return ['corrected', 'created', 'created_corrected', 'not_found'].includes(normalization?.action)
+}
+
+module.exports = {
+  findCatalogMatch,
+  normalizeDeviceModelForAsset,
+  shouldReportNormalization,
+}
