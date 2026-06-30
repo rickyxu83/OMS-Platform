@@ -142,6 +142,11 @@ const DEVICE_STATUS_BADGE: Record<string, "success" | "secondary" | "warning" | 
   scrapped: "destructive",
 };
 
+const DEVICE_TABLE_GRID = "md:grid-cols-[32px_28px_minmax(220px,1.2fr)_minmax(190px,1fr)_92px_118px_minmax(180px,0.95fr)_86px_156px]";
+const DEVICE_TABLE_READONLY_GRID = "md:grid-cols-[28px_minmax(240px,1.2fr)_minmax(200px,1fr)_92px_118px_minmax(200px,1fr)_86px]";
+const DEVICE_BADGE_CLASS = "inline-flex h-6 min-w-[74px] justify-center px-2";
+const DEVICE_STATUS_BADGE_CLASS = "inline-flex h-6 min-w-[56px] justify-center px-2";
+
 function createEmptyDeviceForm(overrides: Partial<DeviceForm> = {}): DeviceForm {
   return {
     customerId: "",
@@ -315,7 +320,10 @@ export function Devices() {
   const canCreateDevices = hasPermission("device.create");
   const canEditDevices = hasPermission("device.edit");
   const canDeleteDevices = hasPermission("device.delete");
-  const canSelectDevices = canEditDevices || canDeleteDevices;
+  const canManageDevices = canEditDevices || canDeleteDevices;
+  const canSelectDevices = canManageDevices;
+  const deviceTableGrid = canManageDevices ? DEVICE_TABLE_GRID : DEVICE_TABLE_READONLY_GRID;
+  const deviceTableMinWidth = canManageDevices ? "min-w-[1262px]" : "min-w-[1092px]";
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
@@ -992,7 +1000,7 @@ export function Devices() {
                 </span>
               ) : null}
             </div>
-            {canEditDevices || canDeleteDevices ? (
+            {canManageDevices ? (
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
@@ -1043,45 +1051,40 @@ export function Devices() {
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
             ) : (
-              <div className="min-w-[860px]">
-                <div className="sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:flex md:items-center md:justify-between">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {canSelectDevices ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
-                    <div className="w-5 shrink-0" aria-hidden="true" />
-                    <div className="grid min-w-0 flex-1 grid-cols-6 gap-4 text-center">
-                      <div>型号 / 客户</div>
-                      <div>SN</div>
-                      <div>MR单</div>
-                      <div>维保类型</div>
-                      <div>维保方 / 截止</div>
-                      <div>状态</div>
-                    </div>
-                  </div>
-                  {canSelectDevices ? <div className="w-[132px] text-center">操作</div> : null}
+              <div className={deviceTableMinWidth}>
+                <div className={`sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:grid ${deviceTableGrid} md:items-center md:gap-4`}>
+                  {canSelectDevices ? <div aria-hidden="true" /> : null}
+                  <div aria-hidden="true" />
+                  <div className="min-w-0 text-left">型号 / 客户</div>
+                  <div className="min-w-0 text-left">SN</div>
+                  <div className="text-left">MR单</div>
+                  <div className="text-center">维保类型</div>
+                  <div className="min-w-0 text-left">维保方 / 截止</div>
+                  <div className="text-center">状态</div>
+                  {canManageDevices ? <div className="text-center">操作</div> : null}
                 </div>
-              {filtered.map((device) => {
-                const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
-                const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
-                const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
-                const selected = selectedDeviceIds.includes(String(device.id));
-                return (
-                  <div
-                    key={device.id}
-                    role="button"
-                    tabIndex={0}
-                    className="flex cursor-pointer flex-col gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:flex-row md:items-center md:justify-between"
-                    onClick={() => openDetail(device)}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openDetail(device);
-                      }
-                    }}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                {filtered.map((device) => {
+                  const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
+                  const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
+                  const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
+                  const selected = selectedDeviceIds.includes(String(device.id));
+                  return (
+                    <div
+                      key={device.id}
+                      role="button"
+                      tabIndex={0}
+                      className={`grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
+                      onClick={() => openDetail(device)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openDetail(device);
+                        }
+                      }}
+                    >
                       {canSelectDevices ? (
-                        <div onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
                           <Checkbox
                             checked={selected}
                             onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
@@ -1090,100 +1093,97 @@ export function Devices() {
                           />
                         </div>
                       ) : null}
-                      <Server className="w-5 h-5 text-primary" />
-                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-6">
-                        <div className="min-w-0">
-                          {device.model ? (
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
-                              title={device.model}
-                              onClick={(event) => filterByModel(event, device.model)}
-                            >
-                              {device.model}
-                            </button>
-                          ) : (
-                            <div className="truncate font-medium">-</div>
-                          )}
-                          {device.customerName ? (
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary hover:underline"
-                              title={device.customerName}
-                              onClick={(event) => filterByCustomer(event, device)}
-                            >
-                              {device.customerName}
-                            </button>
-                          ) : (
-                            <div className="truncate text-sm text-muted-foreground">-</div>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground md:hidden">SN</div>
-                          <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground md:hidden">MR单</div>
-                          <div className="truncate text-sm" title={device.mrNo || "-"}>{device.mrNo || "-"}</div>
-                        </div>
-                        <div>
-                          <button type="button" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
-                            <Badge
-                              variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
-                              className={`cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
-                            >
-                              {typeLabel}
-                            </Badge>
+                      <Server className="hidden h-5 w-5 text-primary md:block" />
+                      <div className="min-w-0">
+                        {device.model ? (
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
+                            title={device.model}
+                            onClick={(event) => filterByModel(event, device.model)}
+                          >
+                            {device.model}
                           </button>
-                        </div>
-                        <div className="min-w-0">
-                          {device.maintenancePartyName ? (
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left text-sm text-slate-900 hover:text-primary hover:underline"
-                              title={device.maintenancePartyName}
-                              onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
-                            >
-                              {device.maintenancePartyName}
-                            </button>
-                          ) : (
-                            <div className="truncate text-sm">-</div>
-                          )}
-                          <div className="text-xs text-muted-foreground">
-                            截止 {formatDate(device.maintenanceEnd)}
-                          </div>
-                        </div>
-                        <div>
-                          <button type="button" onClick={(event) => filterByStatus(event, device.status)}>
-                            <Badge
-                              variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
-                              className={`cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
-                            >
-                              {statusLabel}
-                            </Badge>
+                        ) : (
+                          <div className="truncate font-medium">-</div>
+                        )}
+                        {device.customerName ? (
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary hover:underline"
+                            title={device.customerName}
+                            onClick={(event) => filterByCustomer(event, device)}
+                          >
+                            {device.customerName}
                           </button>
+                        ) : (
+                          <div className="truncate text-sm text-muted-foreground">-</div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted-foreground md:hidden">SN</div>
+                        <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted-foreground md:hidden">MR单</div>
+                        <div className="truncate text-sm" title={device.mrNo || "-"}>{device.mrNo || "-"}</div>
+                      </div>
+                      <div className="flex md:justify-center">
+                        <button type="button" className="inline-flex" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
+                          <Badge
+                            variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
+                            className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
+                          >
+                            {typeLabel}
+                          </Badge>
+                        </button>
+                      </div>
+                      <div className="min-w-0">
+                        {device.maintenancePartyName ? (
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left text-sm font-medium text-slate-900 hover:text-primary hover:underline"
+                            title={device.maintenancePartyName}
+                            onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
+                          >
+                            {device.maintenancePartyName}
+                          </button>
+                        ) : (
+                          <div className="truncate text-sm">-</div>
+                        )}
+                        <div className="text-xs text-muted-foreground">
+                          截止 {formatDate(device.maintenanceEnd)}
                         </div>
                       </div>
+                      <div className="flex md:justify-center">
+                        <button type="button" className="inline-flex" onClick={(event) => filterByStatus(event, device.status)}>
+                          <Badge
+                            variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
+                            className={`${DEVICE_STATUS_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
+                          >
+                            {statusLabel}
+                          </Badge>
+                        </button>
+                      </div>
+                      {canManageDevices ? (
+                        <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
+                          {canEditDevices ? (
+                            <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
+                              <Pencil className="w-4 h-4 mr-1" />
+                              编辑
+                            </Button>
+                          ) : null}
+                          {canDeleteDevices ? (
+                            <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              删除
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                    {canEditDevices || canDeleteDevices ? (
-                      <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
-                        {canEditDevices ? (
-                          <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
-                            <Pencil className="w-4 h-4 mr-1" />
-                            编辑
-                          </Button>
-                        ) : null}
-                        {canDeleteDevices ? (
-                          <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            删除
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+                  );
+                })}
               </div>
             )}
           </div>
