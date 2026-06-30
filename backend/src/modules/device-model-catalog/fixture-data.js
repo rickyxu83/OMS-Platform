@@ -1075,6 +1075,24 @@ const HPE_ADDITIONAL_SERVER_FIXTURE_DATA = [
     `Synergy ${model}`,
     `HPE Synergy ${model}`,
   ])),
+  serverModel('HPE', 'HPE BladeSystem c7000 Enclosure', 'c7000', [
+    'HP BladeSystem c7000 Enclosure',
+    'HPE BladeSystem c7000',
+    'HP BladeSystem c7000',
+    'BladeSystem c7000',
+    'BladeSystem c7000 Enclosure',
+    'HPE c7000',
+    'HP c7000',
+    'BL c7000',
+    'BL-c7000',
+    'BLc7000',
+    'c7000 Enclosure',
+    'c7000 刀箱',
+    'c7000 刀片机箱',
+    'c7000 刀片服务器',
+    'HPE c7000 刀箱',
+    'HP c7000 刀箱',
+  ]),
 ]
 
 const DELL_ADDITIONAL_SERVER_FIXTURE_DATA = [
