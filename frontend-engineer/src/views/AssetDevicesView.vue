@@ -31,6 +31,10 @@ const importFile = ref(null)
 const importing = ref(false)
 const importResult = ref(null)
 const importFileInputRef = ref(null)
+const modelCompareOpen = ref(false)
+const modelComparing = ref(false)
+const modelApplying = ref(false)
+const modelCompareResult = ref(null)
 const customerInput = ref('')
 const customerDropdownOpen = ref(false)
 const customerSearchLoading = ref(false)
@@ -212,6 +216,32 @@ function formatModelNormalizationMessages(messages) {
   if (unique.length === 1) return unique[0]
   if (unique.length === 2) return unique.join('；')
   return `${unique.slice(0, 2).join('；')}；另有 ${unique.length - 2} 条型号校对结果已应用`
+}
+
+function existingModelIssueLabel(action) {
+  if (action === 'corrected') return '型号库纠正'
+  if (action === 'created_corrected') return '在线规范'
+  if (action === 'created') return '已补入型号库'
+  if (action === 'not_found') return '未确认'
+  return '需核对'
+}
+
+function existingModelIssueClass(action) {
+  if (action === 'not_found') return 'warning'
+  if (action === 'created') return 'info'
+  return 'correctable'
+}
+
+function normalizeModelCompareResult(data) {
+  return {
+    scanned: Number(data?.scanned || 0),
+    matched: Number(data?.matched || 0),
+    issueCount: Number(data?.issueCount || 0),
+    correctableCount: Number(data?.correctableCount || 0),
+    unresolvedCount: Number(data?.unresolvedCount || 0),
+    catalogCreatedCount: Number(data?.catalogCreatedCount || 0),
+    items: Array.isArray(data?.items) ? data.items : [],
+  }
 }
 
 function customerLabel(customer) {
@@ -596,6 +626,62 @@ async function submitImport(mode = 'check') {
   }
 }
 
+function modelCompareTargetIds() {
+  const source = selectedDeviceIds.value.length
+    ? selectedDeviceIds.value
+    : filteredDevices.value.map((device) => String(device.id)).filter(Boolean)
+  return [...new Set(source)].slice(0, 200)
+}
+
+async function compareExistingDeviceModels() {
+  const ids = modelCompareTargetIds()
+  if (!ids.length) {
+    error.value = '当前列表没有可比对的设备'
+    return
+  }
+  modelComparing.value = true
+  error.value = ''
+  successMessage.value = ''
+  try {
+    const data = await api.post('/devices/model-normalizations/preview', { ids })
+    const result = normalizeModelCompareResult(data)
+    modelCompareResult.value = result
+    modelCompareOpen.value = true
+    if (!result.items.length) successMessage.value = '当前设备型号均已匹配型号库'
+  } catch (err) {
+    error.value = err.message || '型号比对失败'
+  } finally {
+    modelComparing.value = false
+  }
+}
+
+function closeModelCompareDialog() {
+  if (modelApplying.value) return
+  modelCompareOpen.value = false
+  error.value = ''
+}
+
+async function applyExistingModelNormalizations() {
+  const ids = (modelCompareResult.value?.items || [])
+    .filter((item) => item.canApply)
+    .map((item) => String(item.id))
+    .filter(Boolean)
+  if (!ids.length) return
+  modelApplying.value = true
+  error.value = ''
+  try {
+    const data = await api.post('/devices/model-normalizations/apply', { ids })
+    successMessage.value = `已纠正 ${Number(data?.updated || 0)} 台设备型号`
+    modelCompareOpen.value = false
+    modelCompareResult.value = null
+    await loadDevices()
+  } catch (err) {
+    error.value = err.message || '型号纠正失败'
+  } finally {
+    modelApplying.value = false
+  }
+}
+
 async function submitBatchEdit() {
   const fields = {}
   if (batchEditToggles.value.maintenanceType) {
@@ -925,6 +1011,7 @@ watch(filteredDevices, (items) => {
         <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ zh(customer.name || '未命名客户') }}</option>
       </select>
       <button class="ghost" type="button" :disabled="loading" @click="loadDevices"><PreviewIcon name="refresh" />{{ zh('刷新') }}</button>
+      <button class="ghost" type="button" :disabled="loading || modelComparing || !filteredDevices.length" @click="compareExistingDeviceModels"><PreviewIcon name="eye" />{{ zh(modelComparing ? '比对中…' : '比对现有型号') }}</button>
       <button class="ghost" type="button" @click="downloadDeviceImportTemplate"><PreviewIcon name="download" />{{ zh('下载模板') }}</button>
       <button class="ghost" type="button" @click="openImportDialog"><PreviewIcon name="download" />{{ zh('导入 Excel') }}</button>
       <button class="ghost" type="button" @click="openBulkCreate"><PreviewIcon name="new" />{{ zh('批量新增') }}</button>
@@ -1184,6 +1271,65 @@ watch(filteredDevices, (items) => {
         <footer class="signature-modal-actions">
           <button class="ghost" type="button" @click="closeDialog">{{ zh('取消') }}</button>
           <button class="primary" type="button" :disabled="saving" @click="saveDevice"><PreviewIcon name="save" />{{ zh(saving ? '保存中…' : editingId ? '保存修改' : createMode === 'bulk' ? '批量保存' : '保存') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <div v-if="modelCompareOpen" class="signature-modal" role="dialog" aria-modal="true" :aria-label="zh('现有设备型号比对')" @click.self="closeModelCompareDialog">
+      <div class="signature-modal-shell asset-editor-shell asset-model-compare-shell">
+        <header class="signature-modal-head">
+          <div>
+            <p>{{ zh('设备资产') }}</p>
+            <h2>{{ zh('现有设备型号比对') }}</h2>
+          </div>
+        </header>
+        <p v-if="error" class="form-error">{{ zh(error) }}</p>
+        <div v-if="modelCompareResult" class="asset-model-compare-body">
+          <section class="asset-model-compare-summary">
+            <div>
+              <span>{{ zh('已比对') }}</span>
+              <strong>{{ modelCompareResult.scanned }}</strong>
+            </div>
+            <div>
+              <span>{{ zh('已匹配') }}</span>
+              <strong>{{ modelCompareResult.matched }}</strong>
+            </div>
+            <div>
+              <span>{{ zh('可纠正') }}</span>
+              <strong>{{ modelCompareResult.correctableCount }}</strong>
+            </div>
+            <div>
+              <span>{{ zh('未确认') }}</span>
+              <strong>{{ modelCompareResult.unresolvedCount }}</strong>
+            </div>
+          </section>
+
+          <section v-if="modelCompareResult.items.length" class="asset-model-compare-list">
+            <header>{{ zh(`发现 ${modelCompareResult.items.length} 台设备型号需要核对`) }}</header>
+            <div class="asset-model-compare-row" v-for="item in modelCompareResult.items" :key="item.id">
+              <span class="asset-model-compare-badge" :class="existingModelIssueClass(item.action)">{{ zh(existingModelIssueLabel(item.action)) }}</span>
+              <div>
+                <strong>{{ zh(item.name || item.customerName || `设备 #${item.id}`) }}</strong>
+                <small>{{ zh(`SN：${item.serialNo || '-'}`) }}</small>
+              </div>
+              <div>
+                <small>{{ zh('当前型号') }}</small>
+                <span :title="item.inputModel || ''">{{ zh(item.inputModel || '-') }}</span>
+              </div>
+              <div>
+                <small>{{ zh('建议型号') }}</small>
+                <span :title="item.canonicalModel || ''">{{ zh(item.canonicalModel || '-') }}</span>
+                <small v-if="item.message" :title="item.message">{{ zh(item.message) }}</small>
+              </div>
+            </div>
+          </section>
+          <section v-else class="asset-model-compare-empty">{{ zh('未发现需要纠正的设备型号') }}</section>
+        </div>
+        <footer class="signature-modal-actions">
+          <button class="ghost" type="button" :disabled="modelApplying" @click="closeModelCompareDialog">{{ zh('关闭') }}</button>
+          <button class="primary" type="button" :disabled="modelApplying || !modelCompareResult?.correctableCount" @click="applyExistingModelNormalizations">
+            <PreviewIcon name="check" />{{ zh(modelApplying ? '纠正中…' : `应用纠正${modelCompareResult?.correctableCount ? ` (${modelCompareResult.correctableCount})` : ''}`) }}
+          </button>
         </footer>
       </div>
     </div>

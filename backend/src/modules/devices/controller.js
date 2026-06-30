@@ -398,7 +398,20 @@ async function resolveImportModel(rawModel) {
     }
   }
   const matches = [...bestById.values()]
-  if (!matches.length) return null
+  if (!matches.length) {
+    const normalizationResult = await normalizeDeviceModelForAsset(model)
+    const item = normalizationResult?.catalogItem
+    if (!item) return null
+    return {
+      id: item.id,
+      canonical_model: item.canonical_model || normalizationResult.model,
+      part_number: item.part_number || '',
+      brand: item.brand || '',
+      category: item.category || '',
+      match_type: normalizationResult.normalization?.matchType || '在线匹配',
+      match_rank: 1,
+    }
+  }
   const canonicalKeys = new Set(matches.map((row) => String(row.canonical_model || '').trim().toLowerCase()).filter(Boolean))
   if (canonicalKeys.size > 1) {
     throw badRequest('设备型号匹配到多个标准型号，请使用更准确的型号')
@@ -413,6 +426,124 @@ function buildModelNormalizationMessage(normalization) {
   if (normalization.action === 'created_corrected') return `型号库未命中，已规范为 ${normalization.canonicalModel} 并加入型号库`
   if (normalization.action === 'created') return '型号库未命中，已加入型号库'
   return '型号库未命中，已按原型号保存'
+}
+
+function normalizeDeviceIds(value, maxCount = 200) {
+  const rawIds = Array.isArray(value) ? value : []
+  const ids = [...new Set(rawIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+  if (ids.length > maxCount) {
+    throw badRequest(`一次最多比对 ${maxCount} 台设备`)
+  }
+  return ids
+}
+
+function canApplyModelNormalization(normalization) {
+  return Boolean(['corrected', 'created_corrected'].includes(normalization?.action)
+    && normalizeText(normalization?.canonicalModel)
+    && normalizeText(normalization?.canonicalModel) !== normalizeText(normalization?.inputModel))
+}
+
+function modelNormalizationIssuePayload(device, normalization, applied = false) {
+  return {
+    id: device.id,
+    customerId: device.customer_id,
+    customerName: device.customer_name,
+    name: device.name,
+    serialNo: device.serial_no,
+    inputModel: normalization.inputModel || device.model,
+    canonicalModel: normalization.canonicalModel || device.model,
+    action: normalization.action || '',
+    source: normalization.source || '',
+    matchType: normalization.matchType || '',
+    brand: normalization.brand || '',
+    category: normalization.category || '',
+    partNumber: normalization.partNumber || '',
+    message: buildModelNormalizationMessage(normalization),
+    canApply: canApplyModelNormalization(normalization),
+    applied,
+  }
+}
+
+function summarizeModelNormalization(scanned, items) {
+  return {
+    scanned,
+    matched: Math.max(0, scanned - items.length),
+    issueCount: items.length,
+    correctableCount: items.filter((item) => item.canApply).length,
+    unresolvedCount: items.filter((item) => item.action === 'not_found').length,
+    catalogCreatedCount: items.filter((item) => ['created', 'created_corrected'].includes(item.action)).length,
+  }
+}
+
+async function loadDevicesForModelNormalization(req, ids) {
+  await ensureDeviceIdentityColumns()
+  const salesScope = buildSalesCustomerScope(req.user, 'c')
+  if (ids.length) {
+    const params = { ...salesScope.params }
+    const placeholders = ids.map((id, index) => {
+      const key = `deviceId${index}`
+      params[key] = id
+      return `:${key}`
+    }).join(', ')
+    return query(
+      `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.serial_no
+       FROM devices d
+       JOIN customers c ON c.id = d.customer_id
+       WHERE d.id IN (${placeholders})
+         ${salesScope.sql}
+       ORDER BY d.id DESC`,
+      params,
+    )
+  }
+
+  const { customerId = null } = req.body || {}
+  const keyword = String(req.body?.keyword ?? req.body?.q ?? '').trim()
+  return query(
+    `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.serial_no
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     WHERE (:customerId IS NULL OR d.customer_id = :customerId)
+       ${salesScope.sql}
+       AND (
+         :keyword = ''
+         OR d.name LIKE :likeKeyword
+         OR d.model LIKE :likeKeyword
+         OR d.serial_no LIKE :likeKeyword
+         OR c.name LIKE :likeKeyword
+       )
+     ORDER BY d.id DESC
+     LIMIT 200`,
+    {
+      customerId: customerId || null,
+      keyword,
+      likeKeyword: `%${keyword}%`,
+      ...salesScope.params,
+    },
+  )
+}
+
+async function buildExistingModelNormalizationPreview(devices) {
+  const cache = new Map()
+  const items = []
+
+  for (const device of devices) {
+    const model = normalizeText(device.model)
+    if (!model) continue
+    const cacheKey = model.toLowerCase()
+    let result = cache.get(cacheKey)
+    if (!result) {
+      result = await normalizeDeviceModelForAsset(model)
+      cache.set(cacheKey, result)
+    }
+    const normalization = result.normalization
+    if (!shouldReportNormalization(normalization)) continue
+    items.push(modelNormalizationIssuePayload(device, normalization))
+  }
+
+  return {
+    ...summarizeModelNormalization(devices.length, items),
+    items,
+  }
 }
 
 async function ensureDeviceIdentityColumns() {
@@ -668,10 +799,16 @@ async function importDevices(req, res) {
   const confirmModelCorrections = shouldConfirmModelCorrections(req.body?.confirmModelCorrections)
   const skipModelCorrections = shouldConfirmModelCorrections(req.body?.skipModelCorrections)
   const modelCorrections = []
+  const importModelMatchCache = new Map()
 
   for (const row of rows) {
     try {
-      const matchedModel = await resolveImportModel(row.model)
+      const modelCacheKey = row.model.toLowerCase()
+      let matchedModel = importModelMatchCache.get(modelCacheKey)
+      if (!importModelMatchCache.has(modelCacheKey)) {
+        matchedModel = await resolveImportModel(row.model)
+        importModelMatchCache.set(modelCacheKey, matchedModel || null)
+      }
       const canonicalModel = String(matchedModel?.canonical_model || '').trim()
       if (!canonicalModel || canonicalModel === row.model) continue
       row.correctedModel = canonicalModel
@@ -751,6 +888,56 @@ async function importDevices(req, res) {
     created,
     failed: errors.length,
     errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
+  })
+}
+
+async function previewModelNormalizations(req, res) {
+  const ids = normalizeDeviceIds(req.body?.ids)
+  const devices = await loadDevicesForModelNormalization(req, ids)
+  const preview = await buildExistingModelNormalizationPreview(devices)
+  res.json(preview)
+}
+
+async function applyModelNormalizations(req, res) {
+  const ids = normalizeDeviceIds(req.body?.ids)
+  if (!ids.length) {
+    throw badRequest('请选择要纠正的设备')
+  }
+  await assertSalesCanUpdateDevices(ids, req.user)
+  const devices = await loadDevicesForModelNormalization(req, ids)
+  const cache = new Map()
+  const items = []
+  let updated = 0
+
+  for (const device of devices) {
+    const model = normalizeText(device.model)
+    if (!model) continue
+    const cacheKey = model.toLowerCase()
+    let result = cache.get(cacheKey)
+    if (!result) {
+      result = await normalizeDeviceModelForAsset(model)
+      cache.set(cacheKey, result)
+    }
+    const normalization = result.normalization
+    if (!shouldReportNormalization(normalization)) continue
+    const canApply = canApplyModelNormalization(normalization)
+    const item = modelNormalizationIssuePayload(device, normalization, canApply)
+    items.push(item)
+    if (!canApply) continue
+    await query(
+      `UPDATE devices
+       SET model = :model
+       WHERE id = :id`,
+      { id: device.id, model: result.model },
+    )
+    updated += 1
+  }
+
+  res.json({
+    updated,
+    skipped: Math.max(0, devices.length - updated),
+    ...summarizeModelNormalization(devices.length, items),
+    items,
   })
 }
 
@@ -1011,6 +1198,8 @@ module.exports = {
   list,
   create,
   importDevices,
+  previewModelNormalizations,
+  applyModelNormalizations,
   detail,
   batchUpdate,
   update,

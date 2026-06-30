@@ -142,6 +142,30 @@ interface ModelNormalizationNotice {
   message: string;
 }
 
+interface ExistingModelNormalizationItem {
+  id: string | number;
+  customerName?: string;
+  name?: string;
+  serialNo?: string;
+  inputModel?: string;
+  canonicalModel?: string;
+  action?: string;
+  source?: string;
+  matchType?: string;
+  message?: string;
+  canApply?: boolean;
+}
+
+interface ExistingModelNormalizationResult {
+  scanned: number;
+  matched: number;
+  issueCount: number;
+  correctableCount: number;
+  unresolvedCount: number;
+  catalogCreatedCount: number;
+  items: ExistingModelNormalizationItem[];
+}
+
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   none: "无维保",
   vendor: "原厂维保",
@@ -371,6 +395,20 @@ function showModelNormalizationNotices(notices: ModelNormalizationNotice[]) {
   if (unique.length > 3) toast.info(`另有 ${unique.length - 3} 条型号校对结果已应用`);
 }
 
+function existingModelIssueLabel(action?: string) {
+  if (action === "corrected") return "型号库纠正";
+  if (action === "created_corrected") return "在线规范";
+  if (action === "created") return "已补入型号库";
+  if (action === "not_found") return "未确认";
+  return "需核对";
+}
+
+function existingModelIssueBadgeClass(action?: string) {
+  if (action === "not_found") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (action === "created") return "border-sky-200 bg-sky-50 text-sky-800";
+  return "border-violet-200 bg-violet-50 text-violet-800";
+}
+
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
   const merged = new Map<string, Customer>();
   [...current, ...incoming].forEach((customer) => {
@@ -545,9 +583,10 @@ export function Devices() {
   const [searchQuery, setSearchQuery] = useState("");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
-  const [modelTimer, setModelTimer] = useState<number | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const modelSearchTimerRef = useRef<number | null>(null);
+  const modelSearchRequestRef = useRef(0);
   const [customerInput, setCustomerInput] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
@@ -563,6 +602,10 @@ export function Devices() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [modelCompareOpen, setModelCompareOpen] = useState(false);
+  const [modelComparing, setModelComparing] = useState(false);
+  const [modelApplying, setModelApplying] = useState(false);
+  const [modelCompareResult, setModelCompareResult] = useState<ExistingModelNormalizationResult | null>(null);
   const filteredMaintenanceParties = useMemo(
     () => parties.filter((party) => maintenancePartyMatchesType(party, form.maintenanceType)),
     [parties, form.maintenanceType],
@@ -982,10 +1025,12 @@ export function Devices() {
   }
 
   function scheduleModelSearch(value: string) {
-    if (modelTimer) window.clearTimeout(modelTimer);
+    if (modelSearchTimerRef.current) window.clearTimeout(modelSearchTimerRef.current);
     const keyword = value.trim();
+    const requestId = ++modelSearchRequestRef.current;
     if (keyword.length < 2) {
       setModelSuggestions([]);
+      setModelLoading(false);
       setModelDropdownOpen(false);
       return;
     }
@@ -994,14 +1039,20 @@ export function Devices() {
       setModelLoading(true);
       try {
         const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`);
-        setModelSuggestions((data?.items || []) as ModelSuggestion[]);
+        if (requestId === modelSearchRequestRef.current) {
+          setModelSuggestions((data?.items || []) as ModelSuggestion[]);
+        }
       } catch {
-        setModelSuggestions([]);
+        if (requestId === modelSearchRequestRef.current) {
+          setModelSuggestions([]);
+        }
       } finally {
-        setModelLoading(false);
+        if (requestId === modelSearchRequestRef.current) {
+          setModelLoading(false);
+        }
       }
     }, 250);
-    setModelTimer(timerId);
+    modelSearchTimerRef.current = timerId;
   }
 
   function applyModelSuggestion(suggestion: ModelSuggestion) {
@@ -1095,6 +1146,69 @@ export function Devices() {
     }
   }
 
+  function modelCompareTargetIds() {
+    const source = selectedDeviceIds.length
+      ? selectedDeviceIds
+      : filtered.map((device) => String(device.id)).filter(Boolean);
+    return [...new Set(source)].slice(0, 200);
+  }
+
+  function normalizeModelCompareResult(data: unknown): ExistingModelNormalizationResult {
+    const payload = (data || {}) as Partial<ExistingModelNormalizationResult>;
+    return {
+      scanned: Number(payload.scanned || 0),
+      matched: Number(payload.matched || 0),
+      issueCount: Number(payload.issueCount || 0),
+      correctableCount: Number(payload.correctableCount || 0),
+      unresolvedCount: Number(payload.unresolvedCount || 0),
+      catalogCreatedCount: Number(payload.catalogCreatedCount || 0),
+      items: Array.isArray(payload.items) ? payload.items : [],
+    };
+  }
+
+  async function compareExistingDeviceModels() {
+    const ids = modelCompareTargetIds();
+    if (!ids.length) {
+      setError("当前列表没有可比对的设备");
+      return;
+    }
+    setModelComparing(true);
+    setError("");
+    try {
+      const data = await api.post("/devices/model-normalizations/preview", { ids });
+      const result = normalizeModelCompareResult(data);
+      setModelCompareResult(result);
+      setModelCompareOpen(true);
+      if (!result.items.length) toast.success("当前设备型号均已匹配型号库");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "型号比对失败");
+    } finally {
+      setModelComparing(false);
+    }
+  }
+
+  async function applyExistingModelNormalizations() {
+    const ids = (modelCompareResult?.items || [])
+      .filter((item) => item.canApply)
+      .map((item) => String(item.id))
+      .filter(Boolean);
+    if (!ids.length) return;
+    setModelApplying(true);
+    setError("");
+    try {
+      const data = await api.post("/devices/model-normalizations/apply", { ids });
+      const updated = Number((data as { updated?: number })?.updated || 0);
+      toast.success(`已纠正 ${updated} 台设备型号`);
+      setModelCompareOpen(false);
+      setModelCompareResult(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "型号纠正失败");
+    } finally {
+      setModelApplying(false);
+    }
+  }
+
   async function submitBatchEdit() {
     const fields: Record<string, unknown> = {};
     if (batchEditToggles.maintenanceType) {
@@ -1143,6 +1257,12 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
+          {canEditDevices ? (
+            <Button variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
+              {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+              {modelComparing ? "比对中…" : "比对现有型号"}
+            </Button>
+          ) : null}
           {canCreateDevices ? (
             <>
               <Button
@@ -1991,6 +2111,98 @@ export function Devices() {
             <Button onClick={submit} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : createMode === "bulk" ? "批量保存" : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={modelCompareOpen}
+        onOpenChange={(open) => {
+          if (modelApplying) return;
+          setModelCompareOpen(open);
+          if (!open) setError("");
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[820px]">
+          <DialogHeader>
+            <DialogTitle>现有设备型号比对</DialogTitle>
+            <DialogDescription>
+              {selectedDeviceIds.length ? `已选择 ${selectedDeviceIds.length} 台设备` : `当前列表 ${filtered.length} 台设备`}
+            </DialogDescription>
+          </DialogHeader>
+          {modelCompareResult ? (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-md border bg-slate-50 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">已比对</div>
+                  <div className="mt-1 text-xl font-semibold">{modelCompareResult.scanned}</div>
+                </div>
+                <div className="rounded-md border bg-emerald-50 px-3 py-2">
+                  <div className="text-xs text-emerald-700">已匹配</div>
+                  <div className="mt-1 text-xl font-semibold text-emerald-800">{modelCompareResult.matched}</div>
+                </div>
+                <div className="rounded-md border bg-violet-50 px-3 py-2">
+                  <div className="text-xs text-violet-700">可纠正</div>
+                  <div className="mt-1 text-xl font-semibold text-violet-800">{modelCompareResult.correctableCount}</div>
+                </div>
+                <div className="rounded-md border bg-amber-50 px-3 py-2">
+                  <div className="text-xs text-amber-700">未确认</div>
+                  <div className="mt-1 text-xl font-semibold text-amber-800">{modelCompareResult.unresolvedCount}</div>
+                </div>
+              </div>
+
+              {modelCompareResult.items.length ? (
+                <div className="rounded-md border">
+                  <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">
+                    发现 {modelCompareResult.items.length} 台设备型号需要核对
+                  </div>
+                  <div className="max-h-[420px] overflow-auto divide-y">
+                    {modelCompareResult.items.map((item) => (
+                      <div key={String(item.id)} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[132px_minmax(180px,0.9fr)_minmax(220px,1fr)_minmax(220px,1fr)] md:items-center">
+                        <Badge variant="outline" className={existingModelIssueBadgeClass(item.action)}>
+                          {existingModelIssueLabel(item.action)}
+                        </Badge>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-slate-900" title={item.name || item.customerName || ""}>
+                            {item.name || item.customerName || `设备 #${item.id}`}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground" title={item.serialNo || ""}>
+                            SN：{item.serialNo || "-"}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">当前型号</div>
+                          <div className="truncate" title={item.inputModel || ""}>{item.inputModel || "-"}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">建议型号</div>
+                          <div className="truncate font-medium text-violet-900" title={item.canonicalModel || ""}>
+                            {item.canonicalModel || "-"}
+                          </div>
+                          {item.message ? <div className="truncate text-xs text-muted-foreground" title={item.message}>{item.message}</div> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  未发现需要纠正的设备型号
+                </div>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModelCompareOpen(false)} disabled={modelApplying}>
+              关闭
+            </Button>
+            <Button
+              onClick={applyExistingModelNormalizations}
+              disabled={modelApplying || !modelCompareResult?.correctableCount}
+            >
+              {modelApplying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {modelApplying ? "纠正中…" : `应用纠正${modelCompareResult?.correctableCount ? ` (${modelCompareResult.correctableCount})` : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

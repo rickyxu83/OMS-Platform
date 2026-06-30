@@ -1,10 +1,14 @@
 const { query } = require('../../config/db')
+const env = require('../../config/env')
+const { effectiveSettings } = require('../settings/controller')
 const { badRequest } = require('../../utils/http-error')
 const { ensureDeviceModelCatalogTable, ensureDeviceModelAliasesTable } = require('./schema')
 const { normalizeAlias, deduplicateAliases } = require('./normalize')
 
 const catalogCategories = new Set(['server', 'storage', 'network'])
 const defaultLookupTimeoutMs = 2500
+const defaultAiLookupTimeoutMs = 12000
+const defaultAiLookupConfidence = 0.78
 
 function normalizeText(value) {
   return String(value || '').trim().replace(/\s+/g, ' ') || null
@@ -260,7 +264,7 @@ function extractKnownModel(inputModel, evidenceText) {
 }
 
 function aliasesForCandidate(candidate, inputModel) {
-  const aliases = [candidate.canonicalModel, candidate.partNumber, inputModel]
+  const aliases = [candidate.canonicalModel, candidate.partNumber, inputModel, ...(Array.isArray(candidate.aliases) ? candidate.aliases : [])]
   const canonical = candidate.canonicalModel
 
   if (candidate.brand === 'Dell' && /PowerEdge/i.test(canonical)) {
@@ -360,17 +364,22 @@ async function upsertCatalogCandidate(candidate, inputModel, sourceReference) {
   await ensureDeviceModelCatalogTable()
   await ensureDeviceModelAliasesTable()
 
+  const sourceProvider = normalizeText(candidate.sourceProvider) || 'online'
+  const confidence = Math.max(0.01, Math.min(1, Number(candidate.confidence || (candidate.onlineVerified ? 0.75 : 0.55))))
+
   await query(
     `INSERT INTO device_model_catalog (
        brand, category, canonical_model, part_number, source_provider, source_reference,
        confidence, is_active, synced_at
      ) VALUES (
-       :brand, :category, :canonicalModel, :partNumber, 'online', :sourceReference,
+       :brand, :category, :canonicalModel, :partNumber, :sourceProvider, :sourceReference,
        :confidence, 1, CURRENT_TIMESTAMP
      )
      ON DUPLICATE KEY UPDATE
        part_number = COALESCE(VALUES(part_number), part_number),
+       source_provider = VALUES(source_provider),
        source_reference = COALESCE(VALUES(source_reference), source_reference),
+       confidence = GREATEST(confidence, VALUES(confidence)),
        is_active = 1,
        synced_at = CURRENT_TIMESTAMP`,
     {
@@ -378,8 +387,9 @@ async function upsertCatalogCandidate(candidate, inputModel, sourceReference) {
       category: candidate.category,
       canonicalModel: candidate.canonicalModel,
       partNumber: candidate.partNumber || null,
+      sourceProvider,
       sourceReference: sourceReference || 'device-asset-online-lookup',
-      confidence: candidate.onlineVerified ? 0.75 : 0.55,
+      confidence,
     },
   )
 
@@ -428,19 +438,204 @@ function normalizationPayload({ inputModel, finalModel, action, source, matchTyp
   }
 }
 
+function stripJsonFence(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+}
+
+function parseAiJsonResponse(data, text) {
+  const content = data?.choices?.[0]?.message?.content
+    || data?.choices?.[0]?.text
+    || data?.message?.content
+    || text
+  const stripped = stripJsonFence(content)
+  if (!stripped) return null
+  try {
+    return JSON.parse(stripped)
+  } catch {
+    const match = stripped.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try { return JSON.parse(match[0]) } catch {}
+  }
+  return null
+}
+
+function normalizeAiAliases(value, inputModel) {
+  const aliases = Array.isArray(value) ? value : []
+  return deduplicateAliases([inputModel, ...aliases.map((alias) => normalizeText(alias)).filter(Boolean)])
+}
+
+function modelCore(value) {
+  return compactAlias(value)
+    .replace(/\b(hpe|hp|hewlettpackardenterprise|dell|emc|lenovo|ibm|cisco|huawei|h3c|netapp)\b/g, '')
+    .replace(/\b(proliant|poweredge|thinksystem|bladesystem|oceanstor|catalyst|nexus|ucs|enclosure)\b/g, '')
+}
+
+function aiCandidateRelatesToInput(candidate, inputModel) {
+  const inputCore = modelCore(inputModel)
+  if (!inputCore) return false
+  const values = [
+    candidate.canonicalModel,
+    candidate.partNumber,
+    ...(Array.isArray(candidate.aliases) ? candidate.aliases : []),
+  ].map(modelCore).filter(Boolean)
+  return values.some((value) => value.includes(inputCore) || inputCore.includes(value))
+}
+
+function normalizeAiCandidate(payload, inputModel) {
+  if (!payload || payload.matched !== true) return null
+  const brand = normalizeText(payload.brand)
+  const category = normalizeText(payload.category)?.toLowerCase()
+  const canonicalModel = normalizeText(payload.canonicalModel)
+  const partNumber = normalizeText(payload.partNumber) || ''
+  const confidence = Number(payload.confidence || 0)
+  if (!brand || !canonicalModel || !catalogCategories.has(category)) return null
+  if (!Number.isFinite(confidence) || confidence < Number(process.env.DEVICE_MODEL_AI_LOOKUP_MIN_CONFIDENCE || defaultAiLookupConfidence)) return null
+
+  const candidate = {
+    brand,
+    category,
+    canonicalModel: titleCaseKnownWords(canonicalModel),
+    partNumber,
+    aliases: normalizeAiAliases(payload.aliases, inputModel),
+    confidence,
+    sourceProvider: 'ai',
+  }
+  if (!aiCandidateRelatesToInput(candidate, inputModel)) return null
+  return candidate
+}
+
+function buildAiLookupPrompt(inputModel, search) {
+  const evidence = (search?.results || []).slice(0, 6).map((result, index) => ({
+    index: index + 1,
+    title: result.title || '',
+    snippet: result.snippet || '',
+    url: result.url || '',
+  }))
+
+  return [
+    '请判断输入内容是否为企业 IT 硬件设备型号，并给出标准型号候选。',
+    '',
+    '严格规则：',
+    '- 只处理服务器、存储、网络设备；不要处理软件、耗材、许可证、线缆、普通配件。',
+    '- 如果证据不足、型号有歧义、或无法确定品牌/类别/标准型号，matched 必须为 false。',
+    '- canonicalModel 必须包含品牌和完整标准型号，例如 "HPE BladeSystem c7000 Enclosure"。',
+    '- aliases 只放明确等价的写法，必须包含输入型号本身。',
+    '- confidence 使用 0 到 1；没有可靠依据不要高于 0.7。',
+    '- 只输出 JSON，不要 Markdown，不要代码块。',
+    '',
+    '输出 JSON 结构：',
+    '{',
+    '  "matched": true,',
+    '  "brand": "string",',
+    '  "category": "server|storage|network",',
+    '  "canonicalModel": "string",',
+    '  "partNumber": "string",',
+    '  "aliases": ["string"],',
+    '  "confidence": 0.0,',
+    '  "reason": "string"',
+    '}',
+    '',
+    '无法确定时输出：',
+    '{ "matched": false, "reason": "string" }',
+    '',
+    '输入型号：',
+    inputModel,
+    '',
+    '搜索摘要：',
+    JSON.stringify(evidence),
+  ].join('\n')
+}
+
+async function callAiLookupProvider(inputModel, search, aiSettings) {
+  const timeoutMs = Math.max(1000, Number(process.env.DEVICE_MODEL_AI_LOOKUP_TIMEOUT_MS || env.ai.summaryTimeoutMs || defaultAiLookupTimeoutMs))
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(aiSettings.apiUrl, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aiSettings.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiSettings.model,
+        messages: [
+          { role: 'system', content: '你是严谨的企业硬件型号识别助手，必须只返回合法 JSON。' },
+          { role: 'user', content: buildAiLookupPrompt(inputModel, search) },
+        ],
+        stream: false,
+        max_tokens: 500,
+      }),
+    })
+
+    const text = await response.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch {}
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || `AI provider HTTP ${response.status}`
+      throw new Error(message)
+    }
+    return parseAiJsonResponse(data, text)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function discoverAiCandidate(inputModel, search) {
+  if (process.env.DEVICE_MODEL_AI_LOOKUP_DISABLED === '1') {
+    return { candidate: null, disabled: true }
+  }
+  if (typeof fetch !== 'function') {
+    return { candidate: null, disabled: true }
+  }
+
+  const settings = await effectiveSettings()
+  const aiSettings = settings.ai
+  if (!aiSettings.apiUrl || !aiSettings.apiKey || !aiSettings.model) {
+    return { candidate: null, disabled: true }
+  }
+
+  try {
+    const payload = await callAiLookupProvider(inputModel, search, aiSettings)
+    return {
+      candidate: normalizeAiCandidate(payload, inputModel),
+      raw: payload,
+    }
+  } catch (error) {
+    return {
+      candidate: null,
+      error: error.name === 'AbortError' ? 'AI lookup timeout' : (error.message || 'AI lookup failed'),
+    }
+  }
+}
+
 async function discoverOnlineCandidate(inputModel) {
   const localCandidate = extractKnownModel(inputModel, '')
   const search = await fetchSearchEvidence(inputModel)
   const evidence = search.results.map((result) => `${result.title} ${result.snippet}`).join(' ')
   const onlineCandidate = evidence ? extractKnownModel(inputModel, evidence) : null
-  const candidate = localCandidate || onlineCandidate
+  let candidate = localCandidate || onlineCandidate
   const usedOnlineCandidate = !localCandidate && Boolean(onlineCandidate)
+  let usedAiCandidate = false
+  let aiLookup = null
+
+  if (!candidate) {
+    aiLookup = await discoverAiCandidate(inputModel, search)
+    candidate = aiLookup.candidate
+    usedAiCandidate = Boolean(candidate)
+  }
+
   if (!candidate) {
     return {
       candidate: null,
       searched: search.searched,
       disabled: search.disabled,
-      error: search.error,
+      error: search.error || aiLookup?.error,
     }
   }
 
@@ -448,11 +643,13 @@ async function discoverOnlineCandidate(inputModel) {
     candidate: {
       ...candidate,
       onlineVerified: Boolean(usedOnlineCandidate && search.results.length),
+      sourceProvider: usedAiCandidate ? 'ai' : 'online',
+      confidence: usedAiCandidate ? candidate.confidence : (usedOnlineCandidate && search.results.length ? 0.75 : 0.55),
     },
     searched: search.searched,
     disabled: search.disabled,
-    error: search.error,
-    sourceReference: search.results[0]?.url || '',
+    error: search.error || aiLookup?.error,
+    sourceReference: usedAiCandidate ? 'device-asset-ai-fallback' : (search.results[0]?.url || ''),
   }
 }
 
@@ -498,6 +695,12 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
     const item = await upsertCatalogCandidate(discovered.candidate, inputModel, discovered.sourceReference)
     const finalModel = normalizeText(item.canonical_model) || inputModel
     const action = finalModel === inputModel ? 'created' : 'created_corrected'
+    const source = discovered.candidate.sourceProvider === 'ai'
+      ? 'ai'
+      : (discovered.candidate.onlineVerified ? 'online' : 'local')
+    const matchType = discovered.candidate.sourceProvider === 'ai'
+      ? 'AI 兜底'
+      : (discovered.candidate.onlineVerified ? '网上搜索' : '本地规则')
     return {
       model: finalModel,
       catalogItem: item,
@@ -505,8 +708,8 @@ async function normalizeDeviceModelForAsset(rawModel, options = {}) {
         inputModel,
         finalModel,
         action,
-        source: discovered.candidate.onlineVerified ? 'online' : 'local',
-        matchType: discovered.candidate.onlineVerified ? '网上搜索' : '本地规则',
+        source,
+        matchType,
         item,
         message: action === 'created_corrected'
           ? `型号库未命中，已规范为 ${finalModel} 并加入型号库`
