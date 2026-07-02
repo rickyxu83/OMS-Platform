@@ -137,6 +137,8 @@ interface ServicePart {
   quantity?: string | number;
   unit?: string;
   remark?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface OrderFile {
@@ -145,6 +147,7 @@ interface OrderFile {
   originalName?: string;
   mimeType?: string;
   size?: number;
+  createdAt?: string;
 }
 
 interface CustomerOption {
@@ -1180,6 +1183,10 @@ function InlineError({ message }: { message: string }) {
   );
 }
 
+function hasPreviewValue(value?: string | number | null) {
+  return String(value ?? "").trim() !== "";
+}
+
 function ReportPreviewField({ label, value, className = "" }: { label: string; value?: string | number | null; className?: string }) {
   return (
     <div className={`min-w-0 ${className}`}>
@@ -1475,6 +1482,8 @@ export function ServiceReport() {
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
   const [currentOrder, setCurrentOrder] = useState<ServiceOrder | null>(null);
   const [previewOrder, setPreviewOrder] = useState<ServiceOrder | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const [form, setForm] = useState<ReportForm>(() => defaultForm(routeMode));
   const [createDraft, setCreateDraft] = useState<ReportForm | null>(null);
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
@@ -2758,6 +2767,26 @@ export function ServiceReport() {
     }
   }
 
+  async function openPreviewOrder(order: ServiceOrder) {
+    setPreviewOrder(order);
+    setPreviewError("");
+    if (!order.id) return;
+    setPreviewLoading(true);
+    try {
+      const data = await api.get(`/service-orders/${order.id}?mine=1`);
+      const detail = data?.item as ServiceOrder | undefined;
+      if (detail) {
+        setPreviewOrder((current) => (
+          current && String(current.id) === String(order.id) ? { ...order, ...detail } : current
+        ));
+      }
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "加载工单详情失败");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   async function submit() {
     const missing = validateBeforeSubmit();
     if (missing.length) {
@@ -3008,12 +3037,12 @@ export function ServiceReport() {
                             tabIndex={0}
                             aria-label={`预览 ${reportOrderDisplayId(order)}`}
                             className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
-                            onClick={() => setPreviewOrder(order)}
+                            onClick={() => openPreviewOrder(order)}
                             onKeyDown={(event) => {
                               if (event.target !== event.currentTarget) return;
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                setPreviewOrder(order);
+                                openPreviewOrder(order);
                               }
                             }}
                           >
@@ -3109,9 +3138,15 @@ export function ServiceReport() {
           </div>
         </div>
 
-        <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) setPreviewOrder(null); }}>
+        <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => {
+          if (!open) {
+            setPreviewOrder(null);
+            setPreviewError("");
+            setPreviewLoading(false);
+          }
+        }}>
           <DialogContent
-            className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[760px]"
+            className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[900px]"
             onOpenAutoFocus={(event) => event.preventDefault()}
           >
             <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
@@ -3128,14 +3163,8 @@ export function ServiceReport() {
                 const serviceLabels = serviceItemLabels(previewOrder);
                 const serviceTime = reportOrderServiceTime(previewOrder);
                 const serviceTimeText = serviceTime.start === "-" && serviceTime.end === "-" ? "-" : `${serviceTime.start} 至 ${serviceTime.end}`;
-                const deviceText = [
-                  previewOrder.deviceName,
-                  previewOrder.deviceModel,
-                  previewOrder.devicePn ? `PN ${previewOrder.devicePn}` : "",
-                  previewOrder.deviceSerialNo ? `SN ${previewOrder.deviceSerialNo}` : "",
-                ].filter(Boolean).join(" · ");
                 const partRows = (previewOrder.parts || []).filter((part) => (
-                  [part.partName || part.part_name, part.partNo || part.part_no]
+                  [part.deviceName, part.partName || part.part_name, part.partNo || part.part_no, part.quantity, part.unit, part.remark]
                     .some((value) => String(value || "").trim())
                 ));
                 const fileRows = previewOrder.files || [];
@@ -3144,8 +3173,51 @@ export function ServiceReport() {
                     .map((entry) => entry.workContent || entry.work_content || "")
                     .filter(Boolean)
                     .join("\n\n");
+                const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
+                const customerFields = [
+                  { label: "客户名称", value: previewOrder.customerName },
+                  { label: "客户联系人", value: previewOrder.contactName },
+                  { label: "联系电话", value: previewOrder.contactPhone },
+                  { label: "客户地址", value: previewOrder.customerAddress, className: "md:col-span-2" },
+                  { label: "工程师", value: reportOrderEngineerText(previewOrder) },
+                ].filter((field) => hasPreviewValue(field.value));
+                const serviceFields = [
+                  { label: "服务事项", value: serviceItemsLabel(previewOrder) },
+                  { label: "优先级", value: optionText(PRIORITY_OPTIONS, previewOrder.priority) },
+                  { label: "状态", value: orderStatusLabel(previewOrder) },
+                  { label: "计划时间", value: formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt) },
+                  { label: "服务时间", value: serviceTimeText },
+                  { label: "月报类别", value: previewOrder.timesheetCategory },
+                  { label: "销售", value: previewOrder.timesheetSalesperson },
+                  { label: "创建时间", value: formatDateTime(previewOrder.createdAt) },
+                  { label: "更新时间", value: formatDateTime(previewOrder.updatedAt) },
+                  { label: "提交时间", value: formatDateTime(previewOrder.submittedAt) },
+                ].filter((field) => hasPreviewValue(field.value) && field.value !== "-");
+                const deviceFields = [
+                  { label: "目标设备", value: previewOrder.deviceName },
+                  { label: "设备型号", value: previewOrder.deviceModel },
+                  { label: "料号 / PN", value: previewOrder.devicePn },
+                  { label: "序列号 / SN", value: previewOrder.deviceSerialNo },
+                  { label: "设备备注", value: previewOrder.deviceRemark, className: "md:col-span-2" },
+                ].filter((field) => hasPreviewValue(field.value));
+                const reportFields = [
+                  { label: "出发时间", value: formatDateTime(previewOrder.report?.departureAt) },
+                  { label: "到达/开始时间", value: formatDateTime(previewOrder.report?.actualStartAt) },
+                  { label: "完成/结束时间", value: formatDateTime(previewOrder.report?.actualEndAt) },
+                  { label: "返回时间", value: formatDateTime(previewOrder.report?.returnAt) },
+                  { label: "处理结果", value: resultLabel },
+                  { label: "客户确认人", value: previewOrder.report?.customerConfirmName || previewOrder.report?.customerName },
+                ].filter((field) => hasPreviewValue(field.value) && field.value !== "-");
                 return (
                   <div className="space-y-5">
+                    {previewLoading ? (
+                      <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在加载完整工单详情…
+                      </div>
+                    ) : null}
+                    {previewError ? <InlineError message={previewError} /> : null}
+
                     <div className="flex flex-wrap gap-2">
                       <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{orderStatusLabel(previewOrder)}</Badge>
                       <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
@@ -3154,31 +3226,98 @@ export function ServiceReport() {
                       )) : null}
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <ReportPreviewField label="客户名称" value={previewOrder.customerName || "未填写客户"} />
-                      <ReportPreviewField label="客户联系人" value={previewOrder.contactName} />
-                      <ReportPreviewField label="联系电话" value={previewOrder.contactPhone} />
-                      <ReportPreviewField label="客户地址" value={previewOrder.customerAddress} className="md:col-span-2" />
-                      <ReportPreviewField label="工程师" value={reportOrderEngineerText(previewOrder)} />
-                    </div>
+                    {customerFields.length ? (
+                      <div className="grid gap-4 md:grid-cols-3">
+                        {customerFields.map((field) => (
+                          <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                        ))}
+                      </div>
+                    ) : null}
 
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <ReportPreviewField label="服务事项" value={serviceItemsLabel(previewOrder)} />
-                      <ReportPreviewField label="计划时间" value={formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt)} />
-                      <ReportPreviewField label="服务时间" value={serviceTimeText} />
-                      <ReportPreviewField label="创建时间" value={formatDateTime(previewOrder.createdAt)} />
-                      <ReportPreviewField label="更新时间" value={formatDateTime(previewOrder.updatedAt)} />
-                      <ReportPreviewField label="状态" value={orderStatusLabel(previewOrder)} />
-                    </div>
+                    {serviceFields.length ? (
+                      <div className="grid gap-4 md:grid-cols-3">
+                        {serviceFields.map((field) => (
+                          <ReportPreviewField key={field.label} label={field.label} value={field.value} />
+                        ))}
+                      </div>
+                    ) : null}
 
                     <ReportPreviewBlock label="服务需求说明" value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} />
+                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注" value={previewOrder.internalNote} /> : null}
                     {workContent ? <ReportPreviewBlock label="处理记录" value={workContent} markdown /> : null}
+                    {previewOrder.report?.resultDescription ? <ReportPreviewBlock label="结果说明" value={previewOrder.report.resultDescription} /> : null}
 
-                    {(deviceText || partRows.length || fileRows.length) ? (
+                    {reportFields.length ? (
                       <div className="grid gap-4 rounded-lg border bg-muted/20 p-3 md:grid-cols-3">
-                        <ReportPreviewField label="目标设备" value={deviceText} />
-                        <ReportPreviewField label="备件与硬件部件" value={partRows.length ? `${partRows.length} 条记录` : ""} />
-                        <ReportPreviewField label="附件" value={fileRows.length ? `${fileRows.length} 个文件` : ""} />
+                        {reportFields.map((field) => (
+                          <ReportPreviewField key={field.label} label={field.label} value={field.value} />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {deviceFields.length ? (
+                      <div>
+                        <div className="mb-2 text-xs text-muted-foreground">目标设备</div>
+                        <div className="grid gap-4 rounded-lg border bg-muted/20 p-3 md:grid-cols-3">
+                          {deviceFields.map((field) => (
+                            <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {partRows.length ? (
+                      <div>
+                        <div className="mb-2 text-xs text-muted-foreground">备件与硬件部件</div>
+                        <div className="space-y-2">
+                          {partRows.map((part, partIndex) => {
+                            const actionType = part.actionType || part.action_type || "general";
+                            const quantityText = [part.quantity, part.unit].filter(Boolean).join(" ");
+                            const partFields = [
+                              { label: "关联设备", value: part.deviceName },
+                              { label: "处理动作", value: optionText(PART_ACTION_OPTIONS, actionType) },
+                              { label: "名称", value: part.partName || part.part_name },
+                              { label: "编号 / 型号", value: part.partNo || part.part_no },
+                              { label: "数量", value: quantityText },
+                              { label: "备注", value: part.remark, className: "md:col-span-2" },
+                            ].filter((field) => hasPreviewValue(field.value));
+                            return (
+                              <div key={`${part.deviceId || "part"}-${partIndex}`} className="rounded-lg border bg-muted/20 p-3">
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground">{displayText(part.partName || part.part_name, `明细 ${partIndex + 1}`)}</span>
+                                  <Badge variant={actionType === "installation" ? "success" : actionType === "replacement" ? "warning" : "outline"}>
+                                    {optionText(PART_ACTION_OPTIONS, actionType)}
+                                  </Badge>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                  {partFields.map((field) => (
+                                    <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {fileRows.length ? (
+                      <div>
+                        <div className="mb-2 text-xs text-muted-foreground">附件</div>
+                        <div className="space-y-2">
+                          {fileRows.map((file) => (
+                            <div key={file.id} className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_150px_100px] md:items-center">
+                              <ReportPreviewField label="文件名" value={file.originalName || `文件 #${file.id}`} />
+                              <ReportPreviewField
+                                label="分类"
+                                value={file.purpose && ATTACHMENT_PURPOSES[file.purpose as AttachmentPurpose]
+                                  ? attachmentPurposeLabel(file.purpose as AttachmentPurpose)
+                                  : "附件"}
+                              />
+                              <ReportPreviewField label="大小" value={formatFileSize(file.size)} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
                   </div>
