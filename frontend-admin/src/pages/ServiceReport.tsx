@@ -2810,7 +2810,11 @@ export function ServiceReport() {
       });
       const savedAt = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
       setDraftSavedAt(savedAt);
-      if (!silent) toast.success(`草稿已保存：${savedAt}`);
+      if (!silent) {
+        toast.success(`草稿已保存：${savedAt}`);
+        setPreviewOrder(null);
+        navigate("/service-report", { replace: true });
+      }
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : "草稿保存失败");
     } finally {
