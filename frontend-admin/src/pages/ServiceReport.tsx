@@ -369,7 +369,7 @@ const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; icon: type
   screenshot_log: { label: "截图/日志文件", icon: Upload },
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
 };
-const REPORT_ORDER_LIST_GRID = "xl:grid-cols-[minmax(140px,1fr)_116px_minmax(160px,1.45fr)_minmax(96px,0.8fr)_150px_84px_156px]";
+const REPORT_ORDER_LIST_GRID = "xl:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_156px]";
 const FORM_SKIN = [
   "[&_[data-slot=input]]:h-[42px]",
   "[&_[data-slot=input]]:rounded-lg",
@@ -573,6 +573,15 @@ function serviceCategoryText(form: Pick<ReportForm, "serviceMode" | "serviceType
 
 function serviceModuleLabel(value: ServiceModuleId) {
   return [...ONSITE_SERVICE_MODULE_OPTIONS, ...REMOTE_SERVICE_MODULE_OPTIONS].find((option) => option.value === value)?.label || value;
+}
+
+function serviceItemBadgeVariant(label: string, serviceType?: string): BadgeVariant {
+  if (label.includes("安装")) return "success";
+  if (label.includes("巡检")) return "purple";
+  if (label.includes("备件") || label.includes("故障") || label.includes("排查")) return "warning";
+  if (label.includes("远程")) return "info";
+  if (label.includes("内勤")) return "purple";
+  return TYPE_BADGE_VARIANT[serviceType || ""] || "outline";
 }
 
 function isServiceModuleId(value: unknown): value is ServiceModuleId {
@@ -2562,10 +2571,7 @@ export function ServiceReport() {
                         : null;
                       const draftHasSelectedModules = draftMode === "office"
                         || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
-                      const draftItemsLabel = draftHasSelectedModules ? serviceItemsLabel(createDraft) : "未选择模块";
-                      const draftItemsBadgeVariant = draftHasSelectedModules
-                        ? TYPE_BADGE_VARIANT[createDraft.serviceType || ""] || "outline"
-                        : "outline";
+                      const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
                       const draftRoute = `/service-report/new?mode=${draftMode}`;
                       const draftEngineerNames = createDraft.engineerIds?.length
                         ? engineers
@@ -2600,7 +2606,14 @@ export function ServiceReport() {
                             <div className="min-w-0">
                               <div className="flex flex-wrap gap-1.5">
                                 <Badge variant={MODE_BADGE_VARIANT[draftMode] || "secondary"}>{draftModeLabel}</Badge>
-                                <Badge variant={draftItemsBadgeVariant}>{draftItemsLabel}</Badge>
+                                {draftItemLabels.map((label) => (
+                                  <Badge
+                                    key={label}
+                                    variant={draftHasSelectedModules ? serviceItemBadgeVariant(label, createDraft.serviceType) : "outline"}
+                                  >
+                                    {label}
+                                  </Badge>
+                                ))}
                               </div>
                             </div>
 
@@ -2683,7 +2696,7 @@ export function ServiceReport() {
                       {visibleOrders.map((order) => {
                         const mode = normalizeMode(order.serviceMode);
                         const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
-                        const itemsLabel = serviceItemsLabel(order);
+                        const itemLabels = serviceItemLabels(order);
                         const workflowStatus = order.workflowStatus || order.status || "";
                         const canExportRecord = canExportServiceRecord(order);
                         const isExportingRecord = exportingOrderId === order.id;
@@ -2713,7 +2726,11 @@ export function ServiceReport() {
                               <div className="min-w-0">
                                 <div className="flex flex-wrap gap-1.5">
                                   <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
-                                  <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+                                  {(itemLabels.length ? itemLabels : [serviceItemsLabel(order)]).map((label) => (
+                                    <Badge key={label} variant={serviceItemBadgeVariant(label, order.serviceType)}>
+                                      {label}
+                                    </Badge>
+                                  ))}
                                 </div>
                               </div>
 
