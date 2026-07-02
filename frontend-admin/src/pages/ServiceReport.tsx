@@ -869,14 +869,29 @@ function reportOrderServiceTime(order: ServiceOrder) {
   };
 }
 
-function isEditableOrder(order: ServiceOrder) {
+function orderMatchesKeyword(order: ServiceOrder, keyword: string) {
+  if (!keyword) return true;
+  return [
+    order.orderNo,
+    order.customerName,
+    order.issueDescription,
+    serviceItemsLabel(order),
+    orderStatusLabel(order),
+  ].some((value) => String(value || "").toLowerCase().includes(keyword));
+}
+
+function isDispatchOrder(order: ServiceOrder) {
   const status = order.workflowStatus || order.status || "";
-  return !["approved", "archived", "cancelled"].includes(status);
+  return ["draft", "pending_confirmation", "assigned", "in_progress", "rejected"].includes(status);
 }
 
 function canExportServiceRecord(order: ServiceOrder) {
   const status = order.workflowStatus || order.status || "";
   return ["awaiting_customer_signature", "submitted", "approved", "archived", "completed"].includes(status) || Boolean(order.report);
+}
+
+function isFilledServiceOrder(order: ServiceOrder) {
+  return canExportServiceRecord(order);
 }
 
 function canDeleteServiceOrder(order: ServiceOrder) {
@@ -1570,20 +1585,17 @@ export function ServiceReport() {
   const selectedCustomerDevices = useMemo(() => (
     form.customerId ? customerDevices : []
   ), [customerDevices, form.customerId]);
-  const visibleOrders = useMemo(() => (
+  const matchingReportOrders = useMemo(() => (
     orders
-      .filter(isEditableOrder)
-      .filter((order) => {
-        if (!routeKeyword) return true;
-        return [
-          order.orderNo,
-          order.customerName,
-          order.issueDescription,
-          serviceItemsLabel(order),
-          orderStatusLabel(order),
-        ].some((value) => String(value || "").toLowerCase().includes(routeKeyword));
-      })
+      .filter((order) => (order.workflowStatus || order.status || "") !== "cancelled")
+      .filter((order) => orderMatchesKeyword(order, routeKeyword))
   ), [orders, routeKeyword]);
+  const dispatchOrders = useMemo(() => (
+    matchingReportOrders.filter(isDispatchOrder)
+  ), [matchingReportOrders]);
+  const filledOrders = useMemo(() => (
+    matchingReportOrders.filter(isFilledServiceOrder)
+  ), [matchingReportOrders]);
   const currentUserId = user?.id ? String(user.id) : "";
   const activePartRows = useMemo(() => form.parts.filter(servicePartHasContent), [form.parts]);
   const replacementParts = useMemo(() => activePartRows.filter((part) => part.actionType === "replacement"), [activePartRows]);
@@ -2877,6 +2889,164 @@ export function ServiceReport() {
     }
   }
 
+  function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
+    return (
+      <div className="min-h-[220px] overflow-y-auto pr-0 sm:max-h-[44vh] sm:pr-1">
+        {loading ? (
+          <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            正在加载工单…
+          </div>
+        ) : orderList.length ? (
+          <div className="space-y-3">
+            <div className={`${REPORT_ORDER_STICKY_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
+              <div>工单编号 / 客户</div>
+              <div>服务事项</div>
+              <div>服务内容</div>
+              <div>工程师</div>
+              <div>服务时间</div>
+              <div>状态</div>
+              <div className="text-right">操作</div>
+            </div>
+            {orderList.map((order) => {
+              const mode = normalizeMode(order.serviceMode);
+              const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
+              const itemLabels = serviceItemLabels(order);
+              const workflowStatus = order.workflowStatus || order.status || "";
+              const canExportRecord = canExportServiceRecord(order);
+              const isExportingRecord = exportingOrderId === order.id;
+              const canDeleteRecord = canDeleteServiceOrder(order);
+              const isDeletingRecord = deletingOrderId === order.id;
+              const serviceTime = reportOrderServiceTime(order);
+              return (
+                <div
+                  key={order.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`预览 ${reportOrderDisplayId(order)}`}
+                  className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
+                  onClick={() => openPreviewOrder(order)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openPreviewOrder(order);
+                    }
+                  }}
+                >
+                  <div className={`grid min-w-0 gap-3 xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
+                      <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
+                        {(itemLabels.length ? itemLabels : [serviceItemsLabel(order)]).map((label) => (
+                          <Badge key={label} variant={serviceItemBadgeVariant(label, order.serviceType)}>
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{reportOrderMainContent(order)}</span>
+                    </div>
+
+                    <div className="min-w-0 text-sm">
+                      <span className="block truncate">{reportOrderEngineerText(order)}</span>
+                    </div>
+
+                    <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
+                      <div>
+                        <span className="text-muted-foreground">开始：</span>
+                        <span>{serviceTime.start}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">结束：</span>
+                        <span>{serviceTime.end}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
+                        {orderStatusLabel(order)}
+                      </Badge>
+                    </div>
+
+                    <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 min-w-[78px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            disabled={!canExportRecord || Boolean(exportingOrderId)}
+                            aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
+                            title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {isExportingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                            PDF
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              if (!canExportRecord || exportingOrderId) return;
+                              downloadServiceRecordPdf(order);
+                            }}
+                            disabled={!canExportRecord || Boolean(exportingOrderId)}
+                          >
+                            <Download className="h-4 w-4" />
+                            导出 PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              if (!canExportRecord || exportingOrderId) return;
+                              shareServiceRecordPdf(order);
+                            }}
+                            disabled={!canExportRecord || Boolean(exportingOrderId)}
+                          >
+                            <Share2 className="h-4 w-4" />
+                            分享 PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!canDeleteRecord || Boolean(deletingOrderId)}
+                        aria-label={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
+                        title={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!canDeleteRecord || deletingOrderId) return;
+                          deleteServiceOrder(order);
+                        }}
+                      >
+                        {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">{emptyText}</div>
+        )}
+      </div>
+    );
+  }
+
   if (!isFormRoute) {
     return (
       <>
@@ -3059,164 +3229,24 @@ export function ServiceReport() {
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-muted/30 px-4 py-3">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4" />
-                  待填写服务记录 ({visibleOrders.length})
+                  <ClipboardPenLine className="h-4 w-4" />
+                  派单待处理 ({dispatchOrders.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
-                <div className="min-h-[260px] overflow-y-auto pr-0 sm:max-h-[62vh] sm:pr-1">
-                  {loading ? (
-                    <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      正在加载工单…
-                    </div>
-                  ) : visibleOrders.length ? (
-                    <div className="space-y-3">
-                      <div className={`${REPORT_ORDER_STICKY_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
-                        <div>工单编号 / 客户</div>
-                        <div>服务事项</div>
-                        <div>服务内容</div>
-                        <div>工程师</div>
-                        <div>服务时间</div>
-                        <div>状态</div>
-                        <div className="text-right">操作</div>
-                      </div>
-                      {visibleOrders.map((order) => {
-                        const mode = normalizeMode(order.serviceMode);
-                        const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
-                        const itemLabels = serviceItemLabels(order);
-                        const workflowStatus = order.workflowStatus || order.status || "";
-                        const canExportRecord = canExportServiceRecord(order);
-                        const isExportingRecord = exportingOrderId === order.id;
-                        const canDeleteRecord = canDeleteServiceOrder(order);
-                        const isDeletingRecord = deletingOrderId === order.id;
-                        const serviceTime = reportOrderServiceTime(order);
-                        return (
-                          <div
-                            key={order.id}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`预览 ${reportOrderDisplayId(order)}`}
-                            className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
-                            onClick={() => openPreviewOrder(order)}
-                            onKeyDown={(event) => {
-                              if (event.target !== event.currentTarget) return;
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                openPreviewOrder(order);
-                              }
-                            }}
-                          >
-                            <div className={`grid min-w-0 gap-3 xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
-                              <div className="min-w-0">
-                                <div className="font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
-                                <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
-                              </div>
+                {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
+              </CardContent>
+            </Card>
 
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap gap-1.5">
-                                  <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
-                                  {(itemLabels.length ? itemLabels : [serviceItemsLabel(order)]).map((label) => (
-                                    <Badge key={label} variant={serviceItemBadgeVariant(label, order.serviceType)}>
-                                      {label}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div className="min-w-0">
-                                <span className="block truncate text-sm font-medium">{reportOrderMainContent(order)}</span>
-                              </div>
-
-                              <div className="min-w-0 text-sm">
-                                <span className="block truncate">{reportOrderEngineerText(order)}</span>
-                              </div>
-
-                              <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
-                                <div>
-                                  <span className="text-muted-foreground">开始：</span>
-                                  <span>{serviceTime.start}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">结束：</span>
-                                  <span>{serviceTime.end}</span>
-                                </div>
-                              </div>
-
-                              <div>
-                                <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                                  {orderStatusLabel(order)}
-                                </Badge>
-                              </div>
-
-                              <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 min-w-[78px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
-                                      aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
-                                      title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
-                                      onClick={(event) => event.stopPropagation()}
-                                    >
-                                      {isExportingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                                      PDF
-                                      <ChevronDown className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                                    <DropdownMenuItem
-                                      onSelect={() => {
-                                        if (!canExportRecord || exportingOrderId) return;
-                                        downloadServiceRecordPdf(order);
-                                      }}
-                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
-                                    >
-                                      <Download className="h-4 w-4" />
-                                      导出 PDF
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onSelect={() => {
-                                        if (!canExportRecord || exportingOrderId) return;
-                                        shareServiceRecordPdf(order);
-                                      }}
-                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
-                                    >
-                                      <Share2 className="h-4 w-4" />
-                                      分享 PDF
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
-                                  disabled={!canDeleteRecord || Boolean(deletingOrderId)}
-                                  aria-label={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
-                                  title={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    if (!canDeleteRecord || deletingOrderId) return;
-                                    deleteServiceOrder(order);
-                                  }}
-                                >
-                                  {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                  删除
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-muted-foreground">暂无待填写服务记录</div>
-                  )}
-                </div>
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 px-4 py-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CheckCircle className="h-4 w-4" />
+                  已填写服务记录 ({filledOrders.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-4">
+                {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
           </div>
