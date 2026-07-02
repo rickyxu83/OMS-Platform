@@ -899,6 +899,11 @@ function canDeleteServiceOrder(order: ServiceOrder) {
   return ["draft", "assigned", "rejected"].includes(status);
 }
 
+function canCancelServiceOrder(order: ServiceOrder) {
+  const status = order.workflowStatus || order.status || "";
+  return status !== "cancelled" && !canDeleteServiceOrder(order) && isFilledServiceOrder(order);
+}
+
 function safeFilenamePart(value?: string | number | null) {
   return String(value || "")
     .trim()
@@ -2563,6 +2568,29 @@ export function ServiceReport() {
     }
   }
 
+  async function cancelServiceOrder(order: ServiceOrder) {
+    if (!canCancelServiceOrder(order) || deletingOrderId) return;
+    const displayId = reportOrderDisplayId(order);
+    if (!window.confirm(`确认作废 ${displayId}？作废后记录会保留审计，但不再显示在当前工单列表。`)) return;
+    setDeletingOrderId(order.id);
+    setError("");
+    try {
+      await api.post(`/service-orders/${order.id}/cancel?mine=1`, {});
+      setOrders((current) => current.map((item) => (
+        String(item.id) === String(order.id)
+          ? { ...item, status: "cancelled", workflowStatus: "cancelled", displayStatus: "已作废" }
+          : item
+      )));
+      setPreviewOrder((current) => (current && String(current.id) === String(order.id) ? null : current));
+      toast.success("工单已作废");
+      await loadHome();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "工单作废失败");
+    } finally {
+      setDeletingOrderId(null);
+    }
+  }
+
   async function deleteCreateDraft() {
     if (!createDraft || deletingDraft) return;
     if (!window.confirm("确认删除当前草稿？")) return;
@@ -2916,7 +2944,10 @@ export function ServiceReport() {
               const canExportRecord = canExportServiceRecord(order);
               const isExportingRecord = exportingOrderId === order.id;
               const canDeleteRecord = canDeleteServiceOrder(order);
+              const canCancelRecord = canCancelServiceOrder(order);
+              const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
               const isDeletingRecord = deletingOrderId === order.id;
+              const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
               const serviceTime = reportOrderServiceTime(order);
               return (
                 <div
@@ -3022,17 +3053,21 @@ export function ServiceReport() {
                         variant="ghost"
                         size="sm"
                         className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={!canDeleteRecord || Boolean(deletingOrderId)}
-                        aria-label={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
-                        title={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
+                        disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+                        aria-label={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
+                        title={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (!canDeleteRecord || deletingOrderId) return;
-                          deleteServiceOrder(order);
+                          if (!canRemoveOrCancelRecord || deletingOrderId) return;
+                          if (canDeleteRecord) {
+                            deleteServiceOrder(order);
+                            return;
+                          }
+                          cancelServiceOrder(order);
                         }}
                       >
-                        {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        删除
+                        {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                        {destructiveActionLabel}
                       </Button>
                     </div>
                   </div>
