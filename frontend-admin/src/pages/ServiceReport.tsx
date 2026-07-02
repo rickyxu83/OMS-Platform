@@ -127,6 +127,7 @@ interface ServiceReport {
 interface ServicePart {
   deviceId?: string | number;
   device_id?: string | number;
+  deviceName?: string;
   actionType?: string;
   action_type?: string;
   partName?: string;
@@ -230,6 +231,7 @@ interface CustomerSignatureRequestInfo {
 
 interface ServicePartDraft {
   deviceId: string;
+  installDeviceDraftId: string;
   actionType: string;
   partName: string;
   partNo: string;
@@ -239,6 +241,9 @@ interface ServicePartDraft {
 }
 
 interface InstallDeviceDraft {
+  id: string;
+  inputMode: InstallDeviceInputMode;
+  deviceId: string;
   model: string;
   pn: string;
   serialNo: string;
@@ -403,13 +408,26 @@ const INSPECTION_DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.log,.c
 const INSPECTION_DOCUMENT_EXTENSIONS = new Set(INSPECTION_DOCUMENT_ACCEPT.split(","));
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
-function emptyInstallDevice(): InstallDeviceDraft {
-  return { model: "", pn: "", serialNo: "", remark: "" };
+function installDeviceDraftId() {
+  return `install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function emptyPart(actionType = "replacement", deviceId = ""): ServicePartDraft {
+function emptyInstallDevice(patch: Partial<InstallDeviceDraft> = {}): InstallDeviceDraft {
+  return {
+    id: patch.id || installDeviceDraftId(),
+    inputMode: patch.inputMode || (patch.deviceId ? "existing" : "manual"),
+    deviceId: patch.deviceId || "",
+    model: patch.model || "",
+    pn: patch.pn || "",
+    serialNo: patch.serialNo || "",
+    remark: patch.remark || "",
+  };
+}
+
+function emptyPart(actionType = "replacement", deviceId = "", installDeviceDraftIdValue = ""): ServicePartDraft {
   return {
     deviceId,
+    installDeviceDraftId: installDeviceDraftIdValue,
     actionType,
     partName: "",
     partNo: "",
@@ -559,7 +577,26 @@ function servicePartHasContent(part: ServicePartDraft) {
 }
 
 function installDeviceHasContent(device: InstallDeviceDraft) {
-  return [device.model, device.serialNo, device.remark].some((value) => value.trim());
+  return Boolean(device.deviceId) || [device.model, device.pn, device.serialNo, device.remark].some((value) => value.trim());
+}
+
+function normalizeInstallDeviceDraft(
+  device: Partial<InstallDeviceDraft> | undefined,
+  fallback: Partial<InstallDeviceDraft> = {},
+) {
+  const merged = { ...fallback, ...(device || {}) };
+  const deviceId = merged.deviceId ? String(merged.deviceId) : "";
+  const inputMode = merged.inputMode === "existing" || deviceId ? "existing" : "manual";
+  return emptyInstallDevice({
+    ...merged,
+    deviceId,
+    inputMode,
+  });
+}
+
+function installDeviceTitle(device: InstallDeviceDraft, index: number) {
+  if (device.inputMode === "existing") return `安装设备 ${index + 1}`;
+  return device.model.trim() || `安装设备 ${index + 1}`;
 }
 
 function optionText(options: Array<{ value: string; label: string }>, value?: string, fallback = "-") {
@@ -881,6 +918,51 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
   const report = order.report || {};
   const workContent = report.workContent
     || (Array.isArray(report.workEntries) ? report.workEntries.map((entry) => entry.workContent || entry.work_content || "").filter(Boolean).join("\n\n") : "");
+  const normalizedParts = (order.parts || []).map((part) => ({
+    ...emptyPart(),
+    deviceId: part.deviceId || part.device_id ? String(part.deviceId || part.device_id) : "",
+    actionType: part.actionType || part.action_type || "replacement",
+    partName: part.partName || part.part_name || "",
+    partNo: part.partNo || part.part_no || "",
+    quantity: part.quantity ? String(part.quantity) : "1",
+    unit: part.unit || "个",
+    remark: part.remark || "",
+  }));
+  const isInstallOrder = mode === "onsite" && (order.serviceType || "repair") === "install";
+  const installDeviceDraftIdByDeviceId = new Map<string, string>();
+  const installDevicesFromParts: InstallDeviceDraft[] = [];
+  if (isInstallOrder) {
+    const installDeviceIds = [
+      order.deviceId ? String(order.deviceId) : "",
+      ...normalizedParts
+        .filter((part) => (part.actionType || "general") === "installation")
+        .map((part) => part.deviceId),
+    ].filter(Boolean);
+    Array.from(new Set(installDeviceIds)).forEach((deviceId) => {
+      const draft = emptyInstallDevice({
+        inputMode: "existing",
+        deviceId,
+        model: deviceId === String(order.deviceId || "") ? order.deviceModel || "" : "",
+        pn: deviceId === String(order.deviceId || "") ? order.devicePn || "" : "",
+        serialNo: deviceId === String(order.deviceId || "") ? order.deviceSerialNo || "" : "",
+        remark: deviceId === String(order.deviceId || "") ? order.deviceRemark || "" : "",
+      });
+      installDeviceDraftIdByDeviceId.set(deviceId, draft.id);
+      installDevicesFromParts.push(draft);
+    });
+  }
+  const installDevices = installDevicesFromParts.length
+    ? installDevicesFromParts
+    : order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
+      ? [emptyInstallDevice({
+          inputMode: order.deviceId ? "existing" : "manual",
+          deviceId: order.deviceId ? String(order.deviceId) : "",
+          model: order.deviceModel || "",
+          pn: order.devicePn || "",
+          serialNo: order.deviceSerialNo || "",
+          remark: order.deviceRemark || "",
+        })]
+      : [emptyInstallDevice()];
   return {
     ...defaultForm(mode),
     customerId: order.customerId ? String(order.customerId) : "",
@@ -930,22 +1012,10 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     customerSignatureFileId: report.customerSignatureFileId ? String(report.customerSignatureFileId) : "",
     engineerIds: (order.engineers || []).map((engineer) => String(engineer.id)).filter(Boolean),
     installDeviceInputMode: order.deviceId ? "existing" : "manual",
-    installDevices: order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
-      ? [{
-          model: order.deviceModel || "",
-          pn: order.devicePn || "",
-          serialNo: order.deviceSerialNo || "",
-          remark: order.deviceRemark || "",
-        }]
-      : [emptyInstallDevice()],
-    parts: (order.parts || []).map((part) => ({
-      deviceId: part.deviceId || part.device_id ? String(part.deviceId || part.device_id) : "",
-      actionType: part.actionType || part.action_type || "replacement",
-      partName: part.partName || part.part_name || "",
-      partNo: part.partNo || part.part_no || "",
-      quantity: part.quantity ? String(part.quantity) : "1",
-      unit: part.unit || "个",
-      remark: part.remark || "",
+    installDevices,
+    parts: normalizedParts.map((part) => ({
+      ...part,
+      installDeviceDraftId: part.deviceId ? installDeviceDraftIdByDeviceId.get(part.deviceId) || "" : "",
     })),
   };
 }
@@ -958,21 +1028,35 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
   const mode = normalizeMode(value.serviceMode || fallbackMode);
   const base = defaultForm(mode);
   const merged = { ...base, ...value };
+  const mergedInstallInputMode = merged.installDeviceInputMode === "existing" ? "existing" : "manual";
+  const normalizedInstallDevices = Array.isArray(merged.installDevices) && merged.installDevices.length
+    ? merged.installDevices.map((device, index) => normalizeInstallDeviceDraft(device, index === 0
+        ? {
+            inputMode: mergedInstallInputMode,
+            deviceId: mergedInstallInputMode === "existing" && merged.deviceId ? String(merged.deviceId) : "",
+          }
+        : {}))
+    : [emptyInstallDevice()];
+  const installDeviceDraftIdByDeviceId = new Map(
+    normalizedInstallDevices
+      .filter((device) => device.deviceId)
+      .map((device) => [device.deviceId, device.id] as [string, string]),
+  );
   return {
     ...merged,
     serviceMode: mode,
     serviceModules: normalizeServiceModules(merged, mode),
     result: mode === "office" ? "" : normalizeResult(merged.result),
     customerSignatureMode: merged.customerSignatureMode === "electronic" ? "electronic" : "onsite",
-    installDeviceInputMode: merged.installDeviceInputMode === "existing" ? "existing" : "manual",
-    installDevices: Array.isArray(merged.installDevices) && merged.installDevices.length
-      ? merged.installDevices.map((device) => ({ ...emptyInstallDevice(), ...device }))
-      : [emptyInstallDevice()],
+    installDeviceInputMode: mergedInstallInputMode,
+    installDevices: normalizedInstallDevices,
     parts: Array.isArray(merged.parts)
       ? merged.parts.map((part) => ({
           ...emptyPart(partActionFor(mode, merged.serviceType, merged.timesheetCategory)),
           ...part,
           deviceId: part.deviceId ? String(part.deviceId) : "",
+          installDeviceDraftId: part.installDeviceDraftId
+            || (part.deviceId ? installDeviceDraftIdByDeviceId.get(String(part.deviceId)) || "" : ""),
           quantity: part.quantity ? String(part.quantity) : "1",
         }))
       : [],
@@ -1404,7 +1488,7 @@ export function ServiceReport() {
   const [loadingCustomerDevices, setLoadingCustomerDevices] = useState(false);
   const [savingTargetDevice, setSavingTargetDevice] = useState(false);
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
-  const [installTargetOpen, setInstallTargetOpen] = useState(false);
+  const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
   const [customerSearching, setCustomerSearching] = useState(false);
   const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -1482,34 +1566,11 @@ export function ServiceReport() {
   const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasReplacementModule;
   const showInlineInstallParts = isInstall;
   const showPartsModule = hasReplacementModule || generalParts.length > 0 || (!showInlineInstallParts && hasHardwareInstallDetails);
-  const activeInstallDevices = useMemo(() => form.installDevices.slice(0, 1).filter(installDeviceHasContent), [form.installDevices]);
-  const primaryInstallDevice = form.installDevices[0] || emptyInstallDevice();
-  const selectedInstallDevice = useMemo(
-    () => selectedCustomerDevices.find((device) => String(device.id) === form.deviceId) || null,
-    [form.deviceId, selectedCustomerDevices],
-  );
-  const installTargetValue = form.installDeviceInputMode === "existing" && selectedInstallDevice
-    ? deviceSelectLabel(selectedInstallDevice)
-    : primaryInstallDevice.model;
-  const installTargetOptions = useMemo(() => {
-    const keyword = form.installDeviceInputMode === "existing"
-      ? ""
-      : primaryInstallDevice.model.trim().toLowerCase();
-    return selectedCustomerDevices
-      .filter((device) => {
-        if (!keyword) return true;
-        return [
-          deviceLabel(device),
-          deviceSelectLabel(device),
-          device.model,
-          device.serialNo,
-          device.pn,
-          device.remark,
-        ].some((value) => String(value || "").toLowerCase().includes(keyword));
-      })
-      .slice(0, 8);
-  }, [form.installDeviceInputMode, primaryInstallDevice.model, selectedCustomerDevices]);
-  const activeInstallDeviceCount = form.deviceId || activeInstallDevices.length ? 1 : 0;
+  const installDeviceRows = useMemo(() => (
+    form.installDevices.length ? form.installDevices : [emptyInstallDevice()]
+  ), [form.installDevices]);
+  const activeInstallDevices = useMemo(() => form.installDevices.filter(installDeviceHasContent), [form.installDevices]);
+  const activeInstallDeviceCount = activeInstallDevices.length;
   const installationPartEntries = useMemo(
     () => form.parts
       .map((part, index) => ({ part, index }))
@@ -1586,6 +1647,11 @@ export function ServiceReport() {
       setForm((current) => ({
         ...current,
         deviceId: current.deviceId && validDeviceIds.has(current.deviceId) ? current.deviceId : "",
+        installDevices: current.installDevices.map((device) => (
+          device.deviceId && !validDeviceIds.has(device.deviceId)
+            ? { ...device, inputMode: "manual", deviceId: "" }
+            : device
+        )),
         parts: current.parts.map((part) => (
           part.deviceId && !validDeviceIds.has(part.deviceId) ? { ...part, deviceId: "" } : part
         )),
@@ -1735,7 +1801,7 @@ export function ServiceReport() {
       contactPhone: preferredContact?.phone || customer.contactPhone || form.contactPhone,
       customerConfirmName: preferredContact?.name || customer.contactName || form.customerConfirmName,
       deviceId: "",
-      parts: form.parts.map((part) => ({ ...part, deviceId: "" })),
+      parts: form.parts.map((part) => ({ ...part, deviceId: "", installDeviceDraftId: "" })),
       installDevices: isInstall ? [emptyInstallDevice()] : form.installDevices,
     });
     setCustomerOptionsOpen(false);
@@ -1883,6 +1949,7 @@ export function ServiceReport() {
 
   function addPartAction(actionType: string) {
     const modulePatch: Partial<ReportForm> = {};
+    let nextInstallDevices = form.installDevices;
     if (actionType === "replacement" && !selectedServiceModules.includes("replacement")) {
       const nextModules = [...selectedServiceModules, "replacement" as ServiceModuleId];
       modulePatch.serviceModules = nextModules;
@@ -1893,13 +1960,27 @@ export function ServiceReport() {
       const nextModules = [...selectedServiceModules, "install" as ServiceModuleId];
       modulePatch.serviceModules = nextModules;
       modulePatch.serviceType = derivePrimaryServiceType(form.serviceMode, nextModules);
-      if (!form.installDevices.length) modulePatch.installDevices = [emptyInstallDevice()];
+      if (!nextInstallDevices.length) {
+        nextInstallDevices = [emptyInstallDevice()];
+        modulePatch.installDevices = nextInstallDevices;
+      }
     }
-    patchForm({ ...modulePatch, parts: [...form.parts, emptyPart(actionType, form.deviceId)] });
+    const firstInstallDevice = nextInstallDevices[0];
+    const installDeviceDraftIdValue = actionType === "installation" && firstInstallDevice ? firstInstallDevice.id : "";
+    const partDeviceId = actionType === "installation" && firstInstallDevice
+      ? firstInstallDevice.deviceId
+      : form.deviceId;
+    patchForm({ ...modulePatch, parts: [...form.parts, emptyPart(actionType, partDeviceId, installDeviceDraftIdValue)] });
   }
 
-  function addInstallationPart() {
-    patchForm({ parts: [...form.parts, emptyPart("installation")] });
+  function addInstallationPart(installDeviceDraftIdValue: string) {
+    const installDevice = form.installDevices.find((device) => device.id === installDeviceDraftIdValue) || form.installDevices[0];
+    patchForm({
+      parts: [
+        ...form.parts,
+        emptyPart("installation", installDevice?.deviceId || "", installDevice?.id || installDeviceDraftIdValue),
+      ],
+    });
   }
 
   function targetDevicePatch(device: DeviceOption): Partial<ReportForm> {
@@ -1910,6 +1991,70 @@ export function ServiceReport() {
       devicePn: device.pn || form.devicePn,
       deviceSerialNo: device.serialNo || form.deviceSerialNo,
     };
+  }
+
+  function primaryInstallDevicePatch(devices: InstallDeviceDraft[]): Partial<ReportForm> {
+    const primary = devices.find(installDeviceHasContent) || devices[0];
+    if (!primary) {
+      return {
+        installDeviceInputMode: "manual",
+        deviceId: "",
+        deviceName: "",
+        deviceModel: "",
+        devicePn: "",
+        deviceSerialNo: "",
+        deviceRemark: "",
+      };
+    }
+    if (primary.inputMode === "existing" && primary.deviceId) {
+      const device = selectedCustomerDevices.find((item) => String(item.id) === primary.deviceId);
+      return {
+        ...targetDevicePatch(device || { id: primary.deviceId, model: primary.model, pn: primary.pn, serialNo: primary.serialNo }),
+        installDeviceInputMode: "existing",
+      };
+    }
+    return {
+      installDeviceInputMode: "manual",
+      deviceId: "",
+      deviceName: "",
+      deviceModel: primary.model,
+      devicePn: primary.pn,
+      deviceSerialNo: primary.serialNo,
+      deviceRemark: primary.remark,
+    };
+  }
+
+  function installTargetValue(device: InstallDeviceDraft) {
+    if (device.inputMode === "existing" && device.deviceId) {
+      const selectedDevice = selectedCustomerDevices.find((item) => String(item.id) === device.deviceId);
+      return selectedDevice ? deviceSelectLabel(selectedDevice) : device.model;
+    }
+    return device.model;
+  }
+
+  function installTargetOptions(device: InstallDeviceDraft) {
+    const keyword = device.inputMode === "existing" ? "" : device.model.trim().toLowerCase();
+    return selectedCustomerDevices
+      .filter((item) => {
+        if (!keyword) return true;
+        return [
+          deviceLabel(item),
+          deviceSelectLabel(item),
+          item.model,
+          item.serialNo,
+          item.pn,
+          item.remark,
+        ].some((value) => String(value || "").toLowerCase().includes(keyword));
+      })
+      .slice(0, 8);
+  }
+
+  function patchInstallDevices(devices: InstallDeviceDraft[], patch: Partial<ReportForm> = {}) {
+    patchForm({
+      ...patch,
+      ...primaryInstallDevicePatch(devices),
+      installDevices: devices,
+    });
   }
 
   function partsWithTargetDevice(deviceId: string, ensureReplacement = false) {
@@ -2005,41 +2150,81 @@ export function ServiceReport() {
     });
   }
 
-  function changeInstallTarget(value: string) {
-    patchForm({
-      installDeviceInputMode: "manual",
-      deviceId: "",
-      deviceName: "",
-      deviceModel: "",
-      devicePn: "",
-      deviceSerialNo: "",
-      deviceRemark: "",
-      installDevices: [{ ...emptyInstallDevice(), ...primaryInstallDevice, model: value }],
+  function changeInstallTarget(installDeviceDraftIdValue: string, value: string) {
+    const nextDevices = form.installDevices.map((device) => (
+      device.id === installDeviceDraftIdValue
+        ? { ...device, inputMode: "manual" as InstallDeviceInputMode, deviceId: "", model: value }
+        : device
+    ));
+    patchInstallDevices(nextDevices, {
+      parts: form.parts.map((part) => (
+        part.installDeviceDraftId === installDeviceDraftIdValue ? { ...part, deviceId: "" } : part
+      )),
     });
-    setInstallTargetOpen(true);
+    setInstallTargetOpenId(installDeviceDraftIdValue);
   }
 
-  function chooseInstallDevice(deviceId: string) {
+  function chooseInstallDevice(installDeviceDraftIdValue: string, deviceId: string) {
     if (deviceId === "none") {
-      patchForm({ deviceId: "", deviceName: "" });
+      const nextDevices = form.installDevices.map((device) => (
+        device.id === installDeviceDraftIdValue
+          ? { ...device, inputMode: "manual" as InstallDeviceInputMode, deviceId: "" }
+          : device
+      ));
+      patchInstallDevices(nextDevices);
       return;
     }
     const device = selectedCustomerDevices.find((item) => String(item.id) === deviceId);
     if (!device) {
-      patchForm({ deviceId: "", deviceName: "" });
+      const nextDevices = form.installDevices.map((item) => (
+        item.id === installDeviceDraftIdValue ? { ...item, inputMode: "manual" as InstallDeviceInputMode, deviceId: "" } : item
+      ));
+      patchInstallDevices(nextDevices);
       return;
     }
-    patchForm({
-      ...targetDevicePatch(device),
-      installDeviceInputMode: "existing",
-      installDevices: [emptyInstallDevice()],
+    const nextDevices = form.installDevices.map((item) => (
+      item.id === installDeviceDraftIdValue
+        ? emptyInstallDevice({
+            id: item.id,
+            inputMode: "existing",
+            deviceId: String(device.id),
+            model: device.model || deviceLabel(device),
+            pn: device.pn || "",
+            serialNo: device.serialNo || "",
+            remark: device.remark || "",
+          })
+        : item
+    ));
+    patchInstallDevices(nextDevices, {
+      parts: form.parts.map((part) => (
+        part.installDeviceDraftId === installDeviceDraftIdValue ? { ...part, deviceId: String(device.id) } : part
+      )),
     });
-    setInstallTargetOpen(false);
+    setInstallTargetOpenId(null);
   }
 
-  function updatePrimaryInstallDevice(patch: Partial<InstallDeviceDraft>) {
-    patchForm({
-      installDevices: [{ ...emptyInstallDevice(), ...primaryInstallDevice, ...patch }],
+  function updateInstallDevice(installDeviceDraftIdValue: string, patch: Partial<InstallDeviceDraft>) {
+    const nextDevices = form.installDevices.map((device) => (
+      device.id === installDeviceDraftIdValue ? normalizeInstallDeviceDraft({ ...device, ...patch }) : device
+    ));
+    patchInstallDevices(nextDevices);
+  }
+
+  function addInstallDevice() {
+    const nextDevices = [...form.installDevices, emptyInstallDevice()];
+    patchInstallDevices(nextDevices);
+  }
+
+  function removeInstallDevice(installDeviceDraftIdValue: string) {
+    const removedIndex = form.installDevices.findIndex((device) => device.id === installDeviceDraftIdValue);
+    const nextDevices = form.installDevices.filter((device) => device.id !== installDeviceDraftIdValue);
+    const fallbackDevices = nextDevices.length ? nextDevices : [emptyInstallDevice()];
+    patchInstallDevices(fallbackDevices, {
+      parts: form.parts.filter((part) => (
+        part.installDeviceDraftId
+          ? part.installDeviceDraftId !== installDeviceDraftIdValue
+          : removedIndex !== 0
+      )),
     });
   }
 
@@ -2344,6 +2529,9 @@ export function ServiceReport() {
     const payloadTimesheetCategory = isRemote ? deriveRemoteTimesheetCategory(payloadModules) : form.timesheetCategory;
     const installDevices = isInstall ? form.installDevices.filter(installDeviceHasContent) : [];
     const firstInstallDevice = installDevices[0] || emptyInstallDevice();
+    const firstInstallDeviceId = firstInstallDevice.inputMode === "existing" && firstInstallDevice.deviceId
+      ? Number(firstInstallDevice.deviceId)
+      : null;
     const officeName = user?.realName || user?.username || "内勤工程师";
     const payloadCustomerName = isOffice ? (form.customerName.trim() || "敦阳科技（内勤）") : form.customerName.trim();
     const payloadContactName = form.contactName.trim() || (isOffice ? officeName : "");
@@ -2360,12 +2548,21 @@ export function ServiceReport() {
       customerMapAddress: form.customerMapAddress || null,
       contactName: payloadContactName,
       contactPhone: payloadContactPhone,
-      deviceId: form.deviceId ? Number(form.deviceId) : null,
+      deviceId: isInstall ? firstInstallDeviceId : (form.deviceId ? Number(form.deviceId) : null),
       deviceName: isInstall ? "" : form.deviceName.trim(),
-      deviceModel: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.model.trim() : "") : form.deviceModel.trim(),
-      devicePn: isInstall ? "" : form.devicePn.trim(),
-      deviceSerialNo: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.serialNo.trim() : "") : form.deviceSerialNo.trim(),
-      deviceRemark: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.remark.trim() : "") : form.deviceRemark.trim(),
+      deviceModel: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.model.trim() : "") : form.deviceModel.trim(),
+      devicePn: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.pn.trim() : "") : form.devicePn.trim(),
+      deviceSerialNo: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.serialNo.trim() : "") : form.deviceSerialNo.trim(),
+      deviceRemark: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.remark.trim() : "") : form.deviceRemark.trim(),
+      installDevices: installDevices.map((device) => ({
+        id: device.id,
+        inputMode: device.inputMode,
+        deviceId: device.deviceId ? Number(device.deviceId) : null,
+        model: device.model.trim(),
+        pn: device.pn.trim(),
+        serialNo: device.serialNo.trim(),
+        remark: device.remark.trim(),
+      })),
       serviceMode: form.serviceMode,
       serviceType: isOnsite ? payloadServiceType : "other",
       timesheetCategory: isOnsite ? null : payloadTimesheetCategory.trim(),
@@ -2389,7 +2586,8 @@ export function ServiceReport() {
       parts: activeParts().map((part) => {
         const actionType = part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory);
         return {
-          deviceId: part.deviceId ? Number(part.deviceId) : (form.deviceId ? Number(form.deviceId) : null),
+          deviceId: part.deviceId ? Number(part.deviceId) : (isInstall ? null : (form.deviceId ? Number(form.deviceId) : null)),
+          installDeviceDraftId: part.installDeviceDraftId || null,
           actionType,
           partName: part.partName.trim(),
           partNo: part.partNo.trim(),
@@ -2409,19 +2607,32 @@ export function ServiceReport() {
     if (!isOffice && !form.contactPhone.trim()) missing.push("客户联系电话");
     if ((isOnsite || isRemote) && !selectedServiceModules.length) missing.push("服务模块");
     if (isOffice && !form.timesheetCategory.trim()) missing.push("内勤工作事项");
-    if (isInstall && form.installDeviceInputMode === "existing") {
-      if (!form.deviceId) missing.push("安装设备");
-      if (!installationParts.length) missing.push("新配件明细");
-    }
-    if (isInstall && form.installDeviceInputMode === "manual" && !primaryInstallDevice.model.trim()) {
-      missing.push("安装设备型号");
+    if (isInstall) {
+      const installTargets = form.installDevices.filter(installDeviceHasContent);
+      if (!installTargets.length) {
+        missing.push("安装设备");
+      }
+      installTargets.forEach((device, index) => {
+        const deviceLabelText = `安装设备 ${index + 1}`;
+        if (device.inputMode === "existing") {
+          if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
+          if (!form.parts.some((part) => part.actionType === "installation" && part.installDeviceDraftId === device.id && servicePartHasContent(part))) {
+            missing.push(`${deviceLabelText}新配件明细`);
+          }
+        } else if (!device.model.trim()) {
+          missing.push(`${deviceLabelText}型号`);
+        }
+      });
     }
     const invalidPart = activeParts().find((part) => {
       const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
       const needsDevice = ["replacement", "installation"].includes(action);
-      const installTargetReady = action === "installation" && isInstall && (
-        Boolean(form.deviceId) || (form.installDeviceInputMode === "manual" && Boolean(primaryInstallDevice.model.trim()))
-      );
+      const installTarget = action === "installation" && isInstall
+        ? form.installDevices.find((device) => device.id === part.installDeviceDraftId)
+        : null;
+      const installTargetReady = Boolean(installTarget && (
+        installTarget.inputMode === "existing" ? installTarget.deviceId : installTarget.model.trim()
+      ));
       return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
     });
     if (invalidPart) missing.push("备件或硬件部件明细（关联设备、名称、数量）");
@@ -3468,133 +3679,177 @@ export function ServiceReport() {
                     </div>
                   ) : null}
 
-                  {isInstall ? (
-                    <div className="space-y-4 rounded-lg border p-3">
-                      <div>
-                        <div className="text-sm font-medium">安装设备</div>
-                        <div className="text-xs text-muted-foreground">输入新型号会按新设备或非维保设备保存；选择下拉中的客户设备会把新配件挂到该设备详情。</div>
-                      </div>
+	                  {isInstall ? (
+	                    <div className="space-y-4 rounded-lg border p-3">
+	                      <div className="flex flex-wrap items-start justify-between gap-3">
+	                        <div>
+	                          <div className="text-sm font-medium">安装设备</div>
+	                          <div className="text-xs text-muted-foreground">输入新型号会按新设备或非维保设备保存；选择下拉中的客户设备会把新配件挂到该设备详情。</div>
+	                        </div>
+	                        <Button type="button" variant="outline" size="sm" onClick={addInstallDevice}>
+	                          <Plus className="h-4 w-4" />
+	                          增加安装设备
+	                        </Button>
+	                      </div>
 
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="relative space-y-2 md:col-span-2">
-                          <Label className="block text-sm font-medium text-foreground">安装目标设备 / 设备型号</Label>
-                          <Input
-                            value={installTargetValue}
-                            placeholder="输入设备型号，或选择客户已有设备"
-                            autoComplete="off"
-                            onFocus={() => setInstallTargetOpen(true)}
-                            onBlur={() => window.setTimeout(() => setInstallTargetOpen(false), 160)}
-                            onChange={(event) => changeInstallTarget(event.target.value)}
-                          />
-                          {installTargetOpen ? (
-                            <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
-                              {loadingCustomerDevices ? (
-                                <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  正在加载客户设备…
-                                </div>
-                              ) : null}
-                              {!form.customerId ? (
-                                <div className="px-3 py-2 text-muted-foreground">请先选择客户；未选择下拉项时会按手写设备保存。</div>
-                              ) : null}
-                              {installTargetOptions.map((device) => (
-                                <button
-                                  key={device.id}
-                                  type="button"
-                                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-accent"
-                                  onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    chooseInstallDevice(String(device.id));
-                                  }}
-                                >
-                                  <span className="font-medium">{deviceSelectLabel(device)}</span>
-                                  <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
-                                </button>
-                              ))}
-                              {form.customerId && !loadingCustomerDevices && !installTargetOptions.length ? (
-                                <div className="px-3 py-2 text-muted-foreground">没有匹配的客户设备，继续输入会按手写设备保存。</div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+	                      <div className="space-y-3">
+	                        {installDeviceRows.map((installDevice, deviceIndex) => {
+	                          const selectedDevice = installDevice.deviceId
+	                            ? selectedCustomerDevices.find((device) => String(device.id) === installDevice.deviceId) || null
+	                            : null;
+	                          const targetOptions = installTargetOptions(installDevice);
+	                          const devicePartEntries = installationPartEntries.filter(({ part }) => (
+	                            part.installDeviceDraftId ? part.installDeviceDraftId === installDevice.id : deviceIndex === 0
+	                          ));
+	                          return (
+	                            <div key={installDevice.id} className="space-y-3 rounded-lg border bg-muted/10 p-3">
+	                              <div className="flex flex-wrap items-center justify-between gap-2">
+	                                <div className="flex min-w-0 items-center gap-2">
+	                                  <span className="text-sm font-medium">{installDeviceTitle(installDevice, deviceIndex)}</span>
+	                                  <Badge variant={installDevice.inputMode === "existing" ? "secondary" : "outline"}>
+	                                    {installDevice.inputMode === "existing" ? "已有设备" : "手写设备"}
+	                                  </Badge>
+	                                </div>
+	                                {installDeviceRows.length > 1 ? (
+	                                  <Button
+	                                    type="button"
+	                                    variant="ghost"
+	                                    size="sm"
+	                                    className="h-8"
+	                                    onClick={() => removeInstallDevice(installDevice.id)}
+	                                  >
+	                                    <X className="h-4 w-4" />
+	                                    删除设备
+	                                  </Button>
+	                                ) : null}
+	                              </div>
 
-                        {form.installDeviceInputMode === "existing" ? (
-                          <div className="md:col-span-2">
-                            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                              <Badge variant="secondary">已有设备</Badge>
-                              <span className="min-w-0 flex-1">{selectedInstallDevice ? deviceMeta(selectedInstallDevice) || deviceSelectLabel(selectedInstallDevice) : "已关联客户设备"}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <Field label="序列号 / SN">
-                              <Input value={primaryInstallDevice.serialNo} onChange={(event) => updatePrimaryInstallDevice({ serialNo: event.target.value })} />
-                            </Field>
-                            <div className="md:col-span-2">
-                              <Field label="备注">
-                                <Textarea
-                                  rows={3}
-                                  value={primaryInstallDevice.remark}
-                                  placeholder="可填写设备具体配置，或说明非维保设备情况"
-                                  onChange={(event) => updatePrimaryInstallDevice({ remark: event.target.value })}
-                                />
-                              </Field>
-                            </div>
-                          </>
-                        )}
-                      </div>
+	                              <div className="grid gap-3 md:grid-cols-2">
+	                                <div className="relative space-y-2">
+	                                  <Label className="block text-sm font-medium text-foreground">安装目标设备 / 设备型号</Label>
+	                                  <Input
+	                                    value={installTargetValue(installDevice)}
+	                                    placeholder="输入设备型号，或选择客户已有设备"
+	                                    autoComplete="off"
+	                                    onFocus={() => setInstallTargetOpenId(installDevice.id)}
+	                                    onBlur={() => window.setTimeout(() => {
+	                                      setInstallTargetOpenId((current) => current === installDevice.id ? null : current);
+	                                    }, 160)}
+	                                    onChange={(event) => changeInstallTarget(installDevice.id, event.target.value)}
+	                                  />
+	                                  {installTargetOpenId === installDevice.id ? (
+	                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+	                                      {loadingCustomerDevices ? (
+	                                        <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+	                                          <Loader2 className="h-4 w-4 animate-spin" />
+	                                          正在加载客户设备…
+	                                        </div>
+	                                      ) : null}
+	                                      {!form.customerId ? (
+	                                        <div className="px-3 py-2 text-muted-foreground">请先选择客户；未选择下拉项时会按手写设备保存。</div>
+	                                      ) : null}
+	                                      {targetOptions.map((device) => (
+	                                        <button
+	                                          key={device.id}
+	                                          type="button"
+	                                          className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-accent"
+	                                          onMouseDown={(event) => {
+	                                            event.preventDefault();
+	                                            chooseInstallDevice(installDevice.id, String(device.id));
+	                                          }}
+	                                        >
+	                                          <span className="font-medium">{deviceSelectLabel(device)}</span>
+	                                          <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+	                                        </button>
+	                                      ))}
+	                                      {form.customerId && !loadingCustomerDevices && !targetOptions.length ? (
+	                                        <div className="px-3 py-2 text-muted-foreground">没有匹配的客户设备，继续输入会按手写设备保存。</div>
+	                                      ) : null}
+	                                    </div>
+	                                  ) : null}
+	                                </div>
 
-                      <div className="space-y-3 rounded-md border bg-muted/10 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-medium">新配件</div>
-                            <div className="text-xs text-muted-foreground">如果本次是给这台设备加装配件，在这里记录配件明细。</div>
-                          </div>
-                          <Button type="button" variant="outline" size="sm" onClick={addInstallationPart}>
-                            <Plus className="h-4 w-4" />
-                            新增配件
-                          </Button>
-                        </div>
-                        {installationPartEntries.length ? (
-                          <div className="space-y-3">
-                            {installationPartEntries.map(({ part, index }, entryIndex) => (
-                              <div key={`install-part-${index}`} className="rounded-md border bg-background p-3">
-                                <div className="mb-3 flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium">新配件 {entryIndex + 1}</span>
-                                  <Button type="button" variant="ghost" size="icon" onClick={() => removePart(index)} aria-label="删除新配件">
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
-                                  <Field label="名称" required>
-                                    <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
-                                  </Field>
-                                  <Field label="编号（或型号）">
-                                    <Input value={part.partNo} onChange={(event) => updatePart(index, { partNo: event.target.value })} />
-                                  </Field>
-                                  <Field label="数量" required>
-                                    <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
-                                  </Field>
-                                  <div className="md:col-span-3">
-                                    <Field label="备注">
-                                      <Textarea
-                                        rows={3}
-                                        value={part.remark}
-                                        placeholder="可填写安装位置、插槽"
-                                        onChange={(event) => updatePart(index, { remark: event.target.value })}
-                                      />
-                                    </Field>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">暂无新配件记录</div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
+	                                {installDevice.inputMode === "existing" ? (
+	                                  <div className="flex min-h-[68px] items-center rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
+	                                    <span className="min-w-0 flex-1">
+	                                      {selectedDevice ? deviceMeta(selectedDevice) || deviceSelectLabel(selectedDevice) : "已关联客户设备"}
+	                                    </span>
+	                                  </div>
+	                                ) : (
+	                                  <Field label="序列号 / SN">
+	                                    <Input value={installDevice.serialNo} onChange={(event) => updateInstallDevice(installDevice.id, { serialNo: event.target.value })} />
+	                                  </Field>
+	                                )}
+
+	                                {installDevice.inputMode === "manual" ? (
+	                                  <div className="md:col-span-2">
+	                                    <Field label="备注">
+	                                      <Textarea
+	                                        rows={3}
+	                                        value={installDevice.remark}
+	                                        placeholder="可填写设备具体配置，或说明非维保设备情况"
+	                                        onChange={(event) => updateInstallDevice(installDevice.id, { remark: event.target.value })}
+	                                      />
+	                                    </Field>
+	                                  </div>
+	                                ) : null}
+	                              </div>
+
+	                              <div className="space-y-3 rounded-md border bg-background p-3">
+	                                <div className="flex flex-wrap items-center justify-between gap-2">
+	                                  <div>
+	                                    <div className="text-sm font-medium">新配件</div>
+	                                    <div className="text-xs text-muted-foreground">如果本次是给这台设备加装配件，在这里记录配件明细。</div>
+	                                  </div>
+	                                  <Button type="button" variant="outline" size="sm" onClick={() => addInstallationPart(installDevice.id)}>
+	                                    <Plus className="h-4 w-4" />
+	                                    新增配件
+	                                  </Button>
+	                                </div>
+	                                {devicePartEntries.length ? (
+	                                  <div className="space-y-3">
+	                                    {devicePartEntries.map(({ part, index }, entryIndex) => (
+	                                      <div key={`install-part-${index}`} className="rounded-md border bg-muted/10 p-3">
+	                                        <div className="mb-3 flex items-center justify-between gap-2">
+	                                          <span className="text-sm font-medium">新配件 {entryIndex + 1}</span>
+	                                          <Button type="button" variant="ghost" size="icon" onClick={() => removePart(index)} aria-label="删除新配件">
+	                                            <X className="h-4 w-4" />
+	                                          </Button>
+	                                        </div>
+	                                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
+	                                          <Field label="名称" required>
+	                                            <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
+	                                          </Field>
+	                                          <Field label="编号（或型号）">
+	                                            <Input value={part.partNo} onChange={(event) => updatePart(index, { partNo: event.target.value })} />
+	                                          </Field>
+	                                          <Field label="数量" required>
+	                                            <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+	                                          </Field>
+	                                          <div className="md:col-span-3">
+	                                            <Field label="备注">
+	                                              <Textarea
+	                                                rows={3}
+	                                                value={part.remark}
+	                                                placeholder="可填写安装位置、插槽"
+	                                                onChange={(event) => updatePart(index, { remark: event.target.value })}
+	                                              />
+	                                            </Field>
+	                                          </div>
+	                                        </div>
+	                                      </div>
+	                                    ))}
+	                                  </div>
+	                                ) : (
+	                                  <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">暂无新配件记录</div>
+	                                )}
+	                              </div>
+	                            </div>
+	                          );
+	                        })}
+	                      </div>
+	                    </div>
+	                  ) : null}
 
                   {showPartsModule ? (
                     <div className="space-y-3 rounded-lg border p-3">

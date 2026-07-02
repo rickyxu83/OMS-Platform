@@ -1786,13 +1786,135 @@ async function assertDeviceBelongsToCustomer(connection, deviceId, customerId) {
   }
 }
 
-function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fallbackDeviceId = null } = {}) {
+function normalizeInstallDevicesPayload(installDevices = [], legacyDevice = {}) {
+  const hasExplicitInstallDevices = Array.isArray(installDevices) && installDevices.length > 0
+  const rawDevices = hasExplicitInstallDevices ? installDevices : []
+  const normalized = rawDevices
+    .map((device, index) => {
+      const deviceId = Number(device?.deviceId || device?.device_id || 0) || null
+      const model = String(device?.model || device?.deviceModel || device?.device_model || '').trim()
+      const name = String(device?.name || device?.deviceName || device?.device_name || '').trim()
+      const pn = String(device?.pn || device?.devicePn || device?.device_pn || '').trim()
+      const serialNo = String(device?.serialNo || device?.serial_no || device?.deviceSerialNo || device?.device_serial_no || '').trim()
+      const remark = String(device?.remark || device?.deviceRemark || device?.device_remark || '').trim()
+      return {
+        id: String(device?.id || device?.draftId || device?.draft_id || `install-${index + 1}`),
+        inputMode: String(device?.inputMode || device?.input_mode || '').trim() === 'existing' || deviceId ? 'existing' : 'manual',
+        deviceId,
+        name,
+        model,
+        pn,
+        serialNo,
+        remark,
+        hasPayload: Boolean(deviceId || name || model || pn || serialNo || remark),
+        fromLegacy: false,
+      }
+    })
+    .filter((device) => device.hasPayload)
+
+  if (hasExplicitInstallDevices || normalized.length) return normalized
+
+  const legacyId = Number(legacyDevice.deviceId || 0) || null
+  const legacy = {
+    id: '__legacy_install_device__',
+    inputMode: legacyId ? 'existing' : 'manual',
+    deviceId: legacyId,
+    name: String(legacyDevice.deviceName || '').trim(),
+    model: String(legacyDevice.deviceModel || '').trim(),
+    pn: String(legacyDevice.devicePn || '').trim(),
+    serialNo: String(legacyDevice.deviceSerialNo || '').trim(),
+    remark: String(legacyDevice.deviceRemark || '').trim(),
+    fromLegacy: true,
+  }
+  legacy.hasPayload = Boolean(legacy.deviceId || legacy.name || legacy.model || legacy.pn || legacy.serialNo || legacy.remark)
+  return legacy.hasPayload ? [legacy] : []
+}
+
+async function resolveInstallDevices(connection, installDevices, { customerId, serviceOrderId = null, updateLegacyExisting = false } = {}) {
+  const installDeviceIdMap = new Map()
+  const createdDeviceIds = []
+  const resolvedDevices = []
+
+  for (const device of installDevices) {
+    if (device.deviceId) {
+      await assertDeviceBelongsToCustomer(connection, device.deviceId, customerId)
+      if (updateLegacyExisting && device.fromLegacy && (device.name || device.model || device.pn || device.serialNo || device.remark)) {
+        if (!device.model) throw badRequest('安装设备型号不能为空')
+        await connection.execute(
+          `UPDATE devices
+           SET name = :deviceName,
+               model = :deviceModel,
+               pn = :devicePn,
+               serial_no = :deviceSerialNo,
+               remark = :deviceRemark
+           WHERE id = :deviceId`,
+          {
+            deviceId: device.deviceId,
+            deviceName: device.name || null,
+            deviceModel: device.model || null,
+            devicePn: device.pn || null,
+            deviceSerialNo: device.serialNo || null,
+            deviceRemark: device.remark || null,
+          },
+        )
+      }
+      installDeviceIdMap.set(device.id, device.deviceId)
+      resolvedDevices.push({ ...device, resolvedDeviceId: device.deviceId, created: false })
+      continue
+    }
+
+    if (!device.model) {
+      throw badRequest('安装设备型号不能为空')
+    }
+    const [deviceResult] = await connection.execute(
+      `INSERT INTO devices (
+         customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
+       )
+       VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none', :serviceOrderId)`,
+      {
+        customerId,
+        deviceName: device.name || null,
+        deviceModel: device.model,
+        devicePn: device.pn || null,
+        deviceSerialNo: device.serialNo || null,
+        deviceRemark: device.remark || null,
+        serviceOrderId,
+      },
+    )
+    const resolvedDeviceId = deviceResult.insertId
+    installDeviceIdMap.set(device.id, resolvedDeviceId)
+    createdDeviceIds.push(resolvedDeviceId)
+    resolvedDevices.push({ ...device, resolvedDeviceId, created: true })
+  }
+
+  return {
+    installDeviceIdMap,
+    createdDeviceIds,
+    resolvedDevices,
+    primaryDeviceId: resolvedDevices[0]?.resolvedDeviceId || null,
+  }
+}
+
+async function markInstallDevicesSource(connection, deviceIds, serviceOrderId) {
+  for (const deviceId of deviceIds) {
+    await connection.execute(
+      `UPDATE devices
+       SET installation_source_service_order_id = COALESCE(installation_source_service_order_id, :serviceOrderId)
+       WHERE id = :deviceId`,
+      { deviceId, serviceOrderId },
+    )
+  }
+}
+
+function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fallbackDeviceId = null, installDeviceIdMap = new Map() } = {}) {
   if (!Array.isArray(parts)) return []
   return parts
     .map((part) => {
       const partName = String(part?.partName || part?.part_name || '').trim()
       if (!partName) return null
-      const deviceId = Number(part?.deviceId || part?.device_id || fallbackDeviceId || 0) || null
+      const installDeviceDraftId = String(part?.installDeviceDraftId || part?.install_device_draft_id || '').trim()
+      const mappedInstallDeviceId = installDeviceDraftId ? installDeviceIdMap.get(installDeviceDraftId) : null
+      const deviceId = Number(part?.deviceId || part?.device_id || mappedInstallDeviceId || (!installDeviceDraftId ? fallbackDeviceId : null) || 0) || null
       return {
         deviceId,
         actionType: normalizePartActionType(part?.actionType || part?.action_type, fallbackActionType),
@@ -1806,9 +1928,9 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
     .filter(Boolean)
 }
 
-async function saveServiceParts(connection, orderId, parts, { customerId, fallbackActionType = 'general', fallbackDeviceId = null } = {}) {
+async function saveServiceParts(connection, orderId, parts, { customerId, fallbackActionType = 'general', fallbackDeviceId = null, installDeviceIdMap = new Map() } = {}) {
   await ensureServicePartsColumns(connection)
-  const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId })
+  const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId, installDeviceIdMap })
   for (const part of normalizedParts) {
     if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
       throw badRequest('请选择备件或硬件部件关联设备')
@@ -1995,6 +2117,7 @@ async function createSelfReport(req, res) {
     customerSignatureFileId,
     customerSignatureMode,
     engineerIds = [],
+    installDevices = [],
     parts = [],
   } = req.body || {}
 
@@ -2132,32 +2255,17 @@ async function createSelfReport(req, res) {
     }
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
-    let effectiveDeviceId = Number(deviceId || 0) || null
-    if (effectiveDeviceId) {
+    const normalizedInstallDevices = shouldManageInstallDevice
+      ? normalizeInstallDevicesPayload(installDevices, { deviceId, deviceName, deviceModel, devicePn, deviceSerialNo, deviceRemark })
+      : []
+    const installDeviceResolution = shouldManageInstallDevice
+      ? await resolveInstallDevices(connection, normalizedInstallDevices, { customerId: effectiveCustomerId })
+      : { installDeviceIdMap: new Map(), createdDeviceIds: [], primaryDeviceId: null }
+    let effectiveDeviceId = shouldManageInstallDevice
+      ? installDeviceResolution.primaryDeviceId
+      : Number(deviceId || 0) || null
+    if (effectiveDeviceId && !shouldManageInstallDevice) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
-    }
-    const hasInstallDeviceFields = shouldManageInstallDevice
-      && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
-    const effectiveDeviceName = String(deviceName || '').trim() || null
-    const effectiveDeviceModel = String(deviceModel || '').trim() || null
-    const hasInstallDevicePayload = Boolean(effectiveDeviceName) || hasInstallDeviceFields
-    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
-      throw badRequest('安装设备型号不能为空')
-    }
-    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload) {
-      const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark, maintenance_type)
-         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none')`,
-        {
-          customerId: effectiveCustomerId,
-          deviceName: effectiveDeviceName,
-          deviceModel: effectiveDeviceModel,
-          devicePn: devicePn || null,
-          deviceSerialNo: deviceSerialNo || null,
-          deviceRemark: deviceRemark || null,
-        },
-      )
-      effectiveDeviceId = deviceResult.insertId
     }
 
     const now = new Date()
@@ -2203,16 +2311,8 @@ async function createSelfReport(req, res) {
       },
     )
 
-    if (shouldManageInstallDevice && !deviceId && effectiveDeviceId) {
-      await connection.execute(
-        `UPDATE devices
-         SET installation_source_service_order_id = COALESCE(installation_source_service_order_id, :serviceOrderId)
-         WHERE id = :deviceId`,
-        {
-          deviceId: effectiveDeviceId,
-          serviceOrderId: orderResult.insertId,
-        },
-      )
+    if (shouldManageInstallDevice && installDeviceResolution.createdDeviceIds.length) {
+      await markInstallDevicesSource(connection, installDeviceResolution.createdDeviceIds, orderResult.insertId)
     }
 
     await replaceOrderEngineers(connection, orderResult.insertId, normalizeEngineerIds(engineerIds, req.user.id), req.user.id)
@@ -2255,6 +2355,7 @@ async function createSelfReport(req, res) {
       customerId: effectiveCustomerId,
       fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
       fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
+      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
     })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
@@ -2912,6 +3013,7 @@ async function updateSelfReport(req, res) {
     customerSignatureFileId,
     customerSignatureMode,
     engineerIds = [],
+    installDevices = [],
     parts = [],
   } = req.body || {}
 
@@ -3115,58 +3217,28 @@ async function updateSelfReport(req, res) {
       : null)
 
     const shouldManageInstallDevice = effectiveServiceMode === 'onsite' && serviceType === 'install'
-    let effectiveDeviceId = shouldManageInstallDevice
-      ? (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
-      : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
-    if (effectiveDeviceId) {
-      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
-    }
-    const hasInstallDeviceFields = shouldManageInstallDevice
-      && [deviceModel, devicePn, deviceSerialNo, deviceRemark].some((value) => String(value || '').trim())
-    const effectiveDeviceName = String(deviceName || '').trim() || null
-    const effectiveDeviceModel = String(deviceModel || '').trim() || null
-    const hasInstallDevicePayload = Boolean(effectiveDeviceName) || hasInstallDeviceFields
-    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
-      throw badRequest('安装设备型号不能为空')
-    }
-    if (shouldManageInstallDevice && effectiveDeviceId && hasInstallDevicePayload && !effectiveDeviceModel) {
-      throw badRequest('安装设备型号不能为空')
-    }
-    if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload) {
-      const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (
-           customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
-         )
-         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none', :serviceOrderId)`,
-        {
+    const normalizedInstallDevices = shouldManageInstallDevice
+      ? normalizeInstallDevicesPayload(installDevices, {
+          deviceId: hasDeviceIdField ? deviceId : order.device_id,
+          deviceName,
+          deviceModel,
+          devicePn,
+          deviceSerialNo,
+          deviceRemark,
+        })
+      : []
+    const installDeviceResolution = shouldManageInstallDevice
+      ? await resolveInstallDevices(connection, normalizedInstallDevices, {
           customerId: effectiveCustomerId,
-          deviceName: effectiveDeviceName,
-          deviceModel: effectiveDeviceModel,
-          devicePn: devicePn || null,
-          deviceSerialNo: deviceSerialNo || null,
-          deviceRemark: deviceRemark || null,
           serviceOrderId: req.params.id,
-        },
-      )
-      effectiveDeviceId = deviceResult.insertId
-    } else if (shouldManageInstallDevice && effectiveDeviceId && hasInstallDevicePayload) {
-      await connection.execute(
-        `UPDATE devices
-         SET name = :deviceName,
-             model = :deviceModel,
-             pn = :devicePn,
-             serial_no = :deviceSerialNo,
-             remark = :deviceRemark
-         WHERE id = :deviceId`,
-        {
-          deviceId: effectiveDeviceId,
-          deviceName: effectiveDeviceName,
-          deviceModel: effectiveDeviceModel,
-          devicePn: devicePn || null,
-          deviceSerialNo: deviceSerialNo || null,
-          deviceRemark: deviceRemark || null,
-        },
-      )
+          updateLegacyExisting: true,
+        })
+      : { installDeviceIdMap: new Map(), primaryDeviceId: null }
+    let effectiveDeviceId = shouldManageInstallDevice
+      ? installDeviceResolution.primaryDeviceId
+      : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
+    if (effectiveDeviceId && !shouldManageInstallDevice) {
+      await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
 
     await connection.execute(
@@ -3265,6 +3337,7 @@ async function updateSelfReport(req, res) {
       customerId: effectiveCustomerId,
       fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
       fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
+      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
     })
 
     if (effectiveServiceMode !== 'office') {
