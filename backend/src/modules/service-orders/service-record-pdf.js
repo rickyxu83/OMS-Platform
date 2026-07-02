@@ -76,6 +76,34 @@ function serviceMode(item) {
   return String(item.serviceMode || item.service_mode || 'onsite').trim() || 'onsite'
 }
 
+function normalizeServiceModules(value, mode = 'onsite') {
+  const allowed = mode === 'remote'
+    ? new Set(['repair', 'replacement'])
+    : mode === 'onsite'
+      ? new Set(['repair', 'install', 'inspect', 'replacement'])
+      : new Set()
+  let modules = Array.isArray(value) ? value : []
+  if (!modules.length && typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value)
+      modules = Array.isArray(parsed) ? parsed : []
+    } catch {
+      modules = []
+    }
+  }
+  return [...new Set(modules.map((item) => String(item || '').trim()).filter((item) => allowed.has(item)))]
+}
+
+function serviceModuleLabels(item = {}) {
+  const mode = serviceMode(item)
+  const rawModules = item.serviceModules || item.service_modules || []
+  const modules = normalizeServiceModules(rawModules, mode)
+  const labels = mode === 'remote'
+    ? { repair: '远程技术支持', replacement: '备件更换远程协助' }
+    : { repair: '故障排查', install: '安装', inspect: '巡检', replacement: '备件更换' }
+  return modules.map((module) => labels[module]).filter(Boolean)
+}
+
 function isRemoteSheet(item) {
   return serviceMode(item) === 'remote'
 }
@@ -221,13 +249,15 @@ function servicePartHasContent(part = {}) {
 
 function serviceItemsContent(item = {}) {
   const mode = serviceMode(item)
-  const labels = []
-  if (mode === 'office') {
-    labels.push(officeCategoryDisplay(item) || '内勤')
-  } else if (mode === 'remote') {
-    labels.push(remoteCategoryLabel(item.timesheetCategory || item.timesheet_category) || '远程')
-  } else {
-    labels.push(serviceTypeLabel(item.serviceType || item.service_type) || '现场')
+  const labels = serviceModuleLabels(item)
+  if (!labels.length) {
+    if (mode === 'office') {
+      labels.push(officeCategoryDisplay(item) || '内勤')
+    } else if (mode === 'remote') {
+      labels.push(remoteCategoryLabel(item.timesheetCategory || item.timesheet_category) || '远程')
+    } else {
+      labels.push(serviceTypeLabel(item.serviceType || item.service_type) || '现场')
+    }
   }
 
   const parts = Array.isArray(item.parts) ? item.parts.filter(servicePartHasContent) : []

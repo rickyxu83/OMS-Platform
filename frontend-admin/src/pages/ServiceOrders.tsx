@@ -44,6 +44,7 @@ interface ServiceOrder {
   contactPhone?: string;
   deviceName?: string;
   serviceType?: string;
+  serviceModules?: string[];
   serviceMode?: string;
   timesheetCategory?: string;
   timesheetSalesperson?: string;

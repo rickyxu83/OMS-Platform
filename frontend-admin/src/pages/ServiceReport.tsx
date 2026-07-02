@@ -89,6 +89,7 @@ interface ServiceOrder {
   deviceRemark?: string;
   serviceMode?: ServiceMode | string;
   serviceType?: string;
+  serviceModules?: ServiceModuleId[];
   timesheetCategory?: string;
   timesheetSalesperson?: string;
   priority?: string;
@@ -1023,6 +1024,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     deviceRemark: order.deviceRemark || "",
     serviceModules: normalizeServiceModules({
       serviceMode: mode,
+      serviceModules: order.serviceModules,
       serviceType: order.serviceType || "repair",
       timesheetCategory: order.timesheetCategory || "",
       parts: (order.parts || []).map((part) => ({
@@ -2834,6 +2836,7 @@ export function ServiceReport() {
       })),
       serviceMode: form.serviceMode,
       serviceType: isOnsite ? payloadServiceType : "other",
+      serviceModules: payloadModules,
       timesheetCategory: isOnsite ? null : payloadTimesheetCategory.trim(),
       timesheetSalesperson: form.timesheetSalesperson.trim(),
       priority: form.priority,
@@ -2905,6 +2908,13 @@ export function ServiceReport() {
       return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
     });
     if (invalidPart) missing.push("备件或硬件部件明细（关联设备、名称、数量）");
+    if (selectedServiceModules.includes("replacement")) {
+      const hasReplacementPart = activeParts().some((part) => {
+        const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
+        return action === "replacement" && part.partName.trim() && Number(part.quantity || 0) > 0;
+      });
+      if (!hasReplacementPart) missing.push("备件更换明细");
+    }
     if (!form.issueDescription.trim()) missing.push(issueFieldLabel);
     if (!form.workContent.trim()) missing.push(workContentLabel);
     if (!isOffice && !form.result) missing.push(isOnsite ? "服务结果" : "处理结果");

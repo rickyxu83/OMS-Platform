@@ -55,7 +55,7 @@ const orderColumns = `
   so.contact_name AS order_contact_name, so.contact_phone AS order_contact_phone,
   so.device_id,
   ${deviceDisplaySql('d')} AS device_name,
-  so.service_mode, so.service_type, so.timesheet_category, so.timesheet_salesperson,
+  so.service_mode, so.service_type, so.service_modules, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
   u.real_name AS engineer_name, so.inspection_schedule_id, so.inspection_occurrence_date,
   so.target_engineer_id, target_u.real_name AS target_engineer_name, target_u.username AS target_engineer_username,
@@ -68,6 +68,8 @@ const orderColumns = `
 const broadListRoles = new Set(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor'])
 const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
 const businessRoles = new Set(['sales', 'sales_supervisor'])
+const ONSITE_SERVICE_MODULES = new Set(['repair', 'install', 'inspect', 'replacement'])
+const REMOTE_SERVICE_MODULES = new Set(['repair', 'replacement'])
 
 function isBusinessRole(user) {
   return businessRoles.has(user?.role)
@@ -184,6 +186,7 @@ function orderPayload(row, viewer = null) {
   const hideDunyangSalesperson = businessViewer && isDunyangName(row.timesheet_salesperson)
   const targetEngineerName = row.target_engineer_name || row.target_engineer_username
   const report = reportPayload(row.report)
+  const serviceModules = parseStoredServiceModules(row.service_modules, row.service_mode)
   return {
     id: row.id,
     orderNo: row.order_no,
@@ -196,6 +199,7 @@ function orderPayload(row, viewer = null) {
     deviceName: row.device_name,
     serviceMode: row.service_mode || 'onsite',
     serviceType: row.service_type,
+    ...(serviceModules.length ? { serviceModules } : {}),
     timesheetCategory: row.timesheet_category,
     timesheetSalesperson: hideDunyangSalesperson ? null : row.timesheet_salesperson,
     priority: row.priority,
@@ -228,6 +232,68 @@ function orderPayload(row, viewer = null) {
   }
 }
 
+function normalizeServiceModuleList(values, serviceMode = 'onsite') {
+  const allowed = serviceMode === 'remote'
+    ? REMOTE_SERVICE_MODULES
+    : serviceMode === 'onsite'
+      ? ONSITE_SERVICE_MODULES
+      : new Set()
+  const modules = Array.isArray(values) ? values : []
+  return [...new Set(modules.map((value) => String(value || '').trim()).filter((value) => allowed.has(value)))]
+}
+
+function parseStoredServiceModules(value, serviceMode = 'onsite') {
+  if (!value) return []
+  if (Array.isArray(value)) return normalizeServiceModuleList(value, serviceMode)
+  try {
+    return normalizeServiceModuleList(JSON.parse(String(value)), serviceMode)
+  } catch {
+    return []
+  }
+}
+
+function deriveServiceModules({ serviceMode = 'onsite', serviceType = '', timesheetCategory = '', parts = [] } = {}) {
+  const mode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const modules = []
+  if (mode === 'onsite') {
+    if (serviceType === 'install') modules.push('install')
+    if (serviceType === 'inspect') modules.push('inspect')
+    if (serviceType === 'repair') modules.push('repair')
+  } else if (mode === 'remote') {
+    const category = String(timesheetCategory || serviceType || '').replace(/^远程/, '').trim()
+    if (['协调', '沟通协调'].includes(category)) modules.push('replacement')
+    else if (category) modules.push('repair')
+  }
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      const actionType = String(part?.actionType || part?.action_type || '').trim()
+      if (actionType === 'replacement') modules.push('replacement')
+      if (mode === 'onsite' && actionType === 'installation') modules.push('install')
+    }
+  }
+  return normalizeServiceModuleList(modules, mode)
+}
+
+function normalizeSubmittedServiceModules(value, context = {}) {
+  const mode = ['remote', 'office'].includes(context.serviceMode) ? context.serviceMode : 'onsite'
+  if (Array.isArray(value)) {
+    return normalizeServiceModuleList(value, mode)
+  }
+  return deriveServiceModules({ ...context, serviceMode: mode })
+}
+
+function serviceModulesJson(modules) {
+  return modules.length ? JSON.stringify(modules) : null
+}
+
+function assertReplacementModuleHasParts(modules, parts, options = {}) {
+  if (!modules.includes('replacement')) return
+  const normalizedParts = normalizeServiceParts(parts, options)
+  if (!normalizedParts.some((part) => part.actionType === 'replacement')) {
+    throw badRequest('请选择备件更换时，请至少填写一条备件明细')
+  }
+}
+
 function publicStatus(status) {
   if (status === 'pending_confirmation') return 'pending_confirmation'
   if (status === 'assigned' || status === 'rejected') return 'draft'
@@ -245,7 +311,7 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
        AND table_name = 'service_orders'
        AND column_name IN (
          'contact_name', 'contact_phone',
-         'inspection_schedule_id', 'inspection_occurrence_date', 'target_engineer_id', 'confirmed_by', 'confirmed_at'
+         'service_modules', 'inspection_schedule_id', 'inspection_occurrence_date', 'target_engineer_id', 'confirmed_by', 'confirmed_at'
        )`,
   )
   const existing = new Set(rows.map((row) => row.columnName || row.column_name))
@@ -264,6 +330,9 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
            so.contact_phone = COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone)
        WHERE so.contact_name IS NULL OR so.contact_name = '' OR so.contact_phone IS NULL OR so.contact_phone = ''`,
     )
+  }
+  if (!existing.has('service_modules')) {
+    await execute('ALTER TABLE service_orders ADD COLUMN service_modules JSON NULL AFTER service_type')
   }
   if (!existing.has('inspection_schedule_id')) {
     await execute('ALTER TABLE service_orders ADD COLUMN inspection_schedule_id BIGINT UNSIGNED NULL AFTER internal_note')
@@ -2080,6 +2149,7 @@ async function create(req, res) {
 }
 
 async function createSelfReport(req, res) {
+  await ensureServiceOrderInspectionColumns()
   const {
     customerId,
     customerName,
@@ -2100,6 +2170,7 @@ async function createSelfReport(req, res) {
     deviceRemark,
     serviceMode = 'onsite',
     serviceType = 'repair',
+    serviceModules,
     timesheetCategory,
     timesheetSalesperson,
     priority = 'normal',
@@ -2122,6 +2193,12 @@ async function createSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const normalizedServiceModules = normalizeSubmittedServiceModules(serviceModules, {
+    serviceMode: effectiveServiceMode,
+    serviceType,
+    timesheetCategory,
+    parts,
+  })
   const useElectronicCustomerSignature = effectiveServiceMode === 'onsite'
     && String(customerSignatureMode || '').trim() === 'electronic'
     && !customerSignature
@@ -2267,6 +2344,12 @@ async function createSelfReport(req, res) {
     if (effectiveDeviceId && !shouldManageInstallDevice) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
+    const partSaveOptions = {
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
+      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
+    }
+    assertReplacementModuleHasParts(normalizedServiceModules, parts, partSaveOptions)
 
     const now = new Date()
     const prefix = buildOrderNo(0, now).slice(0, 10)
@@ -2282,12 +2365,12 @@ async function createSelfReport(req, res) {
 
     const [orderResult] = await connection.execute(
       `INSERT INTO service_orders (
-         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
+         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, service_modules, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
          assigned_engineer_id, internal_note, created_by, submitted_at
        )
        VALUES (
-         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
+         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :serviceModules, :timesheetCategory, :timesheetSalesperson,
          :priority, :status, :issueDescription,
          :engineerId, :internalNote, :createdBy, :submittedAt
        )`,
@@ -2299,6 +2382,7 @@ async function createSelfReport(req, res) {
         deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
+        serviceModules: serviceModulesJson(normalizedServiceModules),
         timesheetCategory: effectiveServiceMode === 'onsite' ? null : timesheetCategory || '其他',
         timesheetSalesperson: salespersonSnapshot,
         priority,
@@ -2353,9 +2437,7 @@ async function createSelfReport(req, res) {
 
     await saveServiceParts(connection, orderResult.insertId, parts, {
       customerId: effectiveCustomerId,
-      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
-      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
-      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
+      ...partSaveOptions,
     })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
@@ -2995,6 +3077,7 @@ async function updateSelfReport(req, res) {
     deviceRemark,
     serviceMode = order.service_mode || 'onsite',
     serviceType = order.service_type,
+    serviceModules,
     timesheetCategory,
     timesheetSalesperson,
     priority = order.priority,
@@ -3018,6 +3101,12 @@ async function updateSelfReport(req, res) {
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const normalizedServiceModules = normalizeSubmittedServiceModules(serviceModules, {
+    serviceMode: effectiveServiceMode,
+    serviceType,
+    timesheetCategory,
+    parts,
+  })
   const shouldSyncCustomerProfile = effectiveServiceMode !== 'office'
   const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
   const normalizedResult = normalizeReportResult(result)
@@ -3240,6 +3329,12 @@ async function updateSelfReport(req, res) {
     if (effectiveDeviceId && !shouldManageInstallDevice) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
+    const partSaveOptions = {
+      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
+      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
+    }
+    assertReplacementModuleHasParts(normalizedServiceModules, parts, partSaveOptions)
 
     await connection.execute(
       `UPDATE service_orders
@@ -3249,6 +3344,7 @@ async function updateSelfReport(req, res) {
            device_id = :deviceId,
            service_mode = :serviceMode,
            service_type = :serviceType,
+           service_modules = :serviceModules,
            timesheet_category = :timesheetCategory,
            timesheet_salesperson = CASE
              WHEN :customerChanged THEN :timesheetSalesperson
@@ -3272,6 +3368,7 @@ async function updateSelfReport(req, res) {
         deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
+        serviceModules: serviceModulesJson(normalizedServiceModules),
         timesheetCategory: effectiveServiceMode === 'onsite' ? null : timesheetCategory || '其他',
         timesheetSalesperson: effectiveTimesheetSalesperson || null,
         customerChanged: customerChanged ? 1 : 0,
@@ -3335,9 +3432,7 @@ async function updateSelfReport(req, res) {
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await saveServiceParts(connection, req.params.id, parts, {
       customerId: effectiveCustomerId,
-      fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
-      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
-      installDeviceIdMap: installDeviceResolution.installDeviceIdMap,
+      ...partSaveOptions,
     })
 
     if (effectiveServiceMode !== 'office') {

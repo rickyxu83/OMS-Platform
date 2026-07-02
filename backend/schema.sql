@@ -133,6 +133,7 @@ CREATE TABLE service_orders (
   device_id BIGINT UNSIGNED NULL,
   service_mode ENUM('onsite', 'remote', 'office') NOT NULL DEFAULT 'onsite',
   service_type ENUM('install', 'repair', 'maintain', 'inspect', 'training', 'other') NOT NULL,
+  service_modules JSON NULL,
   timesheet_category VARCHAR(64) NULL,
   timesheet_salesperson VARCHAR(64) NULL,
   priority ENUM('low', 'normal', 'high', 'urgent') NOT NULL DEFAULT 'normal',
