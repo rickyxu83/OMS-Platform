@@ -583,7 +583,7 @@ export function Dashboard() {
         const [stats, orderRes, customerRes] = await Promise.all([
           api.get(`/service-orders/stats/overview${useOwnScope ? "?mine=1" : ""}`),
           api.get(`/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc${useOwnScope ? "&mine=1" : ""}`),
-          api.get(`/customers?pageSize=200${useOwnScope ? "&mine=1" : ""}`).catch(() => null),
+          api.get("/customers?pageSize=200").catch(() => null),
         ]);
         if (cancelled) return;
         setSummary(stats?.summary || {});
@@ -620,13 +620,13 @@ export function Dashboard() {
     Promise.all([
       canSelectReportEngineer ? api.get("/users/engineers").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
       canSelectReportSalesperson ? api.get("/users/salespeople").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
-      api.get(`/customers?pageSize=200${useOwnScope ? "&mine=1" : ""}`).catch(() => ({ items: [] })),
+      api.get("/customers?pageSize=200").catch(() => ({ items: [] })),
     ]).then(([engineerData, salespersonData, customerData]) => {
       setReportEngineers((engineerData?.items || []) as EngineerOption[]);
       setReportSalespeople((salespersonData?.items || []) as SalespersonOption[]);
       setReportCustomers((customerData?.items || []) as CustomerOption[]);
     }).catch(() => undefined);
-  }, [canSelectReportEngineer, canSelectReportSalesperson, canUseWorkSummary, useOwnScope]);
+  }, [canSelectReportEngineer, canSelectReportSalesperson, canUseWorkSummary]);
 
   const stats = [
     { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
