@@ -3089,14 +3089,14 @@ export function ServiceReport() {
 
           <div className="grid gap-3 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardHeader className="border-b bg-muted/30 px-4 py-3">
+              <CardHeader className={`${createDraft ? "border-b" : ""} bg-muted/30 px-4 py-3`}>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Save className="h-4 w-4" />
                   草稿 ({createDraft ? 1 : 0})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-3 sm:p-4">
-                {createDraft ? (
+              {createDraft ? (
+                <CardContent className="p-3 sm:p-4">
                   <div className="space-y-3">
                     <div className={`${REPORT_ORDER_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
                       <div>草稿 / 客户</div>
@@ -3218,24 +3218,22 @@ export function ServiceReport() {
                       );
                     })()}
                   </div>
-                ) : (
-                  <div className="flex min-h-[128px] items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
-                    暂无草稿
-                  </div>
-                )}
-              </CardContent>
+                </CardContent>
+              ) : null}
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className="border-b bg-muted/30 px-4 py-3">
+              <CardHeader className={`${loading || dispatchOrders.length ? "border-b" : ""} bg-muted/30 px-4 py-3`}>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ClipboardPenLine className="h-4 w-4" />
                   派单待处理 ({dispatchOrders.length})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-3 sm:p-4">
-                {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
-              </CardContent>
+              {loading || dispatchOrders.length ? (
+                <CardContent className="p-3 sm:p-4">
+                  {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
+                </CardContent>
+              ) : null}
             </Card>
 
             <Card className="overflow-hidden">
