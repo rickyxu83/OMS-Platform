@@ -46,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -376,7 +377,9 @@ const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; icon: type
   screenshot_log: { label: "截图/日志文件", icon: Upload },
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
 };
-const REPORT_ORDER_LIST_GRID = "xl:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_156px]";
+const REPORT_ORDER_LIST_GRID = "xl:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_176px]";
+const REPORT_ORDER_HEADER_CLASS = "hidden rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur xl:grid xl:items-center xl:gap-3";
+const REPORT_ORDER_STICKY_HEADER_CLASS = `${REPORT_ORDER_HEADER_CLASS} sticky top-0 z-10`;
 const FORM_SKIN = [
   "[&_[data-slot=input]]:h-[42px]",
   "[&_[data-slot=input]]:rounded-lg",
@@ -874,6 +877,11 @@ function isEditableOrder(order: ServiceOrder) {
 function canExportServiceRecord(order: ServiceOrder) {
   const status = order.workflowStatus || order.status || "";
   return ["awaiting_customer_signature", "submitted", "approved", "archived", "completed"].includes(status) || Boolean(order.report);
+}
+
+function canDeleteServiceOrder(order: ServiceOrder) {
+  const status = order.workflowStatus || order.status || "";
+  return ["draft", "assigned", "rejected"].includes(status);
 }
 
 function safeFilenamePart(value?: string | number | null) {
@@ -1500,6 +1508,8 @@ export function ServiceReport() {
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
   const [exportingOrderId, setExportingOrderId] = useState<string | number | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | number | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState(false);
   const [customerDevices, setCustomerDevices] = useState<DeviceOption[]>([]);
   const [loadingCustomerDevices, setLoadingCustomerDevices] = useState(false);
   const [savingTargetDevice, setSavingTargetDevice] = useState(false);
@@ -2522,6 +2532,41 @@ export function ServiceReport() {
     }
   }
 
+  async function deleteServiceOrder(order: ServiceOrder) {
+    if (!canDeleteServiceOrder(order) || deletingOrderId) return;
+    const displayId = reportOrderDisplayId(order);
+    if (!window.confirm(`确认删除 ${displayId}？此操作会删除相关报告、配件、附件和草稿。`)) return;
+    setDeletingOrderId(order.id);
+    setError("");
+    try {
+      await api.delete(`/service-orders/${order.id}?mine=1`);
+      setOrders((current) => current.filter((item) => String(item.id) !== String(order.id)));
+      setPreviewOrder((current) => (current && String(current.id) === String(order.id) ? null : current));
+      toast.success("工单已删除");
+      await loadHome();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "工单删除失败");
+    } finally {
+      setDeletingOrderId(null);
+    }
+  }
+
+  async function deleteCreateDraft() {
+    if (!createDraft || deletingDraft) return;
+    if (!window.confirm("确认删除当前草稿？")) return;
+    setDeletingDraft(true);
+    setError("");
+    try {
+      await api.delete("/service-orders/draft/self-report");
+      setCreateDraft(null);
+      toast.success("草稿已删除");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "草稿删除失败");
+    } finally {
+      setDeletingDraft(false);
+    }
+  }
+
   function localFilesForPurpose(purpose: AttachmentPurpose) {
     if (purpose === "inspection_document") return inspectionFiles;
     if (purpose === "support_config") return supportConfigFiles;
@@ -2883,7 +2928,7 @@ export function ServiceReport() {
               <CardContent className="p-3 sm:p-4">
                 {createDraft ? (
                   <div className="space-y-3">
-                    <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
+                    <div className={`${REPORT_ORDER_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
                       <div>草稿 / 客户</div>
                       <div>服务事项</div>
                       <div>服务内容</div>
@@ -2983,6 +3028,20 @@ export function ServiceReport() {
                                 <PenLine className="h-4 w-4" />
                                 继续
                               </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive"
+                                disabled={deletingDraft}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteCreateDraft();
+                                }}
+                              >
+                                {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                删除
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -3013,7 +3072,7 @@ export function ServiceReport() {
                     </div>
                   ) : visibleOrders.length ? (
                     <div className="space-y-3">
-                      <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
+                      <div className={`${REPORT_ORDER_STICKY_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
                         <div>工单编号 / 客户</div>
                         <div>服务事项</div>
                         <div>服务内容</div>
@@ -3029,6 +3088,8 @@ export function ServiceReport() {
                         const workflowStatus = order.workflowStatus || order.status || "";
                         const canExportRecord = canExportServiceRecord(order);
                         const isExportingRecord = exportingOrderId === order.id;
+                        const canDeleteRecord = canDeleteServiceOrder(order);
+                        const isDeletingRecord = deletingOrderId === order.id;
                         const serviceTime = reportOrderServiceTime(order);
                         return (
                           <div
@@ -3089,39 +3150,62 @@ export function ServiceReport() {
                               </div>
 
                               <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 min-w-[78px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
+                                      aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
+                                      title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {isExportingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                                      PDF
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                                    <DropdownMenuItem
+                                      onSelect={() => {
+                                        if (!canExportRecord || exportingOrderId) return;
+                                        downloadServiceRecordPdf(order);
+                                      }}
+                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      导出 PDF
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => {
+                                        if (!canExportRecord || exportingOrderId) return;
+                                        shareServiceRecordPdf(order);
+                                      }}
+                                      disabled={!canExportRecord || Boolean(exportingOrderId)}
+                                    >
+                                      <Share2 className="h-4 w-4" />
+                                      分享 PDF
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="sm"
-                                  className={`h-8 min-w-[72px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 ${!canExportRecord || exportingOrderId ? "cursor-not-allowed opacity-50" : ""}`}
-                                  aria-label={canExportRecord ? "导出服务记录 PDF" : "服务记录提交后可导出 PDF"}
-                                  aria-disabled={!canExportRecord || Boolean(exportingOrderId)}
-                                  title={canExportRecord ? "导出服务记录 PDF" : "服务记录提交后可导出 PDF"}
+                                  className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={!canDeleteRecord || Boolean(deletingOrderId)}
+                                  aria-label={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
+                                  title={canDeleteRecord ? "删除工单" : "当前状态不可删除"}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    if (!canExportRecord || exportingOrderId) return;
-                                    downloadServiceRecordPdf(order);
+                                    if (!canDeleteRecord || deletingOrderId) return;
+                                    deleteServiceOrder(order);
                                   }}
                                 >
-                                  {isExportingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                                  导出
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className={`h-8 min-w-[72px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 ${!canExportRecord || exportingOrderId ? "cursor-not-allowed opacity-50" : ""}`}
-                                  aria-label={canExportRecord ? "分享服务记录 PDF" : "服务记录提交后可分享 PDF"}
-                                  aria-disabled={!canExportRecord || Boolean(exportingOrderId)}
-                                  title={canExportRecord ? "分享服务记录 PDF" : "服务记录提交后可分享 PDF"}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    if (!canExportRecord || exportingOrderId) return;
-                                    shareServiceRecordPdf(order);
-                                  }}
-                                >
-                                  <Share2 className="h-4 w-4" />
-                                  分享
+                                  {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  删除
                                 </Button>
                               </div>
                             </div>

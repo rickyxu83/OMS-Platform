@@ -37,6 +37,6 @@ router.post('/:id/cancel', requirePermission('order.engineer.own'), controller.c
 router.post('/:id/customer-signature-requests', requirePermission('order.engineer.own', 'order.view'), controller.createCustomerSignatureRequest)
 router.put('/:id/self-report', requirePermission('order.engineer.own'), controller.updateSelfReport)
 router.put('/:id', requirePermission('order.edit'), controller.update)
-router.delete('/:id', requirePermission('order.delete'), controller.remove)
+router.delete('/:id', requirePermission('order.engineer.own', 'order.delete'), controller.remove)
 
 module.exports = router
