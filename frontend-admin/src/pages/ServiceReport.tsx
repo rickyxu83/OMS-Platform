@@ -1442,8 +1442,6 @@ export function ServiceReport() {
   const hasServiceModule = (module: ServiceModuleId) => selectedServiceModules.includes(module);
   const isInstall = isOnsite && hasServiceModule("install");
   const isInspection = isOnsite && (hasServiceModule("inspect") || currentOrder?.serviceType === "inspect");
-  const currentServiceItemsLabel = serviceItemsLabel(form);
-  const currentServiceItemLabels = serviceItemLabels(form);
   const moduleOptions = isOnsite ? ONSITE_SERVICE_MODULE_OPTIONS : isRemote ? REMOTE_SERVICE_MODULE_OPTIONS : [];
   const selectedCustomer = useMemo(() => (
     customers.find((customer) => String(customer.id) === form.customerId)
@@ -1494,9 +1492,6 @@ export function ServiceReport() {
   const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasReplacementModule;
   const showPartsModule = hasReplacementModule || hasHardwareInstallDetails || generalParts.length > 0;
   const activeInstallDevices = useMemo(() => form.installDevices.filter(installDeviceHasContent), [form.installDevices]);
-  const currentModuleLabels = selectedServiceModules.map(serviceModuleLabel);
-  const serviceSummaryLabel = currentModuleLabels.length ? currentModuleLabels.join(" + ") : isOffice ? currentServiceItemsLabel : "未选择服务模块";
-  const primaryServiceLabel = currentModuleLabels[0] || currentServiceItemLabels[0] || serviceCategoryText(form);
   const detailCounters = [
     replacementParts.length ? `备件更换 ${replacementParts.length}` : "",
     installationParts.length ? `硬件部件安装 ${installationParts.length}` : "",
@@ -3195,47 +3190,6 @@ export function ServiceReport() {
                     })}
                   </div>
                 ) : null}
-
-                <div className="rounded-lg border bg-muted/20 p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0">
-	                      <div className="text-xs font-medium text-muted-foreground">{isOffice ? "内勤工作事项" : "已选服务模块"}</div>
-                      <div className="mt-1 text-base font-semibold text-foreground">{serviceSummaryLabel}</div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {isOffice || currentModuleLabels.length ? (
-                          (currentModuleLabels.length ? currentModuleLabels : currentServiceItemLabels).map((label) => (
-                            <Badge key={label} variant={label === primaryServiceLabel ? "outline" : "purple"}>{label}</Badge>
-                          ))
-                        ) : (
-	                          <Badge variant="outline">未选择模块</Badge>
-                        )}
-                      </div>
-                    </div>
-                    {!isOffice ? (
-                    <div className="flex flex-wrap gap-1.5 md:justify-end">
-                      {detailCounters.length ? detailCounters.map((item) => (
-                        <Badge key={item} variant="secondary">{item}</Badge>
-	                      )) : <Badge variant="outline">暂无明细</Badge>}
-                    </div>
-                    ) : null}
-                  </div>
-                  {showAssetSection ? (
-                    <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-                      {(hasReplacementModule || isRepairModule || isRemoteSupportModule) ? (
-                        <Button type="button" variant="outline" size="sm" onClick={() => addPartAction("replacement")}>
-                          <Package className="h-4 w-4" />
-                          新增备件更换
-                        </Button>
-                      ) : null}
-                      {isInstall ? (
-                        <Button type="button" variant="outline" size="sm" onClick={() => addPartAction("installation")}>
-                          <Plus className="h-4 w-4" />
-                          新增硬件部件
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
 
                 <div className="grid gap-4">
                   <Field label={issueFieldLabel} required>
