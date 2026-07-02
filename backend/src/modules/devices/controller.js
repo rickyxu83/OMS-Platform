@@ -1343,7 +1343,7 @@ async function remove(req, res) {
   const scheduleCount = Number(schedules[0]?.total || 0)
   const servicePartCount = Number(serviceParts[0]?.total || 0)
   if (serviceOrderCount || scheduleCount || servicePartCount) {
-    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划、${servicePartCount} 条配件记录引用，不能删除`)
+    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划、${servicePartCount} 条部件记录引用，不能删除`)
   }
 
   await query('DELETE FROM devices WHERE id = :id', { id: req.params.id })

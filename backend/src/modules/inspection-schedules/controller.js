@@ -247,7 +247,13 @@ async function ensureInspectionOrderColumns(connection = null) {
   if (!String(statusType).includes("'pending_confirmation'")) {
     await execute(
       `ALTER TABLE service_orders MODIFY COLUMN status ENUM(
-        'draft', 'pending_confirmation', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
+        'draft', 'pending_confirmation', 'awaiting_customer_signature', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
+      ) NOT NULL DEFAULT 'draft'`,
+    )
+  } else if (!String(statusType).includes("'awaiting_customer_signature'")) {
+    await execute(
+      `ALTER TABLE service_orders MODIFY COLUMN status ENUM(
+        'draft', 'pending_confirmation', 'awaiting_customer_signature', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
       ) NOT NULL DEFAULT 'draft'`,
     )
   }

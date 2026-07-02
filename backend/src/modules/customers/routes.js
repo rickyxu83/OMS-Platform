@@ -4,7 +4,7 @@ const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
-router.get('/', requirePermission('customer.view'), controller.list)
+router.get('/', requirePermission('customer.view', 'order.engineer.own'), controller.list)
 router.post('/', requirePermission('customer.create'), controller.create)
 router.get('/:id/delete-preview', requirePermission('customer.delete'), controller.deletePreview)
 router.get('/:id', requirePermission('customer.view'), controller.detail)

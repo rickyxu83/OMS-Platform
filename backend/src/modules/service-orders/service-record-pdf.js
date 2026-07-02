@@ -96,6 +96,20 @@ function officeCategoryDisplay(item) {
   return category || '其他事项'
 }
 
+function serviceTypeLabel(value) {
+  const labels = {
+    install: '安装',
+    repair: '排障',
+    maintain: '调优',
+    inspect: '巡检',
+    training: '培训',
+    remote: '远程支持',
+    other: '其他',
+  }
+  const key = String(value || '').trim()
+  return labels[key] || key || ''
+}
+
 function engineerNames(item) {
   const names = (item.engineers || []).map((engineer) => engineer.realName || engineer.name || engineer.username).filter(Boolean)
   return names.join('、') || item.engineerName || ''
@@ -177,9 +191,54 @@ function exportWorkContent(report, item) {
 }
 
 function servicePartActionLabel(value) {
-  if (value === 'replacement') return '配件更换'
-  if (value === 'installation') return '配件安装'
-  return '配件记录'
+  if (value === 'replacement') return '备件更换'
+  if (value === 'installation') return '硬件部件安装'
+  return '部件记录'
+}
+
+function remoteCategoryLabel(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (text.startsWith('远程')) return text
+  const labels = {
+    排障: '远程排障',
+    调配: '远程调配',
+    协调: '远程协调',
+    会议: '远程会议',
+    培训: '远程培训',
+    其他: '远程其他',
+  }
+  return labels[text] || text
+}
+
+function servicePartHasContent(part = {}) {
+  return Boolean(
+    String(part.partName || part.part_name || '').trim()
+      || String(part.partNo || part.part_no || '').trim()
+      || String(part.remark || '').trim(),
+  )
+}
+
+function serviceItemsContent(item = {}) {
+  const mode = serviceMode(item)
+  const labels = []
+  if (mode === 'office') {
+    labels.push(officeCategoryDisplay(item) || '内勤')
+  } else if (mode === 'remote') {
+    labels.push(remoteCategoryLabel(item.timesheetCategory || item.timesheet_category) || '远程')
+  } else {
+    labels.push(serviceTypeLabel(item.serviceType || item.service_type) || '现场')
+  }
+
+  const parts = Array.isArray(item.parts) ? item.parts.filter(servicePartHasContent) : []
+  const actions = parts.map((part) => String(part.actionType || part.action_type || '').trim())
+  if (actions.includes('replacement')) labels.push('备件更换')
+  if (actions.includes('installation')) labels.push('硬件部件安装')
+  if (parts.some((part) => !['replacement', 'installation'].includes(String(part.actionType || part.action_type || '').trim()))) {
+    labels.push('部件记录')
+  }
+
+  return [...new Set(labels.filter(Boolean))].join(' + ') || '-'
 }
 
 function servicePartQuantity(part) {
@@ -199,7 +258,7 @@ function servicePartsContent(parts = []) {
         servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : '',
         part.remark ? String(part.remark).trim() : '',
       ].filter(Boolean)
-      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || '未命名配件'}${details.length ? `（${details.join('，')}）` : ''}`
+      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || '未命名部件'}${details.length ? `（${details.join('，')}）` : ''}`
     })
     .filter(Boolean)
     .join('\n')
@@ -342,7 +401,7 @@ function drawSheet(doc, fonts, item, logoImage) {
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
   const workContent = exportWorkContent(report, item) || '未填写处理记录'
   const partContent = servicePartsContent(item.parts)
-  const workRecord = [workContent, partContent ? `配件记录：\n${partContent}` : ''].filter(Boolean).join('\n')
+  const workRecord = [workContent, partContent ? `备件与硬件部件：\n${partContent}` : ''].filter(Boolean).join('\n')
   const titleText = remote ? '远程服务记录单' : '技术服务记录单'
   const recordLabel = remote ? '工作内容' : '服务内容'
   const resultLabel = remote ? '处理结果' : '服务结论'
@@ -404,7 +463,8 @@ function drawSheet(doc, fonts, item, logoImage) {
   cell(458, 158, 292, 102, '联系人', contactDisplay(item))
   cell(68, 204, 390, 122, 'Case号', item.orderNo || item.id || '-')
   cell(458, 204, 292, 102, '填写日期', cleanText(finishedDate, '-'))
-  cell(68, 250, 682, 122, '地址', cleanText(item.customerAddress, remote ? '远程服务未填写地址' : '-'))
+  cell(68, 250, 422, 122, '地址', cleanText(item.customerAddress, remote ? '远程服务未填写地址' : '-'))
+  cell(490, 250, 260, 102, '服务事项', serviceItemsContent(item))
 
   // 问题描述
   fillRect(doc, 68, summaryY, 682, 108, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })

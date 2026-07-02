@@ -6,7 +6,7 @@
   <a href="./README.zh-TW.md">繁體中文</a>
 </p>
 
-OMS Platform（中文名：运维智管）是一套面向现场运维、售后服务和客户资产管理的工单协同平台。当前版本采用统一登录入口，根据账号权限进入管理工作台或工程师工作台。
+OMS Platform（中文名：运维智管）是一套面向现场运维、售后服务和客户资产管理的工单协同平台。当前版本采用统一管理工作台，并在管理端提供工程师工单填写入口。
 
 ![统一登录入口](docs/screenshots/unified-login.png)
 
@@ -17,10 +17,6 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 ### 管理工作台
 
 ![管理工作台总览](docs/screenshots/admin_dashboard.png)
-
-### 工程师工作台
-
-![工程师工作台首页](docs/screenshots/engineer_main.png)
 
 ### 新建服务表
 
@@ -39,9 +35,9 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 
 ## 核心能力
 
-- **统一入口**：`frontend-admin` 提供统一登录页，登录后根据 `availableWorkspaces` 进入管理或工程师工作台。
-- **管理工作台**：工单处理、客户资产、设备资产、维护单位、巡检计划、月报、用户与审计管理。
-- **工程师工作台**：我的服务记录、客户资产查询、新建服务表、离线草稿、月报、个人资料与签名。
+- **统一入口**：`frontend-admin` 提供统一登录页和管理工作台。
+- **管理工作台**：工单处理、工单填写、客户资产、设备资产、维护单位、巡检计划、月报、用户与审计管理。
+- **工程师工单填写入口**：工程师侧填单已整合到管理端 `工单填写` 页面。
 - **服务记录闭环**：支持现场、远程、内勤记录，覆盖提交、补填、分享导出与月报统计。
 - **设备型号自动补全**：设备型号 catalog 支持多词搜索、别名归一化和 fixture 同步。
 - **多工作台权限**：工程师、工程主管、主管、管理员等角色按工作台和接口权限隔离。
@@ -53,7 +49,6 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 .
 ├── backend                         # Node.js + Express + MySQL API
 ├── frontend-admin                  # React + Vite，统一登录入口与管理工作台
-├── frontend-engineer               # Vue + Vite，工程师工作台
 ├── scripts                         # 部署与维护脚本
 │   ├── deploy.sh                   # 全量/分模块部署
 │   └── deploy-seed.sh              # 设备型号 catalog fixture 部署
@@ -65,13 +60,11 @@ OMS Platform（中文名：运维智管）是一套面向现场运维、售后�
 
 - 统一登录页：`frontend-admin/src/pages/Login.tsx`
 - 应用名称配置：`frontend-admin/src/config/app.ts`
-- 工程师端 `/login` 只负责跳转到统一入口：`frontend-engineer/src/views/LoginView.vue`
-- 工程师端统一登录 URL 推导：`frontend-engineer/src/config/app.js`
 
 常见入口：
 
 - 管理端：`https://<admin-domain>/login`
-- 工程师端：`https://<engineer-domain>/`，未登录时跳转统一登录
+- 旧工程师端路径：`/engineer/`，由管理端构建产物承接，按配置进入管理端填单流程。
 
 ## 本地启动
 
@@ -118,22 +111,6 @@ npm run dev
 
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
-VITE_ENGINEER_WORKSPACE_URL=http://127.0.0.1:5174
-```
-
-### 工程师工作台
-
-```bash
-cd frontend-engineer
-npm install
-npm run dev
-```
-
-本地环境变量示例：
-
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
-VITE_UNIFIED_LOGIN_URL=http://127.0.0.1:5173
 ```
 
 ## 构建与检查
@@ -141,14 +118,6 @@ VITE_UNIFIED_LOGIN_URL=http://127.0.0.1:5173
 ```bash
 cd backend && npm test
 cd frontend-admin && npm run build
-cd frontend-engineer && npm run build
-```
-
-工程师端服务表回归测试（需要先启动后端和预览服务）：
-
-```bash
-cd frontend-engineer
-npm run test:service-form-regression
 ```
 
 ## 部署
@@ -170,6 +139,8 @@ bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
 bash scripts/deploy.sh <profile> eng
 ```
+
+`engineer` / `eng` 部署目标仅用于保留旧 `/engineer` 静态路径，会上传管理端构建产物，不再构建独立工程师端。
 
 环境变量示例：
 

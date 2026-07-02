@@ -7,8 +7,8 @@ export const APP_VERSION = (
 )
 export const ADMIN_WORKSPACE_LABEL = "管理工作台"
 export const ADMIN_WORKSPACE_LABEL_HANT = "管理工作臺"
-export const ENGINEER_WORKSPACE_LABEL = "工程师工作台"
-export const ENGINEER_WORKSPACE_LABEL_HANT = "工程師工作臺"
+export const ENGINEER_WORKSPACE_LABEL = "工单填写"
+export const ENGINEER_WORKSPACE_LABEL_HANT = "工單填寫"
 
 export interface WorkspaceOption {
   key: "admin" | "engineer" | string
@@ -22,36 +22,21 @@ export function workspaceLabel(key: string, fallback = "") {
   return fallback || key
 }
 
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/+$/, "")
+function normalizeWorkspaceHome(home = "") {
+  const value = String(home || "").trim()
+  if (!value) return ""
+  return value.startsWith("/") ? value : `/${value}`
 }
 
-function inferEngineerWorkspaceUrl() {
-  const url = new URL(window.location.href)
-  const adminHostPrefix = (import.meta as any).env.VITE_ADMIN_HOST_PREFIX || "admin."
-  const engineerHostPrefix = (import.meta as any).env.VITE_ENGINEER_HOST_PREFIX || "eng."
-  if (adminHostPrefix && engineerHostPrefix && url.hostname.startsWith(adminHostPrefix)) {
-    url.hostname = `${engineerHostPrefix}${url.hostname.slice(adminHostPrefix.length)}`
-    url.pathname = "/"
-    url.search = ""
-    url.hash = ""
-    return url.toString()
-  }
-  return `${window.location.origin}/engineer/`
-}
-
-export function workspaceUrl(workspaceKey: string) {
-  if (workspaceKey === "admin") return "/dashboard"
-  if (workspaceKey === "engineer") {
-    const configured = (import.meta as any).env.VITE_ENGINEER_WORKSPACE_URL
-    return configured ? `${trimTrailingSlash(configured)}/` : inferEngineerWorkspaceUrl()
-  }
+export function workspaceUrl(workspaceKey: string, home = "") {
+  if (workspaceKey === "admin") return normalizeWorkspaceHome(home) || "/dashboard"
+  if (workspaceKey === "engineer") return normalizeWorkspaceHome(home) || "/service-report"
   return "/dashboard"
 }
 
-export function goToWorkspace(workspaceKey: string) {
-  const target = workspaceUrl(workspaceKey)
-  if (workspaceKey === "admin" && target.startsWith("/")) {
+export function goToWorkspace(workspaceKey: string, home = "") {
+  const target = workspaceUrl(workspaceKey, home)
+  if ((workspaceKey === "admin" || workspaceKey === "engineer") && target.startsWith("/")) {
     return target
   }
   window.location.assign(target)

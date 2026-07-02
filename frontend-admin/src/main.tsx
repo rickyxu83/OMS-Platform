@@ -5,8 +5,10 @@ import { LanguageProvider } from '@/contexts/LanguageContext'
 import App from './App'
 import './styles/index.css'
 
+const routerBasePath = new URL(import.meta.env.BASE_URL || '/', window.location.origin).pathname.replace(/\/+$/, '')
+
 createRoot(document.getElementById('root')!).render(
-  <BrowserRouter>
+  <BrowserRouter basename={routerBasePath || undefined}>
     <LanguageProvider>
       <AuthProvider>
         <App />

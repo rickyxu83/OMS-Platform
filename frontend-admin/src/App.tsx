@@ -8,6 +8,8 @@ import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })))
+const ServiceReport = lazy(() => import("@/pages/ServiceReport").then((module) => ({ default: module.ServiceReport })))
+const CustomerSignature = lazy(() => import("@/pages/CustomerSignature").then((module) => ({ default: module.CustomerSignature })))
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
 const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
 const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
@@ -21,6 +23,8 @@ const Feedback = lazy(() => import("@/pages/Feedback").then((module) => ({ defau
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
+  dashboard: ["order.view", "order.engineer.own"],
+  "service-report": ["order.engineer.own"],
   "service-orders": ["order.view"],
   "inspection-schedules": ["inspection.view"],
   customers: ["customer.view"],
@@ -31,6 +35,28 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   "audit-logs": ["audit-log.view"],
   settings: ["settings.view"],
   feedback: ["feedback.manage"],
+}
+
+const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
+  { path: "/service-report", permissions: ROUTE_ACCESS_PERMISSIONS["service-report"] },
+  { path: "/dashboard", permissions: ROUTE_ACCESS_PERMISSIONS.dashboard },
+  { path: "/service-orders", permissions: ROUTE_ACCESS_PERMISSIONS["service-orders"] },
+  { path: "/inspection-schedules", permissions: ROUTE_ACCESS_PERMISSIONS["inspection-schedules"] },
+  { path: "/customers", permissions: ROUTE_ACCESS_PERMISSIONS.customers },
+  { path: "/devices", permissions: ROUTE_ACCESS_PERMISSIONS.devices },
+  { path: "/maintenance-parties", permissions: ROUTE_ACCESS_PERMISSIONS["maintenance-parties"] },
+  { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
+  { path: "/feedback", permissions: ROUTE_ACCESS_PERMISSIONS.feedback },
+]
+
+function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
+  return ADMIN_ROUTE_FALLBACKS.find((route) => hasPermission(...route.permissions))?.path || "/login"
+}
+
+function defaultAdminPath(user: any, hasPermission: (...permissions: string[]) => boolean) {
+  if (user?.role === "engineer" && hasPermission("order.engineer.own")) return "/service-report"
+  if (hasPermission("order.view")) return "/dashboard"
+  return firstAccessibleAdminPath(hasPermission)
 }
 
 const CHUNK_RELOAD_KEY = "oms-admin:chunk-reload"
@@ -90,7 +116,7 @@ function ProtectedRoute({ children, allowPermissions }: { children: ReactNode; a
   }
 
   if (allowPermissions && user && !hasPermission(...allowPermissions)) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={firstAccessibleAdminPath(hasPermission)} replace />
   }
 
   return <>{children}</>
@@ -117,6 +143,15 @@ function ProtectedAdminPage({ children, allowPermissions }: { children: ReactNod
   )
 }
 
+function ProtectedAdminDefaultRedirect() {
+  const { user, hasPermission } = useAuth()
+  return (
+    <ProtectedRoute>
+      <Navigate to={defaultAdminPath(user, hasPermission)} replace />
+    </ProtectedRoute>
+  )
+}
+
 export default function App() {
   const { lang } = useLanguage()
   useAdminDomTextI18n(lang)
@@ -126,6 +161,22 @@ export default function App() {
       <RouteErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/customer-signature/:token"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <CustomerSignature />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/engineer/customer-signature/:token"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <CustomerSignature />
+              </Suspense>
+            }
+          />
           <Route
             path="/change-password"
             element={
@@ -138,16 +189,12 @@ export default function App() {
           />
           <Route
             path="/"
-            element={
-              <ProtectedAdminPage>
-                <Dashboard />
-              </ProtectedAdminPage>
-            }
+            element={<ProtectedAdminDefaultRedirect />}
           />
           <Route
             path="/dashboard"
             element={
-              <ProtectedAdminPage>
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.dashboard}>
                 <Dashboard />
               </ProtectedAdminPage>
             }
@@ -157,6 +204,30 @@ export default function App() {
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-orders"]}>
                 <ServiceOrders />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/service-report"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-report"]}>
+                <ServiceReport />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/service-report/new"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-report"]}>
+                <ServiceReport />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/service-report/:id"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-report"]}>
+                <ServiceReport />
               </ProtectedAdminPage>
             }
           />
@@ -232,7 +303,7 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<ProtectedAdminDefaultRedirect />} />
         </Routes>
       </RouteErrorBoundary>
       <Toaster />

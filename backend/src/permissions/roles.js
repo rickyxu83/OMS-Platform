@@ -7,6 +7,7 @@ const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'administrative_supervisor',
   'sales_supervisor',
   'sales',
+  'engineer',
 ])
 const ENGINEER_WORKSPACE_ROLES = Object.freeze(['engineer', 'engineering_supervisor'])
 const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor'])

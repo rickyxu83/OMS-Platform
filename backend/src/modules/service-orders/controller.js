@@ -1,12 +1,13 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
 const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
-const { sendAssignmentMail } = require('../../services/mail')
+const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
@@ -27,6 +28,10 @@ let serviceReportTravelColumnsReady = false
 let selfReportDraftsTableReady = false
 let serviceOrderInspectionColumnsReady = false
 let servicePartsColumnsReady = false
+let customerSignatureRequestsTableReady = false
+
+const CUSTOMER_SIGNATURE_REQUEST_TTL_DAYS = 7
+const SIGNATURE_REQUEST_ACTIVE_STATUSES = new Set(['created', 'sent'])
 
 function deviceDisplaySql(alias = 'd') {
   return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
@@ -133,7 +138,7 @@ function serviceOrderSearchClause(index) {
           OR CASE so.service_type
                WHEN 'install' THEN '安装 install'
                WHEN 'repair' THEN '排障 维修 repair'
-               WHEN 'maintain' THEN '保养 维护 maintain'
+               WHEN 'maintain' THEN '调优 保养 维护 maintain'
                WHEN 'inspect' THEN '巡检 巡检类 inspect'
                WHEN 'training' THEN '培训 training'
                WHEN 'remote' THEN '远程 远程支持 remote'
@@ -149,6 +154,7 @@ function serviceOrderSearchClause(index) {
           OR CASE so.status
                WHEN 'draft' THEN '草稿 draft'
                WHEN 'pending_confirmation' THEN '待确认 pending confirmation'
+               WHEN 'awaiting_customer_signature' THEN '待客户签署 awaiting customer signature'
                WHEN 'assigned' THEN '已派发 assigned'
                WHEN 'in_progress' THEN '进行中 in progress'
                WHEN 'submitted' THEN '已结案 submitted'
@@ -287,7 +293,13 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
   if (!String(statusType).includes("'pending_confirmation'")) {
     await execute(
       `ALTER TABLE service_orders MODIFY COLUMN status ENUM(
-        'draft', 'pending_confirmation', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
+        'draft', 'pending_confirmation', 'awaiting_customer_signature', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
+      ) NOT NULL DEFAULT 'draft'`,
+    )
+  } else if (!String(statusType).includes("'awaiting_customer_signature'")) {
+    await execute(
+      `ALTER TABLE service_orders MODIFY COLUMN status ENUM(
+        'draft', 'pending_confirmation', 'awaiting_customer_signature', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled'
       ) NOT NULL DEFAULT 'draft'`,
     )
   }
@@ -366,7 +378,7 @@ function timesheetType(serviceType, serviceMode = 'onsite') {
   const map = {
     install: ['售后服务', '安装'],
     repair: ['维护服务', '排障'],
-    maintain: ['维护服务', '保养'],
+    maintain: ['维护服务', '调优', '保养'],
     inspect: ['维护服务', '巡检'],
     training: ['售后服务', '培训'],
     other: ['维护服务', '其他'],
@@ -524,6 +536,38 @@ async function ensureServicePartsColumns(connection = null) {
 
   if (!connection) {
     servicePartsColumnsReady = true
+  }
+}
+
+async function ensureCustomerSignatureRequestsTable(connection = null) {
+  if (!connection && customerSignatureRequestsTableReady) return
+  const executor = connection || { execute: query }
+  await executor.execute(
+    `CREATE TABLE IF NOT EXISTS service_order_customer_signature_requests (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      recipient_email VARCHAR(128) NULL,
+      status ENUM('created', 'sent', 'signed', 'revoked', 'expired') NOT NULL DEFAULT 'created',
+      expires_at DATETIME NOT NULL,
+      sent_at DATETIME NULL,
+      signed_at DATETIME NULL,
+      signed_ip VARCHAR(64) NULL,
+      signed_user_agent VARCHAR(255) NULL,
+      last_error VARCHAR(255) NULL,
+      created_by BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_customer_signature_requests_token_hash (token_hash),
+      KEY idx_customer_signature_requests_order_status (service_order_id, status),
+      KEY idx_customer_signature_requests_expires (status, expires_at),
+      CONSTRAINT fk_customer_signature_requests_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+      CONSTRAINT fk_customer_signature_requests_created_by FOREIGN KEY (created_by) REFERENCES users (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  if (!connection) {
+    customerSignatureRequestsTableReady = true
   }
 }
 
@@ -761,6 +805,45 @@ function parseSignatureDataUrl(dataUrl) {
     extension: match[1] === 'image/jpeg' ? 'jpg' : 'png',
     buffer,
   }
+}
+
+function signatureRequestTokenHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex')
+}
+
+function createSignatureRequestToken() {
+  return crypto.randomBytes(32).toString('base64url')
+}
+
+function normalizeEmail(value) {
+  const email = String(value || '').trim()
+  if (!email) return ''
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw badRequest('客户邮箱格式不正确')
+  }
+  return email
+}
+
+function formatMysqlDateTime(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function resolveSignaturePublicBaseUrl(req) {
+  const configured = String(req.body?.publicBaseUrl || req.query?.publicBaseUrl || '').trim().replace(/\/+$/, '')
+  if (configured && /^https?:\/\//i.test(configured)) return configured
+  const origin = String(req.get?.('origin') || '').trim().replace(/\/+$/, '')
+  if (origin && /^https?:\/\//i.test(origin)) return origin
+  const fallbackHost = String(req.get?.('host') || '').trim()
+  if (!fallbackHost) return ''
+  const protocol = req.protocol || 'https'
+  return `${protocol}://${fallbackHost}`
+}
+
+function buildSignatureRequestUrl(req, token) {
+  const baseUrl = resolveSignaturePublicBaseUrl(req)
+  if (!baseUrl) return ''
+  return `${baseUrl}/customer-signature/${encodeURIComponent(token)}`
 }
 
 async function saveSignatureFile(connection, orderId, dataUrl, userId) {
@@ -1091,6 +1174,46 @@ async function queueSalesServiceOrderNotificationSafely(orderId) {
   }
 }
 
+async function latestCustomerSignatureRequest(orderId) {
+  await ensureCustomerSignatureRequestsTable()
+  const rows = await query(
+    `SELECT id, service_order_id, recipient_email, status, expires_at, sent_at, signed_at, last_error, created_at, updated_at
+     FROM service_order_customer_signature_requests
+     WHERE service_order_id = :orderId
+     ORDER BY id DESC
+     LIMIT 1`,
+    { orderId },
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    serviceOrderId: row.service_order_id,
+    recipientEmail: row.recipient_email,
+    status: row.status,
+    expiresAt: row.expires_at,
+    sentAt: row.sent_at,
+    signedAt: row.signed_at,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+async function markExpiredSignatureRequest(row, connection = null) {
+  if (!row || !SIGNATURE_REQUEST_ACTIVE_STATUSES.has(row.status)) return
+  const expiresAt = new Date(row.expires_at || row.expiresAt || 0).getTime()
+  if (!expiresAt || expiresAt > Date.now()) return
+  const executor = connection || { execute: query }
+  await executor.execute(
+    `UPDATE service_order_customer_signature_requests
+     SET status = 'expired'
+     WHERE id = :id AND status IN ('created', 'sent')`,
+    { id: row.id },
+  )
+  row.status = 'expired'
+}
+
 async function attachReports(rows) {
   const orderIds = rows.map((row) => Number(row.id)).filter(Boolean)
   if (!orderIds.length) return rows
@@ -1298,9 +1421,22 @@ async function statsOverview(req, res) {
   await ensureServiceOrderInspectionColumns()
   const salesScope = buildSalesCustomerScope(req.user, 'c')
   const businessVisibilityScope = buildBusinessOrderVisibilityScope(req.user, 'so', 'c')
+  const shouldScopeToEngineer = req.user.role === 'engineer' || (isMineRequest(req) && engineerScopedRoles.has(req.user.role))
+  const engineerScopeSql = shouldScopeToEngineer
+    ? `AND (
+        so.assigned_engineer_id = :statsEngineerId
+        OR EXISTS (
+          SELECT 1
+          FROM service_order_engineers soe_scope
+          WHERE soe_scope.service_order_id = so.id AND soe_scope.engineer_id = :statsEngineerId
+        )
+      )`
+    : ''
+  const engineerVisitsScopeSql = shouldScopeToEngineer ? 'AND soe.engineer_id = :statsEngineerId' : ''
   const visibilityParams = {
     ...salesScope.params,
     ...businessVisibilityScope.params,
+    ...(shouldScopeToEngineer ? { statsEngineerId: req.user.id } : {}),
   }
 
   const [summaryRows, trendRows, recentRows] = await Promise.all([
@@ -1314,11 +1450,12 @@ async function statsOverview(req, res) {
          END) AS monthCustomers
        FROM service_orders so
        JOIN customers c ON c.id = so.customer_id
-       WHERE 1 = 1
-       ${salesScope.sql}
-       ${businessVisibilityScope.sql}`,
-      visibilityParams,
-    ),
+	       WHERE 1 = 1
+	       ${salesScope.sql}
+	       ${businessVisibilityScope.sql}
+	       ${engineerScopeSql}`,
+	      visibilityParams,
+	    ),
     query(
       `SELECT DATE(COALESCE(so.submitted_at, so.created_at)) AS service_date, COUNT(*) AS total
        FROM service_orders so
@@ -1326,6 +1463,7 @@ async function statsOverview(req, res) {
        WHERE DATE(COALESCE(so.submitted_at, so.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
        ${salesScope.sql}
        ${businessVisibilityScope.sql}
+       ${engineerScopeSql}
        GROUP BY service_date
        ORDER BY service_date ASC`,
       visibilityParams,
@@ -1341,6 +1479,7 @@ async function statsOverview(req, res) {
        WHERE 1 = 1
        ${salesScope.sql}
        ${businessVisibilityScope.sql}
+       ${engineerScopeSql}
        ORDER BY so.id DESC
        LIMIT 8`,
       visibilityParams,
@@ -1354,7 +1493,8 @@ async function statsOverview(req, res) {
      JOIN customers c ON c.id = so.customer_id
      WHERE DATE_FORMAT(COALESCE(so.submitted_at, so.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
      ${salesScope.sql}
-     ${businessVisibilityScope.sql}`,
+     ${businessVisibilityScope.sql}
+     ${engineerVisitsScopeSql}`,
     visibilityParams,
   )
 
@@ -1671,7 +1811,7 @@ async function saveServiceParts(connection, orderId, parts, { customerId, fallba
   const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId })
   for (const part of normalizedParts) {
     if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
-      throw badRequest('请选择配件关联设备')
+      throw badRequest('请选择备件或硬件部件关联设备')
     }
     if (part.deviceId) {
       await assertDeviceBelongsToCustomer(connection, part.deviceId, customerId)
@@ -1853,11 +1993,16 @@ async function createSelfReport(req, res) {
     resultDescription,
     customerSignature,
     customerSignatureFileId,
+    customerSignatureMode,
     engineerIds = [],
     parts = [],
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
+  const useElectronicCustomerSignature = effectiveServiceMode === 'onsite'
+    && String(customerSignatureMode || '').trim() === 'electronic'
+    && !customerSignature
+    && !customerSignatureFileId
   const shouldSyncCustomerProfile = effectiveServiceMode !== 'office'
   const customerProfileContactName = shouldSyncCustomerProfile ? contactName : null
   const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
@@ -1874,7 +2019,7 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
-  if (effectiveServiceMode === 'onsite' && !customerSignature && !customerSignatureFileId) missing.push('客户手写签名')
+  if (effectiveServiceMode === 'onsite' && !useElectronicCustomerSignature && !customerSignature && !customerSignatureFileId) missing.push('客户手写签名')
 
   if (missing.length) {
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
@@ -2025,6 +2170,7 @@ async function createSelfReport(req, res) {
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
     const salespersonSnapshot = timesheetSalesperson || (await customerSalesperson(connection, effectiveCustomerId))
+    const submitStatus = useElectronicCustomerSignature ? 'awaiting_customer_signature' : 'submitted'
 
     const [orderResult] = await connection.execute(
       `INSERT INTO service_orders (
@@ -2034,8 +2180,8 @@ async function createSelfReport(req, res) {
        )
        VALUES (
          :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
-         :priority, 'submitted', :issueDescription,
-         :engineerId, :internalNote, :createdBy, CURRENT_TIMESTAMP
+         :priority, :status, :issueDescription,
+         :engineerId, :internalNote, :createdBy, :submittedAt
        )`,
       {
         orderNo,
@@ -2048,10 +2194,12 @@ async function createSelfReport(req, res) {
         timesheetCategory: effectiveServiceMode === 'onsite' ? null : timesheetCategory || '其他',
         timesheetSalesperson: salespersonSnapshot,
         priority,
+        status: submitStatus,
         issueDescription,
         engineerId: req.user.id,
         internalNote: internalNote || null,
         createdBy: req.user.id,
+        submittedAt: useElectronicCustomerSignature ? null : formatMysqlDateTime(new Date()),
       },
     )
 
@@ -2120,10 +2268,13 @@ async function createSelfReport(req, res) {
     return {
       id: orderResult.insertId,
       orderNo,
+      status: submitStatus,
     }
   })
 
-  await queueSalesServiceOrderNotificationSafely(created.id)
+  if (created.status === 'submitted') {
+    await queueSalesServiceOrderNotificationSafely(created.id)
+  }
   res.status(201).json(created)
 }
 
@@ -2178,10 +2329,12 @@ async function loadDetailItem(orderId, user, options = {}) {
      ORDER BY id ASC`,
     { id: orderId },
   )
+  const customerSignatureRequest = await latestCustomerSignatureRequest(orderId)
 
   return {
     ...orderPayload(order, user),
     report: reportPayload(report),
+    customerSignatureRequest,
     contacts: contacts.map((contact) => ({
       id: contact.id,
       customerId: contact.customer_id,
@@ -2223,6 +2376,281 @@ async function loadDetailItem(orderId, user, options = {}) {
 async function detail(req, res) {
   const item = await loadDetailItem(req.params.id, req.user, { mine: isMineRequest(req) })
   res.json({ item })
+}
+
+async function createCustomerSignatureRequest(req, res) {
+  await ensureCustomerSignatureRequestsTable()
+  const order = await getOrder(req.params.id)
+  if (!order) {
+    throw notFound('服务单不存在')
+  }
+  await assertCanViewOrder(order, req.user, { mine: isMineRequest(req) })
+  if (['approved', 'archived', 'cancelled'].includes(order.status)) {
+    throw badRequest('当前状态不允许发送客户签署请求')
+  }
+  if ((order.service_mode || 'onsite') !== 'onsite') {
+    throw badRequest('仅现场服务记录需要客户电子签字确认')
+  }
+
+  const recipientEmail = normalizeEmail(req.body?.recipientEmail)
+  const sendEmail = req.body?.sendEmail === true || req.body?.sendEmail === 'true'
+  if (sendEmail && !recipientEmail) {
+    throw badRequest('请填写客户邮箱')
+  }
+  const token = createSignatureRequestToken()
+  const tokenHash = signatureRequestTokenHash(token)
+  const expiresAt = new Date(Date.now() + CUSTOMER_SIGNATURE_REQUEST_TTL_DAYS * 24 * 60 * 60 * 1000)
+  const signUrl = buildSignatureRequestUrl(req, token)
+  if (!signUrl) {
+    throw badRequest('无法生成公开签署链接')
+  }
+
+  const created = await transaction(async (connection) => {
+    await ensureCustomerSignatureRequestsTable(connection)
+    const [reportRows] = await connection.execute(
+      `SELECT id, customer_signature_file_id, customer_signature
+       FROM service_reports
+       WHERE service_order_id = :orderId
+       LIMIT 1`,
+      { orderId: order.id },
+    )
+    const report = reportRows[0]
+    if (!report) {
+      throw badRequest('请先提交服务记录后再发送客户签署请求')
+    }
+    if (report.customer_signature_file_id || report.customer_signature) {
+      throw badRequest('该服务记录已有客户签名')
+    }
+    await connection.execute(
+      `UPDATE service_order_customer_signature_requests
+       SET status = 'revoked'
+       WHERE service_order_id = :orderId
+         AND status IN ('created', 'sent')`,
+      { orderId: order.id },
+    )
+    const [insertResult] = await connection.execute(
+      `INSERT INTO service_order_customer_signature_requests (
+         service_order_id, token_hash, recipient_email, status, expires_at, created_by
+       )
+       VALUES (:orderId, :tokenHash, :recipientEmail, 'created', :expiresAt, :createdBy)`,
+      {
+        orderId: order.id,
+        tokenHash,
+        recipientEmail: recipientEmail || null,
+        expiresAt: formatMysqlDateTime(expiresAt),
+        createdBy: req.user.id,
+      },
+    )
+    await connection.execute(
+      `UPDATE service_orders
+       SET status = CASE
+             WHEN status IN ('draft', 'assigned', 'in_progress', 'rejected', 'submitted') THEN 'awaiting_customer_signature'
+             ELSE status
+           END
+       WHERE id = :orderId`,
+      { orderId: order.id },
+    )
+    await writeAudit(connection, req.user.id, order.id, 'customer_signature_request_create', {
+      requestId: insertResult.insertId,
+      recipientEmail: recipientEmail || null,
+      sendEmail,
+      expiresAt: formatMysqlDateTime(expiresAt),
+    })
+    return { id: insertResult.insertId }
+  })
+
+  let mailResult = null
+  if (sendEmail) {
+    try {
+      const detailItem = await loadDetailItem(order.id, req.user, { mine: isMineRequest(req) })
+      mailResult = await sendCustomerSignatureRequestMail(detailItem, recipientEmail, signUrl, expiresAt)
+      if (mailResult?.sent) {
+        await query(
+          `UPDATE service_order_customer_signature_requests
+           SET status = 'sent', sent_at = CURRENT_TIMESTAMP, last_error = NULL
+           WHERE id = :id`,
+          { id: created.id },
+        )
+      } else if (mailResult?.skipped) {
+        await query(
+          `UPDATE service_order_customer_signature_requests
+           SET last_error = :lastError
+           WHERE id = :id`,
+          { id: created.id, lastError: String(mailResult.reason || 'mail_skipped').slice(0, 255) },
+        )
+      }
+    } catch (error) {
+      mailResult = { skipped: true, reason: error?.message || 'mail_send_failed' }
+      await query(
+        `UPDATE service_order_customer_signature_requests
+         SET last_error = :lastError
+         WHERE id = :id`,
+        { id: created.id, lastError: String(error?.message || 'mail_send_failed').slice(0, 255) },
+      )
+    }
+  }
+
+  res.status(201).json({
+    item: {
+      id: created.id,
+      serviceOrderId: order.id,
+      signUrl,
+      recipientEmail: recipientEmail || '',
+      status: mailResult?.sent ? 'sent' : 'created',
+      expiresAt: formatMysqlDateTime(expiresAt),
+      mail: mailResult,
+    },
+  })
+}
+
+async function customerSignatureRequestByToken(token, { connection = null, forUpdate = false } = {}) {
+  const rawToken = String(token || '').trim()
+  if (!/^[A-Za-z0-9_-]{32,160}$/.test(rawToken)) {
+    throw notFound('签署链接不存在或已失效')
+  }
+  await ensureCustomerSignatureRequestsTable(connection)
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  const [rows] = await execute(
+    `SELECT
+       csr.id, csr.service_order_id, csr.recipient_email, csr.status, csr.expires_at, csr.sent_at,
+       csr.signed_at, csr.created_by, csr.created_at, csr.updated_at,
+       so.order_no, so.service_mode, so.service_type, so.timesheet_category, so.issue_description,
+       so.contact_name, so.contact_phone, so.status AS order_status,
+       c.name AS customer_name, c.address AS customer_address,
+       ${deviceDisplaySql('d')} AS device_name,
+       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at, sr.work_content,
+       sr.result, sr.result_description, sr.customer_name AS customer_confirm_name,
+       sr.customer_signature_file_id, sr.customer_signature
+     FROM service_order_customer_signature_requests csr
+     JOIN service_orders so ON so.id = csr.service_order_id
+     JOIN customers c ON c.id = so.customer_id
+     LEFT JOIN devices d ON d.id = so.device_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     WHERE csr.token_hash = :tokenHash
+     LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
+    { tokenHash: signatureRequestTokenHash(rawToken) },
+  )
+  const row = rows[0]
+  if (!row) {
+    throw notFound('签署链接不存在或已失效')
+  }
+  await markExpiredSignatureRequest(row, connection)
+  return row
+}
+
+function publicSignatureRequestPayload(row, engineers = []) {
+  const signed = Boolean(row.signed_at || row.customer_signature_file_id || row.customer_signature || row.status === 'signed')
+  return {
+    id: row.id,
+    serviceOrderId: row.service_order_id,
+    orderNo: row.order_no,
+    customerName: row.customer_name,
+    customerAddress: row.customer_address,
+    contactName: row.contact_name || row.customer_confirm_name || '',
+    contactPhone: normalizePhoneNumber(row.contact_phone) || row.contact_phone || '',
+    deviceName: row.device_name,
+    serviceMode: row.service_mode || 'onsite',
+    serviceType: row.service_type,
+    timesheetCategory: row.timesheet_category,
+    issueDescription: row.issue_description,
+    report: {
+      departureAt: row.departure_at,
+      actualStartAt: row.actual_start_at,
+      actualEndAt: row.actual_end_at,
+      returnAt: row.return_at,
+      workContent: row.work_content,
+      result: row.result,
+      resultDescription: row.result_description,
+      customerConfirmName: row.customer_confirm_name,
+    },
+    engineers: engineers.map((engineer) => ({
+      realName: engineer.realName || engineer.username || '',
+    })).filter((engineer) => engineer.realName),
+    status: row.status,
+    signed,
+    signedAt: row.signed_at,
+    expiresAt: row.expires_at,
+  }
+}
+
+async function publicCustomerSignatureRequest(req, res) {
+  const row = await customerSignatureRequestByToken(req.params.token)
+  if (row.status === 'revoked') {
+    throw badRequest('签署链接已作废，请联系工程师重新发送')
+  }
+  if (row.status === 'expired') {
+    throw badRequest('签署链接已过期，请联系工程师重新发送')
+  }
+  const orderWithEngineers = (await attachEngineers([{ id: row.service_order_id }]))[0]
+  res.json({ item: publicSignatureRequestPayload(row, orderWithEngineers.engineers || []) })
+}
+
+async function submitCustomerSignatureRequest(req, res) {
+  const customerSignature = String(req.body?.customerSignature || '').trim()
+  const signerName = String(req.body?.signerName || '').trim()
+  if (!customerSignature) {
+    throw badRequest('请先完成客户签名')
+  }
+
+  const signed = await transaction(async (connection) => {
+    const row = await customerSignatureRequestByToken(req.params.token, { connection, forUpdate: true })
+    if (row.status === 'revoked') throw badRequest('签署链接已作废，请联系工程师重新发送')
+    if (row.status === 'expired') throw badRequest('签署链接已过期，请联系工程师重新发送')
+    if (row.status === 'signed' || row.customer_signature_file_id || row.customer_signature) {
+      throw badRequest('该服务记录已完成客户签署')
+    }
+
+    const savedSignatureFileId = await saveSignatureFile(connection, row.service_order_id, customerSignature, row.created_by)
+    if (!savedSignatureFileId) {
+      throw badRequest('客户签名格式不正确，请重新签名')
+    }
+
+    await connection.execute(
+      `UPDATE service_reports
+       SET customer_name = COALESCE(NULLIF(:signerName, ''), customer_name, :contactName),
+           customer_signature_file_id = :signatureFileId,
+           customer_signature = NULL
+       WHERE service_order_id = :orderId`,
+      {
+        orderId: row.service_order_id,
+        signerName,
+        contactName: row.contact_name || row.customer_confirm_name || null,
+        signatureFileId: savedSignatureFileId,
+      },
+    )
+    await connection.execute(
+      `UPDATE service_orders
+       SET status = CASE
+             WHEN status = 'awaiting_customer_signature' THEN 'submitted'
+             ELSE status
+           END,
+           submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP)
+       WHERE id = :orderId`,
+      { orderId: row.service_order_id },
+    )
+    await connection.execute(
+      `UPDATE service_order_customer_signature_requests
+       SET status = 'signed',
+           signed_at = CURRENT_TIMESTAMP,
+           signed_ip = :signedIp,
+           signed_user_agent = :signedUserAgent,
+           last_error = NULL
+       WHERE id = :id`,
+      {
+        id: row.id,
+        signedIp: String(req.ip || '').slice(0, 64),
+        signedUserAgent: String(req.get('user-agent') || '').slice(0, 255),
+      },
+    )
+    await writeAudit(connection, row.created_by, row.service_order_id, 'customer_signature_signed', {
+      requestId: row.id,
+      signerName: signerName || row.contact_name || row.customer_confirm_name || '',
+      source: 'public_link',
+    })
+    return { orderId: row.service_order_id }
+  })
+
+  res.json({ ok: true, serviceOrderId: signed.orderId })
 }
 
 async function exportPdf(req, res) {
@@ -2482,6 +2910,7 @@ async function updateSelfReport(req, res) {
     customerConfirmName,
     customerSignature,
     customerSignatureFileId,
+    customerSignatureMode,
     engineerIds = [],
     parts = [],
   } = req.body || {}
@@ -2500,6 +2929,11 @@ async function updateSelfReport(req, res) {
     { id: req.params.id },
   )
   const hasExistingSignature = Boolean(existingSignature[0]?.customer_signature_file_id || existingSignature[0]?.customer_signature)
+  const useElectronicCustomerSignature = effectiveServiceMode === 'onsite'
+    && !hasExistingSignature
+    && !customerSignature
+    && !customerSignatureFileId
+    && (String(customerSignatureMode || '').trim() === 'electronic' || order.status === 'awaiting_customer_signature')
   const missing = []
   if (!customerName) missing.push('客户名称')
   if (effectiveServiceMode === 'onsite' && !customerAddress) missing.push('客户地址')
@@ -2512,7 +2946,7 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
-  if (effectiveServiceMode === 'onsite' && !customerSignature && !customerSignatureFileId && !hasExistingSignature) missing.push('客户手写签名')
+  if (effectiveServiceMode === 'onsite' && !useElectronicCustomerSignature && !customerSignature && !customerSignatureFileId && !hasExistingSignature) missing.push('客户手写签名')
   const isInspectionSubmit = effectiveServiceMode === 'onsite' && (serviceType === 'inspect' || order.service_type === 'inspect')
   if (isInspectionSubmit && !(await hasInspectionDocument(req.params.id))) {
     missing.push('巡检文档')
@@ -2752,8 +3186,11 @@ async function updateSelfReport(req, res) {
            issue_description = :issueDescription,
            assigned_engineer_id = COALESCE(assigned_engineer_id, :engineerId),
            internal_note = :internalNote,
-           status = 'submitted',
-           submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP)
+           status = :status,
+           submitted_at = CASE
+             WHEN :status = 'submitted' THEN COALESCE(submitted_at, CURRENT_TIMESTAMP)
+             ELSE submitted_at
+           END
        WHERE id = :id`,
       {
         id: req.params.id,
@@ -2770,6 +3207,7 @@ async function updateSelfReport(req, res) {
         issueDescription,
         engineerId: req.user.id,
         internalNote: internalNote || null,
+        status: useElectronicCustomerSignature ? 'awaiting_customer_signature' : 'submitted',
       },
     )
 
@@ -2845,7 +3283,9 @@ async function updateSelfReport(req, res) {
     )
   })
 
-  await queueSalesServiceOrderNotificationSafely(req.params.id)
+  if (!useElectronicCustomerSignature) {
+    await queueSalesServiceOrderNotificationSafely(req.params.id)
+  }
   res.status(204).end()
 }
 
@@ -2962,7 +3402,7 @@ async function transition(req, res) {
   }
   const status = String(req.body?.status || '').trim()
   const reason = String(req.body?.reason || '').trim()
-  const allowedStatuses = new Set(['draft', 'assigned', 'in_progress', 'submitted', 'approved', 'archived', 'cancelled'])
+  const allowedStatuses = new Set(['draft', 'assigned', 'in_progress', 'awaiting_customer_signature', 'submitted', 'approved', 'archived', 'cancelled'])
   if (!allowedStatuses.has(status)) {
     throw badRequest('目标状态不正确')
   }
@@ -3111,8 +3551,10 @@ async function remove(req, res) {
   const filePathsToCleanup = await transaction(async (connection) => {
     await ensureServiceReportWorkEntriesTable(connection)
     await ensureSelfReportDraftsTable(connection)
+    await ensureCustomerSignatureRequestsTable(connection)
     await connection.execute('DELETE FROM service_report_work_entries WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute('DELETE FROM service_order_customer_signature_requests WHERE service_order_id = :id', { id: req.params.id })
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, [req.params.id])
     await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_engineers WHERE service_order_id = :id', { id: req.params.id })
@@ -3158,8 +3600,10 @@ async function bulkDelete(req, res) {
 
   const filePathsToCleanup = await transaction(async (connection) => {
     await ensureServiceReportWorkEntriesTable(connection)
+    await ensureCustomerSignatureRequestsTable(connection)
     await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${found.placeholders})`, found.params)
+    await connection.execute(`DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${found.placeholders})`, found.params)
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
@@ -3186,6 +3630,9 @@ module.exports = {
   aiSelfReportDraftStatus,
   createSelfReport,
   updateSelfReport,
+  createCustomerSignatureRequest,
+  publicCustomerSignatureRequest,
+  submitCustomerSignatureRequest,
   detail,
   exportPdf,
   exportPdfBatch,

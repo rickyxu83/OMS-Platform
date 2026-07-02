@@ -6,7 +6,7 @@
   <a href="./README.zh-TW.md">🌏 繁體中文</a>
 </p>
 
-OMS Platform, also known as 运维智管 in Chinese, is a work-order collaboration platform for field operations, after-sales service, and customer asset management. The current version provides a unified login entry and routes users to the admin workspace or engineer workspace according to account permissions.
+OMS Platform, also known as 运维智管 in Chinese, is a work-order collaboration platform for field operations, after-sales service, and customer asset management. The current version provides a unified admin workspace with a dedicated service report entry for engineers.
 
 ![Unified login](docs/screenshots/unified-login.png)
 
@@ -17,10 +17,6 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 ### Admin Workspace
 
 ![Admin dashboard](docs/screenshots/admin_dashboard.png)
-
-### Engineer Workspace
-
-![Engineer workspace home](docs/screenshots/engineer_main.png)
 
 ### New Service Sheet
 
@@ -38,9 +34,9 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 
 ## Key Features
 
-- **Unified entry**: `frontend-admin` provides the unified login page and routes users to available workspaces after login.
-- **Admin workspace**: Work-order handling, customer assets, device assets, maintenance parties, inspection plans, monthly reports, user management, and audit logs.
-- **Engineer workspace**: Personal service records, customer asset lookup, new service sheets, offline drafts, monthly reports, profile, and signature management.
+- **Unified entry**: `frontend-admin` provides the unified login page and admin workspace.
+- **Admin workspace**: Work-order handling, service report filling, customer assets, device assets, maintenance parties, inspection plans, monthly reports, user management, and audit logs.
+- **Engineer service report entry**: Engineer-facing report filling now lives in the admin workspace under `Service Report`.
 - **Closed-loop service records**: Supports on-site, remote, and internal service records, including submission, supplementation, sharing/export, and monthly statistics.
 - **Device model autocomplete**: The device model catalog supports multi-keyword search, alias normalization, and fixture synchronization.
 - **Workspace-aware permissions**: Engineers, engineering supervisors, supervisors, and admins are isolated by workspace and API permissions.
@@ -52,7 +48,6 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 .
 ├── backend                         # Node.js + Express + MySQL API
 ├── frontend-admin                  # React + Vite, unified login and admin workspace
-├── frontend-engineer               # Vue + Vite, engineer workspace
 ├── scripts                         # Deployment and maintenance scripts
 │   ├── deploy.sh                   # Full or module-level deployment
 │   └── deploy-seed.sh              # Device model catalog fixture deployment
@@ -64,13 +59,11 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 
 - Unified login page: `frontend-admin/src/pages/Login.tsx`
 - Application name configuration: `frontend-admin/src/config/app.ts`
-- Engineer `/login` only redirects to the unified entry: `frontend-engineer/src/views/LoginView.vue`
-- Engineer unified login URL inference: `frontend-engineer/src/config/app.js`
 
 Common entries:
 
 - Admin: `https://<admin-domain>/login`
-- Engineer: `https://<engineer-domain>/`, redirects to unified login when unauthenticated
+- Legacy engineer entry: `/engineer/`, served by the admin build and redirected inside the admin workspace flow where configured.
 
 ## Local Development
 
@@ -117,22 +110,6 @@ Example local environment variables:
 
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
-VITE_ENGINEER_WORKSPACE_URL=http://127.0.0.1:5174
-```
-
-### Engineer Workspace
-
-```bash
-cd frontend-engineer
-npm install
-npm run dev
-```
-
-Example local environment variables:
-
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
-VITE_UNIFIED_LOGIN_URL=http://127.0.0.1:5173
 ```
 
 ## Build and Checks
@@ -140,14 +117,6 @@ VITE_UNIFIED_LOGIN_URL=http://127.0.0.1:5173
 ```bash
 cd backend && npm test
 cd frontend-admin && npm run build
-cd frontend-engineer && npm run build
-```
-
-Engineer service form regression test, which requires the backend and preview services to be running:
-
-```bash
-cd frontend-engineer
-npm run test:service-form-regression
 ```
 
 ## Deployment
@@ -169,6 +138,8 @@ bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
 bash scripts/deploy.sh <profile> eng
 ```
+
+The `engineer` / `eng` deployment target keeps the legacy `/engineer` static path available by uploading the admin build there; it no longer builds a separate engineer frontend.
 
 Example environment variables:
 

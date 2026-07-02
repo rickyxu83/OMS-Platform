@@ -136,7 +136,7 @@ CREATE TABLE service_orders (
   timesheet_category VARCHAR(64) NULL,
   timesheet_salesperson VARCHAR(64) NULL,
   priority ENUM('low', 'normal', 'high', 'urgent') NOT NULL DEFAULT 'normal',
-  status ENUM('draft', 'pending_confirmation', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled') NOT NULL DEFAULT 'draft',
+  status ENUM('draft', 'pending_confirmation', 'awaiting_customer_signature', 'assigned', 'in_progress', 'submitted', 'rejected', 'approved', 'archived', 'cancelled') NOT NULL DEFAULT 'draft',
   issue_description TEXT NOT NULL,
   assigned_engineer_id BIGINT UNSIGNED NULL,
   planned_start_at DATETIME NULL,
@@ -266,6 +266,29 @@ CREATE TABLE service_order_sales_notifications (
   PRIMARY KEY (service_order_id),
   KEY idx_sales_notifications_due (status, due_at),
   CONSTRAINT fk_service_order_sales_notifications_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE service_order_customer_signature_requests (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  service_order_id BIGINT UNSIGNED NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  recipient_email VARCHAR(128) NULL,
+  status ENUM('created', 'sent', 'signed', 'revoked', 'expired') NOT NULL DEFAULT 'created',
+  expires_at DATETIME NOT NULL,
+  sent_at DATETIME NULL,
+  signed_at DATETIME NULL,
+  signed_ip VARCHAR(64) NULL,
+  signed_user_agent VARCHAR(255) NULL,
+  last_error VARCHAR(255) NULL,
+  created_by BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_customer_signature_requests_token_hash (token_hash),
+  KEY idx_customer_signature_requests_order_status (service_order_id, status),
+  KEY idx_customer_signature_requests_expires (status, expires_at),
+  CONSTRAINT fk_customer_signature_requests_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+  CONSTRAINT fk_customer_signature_requests_created_by FOREIGN KEY (created_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE self_report_drafts (

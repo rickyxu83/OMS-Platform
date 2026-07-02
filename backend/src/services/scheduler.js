@@ -89,7 +89,7 @@ function timesheetType(serviceType, serviceMode = 'onsite') {
   const map = {
     install: ['售后服务', '安装'],
     repair: ['维护服务', '排障'],
-    maintain: ['维护服务', '保养'],
+    maintain: ['维护服务', '调优', '保养'],
     inspect: ['维护服务', '巡检'],
     training: ['售后服务', '培训'],
     other: ['维护服务', '其他'],

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
 import {
   LayoutDashboard,
+  ClipboardPenLine,
   FileText,
   ClipboardCheck,
   Users,
@@ -96,7 +97,7 @@ const STRINGS: Record<AppLang, {
       langShort: "简体",
       switchedToCn: "已切换至简体中文",
       switchedToTw: "已切换至繁體中文",
-      switchEngineer: "工程师工作台",
+      switchEngineer: "工单填写",
       feedback: "反馈",
       feedbackTitle: "反馈",
       feedbackType: "类型",
@@ -117,6 +118,7 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "运营总览",
+      "service-report": "工单填写",
       "service-orders": "工单处理",
       "inspection-schedules": "巡检计划",
       customers: "客户档案",
@@ -155,7 +157,7 @@ const STRINGS: Record<AppLang, {
       langShort: "繁體",
       switchedToCn: "已切換至简体中文",
       switchedToTw: "已切換至繁體中文",
-      switchEngineer: "工程師工作臺",
+      switchEngineer: "工單填寫",
       feedback: "回饋",
       feedbackTitle: "回饋",
       feedbackType: "類型",
@@ -176,6 +178,7 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "運營總覽",
+      "service-report": "工單填寫",
       "service-orders": "工單處理",
       "inspection-schedules": "巡檢計畫",
       customers: "客戶檔案",
@@ -205,12 +208,13 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "workspace",
     items: [
-      { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard" },
+      { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard", requiredPermissions: ["order.view", "order.engineer.own"] },
     ],
   },
   {
     groupKey: "orders",
     items: [
+      { labelKey: "service-report", icon: ClipboardPenLine, path: "service-report", requiredPermissions: ["order.engineer.own"] },
       { labelKey: "service-orders", icon: FileText, path: "service-orders", requiredPermissions: ["order.view"] },
       { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules", requiredPermissions: ["inspection.view"] },
     ],
@@ -286,7 +290,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const previousLocationKeyRef = useRef(location.key);
   const scrollPositionsRef = useRef(new Map<string, number>());
   const currentUser = user || { name: "", role: "" };
-  const currentPage = location.pathname.replace(/^\//, "") || "dashboard";
+  const rawCurrentPage = location.pathname.replace(/^\//, "") || "dashboard";
+  const currentPage = rawCurrentPage.startsWith("service-report") ? "service-report" : rawCurrentPage;
   const [sidebarOpen, setSidebarOpen] = useState(() => (
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
@@ -304,7 +309,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
   const layoutStyle = { "--admin-sidebar-width": sidebarOpen ? "16rem" : "0px" } as CSSProperties;
-  const canSwitchEngineer = Array.isArray(user?.availableWorkspaces)
+  const canSwitchEngineer = user?.role !== "engineer"
+    && Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
 
   useLayoutEffect(() => {
@@ -392,9 +398,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )
     : allNavItems;
 
-  const mobileNavItems = allNavItems.filter((item) => (
-    ["dashboard", "service-orders", "inspection-schedules", "customers", "devices"].includes(item.path)
-  ));
+  const mobileNavPriority = user?.role === "engineer"
+    ? ["service-report", "dashboard"]
+    : ["dashboard", "service-report", "service-orders", "inspection-schedules", "customers", "devices"];
+  const mobileNavItems = mobileNavPriority
+    .map((path) => allNavItems.find((item) => item.path === path))
+    .filter(Boolean) as NavItem[];
 
   const navigateTo = (path: string) => {
     navigate(`/${path}`);
@@ -409,7 +418,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     setAnnouncementOpen(false);
     logout();
     window.setTimeout(() => {
-      window.location.replace("/login");
+      window.location.replace(`${import.meta.env.BASE_URL}login`);
     }, 0);
   };
 
@@ -678,14 +687,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main ref={contentRef} className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-20 lg:pb-0">
+        <main ref={contentRef} className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
           {children}
         </main>
 
         {mobileNavItems.length > 0 && (
-          <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-2 pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md lg:hidden">
+          <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md lg:hidden">
             <div
-              className="grid gap-1"
+              className="mx-auto grid max-w-md gap-1"
               style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
             >
               {mobileNavItems.map((item) => {
@@ -696,7 +705,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-xs font-medium transition-colors ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"

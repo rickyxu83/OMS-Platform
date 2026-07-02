@@ -27,6 +27,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -192,7 +193,7 @@ const I18N = {
       orderNo: "工单编号",
       customerName: "客户名称",
       contactName: "联系人",
-      serviceType: "服务类型",
+      serviceType: "服务事项",
       serviceMode: "服务方式",
       currentStatus: "当前状态",
       engineer: "工程师",
@@ -215,6 +216,7 @@ const I18N = {
       assigned: "已派发",
       in_progress: "进行中",
       pending_confirmation: "待确认",
+      awaiting_customer_signature: "待客户签署",
       submitted: "已结案",
       approved: "已审核",
       archived: "已归档",
@@ -224,7 +226,7 @@ const I18N = {
     type: {
       install: "安装",
       repair: "排障",
-      maintain: "保养",
+      maintain: "调优",
       inspect: "巡检",
       training: "培训",
       remote: "远程支持",
@@ -274,7 +276,7 @@ const I18N = {
       orderNo: "工單編號",
       customerName: "客戶名稱",
       contactName: "聯絡人",
-      serviceType: "服務類型",
+      serviceType: "服務事項",
       serviceMode: "服務方式",
       currentStatus: "當前狀態",
       engineer: "工程師",
@@ -297,6 +299,7 @@ const I18N = {
       assigned: "已派發",
       in_progress: "進行中",
       pending_confirmation: "待確認",
+      awaiting_customer_signature: "待客戶簽署",
       submitted: "已結案",
       approved: "已審核",
       archived: "已歸檔",
@@ -306,7 +309,7 @@ const I18N = {
     type: {
       install: "安裝",
       repair: "排障",
-      maintain: "保養",
+      maintain: "調優",
       inspect: "巡檢",
       training: "培訓",
       remote: "遠端支援",
@@ -325,6 +328,7 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "s
   assigned: "warning",
   in_progress: "purple",
   pending_confirmation: "warning",
+  awaiting_customer_signature: "warning",
   submitted: "success",
   approved: "success",
   archived: "secondary",
@@ -367,7 +371,7 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
   install: "安装 install",
   repair: "排障 维修 repair",
-  maintain: "保养 维护 maintain",
+  maintain: "调优 保养 维护 maintain",
   inspect: "巡检 巡检类 inspect",
   training: "培训 training",
   remote: "远程 远程支持 remote",
@@ -524,9 +528,7 @@ function displayReportWorkContent(order: ServiceOrder) {
 }
 
 function servicePartActionLabel(value?: string) {
-  if (value === "replacement") return "配件更换";
-  if (value === "installation") return "配件安装";
-  return "配件记录";
+  return serviceItemPartActionLabel(value);
 }
 
 function servicePartQuantity(part: ServicePart) {
@@ -546,7 +548,7 @@ function displayServiceParts(parts?: ServicePart[]) {
         servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : "",
         part.remark ? String(part.remark).trim() : "",
       ].filter(Boolean);
-      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名配件"}${details.length ? `（${details.join("，")}）` : ""}`;
+      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}${details.length ? `（${details.join("，")}）` : ""}`;
     })
     .filter(Boolean)
     .join("\n");
@@ -668,6 +670,7 @@ export function ServiceOrders() {
     { value: "draft", label: t.status.draft },
     { value: "in_progress", label: t.status.in_progress },
     { value: "pending_confirmation", label: t.status.pending_confirmation },
+    { value: "awaiting_customer_signature", label: t.status.awaiting_customer_signature },
     { value: "submitted", label: t.status.submitted },
     { value: "cancelled", label: t.status.cancelled },
   ];
@@ -771,6 +774,7 @@ export function ServiceOrders() {
         order.serviceType,
         t.type[order.serviceType as keyof typeof t.type],
         SERVICE_TYPE_SEARCH_ALIASES[order.serviceType || ""],
+        serviceItemsSearchText(order),
         order.serviceMode,
         t.mode[order.serviceMode as keyof typeof t.mode],
         SERVICE_MODE_SEARCH_ALIASES[order.serviceMode || ""],
@@ -1037,7 +1041,7 @@ export function ServiceOrders() {
         { header: "客户地址", key: "customerAddress", width: 30 },
         { header: "设备", key: "deviceName", width: 18 },
         { header: "服务方式", key: "serviceMode", width: 12 },
-        { header: "服务类型", key: "serviceType", width: 12 },
+        { header: "服务事项", key: "serviceType", width: 18 },
         { header: "优先级", key: "priority", width: 10 },
         { header: "工程师", key: "engineerName", width: 18 },
         { header: "计划开始", key: "plannedStartAt", width: 18 },
@@ -1047,7 +1051,7 @@ export function ServiceOrders() {
         { header: "更新时间", key: "updatedAt", width: 18 },
         { header: "问题描述", key: "issueDescription", width: 42 },
         { header: "处理记录", key: "workContent", width: 50 },
-        { header: "配件记录", key: "partRecords", width: 44 },
+        { header: "备件与硬件部件", key: "partRecords", width: 44 },
         { header: "内部备注", key: "internalNote", width: 28 },
       ];
 
@@ -1060,7 +1064,7 @@ export function ServiceOrders() {
           customerAddress: order.customerAddress || "",
           deviceName: order.deviceName || "",
           serviceMode: t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "",
-          serviceType: t.type[order.serviceType as keyof typeof t.type] || order.serviceType || order.timesheetCategory || "",
+          serviceType: serviceItemsLabel(order, ""),
           priority: PRIORITY_LABELS[order.priority || ""] || order.priority || "",
           engineerName: engineerText(order, ""),
           plannedStartAt: formatDateTime(order.plannedStartAt),
@@ -1501,7 +1505,7 @@ export function ServiceOrders() {
               <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
                 <div />
                 <div>Case ID / 客户</div>
-                <div>{t.detail.serviceMode}</div>
+                <div>服务事项</div>
                 <div>主要内容</div>
                 <div>工程师</div>
                 <div>服务时间</div>
@@ -1511,10 +1515,11 @@ export function ServiceOrders() {
               {filteredOrders.map((order) => {
                 const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                 const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
+                const itemsLabel = serviceItemsLabel(order);
                 const workflowStatus = getWorkflowStatus(order);
                 const serviceTime = serviceTimeRange(order);
                 const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
-                const canAssign = canAssignOrders && workflowStatus !== "cancelled" && workflowStatus !== "submitted";
+                const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
                 const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
                 return (
                   <div
@@ -1555,7 +1560,10 @@ export function ServiceOrders() {
                         </div>
 
                         <div className="min-w-0">
-                          <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+                          </div>
                         </div>
 
                         <div className="min-w-0">
@@ -1673,7 +1681,7 @@ export function ServiceOrders() {
           </DialogHeader>
           {detailOrder && (() => {
             const statusLabel = detailOrder.displayStatus || t.status[getWorkflowStatus(detailOrder) as keyof typeof t.status] || getWorkflowStatus(detailOrder) || "-";
-            const typeLabel = t.type[detailOrder.serviceType as keyof typeof t.type] || detailOrder.serviceType || "-";
+            const typeLabel = serviceItemsLabel(detailOrder);
             const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
             const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
             const serviceTime = serviceTimeRange(detailOrder);
@@ -1828,7 +1836,7 @@ export function ServiceOrders() {
                   <SelectContent>
                     <SelectItem value="install">安装</SelectItem>
                     <SelectItem value="repair">排障</SelectItem>
-                    <SelectItem value="maintain">保养</SelectItem>
+                    <SelectItem value="maintain">调优</SelectItem>
                     <SelectItem value="inspect">巡检</SelectItem>
                     <SelectItem value="training">培训</SelectItem>
                     <SelectItem value="other">其他</SelectItem>
@@ -1999,6 +2007,7 @@ export function ServiceOrders() {
                   <SelectItem value="draft">草稿</SelectItem>
                   <SelectItem value="assigned">已派发</SelectItem>
                   <SelectItem value="in_progress">进行中</SelectItem>
+                  <SelectItem value="awaiting_customer_signature">待客户签署</SelectItem>
                   <SelectItem value="submitted">已结案</SelectItem>
                   <SelectItem value="approved">已审核</SelectItem>
                   <SelectItem value="archived">已归档</SelectItem>

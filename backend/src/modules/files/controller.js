@@ -13,27 +13,37 @@ fs.mkdirSync(uploadRoot, { recursive: true })
 
 const allowedUploadExtensions = new Set([
   '.csv',
+  '.cfg',
+  '.conf',
   '.doc',
   '.docx',
   '.heic',
   '.heif',
+  '.ini',
   '.jpg',
   '.jpeg',
+  '.json',
+  '.log',
   '.pdf',
   '.png',
   '.txt',
   '.webp',
   '.xls',
   '.xlsx',
+  '.xml',
+  '.yaml',
+  '.yml',
   '.zip',
 ])
 const allowedUploadMimeTypes = new Set([
+  'application/json',
   'application/msword',
   'application/octet-stream',
   'application/pdf',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/xml',
   'application/zip',
   'image/heic',
   'image/heif',
@@ -42,6 +52,8 @@ const allowedUploadMimeTypes = new Set([
   'image/webp',
   'text/csv',
   'text/plain',
+  'text/xml',
+  'text/yaml',
 ])
 const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
 
@@ -59,7 +71,7 @@ function fileFilter(_req, file, cb) {
   const extension = path.extname(originalName || file.originalname || '').toLowerCase()
   const mimeType = String(file.mimetype || '').toLowerCase()
   if (!allowedUploadExtensions.has(extension)) {
-    cb(badRequest('附件类型不支持，请上传 PDF、Office 文档、图片、文本、CSV 或 ZIP'))
+    cb(badRequest('附件类型不支持，请上传 PDF、Office 文档、图片、文本、日志、配置文件、CSV 或 ZIP'))
     return
   }
   if (mimeType && !allowedUploadMimeTypes.has(mimeType)) {
@@ -92,7 +104,7 @@ const uploadMiddleware = multer({
 }).single('file')
 
 const orderFileOwnerTypes = new Set(['service_order', 'service_report', 'signature'])
-const filePurposes = new Set(['general', 'inspection_document'])
+const filePurposes = new Set(['general', 'inspection_document', 'support_config', 'site_photo', 'screenshot_log'])
 let filePurposeColumnReady = false
 
 async function ensureFilePurposeColumn() {
