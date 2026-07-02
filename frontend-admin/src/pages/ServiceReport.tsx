@@ -2539,27 +2539,108 @@ export function ServiceReport() {
               <CardHeader className="border-b bg-muted/30 px-4 py-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Save className="h-4 w-4" />
-                  草稿
+                  草稿 ({createDraft ? 1 : 0})
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
                 {createDraft ? (
-                  <button
-                    type="button"
-                    className="flex w-full flex-col gap-2 rounded-lg border bg-background p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 sm:flex-row sm:items-center sm:justify-between"
-                    onClick={() => navigate(`/service-report/new?mode=${normalizeMode(createDraft.serviceMode)}`)}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-foreground">{compactDraftLabel(createDraft)}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">继续编辑最近保存的新建草稿</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge variant="draft">{MODE_OPTIONS.find((mode) => mode.value === normalizeMode(createDraft.serviceMode))?.label}</Badge>
-                      <span className="text-xs font-medium text-primary">继续编辑</span>
-                    </span>
-                  </button>
+                  <div className="space-y-3">
+                    <div className={`hidden rounded-md bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center xl:gap-3`}>
+                      <div>草稿 / 客户</div>
+                      <div>服务事项</div>
+                      <div>服务内容</div>
+                      <div>工程师</div>
+                      <div>服务时间</div>
+                      <div>状态</div>
+                      <div className="text-right">操作</div>
+                    </div>
+                    {(() => {
+                      const draftMode = normalizeMode(createDraft.serviceMode);
+                      const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
+                      const draftItemsLabel = serviceItemsLabel(createDraft);
+                      const draftRoute = `/service-report/new?mode=${draftMode}`;
+                      const draftEngineerNames = createDraft.engineerIds?.length
+                        ? engineers
+                            .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
+                            .map(optionLabel)
+                            .filter(Boolean)
+                        : [];
+                      const draftEngineerText = draftEngineerNames.length
+                        ? draftEngineerNames.join("、")
+                        : user?.realName || user?.username || user?.name || "本人草稿";
+                      return (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label="继续编辑草稿"
+                          className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
+                          onClick={() => navigate(draftRoute)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return;
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              navigate(draftRoute);
+                            }
+                          }}
+                        >
+                          <div className={`grid min-w-0 gap-3 xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-foreground">最近草稿</div>
+                              <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap gap-1.5">
+                                <Badge variant={MODE_BADGE_VARIANT[draftMode] || "secondary"}>{draftModeLabel}</Badge>
+                                <Badge variant={TYPE_BADGE_VARIANT[createDraft.serviceType || ""] || "outline"}>{draftItemsLabel}</Badge>
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <span className="block truncate text-sm font-medium">{compactDraftLabel(createDraft)}</span>
+                            </div>
+
+                            <div className="min-w-0 text-sm">
+                              <span className="block truncate">{draftEngineerText}</span>
+                            </div>
+
+                            <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
+                              <div>
+                                <span className="text-muted-foreground">开始：</span>
+                                <span>{formatDateTime(createDraft.actualStartAt || createDraft.departureAt)}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">结束：</span>
+                                <span>{formatDateTime(createDraft.actualEndAt || createDraft.returnAt)}</span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <Badge variant="draft">草稿</Badge>
+                            </div>
+
+                            <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 min-w-[72px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(draftRoute);
+                                }}
+                              >
+                                <PenLine className="h-4 w-4" />
+                                继续
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  <div className="flex min-h-[128px] items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
                     暂无草稿
                   </div>
                 )}
