@@ -13,13 +13,13 @@ const ROLE_LABELS = Object.freeze({
 const ALL_ROLES = Object.keys(ROLE_LABELS)
 
 const PERMISSION_ENTRIES = Object.freeze([
-  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales']],
-  ['workspace.engineer', '工程师工作台', ['engineer', 'engineering_supervisor']],
+  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer']],
+  ['workspace.engineer', '工程师工作台', []],
   ['permission.manage', '配置角色权限', ['admin']],
   ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
   ['order.create', '创建工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.edit', '编辑工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
-  ['order.delete', '删除工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'engineer']],
+  ['order.delete', '删除工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.bulk-delete', '批量删除工单', ['admin']],
   ['order.assign', '派发工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.approve', '审批工单', ['admin', 'operations_director', 'engineering_supervisor']],

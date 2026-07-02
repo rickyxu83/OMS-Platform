@@ -13,7 +13,7 @@ function limitWhenWorkSummaryRequested(req, res, next) {
   next()
 }
 
-router.get('/stats/overview', requirePermission('order.view'), controller.statsOverview)
+router.get('/stats/overview', requirePermission('order.engineer.own', 'order.view'), controller.statsOverview)
 router.get('/timesheet/monthly', requirePermission('order.engineer.own', 'timesheet.view'), limitWhenWorkSummaryRequested, controller.timesheetMonthly)
 router.post('/timesheet/manual-entries', requirePermission('order.engineer.own'), controller.createTimesheetManualEntry)
 router.delete('/timesheet/manual-entries/:id', requirePermission('order.engineer.own'), controller.deleteTimesheetManualEntry)
@@ -34,8 +34,9 @@ router.get('/:id/export-pdf', requirePermission('order.engineer.own', 'order.vie
 router.get('/export-pdf-batch', requirePermission('order.view'), controller.exportPdfBatch)
 router.get('/:id', requirePermission('order.engineer.own', 'order.view'), controller.detail)
 router.post('/:id/cancel', requirePermission('order.engineer.own'), controller.cancelByEngineer)
+router.post('/:id/customer-signature-requests', requirePermission('order.engineer.own', 'order.view'), controller.createCustomerSignatureRequest)
 router.put('/:id/self-report', requirePermission('order.engineer.own'), controller.updateSelfReport)
 router.put('/:id', requirePermission('order.edit'), controller.update)
-router.delete('/:id', requirePermission('order.delete'), controller.remove)
+router.delete('/:id', requirePermission('order.engineer.own', 'order.delete'), controller.remove)
 
 module.exports = router

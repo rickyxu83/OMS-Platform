@@ -55,7 +55,7 @@ function serviceTypeLabel(type) {
   const labels = {
     install: '安装',
     repair: '排障',
-    maintain: '保养',
+    maintain: '调优',
     inspect: '巡检',
     training: '培训',
     remote: '远程支持',
@@ -68,6 +68,7 @@ function statusLabel(status) {
   const labels = {
     draft: '草稿',
     pending_confirmation: '待确认',
+    awaiting_customer_signature: '待客户签署',
     assigned: '已派单',
     in_progress: '处理中',
     submitted: '待审核',
@@ -777,6 +778,51 @@ async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '')
   return { sent: true, to }
 }
 
+async function sendCustomerSignatureRequestMail(order, recipientEmail, signUrl, expiresAt) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails([recipientEmail])
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const orderNo = order.order_no || order.orderNo || order.id || '-'
+  const customerName = order.customer_name || order.customerName || '-'
+  const report = order.report || {}
+  const engineers = Array.isArray(order.engineers)
+    ? order.engineers.map((engineer) => engineer.realName || engineer.real_name || engineer.username).filter(Boolean).join('、')
+    : (order.engineerName || order.engineer_name || '-')
+  const expiresAtText = expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt
+  const subject = `客户服务确认函：${orderNo} / ${customerName}`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">客户服务确认函</h2>
+      <p>工程师已提交本次现场服务记录。请打开下方链接核对服务内容，并在页面中完成签字确认。</p>
+      <p style="margin:18px 0"><a href="${htmlEscape(signUrl)}" style="${MAIL_BUTTON_STYLE}">查看并签字确认</a></p>
+      <table style="border-collapse:collapse;width:100%;max-width:760px">
+        <tr><td style="padding:6px 0;color:#64748b;width:96px">Case ID</td><td>${htmlEscape(orderNo)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">客户</td><td>${htmlEscape(customerName)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">联系人</td><td>${htmlEscape(order.contactName || order.contact_name || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务方式</td><td>${htmlEscape(serviceModeLabel(order.serviceMode || order.service_mode))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务事项</td><td>${htmlEscape(serviceTypeLabel(order.serviceType || order.service_type))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">工程师</td><td>${htmlEscape(engineers || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">服务时间</td><td>${htmlEscape(formatTime(report.actualStartAt || report.actual_start_at))} 至 ${htmlEscape(formatTime(report.actualEndAt || report.actual_end_at))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">问题/事项</td><td>${htmlEscape(order.issueDescription || order.issue_description || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">处理记录</td><td>${htmlEscape(report.workContent || report.work_content || '-')}</td></tr>
+      </table>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">链接有效期至 ${htmlEscape(formatTime(expiresAtText))}。如链接过期或内容有误，请联系服务工程师重新发送。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
@@ -788,4 +834,5 @@ module.exports = {
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
   sendSalesServiceOrderMail,
+  sendCustomerSignatureRequestMail,
 }

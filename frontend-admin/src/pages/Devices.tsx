@@ -349,9 +349,9 @@ function deviceDisplayName(device?: Device | null) {
 }
 
 function partActionLabel(value?: string) {
-  if (value === "replacement") return "配件更换";
-  if (value === "installation") return "配件安装";
-  return "配件记录";
+  if (value === "replacement") return "备件更换";
+  if (value === "installation") return "硬件部件安装";
+  return "部件记录";
 }
 
 function serviceTypeLabel(value?: string) {
@@ -1764,7 +1764,7 @@ export function Devices() {
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>设备详情</DialogTitle>
-            <DialogDescription>设备基础信息、客户归属、维保状态与配件历史</DialogDescription>
+            <DialogDescription>设备基础信息、客户归属、维保状态与部件历史</DialogDescription>
           </DialogHeader>
           {detailTarget ? (() => {
             const maintenanceType = canonicalMaintenanceType(detailTarget.maintenanceType);
@@ -1875,8 +1875,8 @@ export function Devices() {
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium">安装与更换记录</div>
-                        <div className="mt-1 text-xs text-muted-foreground">来自工程师服务记录中关联到这台设备的配件安装、配件更换记录</div>
+                        <div className="text-sm font-medium">硬件部件安装与备件更换记录</div>
+                        <div className="mt-1 text-xs text-muted-foreground">来自服务记录中关联到这台设备的硬件部件安装、备件更换记录</div>
                       </div>
                       <Badge variant="secondary">{partHistory.length} 条</Badge>
                     </div>
@@ -1890,7 +1890,7 @@ export function Devices() {
                                   <Badge variant={item.actionType === "replacement" ? "warning" : item.actionType === "installation" ? "success" : "secondary"}>
                                     {partActionLabel(item.actionType)}
                                   </Badge>
-                                  <span className="font-medium text-slate-900">{item.partName || "未命名配件"}</span>
+                                  <span className="font-medium text-slate-900">{item.partName || "未命名部件"}</span>
                                 </div>
                                 <div className="mt-2 text-sm leading-6 text-muted-foreground">
                                   {formatDate(item.serviceAt || item.createdAt)}
@@ -1914,7 +1914,7 @@ export function Devices() {
                       </div>
                     ) : (
                       <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-                        暂无配件安装或更换记录
+                        暂无硬件部件安装或备件更换记录
                       </div>
                     )}
                   </div>

@@ -61,6 +61,24 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
       continue;
     }
 
+    const codeFence = line.match(/^```\s*([\w-]+)?\s*$/);
+    if (codeFence) {
+      const language = codeFence[1] || "";
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```\s*$/.test(lines[index])) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      blocks.push(
+        <pre key={`code-${index}`} data-language={language || undefined}>
+          <code>{codeLines.join("\n") || " "}</code>
+        </pre>,
+      );
+      continue;
+    }
+
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;

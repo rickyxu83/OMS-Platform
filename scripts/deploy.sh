@@ -36,10 +36,10 @@ usage() {
   echo "目标:"
   echo "  all       全量部署：Git 推送 → 后端 → 前端"
   echo "  backend   仅部署后端：Git 推送 → 上传后端源码 → Docker 重建"
-  echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + engineer"
+  echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + 旧 engineer 入口"
   echo "  front     frontend 的别名"
   echo "  admin     仅部署管理端"
-  echo "  engineer  仅部署工程师端"
+  echo "  engineer  部署管理端填单入口到旧工程师端路径"
   echo "  eng       engineer 的别名"
   echo ""
   echo "profile: 可选，本地私有环境名。会读取 scripts/deploy.local.env 中的 DEPLOY_<PROFILE>_* 变量。"
@@ -71,7 +71,7 @@ apply_profile() {
   done
 
   local vite_suffix target_var
-  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ENGINEER_WORKSPACE_URL ADMIN_HOST_PREFIX ENGINEER_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
     source_var="DEPLOY_${profile_key}_VITE_${vite_suffix}"
     target_var="VITE_${vite_suffix}"
     if [ -n "${!source_var:-}" ]; then
@@ -82,7 +82,7 @@ apply_profile() {
 
 apply_vite_defaults() {
   local vite_suffix source_var target_var
-  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ENGINEER_WORKSPACE_URL ADMIN_HOST_PREFIX ENGINEER_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
     source_var="DEPLOY_VITE_${vite_suffix}"
     target_var="VITE_${vite_suffix}"
     if [ -n "${!source_var:-}" ] && [ -z "${!target_var:-}" ]; then
@@ -236,10 +236,6 @@ build_admin() {
   (cd "$ROOT_DIR/frontend-admin" && npm run build)
 }
 
-build_engineer() {
-  (cd "$ROOT_DIR/frontend-engineer" && npm run build)
-}
-
 deploy_frontend() {
   local name="$1"
   local local_dist="$2"
@@ -275,9 +271,8 @@ case "$DEPLOY_TARGET" in
     git_sync
     deploy_backend
     build_admin
-    build_engineer
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
+    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "全量部署完成"
     ;;
 
@@ -296,17 +291,16 @@ case "$DEPLOY_TARGET" in
 
   engineer|eng)
     git_sync
-    build_engineer
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
-    ok "工程师端部署完成"
+    build_admin
+    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
+    ok "旧工程师端入口部署完成"
     ;;
 
   frontend|front)
     git_sync
     build_admin
-    build_engineer
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-engineer/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
+    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "前端全量部署完成"
     ;;
 

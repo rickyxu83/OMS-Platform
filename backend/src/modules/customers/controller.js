@@ -13,6 +13,13 @@ const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./intern
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
 let ensureCustomerLevelColumnPromise = null
+let pinyinFn = null
+
+try {
+  pinyinFn = require('pinyin-pro').pinyin
+} catch {
+  pinyinFn = null
+}
 
 function deviceDisplaySql(alias = 'd') {
   return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
@@ -57,7 +64,92 @@ function contactPayload(row) {
   }
 }
 
-function customerPayload(row, contacts = []) {
+function hasChinese(value) {
+  return /[\u3400-\u9fff]/u.test(String(value || ''))
+}
+
+function firstVisibleCharacter(value) {
+  return String(value || '').trim().charAt(0)
+}
+
+function normalizeAsciiSortText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+function pinyinSyllables(value) {
+  if (!pinyinFn) return []
+  try {
+    return pinyinFn(String(value || ''), { toneType: 'none', type: 'array' })
+      .map((item) => String(item || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function toMps2Syllable(syllable) {
+  let text = String(syllable || '').toLowerCase()
+  const syllabicInitials = {
+    zhi: 'jr',
+    chi: 'chr',
+    shi: 'shr',
+    ri: 'r',
+    zi: 'tz',
+    ci: 'ts',
+    si: 's',
+  }
+  if (syllabicInitials[text]) return syllabicInitials[text]
+
+  const replacements = [
+    ['zh', 'jr'],
+    ['ch', 'chr'],
+    ['sh', 'shr'],
+    ['q', 'ch'],
+    ['x', 'sh'],
+    ['z', 'tz'],
+    ['c', 'ts'],
+  ]
+  for (const [source, target] of replacements) {
+    if (text.startsWith(source)) {
+      text = `${target}${text.slice(source.length)}`
+      break
+    }
+  }
+  return text
+    .replace(/ao/g, 'au')
+    .replace(/iong/g, 'yung')
+    .replace(/ong/g, 'ung')
+}
+
+function customerSortPayload(name, locale = 'zh-CN') {
+  const text = String(name || '').trim()
+  const first = firstVisibleCharacter(text)
+  if (!text) return { sortInitial: '#', sortKey: '#|' }
+  if (/^[A-Za-z]$/u.test(first)) {
+    const initial = first.toUpperCase()
+    return { sortInitial: initial, sortKey: `${initial}|${normalizeAsciiSortText(text)}` }
+  }
+  if (!hasChinese(first)) {
+    return { sortInitial: '#', sortKey: `#|${normalizeAsciiSortText(text)}` }
+  }
+
+  const syllables = pinyinSyllables(text)
+  if (!syllables.length) return { sortInitial: '#', sortKey: `#|${normalizeAsciiSortText(text)}` }
+  const romanized = locale === 'zh-TW' ? syllables.map(toMps2Syllable) : syllables
+  const firstInitial = (romanized[0] || '').charAt(0).toUpperCase()
+  const sortInitial = /^[A-Z]$/u.test(firstInitial) ? firstInitial : '#'
+  return { sortInitial, sortKey: `${sortInitial}|${romanized.join(' ')}|${normalizeAsciiSortText(text)}` }
+}
+
+function normalizeSortLocale(value) {
+  return value === 'zh-TW' ? 'zh-TW' : 'zh-CN'
+}
+
+function customerPayload(row, contacts = [], sortLocale = 'zh-CN') {
+  const sort = customerSortPayload(row.name, sortLocale)
   return {
     id: row.id,
     name: row.name,
@@ -75,6 +167,9 @@ function customerPayload(row, contacts = []) {
     mapPoiName: row.map_poi_name,
     mapAddress: row.map_address,
     serviceOrderCount: Number(row.service_order_count || 0),
+    sortInitial: sort.sortInitial,
+    sortKey: sort.sortKey,
+    sortLocale,
     contacts,
     remark: row.remark,
     createdAt: row.created_at,
@@ -709,6 +804,7 @@ async function deletePreview(req, res) {
 async function list(req, res) {
   await ensureCustomerLevelColumn()
   const { salesperson = '', mine = '' } = req.query
+  const sortLocale = normalizeSortLocale(req.query.sortLocale || req.query.lang)
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
   const keywordKey = customerNameKey(keyword)
   const normalizedPageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 200))
@@ -797,7 +893,7 @@ async function list(req, res) {
 
   await cleanupDuplicateContacts(rows.map((row) => row.id))
   const contactsByCustomer = await loadContacts(rows.map((row) => row.id), req.user.id)
-  res.json({ items: rows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [])) })
+  res.json({ items: rows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale)) })
 }
 
 async function create(req, res) {

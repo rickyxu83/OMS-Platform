@@ -7,16 +7,13 @@
   <a href="./user-guide.zh-TW.md">🌏 繁體中文</a>
 </p>
 
-This guide describes the full daily workflow for OMS Platform. It is intended for administrators, operations directors, dispatchers, engineering supervisors, and field engineers. It covers sign-in, workspace access, work orders, customer and asset management, service sheets, offline drafts, reports, privacy, and troubleshooting.
+This guide describes the full daily workflow for OMS Platform. It is intended for administrators, operations directors, dispatchers, engineering supervisors, and field engineers. It covers sign-in, permissions, work orders, customer and asset management, service sheets, reports, privacy, and troubleshooting.
 
 ## 1. Product overview
 
 OMS Platform is a service operations platform for field maintenance, after-sales service, customer assets, and service record collaboration.
 
-The platform has two main workspaces:
-
-- **Admin workspace**: Used by back-office and management roles for work-order dispatching, customer and asset management, reports, user management, audit logs, and settings.
-- **Engineer workspace**: Used by engineers for assigned tasks, customer asset lookup, service sheet creation, offline drafts, monthly statistics, profile information, and signature management.
+The platform now uses the **Admin workspace** as the unified working surface. Work-order dispatching, service report filling, customer and asset management, reports, user management, audit logs, and settings are all handled there. Engineer-facing report filling is available through the **Service Report** entry.
 
 ## 2. Sign in and workspace selection
 
@@ -29,13 +26,13 @@ The platform has two main workspaces:
 
 ## 3. Roles and permissions
 
-| Role | Engineer workspace | Admin workspace |
-|---|---|---|
-| `engineer` | View and process only assigned or own work orders | Not allowed |
-| `engineering_supervisor` | Use own-task filtering when entering as engineer | View, dispatch, and manage all work orders |
-| `operations_director` | Not allowed | View and manage all work orders according to granted modules |
-| `administrative_supervisor` | Not allowed | View admin workspace business data; cannot dispatch, approve, edit, delete, or change system settings |
-| `admin` | Not allowed | Full platform access |
+| Role | Admin workspace |
+|---|---|
+| `engineer` | Uses only the service report entry; APIs are filtered to own work |
+| `engineering_supervisor` | Can use the service report entry; dispatch management can view all work orders |
+| `operations_director` | View and manage all work orders according to granted modules |
+| `administrative_supervisor` | View admin workspace business data; cannot dispatch, approve, edit, delete, or change system settings |
+| `admin` | Full platform access |
 
 Permission rules are enforced by both frontend routing and backend APIs. If a page is not visible or an API returns a forbidden error, confirm the account role and workspace access first.
 
@@ -119,45 +116,25 @@ Depending on deployment configuration, administrators may configure:
 
 Production secrets must be stored in private environment files and never committed to GitHub.
 
-## 5. Engineer workspace modules
+## 5. Service report entry
 
-### 5.1 My tasks
+Engineers and engineering supervisors submit on-site, remote, and internal service records from the admin **Service Report** page.
 
-Engineers use the task list to view work assigned to them.
-
-- Open a task to review customer, site, contact, and issue information.
-- Start a service sheet from the task to keep the record linked to the work order.
-- If no tasks are visible, confirm that the task is assigned to the current engineer and that own-task filtering is enabled as expected.
-
-### 5.2 Customer asset lookup
-
-Before service, engineers can search customer and device information.
-
-- Confirm site address and contact information.
-- Check device model, serial number, maintenance party, and historical service records.
-- Use recent records to understand recurring issues.
-
-### 5.3 Profile and signature
-
-Engineer profile data is used in service documents.
-
-- Keep name, phone, avatar, and signature up to date.
-- Complete signature onboarding before submitting service sheets that require signatures.
-- Replace signatures only when authorized and necessary.
+- Engineers only work with their own related work orders and records.
+- Engineering supervisors can access dispatch management according to permission and can also fill their own service records.
+- Confirm customer, contact, device, service modules, and attachment requirements before submission.
 
 ## 6. Service sheet workflow
 
 Use service sheets to record real service work.
 
-1. Open an assigned task or choose **New service sheet**.
-2. Select the service type: on-site, remote, or internal work.
-3. Select customer, site, contact, and related device assets.
-4. Fill in service category, work nature, support object, start time, and end time.
-5. Describe the issue, service content, processing steps, result, and follow-up suggestions.
-6. Add spare parts, attachments, photos, and working hours only when they are needed.
-7. Confirm engineer signature and customer confirmation if required.
-8. Save as draft when information is incomplete, or submit after verification.
-9. After submission, share or export the service sheet if required by the business process.
+1. Open the admin **Service Report** page.
+2. Choose on-site, remote, or internal service filling.
+3. Select customer, contact, address, and service modules.
+4. Fill processing records, attachments, devices, and spare parts according to selected modules.
+5. For on-site service, complete customer signature or electronic signature confirmation when required.
+6. Save a draft manually when information is incomplete, or submit after verification.
+7. After submission, share or export the service sheet if required by the business process.
 
 Data-quality checklist before submission:
 
@@ -167,14 +144,11 @@ Data-quality checklist before submission:
 - Issue and resolution are clear enough for later review.
 - Attachments do not contain irrelevant private data.
 
-## 7. Offline drafts and synchronization
+## 7. Drafts and submission
 
-The engineer workspace supports local drafts for unstable network conditions.
-
-- Drafts are saved locally while filling in service sheets.
-- When offline, keep working with cached data where available.
-- After the network recovers, review the draft and submit again.
-- Do not clear browser storage before confirming that drafts have been submitted.
+- Drafts are saved manually and are not auto-saved.
+- Confirm required fields, attachments, and signature status before submission.
+- If the network is unstable, wait for the connection to recover before submitting to avoid duplicates.
 
 ## 8. Sharing, export, and reporting
 
@@ -201,9 +175,9 @@ Before sharing screenshots externally, use solid masks or pixelation. If a front
 |---|---|
 | Cannot sign in | Check account status, password, lockout status, and backend availability. |
 | Cannot enter a workspace | Confirm the role has access to the selected workspace. |
-| Engineer task list is empty | Confirm task assignment and own-task filtering. |
+| Own records are empty | Confirm task assignment and own-data filtering. |
 | Service sheet cannot submit | Check required fields, signature, network status, and attachment size. |
-| Draft is missing | Confirm the browser storage was not cleared and the same device/browser is used. |
+| Draft is missing | Confirm the draft was saved manually and continue with the same account. |
 | Map search fails | Check backend map key and frontend map JS key in private environment files. |
 | Export or share fails | Check browser permissions, file size, and whether the record has been submitted. |
 

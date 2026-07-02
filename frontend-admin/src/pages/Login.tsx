@@ -103,8 +103,8 @@ export function Login() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const enterWorkspace = (workspaceKey: string) => {
-    const localTarget = goToWorkspace(workspaceKey);
+  const enterWorkspace = (workspaceKey: string, home = "") => {
+    const localTarget = goToWorkspace(workspaceKey, home);
     if (localTarget) navigate(localTarget, { replace: true });
   };
 
@@ -130,12 +130,12 @@ export function Login() {
       const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
 
       if (explicitWorkspace) {
-        enterWorkspace(explicitWorkspace.key);
+        enterWorkspace(explicitWorkspace.key, explicitWorkspace.home || "");
         return;
       }
 
       if (workspaces.length === 1) {
-        enterWorkspace(workspaces[0].key);
+        enterWorkspace(workspaces[0].key, workspaces[0].home || "");
         return;
       }
 
@@ -158,7 +158,7 @@ export function Login() {
 
   return (
     <div
-      className="fixed inset-0 overflow-hidden p-3 sm:p-4"
+      className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
       style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)", overscrollBehavior: "none" }}
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -201,7 +201,7 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="relative z-10 flex h-full items-center justify-center pb-20">
+      <div className="relative z-10 flex min-h-full items-center justify-center py-16 pb-28 sm:py-20">
         <div className="w-full max-w-sm">
           <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
             <div className="mb-4 flex justify-center">
@@ -316,7 +316,7 @@ export function Login() {
                       type="button"
                       variant="outline"
                       className="h-11 justify-between rounded-[10px] border-purple-100 bg-white/70 hover:border-[#582B8B] hover:bg-purple-50"
-                      onClick={() => enterWorkspace(workspace.key)}
+                      onClick={() => enterWorkspace(workspace.key, workspace.home || "")}
                     >
                       <span>{workspaceLabel(workspace.key, workspace.label)}</span>
                       <span className="text-xs text-gray-500">{t.enterWorkspace}</span>

@@ -20,10 +20,12 @@ const BUSINESS_ASSET_PERMISSIONS = Object.freeze([
   'maintenance-party.delete',
 ])
 const ROLE_PERMISSION_BASELINES = Object.freeze({
+  engineer: Object.freeze(['workspace.admin']),
   sales: BUSINESS_ASSET_PERMISSIONS,
   sales_supervisor: BUSINESS_ASSET_PERMISSIONS,
 })
 const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = Object.freeze([
+  'order.engineer.own',
   'workspace.engineer',
 ])
 
@@ -238,16 +240,16 @@ async function getAvailableWorkspacesForRole(role) {
   const roleMatrix = matrix[role] || {}
   const workspaces = []
   if (roleMatrix['workspace.admin']) {
-    workspaces.push({ key: 'admin', label: '管理工作台', home: '/dashboard' })
-  }
-  if (roleMatrix['workspace.engineer']) {
-    workspaces.push({ key: 'engineer', label: '工程师工作台', home: '/' })
+    workspaces.push({ key: 'admin', label: '管理工作台', home: role === 'engineer' ? '/service-report' : '/dashboard' })
   }
   return workspaces
 }
 
 async function getDefaultWorkspaceForRole(role) {
   const workspaces = await getAvailableWorkspacesForRole(role)
+  if (role === 'engineer' && workspaces.some((workspace) => workspace.key === 'admin')) {
+    return 'admin'
+  }
   if (role === 'engineering_supervisor' && workspaces.some((workspace) => workspace.key === 'admin')) {
     return 'admin'
   }

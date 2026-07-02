@@ -850,7 +850,7 @@ function buildDeviceInstallWorkContent(source) {
   if (!isDeviceInstallSource(source)) return ''
   const label = installDeviceLabel(source)
   const parts = []
-  parts.push('点检设备清单并核对设备外观及配件')
+  parts.push('点检设备清单并核对设备外观及随附部件')
   parts.push(`拆箱后完成${label}上架固定`)
   parts.push('连接电源线、网络线缆并完成标签和理线')
   if (/配置|开机配置/.test(source)) parts.push('完成基础开机配置')

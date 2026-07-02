@@ -33,17 +33,17 @@ bash scripts/deploy.sh all              # 全量：Git → 后端 → 前端
 bash scripts/deploy.sh backend          # 仅后端
 bash scripts/deploy.sh frontend         # 仅前端
 bash scripts/deploy.sh admin            # 仅管理端
-bash scripts/deploy.sh engineer         # 仅工程师端
+bash scripts/deploy.sh engineer         # 旧 /engineer 静态路径兼容：部署管理端构建产物
 
 # 指定本地私有 profile
 bash scripts/deploy.sh <profile> all
 bash scripts/deploy.sh <profile> backend
 bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
-bash scripts/deploy.sh <profile> eng
+bash scripts/deploy.sh <profile> eng    # 旧 /engineer 静态路径兼容
 ```
 
-部署流程：上传后端源码 → Docker rebuild → 构建前端 → 上传 dist。
+部署流程：上传后端源码 → Docker rebuild → 构建管理端前端 → 上传 dist。旧 `/engineer` 静态路径由管理端构建产物承接，不再构建独立工程师端。
 
 > **注意**：`deploy.sh` 会先把当前分支推送到 GitHub，但**不会自动提交**——工作区有未提交变更时脚本会列出文件并报错退出。部署前必须自行 `git commit`（这是有意为之，防止误提交敏感/无关文件）。
 
@@ -84,12 +84,12 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 
 ## 权限说明
 
-| 角色 | 工程师端 | 管理端 |
-|---|---|---|
-| `engineer`（工程师） | 只看自己工单 | 不能登录 |
-| `engineering_supervisor`（工程主管） | 传 `mine=1` → 只看自己工单 | 可见全部工单（派单管理） |
-| `operations_director`（运营负责人） | 不能登录 | 可见全部工单 |
-| `administrative_supervisor`（行政主管） | 不能登录 | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置 |
-| `admin`（管理员） | 不能登录 | 全部权限 |
+| 角色 | 管理端 |
+|---|---|
+| `engineer`（工程师） | 仅使用工单填写入口，接口按本人过滤 |
+| `engineering_supervisor`（工程主管） | 可使用工单填写入口；派单管理可见全部工单 |
+| `operations_director`（运营负责人） | 可见全部工单 |
+| `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置 |
+| `admin`（管理员） | 全部权限 |
 
-工程师端 `TasksView` 请求时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。
+工单填写入口请求本人相关数据时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。

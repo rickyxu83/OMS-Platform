@@ -4,7 +4,7 @@ import type { AppLang } from "@/contexts/LanguageContext"
 const phraseMap: Record<string, string> = {
   "OMS Platform 运维智管": "OMS Platform 運維智管",
   "管理工作台": "管理工作臺",
-  "工程师工作台": "工程師工作臺",
+  "工单填写": "工單填寫",
   "快速跳转": "快速跳轉",
   "系统版本": "系統版本",
   "简体中文": "簡體中文",

@@ -301,6 +301,7 @@ const I18N = {
       in_progress: "进行中",
       submitted: "已结案",
       pending_confirmation: "待确认",
+      awaiting_customer_signature: "待客户签署",
       approved: "已审核",
       archived: "已归档",
       cancelled: "已作废",
@@ -309,7 +310,7 @@ const I18N = {
     type: {
       install: "安装",
       repair: "排障",
-      maintain: "保养",
+      maintain: "调优",
       inspect: "巡检",
       training: "培训",
       remote: "远程支持",
@@ -402,6 +403,7 @@ const I18N = {
       in_progress: "進行中",
       submitted: "已結案",
       pending_confirmation: "待確認",
+      awaiting_customer_signature: "待客戶簽署",
       approved: "已審核",
       archived: "已歸檔",
       cancelled: "已作廢",
@@ -410,7 +412,7 @@ const I18N = {
     type: {
       install: "安裝",
       repair: "排障",
-      maintain: "保養",
+      maintain: "調優",
       inspect: "巡檢",
       training: "培訓",
       remote: "遠端支援",
@@ -436,6 +438,7 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "
   in_progress: "purple",
   submitted: "success",
   pending_confirmation: "warning",
+  awaiting_customer_signature: "warning",
   approved: "success",
   archived: "secondary",
   cancelled: "destructive",
@@ -531,11 +534,13 @@ function PreviewBlock({ label, value }: { label: string; value?: string }) {
 export function Dashboard() {
   const navigate = useNavigate();
   const { lang } = useLanguage();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const t = I18N[lang];
   const userRole = String(user?.role || "");
   const canUseWorkSummary = userRole !== "assistant";
-  const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales";
+  const useOwnScope = hasPermission("order.engineer.own") && !hasPermission("order.view");
+  const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales" && !useOwnScope;
+  const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -558,6 +563,16 @@ export function Dashboard() {
   const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsCompactViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -566,8 +581,8 @@ export function Dashboard() {
       setError("");
       try {
         const [stats, orderRes, customerRes] = await Promise.all([
-          api.get("/service-orders/stats/overview"),
-          api.get("/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc"),
+          api.get(`/service-orders/stats/overview${useOwnScope ? "?mine=1" : ""}`),
+          api.get(`/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc${useOwnScope ? "&mine=1" : ""}`),
           api.get("/customers?pageSize=200").catch(() => null),
         ]);
         if (cancelled) return;
@@ -598,12 +613,12 @@ export function Dashboard() {
     };
     load();
     return () => { cancelled = true; };
-  }, [t.errors.loadFailed]);
+  }, [t.errors.loadFailed, useOwnScope]);
 
   useEffect(() => {
     if (!canUseWorkSummary) return;
     Promise.all([
-      api.get("/users/engineers").catch(() => ({ items: [] })),
+      canSelectReportEngineer ? api.get("/users/engineers").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
       canSelectReportSalesperson ? api.get("/users/salespeople").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
       api.get("/customers?pageSize=200").catch(() => ({ items: [] })),
     ]).then(([engineerData, salespersonData, customerData]) => {
@@ -611,7 +626,7 @@ export function Dashboard() {
       setReportSalespeople((salespersonData?.items || []) as SalespersonOption[]);
       setReportCustomers((customerData?.items || []) as CustomerOption[]);
     }).catch(() => undefined);
-  }, [canSelectReportSalesperson, canUseWorkSummary]);
+  }, [canSelectReportEngineer, canSelectReportSalesperson, canUseWorkSummary]);
 
   const stats = [
     { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
@@ -640,7 +655,11 @@ export function Dashboard() {
   function submitSearch() {
     const keyword = searchQuery.trim();
     if (!keyword) return;
-    navigate(`/service-orders?keyword=${encodeURIComponent(keyword)}`);
+    navigate(
+      useOwnScope
+        ? `/service-report?keyword=${encodeURIComponent(keyword)}`
+        : `/service-orders?keyword=${encodeURIComponent(keyword)}`,
+    );
   }
 
   function openReportDialog() {
@@ -665,9 +684,10 @@ export function Dashboard() {
       const params = new URLSearchParams({
         startDate: reportStartDate,
         endDate: reportEndDate,
-        engineerId: reportEngineerId,
+        engineerId: useOwnScope ? "all" : reportEngineerId,
         includeWorkSummary: "1",
       });
+      if (useOwnScope) params.set("mine", "1");
       if (canSelectReportSalesperson && reportSalesperson !== "all") params.set("salesperson", reportSalesperson);
       if (reportCustomerId !== "all") params.set("customerId", reportCustomerId);
       const data = await api.get(`/service-orders/timesheet/monthly?${params.toString()}`);
@@ -689,7 +709,7 @@ export function Dashboard() {
     setPreviewError("");
     setPreviewLoading(true);
     try {
-      const data = await api.get(`/service-orders/${order.id}`);
+      const data = await api.get(`/service-orders/${order.id}${useOwnScope ? "?mine=1" : ""}`);
       setPreviewOrder((data?.item || data) as Order);
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : t.recent.previewFailed);
@@ -714,21 +734,25 @@ export function Dashboard() {
       || String(previewOrder.id)
     );
     closeOrderPreview();
-    navigate(`/service-orders?keyword=${encodeURIComponent(keyword)}`);
+    navigate(
+      useOwnScope
+        ? `/service-report/${previewOrder.id}`
+        : `/service-orders?keyword=${encodeURIComponent(keyword)}`,
+    );
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-3 sm:p-6 lg:space-y-6">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-semibold">{t.title}</h1>
-          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
+          <h1 className="text-2xl font-semibold sm:text-3xl">{t.title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">{t.subtitle}</p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           <div className="relative min-w-0 flex-1 md:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              className="w-full bg-card pl-9 md:w-64"
+              className="h-10 w-full bg-card pl-9 md:w-64"
               placeholder={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -737,12 +761,12 @@ export function Dashboard() {
               }}
             />
           </div>
-          <Button variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
+          <Button className="h-10 flex-1 sm:flex-none" variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
             <Search className="w-4 h-4 mr-2" />
             搜索
           </Button>
           {canUseWorkSummary && (
-            <Button onClick={openReportDialog} disabled={exporting}>
+            <Button className="h-10 flex-1 sm:flex-none" onClick={openReportDialog} disabled={exporting}>
               {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
@@ -752,22 +776,22 @@ export function Dashboard() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-6 sm:pt-6">
+                <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
                   {stat.title}
                 </CardTitle>
-                <div className={`p-2 rounded-lg ${stat.bg}`}>
+                <div className={`rounded-lg p-1.5 sm:p-2 ${stat.bg}`}>
                   <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-3xl font-bold">
+                  <div className="text-2xl font-bold sm:text-3xl">
                     {loading ? <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /> : stat.value}
                   </div>
                 </div>
@@ -855,33 +879,33 @@ export function Dashboard() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5 lg:gap-6">
         <section className="lg:col-span-3">
-          <div className="mb-4 px-1">
-            <h2 className="text-xl font-semibold">{t.map.title}</h2>
+          <div className="mb-3 px-1 sm:mb-4">
+            <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
             <p className="text-sm text-muted-foreground">{t.map.description}</p>
           </div>
           <Amap
             center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
             points={mapPoints}
             zoom={7}
-            height={440}
+            height={isCompactViewport ? 300 : 440}
             fitView={false}
           />
         </section>
 
         <Card className="lg:col-span-2 lg:mt-16 lg:h-[420px]">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between px-4 py-3 sm:px-6 sm:py-6">
             <div>
               <CardTitle>{t.recent.title}</CardTitle>
               <CardDescription>{t.recent.description}</CardDescription>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/service-orders")}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}>
               <ArrowRight className="w-4 h-4 mr-1" />
               {t.recent.viewAll}
             </Button>
           </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-hidden">
+          <CardContent className="min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-6 sm:pb-6">
             {loading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
@@ -895,7 +919,7 @@ export function Dashboard() {
                     key={order.key}
                     role="button"
                     tabIndex={0}
-                    className="group relative flex items-center gap-3 -mx-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="group relative -mx-2 flex cursor-pointer items-start gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-muted/50 sm:-mx-3 sm:px-3"
                     onClick={() => openOrderPreview(order.source)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -907,14 +931,27 @@ export function Dashboard() {
                     <div className={`h-2 w-2 shrink-0 rounded-full ${
                       order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                     }`} />
-                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
-                      <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                      <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
-                      <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                      <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                        {order.statusLabel}
-                      </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden">
+                        <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
+                        <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
+                          {order.statusLabel}
+                        </Badge>
+                      </div>
+                      <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden" title={order.title}>{order.title}</span>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground sm:hidden">
+                        <span className="shrink-0 whitespace-nowrap">{order.date}</span>
+                        <span className="shrink-0 whitespace-nowrap font-medium text-foreground">{order.engineer}</span>
+                      </div>
+                      <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
+                        <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
+                        <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                        <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
+                        <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
+                        <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
+                          {order.statusLabel}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1052,22 +1089,24 @@ export function Dashboard() {
                   </Select>
                 </label>
               )}
-              <label className="space-y-2 text-sm font-medium">
-                <span>{t.reportDialog.engineer}</span>
-                <Select value={reportEngineerId} onValueChange={setReportEngineerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t.reportDialog.allEngineers} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t.reportDialog.allEngineers}</SelectItem>
-                    {reportEngineers.map((engineer) => (
-                      <SelectItem key={engineer.id} value={String(engineer.id)}>
-                        {engineer.realName || engineer.username || `#${engineer.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
+              {canSelectReportEngineer && (
+                <label className="space-y-2 text-sm font-medium">
+                  <span>{t.reportDialog.engineer}</span>
+                  <Select value={reportEngineerId} onValueChange={setReportEngineerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t.reportDialog.allEngineers} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t.reportDialog.allEngineers}</SelectItem>
+                      {reportEngineers.map((engineer) => (
+                        <SelectItem key={engineer.id} value={String(engineer.id)}>
+                          {engineer.realName || engineer.username || `#${engineer.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              )}
               <label className="space-y-2 text-sm font-medium">
                 <span>{t.reportDialog.customer}</span>
                 <Select value={reportCustomerId} onValueChange={setReportCustomerId}>
