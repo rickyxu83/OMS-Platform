@@ -60,6 +60,7 @@ import { api } from "@/services/api";
 type ServiceMode = "onsite" | "remote" | "office";
 type AttachmentPurpose = "support_config" | "site_photo" | "screenshot_log" | "inspection_document";
 type CustomerSignatureMode = "onsite" | "electronic";
+type InstallDeviceInputMode = "manual" | "existing";
 type OperationOption = { value: string; label: string; description: string; descriptionItems?: string[]; icon: typeof Wrench };
 type ServiceModuleId = "install" | "repair" | "inspect" | "replacement";
 type ServiceModuleOption = OperationOption & { value: ServiceModuleId };
@@ -273,6 +274,7 @@ interface ReportForm {
   devicePn: string;
   deviceSerialNo: string;
   deviceRemark: string;
+  installDeviceInputMode: InstallDeviceInputMode;
   serviceModules: ServiceModuleId[];
   serviceType: string;
   timesheetCategory: string;
@@ -416,7 +418,15 @@ function emptyInstallDevice(): InstallDeviceDraft {
 }
 
 function emptyPart(actionType = "replacement", deviceId = ""): ServicePartDraft {
-  return { deviceId, actionType, partName: "", partNo: "", quantity: "1", unit: "个", remark: "" };
+  return {
+    deviceId,
+    actionType,
+    partName: "",
+    partNo: "",
+    quantity: "1",
+    unit: "个",
+    remark: "",
+  };
 }
 
 function defaultForm(mode: ServiceMode = "onsite"): ReportForm {
@@ -439,6 +449,7 @@ function defaultForm(mode: ServiceMode = "onsite"): ReportForm {
     devicePn: "",
     deviceSerialNo: "",
     deviceRemark: "",
+    installDeviceInputMode: "manual",
     serviceModules: [],
     serviceType: mode === "onsite" ? "repair" : "other",
     timesheetCategory: mode === "remote" ? "排障" : mode === "office" ? "内部支持" : "",
@@ -553,12 +564,12 @@ function normalizeResult(value?: string, fallback = "resolved") {
 }
 
 function servicePartHasContent(part: ServicePartDraft) {
-  return [part.partName, part.partNo]
+  return [part.partName, part.partNo, part.remark]
     .some((value) => String(value ?? "").trim());
 }
 
 function installDeviceHasContent(device: InstallDeviceDraft) {
-  return [device.model, device.pn, device.serialNo].some((value) => value.trim());
+  return [device.model, device.serialNo, device.remark].some((value) => value.trim());
 }
 
 function optionText(options: Array<{ value: string; label: string }>, value?: string, fallback = "-") {
@@ -936,6 +947,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     customerSignature: report.customerSignature || "",
     customerSignatureFileId: report.customerSignatureFileId ? String(report.customerSignatureFileId) : "",
     engineerIds: (order.engineers || []).map((engineer) => String(engineer.id)).filter(Boolean),
+    installDeviceInputMode: order.deviceId ? "existing" : "manual",
     installDevices: order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
       ? [{
           model: order.deviceModel || "",
@@ -970,6 +982,7 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
     serviceModules: normalizeServiceModules(merged, mode),
     result: mode === "office" ? "" : normalizeResult(merged.result),
     customerSignatureMode: merged.customerSignatureMode === "electronic" ? "electronic" : "onsite",
+    installDeviceInputMode: merged.installDeviceInputMode === "existing" ? "existing" : "manual",
     installDevices: Array.isArray(merged.installDevices) && merged.installDevices.length
       ? merged.installDevices.map((device) => ({ ...emptyInstallDevice(), ...device }))
       : [emptyInstallDevice()],
@@ -1490,19 +1503,34 @@ export function ServiceReport() {
   const hasHardwareInstallDetails = isInstall || installationParts.length > 0;
   const showAssetSection = isInstall || isRepairModule || isRemoteSupportModule || hasReplacementModule || generalParts.length > 0;
   const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasReplacementModule;
-  const showPartsModule = hasReplacementModule || hasHardwareInstallDetails || generalParts.length > 0;
-  const activeInstallDevices = useMemo(() => form.installDevices.filter(installDeviceHasContent), [form.installDevices]);
+  const showInlineInstallParts = isInstall;
+  const showPartsModule = hasReplacementModule || generalParts.length > 0 || (!showInlineInstallParts && hasHardwareInstallDetails);
+  const activeInstallDevices = useMemo(() => form.installDevices.slice(0, 1).filter(installDeviceHasContent), [form.installDevices]);
+  const primaryInstallDevice = form.installDevices[0] || emptyInstallDevice();
+  const activeInstallDeviceCount = form.deviceId || activeInstallDevices.length ? 1 : 0;
+  const installationPartEntries = useMemo(
+    () => form.parts
+      .map((part, index) => ({ part, index }))
+      .filter(({ part }) => (part.actionType || "general") === "installation"),
+    [form.parts],
+  );
+  const visiblePartEntries = useMemo(
+    () => form.parts
+      .map((part, index) => ({ part, index }))
+      .filter(({ part }) => !(showInlineInstallParts && (part.actionType || "general") === "installation")),
+    [form.parts, showInlineInstallParts],
+  );
   const detailCounters = [
     replacementParts.length ? `备件更换 ${replacementParts.length}` : "",
     installationParts.length ? `硬件部件安装 ${installationParts.length}` : "",
     generalParts.length ? `部件记录 ${generalParts.length}` : "",
     isInspection ? "巡检文档" : "",
-    isInstall && activeInstallDevices.length ? `安装设备 ${activeInstallDevices.length}` : "",
+    isInstall && activeInstallDeviceCount ? `安装设备 ${activeInstallDeviceCount}` : "",
   ].filter(Boolean);
-  const partsModuleTitle = hasReplacementModule && hasHardwareInstallDetails ? "备件更换与硬件部件明细" : hasHardwareInstallDetails ? "硬件部件安装明细" : "备件更换明细";
-  const partsModuleDescription = hasReplacementModule && hasHardwareInstallDetails
+  const partsModuleTitle = hasReplacementModule && !showInlineInstallParts && hasHardwareInstallDetails ? "备件更换与硬件部件明细" : hasHardwareInstallDetails && !showInlineInstallParts ? "硬件部件安装明细" : "备件更换明细";
+  const partsModuleDescription = hasReplacementModule && !showInlineInstallParts && hasHardwareInstallDetails
     ? "记录备件更换、硬件部件安装及相关明细。"
-    : hasHardwareInstallDetails
+    : hasHardwareInstallDetails && !showInlineInstallParts
       ? "记录 CPU、内存、硬盘、扩展柜、交换机模块等硬件部件安装明细。"
       : "记录故障备件拆下、换上及相关明细。";
   const issueFieldLabel = isOffice ? "内勤工作说明" : "服务需求说明";
@@ -1869,6 +1897,10 @@ export function ServiceReport() {
     patchForm({ ...modulePatch, parts: [...form.parts, emptyPart(actionType, form.deviceId)] });
   }
 
+  function addInstallationPart() {
+    patchForm({ parts: [...form.parts, emptyPart("installation")] });
+  }
+
   function targetDevicePatch(device: DeviceOption): Partial<ReportForm> {
     return {
       deviceId: String(device.id),
@@ -1956,6 +1988,10 @@ export function ServiceReport() {
     patchForm({ parts: form.parts.map((part, partIndex) => partIndex === index ? { ...part, ...patch } : part) });
   }
 
+  function removePart(index: number) {
+    patchForm({ parts: form.parts.filter((_, partIndex) => partIndex !== index) });
+  }
+
   function choosePartDevice(index: number, deviceId: string) {
     const nextDeviceId = deviceId === "none" ? "" : deviceId;
     const device = selectedCustomerDevices.find((item) => String(item.id) === nextDeviceId);
@@ -1968,18 +2004,49 @@ export function ServiceReport() {
     });
   }
 
-  function updateInstallDevice(index: number, patch: Partial<InstallDeviceDraft>) {
-    patchForm({ installDevices: form.installDevices.map((device, deviceIndex) => deviceIndex === index ? { ...device, ...patch } : device) });
+  function changeInstallDeviceInputMode(mode: InstallDeviceInputMode) {
+    patchForm(mode === "existing"
+      ? {
+          installDeviceInputMode: "existing",
+          deviceId: "",
+          deviceName: "",
+          deviceModel: "",
+          devicePn: "",
+          deviceSerialNo: "",
+          deviceRemark: "",
+          installDevices: [emptyInstallDevice()],
+        }
+      : {
+          installDeviceInputMode: "manual",
+          deviceId: "",
+          deviceName: "",
+          deviceModel: "",
+          devicePn: "",
+          deviceSerialNo: "",
+          deviceRemark: "",
+        });
   }
 
-  function addInstallDevice() {
-    patchForm({ installDevices: [...form.installDevices, emptyInstallDevice()] });
+  function chooseInstallDevice(deviceId: string) {
+    if (deviceId === "none") {
+      patchForm({ deviceId: "", deviceName: "" });
+      return;
+    }
+    const device = selectedCustomerDevices.find((item) => String(item.id) === deviceId);
+    if (!device) {
+      patchForm({ deviceId: "", deviceName: "" });
+      return;
+    }
+    patchForm({
+      ...targetDevicePatch(device),
+      installDeviceInputMode: "existing",
+    });
   }
 
-  function removeInstallDevice(index: number) {
-    const next = form.installDevices.filter((_, deviceIndex) => deviceIndex !== index);
-    patchForm({ installDevices: next.length ? next : [emptyInstallDevice()] });
-    setActiveInstallDeviceIndex(0);
+  function updatePrimaryInstallDevice(patch: Partial<InstallDeviceDraft>) {
+    patchForm({
+      installDevices: [{ ...emptyInstallDevice(), ...primaryInstallDevice, ...patch }],
+    });
   }
 
   function scheduleModelSearch(value: string) {
@@ -2010,7 +2077,7 @@ export function ServiceReport() {
 
   function applyModelSuggestion(suggestion: ModelSuggestion) {
     const model = modelSuggestionName(suggestion);
-    updateInstallDevice(activeInstallDeviceIndex, {
+    updatePrimaryInstallDevice({
       model,
       pn: suggestion.partNumber || form.installDevices[activeInstallDeviceIndex]?.pn || "",
     });
@@ -2337,10 +2404,10 @@ export function ServiceReport() {
       contactPhone: payloadContactPhone,
       deviceId: form.deviceId ? Number(form.deviceId) : null,
       deviceName: isInstall ? "" : form.deviceName.trim(),
-      deviceModel: isInstall ? firstInstallDevice.model.trim() : form.deviceModel.trim(),
-      devicePn: isInstall ? firstInstallDevice.pn.trim() : form.devicePn.trim(),
-      deviceSerialNo: isInstall ? firstInstallDevice.serialNo.trim() : form.deviceSerialNo.trim(),
-      deviceRemark: "",
+      deviceModel: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.model.trim() : "") : form.deviceModel.trim(),
+      devicePn: isInstall ? "" : form.devicePn.trim(),
+      deviceSerialNo: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.serialNo.trim() : "") : form.deviceSerialNo.trim(),
+      deviceRemark: isInstall ? (form.installDeviceInputMode === "manual" ? firstInstallDevice.remark.trim() : "") : form.deviceRemark.trim(),
       serviceMode: form.serviceMode,
       serviceType: isOnsite ? payloadServiceType : "other",
       timesheetCategory: isOnsite ? null : payloadTimesheetCategory.trim(),
@@ -2361,15 +2428,18 @@ export function ServiceReport() {
       customerSignature: isOnsite ? form.customerSignature : "",
       customerSignatureFileId: isOnsite && form.customerSignatureFileId ? Number(form.customerSignatureFileId) : null,
       engineerIds: form.engineerIds.map(Number).filter(Boolean),
-      parts: activeParts().map((part) => ({
-        deviceId: part.deviceId ? Number(part.deviceId) : (form.deviceId ? Number(form.deviceId) : null),
-        actionType: part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory),
-        partName: part.partName.trim(),
-        partNo: part.partNo.trim(),
-        quantity: part.quantity || "1",
-        unit: part.unit.trim() || "个",
-        remark: "",
-      })),
+      parts: activeParts().map((part) => {
+        const actionType = part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory);
+        return {
+          deviceId: part.deviceId ? Number(part.deviceId) : (form.deviceId ? Number(form.deviceId) : null),
+          actionType,
+          partName: part.partName.trim(),
+          partNo: part.partNo.trim(),
+          quantity: part.quantity || "1",
+          unit: part.unit.trim() || "个",
+          remark: part.remark.trim(),
+        };
+      }),
     };
   }
 
@@ -2381,13 +2451,20 @@ export function ServiceReport() {
     if (!isOffice && !form.contactPhone.trim()) missing.push("客户联系电话");
     if ((isOnsite || isRemote) && !selectedServiceModules.length) missing.push("服务模块");
     if (isOffice && !form.timesheetCategory.trim()) missing.push("内勤工作事项");
-    if (isInstall && form.installDevices.some((device) => installDeviceHasContent(device) && !device.model.trim())) {
+    if (isInstall && form.installDeviceInputMode === "existing") {
+      if (!form.deviceId) missing.push("安装设备");
+      if (!installationParts.length) missing.push("新配件明细");
+    }
+    if (isInstall && form.installDeviceInputMode === "manual" && !primaryInstallDevice.model.trim()) {
       missing.push("安装设备型号");
     }
     const invalidPart = activeParts().find((part) => {
       const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
       const needsDevice = ["replacement", "installation"].includes(action);
-      return (needsDevice && !part.deviceId && !form.deviceId) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
+      const installTargetReady = action === "installation" && isInstall && (
+        Boolean(form.deviceId) || (form.installDeviceInputMode === "manual" && Boolean(primaryInstallDevice.model.trim()))
+      );
+      return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
     });
     if (invalidPart) missing.push("备件或硬件部件明细（关联设备、名称、数量）");
     if (!form.issueDescription.trim()) missing.push(issueFieldLabel);
@@ -3434,80 +3511,169 @@ export function ServiceReport() {
                   ) : null}
 
                   {isInstall ? (
-                    <div className="space-y-3 rounded-lg border p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-4 rounded-lg border p-3">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="text-sm font-medium">安装设备</div>
-	                          <div className="text-xs text-muted-foreground">如涉及多台设备，可逐项记录安装信息。</div>
+                          <div className="text-xs text-muted-foreground">新设备直接填写；给已有设备或非维保设备安装配件时，也在这里确定目标设备。</div>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={addInstallDevice}>
-                          <Plus className="h-4 w-4" />
-	                          新增设备
-                        </Button>
+                        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
+                          <Button
+                            type="button"
+                            variant={form.installDeviceInputMode === "manual" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => changeInstallDeviceInputMode("manual")}
+                          >
+                            手写 / 新设备
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={form.installDeviceInputMode === "existing" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => changeInstallDeviceInputMode("existing")}
+                          >
+                            客户现有设备
+                          </Button>
+                        </div>
                       </div>
-                      <div className="space-y-3">
-                        {form.installDevices.map((device, index) => (
-                          <div key={index} className="rounded-md border bg-background p-3">
-                            <div className="mb-3 flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium">设备 {index + 1}</span>
-                              {form.installDevices.length > 1 ? (
-                                <Button type="button" variant="ghost" size="icon" onClick={() => removeInstallDevice(index)} aria-label="删除安装设备">
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              ) : null}
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-4">
-                              <div className="relative space-y-2 md:col-span-2">
-                                <Label className="block text-sm font-medium text-foreground">设备型号 / Model</Label>
-                                <Input
-                                  value={device.model}
-	                                  placeholder="请输入设备型号，可自动补全"
-                                  autoComplete="off"
-                                  onFocus={() => {
-                                    setActiveInstallDeviceIndex(index);
-                                    if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
-                                  }}
-                                  onBlur={() => window.setTimeout(() => setModelDropdownOpen(false), 160)}
-                                  onChange={(event) => {
-                                    setActiveInstallDeviceIndex(index);
-                                    updateInstallDevice(index, { model: event.target.value });
-                                    scheduleModelSearch(event.target.value);
-                                  }}
-                                />
-                                {modelDropdownOpen && activeInstallDeviceIndex === index && (modelLoading || modelSuggestions.length > 0) ? (
-                                  <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
-                                    {modelLoading ? (
-                                      <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-	                                        正在检索型号…
-                                      </div>
-                                    ) : null}
-                                    {modelSuggestions.map((suggestion, suggestionIndex) => (
-                                      <button
-                                        key={`${modelSuggestionName(suggestion)}-${suggestion.partNumber || ""}-${suggestionIndex}`}
-                                        type="button"
-                                        className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-accent"
-                                        onMouseDown={(event) => {
-                                          event.preventDefault();
-                                          applyModelSuggestion(suggestion);
-                                        }}
-                                      >
-                                        <span className="font-medium">{modelSuggestionName(suggestion)}</span>
-                                        <span className="text-xs text-muted-foreground">{modelSuggestionMeta(suggestion)}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <Field label="料号 / PN">
-                                <Input value={device.pn} onChange={(event) => updateInstallDevice(index, { pn: event.target.value })} />
-                              </Field>
-                              <Field label="序列号 / SN">
-                                <Input value={device.serialNo} onChange={(event) => updateInstallDevice(index, { serialNo: event.target.value })} />
-                              </Field>
+
+                      {form.installDeviceInputMode === "existing" ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Field label="选择客户现有设备" required>
+                            <Select value={form.deviceId || "none"} onValueChange={chooseInstallDevice} disabled={loadingCustomerDevices}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">
+                                  {loadingCustomerDevices
+                                    ? "正在加载设备…"
+                                    : !form.customerId
+                                      ? "请先选择客户"
+                                      : selectedCustomerDevices.length
+                                        ? "请选择设备"
+                                        : "该客户暂无设备，可切换手写"}
+                                </SelectItem>
+                                {selectedCustomerDevices.map((device) => (
+                                  <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <div className="flex items-end">
+                            <div className="w-full rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                              {form.deviceId
+                                ? deviceMeta(selectedCustomerDevices.find((device) => String(device.id) === form.deviceId)) || "已关联设备"
+                                : "选择已有设备后，新配件会记录到该设备详情中。"}
                             </div>
                           </div>
-                        ))}
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="relative space-y-2 md:col-span-2">
+                            <Label className="block text-sm font-medium text-foreground">设备型号 / Model</Label>
+                            <Input
+                              value={primaryInstallDevice.model}
+                              placeholder="请输入设备型号，可自动补全"
+                              autoComplete="off"
+                              onFocus={() => {
+                                setActiveInstallDeviceIndex(0);
+                                if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
+                              }}
+                              onBlur={() => window.setTimeout(() => setModelDropdownOpen(false), 160)}
+                              onChange={(event) => {
+                                setActiveInstallDeviceIndex(0);
+                                updatePrimaryInstallDevice({ model: event.target.value });
+                                scheduleModelSearch(event.target.value);
+                              }}
+                            />
+                            {modelDropdownOpen && activeInstallDeviceIndex === 0 && (modelLoading || modelSuggestions.length > 0) ? (
+                              <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                                {modelLoading ? (
+                                  <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    正在检索型号…
+                                  </div>
+                                ) : null}
+                                {modelSuggestions.map((suggestion, suggestionIndex) => (
+                                  <button
+                                    key={`${modelSuggestionName(suggestion)}-${suggestion.partNumber || ""}-${suggestionIndex}`}
+                                    type="button"
+                                    className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-accent"
+                                    onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      applyModelSuggestion(suggestion);
+                                    }}
+                                  >
+                                    <span className="font-medium">{modelSuggestionName(suggestion)}</span>
+                                    <span className="text-xs text-muted-foreground">{modelSuggestionMeta(suggestion)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <Field label="序列号 / SN">
+                            <Input value={primaryInstallDevice.serialNo} onChange={(event) => updatePrimaryInstallDevice({ serialNo: event.target.value })} />
+                          </Field>
+                          <div className="md:col-span-2">
+                            <Field label="备注">
+                              <Textarea
+                                rows={3}
+                                value={primaryInstallDevice.remark}
+                                placeholder="可填写设备具体配置，或说明非维保设备情况"
+                                onChange={(event) => updatePrimaryInstallDevice({ remark: event.target.value })}
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-3 rounded-md border bg-muted/10 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-medium">新配件</div>
+                            <div className="text-xs text-muted-foreground">如果本次是给这台设备加装配件，在这里记录配件明细。</div>
+                          </div>
+                          <Button type="button" variant="outline" size="sm" onClick={addInstallationPart}>
+                            <Plus className="h-4 w-4" />
+                            新增配件
+                          </Button>
+                        </div>
+                        {installationPartEntries.length ? (
+                          <div className="space-y-3">
+                            {installationPartEntries.map(({ part, index }, entryIndex) => (
+                              <div key={`install-part-${index}`} className="rounded-md border bg-background p-3">
+                                <div className="mb-3 flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium">新配件 {entryIndex + 1}</span>
+                                  <Button type="button" variant="ghost" size="icon" onClick={() => removePart(index)} aria-label="删除新配件">
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
+                                  <Field label="名称" required>
+                                    <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
+                                  </Field>
+                                  <Field label="编号（或型号）">
+                                    <Input value={part.partNo} onChange={(event) => updatePart(index, { partNo: event.target.value })} />
+                                  </Field>
+                                  <Field label="数量" required>
+                                    <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+                                  </Field>
+                                  <div className="md:col-span-3">
+                                    <Field label="备注">
+                                      <Textarea
+                                        rows={3}
+                                        value={part.remark}
+                                        placeholder="可填写安装位置、插槽"
+                                        onChange={(event) => updatePart(index, { remark: event.target.value })}
+                                      />
+                                    </Field>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">暂无新配件记录</div>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -3526,7 +3692,7 @@ export function ServiceReport() {
 	                              新增备件
 	                            </Button>
 	                          ) : null}
-	                          {hasHardwareInstallDetails ? (
+	                          {hasHardwareInstallDetails && !showInlineInstallParts ? (
 	                            <Button type="button" variant="outline" size="sm" onClick={() => addPartAction("installation")}>
 	                              <Plus className="h-4 w-4" />
 	                              新增硬件部件
@@ -3534,7 +3700,7 @@ export function ServiceReport() {
 	                          ) : null}
 	                        </div>
 	                      </div>
-                      {form.parts.length ? (
+                      {visiblePartEntries.length ? (
                         <div className="overflow-hidden rounded-md border">
                           <div className="hidden border-b bg-muted/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:gap-3">
                             <div>关联设备</div>
@@ -3545,7 +3711,7 @@ export function ServiceReport() {
                             <div>单位</div>
                             <div />
                           </div>
-                          {form.parts.map((part, index) => (
+                          {visiblePartEntries.map(({ part, index }) => (
                             <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:items-center">
                               <DenseField label="关联设备">
                                 <Select value={part.deviceId || "none"} onValueChange={(value) => choosePartDevice(index, value)} disabled={loadingCustomerDevices}>
@@ -3586,7 +3752,7 @@ export function ServiceReport() {
                               <DenseField label="单位">
                                 <Input value={part.unit} onChange={(event) => updatePart(index, { unit: event.target.value })} />
                               </DenseField>
-                              <Button type="button" variant="ghost" size="icon" className="self-end md:self-center" onClick={() => patchForm({ parts: form.parts.filter((_, partIndex) => partIndex !== index) })} aria-label="删除部件明细">
+                              <Button type="button" variant="ghost" size="icon" className="self-end md:self-center" onClick={() => removePart(index)} aria-label="删除部件明细">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>

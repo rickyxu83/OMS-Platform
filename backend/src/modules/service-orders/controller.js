@@ -2146,8 +2146,8 @@ async function createSelfReport(req, res) {
     }
     if (shouldManageInstallDevice && !effectiveDeviceId && hasInstallDevicePayload) {
       const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark)
-         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark)`,
+        `INSERT INTO devices (customer_id, name, model, pn, serial_no, remark, maintenance_type)
+         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none')`,
         {
           customerId: effectiveCustomerId,
           deviceName: effectiveDeviceName,
@@ -2254,7 +2254,7 @@ async function createSelfReport(req, res) {
     await saveServiceParts(connection, orderResult.insertId, parts, {
       customerId: effectiveCustomerId,
       fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
-      fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
     })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
@@ -3264,7 +3264,7 @@ async function updateSelfReport(req, res) {
     await saveServiceParts(connection, req.params.id, parts, {
       customerId: effectiveCustomerId,
       fallbackActionType: defaultPartActionType(effectiveServiceMode, serviceType, timesheetCategory),
-      fallbackDeviceId: effectiveServiceMode === 'onsite' && serviceType === 'repair' ? effectiveDeviceId : null,
+      fallbackDeviceId: effectiveServiceMode === 'onsite' && ['repair', 'install'].includes(serviceType) ? effectiveDeviceId : null,
     })
 
     if (effectiveServiceMode !== 'office') {
