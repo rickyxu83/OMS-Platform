@@ -4032,7 +4032,7 @@ export function ServiceReport() {
                             </div>
                           ) : null}
                         </Field>
-	                        <Field label={isRemote ? "远程目标 / 系统名称" : "设备 / 项目名称"}>
+	                        <Field label={isRemote ? "远程目标 / 系统名称" : "主机名"}>
                           <Input value={form.deviceName} onChange={(event) => patchForm({ deviceName: event.target.value })} />
                         </Field>
                         <Field label={isRemote ? "型号 / 版本 / IP" : "型号 / 版本"}>
