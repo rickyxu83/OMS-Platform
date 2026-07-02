@@ -1759,6 +1759,10 @@ export function ServiceReport() {
   }, [isFormRoute, loadForm, loadHome]);
 
   useEffect(() => {
+    if (isFormRoute) setPreviewOrder(null);
+  }, [isFormRoute]);
+
+  useEffect(() => {
     if (!isFormRoute) return;
     loadCustomerDevices(form.customerId);
   }, [form.customerId, isFormRoute, loadCustomerDevices]);
@@ -2790,6 +2794,7 @@ export function ServiceReport() {
         return;
       }
       toast.success("服务记录已提交");
+      setPreviewOrder(null);
       navigate("/service-report", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败");
@@ -3185,7 +3190,9 @@ export function ServiceReport() {
               <Button
                 onClick={() => {
                   if (!previewOrder?.id) return;
-                  navigate(`/service-report/${previewOrder.id}`);
+                  const orderId = previewOrder.id;
+                  setPreviewOrder(null);
+                  navigate(`/service-report/${orderId}`);
                 }}
                 disabled={!previewOrder?.id}
               >
