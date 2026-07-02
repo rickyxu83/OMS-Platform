@@ -212,6 +212,13 @@ interface DeviceOption {
   remark?: string;
 }
 
+interface ModelSuggestion {
+  canonicalModel?: string;
+  partNumber?: string;
+  brand?: string;
+  category?: string;
+}
+
 interface EngineerOption {
   id: string | number;
   realName?: string;
@@ -1489,6 +1496,9 @@ export function ServiceReport() {
   const [savingTargetDevice, setSavingTargetDevice] = useState(false);
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
+  const [installModelSuggestionDeviceId, setInstallModelSuggestionDeviceId] = useState<string | null>(null);
+  const [installModelSuggestions, setInstallModelSuggestions] = useState<ModelSuggestion[]>([]);
+  const [installModelLoading, setInstallModelLoading] = useState(false);
   const [customerSearching, setCustomerSearching] = useState(false);
   const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -1506,6 +1516,8 @@ export function ServiceReport() {
   const [signatureQrCodeUrl, setSignatureQrCodeUrl] = useState("");
   const customerSearchTimerRef = useRef<number | null>(null);
   const customerSearchRequestRef = useRef(0);
+  const installModelSearchTimerRef = useRef<number | null>(null);
+  const installModelSearchRequestRef = useRef(0);
 
   const isOnsite = form.serviceMode === "onsite";
   const isRemote = form.serviceMode === "remote";
@@ -1753,6 +1765,7 @@ export function ServiceReport() {
 
   useEffect(() => () => {
     if (customerSearchTimerRef.current) window.clearTimeout(customerSearchTimerRef.current);
+    if (installModelSearchTimerRef.current) window.clearTimeout(installModelSearchTimerRef.current);
   }, []);
 
   function patchForm(patch: Partial<ReportForm>) {
@@ -1781,6 +1794,44 @@ export function ServiceReport() {
         if (requestId === customerSearchRequestRef.current) setCustomerSearching(false);
       }
     }, 250);
+  }
+
+  function scheduleInstallModelSearch(installDeviceDraftIdValue: string, value: string) {
+    if (installModelSearchTimerRef.current) window.clearTimeout(installModelSearchTimerRef.current);
+    const keyword = value.trim();
+    const requestId = ++installModelSearchRequestRef.current;
+    setInstallModelSuggestionDeviceId(installDeviceDraftIdValue);
+    if (keyword.length < 2) {
+      setInstallModelSuggestions([]);
+      setInstallModelLoading(false);
+      return;
+    }
+    installModelSearchTimerRef.current = window.setTimeout(async () => {
+      setInstallModelLoading(true);
+      try {
+        const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`);
+        if (requestId === installModelSearchRequestRef.current) {
+          setInstallModelSuggestions((data?.items || []) as ModelSuggestion[]);
+        }
+      } catch {
+        if (requestId === installModelSearchRequestRef.current) {
+          setInstallModelSuggestions([]);
+        }
+      } finally {
+        if (requestId === installModelSearchRequestRef.current) {
+          setInstallModelLoading(false);
+        }
+      }
+    }, 250);
+  }
+
+  function applyInstallModelSuggestion(installDeviceDraftIdValue: string, suggestion: ModelSuggestion) {
+    const model = suggestion.canonicalModel || "";
+    if (!model) return;
+    updateInstallDevice(installDeviceDraftIdValue, { model });
+    setInstallModelSuggestions([]);
+    setInstallModelSuggestionDeviceId(null);
+    setInstallTargetOpenId(null);
   }
 
   function applyCustomer(customer?: CustomerOption | null) {
@@ -2162,6 +2213,7 @@ export function ServiceReport() {
       )),
     });
     setInstallTargetOpenId(installDeviceDraftIdValue);
+    scheduleInstallModelSearch(installDeviceDraftIdValue, value);
   }
 
   function chooseInstallDevice(installDeviceDraftIdValue: string, deviceId: string) {
@@ -2200,6 +2252,8 @@ export function ServiceReport() {
         part.installDeviceDraftId === installDeviceDraftIdValue ? { ...part, deviceId: String(device.id) } : part
       )),
     });
+    setInstallModelSuggestions([]);
+    setInstallModelSuggestionDeviceId(null);
     setInstallTargetOpenId(null);
   }
 
@@ -3515,108 +3569,6 @@ export function ServiceReport() {
               </div>
               </ReportSection>
 
-            {shouldShowAttachments ? (
-            <ReportSection title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
-              <div className="grid gap-4 p-4 lg:grid-cols-2">
-                {visibleAttachmentPurposes.map((purpose) => {
-                  const meta = ATTACHMENT_PURPOSES[purpose];
-                  const Icon = meta.icon;
-                  const existingFiles = existingFilesForPurpose(purpose);
-                  const localFiles = localFilesForPurpose(purpose);
-                  const required = false;
-                  const dragging = draggingAttachmentPurpose === purpose;
-                  return (
-                    <div
-                      key={purpose}
-                      className={`rounded-lg border bg-background p-3 transition-colors ${
-                        dragging ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-border"
-                      }`}
-                      onDragEnter={(event) => dragAttachmentFiles(event, purpose)}
-                      onDragOver={(event) => dragAttachmentFiles(event, purpose)}
-                      onDragLeave={(event) => leaveAttachmentDropZone(event, purpose)}
-                      onDrop={(event) => dropAttachmentFiles(event, purpose)}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-foreground">
-                              {meta.label}{required ? <span className="ml-0.5 text-destructive">*</span> : null}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {existingFiles.length + localFiles.length ? `${existingFiles.length + localFiles.length} 个文件` : "未上传"}
-                            </div>
-                          </div>
-                        </div>
-                        <Label className="shrink-0">
-                          <span className="inline-flex h-[42px] cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium hover:bg-accent">
-                            <Upload className="h-4 w-4" />
-                            上传文件
-                          </span>
-                          <Input
-                            type="file"
-                            multiple
-                            accept={INSPECTION_DOCUMENT_ACCEPT}
-                            className="hidden"
-                            onChange={(event) => {
-                              selectAttachmentFiles(purpose, Array.from(event.target.files || []), true);
-                              event.currentTarget.value = "";
-                            }}
-                          />
-                        </Label>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div
-                          className={`hidden min-h-20 flex-col items-center justify-center rounded-lg border border-dashed px-4 py-4 text-center text-xs transition-colors md:flex ${
-                            dragging ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/20 text-muted-foreground"
-                          }`}
-                        >
-                          <Upload className="mb-2 h-5 w-5" />
-                          <span className="font-medium">{dragging ? "松开鼠标上传到此分类" : "拖拽文件到这里上传"}</span>
-                          <span className="mt-1">支持 PDF、Office、图片、日志文本与 ZIP，单个文件不超过 20MB</span>
-                        </div>
-                        {existingFiles.map((file) => (
-                          <div key={file.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-                            <button
-                              type="button"
-                              className="min-w-0 flex-1 text-left hover:text-primary"
-                              disabled={downloadingFileId === file.id}
-                              onClick={() => downloadInspectionDocument(file)}
-                            >
-                              <span className="block truncate font-medium">{file.originalName || `文件 #${file.id}`}</span>
-                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
-                            </button>
-                            <Button type="button" variant="outline" size="sm" disabled={downloadingFileId === file.id} onClick={() => downloadInspectionDocument(file)}>
-                              {downloadingFileId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                              下载
-                            </Button>
-                          </div>
-                        ))}
-                        {localFiles.map((file) => (
-                          <div key={`${purpose}-${file.name}-${file.size}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{file.name}</span>
-                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
-                            </span>
-                            <Badge variant="warning">待提交</Badge>
-                          </div>
-                        ))}
-                        {!existingFiles.length && !localFiles.length ? (
-                          <div className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
-                            暂无{attachmentPurposeLabel(purpose)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </ReportSection>
-            ) : null}
-
             {showAssetSection ? (
               <ReportSection
                 title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : "设备与备件信息"}
@@ -3693,23 +3645,24 @@ export function ServiceReport() {
 	                      </div>
 
 	                      <div className="space-y-3">
-	                        {installDeviceRows.map((installDevice, deviceIndex) => {
-	                          const selectedDevice = installDevice.deviceId
-	                            ? selectedCustomerDevices.find((device) => String(device.id) === installDevice.deviceId) || null
-	                            : null;
-	                          const targetOptions = installTargetOptions(installDevice);
-	                          const devicePartEntries = installationPartEntries.filter(({ part }) => (
-	                            part.installDeviceDraftId ? part.installDeviceDraftId === installDevice.id : deviceIndex === 0
-	                          ));
-	                          return (
+		                        {installDeviceRows.map((installDevice, deviceIndex) => {
+		                          const selectedDevice = installDevice.deviceId
+		                            ? selectedCustomerDevices.find((device) => String(device.id) === installDevice.deviceId) || null
+		                            : null;
+		                          const targetOptions = installTargetOptions(installDevice);
+	                          const showModelSuggestions = installModelSuggestionDeviceId === installDevice.id;
+	                          const modelSuggestions = showModelSuggestions ? installModelSuggestions : [];
+	                          const modelLoading = showModelSuggestions ? installModelLoading : false;
+		                          const devicePartEntries = installationPartEntries.filter(({ part }) => (
+		                            part.installDeviceDraftId ? part.installDeviceDraftId === installDevice.id : deviceIndex === 0
+		                          ));
+		                          return (
 	                            <div key={installDevice.id} className="space-y-3 rounded-lg border bg-muted/10 p-3">
-	                              <div className="flex flex-wrap items-center justify-between gap-2">
-	                                <div className="flex min-w-0 items-center gap-2">
-	                                  <span className="text-sm font-medium">{installDeviceTitle(installDevice, deviceIndex)}</span>
-	                                  <Badge variant={installDevice.inputMode === "existing" ? "secondary" : "outline"}>
-	                                    {installDevice.inputMode === "existing" ? "已有设备" : "手写设备"}
-	                                  </Badge>
-	                                </div>
+		                              <div className="flex flex-wrap items-center justify-between gap-2">
+		                                <div className="flex min-w-0 items-center gap-2">
+		                                  <span className="text-sm font-medium">{installDeviceTitle(installDevice, deviceIndex)}</span>
+		                                  {installDevice.inputMode === "existing" ? <Badge variant="secondary">已有设备</Badge> : null}
+		                                </div>
 	                                {installDeviceRows.length > 1 ? (
 	                                  <Button
 	                                    type="button"
@@ -3724,17 +3677,22 @@ export function ServiceReport() {
 	                                ) : null}
 	                              </div>
 
-	                              <div className="grid gap-3 md:grid-cols-2">
+		                              <div className={`grid gap-3 ${installDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
 	                                <div className="relative space-y-2">
 	                                  <Label className="block text-sm font-medium text-foreground">安装目标设备 / 设备型号</Label>
-	                                  <Input
-	                                    value={installTargetValue(installDevice)}
-	                                    placeholder="输入设备型号，或选择客户已有设备"
-	                                    autoComplete="off"
-	                                    onFocus={() => setInstallTargetOpenId(installDevice.id)}
-	                                    onBlur={() => window.setTimeout(() => {
-	                                      setInstallTargetOpenId((current) => current === installDevice.id ? null : current);
-	                                    }, 160)}
+		                                  <Input
+		                                    value={installTargetValue(installDevice)}
+		                                    placeholder="输入设备型号，或选择客户已有设备"
+		                                    autoComplete="off"
+		                                    onFocus={() => {
+		                                      setInstallTargetOpenId(installDevice.id);
+		                                      if (installDevice.inputMode !== "existing" && installDevice.model.trim().length >= 2) {
+		                                        scheduleInstallModelSearch(installDevice.id, installDevice.model);
+		                                      }
+		                                    }}
+		                                    onBlur={() => window.setTimeout(() => {
+		                                      setInstallTargetOpenId((current) => current === installDevice.id ? null : current);
+		                                    }, 160)}
 	                                    onChange={(event) => changeInstallTarget(installDevice.id, event.target.value)}
 	                                  />
 	                                  {installTargetOpenId === installDevice.id ? (
@@ -3745,37 +3703,72 @@ export function ServiceReport() {
 	                                          正在加载客户设备…
 	                                        </div>
 	                                      ) : null}
-	                                      {!form.customerId ? (
-	                                        <div className="px-3 py-2 text-muted-foreground">请先选择客户；未选择下拉项时会按手写设备保存。</div>
-	                                      ) : null}
-	                                      {targetOptions.map((device) => (
-	                                        <button
-	                                          key={device.id}
-	                                          type="button"
-	                                          className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-accent"
-	                                          onMouseDown={(event) => {
-	                                            event.preventDefault();
-	                                            chooseInstallDevice(installDevice.id, String(device.id));
-	                                          }}
-	                                        >
-	                                          <span className="font-medium">{deviceSelectLabel(device)}</span>
-	                                          <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
-	                                        </button>
-	                                      ))}
-	                                      {form.customerId && !loadingCustomerDevices && !targetOptions.length ? (
-	                                        <div className="px-3 py-2 text-muted-foreground">没有匹配的客户设备，继续输入会按手写设备保存。</div>
-	                                      ) : null}
-	                                    </div>
-	                                  ) : null}
-	                                </div>
+		                                      {!form.customerId ? (
+		                                        <div className="px-3 py-2 text-muted-foreground">请先选择客户；未选择下拉项时会按新设备或非维保设备保存。</div>
+		                                      ) : null}
+		                                      {targetOptions.length ? (
+		                                        <div className="border-b p-1">
+		                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">客户已有设备</div>
+		                                          {targetOptions.map((device) => (
+		                                            <button
+		                                              key={device.id}
+		                                              type="button"
+		                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+		                                              onMouseDown={(event) => {
+		                                                event.preventDefault();
+		                                                chooseInstallDevice(installDevice.id, String(device.id));
+		                                              }}
+		                                            >
+		                                              <span className="font-medium">{deviceSelectLabel(device)}</span>
+		                                              <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+		                                            </button>
+		                                          ))}
+		                                        </div>
+		                                      ) : null}
+		                                      {modelLoading || modelSuggestions.length ? (
+		                                        <div className="p-1">
+		                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
+		                                          {modelLoading ? (
+		                                            <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
+		                                              <Loader2 className="h-4 w-4 animate-spin" />
+		                                              搜索型号中…
+		                                            </div>
+		                                          ) : null}
+		                                          {modelSuggestions.map((suggestion, suggestionIndex) => (
+		                                            <button
+		                                              key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
+		                                              type="button"
+		                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+		                                              onMouseDown={(event) => {
+		                                                event.preventDefault();
+		                                                applyInstallModelSuggestion(installDevice.id, suggestion);
+		                                              }}
+		                                            >
+		                                              <span className="font-medium">{suggestion.canonicalModel}</span>
+		                                              <span className="text-xs text-muted-foreground">
+		                                                {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+		                                              </span>
+		                                            </button>
+		                                          ))}
+		                                        </div>
+		                                      ) : null}
+		                                      {form.customerId && !loadingCustomerDevices && !targetOptions.length && !modelLoading && !modelSuggestions.length ? (
+		                                        <div className="px-3 py-2 text-muted-foreground">没有匹配的客户设备，继续输入会按新设备或非维保设备保存。</div>
+		                                      ) : null}
+		                                    </div>
+		                                  ) : null}
+		                                </div>
 
-	                                {installDevice.inputMode === "existing" ? (
-	                                  <div className="flex min-h-[68px] items-center rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-	                                    <span className="min-w-0 flex-1">
-	                                      {selectedDevice ? deviceMeta(selectedDevice) || deviceSelectLabel(selectedDevice) : "已关联客户设备"}
-	                                    </span>
-	                                  </div>
-	                                ) : (
+		                                {installDevice.inputMode === "existing" ? (
+		                                  <>
+		                                    <Field label="设备型号">
+		                                      <Input readOnly value={selectedDevice?.model || installDevice.model || ""} />
+		                                    </Field>
+		                                    <Field label="序列号 / SN">
+		                                      <Input readOnly value={selectedDevice?.serialNo || installDevice.serialNo || ""} />
+		                                    </Field>
+		                                  </>
+		                                ) : (
 	                                  <Field label="序列号 / SN">
 	                                    <Input value={installDevice.serialNo} onChange={(event) => updateInstallDevice(installDevice.id, { serialNo: event.target.value })} />
 	                                  </Field>
@@ -3938,6 +3931,108 @@ export function ServiceReport() {
                   ) : null}
                 </div>
               </ReportSection>
+            ) : null}
+
+            {shouldShowAttachments ? (
+            <ReportSection title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
+              <div className="grid gap-4 p-4 lg:grid-cols-2">
+                {visibleAttachmentPurposes.map((purpose) => {
+                  const meta = ATTACHMENT_PURPOSES[purpose];
+                  const Icon = meta.icon;
+                  const existingFiles = existingFilesForPurpose(purpose);
+                  const localFiles = localFilesForPurpose(purpose);
+                  const required = false;
+                  const dragging = draggingAttachmentPurpose === purpose;
+                  return (
+                    <div
+                      key={purpose}
+                      className={`rounded-lg border bg-background p-3 transition-colors ${
+                        dragging ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-border"
+                      }`}
+                      onDragEnter={(event) => dragAttachmentFiles(event, purpose)}
+                      onDragOver={(event) => dragAttachmentFiles(event, purpose)}
+                      onDragLeave={(event) => leaveAttachmentDropZone(event, purpose)}
+                      onDrop={(event) => dropAttachmentFiles(event, purpose)}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-foreground">
+                              {meta.label}{required ? <span className="ml-0.5 text-destructive">*</span> : null}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {existingFiles.length + localFiles.length ? `${existingFiles.length + localFiles.length} 个文件` : "未上传"}
+                            </div>
+                          </div>
+                        </div>
+                        <Label className="shrink-0">
+                          <span className="inline-flex h-[42px] cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium hover:bg-accent">
+                            <Upload className="h-4 w-4" />
+                            上传文件
+                          </span>
+                          <Input
+                            type="file"
+                            multiple
+                            accept={INSPECTION_DOCUMENT_ACCEPT}
+                            className="hidden"
+                            onChange={(event) => {
+                              selectAttachmentFiles(purpose, Array.from(event.target.files || []), true);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </Label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div
+                          className={`hidden min-h-20 flex-col items-center justify-center rounded-lg border border-dashed px-4 py-4 text-center text-xs transition-colors md:flex ${
+                            dragging ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/20 text-muted-foreground"
+                          }`}
+                        >
+                          <Upload className="mb-2 h-5 w-5" />
+                          <span className="font-medium">{dragging ? "松开鼠标上传到此分类" : "拖拽文件到这里上传"}</span>
+                          <span className="mt-1">支持 PDF、Office、图片、日志文本与 ZIP，单个文件不超过 20MB</span>
+                        </div>
+                        {existingFiles.map((file) => (
+                          <div key={file.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 text-left hover:text-primary"
+                              disabled={downloadingFileId === file.id}
+                              onClick={() => downloadInspectionDocument(file)}
+                            >
+                              <span className="block truncate font-medium">{file.originalName || `文件 #${file.id}`}</span>
+                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            </button>
+                            <Button type="button" variant="outline" size="sm" disabled={downloadingFileId === file.id} onClick={() => downloadInspectionDocument(file)}>
+                              {downloadingFileId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              下载
+                            </Button>
+                          </div>
+                        ))}
+                        {localFiles.map((file) => (
+                          <div key={`${purpose}-${file.name}-${file.size}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{file.name}</span>
+                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            </span>
+                            <Badge variant="warning">待提交</Badge>
+                          </div>
+                        ))}
+                        {!existingFiles.length && !localFiles.length ? (
+                          <div className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
+                            暂无{attachmentPurposeLabel(purpose)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ReportSection>
             ) : null}
 
             {!isOffice ? (
