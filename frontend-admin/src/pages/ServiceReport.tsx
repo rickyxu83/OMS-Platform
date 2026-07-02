@@ -222,6 +222,7 @@ interface ModelSuggestion {
   brand?: string;
   category?: string;
 }
+type ModelSuggestionValueMode = "model" | "partNo";
 
 interface EngineerOption {
   id: string | number;
@@ -1538,6 +1539,9 @@ export function ServiceReport() {
   const [installModelSuggestionDeviceId, setInstallModelSuggestionDeviceId] = useState<string | null>(null);
   const [installModelSuggestions, setInstallModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [installModelLoading, setInstallModelLoading] = useState(false);
+  const [modelSuggestionInputId, setModelSuggestionInputId] = useState<string | null>(null);
+  const [modelCatalogSuggestions, setModelCatalogSuggestions] = useState<ModelSuggestion[]>([]);
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(false);
   const [customerSearching, setCustomerSearching] = useState(false);
   const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -1557,6 +1561,8 @@ export function ServiceReport() {
   const customerSearchRequestRef = useRef(0);
   const installModelSearchTimerRef = useRef<number | null>(null);
   const installModelSearchRequestRef = useRef(0);
+  const modelCatalogSearchTimerRef = useRef<number | null>(null);
+  const modelCatalogSearchRequestRef = useRef(0);
 
   const isOnsite = form.serviceMode === "onsite";
   const isRemote = form.serviceMode === "remote";
@@ -1806,6 +1812,7 @@ export function ServiceReport() {
   useEffect(() => () => {
     if (customerSearchTimerRef.current) window.clearTimeout(customerSearchTimerRef.current);
     if (installModelSearchTimerRef.current) window.clearTimeout(installModelSearchTimerRef.current);
+    if (modelCatalogSearchTimerRef.current) window.clearTimeout(modelCatalogSearchTimerRef.current);
   }, []);
 
   function patchForm(patch: Partial<ReportForm>) {
@@ -1872,6 +1879,116 @@ export function ServiceReport() {
     setInstallModelSuggestions([]);
     setInstallModelSuggestionDeviceId(null);
     setInstallTargetOpenId(null);
+  }
+
+  function modelSuggestionValue(suggestion: ModelSuggestion, mode: ModelSuggestionValueMode) {
+    if (mode === "partNo") return suggestion.partNumber || suggestion.canonicalModel || "";
+    return suggestion.canonicalModel || suggestion.partNumber || "";
+  }
+
+  function scheduleModelCatalogSearch(inputId: string, value: string) {
+    if (modelCatalogSearchTimerRef.current) window.clearTimeout(modelCatalogSearchTimerRef.current);
+    const keyword = value.trim();
+    const requestId = ++modelCatalogSearchRequestRef.current;
+    setModelSuggestionInputId(inputId);
+    if (keyword.length < 2) {
+      setModelCatalogSuggestions([]);
+      setModelCatalogLoading(false);
+      return;
+    }
+    modelCatalogSearchTimerRef.current = window.setTimeout(async () => {
+      setModelCatalogLoading(true);
+      try {
+        const data = await api.get(`/device-model-catalog/suggestions?keyword=${encodeURIComponent(keyword)}`);
+        if (requestId === modelCatalogSearchRequestRef.current) {
+          setModelCatalogSuggestions((data?.items || []) as ModelSuggestion[]);
+        }
+      } catch {
+        if (requestId === modelCatalogSearchRequestRef.current) {
+          setModelCatalogSuggestions([]);
+        }
+      } finally {
+        if (requestId === modelCatalogSearchRequestRef.current) {
+          setModelCatalogLoading(false);
+        }
+      }
+    }, 250);
+  }
+
+  function closeModelCatalogSuggestions(inputId: string) {
+    window.setTimeout(() => {
+      setModelSuggestionInputId((current) => (current === inputId ? null : current));
+    }, 160);
+  }
+
+  function renderModelCatalogSuggestionInput({
+    inputId,
+    value,
+    onChange,
+    placeholder,
+    valueMode = "model",
+  }: {
+    inputId: string;
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    valueMode?: ModelSuggestionValueMode;
+  }) {
+    const active = modelSuggestionInputId === inputId;
+    const suggestions = active ? modelCatalogSuggestions : [];
+    const loadingSuggestions = active ? modelCatalogLoading : false;
+    const showDropdown = active && (loadingSuggestions || suggestions.length > 0);
+
+    return (
+      <div className="relative">
+        <Input
+          value={value}
+          placeholder={placeholder}
+          autoComplete="off"
+          onFocus={() => {
+            setModelSuggestionInputId(inputId);
+            if (value.trim().length >= 2) scheduleModelCatalogSearch(inputId, value);
+          }}
+          onBlur={() => closeModelCatalogSuggestions(inputId)}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            onChange(nextValue);
+            scheduleModelCatalogSearch(inputId, nextValue);
+          }}
+        />
+        {showDropdown ? (
+          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
+            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
+            {loadingSuggestions ? (
+              <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                搜索型号中…
+              </div>
+            ) : null}
+            {suggestions.map((suggestion, suggestionIndex) => (
+              <button
+                key={`${inputId}-${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
+                type="button"
+                className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  const nextValue = modelSuggestionValue(suggestion, valueMode);
+                  if (!nextValue) return;
+                  onChange(nextValue);
+                  setModelCatalogSuggestions([]);
+                  setModelSuggestionInputId(null);
+                }}
+              >
+                <span className="font-medium">{modelSuggestionValue(suggestion, valueMode)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {[suggestion.brand, suggestion.canonicalModel, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function applyCustomer(customer?: CustomerOption | null) {
@@ -3919,7 +4036,12 @@ export function ServiceReport() {
                           <Input value={form.deviceName} onChange={(event) => patchForm({ deviceName: event.target.value })} />
                         </Field>
                         <Field label={isRemote ? "型号 / 版本 / IP" : "型号 / 版本"}>
-                          <Input value={form.deviceModel} onChange={(event) => patchForm({ deviceModel: event.target.value })} />
+                          {renderModelCatalogSuggestionInput({
+                            inputId: "target-device-model",
+                            value: form.deviceModel,
+                            placeholder: isRemote ? "输入型号、版本或 IP" : "输入设备型号或版本",
+                            onChange: (deviceModel) => patchForm({ deviceModel }),
+                          })}
                         </Field>
                         <Field label="序列号 / SN">
                           <Input value={form.deviceSerialNo} onChange={(event) => patchForm({ deviceSerialNo: event.target.value })} />
@@ -4111,7 +4233,13 @@ export function ServiceReport() {
 	                                            <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
 	                                          </Field>
 	                                          <Field label="编号（或型号）">
-	                                            <Input value={part.partNo} onChange={(event) => updatePart(index, { partNo: event.target.value })} />
+	                                            {renderModelCatalogSuggestionInput({
+	                                              inputId: `install-part-${index}-part-no`,
+	                                              value: part.partNo,
+	                                              valueMode: "partNo",
+	                                              placeholder: "输入编号、PN 或型号",
+	                                              onChange: (partNo) => updatePart(index, { partNo }),
+	                                            })}
 	                                          </Field>
 	                                          <Field label="数量" required>
 	                                            <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
@@ -4164,7 +4292,7 @@ export function ServiceReport() {
 	                        </div>
 	                      </div>
                       {visiblePartEntries.length ? (
-                        <div className="overflow-hidden rounded-md border">
+                        <div className="overflow-visible rounded-md border">
                           <div className="hidden border-b bg-muted/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:gap-3">
                             <div>关联设备</div>
 	                            <div>处理动作</div>
@@ -4206,9 +4334,15 @@ export function ServiceReport() {
                               <DenseField label="备件或硬件部件名称">
                                 <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
                               </DenseField>
-                              <DenseField label="料号 / PN">
-                                <Input value={part.partNo} onChange={(event) => updatePart(index, { partNo: event.target.value })} />
-                              </DenseField>
+	                              <DenseField label="料号 / PN">
+	                                {renderModelCatalogSuggestionInput({
+	                                  inputId: `service-part-${index}-part-no`,
+	                                  value: part.partNo,
+	                                  valueMode: "partNo",
+	                                  placeholder: "输入料号、PN 或型号",
+	                                  onChange: (partNo) => updatePart(index, { partNo }),
+	                                })}
+	                              </DenseField>
                               <DenseField label="数量">
                                 <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
                               </DenseField>
