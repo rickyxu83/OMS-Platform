@@ -4,6 +4,7 @@ import { CheckCircle, Loader2, PenLine, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 
 interface CustomerSignatureItem {
@@ -266,7 +267,11 @@ export function CustomerSignature() {
               </div>
               <div>
                 <div className="text-xs font-medium text-muted-foreground">处理记录</div>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{item.report?.workContent || "-"}</p>
+                {item.report?.workContent ? (
+                  <MarkdownContent content={item.report.workContent} className="mt-1" />
+                ) : (
+                  <p className="mt-1 text-sm leading-6">-</p>
+                )}
               </div>
               <div>
                 <div className="text-xs font-medium text-muted-foreground">服务结论</div>
@@ -313,4 +318,3 @@ export function CustomerSignature() {
     </main>
   );
 }
-

@@ -2,18 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Bold,
+  Braces,
   Camera,
   ChevronDown,
   CheckCircle,
   ClipboardCheck,
   Clock,
+  Code2,
   Copy,
   ClipboardPenLine,
   Download,
   FileText,
   HardDrive,
+  Heading2,
   History,
+  Link,
   Loader2,
+  List,
+  ListOrdered,
   MapPin,
   MonitorCog,
   Package,
@@ -46,6 +53,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
+import { MarkdownContent } from "@/lib/markdown";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
 
@@ -1086,13 +1094,110 @@ function ReportPreviewField({ label, value, className = "" }: { label: string; v
   );
 }
 
-function ReportPreviewBlock({ label, value }: { label: string; value?: string | number | null }) {
+function ReportPreviewBlock({ label, value, markdown = false }: { label: string; value?: string | number | null; markdown?: boolean }) {
+  const displayValue = displayText(value);
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 whitespace-pre-wrap rounded-lg border bg-muted/25 px-3 py-2 text-sm leading-6 text-foreground">
-        {displayText(value)}
+      <div className={`mt-1 rounded-lg border bg-muted/25 px-3 py-2 text-sm leading-6 text-foreground ${markdown ? "" : "whitespace-pre-wrap"}`}>
+        {markdown && displayValue !== "-" ? <MarkdownContent content={displayValue} /> : displayValue}
       </div>
+    </div>
+  );
+}
+
+type MarkdownAction = "heading" | "bold" | "bullet" | "numbered" | "inlineCode" | "codeBlock" | "link";
+
+const MARKDOWN_TOOLS = [
+  { action: "heading", label: "标题", icon: Heading2 },
+  { action: "bold", label: "加粗", icon: Bold },
+  { action: "bullet", label: "项目列表", icon: List },
+  { action: "numbered", label: "编号列表", icon: ListOrdered },
+  { action: "inlineCode", label: "行内代码", icon: Code2 },
+  { action: "codeBlock", label: "代码块", icon: Braces },
+  { action: "link", label: "链接", icon: Link },
+] as const;
+
+function markdownReplacement(action: MarkdownAction, selected: string) {
+  const value = selected || "";
+  if (action === "heading") return { text: `## ${value || "小标题"}`, placeholder: value ? "" : "小标题" };
+  if (action === "bold") return { text: `**${value || "重点内容"}**`, placeholder: value ? "" : "重点内容" };
+  if (action === "inlineCode") return { text: `\`${value || "命令或错误代码"}\``, placeholder: value ? "" : "命令或错误代码" };
+  if (action === "codeBlock") {
+    return { text: `\`\`\`\n${value || "粘贴命令、日志或错误代码"}\n\`\`\``, placeholder: value ? "" : "粘贴命令、日志或错误代码" };
+  }
+  if (action === "link") return { text: `[${value || "链接文字"}](https://example.com)`, placeholder: value ? "https://example.com" : "链接文字" };
+  if (action === "numbered") {
+    const lines = (value || "列表项").split("\n");
+    return { text: lines.map((line, index) => `${index + 1}. ${line || "列表项"}`).join("\n"), placeholder: value ? "" : "列表项" };
+  }
+  const lines = (value || "列表项").split("\n");
+  return { text: lines.map((line) => `- ${line || "列表项"}`).join("\n"), placeholder: value ? "" : "列表项" };
+}
+
+function MarkdownTextarea({
+  value,
+  onChange,
+  rows = 6,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function applyMarkdown(action: MarkdownAction) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    const replacement = markdownReplacement(action, selected);
+    const next = `${value.slice(0, start)}${replacement.text}${value.slice(end)}`;
+    onChange(next);
+    window.requestAnimationFrame(() => {
+      const current = textareaRef.current;
+      if (!current) return;
+      current.focus();
+      if (replacement.placeholder) {
+        const placeholderStart = replacement.text.indexOf(replacement.placeholder);
+        if (placeholderStart >= 0) {
+          current.setSelectionRange(start + placeholderStart, start + placeholderStart + replacement.placeholder.length);
+          return;
+        }
+      }
+      const nextCursor = start + replacement.text.length;
+      current.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background shadow-sm focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-primary/15">
+      <div className="flex flex-wrap items-center gap-1 border-b bg-muted/30 p-1.5">
+        {MARKDOWN_TOOLS.map((tool) => {
+          const Icon = tool.icon;
+          return (
+            <Button
+              key={tool.action}
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-md text-muted-foreground hover:text-foreground"
+              title={tool.label}
+              aria-label={tool.label}
+              onClick={() => applyMarkdown(tool.action)}
+            >
+              <Icon className="h-4 w-4" />
+            </Button>
+          );
+        })}
+      </div>
+      <Textarea
+        ref={textareaRef}
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-[180px] resize-y rounded-none border-0 shadow-none hover:bg-white focus-visible:border-transparent focus-visible:ring-0"
+      />
     </div>
   );
 }
@@ -2661,7 +2766,7 @@ export function ServiceReport() {
                     </div>
 
                     <ReportPreviewBlock label="服务需求说明" value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} />
-                    {workContent ? <ReportPreviewBlock label="处理记录" value={workContent} /> : null}
+                    {workContent ? <ReportPreviewBlock label="处理记录" value={workContent} markdown /> : null}
 
                     {(deviceText || partRows.length || fileRows.length) ? (
                       <div className="grid gap-4 rounded-lg border bg-muted/20 p-3 md:grid-cols-3">
@@ -3098,7 +3203,7 @@ export function ServiceReport() {
                 ) : null}
                 <div className="md:col-span-2">
                   <Field label={workContentLabel} required>
-                    <Textarea rows={6} value={form.workContent} onChange={(event) => patchForm({ workContent: event.target.value })} />
+                    <MarkdownTextarea value={form.workContent} onChange={(workContent) => patchForm({ workContent })} rows={6} />
                   </Field>
                 </div>
               </div>
