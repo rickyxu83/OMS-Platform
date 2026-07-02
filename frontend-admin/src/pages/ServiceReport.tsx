@@ -2557,7 +2557,15 @@ export function ServiceReport() {
                     {(() => {
                       const draftMode = normalizeMode(createDraft.serviceMode);
                       const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
-                      const draftItemsLabel = serviceItemsLabel(createDraft);
+                      const explicitDraftModules = Array.isArray(createDraft.serviceModules)
+                        ? createDraft.serviceModules.filter(isServiceModuleId)
+                        : null;
+                      const draftHasSelectedModules = draftMode === "office"
+                        || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
+                      const draftItemsLabel = draftHasSelectedModules ? serviceItemsLabel(createDraft) : "未选择模块";
+                      const draftItemsBadgeVariant = draftHasSelectedModules
+                        ? TYPE_BADGE_VARIANT[createDraft.serviceType || ""] || "outline"
+                        : "outline";
                       const draftRoute = `/service-report/new?mode=${draftMode}`;
                       const draftEngineerNames = createDraft.engineerIds?.length
                         ? engineers
@@ -2592,7 +2600,7 @@ export function ServiceReport() {
                             <div className="min-w-0">
                               <div className="flex flex-wrap gap-1.5">
                                 <Badge variant={MODE_BADGE_VARIANT[draftMode] || "secondary"}>{draftModeLabel}</Badge>
-                                <Badge variant={TYPE_BADGE_VARIANT[createDraft.serviceType || ""] || "outline"}>{draftItemsLabel}</Badge>
+                                <Badge variant={draftItemsBadgeVariant}>{draftItemsLabel}</Badge>
                               </div>
                             </div>
 
