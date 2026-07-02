@@ -63,7 +63,7 @@ OMS Platform, also known as 运维智管 in Chinese, is a work-order collaborati
 Common entries:
 
 - Admin: `https://<admin-domain>/login`
-- Legacy engineer entry: `/engineer/`, served by the admin build and redirected inside the admin workspace flow where configured.
+- Engineer service reports: sign in through the admin entry and open `Service Report`.
 
 ## Local Development
 
@@ -129,17 +129,15 @@ bash scripts/deploy.sh all
 bash scripts/deploy.sh backend
 bash scripts/deploy.sh frontend
 bash scripts/deploy.sh admin
-bash scripts/deploy.sh engineer
 
 # Named private profile, defined in scripts/deploy.local.env
 bash scripts/deploy.sh <profile> all
 bash scripts/deploy.sh <profile> backend
 bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
-bash scripts/deploy.sh <profile> eng
 ```
 
-The `engineer` / `eng` deployment target keeps the legacy `/engineer` static path available by uploading the admin build there; it no longer builds a separate engineer frontend.
+The legacy `engineer` / `eng` deployment target is retired. Engineer-facing service report filling is served from the unified admin frontend.
 
 Example environment variables:
 

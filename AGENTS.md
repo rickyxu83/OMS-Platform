@@ -33,17 +33,15 @@ bash scripts/deploy.sh all              # 全量：Git → 后端 → 前端
 bash scripts/deploy.sh backend          # 仅后端
 bash scripts/deploy.sh frontend         # 仅前端
 bash scripts/deploy.sh admin            # 仅管理端
-bash scripts/deploy.sh engineer         # 旧 /engineer 静态路径兼容：部署管理端构建产物
 
 # 指定本地私有 profile
 bash scripts/deploy.sh <profile> all
 bash scripts/deploy.sh <profile> backend
 bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
-bash scripts/deploy.sh <profile> eng    # 旧 /engineer 静态路径兼容
 ```
 
-部署流程：上传后端源码 → Docker rebuild → 构建管理端前端 → 上传 dist。旧 `/engineer` 静态路径由管理端构建产物承接，不再构建独立工程师端。
+部署流程：上传后端源码 → Docker rebuild → 构建管理端前端 → 上传 dist。旧 `/engineer` 静态路径已废弃，工程师工单填写统一走管理端入口。
 
 > **注意**：`deploy.sh` 会先把当前分支推送到 GitHub，但**不会自动提交**——工作区有未提交变更时脚本会列出文件并报错退出。部署前必须自行 `git commit`（这是有意为之，防止误提交敏感/无关文件）。
 

@@ -24,7 +24,7 @@ err()   { echo -e "${RED}  ✗ $1${NC}" >&2; }
 
 is_deploy_target() {
   case "${1:-}" in
-    all|backend|frontend|front|admin|engineer|eng) return 0 ;;
+    all|backend|frontend|front|admin) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -36,11 +36,11 @@ usage() {
   echo "目标:"
   echo "  all       全量部署：Git 推送 → 后端 → 前端"
   echo "  backend   仅部署后端：Git 推送 → 上传后端源码 → Docker 重建"
-  echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin + 旧 engineer 入口"
+  echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin"
   echo "  front     frontend 的别名"
   echo "  admin     仅部署管理端"
-  echo "  engineer  部署管理端填单入口到旧工程师端路径"
-  echo "  eng       engineer 的别名"
+  echo ""
+  echo "旧 engineer/eng 部署目标已废弃；工程师工单填写统一走管理端入口。"
   echo ""
   echo "profile: 可选，本地私有环境名。会读取 scripts/deploy.local.env 中的 DEPLOY_<PROFILE>_* 变量。"
   echo "提交信息: 可选的 git commit message，不传则自动生成"
@@ -71,24 +71,33 @@ apply_profile() {
   done
 
   local vite_suffix target_var
-  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
     source_var="DEPLOY_${profile_key}_VITE_${vite_suffix}"
     target_var="VITE_${vite_suffix}"
     if [ -n "${!source_var:-}" ]; then
       export "${target_var}=${!source_var}"
     fi
   done
+
+  source_var="DEPLOY_${profile_key}_VITE_ADMIN_BASE_PATH"
+  if [ -n "${!source_var:-}" ]; then
+    export VITE_BASE_PATH="${!source_var}"
+  fi
 }
 
 apply_vite_defaults() {
   local vite_suffix source_var target_var
-  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX BASE_PATH AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
+  for vite_suffix in API_BASE_URL UNIFIED_LOGIN_URL ADMIN_HOST_PREFIX AMAP_JSAPI_KEY AMAP_SECURITY_JS_CODE; do
     source_var="DEPLOY_VITE_${vite_suffix}"
     target_var="VITE_${vite_suffix}"
     if [ -n "${!source_var:-}" ] && [ -z "${!target_var:-}" ]; then
       export "${target_var}=${!source_var}"
     fi
   done
+
+  if [ -n "${DEPLOY_VITE_ADMIN_BASE_PATH:-}" ] && [ -z "${VITE_BASE_PATH:-}" ]; then
+    export VITE_BASE_PATH="$DEPLOY_VITE_ADMIN_BASE_PATH"
+  fi
 }
 
 parse_args() {
@@ -272,7 +281,6 @@ case "$DEPLOY_TARGET" in
     deploy_backend
     build_admin
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "全量部署完成"
     ;;
 
@@ -289,18 +297,10 @@ case "$DEPLOY_TARGET" in
     ok "管理端部署完成"
     ;;
 
-  engineer|eng)
-    git_sync
-    build_admin
-    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
-    ok "旧工程师端入口部署完成"
-    ;;
-
   frontend|front)
     git_sync
     build_admin
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
-    deploy_frontend engineer "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/engineer"
     ok "前端全量部署完成"
     ;;
 

@@ -64,7 +64,7 @@ OMS Platform（中文名：運維智管）是一套面向現場運維、售後�
 常見入口：
 
 - 管理端：`https://<admin-domain>/login`
-- 舊工程師端路徑：`/engineer/`，由管理端構建產物承接，按配置進入管理端填單流程。
+- 工程師工單填寫：透過管理端入口登入後打開 `工單填寫`。
 
 ## 本地啟動
 
@@ -130,17 +130,15 @@ bash scripts/deploy.sh all
 bash scripts/deploy.sh backend
 bash scripts/deploy.sh frontend
 bash scripts/deploy.sh admin
-bash scripts/deploy.sh engineer
 
 # 指定本地私有 profile（profile 變數在 scripts/deploy.local.env 中定義）
 bash scripts/deploy.sh <profile> all
 bash scripts/deploy.sh <profile> backend
 bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
-bash scripts/deploy.sh <profile> eng
 ```
 
-`engineer` / `eng` 部署目標僅用於保留舊 `/engineer` 靜態路徑，會上傳管理端構建產物，不再構建獨立工程師端。
+舊 `engineer` / `eng` 部署目標已廢棄。工程師側工單填寫由統一管理端前端提供。
 
 環境變數範例：
 
