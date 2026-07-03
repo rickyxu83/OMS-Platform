@@ -23,6 +23,7 @@ import {
   ListOrdered,
   MapPin,
   MonitorCog,
+  MoreHorizontal,
   Package,
   PenLine,
   Plus,
@@ -1520,6 +1521,7 @@ export function ServiceReport() {
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
+  const [filledOrdersOpen, setFilledOrdersOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState("");
@@ -3102,9 +3104,65 @@ export function ServiceReport() {
                         <div className="truncate font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
                         <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
                       </div>
-                      <Badge className="shrink-0 xl:hidden" variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                        {orderStatusLabel(order)}
-                      </Badge>
+                      <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
+                        <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
+                          {orderStatusLabel(order)}
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-label="工单操作"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {isExportingRecord || isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                            <DropdownMenuItem onSelect={() => openPreviewOrder(order)}>
+                              <FileText className="h-4 w-4" />
+                              预览工单
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (!canExportRecord || exportingOrderId) return;
+                                downloadServiceRecordPdf(order);
+                              }}
+                              disabled={!canExportRecord || Boolean(exportingOrderId)}
+                            >
+                              <Download className="h-4 w-4" />
+                              导出 PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (!canExportRecord || exportingOrderId) return;
+                                shareServiceRecordPdf(order);
+                              }}
+                              disabled={!canExportRecord || Boolean(exportingOrderId)}
+                            >
+                              <Share2 className="h-4 w-4" />
+                              分享 PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (!canRemoveOrCancelRecord || deletingOrderId) return;
+                                if (canDeleteRecord) {
+                                  deleteServiceOrder(order);
+                                  return;
+                                }
+                                cancelServiceOrder(order);
+                              }}
+                              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+                            >
+                              {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                              {destructiveActionLabel}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
 
                     <div className="min-w-0">
@@ -3143,7 +3201,7 @@ export function ServiceReport() {
                       </Badge>
                     </div>
 
-                    <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
+                    <div className="hidden min-w-0 flex-wrap gap-1.5 xl:flex xl:flex-nowrap xl:justify-end">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -3318,7 +3376,36 @@ export function ServiceReport() {
                                 <div className="truncate font-semibold text-foreground">最近草稿</div>
                                 <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
                               </div>
-                              <Badge className="shrink-0 xl:hidden" variant="draft">草稿</Badge>
+                              <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
+                                <Badge variant="draft">草稿</Badge>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      aria-label="草稿操作"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                                    <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
+                                      <PenLine className="h-4 w-4" />
+                                      继续编辑
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => deleteCreateDraft()}
+                                      disabled={deletingDraft}
+                                    >
+                                      {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                      删除草稿
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                             </div>
 
                             <div className="min-w-0">
@@ -3358,7 +3445,7 @@ export function ServiceReport() {
                               <Badge variant="draft">草稿</Badge>
                             </div>
 
-                            <div className="flex min-w-0 flex-wrap gap-1.5 xl:flex-nowrap xl:justify-end">
+                            <div className="hidden min-w-0 flex-wrap gap-1.5 xl:flex xl:flex-nowrap xl:justify-end">
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -3412,12 +3499,25 @@ export function ServiceReport() {
 
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3">
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                  <CheckCircle className="h-4 w-4" />
-                  已填写服务记录 ({filledOrders.length})
+                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    <span className="truncate">已填写服务记录 ({filledOrders.length})</span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs sm:hidden"
+                    onClick={() => setFilledOrdersOpen((open) => !open)}
+                    aria-expanded={filledOrdersOpen}
+                  >
+                    {filledOrdersOpen ? "收起" : "展开"}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${filledOrdersOpen ? "rotate-180" : ""}`} />
+                  </Button>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-2.5 sm:p-4">
+              <CardContent className={`${filledOrdersOpen ? "block" : "hidden sm:block"} p-2.5 sm:p-4`}>
                 {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
@@ -4571,11 +4671,18 @@ export function ServiceReport() {
             <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 -mx-3 flex gap-2 border-t bg-background/95 px-3 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
-                保存草稿
+                <span className="sm:hidden">保存</span>
+                <span className="hidden sm:inline">保存草稿</span>
               </Button>
-              <Button className="h-10 flex-1 lg:flex-none" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
+              <Button
+                className="h-10 flex-1 lg:flex-none"
+                onClick={submit}
+                disabled={saving || formLoading || uploadingFiles}
+                aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
+              >
                 {saving || uploadingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
-	                {electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
+                <span className="sm:hidden">提交</span>
+	                <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
               </Button>
             </div>
           </div>
