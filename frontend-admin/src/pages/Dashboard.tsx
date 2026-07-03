@@ -11,6 +11,7 @@ import { Amap } from "@/components/Amap";
 import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 
 interface Summary {
@@ -623,12 +624,13 @@ function PreviewField({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function PreviewBlock({ label, value }: { label: string; value?: string }) {
+function PreviewBlock({ label, value, markdown = false }: { label: string; value?: string; markdown?: boolean }) {
+  const displayValue = compactText(value);
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6">
-        {compactText(value)}
+      <div className={`mt-1 rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6 ${markdown ? "" : "whitespace-pre-wrap"}`}>
+        {markdown && displayValue !== "-" ? <MarkdownContent content={displayValue} /> : displayValue}
       </div>
     </div>
   );
@@ -1133,9 +1135,9 @@ export function Dashboard() {
                     <PreviewField label={t.detail.timesheetCategory} value={previewOrder.timesheetCategory} />
                   </div>
 
-                  <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} />
-                  <PreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} />
-                  {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder)} value={displayWorkContent} /> : null}
+                  <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} markdown />
+                  <PreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} markdown />
+                  {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
                   {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
                     <div className="grid gap-4 md:grid-cols-3">
                       {resultText ? <PreviewField label="处理结果" value={resultText} /> : null}
@@ -1154,8 +1156,8 @@ export function Dashboard() {
                       <PreviewField label="设备备注" value={previewOrder.deviceRemark} />
                     </div>
                   ) : null}
-                  {partText ? <PreviewBlock label="备件与硬件部件" value={partText} /> : null}
-                  {fileText ? <PreviewBlock label="附件" value={fileText} /> : null}
+                  {partText ? <PreviewBlock label="备件与硬件部件" value={partText} markdown /> : null}
+                  {fileText ? <PreviewBlock label="附件" value={fileText} markdown /> : null}
                 </div>
               );
             })() : null}

@@ -27,6 +27,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
 
@@ -663,12 +664,13 @@ function DetailField({ label, value, muted = false }: { label: string; value?: s
   );
 }
 
-function DetailBlock({ label, value }: { label: string; value?: string }) {
+function DetailBlock({ label, value, markdown = false }: { label: string; value?: string; markdown?: boolean }) {
+  const displayValue = compactText(value);
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6">
-        {compactText(value)}
+      <div className={`mt-1 rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6 ${markdown ? "" : "whitespace-pre-wrap"}`}>
+        {markdown && displayValue !== "-" ? <MarkdownContent content={displayValue} /> : displayValue}
       </div>
     </div>
   );
@@ -1793,9 +1795,9 @@ export function ServiceOrders() {
                   <DetailField label="工时类别" value={detailOrder.timesheetCategory} />
                 </div>
 
-                <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} />
-                {showInternalNote ? <DetailBlock label="内部备注（派单）" value={detailOrder.internalNote} /> : null}
-                {displayWorkContent ? <DetailBlock label={workContentPreviewLabel(detailOrder)} value={displayWorkContent} /> : null}
+                <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} markdown />
+                {showInternalNote ? <DetailBlock label="内部备注（派单）" value={detailOrder.internalNote} markdown /> : null}
+                {displayWorkContent ? <DetailBlock label={workContentPreviewLabel(detailOrder)} value={displayWorkContent} markdown /> : null}
                 {resultText || detailOrder.report?.resultDescription || detailOrder.report?.customerConfirmName || customerSignatureText ? (
                   <div className="grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
                     {resultText ? <DetailField label="处理结果" value={resultText} /> : null}
@@ -1838,7 +1840,7 @@ export function ServiceOrders() {
                   </div>
                 ) : null}
 
-                {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} /> : null}
+                {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} markdown /> : null}
 
                 {inspectionDocuments.length ? (
                   <div>

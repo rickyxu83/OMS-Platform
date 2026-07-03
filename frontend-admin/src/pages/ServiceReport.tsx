@@ -3814,10 +3814,10 @@ export function ServiceReport() {
                       </div>
                     ) : null}
 
-                    <ReportPreviewBlock label={reportIssuePreviewLabel(previewOrder)} value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} />
-                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} /> : null}
+                    <ReportPreviewBlock label={reportIssuePreviewLabel(previewOrder)} value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} markdown />
+                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} markdown /> : null}
                     {displayWorkContent ? <ReportPreviewBlock label={reportWorkContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
-                    {previewOrder.report?.resultDescription ? <ReportPreviewBlock label="结果说明" value={previewOrder.report.resultDescription} /> : null}
+                    {previewOrder.report?.resultDescription ? <ReportPreviewBlock label="结果说明" value={previewOrder.report.resultDescription} markdown /> : null}
 
                     {reportFields.length ? (
                       <div className="grid gap-4 rounded-lg border bg-muted/20 p-3 md:grid-cols-3">
