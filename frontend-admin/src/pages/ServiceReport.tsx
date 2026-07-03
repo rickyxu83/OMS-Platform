@@ -884,6 +884,11 @@ function reportOrderMainContent(order: ServiceOrder) {
   return String(order.issueDescription || order.report?.workContent || serviceItemsLabel(order) || "未填写服务内容").replace(/\s+/g, " ").trim();
 }
 
+function reportOrderPreviewSummary(order: ServiceOrder) {
+  const text = reportOrderMainContent(order);
+  return text.length > 90 ? `${text.slice(0, 90)}...` : text;
+}
+
 function reportOrderEngineerText(order: ServiceOrder, fallback = "未指定工程师") {
   const names = (order.engineers || [])
     .map((engineer) => engineer.realName || engineer.username || "")
@@ -3676,7 +3681,7 @@ export function ServiceReport() {
             <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
               <DialogTitle>{previewOrder ? reportOrderDisplayId(previewOrder) : "服务记录预览"}</DialogTitle>
               <DialogDescription>
-                {previewOrder ? `${displayText(previewOrder.customerName, "未填写客户")} · ${reportOrderMainContent(previewOrder)}` : ""}
+                {previewOrder ? `${displayText(previewOrder.customerName, "未填写客户")} · ${reportOrderPreviewSummary(previewOrder)}` : ""}
               </DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">

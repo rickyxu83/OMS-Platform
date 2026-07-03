@@ -464,11 +464,16 @@ function compactText(value?: string, fallback = "-") {
 function orderMainContent(order: ServiceOrder, fallback = "-") {
   if (order.serviceMode === "office") {
     return compactText(
-      order.internalNote || order.report?.workContent || order.issueDescription || order.displayTitle || order.deviceName,
+      order.issueDescription || order.displayTitle || order.deviceName || order.internalNote || order.report?.workContent,
       fallback,
     );
   }
   return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
+}
+
+function previewSummary(order: ServiceOrder, fallback = "") {
+  const text = orderMainContent(order, fallback);
+  return text.length > 90 ? `${text.slice(0, 90)}...` : text;
 }
 
 function isBusinessRole(role?: string) {
@@ -1713,7 +1718,7 @@ export function ServiceOrders() {
           <DialogHeader>
             <DialogTitle>{detailOrder ? displayId(detailOrder) : "工单详情"}</DialogTitle>
             <DialogDescription>
-              {detailOrder ? `${textValue(detailOrder.customerName)} · ${orderMainContent(detailOrder, "")}` : ""}
+              {detailOrder ? `${textValue(detailOrder.customerName)} · ${previewSummary(detailOrder)}` : ""}
             </DialogDescription>
           </DialogHeader>
           {detailOrder && (() => {

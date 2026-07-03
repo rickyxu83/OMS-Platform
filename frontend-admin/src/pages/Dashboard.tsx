@@ -517,9 +517,14 @@ function compactText(value?: string, fallback = "-") {
 
 function orderMainContent(order: Order, fallback = "-") {
   if (order.serviceMode === "office") {
-    return compactText(order.internalNote || order.report?.workContent || order.issueDescription || order.displayTitle || order.deviceName, fallback);
+    return compactText(order.issueDescription || order.displayTitle || order.deviceName || order.internalNote || order.report?.workContent, fallback);
   }
   return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
+}
+
+function previewSummary(order: Order, fallback = "") {
+  const text = orderMainContent(order, fallback);
+  return text.length > 90 ? `${text.slice(0, 90)}...` : text;
 }
 
 function formatDateTime(value?: string) {
@@ -1043,7 +1048,7 @@ export function Dashboard() {
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
             <DialogDescription>
-              {previewOrder ? `${textValue(previewOrder.customerName)} · ${orderMainContent(previewOrder, "")}` : ""}
+              {previewOrder ? `${textValue(previewOrder.customerName)} · ${previewSummary(previewOrder)}` : ""}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
