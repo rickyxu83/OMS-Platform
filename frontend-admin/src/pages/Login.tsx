@@ -17,13 +17,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
 
-const LOGIN_BACKGROUND_SHAPES = [
-  { className: "top-[5%] left-[-35%] h-[150px] w-[125vw] rounded-[36px] border border-white/45 bg-orange-400/35 shadow-[0_28px_90px_rgba(251,146,60,0.20)]", moveX: 142, moveY: -34, rotate: -11, rotateMove: 8, scale: 1 },
-  { className: "top-[21%] right-[-38%] h-[130px] w-[118vw] rounded-[34px] border border-white/40 bg-pink-500/30 shadow-[0_26px_84px_rgba(236,72,153,0.18)]", moveX: -126, moveY: 52, rotate: 13, rotateMove: -9, scale: 1.03 },
-  { className: "top-[41%] left-[-42%] h-[160px] w-[132vw] rounded-[40px] border border-white/40 bg-sky-500/30 shadow-[0_30px_96px_rgba(14,165,233,0.18)]", moveX: 116, moveY: -62, rotate: 8, rotateMove: 7, scale: 1.02 },
-  { className: "bottom-[20%] right-[-35%] h-[140px] w-[122vw] rounded-[36px] border border-white/45 bg-yellow-400/35 shadow-[0_28px_88px_rgba(250,204,21,0.20)]", moveX: -138, moveY: -48, rotate: -9, rotateMove: -7, scale: 1.01 },
-  { className: "bottom-[4%] left-[-38%] h-[135px] w-[120vw] rounded-[34px] border border-white/40 bg-purple-500/28 shadow-[0_26px_84px_rgba(168,85,247,0.18)]", moveX: 154, moveY: 44, rotate: 15, rotateMove: 9, scale: 1.04 },
-  { className: "top-[11%] left-[18%] h-[90px] w-[58vw] rounded-[28px] border border-white/50 bg-white/32 shadow-[0_20px_70px_rgba(88,43,139,0.12)]", moveX: -98, moveY: 76, rotate: -18, rotateMove: 12, scale: 1.02 },
+const LOGIN_BACKGROUND_BLOBS = [
+  { className: "top-[-10%] right-[10%] h-[500px] w-[500px] bg-orange-400/25", moveX: -120, moveY: 82, scale: 1.08, scaleMove: 0.035 },
+  { className: "top-[20%] right-[-10%] h-[400px] w-[400px] bg-pink-500/20", moveX: 150, moveY: 96, scale: 1.12, scaleMove: 0.045 },
+  { className: "bottom-[-15%] left-[-10%] h-[550px] w-[550px] bg-blue-500/25", moveX: -170, moveY: -112, scale: 1.08, scaleMove: 0.03 },
+  { className: "bottom-[10%] right-[20%] h-[350px] w-[350px] bg-yellow-400/25", moveX: -132, moveY: -92, scale: 1.14, scaleMove: 0.05 },
+  { className: "top-[40%] left-[10%] h-[450px] w-[450px] bg-sky-500/20", moveX: 138, moveY: -76, scale: 1.1, scaleMove: 0.04 },
+  { className: "top-[10%] left-[30%] h-[300px] w-[300px] bg-purple-500/20", moveX: 178, moveY: 126, scale: 1.18, scaleMove: 0.055 },
+  { className: "bottom-[30%] right-[40%] h-[380px] w-[380px] bg-rose-400/20", moveX: 112, moveY: -148, scale: 1.12, scaleMove: 0.04 },
 ];
 
 function LoginMotionBackground() {
@@ -39,8 +40,8 @@ function LoginMotionBackground() {
     if (!finePointer.matches || reducedMotion.matches) return;
 
     const layer = layerRef.current;
-    const shapeNodes = Array.from(layer?.querySelectorAll<HTMLElement>("[data-motion-shape]") || []);
-    if (!layer || !shapeNodes.length) return;
+    const blobNodes = Array.from(layer?.querySelectorAll<HTMLElement>("[data-motion-blob]") || []);
+    if (!layer || !blobNodes.length) return;
 
     const stopIfSettled = () => {
       const target = targetRef.current;
@@ -56,14 +57,14 @@ function LoginMotionBackground() {
     const render = () => {
       const target = targetRef.current;
       const current = currentRef.current;
-      current.x += (target.x - current.x) * 0.16;
-      current.y += (target.y - current.y) * 0.16;
+      current.x += (target.x - current.x) * 0.13;
+      current.y += (target.y - current.y) * 0.13;
 
-      shapeNodes.forEach((node, index) => {
-        const config = LOGIN_BACKGROUND_SHAPES[index];
+      blobNodes.forEach((node, index) => {
+        const config = LOGIN_BACKGROUND_BLOBS[index];
         if (!config) return;
-        const rotation = config.rotate + current.x * config.rotateMove;
-        node.style.transform = `translate3d(${(current.x * config.moveX).toFixed(2)}px, ${(current.y * config.moveY).toFixed(2)}px, 0) rotate(${rotation.toFixed(2)}deg) scale(${config.scale})`;
+        const activeScale = config.scale + Math.abs(current.x + current.y) * config.scaleMove;
+        node.style.transform = `translate3d(${(current.x * config.moveX).toFixed(2)}px, ${(current.y * config.moveY).toFixed(2)}px, 0) scale(${activeScale.toFixed(3)})`;
       });
 
       rafRef.current = window.requestAnimationFrame(render);
@@ -99,13 +100,12 @@ function LoginMotionBackground() {
 
   return (
     <div ref={layerRef} className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-      <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.30),transparent_28%,rgba(255,255,255,0.22)_62%,transparent)]" />
-      {LOGIN_BACKGROUND_SHAPES.map((shape, index) => (
+      {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
         <div
           key={index}
-          data-motion-shape
-          className={`absolute blur-sm transition-transform duration-500 ease-out motion-reduce:transition-none ${shape.className}`}
-          style={{ transform: `translate3d(0, 0, 0) rotate(${shape.rotate}deg) scale(${shape.scale})` }}
+          data-motion-blob
+          className={`absolute rounded-full blur-3xl transition-transform duration-700 ease-out motion-reduce:transition-none ${blob.className}`}
+          style={{ transform: `translate3d(0, 0, 0) scale(${blob.scale})` }}
         />
       ))}
     </div>
