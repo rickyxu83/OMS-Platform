@@ -48,6 +48,44 @@ const LOGIN_BACKGROUND_PALETTES = [
   ["rgba(167, 139, 250, 0.22)", "rgba(251, 146, 60, 0.20)", "rgba(34, 211, 238, 0.20)", "rgba(250, 204, 21, 0.20)", "rgba(74, 222, 128, 0.18)", "rgba(244, 63, 94, 0.18)", "rgba(96, 165, 250, 0.20)"],
   ["rgba(251, 113, 133, 0.20)", "rgba(56, 189, 248, 0.22)", "rgba(132, 204, 22, 0.16)", "rgba(250, 204, 21, 0.22)", "rgba(168, 85, 247, 0.18)", "rgba(45, 212, 191, 0.20)", "rgba(251, 146, 60, 0.18)"],
 ];
+const LOGIN_BACKGROUND_ACCENT_COLORS = [
+  "rgba(248, 113, 113, 0.22)",
+  "rgba(251, 113, 133, 0.22)",
+  "rgba(244, 114, 182, 0.22)",
+  "rgba(217, 70, 239, 0.20)",
+  "rgba(192, 132, 252, 0.22)",
+  "rgba(167, 139, 250, 0.22)",
+  "rgba(129, 140, 248, 0.22)",
+  "rgba(99, 102, 241, 0.22)",
+  "rgba(96, 165, 250, 0.22)",
+  "rgba(59, 130, 246, 0.24)",
+  "rgba(56, 189, 248, 0.22)",
+  "rgba(125, 211, 252, 0.22)",
+  "rgba(34, 211, 238, 0.20)",
+  "rgba(14, 165, 233, 0.22)",
+  "rgba(45, 212, 191, 0.22)",
+  "rgba(20, 184, 166, 0.22)",
+  "rgba(52, 211, 153, 0.20)",
+  "rgba(16, 185, 129, 0.20)",
+  "rgba(74, 222, 128, 0.18)",
+  "rgba(34, 197, 94, 0.18)",
+  "rgba(132, 204, 22, 0.16)",
+  "rgba(163, 230, 53, 0.16)",
+  "rgba(250, 204, 21, 0.24)",
+  "rgba(252, 211, 77, 0.24)",
+  "rgba(251, 191, 36, 0.24)",
+  "rgba(251, 146, 60, 0.24)",
+  "rgba(249, 115, 22, 0.22)",
+  "rgba(245, 158, 11, 0.22)",
+  "rgba(239, 68, 68, 0.20)",
+  "rgba(244, 63, 94, 0.20)",
+  "rgba(236, 72, 153, 0.20)",
+  "rgba(168, 85, 247, 0.20)",
+  "rgba(124, 58, 237, 0.18)",
+  "rgba(6, 182, 212, 0.20)",
+  "rgba(2, 132, 199, 0.18)",
+  "rgba(13, 148, 136, 0.18)",
+];
 
 type LoginMotionPoint = { x: number; y: number };
 type OrientationBaseline = { beta: number; gamma: number };
@@ -68,6 +106,19 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
 
 function shuffledLoginPalette() {
   const palette = [...LOGIN_BACKGROUND_PALETTES[Math.floor(Math.random() * LOGIN_BACKGROUND_PALETTES.length)]];
+  const accentColors = [...LOGIN_BACKGROUND_ACCENT_COLORS];
+  const replacementCount = 3 + Math.floor(Math.random() * 3);
+
+  for (let index = accentColors.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [accentColors[index], accentColors[swapIndex]] = [accentColors[swapIndex], accentColors[index]];
+  }
+
+  for (let index = 0; index < replacementCount; index += 1) {
+    const targetIndex = Math.floor(Math.random() * palette.length);
+    palette[targetIndex] = accentColors[index % accentColors.length];
+  }
+
   for (let index = palette.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
     [palette[index], palette[swapIndex]] = [palette[swapIndex], palette[index]];
