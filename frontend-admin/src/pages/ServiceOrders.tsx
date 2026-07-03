@@ -445,7 +445,10 @@ function compactText(value?: string, fallback = "-") {
 
 function orderMainContent(order: ServiceOrder, fallback = "-") {
   if (order.serviceMode === "office") {
-    return compactText(order.internalNote || order.displayTitle || order.deviceName || order.issueDescription, fallback);
+    return compactText(
+      order.internalNote || order.report?.workContent || order.issueDescription || order.displayTitle || order.deviceName,
+      fallback,
+    );
   }
   return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
 }
