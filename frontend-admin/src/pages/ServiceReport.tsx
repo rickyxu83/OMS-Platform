@@ -1596,6 +1596,7 @@ export function ServiceReport() {
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
   const [filledOrdersOpen, setFilledOrdersOpen] = useState(false);
+  const [formHeaderVisible, setFormHeaderVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState("");
@@ -1642,6 +1643,42 @@ export function ServiceReport() {
   const installModelSearchRequestRef = useRef(0);
   const modelCatalogSearchTimerRef = useRef<number | null>(null);
   const modelCatalogSearchRequestRef = useRef(0);
+  const formScrollTopRef = useRef(0);
+
+  useEffect(() => {
+    if (!isFormRoute || typeof window === "undefined") {
+      setFormHeaderVisible(true);
+      return;
+    }
+
+    const scrollContainer = document.querySelector<HTMLElement>(".mobile-admin-content");
+    if (!scrollContainer) return;
+    const media = window.matchMedia("(max-width: 639px)");
+
+    const handleScroll = () => {
+      if (!media.matches) {
+        setFormHeaderVisible(true);
+        return;
+      }
+
+      const currentTop = scrollContainer.scrollTop;
+      const delta = currentTop - formScrollTopRef.current;
+      formScrollTopRef.current = currentTop;
+
+      if (currentTop < 24 || delta < -8) {
+        setFormHeaderVisible(true);
+        return;
+      }
+      if (delta > 8 && currentTop > 72) {
+        setFormHeaderVisible(false);
+      }
+    };
+
+    setFormHeaderVisible(true);
+    formScrollTopRef.current = scrollContainer.scrollTop;
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
+  }, [isFormRoute, location.pathname]);
 
   const isOnsite = form.serviceMode === "onsite";
   const isRemote = form.serviceMode === "remote";
@@ -3810,7 +3847,7 @@ export function ServiceReport() {
   return (
     <>
     <div className={`mx-auto flex w-full max-w-[1040px] flex-col gap-3 p-3 sm:gap-4 sm:p-6 ${FORM_SKIN}`}>
-      <div className="sticky top-0 z-20 -mx-3 flex flex-col gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur md:flex-row md:items-center md:justify-between sm:mx-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3">
+      <div className={`sticky top-0 z-20 -mx-3 flex flex-col gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur transition-transform duration-200 md:flex-row md:items-center md:justify-between sm:mx-0 sm:translate-y-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3 ${formHeaderVisible ? "translate-y-0" : "-translate-y-full"}`}>
         <div className="flex min-w-0 items-center gap-3">
           <Button variant="outline" size="icon" onClick={() => navigate("/service-report")} aria-label="返回工单填写列表">
             <ArrowLeft className="h-4 w-4" />
@@ -4016,14 +4053,19 @@ export function ServiceReport() {
                   </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                  <Badge variant={form.customerId ? "outline" : "secondary"}>
-                    {form.customerId ? "已关联系统客户" : form.customerName.trim() ? "新客户待建档" : "未选择客户"}
-                  </Badge>
-                  {coordinateLabel(form.customerLatitude, form.customerLongitude) ? (
-                    <Badge variant="outline">已定位 {coordinateLabel(form.customerLatitude, form.customerLongitude)}</Badge>
-                  ) : null}
-                  {geoHint ? <span className="min-w-0 flex-1">{geoHint}</span> : null}
+                <div className="mt-3 grid gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    <Badge className="justify-center sm:justify-start" variant={form.customerId ? "outline" : "secondary"}>
+                      {form.customerId ? "已关联系统" : form.customerName.trim() ? "待建档" : "未选择"}
+                    </Badge>
+                    {coordinateLabel(form.customerLatitude, form.customerLongitude) ? (
+                      <Badge className="justify-center sm:justify-start" variant="outline">
+                        <span className="sm:hidden">已定位</span>
+                        <span className="hidden sm:inline">已定位 {coordinateLabel(form.customerLatitude, form.customerLongitude)}</span>
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {geoHint ? <span className="min-w-0 leading-5 sm:flex-1">{geoHint}</span> : null}
                 </div>
 
                 {isOnsite && geoCandidates.length ? (
