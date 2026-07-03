@@ -8,6 +8,45 @@
     <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%apple-touch-icon.png" />
     <title>OMS Platform 运维智管</title>
     <meta name="description" content="OMS Platform 运维智管统一登录入口与管理工作台" />
+    <style>
+      @media (hover: none), (pointer: coarse) {
+        html,
+        body,
+        #root {
+          min-height: 100%;
+          background: #f7f1ea;
+        }
+
+        body {
+          margin: 0;
+        }
+
+        #root:empty {
+          position: fixed;
+          inset: 0;
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.58), transparent 44%),
+            linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.28)),
+            #f7f1ea;
+        }
+
+        #root:empty::before {
+          content: "";
+          position: absolute;
+          inset: -14vh -14vw;
+          background:
+            radial-gradient(circle at 78% 6%, rgba(251, 146, 60, 0.28), transparent 30%),
+            radial-gradient(circle at 96% 30%, rgba(236, 72, 153, 0.20), transparent 28%),
+            radial-gradient(circle at 0% 92%, rgba(59, 130, 246, 0.22), transparent 34%),
+            radial-gradient(circle at 62% 18%, rgba(168, 85, 247, 0.18), transparent 24%),
+            radial-gradient(circle at 30% 58%, rgba(14, 165, 233, 0.18), transparent 30%);
+          filter: blur(34px);
+          opacity: 0.95;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
