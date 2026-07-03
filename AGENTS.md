@@ -50,6 +50,7 @@ bash scripts/deploy.sh <profile> admin
 - 提交信息用**中文**，一行主题概括动作与对象（如 `修复巡检计划列表 500：…`、`安全加固：…`），需要时正文用 `-` 列出要点
 - 按逻辑单元拆分提交（安全修复 / 性能优化 / 死代码清理分开），不要混在一个大提交里
 - 部署即发布：推送到 `origin/main` 的内容会被部署脚本带上生产，不要推半成品
+- 每次可见功能、页面展示、交互或发布内容变更，都必须同步提升管理端版本号。至少更新 `frontend-admin/package.json`、`frontend-admin/package-lock.json` 顶层版本，以及 `frontend-admin/src/config/app.ts` 中 `APP_VERSION` 的 fallback，确保登录页和左下角"系统版本"会变化。仅文档、注释、部署脚本或后端内部不可见修复可不提升前端版本；如后端包本身发布语义变化，再同步更新 `backend/package.json` 与 `backend/package-lock.json`。
 
 ## 部署前后检查（AI 执行部署时必做）
 
@@ -57,7 +58,8 @@ bash scripts/deploy.sh <profile> admin
 
 1. `git status` 干净、改动已按逻辑提交
 2. 后端改动跑 `npm run check`（语法检查）；前端改动跑对应端 `npm run build`，admin 端另跑 `npx tsc --noEmit`（当前保持 0 错误）
-3. 涉及 `backend/src/config/env.js` 启动门禁的改动：先确认服务器 compose 已设 `NODE_ENV=production` 和 `JWT_SECRET`，否则容器会启动失败（这是有意的安全门禁）
+3. 涉及管理端可见改动时，确认版本号已随提交更新：`frontend-admin/package.json`、`frontend-admin/package-lock.json`、`frontend-admin/src/config/app.ts` 三处一致
+4. 涉及 `backend/src/config/env.js` 启动门禁的改动：先确认服务器 compose 已设 `NODE_ENV=production` 和 `JWT_SECRET`，否则容器会启动失败（这是有意的安全门禁）
 
 **部署后（deploy.sh 自身没有健康检查）：**
 
