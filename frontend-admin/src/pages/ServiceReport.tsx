@@ -1374,7 +1374,7 @@ function ReportSection({
 }) {
   return (
     <section className="rounded-lg border bg-card shadow-sm">
-      <div className="flex min-h-[64px] items-center justify-between gap-3 px-4 py-4 sm:px-5">
+      <div className="flex min-h-[52px] items-center justify-between gap-3 px-3 py-3 sm:min-h-[64px] sm:px-5 sm:py-4">
         <div className="flex min-w-0 items-center gap-3">
           {Icon ? (
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -1383,7 +1383,7 @@ function ReportSection({
           ) : null}
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
-            {tag ? <div className="mt-0.5 text-xs text-muted-foreground">{tag}</div> : null}
+            {tag ? <div className="mt-0.5 hidden text-xs text-muted-foreground sm:block">{tag}</div> : null}
           </div>
         </div>
         {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
@@ -3086,7 +3086,7 @@ export function ServiceReport() {
                   role="button"
                   tabIndex={0}
                   aria-label={`预览 ${reportOrderDisplayId(order)}`}
-                  className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
+                  className="cursor-pointer rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:py-3 sm:px-4"
                   onClick={() => openPreviewOrder(order)}
                   onKeyDown={(event) => {
                     if (event.target !== event.currentTarget) return;
@@ -3096,10 +3096,15 @@ export function ServiceReport() {
                     }
                   }}
                 >
-                  <div className={`grid min-w-0 gap-3 xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
-                    <div className="min-w-0">
-                      <div className="font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
-                      <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
+                  <div className={`grid min-w-0 gap-2.5 xl:grid xl:gap-3 ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
+                    <div className="flex min-w-0 items-start justify-between gap-3 xl:block">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
+                        <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
+                      </div>
+                      <Badge className="shrink-0 xl:hidden" variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
+                        {orderStatusLabel(order)}
+                      </Badge>
                     </div>
 
                     <div className="min-w-0">
@@ -3117,11 +3122,11 @@ export function ServiceReport() {
                       <span className="block truncate text-sm font-medium">{reportOrderMainContent(order)}</span>
                     </div>
 
-                    <div className="min-w-0 text-sm">
+                    <div className="hidden min-w-0 text-sm xl:block">
                       <span className="block truncate">{reportOrderEngineerText(order)}</span>
                     </div>
 
-                    <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
+                    <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs xl:block">
                       <div>
                         <span className="text-muted-foreground">开始：</span>
                         <span>{serviceTime.start}</span>
@@ -3132,7 +3137,7 @@ export function ServiceReport() {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="hidden xl:block">
                       <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
                         {orderStatusLabel(order)}
                       </Badge>
@@ -3145,7 +3150,7 @@ export function ServiceReport() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-8 min-w-[78px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            className="h-8 min-w-[68px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[78px]"
                             disabled={!canExportRecord || Boolean(exportingOrderId)}
                             aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
                             title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
@@ -3183,7 +3188,7 @@ export function ServiceReport() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[72px]"
                         disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
                         aria-label={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
                         title={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
@@ -3216,13 +3221,13 @@ export function ServiceReport() {
   if (!isFormRoute) {
     return (
       <>
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-3 sm:gap-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-            <div>
-              <div className="text-sm text-muted-foreground">管理工作台 / 工单填写</div>
-              <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">工单填写</h1>
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 p-2.5 sm:gap-5 sm:p-6">
+          <div className="flex flex-row items-center justify-between gap-3 md:items-end">
+            <div className="min-w-0">
+              <div className="hidden text-sm text-muted-foreground sm:block">管理工作台 / 工单填写</div>
+              <h1 className="truncate text-xl font-semibold tracking-normal text-foreground sm:mt-1 sm:text-2xl">工单填写</h1>
             </div>
-            <Button className="h-10 w-full sm:w-auto" variant="outline" onClick={loadHome} disabled={loading}>
+            <Button className="h-9 shrink-0 px-3 sm:h-10" variant="outline" onClick={loadHome} disabled={loading}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
               刷新
             </Button>
@@ -3239,14 +3244,14 @@ export function ServiceReport() {
                   key={mode.value}
                   type="button"
                   onClick={() => navigate(`/service-report/new?mode=${mode.value}`)}
-                  className="flex min-h-[92px] items-start gap-3 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary hover:bg-primary/5 sm:min-h-[112px] sm:p-4"
+                  className="flex min-h-0 items-center gap-3 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary hover:bg-primary/5 sm:min-h-[112px] sm:items-start sm:p-4"
                 >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary sm:h-10 sm:w-10">
                     <Icon className="h-5 w-5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-base font-semibold text-foreground">新建{mode.label}服务记录</span>
-                    <span className="mt-1 block text-sm leading-5 text-muted-foreground">{mode.description}</span>
+                    <span className="block truncate text-sm font-semibold text-foreground sm:text-base">新建{mode.label}服务记录</span>
+                    <span className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">{mode.description}</span>
                   </span>
                 </button>
               );
@@ -3255,14 +3260,14 @@ export function ServiceReport() {
 
           <div className="grid gap-3 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardHeader className={`${createDraft ? "border-b" : ""} bg-muted/30 px-4 py-3`}>
-                <CardTitle className="flex items-center gap-2 text-base">
+              <CardHeader className={`${createDraft ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <Save className="h-4 w-4" />
                   草稿 ({createDraft ? 1 : 0})
                 </CardTitle>
               </CardHeader>
               {createDraft ? (
-                <CardContent className="p-3 sm:p-4">
+                <CardContent className="p-2.5 sm:p-4">
                   <div className="space-y-3">
                     <div className={`${REPORT_ORDER_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
                       <div>草稿 / 客户</div>
@@ -3297,7 +3302,7 @@ export function ServiceReport() {
                           role="button"
                           tabIndex={0}
                           aria-label="继续编辑草稿"
-                          className="cursor-pointer rounded-lg border border-border bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:px-4"
+                          className="cursor-pointer rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:py-3 sm:px-4"
                           onClick={() => navigate(draftRoute)}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return;
@@ -3307,10 +3312,13 @@ export function ServiceReport() {
                             }
                           }}
                         >
-                          <div className={`grid min-w-0 gap-3 xl:grid ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
-                            <div className="min-w-0">
-                              <div className="font-semibold text-foreground">最近草稿</div>
-                              <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
+                          <div className={`grid min-w-0 gap-2.5 xl:grid xl:gap-3 ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
+                            <div className="flex min-w-0 items-start justify-between gap-3 xl:block">
+                              <div className="min-w-0">
+                                <div className="truncate font-semibold text-foreground">最近草稿</div>
+                                <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
+                              </div>
+                              <Badge className="shrink-0 xl:hidden" variant="draft">草稿</Badge>
                             </div>
 
                             <div className="min-w-0">
@@ -3331,11 +3339,11 @@ export function ServiceReport() {
                               <span className="block truncate text-sm font-medium">{compactDraftLabel(createDraft)}</span>
                             </div>
 
-                            <div className="min-w-0 text-sm">
+                            <div className="hidden min-w-0 text-sm xl:block">
                               <span className="block truncate">{draftEngineerText}</span>
                             </div>
 
-                            <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
+                            <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs xl:block">
                               <div>
                                 <span className="text-muted-foreground">开始：</span>
                                 <span>{formatDateTime(createDraft.actualStartAt || createDraft.departureAt)}</span>
@@ -3346,7 +3354,7 @@ export function ServiceReport() {
                               </div>
                             </div>
 
-                            <div>
+                            <div className="hidden xl:block">
                               <Badge variant="draft">草稿</Badge>
                             </div>
 
@@ -3355,7 +3363,7 @@ export function ServiceReport() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 min-w-[72px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                className="h-8 min-w-[64px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[72px]"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   navigate(draftRoute);
@@ -3368,7 +3376,7 @@ export function ServiceReport() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 min-w-[72px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive"
+                                className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive sm:min-w-[72px]"
                                 disabled={deletingDraft}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -3389,27 +3397,27 @@ export function ServiceReport() {
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className={`${loading || dispatchOrders.length ? "border-b" : ""} bg-muted/30 px-4 py-3`}>
-                <CardTitle className="flex items-center gap-2 text-base">
+              <CardHeader className={`${loading || dispatchOrders.length ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <ClipboardPenLine className="h-4 w-4" />
                   派单待处理 ({dispatchOrders.length})
                 </CardTitle>
               </CardHeader>
               {loading || dispatchOrders.length ? (
-                <CardContent className="p-3 sm:p-4">
+                <CardContent className="p-2.5 sm:p-4">
                   {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
                 </CardContent>
               ) : null}
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className="border-b bg-muted/30 px-4 py-3">
-                <CardTitle className="flex items-center gap-2 text-base">
+              <CardHeader className="border-b bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <CheckCircle className="h-4 w-4" />
                   已填写服务记录 ({filledOrders.length})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-3 sm:p-4">
+              <CardContent className="p-2.5 sm:p-4">
                 {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
@@ -3626,21 +3634,21 @@ export function ServiceReport() {
   return (
     <>
     <div className={`mx-auto flex w-full max-w-[1040px] flex-col gap-3 p-3 sm:gap-4 sm:p-6 ${FORM_SKIN}`}>
-      <div className="sticky top-0 z-20 -mx-3 flex flex-col gap-3 border-b bg-background/95 px-3 py-3 backdrop-blur md:flex-row md:items-center md:justify-between sm:mx-0 sm:rounded-lg sm:border sm:px-4">
+      <div className="sticky top-0 z-20 -mx-3 flex flex-col gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur md:flex-row md:items-center md:justify-between sm:mx-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button variant="outline" size="icon" onClick={() => navigate("/service-report")} aria-label="返回工单填写列表">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
-            <div className="text-sm text-muted-foreground">管理工作台 / 工单填写</div>
-            <h1 className="mt-1 truncate text-lg font-semibold tracking-normal text-foreground sm:text-xl">
+            <div className="hidden text-sm text-muted-foreground sm:block">管理工作台 / 工单填写</div>
+            <h1 className="truncate text-base font-semibold tracking-normal text-foreground sm:mt-1 sm:text-xl">
               {id ? `填写服务记录 · ${currentOrder?.orderNo || `工单 #${id}`}` : `新建${MODE_OPTIONS.find((mode) => mode.value === form.serviceMode)?.label || ""}服务记录`}
             </h1>
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
           {draftSavedAt || editDraftLoaded ? (
-            <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground sm:w-auto">
+            <div className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-3 text-xs text-muted-foreground sm:h-10 sm:w-auto sm:text-sm">
               {draftSavedAt ? <span className="whitespace-nowrap">草稿 {draftSavedAt}</span> : null}
               {draftSavedAt && editDraftLoaded ? <span className="h-4 w-px shrink-0 bg-border" /> : null}
               {editDraftLoaded ? (
@@ -3657,14 +3665,16 @@ export function ServiceReport() {
               ) : null}
             </div>
           ) : null}
-          <Button className="h-10 flex-1 sm:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            保存草稿
-          </Button>
-          <Button className="h-10 flex-1 sm:flex-none" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
-            {saving || uploadingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            提交记录
-          </Button>
+          <div className="hidden items-center gap-2 sm:flex">
+            <Button className="h-10" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              保存草稿
+            </Button>
+            <Button className="h-10" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
+              {saving || uploadingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              提交记录
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -3680,7 +3690,7 @@ export function ServiceReport() {
         <>
         <div className="space-y-4">
           <ReportSection title="客户信息" icon={User} step={1} tag="客户、地址与联系人">
-            <div className="space-y-4 p-4">
+            <div className="space-y-4 p-3 sm:p-4">
               <div className="rounded-lg border bg-background p-3">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
                   <div className={isOnsite ? "lg:col-span-5" : "md:col-span-2 lg:col-span-12"}>
@@ -3868,7 +3878,7 @@ export function ServiceReport() {
           </ReportSection>
 
           <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : "可多选；系统将按模块显示对应字段"}>
-              <div className="space-y-4 p-4">
+              <div className="space-y-4 p-3 sm:p-4">
                 {!isOffice ? (
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     {moduleOptions.map((option) => {
@@ -3878,7 +3888,7 @@ export function ServiceReport() {
                         <button
                           key={option.value}
                           type="button"
-                          className={`group flex min-h-[128px] flex-col justify-between rounded-lg border p-3 text-left transition-colors ${
+                          className={`group flex min-h-0 flex-col justify-between rounded-lg border p-3 text-left transition-colors sm:min-h-[128px] ${
                             selected ? "border-primary bg-primary/5 text-primary shadow-sm" : "border-border bg-background hover:border-primary/40 hover:bg-accent/40"
                           }`}
                           onClick={() => toggleServiceModule(option.value)}
@@ -3893,9 +3903,9 @@ export function ServiceReport() {
                           </span>
                           <span className="mt-3 min-w-0">
                             <span className="block text-sm font-semibold">{option.label}</span>
-                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{option.description}</span>
+                            <span className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">{option.description}</span>
                             {option.descriptionItems?.length ? (
-                              <span className="mt-2 flex flex-wrap gap-1">
+                              <span className="mt-2 hidden flex-wrap gap-1 sm:flex">
                                 {option.descriptionItems.map((item) => (
                                   <span
                                     key={item}
