@@ -889,6 +889,31 @@ function reportOrderPreviewSummary(order: ServiceOrder) {
   return text.length > 90 ? `${text.slice(0, 90)}...` : text;
 }
 
+function reportIssuePreviewLabel(order: ServiceOrder) {
+  const mode = normalizeMode(order.serviceMode);
+  if (mode === "office") return "内勤工作说明";
+  return "服务需求说明";
+}
+
+function reportWorkContentPreviewLabel(order: ServiceOrder) {
+  const mode = normalizeMode(order.serviceMode);
+  const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
+  if (mode === "onsite") {
+    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
+    return "现场处理记录";
+  }
+  if (mode === "remote" && modules.includes("repair")) return "远程支持记录";
+  return "处理记录";
+}
+
+function samePreviewText(a?: string, b?: string) {
+  const normalize = (value?: string) => String(value || "").replace(/\s+/g, " ").trim();
+  const left = normalize(a);
+  const right = normalize(b);
+  return Boolean(left && right && left === right);
+}
+
 function reportOrderEngineerText(order: ServiceOrder, fallback = "未指定工程师") {
   const names = (order.engineers || [])
     .map((engineer) => engineer.realName || engineer.username || "")
@@ -3703,6 +3728,7 @@ export function ServiceReport() {
                     .map((entry) => entry.workContent || entry.work_content || "")
                     .filter(Boolean)
                     .join("\n\n");
+                const displayWorkContent = samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
                 const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
                 const signatureLabel = mode === "onsite"
                   ? previewOrder.report?.customerSignatureFileId
@@ -3788,9 +3814,9 @@ export function ServiceReport() {
                       </div>
                     ) : null}
 
-                    <ReportPreviewBlock label="服务需求说明" value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} />
-                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注" value={previewOrder.internalNote} /> : null}
-                    {workContent ? <ReportPreviewBlock label="处理记录" value={workContent} markdown /> : null}
+                    <ReportPreviewBlock label={reportIssuePreviewLabel(previewOrder)} value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} />
+                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} /> : null}
+                    {displayWorkContent ? <ReportPreviewBlock label={reportWorkContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
                     {previewOrder.report?.resultDescription ? <ReportPreviewBlock label="结果说明" value={previewOrder.report.resultDescription} /> : null}
 
                     {reportFields.length ? (

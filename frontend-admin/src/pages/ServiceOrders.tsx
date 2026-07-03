@@ -596,6 +596,29 @@ function filePurposeLabel(value?: string) {
   return "附件";
 }
 
+function issuePreviewLabel(order: ServiceOrder) {
+  if (order.serviceMode === "office") return "内勤工作说明";
+  return "服务需求说明";
+}
+
+function workContentPreviewLabel(order: ServiceOrder) {
+  const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
+  if (order.serviceMode === "onsite") {
+    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
+    return "现场处理记录";
+  }
+  if (order.serviceMode === "remote" && modules.includes("repair")) return "远程支持记录";
+  return "处理记录";
+}
+
+function samePreviewText(a?: string, b?: string) {
+  const normalize = (value?: string) => String(value || "").replace(/\s+/g, " ").trim();
+  const left = normalize(a);
+  const right = normalize(b);
+  return Boolean(left && right && left === right);
+}
+
 function splitSearchTerms(value: string) {
   return value
     .trim()
@@ -1732,6 +1755,7 @@ export function ServiceOrders() {
             const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
             const showInternalNote = !isBusinessUser;
             const workContent = displayReportWorkContent(detailOrder);
+            const displayWorkContent = samePreviewText(detailOrder.issueDescription, workContent) ? "" : workContent;
             const serviceParts = displayServiceParts(detailOrder.parts);
             const installedDevices = detailOrder.installedDevices || [];
             const resultText = serviceResultLabel(detailOrder.report?.result);
@@ -1769,9 +1793,9 @@ export function ServiceOrders() {
                   <DetailField label="工时类别" value={detailOrder.timesheetCategory} />
                 </div>
 
-                <DetailBlock label={t.detail.issueDescription} value={detailOrder.issueDescription} />
-                {showInternalNote ? <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} /> : null}
-                {workContent ? <DetailBlock label="处理记录" value={workContent} /> : null}
+                <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} />
+                {showInternalNote ? <DetailBlock label="内部备注（派单）" value={detailOrder.internalNote} /> : null}
+                {displayWorkContent ? <DetailBlock label={workContentPreviewLabel(detailOrder)} value={displayWorkContent} /> : null}
                 {resultText || detailOrder.report?.resultDescription || detailOrder.report?.customerConfirmName || customerSignatureText ? (
                   <div className="grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
                     {resultText ? <DetailField label="处理结果" value={resultText} /> : null}

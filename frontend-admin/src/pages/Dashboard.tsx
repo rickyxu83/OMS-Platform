@@ -72,6 +72,7 @@ interface Order {
   serviceMode?: string;
   timesheetCategory?: string;
   timesheetSalesperson?: string;
+  serviceModules?: string[];
   priority?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
@@ -582,6 +583,29 @@ function filesSummary(order: Order) {
   return files.map((file) => file.originalName || `附件 #${file.id}`).join("\n");
 }
 
+function issuePreviewLabel(order: Order) {
+  if (order.serviceMode === "office") return "内勤工作说明";
+  return "服务需求说明";
+}
+
+function workContentPreviewLabel(order: Order) {
+  const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
+  if (order.serviceMode === "onsite") {
+    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
+    return "现场处理记录";
+  }
+  if (order.serviceMode === "remote" && modules.includes("repair")) return "远程支持记录";
+  return "处理记录";
+}
+
+function samePreviewText(a?: string, b?: string) {
+  const normalize = (value?: string) => String(value || "").replace(/\s+/g, " ").trim();
+  const left = normalize(a);
+  const right = normalize(b);
+  return Boolean(left && right && left === right);
+}
+
 function engineerText(order: Order, fallback: string) {
   const names = (order.engineers || [])
     .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
@@ -1071,6 +1095,7 @@ export function Dashboard() {
               const priorityLabel = t.priority[previewOrder.priority as keyof typeof t.priority] || previewOrder.priority || "-";
               const serviceTime = reportServiceTime(previewOrder);
               const workContent = reportWorkContent(previewOrder);
+              const displayWorkContent = samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
               const resultText = resultLabel(previewOrder.report?.result);
               const signatureText = previewOrder.serviceMode === "onsite"
                 ? previewOrder.report?.customerSignatureFileId
@@ -1108,9 +1133,9 @@ export function Dashboard() {
                     <PreviewField label={t.detail.timesheetCategory} value={previewOrder.timesheetCategory} />
                   </div>
 
-                  <PreviewBlock label={t.detail.issueDescription} value={previewOrder.issueDescription} />
-                  <PreviewBlock label={t.detail.internalNote} value={previewOrder.internalNote} />
-                  {workContent ? <PreviewBlock label="处理记录" value={workContent} /> : null}
+                  <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} />
+                  <PreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} />
+                  {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder)} value={displayWorkContent} /> : null}
                   {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
                     <div className="grid gap-4 md:grid-cols-3">
                       {resultText ? <PreviewField label="处理结果" value={resultText} /> : null}
