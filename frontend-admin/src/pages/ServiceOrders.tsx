@@ -598,11 +598,12 @@ function filePurposeLabel(value?: string) {
 }
 
 function issuePreviewLabel(order: ServiceOrder) {
-  if (order.serviceMode === "office") return "内勤工作说明";
+  if (order.serviceMode === "office") return "内勤工作事项";
   return "服务需求说明";
 }
 
 function workContentPreviewLabel(order: ServiceOrder) {
+  if (order.serviceMode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (order.serviceMode === "onsite") {
     if (modules.includes("repair")) return "故障排查记录";
@@ -1755,9 +1756,10 @@ export function ServiceOrders() {
             const inspectionDocuments = (detailOrder.files || []).filter((file) => file.purpose === "inspection_document");
             const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
             const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
-            const showInternalNote = !isBusinessUser;
             const workContent = displayReportWorkContent(detailOrder);
-            const displayWorkContent = samePreviewText(detailOrder.issueDescription, workContent) ? "" : workContent;
+            const displayWorkContent = detailOrder.serviceMode === "office"
+              ? workContent
+              : samePreviewText(detailOrder.issueDescription, workContent) ? "" : workContent;
             const serviceParts = displayServiceParts(detailOrder.parts);
             const installedDevices = detailOrder.installedDevices || [];
             const resultText = serviceResultLabel(detailOrder.report?.result);
@@ -1796,7 +1798,6 @@ export function ServiceOrders() {
                 </div>
 
                 <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} markdown />
-                {showInternalNote ? <DetailBlock label="内部备注（派单）" value={detailOrder.internalNote} markdown /> : null}
                 {displayWorkContent ? <DetailBlock label={workContentPreviewLabel(detailOrder)} value={displayWorkContent} markdown /> : null}
                 {resultText || detailOrder.report?.resultDescription || detailOrder.report?.customerConfirmName || customerSignatureText ? (
                   <div className="grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">

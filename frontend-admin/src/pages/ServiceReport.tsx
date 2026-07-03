@@ -891,12 +891,13 @@ function reportOrderPreviewSummary(order: ServiceOrder) {
 
 function reportIssuePreviewLabel(order: ServiceOrder) {
   const mode = normalizeMode(order.serviceMode);
-  if (mode === "office") return "内勤工作说明";
+  if (mode === "office") return "内勤工作事项";
   return "服务需求说明";
 }
 
 function reportWorkContentPreviewLabel(order: ServiceOrder) {
   const mode = normalizeMode(order.serviceMode);
+  if (mode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (mode === "onsite") {
     if (modules.includes("repair")) return "故障排查记录";
@@ -1821,10 +1822,12 @@ export function ServiceReport() {
     : hasHardwareInstallDetails && !showInlineInstallParts
       ? "记录 CPU、内存、硬盘、扩展柜、交换机模块等硬件部件安装明细。"
       : "记录故障备件拆下、换上及相关明细。";
-  const issueFieldLabel = isOffice ? "内勤工作说明" : "服务需求说明";
-  const workContentLabel = isOnsite
-    ? isRepairModule ? "故障排查记录" : isInspection ? "巡检处理记录" : "现场处理记录"
-    : isRemoteSupportModule ? "远程支持记录" : "处理记录";
+  const issueFieldLabel = isOffice ? "内勤工作事项" : "服务需求说明";
+  const workContentLabel = isOffice
+    ? "工作内容"
+    : isOnsite
+      ? isRepairModule ? "故障排查记录" : isInspection ? "巡检处理记录" : "现场处理记录"
+      : isRemoteSupportModule ? "远程支持记录" : "处理记录";
   const shouldShowAttachments = isInstall || isRepairModule || isRemoteSupportModule || isInspection || hasReplacementModule;
   const workSectionStep = 3;
   const attachmentSectionStep = 4;
@@ -3728,7 +3731,9 @@ export function ServiceReport() {
                     .map((entry) => entry.workContent || entry.work_content || "")
                     .filter(Boolean)
                     .join("\n\n");
-                const displayWorkContent = samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
+                const displayWorkContent = mode === "office"
+                  ? workContent
+                  : samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
                 const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
                 const signatureLabel = mode === "onsite"
                   ? previewOrder.report?.customerSignatureFileId
@@ -3815,7 +3820,6 @@ export function ServiceReport() {
                     ) : null}
 
                     <ReportPreviewBlock label={reportIssuePreviewLabel(previewOrder)} value={previewOrder.issueDescription || reportOrderMainContent(previewOrder)} markdown />
-                    {previewOrder.internalNote ? <ReportPreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} markdown /> : null}
                     {displayWorkContent ? <ReportPreviewBlock label={reportWorkContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
                     {previewOrder.report?.resultDescription ? <ReportPreviewBlock label="结果说明" value={previewOrder.report.resultDescription} markdown /> : null}
 
@@ -4258,7 +4262,7 @@ export function ServiceReport() {
               </div>
               </ReportSection>
 
-	              <ReportSection title="处理记录" icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
+	              <ReportSection title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
               <div className="grid gap-4 p-4 md:grid-cols-2">
                 {isOnsite ? (
                   <Field label="出发时间">

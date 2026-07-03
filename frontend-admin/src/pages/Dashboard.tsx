@@ -585,11 +585,12 @@ function filesSummary(order: Order) {
 }
 
 function issuePreviewLabel(order: Order) {
-  if (order.serviceMode === "office") return "内勤工作说明";
+  if (order.serviceMode === "office") return "内勤工作事项";
   return "服务需求说明";
 }
 
 function workContentPreviewLabel(order: Order) {
+  if (order.serviceMode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (order.serviceMode === "onsite") {
     if (modules.includes("repair")) return "故障排查记录";
@@ -1097,7 +1098,9 @@ export function Dashboard() {
               const priorityLabel = t.priority[previewOrder.priority as keyof typeof t.priority] || previewOrder.priority || "-";
               const serviceTime = reportServiceTime(previewOrder);
               const workContent = reportWorkContent(previewOrder);
-              const displayWorkContent = samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
+              const displayWorkContent = previewOrder.serviceMode === "office"
+                ? workContent
+                : samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
               const resultText = resultLabel(previewOrder.report?.result);
               const signatureText = previewOrder.serviceMode === "onsite"
                 ? previewOrder.report?.customerSignatureFileId
@@ -1136,7 +1139,6 @@ export function Dashboard() {
                   </div>
 
                   <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} markdown />
-                  <PreviewBlock label="内部备注（派单）" value={previewOrder.internalNote} markdown />
                   {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
                   {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
                     <div className="grid gap-4 md:grid-cols-3">

@@ -580,7 +580,7 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
   const finishedDate = formatDateTime(report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const relatedName = cleanText(item.customerName, '敦阳科技内勤')
   const category = officeCategoryDisplay(item)
-  const matter = cleanText(item.internalNote || item.deviceName || item.issueDescription, '内勤工作')
+  const matter = cleanText(item.issueDescription || item.deviceName, '内勤工作')
   const workContent = exportWorkContent(report, item) || cleanText(item.issueDescription, '未填写工作内容')
   const resultStatus = cleanText(resultDisplay(item), '已完成')
   const resultDescription = String(report.resultDescription || item.resultDescription || '').trim()
@@ -624,7 +624,7 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
   cell(458, 250, 292, 102, '业务人员', salesperson || '-')
 
   fillRect(doc, 68, 318, 682, 118, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
-  text(doc, fonts, '具体事项', 92, 352, { size: 15.5, color: '#0f172a' })
+  text(doc, fonts, '内勤工作事项', 92, 352, { size: 15.5, color: '#0f172a' })
   textLines(doc, fonts, matter, 92, 396, { maxWidth: 634, maxChars: 66, maxLines: 2, lineHeight: 30 })
 
   fillRect(doc, 68, 462, 682, 344, { rx: 12, fill: '#ffffff', stroke: '#d6dee8' })

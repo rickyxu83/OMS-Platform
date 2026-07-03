@@ -2076,6 +2076,7 @@ async function create(req, res) {
   if (normalizedPlannedStartAt && normalizedPlannedEndAt && normalizedPlannedEndAt < normalizedPlannedStartAt) {
     throw badRequest('计划结束时间不能早于开始时间')
   }
+  const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
 
   const result = await transaction(async (connection) => {
     if (normalizedEngineerIds.length) {
@@ -2122,7 +2123,7 @@ async function create(req, res) {
         contactName: defaultContact.contactName,
         contactPhone: defaultContact.contactPhone,
         deviceId: deviceId || null,
-        serviceMode: ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite',
+        serviceMode: effectiveServiceMode,
         serviceType,
         timesheetCategory: timesheetCategory || null,
         timesheetSalesperson: salespersonSnapshot,
@@ -2133,7 +2134,7 @@ async function create(req, res) {
         targetEngineerId: normalizedPrimaryEngineerId || null,
         plannedStartAt: normalizedPlannedStartAt,
         plannedEndAt: normalizedPlannedEndAt,
-        internalNote: internalNote || null,
+        internalNote: effectiveServiceMode === 'office' ? null : internalNote || null,
         createdBy: req.user.id,
       },
     )
@@ -2226,8 +2227,8 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !contactPhone) missing.push('联系人电话')
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
-  if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
-  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
+  if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : effectiveServiceMode === 'office' ? '内勤工作事项' : '月报工作内容')
+  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
@@ -2401,7 +2402,7 @@ async function createSelfReport(req, res) {
         status: submitStatus,
         issueDescription,
         engineerId: req.user.id,
-        internalNote: internalNote || null,
+        internalNote: effectiveServiceMode === 'office' ? null : internalNote || null,
         createdBy: req.user.id,
         submittedAt: useElectronicCustomerSignature ? null : formatMysqlDateTime(new Date()),
       },
@@ -3161,8 +3162,8 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode !== 'office' && !contactPhone) missing.push('联系人电话')
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
-  if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : '月报工作内容')
-  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : '处理记录')
+  if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : effectiveServiceMode === 'office' ? '内勤工作事项' : '月报工作内容')
+  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
