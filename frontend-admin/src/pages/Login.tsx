@@ -18,19 +18,26 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
 
 const LOGIN_BACKGROUND_BLOBS = [
-  { className: "top-[-10%] right-[10%] h-[500px] w-[500px] bg-orange-400/25", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
-  { className: "top-[20%] right-[-10%] h-[400px] w-[400px] bg-pink-500/20", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
-  { className: "bottom-[-15%] left-[-10%] h-[550px] w-[550px] bg-blue-500/25", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
-  { className: "bottom-[10%] right-[20%] h-[350px] w-[350px] bg-yellow-400/25", moveX: -250, moveY: -170, scale: 1.14, scaleMove: 0.07 },
-  { className: "top-[40%] left-[10%] h-[450px] w-[450px] bg-sky-500/20", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
-  { className: "top-[10%] left-[30%] h-[300px] w-[300px] bg-purple-500/20", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
-  { className: "bottom-[30%] right-[40%] h-[380px] w-[380px] bg-rose-400/20", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
+  { className: "top-[4%] right-[8%] h-[500px] w-[500px]", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
+  { className: "top-[24%] right-[-8%] h-[400px] w-[400px]", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
+  { className: "bottom-[4%] left-[-8%] h-[550px] w-[550px]", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
+  { className: "bottom-[18%] right-[20%] h-[350px] w-[350px]", moveX: -250, moveY: -170, scale: 1.14, scaleMove: 0.07 },
+  { className: "top-[42%] left-[10%] h-[450px] w-[450px]", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
+  { className: "top-[14%] left-[30%] h-[300px] w-[300px]", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
+  { className: "bottom-[34%] right-[40%] h-[380px] w-[380px]", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
 ];
 
+const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
 const LOGIN_MOTION_EASE = 0.22;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
 const LOGIN_ORIENTATION_MAX_TILT = 24;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
+const LOGIN_BACKGROUND_PALETTES = [
+  ["rgba(251, 146, 60, 0.28)", "rgba(236, 72, 153, 0.22)", "rgba(59, 130, 246, 0.24)", "rgba(250, 204, 21, 0.24)", "rgba(14, 165, 233, 0.20)", "rgba(168, 85, 247, 0.20)", "rgba(251, 113, 133, 0.20)"],
+  ["rgba(45, 212, 191, 0.24)", "rgba(56, 189, 248, 0.24)", "rgba(129, 140, 248, 0.22)", "rgba(244, 114, 182, 0.20)", "rgba(250, 204, 21, 0.22)", "rgba(34, 197, 94, 0.18)", "rgba(251, 146, 60, 0.20)"],
+  ["rgba(251, 113, 133, 0.22)", "rgba(217, 70, 239, 0.20)", "rgba(99, 102, 241, 0.22)", "rgba(45, 212, 191, 0.20)", "rgba(251, 191, 36, 0.22)", "rgba(56, 189, 248, 0.20)", "rgba(244, 114, 182, 0.18)"],
+  ["rgba(250, 204, 21, 0.24)", "rgba(251, 146, 60, 0.22)", "rgba(14, 165, 233, 0.20)", "rgba(34, 197, 94, 0.18)", "rgba(168, 85, 247, 0.20)", "rgba(236, 72, 153, 0.18)", "rgba(59, 130, 246, 0.22)"],
+];
 
 type LoginMotionPoint = { x: number; y: number };
 type OrientationBaseline = { beta: number; gamma: number };
@@ -47,6 +54,15 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
     x: clampMotionValue((clientX / Math.max(window.innerWidth, 1) - 0.5) * 2),
     y: clampMotionValue((clientY / Math.max(window.innerHeight, 1) - 0.5) * 2),
   };
+}
+
+function shuffledLoginPalette() {
+  const palette = [...LOGIN_BACKGROUND_PALETTES[Math.floor(Math.random() * LOGIN_BACKGROUND_PALETTES.length)]];
+  for (let index = palette.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [palette[index], palette[swapIndex]] = [palette[swapIndex], palette[index]];
+  }
+  return palette;
 }
 
 function isTouchOrCoarsePointer() {
@@ -93,6 +109,7 @@ function LoginMotionBackground() {
   const rafRef = useRef<number | null>(null);
   const targetRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
   const currentRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
+  const [blobColors] = useState(shuffledLoginPalette);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -244,15 +261,33 @@ function LoginMotionBackground() {
   }, []);
 
   return (
-    <div ref={layerRef} className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <div ref={layerRef} className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.58), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.28))",
+        }}
+      />
       {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
         <div
           key={index}
           data-motion-blob
           className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
-          style={{ transform: `translate3d(0, 0, 0) scale(${blob.scale})` }}
+          style={{
+            background: blobColors[index % blobColors.length],
+            transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
+          }}
         />
       ))}
+      <div
+        className="absolute inset-x-0 top-0 h-[22svh]"
+        style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.92) 36%, rgba(247,241,234,0) 100%)` }}
+      />
+      <div
+        className="absolute inset-x-0 bottom-0 h-[22svh]"
+        style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.92) 36%, rgba(247,241,234,0) 100%)` }}
+      />
     </div>
   );
 }
@@ -343,6 +378,40 @@ export function Login() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const rootElement = document.documentElement;
+    const bodyElement = document.body;
+    const appElement = document.getElementById("root");
+    const previousRootBackground = rootElement.style.backgroundColor;
+    const previousBodyBackground = bodyElement.style.backgroundColor;
+    const previousAppBackground = appElement?.style.backgroundColor || "";
+    const existingThemeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const themeColorMeta = existingThemeColor || document.createElement("meta");
+    const previousThemeColor = themeColorMeta.getAttribute("content");
+
+    if (!existingThemeColor) {
+      themeColorMeta.setAttribute("name", "theme-color");
+      document.head.appendChild(themeColorMeta);
+    }
+
+    rootElement.style.backgroundColor = LOGIN_VIEWPORT_BACKGROUND;
+    bodyElement.style.backgroundColor = LOGIN_VIEWPORT_BACKGROUND;
+    if (appElement) appElement.style.backgroundColor = LOGIN_VIEWPORT_BACKGROUND;
+    themeColorMeta.setAttribute("content", LOGIN_VIEWPORT_BACKGROUND);
+
+    return () => {
+      rootElement.style.backgroundColor = previousRootBackground;
+      bodyElement.style.backgroundColor = previousBodyBackground;
+      if (appElement) appElement.style.backgroundColor = previousAppBackground;
+      if (existingThemeColor) {
+        if (previousThemeColor === null) themeColorMeta.removeAttribute("content");
+        else themeColorMeta.setAttribute("content", previousThemeColor);
+      } else {
+        themeColorMeta.remove();
+      }
+    };
+  }, []);
+
   const enterWorkspace = (workspaceKey: string, home = "") => {
     const localTarget = goToWorkspace(workspaceKey, home);
     if (localTarget) navigate(localTarget, { replace: true });
@@ -399,7 +468,13 @@ export function Login() {
   return (
     <div
       className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
-      style={{ background: "linear-gradient(to bottom right, #fef3f2, #fef9c3, #f0f9ff)", overscrollBehavior: "none" }}
+      style={{
+        backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
+        colorScheme: "light",
+        minHeight: "100dvh",
+        overscrollBehavior: "none",
+        WebkitOverflowScrolling: "touch",
+      }}
     >
       <LoginMotionBackground />
 
