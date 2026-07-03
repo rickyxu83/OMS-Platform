@@ -299,6 +299,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const currentUser = user || { name: "", role: "" };
   const rawCurrentPage = location.pathname.replace(/^\//, "") || "dashboard";
   const currentPage = rawCurrentPage.startsWith("service-report") ? "service-report" : rawCurrentPage;
+  const isServiceReportFormPage = /^\/service-report\/(?:new|[^/]+)/.test(location.pathname);
+  const hideMobileChrome = isServiceReportFormPage;
   const [sidebarOpen, setSidebarOpen] = useState(() => (
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
@@ -600,7 +602,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
         
         {/* Top Bar */}
-        <header className="h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border flex items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-6">
+        <header className={`h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
           <div className="flex min-w-0 items-center gap-2 lg:gap-4">
             <Button
               variant="outline"
@@ -725,11 +727,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main ref={contentRef} className="mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
+        <main
+          ref={contentRef}
+          className={`mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
+        >
           {children}
         </main>
 
-        {mobileNavItems.length > 0 && (
+        {!hideMobileChrome && mobileNavItems.length > 0 && (
           <nav
             className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
               mobileNavVisible ? "translate-y-0" : "translate-y-[calc(100%-0.35rem)]"
@@ -763,7 +768,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           </nav>
         )}
-        {mobileNavItems.length > 0 && !mobileNavVisible && (
+        {!hideMobileChrome && mobileNavItems.length > 0 && !mobileNavVisible && (
           <button
             type="button"
             className="fixed bottom-[calc(0.45rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"

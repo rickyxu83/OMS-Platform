@@ -1108,7 +1108,19 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
   };
 }
 
-function SignaturePad({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function SignaturePad({
+  value,
+  onChange,
+  className = "",
+  canvasClassName = "h-36",
+  actionsClassName = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  canvasClassName?: string;
+  actionsClassName?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -1190,22 +1202,81 @@ function SignaturePad({ value, onChange }: { value: string; onChange: (value: st
   }
 
   return (
-    <div className="space-y-2">
-      <div className="overflow-hidden rounded-md border bg-card">
+    <div className={`space-y-2 ${className}`}>
+      <div className="min-h-0 overflow-hidden rounded-md border bg-card">
         <canvas
           ref={canvasRef}
-          className="block h-36 w-full touch-none"
+          className={`block w-full touch-none ${canvasClassName}`}
           onPointerDown={begin}
           onPointerMove={move}
           onPointerUp={end}
           onPointerCancel={end}
         />
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={clear}>
+      <Button type="button" variant="outline" size="sm" className={actionsClassName} onClick={clear}>
         <RotateCcw className="h-4 w-4" />
         清除签名
       </Button>
     </div>
+  );
+}
+
+function FullscreenSignatureDialog({
+  open,
+  value,
+  onOpenChange,
+  onChange,
+}: {
+  open: boolean;
+  value: string;
+  onOpenChange: (open: boolean) => void;
+  onChange: (value: string) => void;
+}) {
+  const [draftValue, setDraftValue] = useState(value);
+
+  useEffect(() => {
+    if (open) setDraftValue(value);
+  }, [open, value]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3 sm:h-[90dvh] sm:w-[90vw] sm:rotate-0 sm:rounded-lg sm:border sm:p-4"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="flex h-full min-h-0 flex-col gap-3">
+          <DialogHeader className="shrink-0 text-left">
+            <DialogTitle className="text-base">横屏全屏签名</DialogTitle>
+            <DialogDescription>请客户在横向区域内完成签名。</DialogDescription>
+          </DialogHeader>
+          <SignaturePad
+            value={draftValue}
+            onChange={setDraftValue}
+            className="flex min-h-0 flex-1 flex-col"
+            canvasClassName="h-full flex-1"
+            actionsClassName="hidden"
+          />
+          <DialogFooter className="shrink-0 flex-row justify-end">
+            <Button type="button" variant="outline" onClick={() => setDraftValue("")}>
+              <RotateCcw className="h-4 w-4" />
+              清除
+            </Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                onChange(draftValue);
+                onOpenChange(false);
+              }}
+            >
+              保存签名
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1557,6 +1628,7 @@ export function ServiceReport() {
   const [engineerPanelOpen, setEngineerPanelOpen] = useState(false);
   const [loadingLatestSignature, setLoadingLatestSignature] = useState(false);
   const [signatureShareOpen, setSignatureShareOpen] = useState(false);
+  const [signatureFullscreenOpen, setSignatureFullscreenOpen] = useState(false);
   const [signatureRequest, setSignatureRequest] = useState<CustomerSignatureRequestInfo | null>(null);
   const [signatureRequestOrderId, setSignatureRequestOrderId] = useState<string | number | null>(null);
   const [signatureRecipientEmail, setSignatureRecipientEmail] = useState("");
@@ -2001,7 +2073,7 @@ export function ServiceReport() {
   function applyCustomer(customer?: CustomerOption | null) {
     if (!customer) return;
     const contacts = contactsForCustomer(customer);
-    const preferredContact = contacts.find((contact) => contact.engineerLastUsedAt) || contacts[0];
+    const preferredContact = contacts.find((contact) => contact.engineerLastUsedAt || Number(contact.engineerUseCount || 0) > 0) || contacts[0];
     patchForm({
       customerId: customer.id ? String(customer.id) : "",
       customerName: customer.name || form.customerName,
@@ -2022,7 +2094,7 @@ export function ServiceReport() {
     setCustomerOptionsOpen(false);
     setGeoCandidates([]);
     setGeoHint(customer.latitude && customer.longitude ? `已载入客户定位：${coordinateLabel(String(customer.latitude), String(customer.longitude))}` : "");
-    setContactOptionsOpen(Boolean(contacts.length > 1));
+    setContactOptionsOpen(false);
   }
 
   async function searchCustomerGeo() {
@@ -3297,7 +3369,7 @@ export function ServiceReport() {
           <ErrorToast message={error} />
           <InlineError message={error} />
 
-          <div className="grid gap-2.5 md:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2 md:gap-2.5">
             {MODE_OPTIONS.map((mode) => {
               const Icon = mode.icon;
               return (
@@ -3305,13 +3377,14 @@ export function ServiceReport() {
                   key={mode.value}
                   type="button"
                   onClick={() => navigate(`/service-report/new?mode=${mode.value}`)}
-                  className="flex min-h-0 items-center gap-3 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary hover:bg-primary/5 sm:min-h-[112px] sm:items-start sm:p-4"
+                  className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-lg border bg-card p-2 text-center shadow-sm transition-colors hover:border-primary hover:bg-primary/5 sm:min-h-[112px] sm:items-start sm:justify-start sm:gap-3 sm:p-4 sm:text-left md:flex-row"
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary sm:h-10 sm:w-10">
-                    <Icon className="h-5 w-5" />
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary sm:h-10 sm:w-10">
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-foreground sm:text-base">新建{mode.label}服务记录</span>
+                    <span className="block truncate text-xs font-semibold text-foreground sm:hidden">{mode.label}</span>
+                    <span className="hidden truncate text-base font-semibold text-foreground sm:block">新建{mode.label}服务记录</span>
                     <span className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">{mode.description}</span>
                   </span>
                 </button>
@@ -3983,7 +4056,7 @@ export function ServiceReport() {
           <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : "可多选；系统将按模块显示对应字段"}>
               <div className="space-y-4 p-3 sm:p-4">
                 {!isOffice ? (
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
                     {moduleOptions.map((option) => {
                       const Icon = option.icon;
                       const selected = selectedServiceModules.includes(option.value);
@@ -4658,7 +4731,17 @@ export function ServiceReport() {
                       {!electronicSignatureSelected ? (
                         <div className="md:col-span-2">
 	                        <Field label="客户现场签名" required>
-                          <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} />
+                          <div className="space-y-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full sm:hidden"
+                              onClick={() => setSignatureFullscreenOpen(true)}
+                            >
+                              横屏全屏签名
+                            </Button>
+                            <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} />
+                          </div>
                         </Field>
                       </div>
                       ) : null}
@@ -4671,7 +4754,7 @@ export function ServiceReport() {
                 </div>
               </ReportSection>
             ) : null}
-            <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 -mx-3 flex gap-2 border-t bg-background/95 px-3 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0 lg:justify-end">
+            <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 -mx-3 flex gap-2 border-t bg-background/95 px-3 py-3 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
                 <span className="sm:hidden">保存</span>
@@ -4692,6 +4775,12 @@ export function ServiceReport() {
         </>
       )}
     </div>
+    <FullscreenSignatureDialog
+      open={signatureFullscreenOpen}
+      value={form.customerSignature}
+      onOpenChange={setSignatureFullscreenOpen}
+      onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })}
+    />
     <Dialog open={signatureShareOpen} onOpenChange={setSignatureShareOpen}>
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[720px]">
         <DialogHeader>
