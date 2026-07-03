@@ -1000,71 +1000,73 @@ export function Dashboard() {
           />
         </section>
 
-        <Card className="lg:col-span-2 lg:mt-16 lg:h-[420px]">
-          <CardHeader className="flex flex-row items-center justify-between px-4 py-3 sm:px-6 sm:py-6">
-            <div>
-              <CardTitle>{t.recent.title}</CardTitle>
-              <CardDescription>{t.recent.description}</CardDescription>
+        <section className="lg:col-span-2">
+          <div className="mb-3 flex items-start justify-between gap-3 px-1 sm:mb-4">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
+              <p className="text-sm text-muted-foreground">{t.recent.description}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}>
               <ArrowRight className="w-4 h-4 mr-1" />
               {t.recent.viewAll}
             </Button>
-          </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-6 sm:pb-6">
-            {loading ? (
-              <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
-              </div>
-            ) : recentOrders.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">{t.recent.empty}</div>
-            ) : (
-              <div className="space-y-1.5">
-                {recentOrders.map((order) => (
-                  <div
-                    key={order.key}
-                    role="button"
-                    tabIndex={0}
-                    className="group relative -mx-2 flex cursor-pointer items-start gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-muted/50 sm:-mx-3 sm:px-3"
-                    onClick={() => openOrderPreview(order.source)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openOrderPreview(order.source);
-                      }
-                    }}
-                  >
-                    <div className={`h-2 w-2 shrink-0 rounded-full ${
-                      order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
-                    }`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden">
-                        <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                        <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                          {order.statusLabel}
-                        </Badge>
-                      </div>
-                      <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden" title={order.title}>{order.title}</span>
-                      <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground sm:hidden">
-                        <span className="shrink-0 whitespace-nowrap">{order.date}</span>
-                        <span className="shrink-0 whitespace-nowrap font-medium text-foreground">{order.engineer}</span>
-                      </div>
-                      <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
-                        <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                        <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                        <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
-                        <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                        <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                          {order.statusLabel}
-                        </Badge>
+          </div>
+          <Card className="h-[300px] lg:h-[440px]">
+            <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
+              {loading ? (
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
+                </div>
+              ) : recentOrders.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.recent.empty}</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {recentOrders.map((order) => (
+                    <div
+                      key={order.key}
+                      role="button"
+                      tabIndex={0}
+                      className="group relative -mx-2 flex cursor-pointer items-start gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-muted/50 sm:-mx-3 sm:px-3"
+                      onClick={() => openOrderPreview(order.source)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openOrderPreview(order.source);
+                        }
+                      }}
+                    >
+                      <div className={`h-2 w-2 shrink-0 rounded-full ${
+                        order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
+                      }`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden">
+                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
+                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
+                            {order.statusLabel}
+                          </Badge>
+                        </div>
+                        <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden" title={order.title}>{order.title}</span>
+                        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground sm:hidden">
+                          <span className="shrink-0 whitespace-nowrap">{order.date}</span>
+                          <span className="shrink-0 whitespace-nowrap font-medium text-foreground">{order.engineer}</span>
+                        </div>
+                        <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
+                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
+                          <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
+                          <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
+                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
+                            {order.statusLabel}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
       </div>
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>

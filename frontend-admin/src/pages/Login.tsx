@@ -35,6 +35,8 @@ const LOGIN_ORIENTATION_MAX_TILT = 9;
 const LOGIN_ORIENTATION_X_BOOST = 1.45;
 const LOGIN_ORIENTATION_Y_BOOST = 1.25;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
+const LOGIN_DEEP_BLOB_COUNT = 3;
+const LOGIN_DEEP_BLOB_SLOTS = [0, 1, 2, 4, 5, 7];
 const LOGIN_LIGHT_BLOB_COLORS = [
   "rgba(254, 226, 226, 0.34)",
   "rgba(255, 228, 230, 0.34)",
@@ -60,23 +62,23 @@ const LOGIN_LIGHT_BLOB_COLORS = [
   "rgba(248, 250, 252, 0.30)",
 ];
 const LOGIN_DEEP_BLOB_COLORS = [
-  "rgba(244, 63, 94, 0.30)",
-  "rgba(236, 72, 153, 0.30)",
-  "rgba(217, 70, 239, 0.28)",
-  "rgba(168, 85, 247, 0.30)",
-  "rgba(124, 58, 237, 0.28)",
-  "rgba(99, 102, 241, 0.30)",
-  "rgba(59, 130, 246, 0.30)",
-  "rgba(14, 165, 233, 0.30)",
-  "rgba(6, 182, 212, 0.28)",
-  "rgba(20, 184, 166, 0.28)",
-  "rgba(16, 185, 129, 0.28)",
-  "rgba(34, 197, 94, 0.26)",
-  "rgba(132, 204, 22, 0.24)",
-  "rgba(234, 179, 8, 0.28)",
-  "rgba(245, 158, 11, 0.30)",
-  "rgba(249, 115, 22, 0.30)",
-  "rgba(239, 68, 68, 0.28)",
+  "rgba(244, 63, 94, 0.44)",
+  "rgba(236, 72, 153, 0.44)",
+  "rgba(217, 70, 239, 0.42)",
+  "rgba(168, 85, 247, 0.44)",
+  "rgba(124, 58, 237, 0.42)",
+  "rgba(99, 102, 241, 0.44)",
+  "rgba(59, 130, 246, 0.44)",
+  "rgba(14, 165, 233, 0.42)",
+  "rgba(6, 182, 212, 0.40)",
+  "rgba(20, 184, 166, 0.40)",
+  "rgba(16, 185, 129, 0.40)",
+  "rgba(34, 197, 94, 0.38)",
+  "rgba(132, 204, 22, 0.36)",
+  "rgba(234, 179, 8, 0.40)",
+  "rgba(245, 158, 11, 0.44)",
+  "rgba(249, 115, 22, 0.44)",
+  "rgba(239, 68, 68, 0.42)",
 ];
 
 type LoginMotionPoint = { x: number; y: number };
@@ -96,7 +98,7 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
   };
 }
 
-function shuffledCopy(values: string[]) {
+function shuffledCopy<T>(values: T[]) {
   const list = [...values];
   for (let index = list.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
@@ -106,13 +108,12 @@ function shuffledCopy(values: string[]) {
 }
 
 function randomLoginPalette() {
-  const lightColors = shuffledCopy(LOGIN_LIGHT_BLOB_COLORS).slice(0, 6);
-  const deepColors = shuffledCopy(LOGIN_DEEP_BLOB_COLORS).slice(0, 2);
-  const palette = [...lightColors, ...deepColors];
+  const palette = shuffledCopy(LOGIN_LIGHT_BLOB_COLORS).slice(0, LOGIN_BACKGROUND_BLOBS.length);
+  const deepColors = shuffledCopy(LOGIN_DEEP_BLOB_COLORS).slice(0, LOGIN_DEEP_BLOB_COUNT);
+  const deepSlots = shuffledCopy(LOGIN_DEEP_BLOB_SLOTS).slice(0, LOGIN_DEEP_BLOB_COUNT);
 
-  for (let index = palette.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [palette[index], palette[swapIndex]] = [palette[swapIndex], palette[index]];
+  for (let index = 0; index < deepSlots.length; index += 1) {
+    palette[deepSlots[index]] = deepColors[index];
   }
   return palette;
 }
