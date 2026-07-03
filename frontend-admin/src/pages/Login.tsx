@@ -18,14 +18,14 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
 
 const LOGIN_BACKGROUND_BLOBS = [
-  { className: "top-[-10%] right-[4%] h-[540px] w-[540px]", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
-  { className: "top-[18%] right-[-12%] h-[430px] w-[430px]", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
-  { className: "bottom-[-10%] left-[-12%] h-[580px] w-[580px]", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
-  { className: "bottom-[18%] right-[20%] h-[350px] w-[350px]", moveX: -250, moveY: -170, scale: 1.14, scaleMove: 0.07 },
-  { className: "top-[42%] left-[10%] h-[450px] w-[450px]", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
-  { className: "top-[-4%] left-[30%] h-[340px] w-[340px]", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
-  { className: "bottom-[34%] right-[40%] h-[380px] w-[380px]", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
-  { className: "top-[54%] right-[-8%] h-[360px] w-[360px]", moveX: -260, moveY: 120, scale: 1.1, scaleMove: 0.055 },
+  { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
+  { left: "41%", top: "34%", sizeClass: "h-[430px] w-[430px]", moveX: 240, moveY: 180, scale: 1.1, scaleMove: 0.06 },
+  { left: "59%", top: "58%", sizeClass: "h-[470px] w-[470px]", moveX: -230, moveY: -190, scale: 1.08, scaleMove: 0.055 },
+  { left: "30%", top: "63%", sizeClass: "h-[520px] w-[520px]", moveX: 260, moveY: -150, scale: 1.06, scaleMove: 0.05 },
+  { left: "74%", top: "30%", sizeClass: "h-[500px] w-[500px]", moveX: -250, moveY: 165, scale: 1.08, scaleMove: 0.055 },
+  { left: "18%", top: "18%", sizeClass: "h-[430px] w-[430px]", moveX: 320, moveY: 230, scale: 1.12, scaleMove: 0.07 },
+  { left: "84%", top: "80%", sizeClass: "h-[500px] w-[500px]", moveX: -310, moveY: -250, scale: 1.08, scaleMove: 0.055 },
+  { left: "54%", top: "12%", sizeClass: "h-[380px] w-[380px]", moveX: 210, moveY: 270, scale: 1.14, scaleMove: 0.075 },
 ];
 
 const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
@@ -35,10 +35,9 @@ const LOGIN_ORIENTATION_MAX_TILT = 9;
 const LOGIN_ORIENTATION_X_BOOST = 1.45;
 const LOGIN_ORIENTATION_Y_BOOST = 1.25;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
-const LOGIN_DEEP_BLOB_COUNT = 3;
-const LOGIN_DEEP_BLOB_FOCUS_SLOTS = [4, 5, 7];
-const LOGIN_DEEP_BLOB_EDGE_SLOTS = [0, 1, 2];
-const LOGIN_DEEP_BLOB_EXTRA_SLOTS = [3, 6];
+const LOGIN_DEEP_BLOB_COUNT = 4;
+const LOGIN_DEEP_BLOB_FOCUS_SLOTS = [0, 1, 2, 3];
+const LOGIN_DEEP_BLOB_EDGE_SLOTS = [4, 5, 6, 7];
 const LOGIN_LIGHT_BLOB_COLOR_GROUPS = [
   [
     "rgba(254, 226, 226, 0.34)",
@@ -148,17 +147,25 @@ function groupedRandomColors(colorGroups: string[][], count: number) {
 }
 
 function randomDeepBlobSlots() {
+  const focusSlots = shuffledCopy(LOGIN_DEEP_BLOB_FOCUS_SLOTS).slice(0, 2);
   const slots = [
-    shuffledCopy(LOGIN_DEEP_BLOB_FOCUS_SLOTS)[0],
+    ...focusSlots,
     shuffledCopy(LOGIN_DEEP_BLOB_EDGE_SLOTS)[0],
   ].filter((slot): slot is number => typeof slot === "number");
   const remainingSlots = shuffledCopy([
     ...LOGIN_DEEP_BLOB_FOCUS_SLOTS,
     ...LOGIN_DEEP_BLOB_EDGE_SLOTS,
-    ...LOGIN_DEEP_BLOB_EXTRA_SLOTS,
   ]).filter((slot) => !slots.includes(slot));
 
   return [...slots, ...remainingSlots].slice(0, LOGIN_DEEP_BLOB_COUNT);
+}
+
+function motionBlobTransform(
+  config: (typeof LOGIN_BACKGROUND_BLOBS)[number],
+  point: LoginMotionPoint,
+) {
+  const activeScale = config.scale + (Math.abs(point.x) + Math.abs(point.y)) * config.scaleMove;
+  return `translate3d(calc(-50% + ${(point.x * config.moveX).toFixed(2)}px), calc(-50% + ${(point.y * config.moveY).toFixed(2)}px), 0) scale(${activeScale.toFixed(3)})`;
 }
 
 function randomLoginPalette() {
@@ -239,8 +246,7 @@ function LoginMotionBackground() {
       blobNodes.forEach((node, index) => {
         const config = LOGIN_BACKGROUND_BLOBS[index];
         if (!config) return;
-        const activeScale = config.scale + (Math.abs(current.x) + Math.abs(current.y)) * config.scaleMove;
-        node.style.transform = `translate3d(${(current.x * config.moveX).toFixed(2)}px, ${(current.y * config.moveY).toFixed(2)}px, 0) scale(${activeScale.toFixed(3)})`;
+        node.style.transform = motionBlobTransform(config, current);
       });
     };
 
@@ -374,19 +380,24 @@ function LoginMotionBackground() {
           className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.54), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.24))",
+              "radial-gradient(circle at 50% 43%, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 28%, transparent 42%), linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.18))",
           }}
         />
         {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
           <div
             key={index}
-            data-motion-blob
-            className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
-            style={{
-              background: blobColors[index % blobColors.length],
-              transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
-            }}
-          />
+            className="absolute"
+            style={{ left: blob.left, top: blob.top }}
+          >
+            <div
+              data-motion-blob
+              className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.sizeClass}`}
+              style={{
+                background: blobColors[index % blobColors.length],
+                transform: motionBlobTransform(blob, { x: 0, y: 0 }),
+              }}
+            />
+          </div>
         ))}
       </div>
       <div
