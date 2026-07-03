@@ -602,8 +602,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
         
         {/* Top Bar */}
-        <header className={`h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
-          <div className="flex min-w-0 items-center gap-2 lg:gap-4">
+        <header className={`h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-4 xl:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
+          <div className="flex min-w-0 items-center gap-2 lg:gap-3 xl:gap-4">
             <Button
               variant="outline"
               size="icon"
@@ -614,9 +614,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
             </Button>
             <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-              <span className="hidden sm:inline">{strings.common.systemName}</span>
+              <span className="hidden whitespace-nowrap sm:inline">{strings.common.systemName}</span>
               <span className="hidden sm:inline">/</span>
-              <span className="truncate text-base font-semibold text-foreground sm:text-sm sm:font-medium">{strings.pages[currentPage] || currentPage}</span>
+              <span className="min-w-0 max-w-[8rem] truncate text-base font-semibold text-foreground sm:text-sm sm:font-medium xl:max-w-none">{strings.pages[currentPage] || currentPage}</span>
             </div>
           </div>
 
@@ -658,8 +658,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Button>
           </div>
 
-          <div className="hidden items-center gap-6 lg:flex">
-            <div className="text-sm text-muted-foreground">
+          <div className="hidden min-w-0 flex-shrink-0 items-center gap-2 lg:flex xl:gap-4 2xl:gap-6">
+            <div className="hidden whitespace-nowrap text-sm text-muted-foreground xl:block">
               {formatHeaderTime(currentTime)}
             </div>
 
@@ -669,9 +669,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               size="sm"
               onClick={() => setQuickNavOpen(true)}
               className="gap-2"
+              aria-label={strings.common.quickNav}
             >
               <Search className="w-4 h-4" />
-              {strings.common.quickNav}
+              <span className="hidden xl:inline">{strings.common.quickNav}</span>
             </Button>
 
             <Button
@@ -679,9 +680,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               size="sm"
               onClick={() => setFeedbackOpen(true)}
               className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
+              aria-label={strings.common.feedback}
             >
               <MessageSquare className="w-4 h-4" />
-              {strings.common.feedback}
+              <span className="hidden xl:inline">{strings.common.feedback}</span>
             </Button>
 
             {/* Language Toggle */}
@@ -690,9 +692,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               size="sm"
               onClick={handleLangToggle}
               className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
+              aria-label={strings.common.langShort}
             >
               <Languages className="w-4 h-4" />
-              <span className="text-xs font-medium">{strings.common.langShort}</span>
+              <span className="hidden text-xs font-medium xl:inline">{strings.common.langShort}</span>
             </Button>
 
             {canSwitchEngineer && (
@@ -700,18 +703,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => goToWorkspace("engineer")}
+                className="hidden xl:inline-flex"
               >
                 {strings.common.switchEngineer}
               </Button>
             )}
 
-            <Separator orientation="vertical" className="h-8" />
+            <Separator orientation="vertical" className="hidden h-8 xl:block" />
 
             {/* User Info */}
             <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="text-sm font-medium">{currentUser.name}</div>
-                <div className="text-xs text-muted-foreground">
+              <div className="hidden text-right xl:block">
+                <div className="whitespace-nowrap text-sm font-medium">{currentUser.name}</div>
+                <div className="whitespace-nowrap text-xs text-muted-foreground">
                   {strings.roles[currentUser.role] || currentUser.role}
                 </div>
               </div>
@@ -719,6 +723,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 variant="ghost"
                 size="icon"
                 onClick={logoutToLogin}
+                aria-label="退出登录"
               >
                 <LogOut className="w-4 h-4" />
               </Button>
