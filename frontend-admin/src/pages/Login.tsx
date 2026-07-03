@@ -18,13 +18,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
 
 const LOGIN_BACKGROUND_BLOBS = [
-  { className: "top-[-10%] right-[10%] h-[500px] w-[500px] bg-orange-400/25", moveX: -120, moveY: 82, scale: 1.08, scaleMove: 0.035 },
-  { className: "top-[20%] right-[-10%] h-[400px] w-[400px] bg-pink-500/20", moveX: 150, moveY: 96, scale: 1.12, scaleMove: 0.045 },
-  { className: "bottom-[-15%] left-[-10%] h-[550px] w-[550px] bg-blue-500/25", moveX: -170, moveY: -112, scale: 1.08, scaleMove: 0.03 },
-  { className: "bottom-[10%] right-[20%] h-[350px] w-[350px] bg-yellow-400/25", moveX: -132, moveY: -92, scale: 1.14, scaleMove: 0.05 },
-  { className: "top-[40%] left-[10%] h-[450px] w-[450px] bg-sky-500/20", moveX: 138, moveY: -76, scale: 1.1, scaleMove: 0.04 },
-  { className: "top-[10%] left-[30%] h-[300px] w-[300px] bg-purple-500/20", moveX: 178, moveY: 126, scale: 1.18, scaleMove: 0.055 },
-  { className: "bottom-[30%] right-[40%] h-[380px] w-[380px] bg-rose-400/20", moveX: 112, moveY: -148, scale: 1.12, scaleMove: 0.04 },
+  { className: "top-[-10%] right-[10%] h-[500px] w-[500px] bg-orange-400/25", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
+  { className: "top-[20%] right-[-10%] h-[400px] w-[400px] bg-pink-500/20", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
+  { className: "bottom-[-15%] left-[-10%] h-[550px] w-[550px] bg-blue-500/25", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
+  { className: "bottom-[10%] right-[20%] h-[350px] w-[350px] bg-yellow-400/25", moveX: -250, moveY: -170, scale: 1.14, scaleMove: 0.07 },
+  { className: "top-[40%] left-[10%] h-[450px] w-[450px] bg-sky-500/20", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
+  { className: "top-[10%] left-[30%] h-[300px] w-[300px] bg-purple-500/20", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
+  { className: "bottom-[30%] right-[40%] h-[380px] w-[380px] bg-rose-400/20", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
 ];
 
 function LoginMotionBackground() {
@@ -35,9 +35,8 @@ function LoginMotionBackground() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const finePointer = window.matchMedia("(pointer: fine)");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (!finePointer.matches || reducedMotion.matches) return;
+    if (reducedMotion.matches) return;
 
     const layer = layerRef.current;
     const blobNodes = Array.from(layer?.querySelectorAll<HTMLElement>("[data-motion-blob]") || []);
@@ -57,8 +56,8 @@ function LoginMotionBackground() {
     const render = () => {
       const target = targetRef.current;
       const current = currentRef.current;
-      current.x += (target.x - current.x) * 0.13;
-      current.y += (target.y - current.y) * 0.13;
+      current.x += (target.x - current.x) * 0.22;
+      current.y += (target.y - current.y) * 0.22;
 
       blobNodes.forEach((node, index) => {
         const config = LOGIN_BACKGROUND_BLOBS[index];
@@ -76,12 +75,20 @@ function LoginMotionBackground() {
       rafRef.current = window.requestAnimationFrame(render);
     };
 
-    const handlePointerMove = (event: PointerEvent) => {
+    const updateTarget = (clientX: number, clientY: number) => {
       targetRef.current = {
-        x: (event.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2,
-        y: (event.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2,
+        x: (clientX / Math.max(window.innerWidth, 1) - 0.5) * 2,
+        y: (clientY / Math.max(window.innerHeight, 1) - 0.5) * 2,
       };
       ensureFrame();
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateTarget(event.clientX, event.clientY);
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      updateTarget(event.clientX, event.clientY);
     };
 
     const handlePointerLeave = () => {
@@ -90,9 +97,11 @@ function LoginMotionBackground() {
     };
 
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
     document.addEventListener("pointerleave", handlePointerLeave);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("pointerleave", handlePointerLeave);
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
     };
@@ -104,7 +113,7 @@ function LoginMotionBackground() {
         <div
           key={index}
           data-motion-blob
-          className={`absolute rounded-full blur-3xl transition-transform duration-700 ease-out motion-reduce:transition-none ${blob.className}`}
+          className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
           style={{ transform: `translate3d(0, 0, 0) scale(${blob.scale})` }}
         />
       ))}
