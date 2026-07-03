@@ -30,7 +30,9 @@ const LOGIN_BACKGROUND_BLOBS = [
 const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
 const LOGIN_MOTION_EASE = 0.22;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
-const LOGIN_ORIENTATION_MAX_TILT = 24;
+const LOGIN_ORIENTATION_MAX_TILT = 9;
+const LOGIN_ORIENTATION_X_BOOST = 1.45;
+const LOGIN_ORIENTATION_Y_BOOST = 1.25;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
 const LOGIN_BACKGROUND_PALETTES = [
   ["rgba(251, 146, 60, 0.28)", "rgba(236, 72, 153, 0.22)", "rgba(59, 130, 246, 0.24)", "rgba(250, 204, 21, 0.24)", "rgba(14, 165, 233, 0.20)", "rgba(168, 85, 247, 0.20)", "rgba(251, 113, 133, 0.20)"],
@@ -99,8 +101,8 @@ function motionFromDeviceOrientation(
   }
 
   return {
-    x: clampMotionValue(x / LOGIN_ORIENTATION_MAX_TILT),
-    y: clampMotionValue(y / LOGIN_ORIENTATION_MAX_TILT),
+    x: clampMotionValue((x / LOGIN_ORIENTATION_MAX_TILT) * LOGIN_ORIENTATION_X_BOOST),
+    y: clampMotionValue((y / LOGIN_ORIENTATION_MAX_TILT) * LOGIN_ORIENTATION_Y_BOOST),
   };
 }
 
@@ -132,7 +134,7 @@ function LoginMotionBackground() {
       blobNodes.forEach((node, index) => {
         const config = LOGIN_BACKGROUND_BLOBS[index];
         if (!config) return;
-        const activeScale = config.scale + Math.abs(current.x + current.y) * config.scaleMove;
+        const activeScale = config.scale + (Math.abs(current.x) + Math.abs(current.y)) * config.scaleMove;
         node.style.transform = `translate3d(${(current.x * config.moveX).toFixed(2)}px, ${(current.y * config.moveY).toFixed(2)}px, 0) scale(${activeScale.toFixed(3)})`;
       });
     };
@@ -281,12 +283,12 @@ function LoginMotionBackground() {
         />
       ))}
       <div
-        className="absolute inset-x-0 top-0 h-[22svh]"
-        style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.92) 36%, rgba(247,241,234,0) 100%)` }}
+        className="absolute inset-x-0 top-0 h-[12svh]"
+        style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
       />
       <div
-        className="absolute inset-x-0 bottom-0 h-[22svh]"
-        style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.92) 36%, rgba(247,241,234,0) 100%)` }}
+        className="absolute inset-x-0 bottom-0 h-[12svh]"
+        style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
       />
     </div>
   );
