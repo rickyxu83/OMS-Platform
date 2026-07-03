@@ -48,6 +48,20 @@ const LOGIN_BACKGROUND_PALETTES = [
   ["rgba(167, 139, 250, 0.22)", "rgba(251, 146, 60, 0.20)", "rgba(34, 211, 238, 0.20)", "rgba(250, 204, 21, 0.20)", "rgba(74, 222, 128, 0.18)", "rgba(244, 63, 94, 0.18)", "rgba(96, 165, 250, 0.20)"],
   ["rgba(251, 113, 133, 0.20)", "rgba(56, 189, 248, 0.22)", "rgba(132, 204, 22, 0.16)", "rgba(250, 204, 21, 0.22)", "rgba(168, 85, 247, 0.18)", "rgba(45, 212, 191, 0.20)", "rgba(251, 146, 60, 0.18)"],
 ];
+const LOGIN_BACKGROUND_THEME_WASHES = [
+  "linear-gradient(135deg, rgba(255, 237, 213, 0.40), rgba(255, 228, 230, 0.28), rgba(224, 242, 254, 0.24))",
+  "linear-gradient(135deg, rgba(204, 251, 241, 0.34), rgba(219, 234, 254, 0.30), rgba(254, 249, 195, 0.20))",
+  "linear-gradient(135deg, rgba(252, 231, 243, 0.36), rgba(237, 233, 254, 0.32), rgba(204, 251, 241, 0.20))",
+  "linear-gradient(135deg, rgba(254, 249, 195, 0.34), rgba(255, 237, 213, 0.28), rgba(224, 242, 254, 0.22))",
+  "linear-gradient(135deg, rgba(204, 251, 241, 0.30), rgba(254, 249, 195, 0.28), rgba(255, 228, 230, 0.26))",
+  "linear-gradient(135deg, rgba(219, 234, 254, 0.36), rgba(204, 251, 241, 0.24), rgba(255, 237, 213, 0.20))",
+  "linear-gradient(135deg, rgba(252, 231, 243, 0.34), rgba(224, 242, 254, 0.28), rgba(220, 252, 231, 0.20))",
+  "linear-gradient(135deg, rgba(224, 242, 254, 0.34), rgba(255, 237, 213, 0.28), rgba(243, 232, 255, 0.24))",
+  "linear-gradient(135deg, rgba(220, 252, 231, 0.26), rgba(219, 234, 254, 0.30), rgba(252, 231, 243, 0.24))",
+  "linear-gradient(135deg, rgba(224, 242, 254, 0.32), rgba(254, 249, 195, 0.26), rgba(255, 228, 230, 0.22))",
+  "linear-gradient(135deg, rgba(237, 233, 254, 0.34), rgba(255, 237, 213, 0.24), rgba(207, 250, 254, 0.22))",
+  "linear-gradient(135deg, rgba(255, 228, 230, 0.30), rgba(224, 242, 254, 0.30), rgba(236, 252, 203, 0.18))",
+];
 const LOGIN_BACKGROUND_ACCENT_COLORS = [
   "rgba(248, 113, 113, 0.22)",
   "rgba(251, 113, 133, 0.22)",
@@ -88,6 +102,7 @@ const LOGIN_BACKGROUND_ACCENT_COLORS = [
 ];
 
 type LoginMotionPoint = { x: number; y: number };
+type LoginBackgroundTheme = { colors: string[]; wash: string };
 type OrientationBaseline = { beta: number; gamma: number };
 type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
@@ -104,8 +119,9 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
   };
 }
 
-function shuffledLoginPalette() {
-  const palette = [...LOGIN_BACKGROUND_PALETTES[Math.floor(Math.random() * LOGIN_BACKGROUND_PALETTES.length)]];
+function randomLoginTheme(): LoginBackgroundTheme {
+  const paletteIndex = Math.floor(Math.random() * LOGIN_BACKGROUND_PALETTES.length);
+  const palette = [...LOGIN_BACKGROUND_PALETTES[paletteIndex]];
   const accentColors = [...LOGIN_BACKGROUND_ACCENT_COLORS];
   const replacementCount = 3 + Math.floor(Math.random() * 3);
 
@@ -123,7 +139,10 @@ function shuffledLoginPalette() {
     const swapIndex = Math.floor(Math.random() * (index + 1));
     [palette[index], palette[swapIndex]] = [palette[swapIndex], palette[index]];
   }
-  return palette;
+  return {
+    colors: palette,
+    wash: LOGIN_BACKGROUND_THEME_WASHES[paletteIndex % LOGIN_BACKGROUND_THEME_WASHES.length],
+  };
 }
 
 function isTouchOrCoarsePointer() {
@@ -170,7 +189,7 @@ function LoginMotionBackground() {
   const rafRef = useRef<number | null>(null);
   const targetRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
   const currentRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
-  const [blobColors] = useState(shuffledLoginPalette);
+  const [backgroundTheme] = useState(randomLoginTheme);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -328,7 +347,7 @@ function LoginMotionBackground() {
           className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.58), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.28))",
+              `radial-gradient(circle at 50% 42%, rgba(255,255,255,0.50), transparent 44%), ${backgroundTheme.wash}, linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.20))`,
           }}
         />
         {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
@@ -337,7 +356,7 @@ function LoginMotionBackground() {
             data-motion-blob
             className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
             style={{
-              background: blobColors[index % blobColors.length],
+              background: backgroundTheme.colors[index % backgroundTheme.colors.length],
               transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
             }}
           />
