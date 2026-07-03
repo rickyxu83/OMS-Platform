@@ -43,6 +43,10 @@ interface ServiceOrder {
   contactName?: string;
   contactPhone?: string;
   deviceName?: string;
+  deviceModel?: string;
+  devicePn?: string;
+  deviceSerialNo?: string;
+  deviceRemark?: string;
   serviceType?: string;
   serviceModules?: string[];
   serviceMode?: string;
@@ -61,6 +65,7 @@ interface ServiceOrder {
   reviewComment?: string;
   report?: ServiceReport | null;
   parts?: ServicePart[];
+  installedDevices?: InstalledDevice[];
   files?: OrderFile[];
   createdAt?: string;
   updatedAt?: string;
@@ -75,6 +80,10 @@ interface ServiceReport {
   workEntries?: ServiceReportWorkEntry[];
   result?: string;
   resultDescription?: string;
+  customerConfirmName?: string;
+  customerName?: string;
+  customerSignatureFileId?: string | number;
+  customerSignature?: string;
 }
 
 interface ServiceReportWorkEntry {
@@ -99,6 +108,15 @@ interface ServicePart {
   part_no?: string;
   quantity?: string | number;
   unit?: string;
+  remark?: string;
+}
+
+interface InstalledDevice {
+  id?: string | number;
+  name?: string;
+  model?: string;
+  pn?: string;
+  serialNo?: string;
   remark?: string;
 }
 
@@ -531,6 +549,13 @@ function displayReportWorkContent(order: ServiceOrder) {
   return stripKnownWorkLabels(order.report?.workContent, labels);
 }
 
+function serviceResultLabel(value?: string) {
+  if (value === "resolved") return "已完成";
+  if (value === "unresolved") return "未完成";
+  if (value === "follow_up_required") return "需后续跟进";
+  return value || "";
+}
+
 function servicePartActionLabel(value?: string) {
   return serviceItemPartActionLabel(value);
 }
@@ -558,6 +583,14 @@ function displayServiceParts(parts?: ServicePart[]) {
     .join("\n");
 }
 
+function filePurposeLabel(value?: string) {
+  if (value === "inspection_document") return "巡检文档";
+  if (value === "support_config") return "配置与支持文件";
+  if (value === "site_photo") return "现场照片";
+  if (value === "screenshot_log") return "截图/日志文件";
+  return "附件";
+}
+
 function splitSearchTerms(value: string) {
   return value
     .trim()
@@ -582,8 +615,8 @@ function formatDateRange(start?: string, end?: string) {
 }
 
 function serviceTimeRange(order: ServiceOrder) {
-  const start = order.report?.actualStartAt || order.plannedStartAt || order.serviceAt;
-  const end = order.report?.actualEndAt || order.plannedEndAt || "";
+  const start = order.report?.actualStartAt || order.report?.departureAt || "";
+  const end = order.report?.actualEndAt || order.report?.returnAt || "";
   return {
     start: formatDateTime(start),
     end: formatDateTime(end),
@@ -1693,6 +1726,17 @@ export function ServiceOrders() {
             const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
             const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
             const showInternalNote = !isBusinessUser;
+            const workContent = displayReportWorkContent(detailOrder);
+            const serviceParts = displayServiceParts(detailOrder.parts);
+            const installedDevices = detailOrder.installedDevices || [];
+            const resultText = serviceResultLabel(detailOrder.report?.result);
+            const customerSignatureText = detailOrder.serviceMode === "onsite"
+              ? detailOrder.report?.customerSignatureFileId
+                ? "已使用历史签名"
+                : detailOrder.report?.customerSignature
+                  ? "已完成现场签名"
+                  : ""
+              : detailOrder.serviceMode === "remote" ? "远程服务无需客户手写签名" : "";
             return (
               <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
                 <div className="flex flex-wrap gap-2">
@@ -1713,7 +1757,6 @@ export function ServiceOrders() {
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <DetailField label="服务时间" value={serviceTime.full} />
-                  <DetailField label="计划时间" value={formatDateRange(detailOrder.plannedStartAt, detailOrder.plannedEndAt)} />
                   <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
                   <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
                   <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
@@ -1723,6 +1766,50 @@ export function ServiceOrders() {
 
                 <DetailBlock label={t.detail.issueDescription} value={detailOrder.issueDescription} />
                 {showInternalNote ? <DetailBlock label={t.detail.internalNote} value={detailOrder.internalNote} /> : null}
+                {workContent ? <DetailBlock label="处理记录" value={workContent} /> : null}
+                {resultText || detailOrder.report?.resultDescription || detailOrder.report?.customerConfirmName || customerSignatureText ? (
+                  <div className="grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
+                    {resultText ? <DetailField label="处理结果" value={resultText} /> : null}
+                    {detailOrder.report?.resultDescription ? <DetailField label="结果说明" value={detailOrder.report.resultDescription} /> : null}
+                    {detailOrder.report?.customerConfirmName || detailOrder.report?.customerName ? (
+                      <DetailField label="客户确认人" value={detailOrder.report?.customerConfirmName || detailOrder.report?.customerName} />
+                    ) : null}
+                    {customerSignatureText ? <DetailField label="客户签名" value={customerSignatureText} /> : null}
+                  </div>
+                ) : null}
+
+                {(detailOrder.deviceModel || detailOrder.devicePn || detailOrder.deviceSerialNo || detailOrder.deviceRemark) ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">目标设备详情</div>
+                    <div className="mt-2 grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
+                      <DetailField label="型号 / 版本" value={detailOrder.deviceModel} />
+                      <DetailField label="料号 / PN" value={detailOrder.devicePn} />
+                      <DetailField label="序列号 / SN" value={detailOrder.deviceSerialNo} />
+                      <DetailField label="设备备注" value={detailOrder.deviceRemark} />
+                    </div>
+                  </div>
+                ) : null}
+
+                {installedDevices.length ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">安装设备</div>
+                    <div className="mt-2 grid gap-2">
+                      {installedDevices.map((device, index) => (
+                        <div key={`${device.id || "installed"}-${index}`} className="rounded-md border bg-muted/30 p-3">
+                          <div className="mb-2 text-sm font-medium">{compactText(device.name || device.model, `安装设备 ${index + 1}`)}</div>
+                          <div className="grid gap-4 md:grid-cols-3">
+                            <DetailField label="型号 / 版本" value={device.model} />
+                            <DetailField label="料号 / PN" value={device.pn} />
+                            <DetailField label="序列号 / SN" value={device.serialNo} />
+                            <DetailField label="备注" value={device.remark} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} /> : null}
 
                 {inspectionDocuments.length ? (
                   <div>
@@ -1738,7 +1825,7 @@ export function ServiceOrders() {
                         >
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{file.originalName || `巡检文档 #${file.id}`}</span>
-                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
                           </span>
                           <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
                         </button>
@@ -1761,7 +1848,7 @@ export function ServiceOrders() {
                         >
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{file.originalName || `附件 #${file.id}`}</span>
-                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
                           </span>
                           <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
                         </button>

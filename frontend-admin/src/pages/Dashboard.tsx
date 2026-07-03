@@ -34,9 +34,38 @@ interface Order {
   contactName?: string;
   contactPhone?: string;
   deviceName?: string;
+  deviceModel?: string;
+  devicePn?: string;
+  deviceSerialNo?: string;
+  deviceRemark?: string;
   issueDescription?: string;
   internalNote?: string;
-  report?: { workContent?: string };
+  report?: {
+    departureAt?: string;
+    actualStartAt?: string;
+    actualEndAt?: string;
+    returnAt?: string;
+    workContent?: string;
+    workEntries?: Array<{ workContent?: string; work_content?: string }>;
+    result?: string;
+    resultDescription?: string;
+    customerConfirmName?: string;
+    customerName?: string;
+    customerSignature?: string;
+    customerSignatureFileId?: string | number;
+  };
+  parts?: Array<{
+    actionType?: string;
+    action_type?: string;
+    partName?: string;
+    part_name?: string;
+    partNo?: string;
+    part_no?: string;
+    quantity?: string | number;
+    unit?: string;
+    remark?: string;
+  }>;
+  files?: Array<{ id?: string | number; purpose?: string; originalName?: string; size?: string | number }>;
   engineerName?: string;
   engineers?: Array<{ id?: string | number; realName?: string; name?: string; username?: string }>;
   serviceType?: string;
@@ -502,6 +531,50 @@ function formatDateRange(start?: string, end?: string) {
   if (!start && !end) return "-";
   if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
   return formatDateTime(start || end);
+}
+
+function reportServiceTime(order: Order) {
+  return formatDateRange(order.report?.actualStartAt || order.report?.departureAt, order.report?.actualEndAt || order.report?.returnAt);
+}
+
+function reportWorkContent(order: Order) {
+  const entries = (order.report?.workEntries || [])
+    .map((entry) => entry.workContent || entry.work_content || "")
+    .filter(Boolean)
+    .join("\n\n");
+  return order.report?.workContent || entries;
+}
+
+function resultLabel(value?: string) {
+  if (value === "resolved") return "已完成";
+  if (value === "unresolved") return "未完成";
+  if (value === "follow_up_required") return "需后续跟进";
+  return value || "";
+}
+
+function partActionLabel(value?: string) {
+  if (value === "replacement") return "更换";
+  if (value === "installation") return "安装";
+  return "记录";
+}
+
+function partsSummary(order: Order) {
+  return (order.parts || [])
+    .map((part) => {
+      const name = part.partName || part.part_name || "未命名部件";
+      const pn = part.partNo || part.part_no ? `PN ${part.partNo || part.part_no}` : "";
+      const quantity = [part.quantity, part.unit].filter(Boolean).join("");
+      const details = [pn, quantity ? `数量 ${quantity}` : "", part.remark].filter(Boolean);
+      return `${partActionLabel(part.actionType || part.action_type)} ${name}${details.length ? `（${details.join("，")}）` : ""}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function filesSummary(order: Order) {
+  const files = order.files || [];
+  if (!files.length) return "";
+  return files.map((file) => file.originalName || `附件 #${file.id}`).join("\n");
 }
 
 function engineerText(order: Order, fallback: string) {
@@ -991,6 +1064,18 @@ export function Dashboard() {
               const typeLabel = t.type[previewOrder.serviceType as keyof typeof t.type] || previewOrder.serviceType || "-";
               const modeLabel = t.mode[previewOrder.serviceMode as keyof typeof t.mode] || previewOrder.serviceMode || "-";
               const priorityLabel = t.priority[previewOrder.priority as keyof typeof t.priority] || previewOrder.priority || "-";
+              const serviceTime = reportServiceTime(previewOrder);
+              const workContent = reportWorkContent(previewOrder);
+              const resultText = resultLabel(previewOrder.report?.result);
+              const signatureText = previewOrder.serviceMode === "onsite"
+                ? previewOrder.report?.customerSignatureFileId
+                  ? "已使用历史签名"
+                  : previewOrder.report?.customerSignature
+                    ? "已完成现场签名"
+                    : ""
+                : previewOrder.serviceMode === "remote" ? "远程服务无需客户手写签名" : "";
+              const partText = partsSummary(previewOrder);
+              const fileText = filesSummary(previewOrder);
               return (
                 <div className="space-y-5 py-2">
                   <div className="flex flex-wrap gap-2">
@@ -1010,7 +1095,7 @@ export function Dashboard() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
-                    {previewOrder.serviceMode !== "office" ? <PreviewField label={t.detail.planTime} value={formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt)} /> : null}
+                    <PreviewField label="服务时间" value={serviceTime} />
                     <PreviewField label={t.detail.createdAt} value={formatDateTime(previewOrder.createdAt)} />
                     <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
                     <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />
@@ -1020,6 +1105,27 @@ export function Dashboard() {
 
                   <PreviewBlock label={t.detail.issueDescription} value={previewOrder.issueDescription} />
                   <PreviewBlock label={t.detail.internalNote} value={previewOrder.internalNote} />
+                  {workContent ? <PreviewBlock label="处理记录" value={workContent} /> : null}
+                  {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {resultText ? <PreviewField label="处理结果" value={resultText} /> : null}
+                      {previewOrder.report?.resultDescription ? <PreviewField label="结果说明" value={previewOrder.report.resultDescription} /> : null}
+                      {previewOrder.report?.customerConfirmName || previewOrder.report?.customerName ? (
+                        <PreviewField label="客户确认人" value={previewOrder.report?.customerConfirmName || previewOrder.report?.customerName} />
+                      ) : null}
+                      {signatureText ? <PreviewField label="客户签名" value={signatureText} /> : null}
+                    </div>
+                  ) : null}
+                  {(previewOrder.deviceModel || previewOrder.devicePn || previewOrder.deviceSerialNo || previewOrder.deviceRemark) ? (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <PreviewField label="设备型号" value={previewOrder.deviceModel} />
+                      <PreviewField label="料号 / PN" value={previewOrder.devicePn} />
+                      <PreviewField label="序列号 / SN" value={previewOrder.deviceSerialNo} />
+                      <PreviewField label="设备备注" value={previewOrder.deviceRemark} />
+                    </div>
+                  ) : null}
+                  {partText ? <PreviewBlock label="备件与硬件部件" value={partText} /> : null}
+                  {fileText ? <PreviewBlock label="附件" value={fileText} /> : null}
                 </div>
               );
             })() : null}

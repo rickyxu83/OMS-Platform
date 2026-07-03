@@ -55,6 +55,7 @@ const orderColumns = `
   so.contact_name AS order_contact_name, so.contact_phone AS order_contact_phone,
   so.device_id,
   ${deviceDisplaySql('d')} AS device_name,
+  d.model AS device_model, d.pn AS device_pn, d.serial_no AS device_serial_no, d.remark AS device_remark,
   so.service_mode, so.service_type, so.service_modules, so.timesheet_category, so.timesheet_salesperson,
   so.priority, so.status, so.issue_description, so.assigned_engineer_id,
   u.real_name AS engineer_name, so.inspection_schedule_id, so.inspection_occurrence_date,
@@ -204,6 +205,10 @@ function orderPayload(row, viewer = null) {
     contactPhone: normalizePhoneNumber(row.contact_phone) || row.contact_phone,
     deviceId: row.device_id,
     deviceName: row.device_name,
+    deviceModel: row.device_model,
+    devicePn: row.device_pn,
+    deviceSerialNo: row.device_serial_no,
+    deviceRemark: row.device_remark,
     serviceMode: row.service_mode || 'onsite',
     serviceType: row.service_type,
     ...(serviceModules.length ? { serviceModules } : {}),
@@ -2512,6 +2517,13 @@ async function loadDetailItem(orderId, user, options = {}) {
      ORDER BY sp.id ASC`,
     { id: orderId },
   )
+  const installedDevices = await query(
+    `SELECT id, name, model, pn, serial_no, remark, created_at, updated_at
+     FROM devices
+     WHERE installation_source_service_order_id = :id
+     ORDER BY id ASC`,
+    { id: orderId },
+  )
   const files = await query(
     `SELECT id, owner_type, owner_id, purpose, original_name, mime_type, size, uploaded_by, created_at
      FROM files
@@ -2548,6 +2560,16 @@ async function loadDetailItem(orderId, user, options = {}) {
       remark: part.remark,
       createdAt: part.created_at,
       updatedAt: part.updated_at,
+    })),
+    installedDevices: installedDevices.map((device) => ({
+      id: device.id,
+      name: device.name,
+      model: device.model,
+      pn: device.pn,
+      serialNo: device.serial_no,
+      remark: device.remark,
+      createdAt: device.created_at,
+      updatedAt: device.updated_at,
     })),
     files: files.map((file) => ({
       id: file.id,

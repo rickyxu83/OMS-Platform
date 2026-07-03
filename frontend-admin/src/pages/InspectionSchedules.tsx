@@ -861,9 +861,9 @@ export function InspectionSchedules() {
                       </div>
                       {deviceNames.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <Badge variant="outline" className="max-w-[220px] truncate text-xs">
+                          <span className="max-w-[220px] truncate text-sm text-slate-700">
                             {deviceNames[0]}
-                          </Badge>
+                          </span>
                           {deviceNames.length > 1 && (
                             <span className="text-xs font-medium text-muted-foreground">+{deviceNames.length - 1}</span>
                           )}

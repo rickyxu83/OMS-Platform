@@ -107,9 +107,11 @@ interface ServiceOrder {
   inspectionScheduleId?: string | number;
   report?: ServiceReport | null;
   parts?: ServicePart[];
+  installedDevices?: InstalledDevice[];
   files?: OrderFile[];
   engineers?: EngineerOption[];
   contacts?: CustomerContact[];
+  customerSignatureRequest?: CustomerSignatureRequest | null;
 }
 
 interface ServiceReport {
@@ -144,6 +146,17 @@ interface ServicePart {
   updatedAt?: string;
 }
 
+interface InstalledDevice {
+  id?: string | number;
+  name?: string;
+  model?: string;
+  pn?: string;
+  serialNo?: string;
+  remark?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 interface OrderFile {
   id: string | number;
   purpose?: string;
@@ -151,6 +164,16 @@ interface OrderFile {
   mimeType?: string;
   size?: number;
   createdAt?: string;
+}
+
+interface CustomerSignatureRequest {
+  id?: string | number;
+  recipientEmail?: string;
+  status?: string;
+  expiresAt?: string;
+  sentAt?: string;
+  signedAt?: string;
+  lastError?: string;
 }
 
 interface CustomerOption {
@@ -858,7 +881,7 @@ function reportOrderDisplayId(order: ServiceOrder) {
 }
 
 function reportOrderMainContent(order: ServiceOrder) {
-  return String(order.issueDescription || serviceItemsLabel(order) || "未填写服务内容").replace(/\s+/g, " ").trim();
+  return String(order.issueDescription || order.report?.workContent || serviceItemsLabel(order) || "未填写服务内容").replace(/\s+/g, " ").trim();
 }
 
 function reportOrderEngineerText(order: ServiceOrder, fallback = "未指定工程师") {
@@ -869,9 +892,11 @@ function reportOrderEngineerText(order: ServiceOrder, fallback = "未指定工�
 }
 
 function reportOrderServiceTime(order: ServiceOrder) {
+  const start = order.report?.actualStartAt || order.report?.departureAt || "";
+  const end = order.report?.actualEndAt || order.report?.returnAt || "";
   return {
-    start: formatDateTime(order.plannedStartAt || order.createdAt),
-    end: formatDateTime(order.plannedEndAt || order.submittedAt || order.updatedAt),
+    start: formatDateTime(start),
+    end: formatDateTime(end),
   };
 }
 
@@ -3662,6 +3687,7 @@ export function ServiceReport() {
                 const serviceLabels = serviceItemLabels(previewOrder);
                 const serviceTime = reportOrderServiceTime(previewOrder);
                 const serviceTimeText = serviceTime.start === "-" && serviceTime.end === "-" ? "-" : `${serviceTime.start} 至 ${serviceTime.end}`;
+                const installedDeviceRows = previewOrder.installedDevices || [];
                 const partRows = (previewOrder.parts || []).filter((part) => (
                   [part.deviceName, part.partName || part.part_name, part.partNo || part.part_no, part.quantity, part.unit, part.remark]
                     .some((value) => String(value || "").trim())
@@ -3673,6 +3699,21 @@ export function ServiceReport() {
                     .filter(Boolean)
                     .join("\n\n");
                 const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
+                const signatureLabel = mode === "onsite"
+                  ? previewOrder.report?.customerSignatureFileId
+                    ? "已使用历史签名"
+                    : previewOrder.report?.customerSignature
+                      ? "已完成现场签名"
+                      : previewOrder.customerSignatureRequest
+                        ? previewOrder.customerSignatureRequest.signedAt
+                          ? "电子签署已完成"
+                          : previewOrder.customerSignatureRequest.status === "sent"
+                            ? "电子签署已发送"
+                            : previewOrder.customerSignatureRequest.status === "created"
+                              ? "电子签署待发送"
+                              : previewOrder.customerSignatureRequest.status || "电子签署处理中"
+                        : ""
+                  : mode === "remote" ? "远程服务无需客户手写签名" : "";
                 const customerFields = [
                   { label: "客户名称", value: previewOrder.customerName },
                   { label: "客户联系人", value: previewOrder.contactName },
@@ -3684,7 +3725,6 @@ export function ServiceReport() {
                   { label: "服务事项", value: serviceItemsLabel(previewOrder) },
                   { label: "优先级", value: optionText(PRIORITY_OPTIONS, previewOrder.priority) },
                   { label: "状态", value: orderStatusLabel(previewOrder) },
-                  ...(mode === "office" ? [] : [{ label: "计划时间", value: formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt) }]),
                   { label: "服务时间", value: serviceTimeText },
                   { label: "月报类别", value: previewOrder.timesheetCategory },
                   { label: "销售", value: previewOrder.timesheetSalesperson },
@@ -3706,6 +3746,8 @@ export function ServiceReport() {
                   { label: "返回时间", value: formatDateTime(previewOrder.report?.returnAt) },
                   { label: "处理结果", value: resultLabel },
                   { label: "客户确认人", value: previewOrder.report?.customerConfirmName || previewOrder.report?.customerName },
+                  { label: "客户签名", value: signatureLabel },
+                  { label: "签署邮箱", value: previewOrder.customerSignatureRequest?.recipientEmail },
                 ].filter((field) => hasPreviewValue(field.value) && field.value !== "-");
                 return (
                   <div className="space-y-5">
@@ -3761,6 +3803,36 @@ export function ServiceReport() {
                           {deviceFields.map((field) => (
                             <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
                           ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {installedDeviceRows.length ? (
+                      <div>
+                        <div className="mb-2 text-xs text-muted-foreground">安装设备</div>
+                        <div className="space-y-2">
+                          {installedDeviceRows.map((device, deviceIndex) => {
+                            const installedDeviceFields = [
+                              { label: "设备名称", value: device.name },
+                              { label: "型号 / 版本", value: device.model },
+                              { label: "料号 / PN", value: device.pn },
+                              { label: "序列号 / SN", value: device.serialNo },
+                              { label: "备注", value: device.remark, className: "md:col-span-2" },
+                            ].filter((field) => hasPreviewValue(field.value));
+                            return (
+                              <div key={`${device.id || "installed"}-${deviceIndex}`} className="rounded-lg border bg-muted/20 p-3">
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground">{displayText(device.name || device.model, `安装设备 ${deviceIndex + 1}`)}</span>
+                                  <Badge variant="success">新增设备</Badge>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                  {installedDeviceFields.map((field) => (
+                                    <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : null}
