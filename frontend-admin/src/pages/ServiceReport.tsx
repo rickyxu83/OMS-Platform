@@ -388,7 +388,8 @@ const FORM_SKIN = [
   "[&_[data-slot=input]]:rounded-lg",
   "[&_[data-slot=input]]:border-border",
   "[&_[data-slot=input]]:bg-input-background",
-  "[&_[data-slot=input]]:text-[13px]",
+  "[&_[data-slot=input]]:text-[16px]",
+  "sm:[&_[data-slot=input]]:text-[13px]",
   "[&_[data-slot=input]]:shadow-none",
   "[&_[data-slot=input]]:hover:border-primary/40",
   "[&_[data-slot=input]]:hover:bg-input-background",
@@ -399,7 +400,8 @@ const FORM_SKIN = [
   "[&_[data-slot=select-trigger]]:rounded-lg",
   "[&_[data-slot=select-trigger]]:border-border",
   "[&_[data-slot=select-trigger]]:bg-input-background",
-  "[&_[data-slot=select-trigger]]:text-[13px]",
+  "[&_[data-slot=select-trigger]]:text-[16px]",
+  "sm:[&_[data-slot=select-trigger]]:text-[13px]",
   "[&_[data-slot=select-trigger]]:shadow-none",
   "[&_[data-slot=select-trigger]]:hover:border-primary/40",
   "[&_[data-slot=select-trigger]]:hover:bg-input-background",
@@ -412,7 +414,8 @@ const FORM_SKIN = [
   "[&_[data-slot=textarea]]:rounded-lg",
   "[&_[data-slot=textarea]]:border-border",
   "[&_[data-slot=textarea]]:bg-input-background",
-  "[&_[data-slot=textarea]]:text-[13px]",
+  "[&_[data-slot=textarea]]:text-[16px]",
+  "sm:[&_[data-slot=textarea]]:text-[13px]",
   "[&_[data-slot=textarea]]:shadow-none",
   "[&_[data-slot=textarea]]:hover:border-primary/40",
   "[&_[data-slot=textarea]]:hover:bg-input-background",
@@ -1432,10 +1435,10 @@ function CustomerInlineSuggestions({
         }}
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-foreground">{customerName(customer)}</span>
-          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{customerMeta(customer)}</span>
+          <span className="block truncate text-base font-semibold text-foreground sm:text-sm">{customerName(customer)}</span>
+          <span className="mt-0.5 hidden line-clamp-2 text-xs text-muted-foreground sm:block">{customerMeta(customer)}</span>
         </span>
-        {badge ? <Badge variant="secondary">{badge}</Badge> : selected ? <Badge variant="outline">已选择</Badge> : null}
+        {badge ? <Badge className="hidden sm:inline-flex" variant="secondary">{badge}</Badge> : selected ? <Badge className="hidden sm:inline-flex" variant="outline">已选择</Badge> : null}
       </button>
     );
   }

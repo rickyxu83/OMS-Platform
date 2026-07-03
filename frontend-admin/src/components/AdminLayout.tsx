@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Languages,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -264,6 +265,12 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   },
 ];
 
+const MOBILE_NAV_LABELS: Record<string, string> = {
+  dashboard: "首页",
+  "service-orders": "工单",
+  "service-report": "填写",
+};
+
 interface AdminLayoutProps {
   children: React.ReactNode;
 }
@@ -305,10 +312,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
   const layoutStyle = { "--admin-sidebar-width": sidebarOpen ? "16rem" : "0px" } as CSSProperties;
+  const lastMobileScrollTopRef = useRef(0);
   const canSwitchEngineer = user?.role !== "engineer"
     && Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
@@ -342,6 +351,36 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 1023px)");
+    const handleScroll = () => {
+      if (!media.matches) {
+        setMobileNavVisible(true);
+        return;
+      }
+      const currentTop = content.scrollTop;
+      const previousTop = lastMobileScrollTopRef.current;
+      const delta = currentTop - previousTop;
+      lastMobileScrollTopRef.current = currentTop;
+
+      if (currentTop < 24 || delta < -8) {
+        setMobileNavVisible(true);
+        return;
+      }
+      if (delta > 10 && currentTop > 80) {
+        setMobileNavVisible(false);
+      }
+    };
+
+    setMobileNavVisible(true);
+    lastMobileScrollTopRef.current = content.scrollTop;
+    content.addEventListener("scroll", handleScroll, { passive: true });
+    return () => content.removeEventListener("scroll", handleScroll);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -398,15 +437,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )
     : allNavItems;
 
-  const mobileNavPriority = user?.role === "engineer"
-    ? ["service-report", "dashboard"]
-    : ["dashboard", "service-report", "service-orders", "inspection-schedules", "customers", "devices"];
+  const mobileNavPriority = ["dashboard", "service-orders", "service-report"];
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
     .filter(Boolean) as NavItem[];
 
   const navigateTo = (path: string) => {
     navigate(`/${path}`);
+    setMobileNavVisible(true);
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setSidebarOpen(false);
     }
@@ -692,32 +730,48 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </main>
 
         {mobileNavItems.length > 0 && (
-          <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md lg:hidden">
+          <nav
+            className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
+              mobileNavVisible ? "translate-y-0" : "translate-y-[calc(100%-0.35rem)]"
+            }`}
+            onFocusCapture={() => setMobileNavVisible(true)}
+          >
             <div
-              className="mx-auto grid max-w-md gap-1"
+              className="mx-auto grid max-w-md gap-1.5"
               style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
             >
               {mobileNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.path;
+                const label = MOBILE_NAV_LABELS[item.path] || item.label;
                 return (
                   <button
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
-                    <span className="w-full truncate">{item.label}</span>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{label}</span>
                   </button>
                 );
               })}
             </div>
           </nav>
+        )}
+        {mobileNavItems.length > 0 && !mobileNavVisible && (
+          <button
+            type="button"
+            className="fixed bottom-[calc(0.45rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"
+            onClick={() => setMobileNavVisible(true)}
+            aria-label="显示底部导航"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
         )}
       </div>
 
