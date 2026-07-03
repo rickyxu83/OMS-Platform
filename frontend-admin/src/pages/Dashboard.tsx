@@ -1001,15 +1001,11 @@ export function Dashboard() {
         </section>
 
         <section className="lg:col-span-2">
-          <div className="mb-3 flex items-start justify-between gap-3 px-1 sm:mb-4">
+          <div className="mb-3 px-1 sm:mb-4">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
               <p className="text-sm text-muted-foreground">{t.recent.description}</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}>
-              <ArrowRight className="w-4 h-4 mr-1" />
-              {t.recent.viewAll}
-            </Button>
           </div>
           <Card className="h-[300px] lg:h-[440px]">
             <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
