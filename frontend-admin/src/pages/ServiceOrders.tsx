@@ -1594,7 +1594,7 @@ export function ServiceOrders() {
                     key={order.id}
                     role="button"
                     tabIndex={0}
-                    className="cursor-pointer rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30"
+                    className="cursor-pointer rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 md:py-3"
                     onClick={() => openDetailOrder(order)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
@@ -1604,15 +1604,15 @@ export function ServiceOrders() {
                       }
                     }}
                   >
-                    <div className={`grid min-w-0 gap-3 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
-                      <div onClick={(event) => event.stopPropagation()}>
+                    <div className={`grid min-w-0 gap-3 md:grid-cols-[28px_minmax(0,1fr)_minmax(132px,auto)] md:items-start md:gap-x-3 md:gap-y-2 xl:grid ${ORDER_LIST_GRID} xl:items-center`}>
+                      <div className="md:row-span-4 md:pt-1 xl:row-auto xl:pt-0" onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={selectedIds.some((id) => String(id) === String(order.id))}
                           onCheckedChange={(checked) => toggleOrderSelection(order.id, checked)}
                         />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 md:col-start-2 md:row-start-1 xl:col-auto xl:row-auto">
                           <div className="font-semibold">{displayId(order)}</div>
                           <button
                             type="button"
@@ -1627,18 +1627,35 @@ export function ServiceOrders() {
                           </button>
                         </div>
 
-                        <div className="min-w-0">
+                        <div className="min-w-0 md:col-start-2 md:row-start-2 xl:col-auto xl:row-auto">
                           <div className="flex flex-wrap gap-1.5">
                             <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
                             <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
                           </div>
                         </div>
 
-                        <div className="min-w-0">
+                        <div className="min-w-0 md:col-start-2 md:row-start-3 xl:col-auto xl:row-auto">
                           <span className="block truncate text-sm font-medium">{orderMainContent(order)}</span>
                         </div>
 
-                        <div className="min-w-0 text-sm">
+                        <div className="hidden min-w-0 text-xs text-muted-foreground md:col-start-2 md:col-end-4 md:row-start-4 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1 xl:hidden">
+                          <button
+                            type="button"
+                            className="max-w-[14rem] truncate text-left font-medium text-foreground transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                            title={`按工程师过滤：${engineerText(order, t.detail.unnamedEngineer)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              applyNameFilter(engineerText(order, ""));
+                            }}
+                            disabled={!engineerText(order, "")}
+                          >
+                            {engineerText(order, t.detail.unnamedEngineer)}
+                          </button>
+                          <span className="whitespace-nowrap">开始：{serviceTime.start}</span>
+                          <span className="whitespace-nowrap">结束：{serviceTime.end}</span>
+                        </div>
+
+                        <div className="min-w-0 text-sm md:hidden xl:block">
                           <button
                             type="button"
                             className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
@@ -1653,7 +1670,7 @@ export function ServiceOrders() {
                           </button>
                         </div>
 
-                        <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs">
+                        <div className="min-w-0 space-y-0.5 whitespace-nowrap text-xs md:hidden xl:block">
                           <div>
                             <span className="text-muted-foreground">开始：</span>
                             <span>{serviceTime.start}</span>
@@ -1664,13 +1681,13 @@ export function ServiceOrders() {
                           </div>
                         </div>
 
-                        <div>
+                        <div className="md:col-start-3 md:row-start-1 md:justify-self-end xl:col-auto xl:row-auto xl:justify-self-auto">
                           <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
                             {statusLabel}
                           </Badge>
                         </div>
 
-                        <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
+                        <div className="flex min-w-0 flex-wrap gap-2 md:col-start-3 md:row-start-3 md:justify-end md:self-start xl:col-auto xl:row-auto xl:justify-end">
                           {canConfirmInspection && (
                             <Button
                               variant="ghost"
