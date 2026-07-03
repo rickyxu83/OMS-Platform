@@ -36,49 +36,74 @@ const LOGIN_ORIENTATION_X_BOOST = 1.45;
 const LOGIN_ORIENTATION_Y_BOOST = 1.25;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
 const LOGIN_DEEP_BLOB_COUNT = 3;
-const LOGIN_DEEP_BLOB_SLOTS = [0, 1, 2, 4, 5, 7];
-const LOGIN_LIGHT_BLOB_COLORS = [
-  "rgba(254, 226, 226, 0.34)",
-  "rgba(255, 228, 230, 0.34)",
-  "rgba(252, 231, 243, 0.34)",
-  "rgba(243, 232, 255, 0.34)",
-  "rgba(237, 233, 254, 0.34)",
-  "rgba(224, 231, 255, 0.34)",
-  "rgba(219, 234, 254, 0.34)",
-  "rgba(224, 242, 254, 0.34)",
-  "rgba(207, 250, 254, 0.34)",
-  "rgba(204, 251, 241, 0.34)",
-  "rgba(209, 250, 229, 0.32)",
-  "rgba(220, 252, 231, 0.32)",
-  "rgba(236, 252, 203, 0.30)",
-  "rgba(254, 249, 195, 0.34)",
-  "rgba(254, 243, 199, 0.34)",
-  "rgba(255, 237, 213, 0.34)",
-  "rgba(255, 241, 242, 0.34)",
-  "rgba(240, 249, 255, 0.34)",
-  "rgba(240, 253, 250, 0.32)",
-  "rgba(250, 245, 255, 0.34)",
-  "rgba(255, 247, 237, 0.34)",
-  "rgba(248, 250, 252, 0.30)",
+const LOGIN_DEEP_BLOB_FOCUS_SLOTS = [4, 5, 7];
+const LOGIN_DEEP_BLOB_EDGE_SLOTS = [0, 1, 2];
+const LOGIN_DEEP_BLOB_EXTRA_SLOTS = [3, 6];
+const LOGIN_LIGHT_BLOB_COLOR_GROUPS = [
+  [
+    "rgba(254, 226, 226, 0.34)",
+    "rgba(255, 228, 230, 0.34)",
+    "rgba(255, 241, 242, 0.34)",
+    "rgba(255, 237, 213, 0.34)",
+  ],
+  [
+    "rgba(252, 231, 243, 0.34)",
+    "rgba(243, 232, 255, 0.34)",
+    "rgba(237, 233, 254, 0.34)",
+    "rgba(250, 245, 255, 0.34)",
+  ],
+  [
+    "rgba(224, 231, 255, 0.34)",
+    "rgba(219, 234, 254, 0.34)",
+    "rgba(224, 242, 254, 0.34)",
+    "rgba(240, 249, 255, 0.34)",
+  ],
+  [
+    "rgba(207, 250, 254, 0.34)",
+    "rgba(204, 251, 241, 0.34)",
+    "rgba(209, 250, 229, 0.32)",
+    "rgba(240, 253, 250, 0.32)",
+  ],
+  [
+    "rgba(220, 252, 231, 0.32)",
+    "rgba(236, 252, 203, 0.30)",
+    "rgba(254, 249, 195, 0.34)",
+    "rgba(254, 243, 199, 0.34)",
+    "rgba(255, 247, 237, 0.34)",
+    "rgba(248, 250, 252, 0.30)",
+  ],
 ];
-const LOGIN_DEEP_BLOB_COLORS = [
-  "rgba(244, 63, 94, 0.44)",
-  "rgba(236, 72, 153, 0.44)",
-  "rgba(217, 70, 239, 0.42)",
-  "rgba(168, 85, 247, 0.44)",
-  "rgba(124, 58, 237, 0.42)",
-  "rgba(99, 102, 241, 0.44)",
-  "rgba(59, 130, 246, 0.44)",
-  "rgba(14, 165, 233, 0.42)",
-  "rgba(6, 182, 212, 0.40)",
-  "rgba(20, 184, 166, 0.40)",
-  "rgba(16, 185, 129, 0.40)",
-  "rgba(34, 197, 94, 0.38)",
-  "rgba(132, 204, 22, 0.36)",
-  "rgba(234, 179, 8, 0.40)",
-  "rgba(245, 158, 11, 0.44)",
-  "rgba(249, 115, 22, 0.44)",
-  "rgba(239, 68, 68, 0.42)",
+const LOGIN_DEEP_BLOB_COLOR_GROUPS = [
+  [
+    "rgba(244, 63, 94, 0.52)",
+    "rgba(239, 68, 68, 0.50)",
+    "rgba(249, 115, 22, 0.52)",
+    "rgba(245, 158, 11, 0.50)",
+  ],
+  [
+    "rgba(236, 72, 153, 0.52)",
+    "rgba(217, 70, 239, 0.50)",
+    "rgba(192, 38, 211, 0.48)",
+    "rgba(168, 85, 247, 0.50)",
+  ],
+  [
+    "rgba(124, 58, 237, 0.50)",
+    "rgba(99, 102, 241, 0.52)",
+    "rgba(37, 99, 235, 0.50)",
+    "rgba(59, 130, 246, 0.52)",
+  ],
+  [
+    "rgba(14, 165, 233, 0.50)",
+    "rgba(6, 182, 212, 0.48)",
+    "rgba(20, 184, 166, 0.48)",
+    "rgba(16, 185, 129, 0.48)",
+  ],
+  [
+    "rgba(34, 197, 94, 0.46)",
+    "rgba(132, 204, 22, 0.46)",
+    "rgba(202, 138, 4, 0.48)",
+    "rgba(217, 119, 6, 0.50)",
+  ],
 ];
 
 type LoginMotionPoint = { x: number; y: number };
@@ -107,10 +132,39 @@ function shuffledCopy<T>(values: T[]) {
   return list;
 }
 
+function groupedRandomColors(colorGroups: string[][], count: number) {
+  const groups = shuffledCopy(colorGroups).map((group) => shuffledCopy(group));
+  const colors: string[] = [];
+
+  while (colors.length < count) {
+    for (const group of groups) {
+      const color = group.shift();
+      if (color) colors.push(color);
+      if (colors.length >= count) break;
+    }
+  }
+
+  return colors;
+}
+
+function randomDeepBlobSlots() {
+  const slots = [
+    shuffledCopy(LOGIN_DEEP_BLOB_FOCUS_SLOTS)[0],
+    shuffledCopy(LOGIN_DEEP_BLOB_EDGE_SLOTS)[0],
+  ].filter((slot): slot is number => typeof slot === "number");
+  const remainingSlots = shuffledCopy([
+    ...LOGIN_DEEP_BLOB_FOCUS_SLOTS,
+    ...LOGIN_DEEP_BLOB_EDGE_SLOTS,
+    ...LOGIN_DEEP_BLOB_EXTRA_SLOTS,
+  ]).filter((slot) => !slots.includes(slot));
+
+  return [...slots, ...remainingSlots].slice(0, LOGIN_DEEP_BLOB_COUNT);
+}
+
 function randomLoginPalette() {
-  const palette = shuffledCopy(LOGIN_LIGHT_BLOB_COLORS).slice(0, LOGIN_BACKGROUND_BLOBS.length);
-  const deepColors = shuffledCopy(LOGIN_DEEP_BLOB_COLORS).slice(0, LOGIN_DEEP_BLOB_COUNT);
-  const deepSlots = shuffledCopy(LOGIN_DEEP_BLOB_SLOTS).slice(0, LOGIN_DEEP_BLOB_COUNT);
+  const palette = groupedRandomColors(LOGIN_LIGHT_BLOB_COLOR_GROUPS, LOGIN_BACKGROUND_BLOBS.length);
+  const deepColors = groupedRandomColors(LOGIN_DEEP_BLOB_COLOR_GROUPS, LOGIN_DEEP_BLOB_COUNT);
+  const deepSlots = randomDeepBlobSlots();
 
   for (let index = 0; index < deepSlots.length; index += 1) {
     palette[deepSlots[index]] = deepColors[index];
