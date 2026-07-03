@@ -27,6 +27,20 @@ const LOGIN_BACKGROUND_BLOBS = [
   { className: "bottom-[30%] right-[40%] h-[380px] w-[380px] bg-rose-400/20", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
 ];
 
+const LOGIN_MOTION_EASE = 0.22;
+const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
+
+function clampMotionValue(value: number) {
+  return Math.max(-1, Math.min(1, value));
+}
+
+function normalizedPointerPosition(clientX: number, clientY: number) {
+  return {
+    x: clampMotionValue((clientX / Math.max(window.innerWidth, 1) - 0.5) * 2),
+    y: clampMotionValue((clientY / Math.max(window.innerHeight, 1) - 0.5) * 2),
+  };
+}
+
 function LoginMotionBackground() {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -42,32 +56,34 @@ function LoginMotionBackground() {
     const blobNodes = Array.from(layer?.querySelectorAll<HTMLElement>("[data-motion-blob]") || []);
     if (!layer || !blobNodes.length) return;
 
-    const stopIfSettled = () => {
+    const motionSettled = () => {
       const target = targetRef.current;
       const current = currentRef.current;
-      const settled = Math.abs(target.x - current.x) < 0.002
-        && Math.abs(target.y - current.y) < 0.002;
-      if (settled && rafRef.current) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      return Math.abs(target.x - current.x) < LOGIN_MOTION_SETTLE_EPSILON
+        && Math.abs(target.y - current.y) < LOGIN_MOTION_SETTLE_EPSILON;
     };
 
-    const render = () => {
-      const target = targetRef.current;
+    const applyTransforms = () => {
       const current = currentRef.current;
-      current.x += (target.x - current.x) * 0.22;
-      current.y += (target.y - current.y) * 0.22;
-
       blobNodes.forEach((node, index) => {
         const config = LOGIN_BACKGROUND_BLOBS[index];
         if (!config) return;
         const activeScale = config.scale + Math.abs(current.x + current.y) * config.scaleMove;
         node.style.transform = `translate3d(${(current.x * config.moveX).toFixed(2)}px, ${(current.y * config.moveY).toFixed(2)}px, 0) scale(${activeScale.toFixed(3)})`;
       });
+    };
 
-      rafRef.current = window.requestAnimationFrame(render);
-      stopIfSettled();
+    const render = () => {
+      rafRef.current = null;
+      const target = targetRef.current;
+      const current = currentRef.current;
+      current.x += (target.x - current.x) * LOGIN_MOTION_EASE;
+      current.y += (target.y - current.y) * LOGIN_MOTION_EASE;
+      applyTransforms();
+
+      if (!motionSettled()) {
+        rafRef.current = window.requestAnimationFrame(render);
+      }
     };
 
     const ensureFrame = () => {
@@ -76,10 +92,7 @@ function LoginMotionBackground() {
     };
 
     const updateTarget = (clientX: number, clientY: number) => {
-      targetRef.current = {
-        x: (clientX / Math.max(window.innerWidth, 1) - 0.5) * 2,
-        y: (clientY / Math.max(window.innerHeight, 1) - 0.5) * 2,
-      };
+      targetRef.current = normalizedPointerPosition(clientX, clientY);
       ensureFrame();
     };
 
@@ -96,12 +109,19 @@ function LoginMotionBackground() {
       ensureFrame();
     };
 
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    const supportsPointerEvent = "PointerEvent" in window;
+    if (supportsPointerEvent) {
+      window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    } else {
+      window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    }
     document.addEventListener("pointerleave", handlePointerLeave);
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("mousemove", handleMouseMove);
+      if (supportsPointerEvent) {
+        window.removeEventListener("pointermove", handlePointerMove);
+      } else {
+        window.removeEventListener("mousemove", handleMouseMove);
+      }
       document.removeEventListener("pointerleave", handlePointerLeave);
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
     };
