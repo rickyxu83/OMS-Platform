@@ -116,13 +116,30 @@ VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
 ## 構建與檢查
 
 ```bash
-cd backend && npm test
+cd backend && npm run check
 cd frontend-admin && npm run build
+cd frontend-admin && npx tsc --noEmit
 ```
 
 ## 部署
 
-真實 SSH 目標、遠端目錄和域名屬於私有部署資訊，不寫入公開倉庫。部署前請在本地 `scripts/deploy.local.env` 或目前 shell 環境中配置 `DEPLOY_*` 變數。
+真實 SSH 目標、遠端目錄、域名、Cookie 網域和 CORS 白名單屬於私有部署資訊，不寫入公開倉庫。請放在 `AGENTS.local.md`、`docs/deploy.local.md`、`scripts/deploy.local.env`，以及各端 `.env.local` 或生產環境變數檔中。
+
+部署腳本從目前 shell 環境或本地 `scripts/deploy.local.env` 讀取真實配置。
+
+| 變數 | 說明 |
+|---|---|
+| `DEPLOY_SSH_TARGET` | SSH 主機別名或目標 |
+| `DEPLOY_REMOTE_ROOT` | 遠端專案根目錄 |
+| `DEPLOY_BACKEND_RELATIVE` | 後端目錄相對遠端根目錄的位置，預設 `app/backend` |
+| `DEPLOY_SITE_RELATIVE` | 前端站點目錄相對遠端根目錄的位置，預設 `app/site` |
+| `DEPLOY_BACKEND_CONTAINER` | 後端容器名，僅 `deploy-seed.sh` 需要 |
+| `DEPLOY_PROJECT_SLUG` | 臨時歸檔名前綴，預設 `oms-platform` |
+| `DEPLOY_BRANCH` | Git 目標分支，預設目前分支 |
+| `CORS_ALLOWED_ORIGINS` | 後端允許的前端 Origin，以逗號分隔 |
+| `SESSION_COOKIE_DOMAIN` | 需要跨子網域共享登入狀態時配置 |
+
+如需多套環境，可在 `scripts/deploy.local.env` 中定義 `DEPLOY_<PROFILE>_*` 變數，然後使用 `bash scripts/deploy.sh <profile> <target>`。
 
 ```bash
 # 預設環境（讀取 DEPLOY_* 或 scripts/deploy.local.env）
@@ -138,7 +155,9 @@ bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
 ```
 
-舊 `engineer` / `eng` 部署目標已廢棄。工程師側工單填寫由統一管理端前端提供。
+部署流程：推送目前分支到 GitHub，上傳後端原始碼，重建後端 Docker 容器，構建管理端前端，然後上傳 `dist`。舊 `engineer` / `eng` 部署目標已廢棄。工程師側工單填寫由統一管理端前端提供。
+
+`deploy.sh` 不會自動提交。工作區存在未提交變更時，腳本會列出檔案並退出。部署前請先檢查並提交變更，避免誤發布敏感或無關檔案。
 
 環境變數範例：
 
@@ -150,11 +169,42 @@ export DEPLOY_SITE_RELATIVE=app/site
 export DEPLOY_PROJECT_SLUG=oms-platform
 ```
 
+### 發布檢查清單
+
+- 執行部署前保持 `git status` 乾淨。
+- 後端改動執行 `cd backend && npm run check`。
+- 前端改動執行 `cd frontend-admin && npm run build` 和 `cd frontend-admin && npx tsc --noEmit`。
+- 涉及管理端可見功能、頁面展示、互動或發布內容變更時，同步提升 `frontend-admin/package.json`、`frontend-admin/package-lock.json` 和 `frontend-admin/src/config/app.ts` 中 `APP_VERSION` fallback 的版本號。
+- 涉及後端套件發布語義變化時，同步更新 `backend/package.json` 與 `backend/package-lock.json`。
+- 提交訊息使用中文，一行主旨概括動作與對象；需要正文時用 `-` 列出要點。
+
+部署後請在伺服器驗證後端狀態，因為 `deploy.sh` 本身不做健康檢查：
+
+```bash
+docker ps --filter name=backend --format '{{.Status}}'
+docker logs --tail 20 <backend容器名>
+docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health
+```
+
+健康檢查應返回 `{"ok":true}`。排查生產 500 時查看 `docker logs <backend容器名>`；後端錯誤處理器會記錄請求路徑和堆疊。
+
 設備型號 catalog fixture 部署：
 
 ```bash
 bash scripts/deploy-seed.sh
 ```
+
+## 角色與權限
+
+| 角色 | 管理端 |
+|---|---|
+| `engineer`（工程師） | 僅使用工單填寫入口，介面按本人過濾 |
+| `engineering_supervisor`（工程主管） | 可使用工單填寫入口；派單管理可見全部工單 |
+| `operations_director`（營運負責人） | 可見全部工單 |
+| `administrative_supervisor`（行政主管） | 管理端業務資料唯讀，不可派單、審批、編輯、刪除或改設定 |
+| `admin`（管理員） | 全部權限 |
+
+工單填寫入口請求本人相關資料時帶 `?mine=1`，後端據此過濾 `effectiveEngineerId`。
 
 ## 隱私與截圖規範
 

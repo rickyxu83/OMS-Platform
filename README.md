@@ -115,13 +115,30 @@ VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1
 ## Build and Checks
 
 ```bash
-cd backend && npm test
+cd backend && npm run check
 cd frontend-admin && npm run build
+cd frontend-admin && npx tsc --noEmit
 ```
 
 ## Deployment
 
-Real SSH targets, remote paths, and domains are private deployment information and are not committed to the public repository. Before deployment, configure `DEPLOY_*` variables in local `scripts/deploy.local.env` or in the current shell environment.
+Real SSH targets, remote paths, domains, cookie domains, and CORS allowlists are private deployment information and are not committed to the public repository. Keep them in local-only files such as `AGENTS.local.md`, `docs/deploy.local.md`, `scripts/deploy.local.env`, and each frontend/backend `.env.local` or production env file.
+
+Deployment scripts read real settings from the current shell environment or local `scripts/deploy.local.env`.
+
+| Variable | Description |
+|---|---|
+| `DEPLOY_SSH_TARGET` | SSH host alias or target |
+| `DEPLOY_REMOTE_ROOT` | Remote project root |
+| `DEPLOY_BACKEND_RELATIVE` | Backend path relative to the remote root, default `app/backend` |
+| `DEPLOY_SITE_RELATIVE` | Frontend site path relative to the remote root, default `app/site` |
+| `DEPLOY_BACKEND_CONTAINER` | Backend container name, required only by `deploy-seed.sh` |
+| `DEPLOY_PROJECT_SLUG` | Temporary archive prefix, default `oms-platform` |
+| `DEPLOY_BRANCH` | Git target branch, default is the current branch |
+| `CORS_ALLOWED_ORIGINS` | Backend allowed frontend origins, comma-separated |
+| `SESSION_COOKIE_DOMAIN` | Cookie domain when login state must be shared across subdomains |
+
+For multiple environments, define `DEPLOY_<PROFILE>_*` variables in `scripts/deploy.local.env`, then use `bash scripts/deploy.sh <profile> <target>`.
 
 ```bash
 # Default environment, reading DEPLOY_* or scripts/deploy.local.env
@@ -137,7 +154,9 @@ bash scripts/deploy.sh <profile> front
 bash scripts/deploy.sh <profile> admin
 ```
 
-The legacy `engineer` / `eng` deployment target is retired. Engineer-facing service report filling is served from the unified admin frontend.
+Deployment flow: push the current branch to GitHub, upload backend source, rebuild the backend Docker container, build the admin frontend, then upload `dist`. The legacy `engineer` / `eng` deployment target is retired. Engineer-facing service report filling is served from the unified admin frontend.
+
+`deploy.sh` does not auto-commit. If the working tree has uncommitted changes, it lists them and exits. Commit reviewed changes before deployment so sensitive or unrelated files are not published accidentally.
 
 Example environment variables:
 
@@ -149,11 +168,42 @@ export DEPLOY_SITE_RELATIVE=app/site
 export DEPLOY_PROJECT_SLUG=oms-platform
 ```
 
+### Release Checklist
+
+- Keep `git status` clean before running deployment.
+- For backend changes, run `cd backend && npm run check`.
+- For frontend changes, run `cd frontend-admin && npm run build` and `cd frontend-admin && npx tsc --noEmit`.
+- For visible admin UI, interaction, page, or release-content changes, bump the admin version in `frontend-admin/package.json`, `frontend-admin/package-lock.json`, and the `APP_VERSION` fallback in `frontend-admin/src/config/app.ts`.
+- For backend package release semantics, update `backend/package.json` and `backend/package-lock.json` together.
+- Commit messages should use Chinese, with one concise subject line and optional `-` bullet points in the body.
+
+After deployment, verify the backend on the server because `deploy.sh` does not run health checks:
+
+```bash
+docker ps --filter name=backend --format '{{.Status}}'
+docker logs --tail 20 <backend-container-name>
+docker exec <backend-container-name> wget -qO- http://127.0.0.1:3000/api/v1/health
+```
+
+The health endpoint should return `{"ok":true}`. For production 500 errors, inspect `docker logs <backend-container-name>`; the backend error handler logs the request path and stack.
+
 Deploy device model catalog fixtures:
 
 ```bash
 bash scripts/deploy-seed.sh
 ```
+
+## Roles and Permissions
+
+| Role | Admin workspace |
+|---|---|
+| `engineer` | Uses only the service report entry; APIs are filtered to the current engineer |
+| `engineering_supervisor` | Can use the service report entry; dispatch management can view all work orders |
+| `operations_director` | Can view all work orders |
+| `administrative_supervisor` | Read-only access to admin business data; cannot dispatch, approve, edit, delete, or change settings |
+| `admin` | Full access |
+
+The service report entry sends `?mine=1` when requesting current-user data. The backend uses it to filter by `effectiveEngineerId`.
 
 ## Privacy and Screenshot Policy
 
