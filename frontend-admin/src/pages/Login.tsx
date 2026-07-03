@@ -18,12 +18,12 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
 
 const LOGIN_BACKGROUND_BLOBS = [
-  { className: "top-[4%] right-[8%] h-[500px] w-[500px]", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
-  { className: "top-[24%] right-[-8%] h-[400px] w-[400px]", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
-  { className: "bottom-[4%] left-[-8%] h-[550px] w-[550px]", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
+  { className: "top-[-10%] right-[4%] h-[540px] w-[540px]", moveX: -230, moveY: 150, scale: 1.08, scaleMove: 0.05 },
+  { className: "top-[18%] right-[-12%] h-[430px] w-[430px]", moveX: 290, moveY: 180, scale: 1.12, scaleMove: 0.065 },
+  { className: "bottom-[-10%] left-[-12%] h-[580px] w-[580px]", moveX: -320, moveY: -210, scale: 1.08, scaleMove: 0.045 },
   { className: "bottom-[18%] right-[20%] h-[350px] w-[350px]", moveX: -250, moveY: -170, scale: 1.14, scaleMove: 0.07 },
   { className: "top-[42%] left-[10%] h-[450px] w-[450px]", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
-  { className: "top-[14%] left-[30%] h-[300px] w-[300px]", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
+  { className: "top-[-4%] left-[30%] h-[340px] w-[340px]", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
   { className: "bottom-[34%] right-[40%] h-[380px] w-[380px]", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
 ];
 
@@ -264,30 +264,32 @@ function LoginMotionBackground() {
 
   return (
     <div ref={layerRef} className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.58), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.28))",
-        }}
-      />
-      {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
+      <div className="absolute" style={{ inset: "-14vh -14vw" }}>
         <div
-          key={index}
-          data-motion-blob
-          className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
+          className="absolute inset-0"
           style={{
-            background: blobColors[index % blobColors.length],
-            transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
+            background:
+              "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.58), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.28))",
           }}
         />
-      ))}
+        {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
+          <div
+            key={index}
+            data-motion-blob
+            className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
+            style={{
+              background: blobColors[index % blobColors.length],
+              transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
+            }}
+          />
+        ))}
+      </div>
       <div
-        className="absolute inset-x-0 top-0 h-[12svh]"
+        className="absolute inset-x-0 top-0 h-[12svh] md:hidden"
         style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
       />
       <div
-        className="absolute inset-x-0 bottom-0 h-[12svh]"
+        className="absolute inset-x-0 bottom-0 h-[12svh] md:hidden"
         style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
       />
     </div>
