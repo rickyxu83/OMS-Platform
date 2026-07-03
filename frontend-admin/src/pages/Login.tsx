@@ -25,6 +25,7 @@ const LOGIN_BACKGROUND_BLOBS = [
   { className: "top-[42%] left-[10%] h-[450px] w-[450px]", moveX: 270, moveY: -150, scale: 1.1, scaleMove: 0.06 },
   { className: "top-[-4%] left-[30%] h-[340px] w-[340px]", moveX: 340, moveY: 240, scale: 1.18, scaleMove: 0.08 },
   { className: "bottom-[34%] right-[40%] h-[380px] w-[380px]", moveX: 220, moveY: -280, scale: 1.12, scaleMove: 0.06 },
+  { className: "top-[54%] right-[-8%] h-[360px] w-[360px]", moveX: -260, moveY: 120, scale: 1.1, scaleMove: 0.055 },
 ];
 
 const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
@@ -34,75 +35,51 @@ const LOGIN_ORIENTATION_MAX_TILT = 9;
 const LOGIN_ORIENTATION_X_BOOST = 1.45;
 const LOGIN_ORIENTATION_Y_BOOST = 1.25;
 const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
-const LOGIN_BACKGROUND_PALETTES = [
-  ["rgba(251, 146, 60, 0.28)", "rgba(236, 72, 153, 0.22)", "rgba(59, 130, 246, 0.24)", "rgba(250, 204, 21, 0.24)", "rgba(14, 165, 233, 0.20)", "rgba(168, 85, 247, 0.20)", "rgba(251, 113, 133, 0.20)"],
-  ["rgba(45, 212, 191, 0.24)", "rgba(56, 189, 248, 0.24)", "rgba(129, 140, 248, 0.22)", "rgba(244, 114, 182, 0.20)", "rgba(250, 204, 21, 0.22)", "rgba(34, 197, 94, 0.18)", "rgba(251, 146, 60, 0.20)"],
-  ["rgba(251, 113, 133, 0.22)", "rgba(217, 70, 239, 0.20)", "rgba(99, 102, 241, 0.22)", "rgba(45, 212, 191, 0.20)", "rgba(251, 191, 36, 0.22)", "rgba(56, 189, 248, 0.20)", "rgba(244, 114, 182, 0.18)"],
-  ["rgba(250, 204, 21, 0.24)", "rgba(251, 146, 60, 0.22)", "rgba(14, 165, 233, 0.20)", "rgba(34, 197, 94, 0.18)", "rgba(168, 85, 247, 0.20)", "rgba(236, 72, 153, 0.18)", "rgba(59, 130, 246, 0.22)"],
-  ["rgba(20, 184, 166, 0.22)", "rgba(250, 204, 21, 0.22)", "rgba(244, 63, 94, 0.20)", "rgba(96, 165, 250, 0.22)", "rgba(192, 132, 252, 0.18)", "rgba(251, 146, 60, 0.20)", "rgba(52, 211, 153, 0.18)"],
-  ["rgba(59, 130, 246, 0.24)", "rgba(45, 212, 191, 0.20)", "rgba(251, 113, 133, 0.20)", "rgba(250, 204, 21, 0.20)", "rgba(167, 139, 250, 0.20)", "rgba(34, 197, 94, 0.16)", "rgba(249, 115, 22, 0.18)"],
-  ["rgba(244, 114, 182, 0.22)", "rgba(125, 211, 252, 0.22)", "rgba(251, 191, 36, 0.22)", "rgba(74, 222, 128, 0.18)", "rgba(129, 140, 248, 0.20)", "rgba(251, 146, 60, 0.18)", "rgba(45, 212, 191, 0.18)"],
-  ["rgba(56, 189, 248, 0.22)", "rgba(251, 146, 60, 0.24)", "rgba(217, 70, 239, 0.18)", "rgba(250, 204, 21, 0.20)", "rgba(16, 185, 129, 0.18)", "rgba(99, 102, 241, 0.20)", "rgba(244, 63, 94, 0.18)"],
-  ["rgba(34, 197, 94, 0.18)", "rgba(59, 130, 246, 0.22)", "rgba(251, 191, 36, 0.22)", "rgba(236, 72, 153, 0.20)", "rgba(20, 184, 166, 0.20)", "rgba(168, 85, 247, 0.18)", "rgba(249, 115, 22, 0.20)"],
-  ["rgba(14, 165, 233, 0.22)", "rgba(252, 211, 77, 0.22)", "rgba(248, 113, 113, 0.20)", "rgba(52, 211, 153, 0.18)", "rgba(196, 181, 253, 0.22)", "rgba(244, 114, 182, 0.18)", "rgba(45, 212, 191, 0.18)"],
-  ["rgba(167, 139, 250, 0.22)", "rgba(251, 146, 60, 0.20)", "rgba(34, 211, 238, 0.20)", "rgba(250, 204, 21, 0.20)", "rgba(74, 222, 128, 0.18)", "rgba(244, 63, 94, 0.18)", "rgba(96, 165, 250, 0.20)"],
-  ["rgba(251, 113, 133, 0.20)", "rgba(56, 189, 248, 0.22)", "rgba(132, 204, 22, 0.16)", "rgba(250, 204, 21, 0.22)", "rgba(168, 85, 247, 0.18)", "rgba(45, 212, 191, 0.20)", "rgba(251, 146, 60, 0.18)"],
+const LOGIN_LIGHT_BLOB_COLORS = [
+  "rgba(254, 226, 226, 0.34)",
+  "rgba(255, 228, 230, 0.34)",
+  "rgba(252, 231, 243, 0.34)",
+  "rgba(243, 232, 255, 0.34)",
+  "rgba(237, 233, 254, 0.34)",
+  "rgba(224, 231, 255, 0.34)",
+  "rgba(219, 234, 254, 0.34)",
+  "rgba(224, 242, 254, 0.34)",
+  "rgba(207, 250, 254, 0.34)",
+  "rgba(204, 251, 241, 0.34)",
+  "rgba(209, 250, 229, 0.32)",
+  "rgba(220, 252, 231, 0.32)",
+  "rgba(236, 252, 203, 0.30)",
+  "rgba(254, 249, 195, 0.34)",
+  "rgba(254, 243, 199, 0.34)",
+  "rgba(255, 237, 213, 0.34)",
+  "rgba(255, 241, 242, 0.34)",
+  "rgba(240, 249, 255, 0.34)",
+  "rgba(240, 253, 250, 0.32)",
+  "rgba(250, 245, 255, 0.34)",
+  "rgba(255, 247, 237, 0.34)",
+  "rgba(248, 250, 252, 0.30)",
 ];
-const LOGIN_BACKGROUND_THEME_WASHES = [
-  "linear-gradient(135deg, rgba(255, 237, 213, 0.40), rgba(255, 228, 230, 0.28), rgba(224, 242, 254, 0.24))",
-  "linear-gradient(135deg, rgba(204, 251, 241, 0.34), rgba(219, 234, 254, 0.30), rgba(254, 249, 195, 0.20))",
-  "linear-gradient(135deg, rgba(252, 231, 243, 0.36), rgba(237, 233, 254, 0.32), rgba(204, 251, 241, 0.20))",
-  "linear-gradient(135deg, rgba(254, 249, 195, 0.34), rgba(255, 237, 213, 0.28), rgba(224, 242, 254, 0.22))",
-  "linear-gradient(135deg, rgba(204, 251, 241, 0.30), rgba(254, 249, 195, 0.28), rgba(255, 228, 230, 0.26))",
-  "linear-gradient(135deg, rgba(219, 234, 254, 0.36), rgba(204, 251, 241, 0.24), rgba(255, 237, 213, 0.20))",
-  "linear-gradient(135deg, rgba(252, 231, 243, 0.34), rgba(224, 242, 254, 0.28), rgba(220, 252, 231, 0.20))",
-  "linear-gradient(135deg, rgba(224, 242, 254, 0.34), rgba(255, 237, 213, 0.28), rgba(243, 232, 255, 0.24))",
-  "linear-gradient(135deg, rgba(220, 252, 231, 0.26), rgba(219, 234, 254, 0.30), rgba(252, 231, 243, 0.24))",
-  "linear-gradient(135deg, rgba(224, 242, 254, 0.32), rgba(254, 249, 195, 0.26), rgba(255, 228, 230, 0.22))",
-  "linear-gradient(135deg, rgba(237, 233, 254, 0.34), rgba(255, 237, 213, 0.24), rgba(207, 250, 254, 0.22))",
-  "linear-gradient(135deg, rgba(255, 228, 230, 0.30), rgba(224, 242, 254, 0.30), rgba(236, 252, 203, 0.18))",
-];
-const LOGIN_BACKGROUND_ACCENT_COLORS = [
-  "rgba(248, 113, 113, 0.22)",
-  "rgba(251, 113, 133, 0.22)",
-  "rgba(244, 114, 182, 0.22)",
-  "rgba(217, 70, 239, 0.20)",
-  "rgba(192, 132, 252, 0.22)",
-  "rgba(167, 139, 250, 0.22)",
-  "rgba(129, 140, 248, 0.22)",
-  "rgba(99, 102, 241, 0.22)",
-  "rgba(96, 165, 250, 0.22)",
-  "rgba(59, 130, 246, 0.24)",
-  "rgba(56, 189, 248, 0.22)",
-  "rgba(125, 211, 252, 0.22)",
-  "rgba(34, 211, 238, 0.20)",
-  "rgba(14, 165, 233, 0.22)",
-  "rgba(45, 212, 191, 0.22)",
-  "rgba(20, 184, 166, 0.22)",
-  "rgba(52, 211, 153, 0.20)",
-  "rgba(16, 185, 129, 0.20)",
-  "rgba(74, 222, 128, 0.18)",
-  "rgba(34, 197, 94, 0.18)",
-  "rgba(132, 204, 22, 0.16)",
-  "rgba(163, 230, 53, 0.16)",
-  "rgba(250, 204, 21, 0.24)",
-  "rgba(252, 211, 77, 0.24)",
-  "rgba(251, 191, 36, 0.24)",
-  "rgba(251, 146, 60, 0.24)",
-  "rgba(249, 115, 22, 0.22)",
-  "rgba(245, 158, 11, 0.22)",
-  "rgba(239, 68, 68, 0.20)",
-  "rgba(244, 63, 94, 0.20)",
-  "rgba(236, 72, 153, 0.20)",
-  "rgba(168, 85, 247, 0.20)",
-  "rgba(124, 58, 237, 0.18)",
-  "rgba(6, 182, 212, 0.20)",
-  "rgba(2, 132, 199, 0.18)",
-  "rgba(13, 148, 136, 0.18)",
+const LOGIN_DEEP_BLOB_COLORS = [
+  "rgba(244, 63, 94, 0.30)",
+  "rgba(236, 72, 153, 0.30)",
+  "rgba(217, 70, 239, 0.28)",
+  "rgba(168, 85, 247, 0.30)",
+  "rgba(124, 58, 237, 0.28)",
+  "rgba(99, 102, 241, 0.30)",
+  "rgba(59, 130, 246, 0.30)",
+  "rgba(14, 165, 233, 0.30)",
+  "rgba(6, 182, 212, 0.28)",
+  "rgba(20, 184, 166, 0.28)",
+  "rgba(16, 185, 129, 0.28)",
+  "rgba(34, 197, 94, 0.26)",
+  "rgba(132, 204, 22, 0.24)",
+  "rgba(234, 179, 8, 0.28)",
+  "rgba(245, 158, 11, 0.30)",
+  "rgba(249, 115, 22, 0.30)",
+  "rgba(239, 68, 68, 0.28)",
 ];
 
 type LoginMotionPoint = { x: number; y: number };
-type LoginBackgroundTheme = { colors: string[]; wash: string };
 type OrientationBaseline = { beta: number; gamma: number };
 type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
@@ -119,30 +96,25 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
   };
 }
 
-function randomLoginTheme(): LoginBackgroundTheme {
-  const paletteIndex = Math.floor(Math.random() * LOGIN_BACKGROUND_PALETTES.length);
-  const palette = [...LOGIN_BACKGROUND_PALETTES[paletteIndex]];
-  const accentColors = [...LOGIN_BACKGROUND_ACCENT_COLORS];
-  const replacementCount = 3 + Math.floor(Math.random() * 3);
-
-  for (let index = accentColors.length - 1; index > 0; index -= 1) {
+function shuffledCopy(values: string[]) {
+  const list = [...values];
+  for (let index = list.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    [accentColors[index], accentColors[swapIndex]] = [accentColors[swapIndex], accentColors[index]];
+    [list[index], list[swapIndex]] = [list[swapIndex], list[index]];
   }
+  return list;
+}
 
-  for (let index = 0; index < replacementCount; index += 1) {
-    const targetIndex = Math.floor(Math.random() * palette.length);
-    palette[targetIndex] = accentColors[index % accentColors.length];
-  }
+function randomLoginPalette() {
+  const lightColors = shuffledCopy(LOGIN_LIGHT_BLOB_COLORS).slice(0, 6);
+  const deepColors = shuffledCopy(LOGIN_DEEP_BLOB_COLORS).slice(0, 2);
+  const palette = [...lightColors, ...deepColors];
 
   for (let index = palette.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
     [palette[index], palette[swapIndex]] = [palette[swapIndex], palette[index]];
   }
-  return {
-    colors: palette,
-    wash: LOGIN_BACKGROUND_THEME_WASHES[paletteIndex % LOGIN_BACKGROUND_THEME_WASHES.length],
-  };
+  return palette;
 }
 
 function isTouchOrCoarsePointer() {
@@ -189,7 +161,7 @@ function LoginMotionBackground() {
   const rafRef = useRef<number | null>(null);
   const targetRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
   const currentRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
-  const [backgroundTheme] = useState(randomLoginTheme);
+  const [blobColors] = useState(randomLoginPalette);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -347,7 +319,7 @@ function LoginMotionBackground() {
           className="absolute inset-0"
           style={{
             background:
-              `radial-gradient(circle at 50% 42%, rgba(255,255,255,0.50), transparent 44%), ${backgroundTheme.wash}, linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.20))`,
+              "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.54), transparent 44%), linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.24))",
           }}
         />
         {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
@@ -356,7 +328,7 @@ function LoginMotionBackground() {
             data-motion-blob
             className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.className}`}
             style={{
-              background: backgroundTheme.colors[index % backgroundTheme.colors.length],
+              background: blobColors[index % blobColors.length],
               transform: `translate3d(0, 0, 0) scale(${blob.scale})`,
             }}
           />
