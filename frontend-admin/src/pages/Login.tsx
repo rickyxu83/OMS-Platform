@@ -29,6 +29,14 @@ const LOGIN_BACKGROUND_BLOBS = [
 
 const LOGIN_MOTION_EASE = 0.22;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
+const LOGIN_ORIENTATION_MAX_TILT = 24;
+const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
+
+type LoginMotionPoint = { x: number; y: number };
+type OrientationBaseline = { beta: number; gamma: number };
+type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
+  requestPermission?: () => Promise<"granted" | "denied">;
+};
 
 function clampMotionValue(value: number) {
   return Math.max(-1, Math.min(1, value));
@@ -41,11 +49,50 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
   };
 }
 
+function isTouchOrCoarsePointer() {
+  return window.matchMedia("(hover: none), (pointer: coarse)").matches;
+}
+
+function screenOrientationAngle() {
+  const orientationAngle = window.screen.orientation?.angle;
+  if (typeof orientationAngle === "number") return orientationAngle;
+  return typeof window.orientation === "number" ? window.orientation : 0;
+}
+
+function motionFromDeviceOrientation(
+  event: DeviceOrientationEvent,
+  baseline: OrientationBaseline,
+): LoginMotionPoint | null {
+  if (event.beta === null || event.gamma === null) return null;
+
+  const deltaBeta = event.beta - baseline.beta;
+  const deltaGamma = event.gamma - baseline.gamma;
+  const angle = ((screenOrientationAngle() % 360) + 360) % 360;
+  let x = deltaGamma;
+  let y = deltaBeta;
+
+  if (angle === 90) {
+    x = -deltaBeta;
+    y = deltaGamma;
+  } else if (angle === 270) {
+    x = deltaBeta;
+    y = -deltaGamma;
+  } else if (angle === 180) {
+    x = -deltaGamma;
+    y = -deltaBeta;
+  }
+
+  return {
+    x: clampMotionValue(x / LOGIN_ORIENTATION_MAX_TILT),
+    y: clampMotionValue(y / LOGIN_ORIENTATION_MAX_TILT),
+  };
+}
+
 function LoginMotionBackground() {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const targetRef = useRef({ x: 0, y: 0 });
-  const currentRef = useRef({ x: 0, y: 0 });
+  const targetRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
+  const currentRef = useRef<LoginMotionPoint>({ x: 0, y: 0 });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -96,6 +143,11 @@ function LoginMotionBackground() {
       ensureFrame();
     };
 
+    const setMotionTarget = (target: LoginMotionPoint) => {
+      targetRef.current = target;
+      ensureFrame();
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       updateTarget(event.clientX, event.clientY);
     };
@@ -104,20 +156,84 @@ function LoginMotionBackground() {
       updateTarget(event.clientX, event.clientY);
     };
 
+    const handleTouchMove = (event: TouchEvent) => {
+      if (orientationState.hasOrientationInput) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      updateTarget(touch.clientX, touch.clientY);
+    };
+
     const handlePointerLeave = () => {
       targetRef.current = { x: 0, y: 0 };
       ensureFrame();
     };
 
+    const isMobileMotion = isTouchOrCoarsePointer();
+    const supportsDeviceOrientation = "DeviceOrientationEvent" in window;
+    const OrientationEvent = window.DeviceOrientationEvent as DeviceOrientationEventWithPermission;
+    const requestOrientationPermission = OrientationEvent?.requestPermission;
+    const needsOrientationPermission = typeof requestOrientationPermission === "function";
+    const orientationState = {
+      listening: false,
+      hasOrientationInput: false,
+      permissionRequested: false,
+      baseline: null as OrientationBaseline | null,
+    };
+
+    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
+      if (event.beta === null || event.gamma === null) return;
+      if (!orientationState.baseline) {
+        orientationState.baseline = { beta: event.beta, gamma: event.gamma };
+      }
+      const motion = motionFromDeviceOrientation(event, orientationState.baseline);
+      if (!motion) return;
+      orientationState.hasOrientationInput = true;
+      setMotionTarget(motion);
+    };
+
+    const startOrientationTracking = () => {
+      if (!isMobileMotion || !supportsDeviceOrientation || orientationState.listening) return;
+      orientationState.listening = true;
+      window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
+    };
+
+    const requestOrientationAccess = () => {
+      if (!isMobileMotion || !supportsDeviceOrientation || orientationState.permissionRequested) return;
+      orientationState.permissionRequested = true;
+      if (!needsOrientationPermission) {
+        startOrientationTracking();
+        return;
+      }
+      requestOrientationPermission()
+        .then((permission) => {
+          if (permission === "granted") startOrientationTracking();
+        })
+        .catch(() => {
+          orientationState.hasOrientationInput = false;
+        });
+    };
+
     const supportsPointerEvent = "PointerEvent" in window;
-    if (supportsPointerEvent) {
+    if (isMobileMotion) {
+      if (!needsOrientationPermission) startOrientationTracking();
+      LOGIN_ORIENTATION_ACTIVATION_EVENTS.forEach((eventName) => {
+        window.addEventListener(eventName, requestOrientationAccess, { passive: true });
+      });
+      window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    } else if (supportsPointerEvent) {
       window.addEventListener("pointermove", handlePointerMove, { passive: true });
     } else {
       window.addEventListener("mousemove", handleMouseMove, { passive: true });
     }
     document.addEventListener("pointerleave", handlePointerLeave);
     return () => {
-      if (supportsPointerEvent) {
+      window.removeEventListener("deviceorientation", handleDeviceOrientation);
+      if (isMobileMotion) {
+        LOGIN_ORIENTATION_ACTIVATION_EVENTS.forEach((eventName) => {
+          window.removeEventListener(eventName, requestOrientationAccess);
+        });
+        window.removeEventListener("touchmove", handleTouchMove);
+      } else if (supportsPointerEvent) {
         window.removeEventListener("pointermove", handlePointerMove);
       } else {
         window.removeEventListener("mousemove", handleMouseMove);
