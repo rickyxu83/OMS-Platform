@@ -137,11 +137,14 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
       continue;
     }
 
-    if (/^\s*\d+\.\s+/.test(line)) {
+    const orderedStart = line.match(/^\s*(\d+)\.\s+/);
+    if (orderedStart) {
+      const startNumber = Number(orderedStart[1]) || 1;
       const items: ReactNode[] = [];
       while (index < lines.length) {
         if (!lines[index].trim()) {
-          const nextIndex = index + 1;
+          let nextIndex = index + 1;
+          while (nextIndex < lines.length && !lines[nextIndex].trim()) nextIndex += 1;
           if (nextIndex < lines.length && /^\s*\d+\.\s+/.test(lines[nextIndex])) {
             index = nextIndex;
             continue;
@@ -163,7 +166,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
         }
         items.push(<li key={index}>{renderInlineLines(itemLines)}</li>);
       }
-      blocks.push(<ol key={`ol-${index}`}>{items}</ol>);
+      blocks.push(<ol key={`ol-${index}`} start={startNumber}>{items}</ol>);
       continue;
     }
 
