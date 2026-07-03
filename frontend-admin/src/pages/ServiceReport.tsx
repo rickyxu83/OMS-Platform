@@ -3684,7 +3684,7 @@ export function ServiceReport() {
                   { label: "服务事项", value: serviceItemsLabel(previewOrder) },
                   { label: "优先级", value: optionText(PRIORITY_OPTIONS, previewOrder.priority) },
                   { label: "状态", value: orderStatusLabel(previewOrder) },
-                  { label: "计划时间", value: formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt) },
+                  ...(mode === "office" ? [] : [{ label: "计划时间", value: formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt) }]),
                   { label: "服务时间", value: serviceTimeText },
                   { label: "月报类别", value: previewOrder.timesheetCategory },
                   { label: "销售", value: previewOrder.timesheetSalesperson },

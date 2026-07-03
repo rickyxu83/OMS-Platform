@@ -36,6 +36,7 @@ interface Order {
   deviceName?: string;
   issueDescription?: string;
   internalNote?: string;
+  report?: { workContent?: string };
   engineerName?: string;
   engineers?: Array<{ id?: string | number; realName?: string; name?: string; username?: string }>;
   serviceType?: string;
@@ -487,7 +488,7 @@ function compactText(value?: string, fallback = "-") {
 
 function orderMainContent(order: Order, fallback = "-") {
   if (order.serviceMode === "office") {
-    return compactText(order.internalNote || order.displayTitle || order.deviceName || order.issueDescription, fallback);
+    return compactText(order.internalNote || order.report?.workContent || order.issueDescription || order.displayTitle || order.deviceName, fallback);
   }
   return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
 }
@@ -1009,7 +1010,7 @@ export function Dashboard() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
-                    <PreviewField label={t.detail.planTime} value={formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt)} />
+                    {previewOrder.serviceMode !== "office" ? <PreviewField label={t.detail.planTime} value={formatDateRange(previewOrder.plannedStartAt, previewOrder.plannedEndAt)} /> : null}
                     <PreviewField label={t.detail.createdAt} value={formatDateTime(previewOrder.createdAt)} />
                     <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
                     <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />

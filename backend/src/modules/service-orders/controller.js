@@ -61,6 +61,13 @@ const orderColumns = `
   so.target_engineer_id, target_u.real_name AS target_engineer_name, target_u.username AS target_engineer_username,
   so.confirmed_by, confirmer.real_name AS confirmed_by_name, so.confirmed_at,
   so.planned_start_at, so.planned_end_at, so.internal_note,
+  (
+    SELECT sr.work_content
+    FROM service_reports sr
+    WHERE sr.service_order_id = so.id
+    ORDER BY sr.id DESC
+    LIMIT 1
+  ) AS report_work_content,
   so.created_by, so.submitted_at, so.reviewed_by, so.reviewed_at, so.review_comment,
   so.archived_at, so.created_at, so.updated_at
 `
@@ -185,7 +192,7 @@ function orderPayload(row, viewer = null) {
   const businessViewer = isBusinessRole(viewer)
   const hideDunyangSalesperson = businessViewer && isDunyangName(row.timesheet_salesperson)
   const targetEngineerName = row.target_engineer_name || row.target_engineer_username
-  const report = reportPayload(row.report)
+  const report = reportPayload(row.report) || (row.report_work_content ? { workContent: row.report_work_content } : null)
   const serviceModules = parseStoredServiceModules(row.service_modules, row.service_mode)
   return {
     id: row.id,
