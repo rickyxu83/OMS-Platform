@@ -49,8 +49,27 @@ function inlineMarkdown(text: string): ReactNode[] {
   return nodes;
 }
 
+function normalizeMarkdownLines(content: string) {
+  const rawLines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  const lines: string[] = [];
+  for (const rawLine of rawLines) {
+    const line = rawLine.replace(/([^\s])\s+(\d{1,2})\.\s+(?=\S)/g, "$1\n$2. ");
+    lines.push(...line.split("\n"));
+  }
+  return lines;
+}
+
+function renderInlineLines(lines: string[]) {
+  return lines.map((part, partIndex) => (
+    <Fragment key={partIndex}>
+      {partIndex > 0 && <br />}
+      {inlineMarkdown(part)}
+    </Fragment>
+  ));
+}
+
 export function MarkdownContent({ content, className = "" }: { content: string; className?: string }) {
-  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  const lines = normalizeMarkdownLines(content);
   const blocks: ReactNode[] = [];
   let index = 0;
 
@@ -90,9 +109,29 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
 
     if (/^\s*[-*]\s+/.test(line)) {
       const items: ReactNode[] = [];
-      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
-        items.push(<li key={index}>{inlineMarkdown(lines[index].replace(/^\s*[-*]\s+/, ""))}</li>);
+      while (index < lines.length) {
+        if (!lines[index].trim()) {
+          const nextIndex = index + 1;
+          if (nextIndex < lines.length && /^\s*[-*]\s+/.test(lines[nextIndex])) {
+            index = nextIndex;
+            continue;
+          }
+          break;
+        }
+        if (!/^\s*[-*]\s+/.test(lines[index])) break;
+        const itemLines = [lines[index].replace(/^\s*[-*]\s+/, "")];
         index += 1;
+        while (
+          index < lines.length
+          && lines[index].trim()
+          && !/^(#{1,3})\s+/.test(lines[index])
+          && !/^\s*[-*]\s+/.test(lines[index])
+          && !/^\s*\d+\.\s+/.test(lines[index])
+        ) {
+          itemLines.push(lines[index].trim());
+          index += 1;
+        }
+        items.push(<li key={index}>{renderInlineLines(itemLines)}</li>);
       }
       blocks.push(<ul key={`ul-${index}`}>{items}</ul>);
       continue;
@@ -100,9 +139,29 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
 
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: ReactNode[] = [];
-      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
-        items.push(<li key={index}>{inlineMarkdown(lines[index].replace(/^\s*\d+\.\s+/, ""))}</li>);
+      while (index < lines.length) {
+        if (!lines[index].trim()) {
+          const nextIndex = index + 1;
+          if (nextIndex < lines.length && /^\s*\d+\.\s+/.test(lines[nextIndex])) {
+            index = nextIndex;
+            continue;
+          }
+          break;
+        }
+        if (!/^\s*\d+\.\s+/.test(lines[index])) break;
+        const itemLines = [lines[index].replace(/^\s*\d+\.\s+/, "")];
         index += 1;
+        while (
+          index < lines.length
+          && lines[index].trim()
+          && !/^(#{1,3})\s+/.test(lines[index])
+          && !/^\s*[-*]\s+/.test(lines[index])
+          && !/^\s*\d+\.\s+/.test(lines[index])
+        ) {
+          itemLines.push(lines[index].trim());
+          index += 1;
+        }
+        items.push(<li key={index}>{renderInlineLines(itemLines)}</li>);
       }
       blocks.push(<ol key={`ol-${index}`}>{items}</ol>);
       continue;
@@ -121,12 +180,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
     }
     blocks.push(
       <p key={`p-${index}`}>
-        {paragraph.map((part, partIndex) => (
-          <Fragment key={partIndex}>
-            {partIndex > 0 && <br />}
-            {inlineMarkdown(part)}
-          </Fragment>
-        ))}
+        {renderInlineLines(paragraph)}
       </p>,
     );
   }
