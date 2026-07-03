@@ -3405,7 +3405,7 @@ async function updateSelfReport(req, res) {
         priority,
         issueDescription,
         engineerId: req.user.id,
-        internalNote: internalNote || null,
+        internalNote: effectiveServiceMode === 'office' ? null : internalNote || null,
         status: useElectronicCustomerSignature ? 'awaiting_customer_signature' : 'submitted',
       },
     )
@@ -3522,7 +3522,7 @@ async function update(req, res) {
       timesheetSalesperson: timesheetSalesperson || null,
       priority: priority || null,
       issueDescription: issueDescription || null,
-      internalNote: internalNote || null,
+      internalNote: effectiveServiceMode === 'office' ? null : internalNote || null,
     },
   )
 
