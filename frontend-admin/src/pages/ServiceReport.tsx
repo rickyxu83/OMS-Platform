@@ -296,6 +296,8 @@ interface InstallDeviceDraft {
   remark: string;
 }
 
+type TargetDeviceDraft = InstallDeviceDraft;
+
 interface ReportForm {
   serviceMode: ServiceMode;
   customerId: string;
@@ -316,6 +318,7 @@ interface ReportForm {
   deviceSerialNo: string;
   deviceRemark: string;
   targetDeviceIds: string[];
+  targetDevices: TargetDeviceDraft[];
   installDeviceInputMode: InstallDeviceInputMode;
   serviceModules: ServiceModuleId[];
   serviceType: string;
@@ -337,6 +340,15 @@ interface ReportForm {
   engineerIds: string[];
   installDevices: InstallDeviceDraft[];
   parts: ServicePartDraft[];
+}
+
+interface CreateDraftItem {
+  id?: string | number;
+  draftKey: string;
+  payload: ReportForm;
+  clientUpdatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const MODE_OPTIONS: Array<{ value: ServiceMode; label: string; description: string; icon: typeof Wrench }> = [
@@ -464,9 +476,25 @@ function installDeviceDraftId() {
   return `install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function targetDeviceDraftId() {
+  return `target-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function emptyInstallDevice(patch: Partial<InstallDeviceDraft> = {}): InstallDeviceDraft {
   return {
     id: patch.id || installDeviceDraftId(),
+    inputMode: patch.inputMode || (patch.deviceId ? "existing" : "manual"),
+    deviceId: patch.deviceId || "",
+    model: patch.model || "",
+    pn: patch.pn || "",
+    serialNo: patch.serialNo || "",
+    remark: patch.remark || "",
+  };
+}
+
+function emptyTargetDevice(patch: Partial<TargetDeviceDraft> = {}): TargetDeviceDraft {
+  return {
+    id: patch.id || targetDeviceDraftId(),
     inputMode: patch.inputMode || (patch.deviceId ? "existing" : "manual"),
     deviceId: patch.deviceId || "",
     model: patch.model || "",
@@ -510,6 +538,7 @@ function defaultForm(mode: ServiceMode = "onsite"): ReportForm {
     deviceSerialNo: "",
     deviceRemark: "",
     targetDeviceIds: [],
+    targetDevices: [emptyTargetDevice()],
     installDeviceInputMode: "manual",
     serviceModules: [],
     serviceType: mode === "onsite" ? "repair" : "other",
@@ -722,6 +751,10 @@ function installDeviceHasContent(device: InstallDeviceDraft) {
   return Boolean(device.deviceId) || [device.model, device.pn, device.serialNo, device.remark].some((value) => value.trim());
 }
 
+function targetDeviceHasContent(device: TargetDeviceDraft) {
+  return Boolean(device.deviceId) || [device.model, device.pn, device.serialNo, device.remark].some((value) => value.trim());
+}
+
 function normalizeInstallDeviceDraft(
   device: Partial<InstallDeviceDraft> | undefined,
   fallback: Partial<InstallDeviceDraft> = {},
@@ -736,9 +769,28 @@ function normalizeInstallDeviceDraft(
   });
 }
 
+function normalizeTargetDeviceDraft(
+  device: Partial<TargetDeviceDraft> | undefined,
+  fallback: Partial<TargetDeviceDraft> = {},
+) {
+  const merged = { ...fallback, ...(device || {}) };
+  const deviceId = merged.deviceId ? String(merged.deviceId) : "";
+  const inputMode = merged.inputMode === "existing" || deviceId ? "existing" : "manual";
+  return emptyTargetDevice({
+    ...merged,
+    deviceId,
+    inputMode,
+  });
+}
+
 function installDeviceTitle(device: InstallDeviceDraft, index: number) {
   if (device.inputMode === "existing") return `安装设备 ${index + 1}`;
   return device.model.trim() || `安装设备 ${index + 1}`;
+}
+
+function targetDeviceTitle(device: TargetDeviceDraft, index: number) {
+  if (device.inputMode === "existing") return `维护设备 ${index + 1}`;
+  return device.model.trim() || `维护设备 ${index + 1}`;
 }
 
 function optionText(options: Array<{ value: string; label: string }>, value?: string, fallback = "-") {
@@ -1118,6 +1170,25 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
   const report = order.report || {};
   const targetDeviceIds = (order.targetDevices || []).map((device) => device.id ? String(device.id) : "").filter(Boolean);
   const effectiveTargetDeviceIds = targetDeviceIds.length ? targetDeviceIds : order.deviceId ? [String(order.deviceId)] : [];
+  const targetDevices = (order.targetDevices || []).length
+    ? (order.targetDevices || []).map((device) => emptyTargetDevice({
+        inputMode: "existing",
+        deviceId: device.id ? String(device.id) : "",
+        model: device.model || "",
+        pn: device.pn || "",
+        serialNo: device.serialNo || "",
+        remark: device.remark || "",
+      }))
+    : order.deviceId || order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
+      ? [emptyTargetDevice({
+          inputMode: order.deviceId ? "existing" : "manual",
+          deviceId: order.deviceId ? String(order.deviceId) : "",
+          model: order.deviceModel || "",
+          pn: order.devicePn || "",
+          serialNo: order.deviceSerialNo || "",
+          remark: order.deviceRemark || "",
+        })]
+      : [emptyTargetDevice()];
   const workContent = report.workContent
     || (Array.isArray(report.workEntries) ? report.workEntries.map((entry) => entry.workContent || entry.work_content || "").filter(Boolean).join("\n\n") : "");
   const normalizedParts = (order.parts || []).map((part) => ({
@@ -1185,6 +1256,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     deviceSerialNo: order.deviceSerialNo || "",
     deviceRemark: order.deviceRemark || "",
     targetDeviceIds: effectiveTargetDeviceIds,
+    targetDevices,
     serviceModules: normalizeServiceModules({
       serviceMode: mode,
       serviceModules: order.serviceModules,
@@ -1241,6 +1313,18 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
           }
         : {}))
     : [emptyInstallDevice()];
+  const normalizedTargetDevices = Array.isArray(merged.targetDevices) && merged.targetDevices.length
+    ? merged.targetDevices.map((device, index) => normalizeTargetDeviceDraft(device, index === 0
+        ? {
+            inputMode: merged.deviceId ? "existing" : "manual",
+            deviceId: merged.deviceId ? String(merged.deviceId) : "",
+          }
+        : {}))
+    : (Array.isArray(merged.targetDeviceIds) && merged.targetDeviceIds.length
+        ? [...new Set(merged.targetDeviceIds.map((id) => String(id)).filter(Boolean))].map((deviceId) => emptyTargetDevice({ inputMode: "existing", deviceId }))
+        : merged.deviceId
+          ? [emptyTargetDevice({ inputMode: "existing", deviceId: String(merged.deviceId), model: merged.deviceModel, pn: merged.devicePn, serialNo: merged.deviceSerialNo, remark: merged.deviceRemark })]
+          : [emptyTargetDevice()]);
   const installDeviceDraftIdByDeviceId = new Map(
     normalizedInstallDevices
       .filter((device) => device.deviceId)
@@ -1255,6 +1339,7 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
     targetDeviceIds: Array.isArray(merged.targetDeviceIds)
       ? [...new Set(merged.targetDeviceIds.map((id) => String(id)).filter(Boolean))]
       : merged.deviceId ? [String(merged.deviceId)] : [],
+    targetDevices: normalizedTargetDevices,
     installDeviceInputMode: mergedInstallInputMode,
     installDevices: normalizedInstallDevices,
     parts: Array.isArray(merged.parts)
@@ -1744,6 +1829,7 @@ export function ServiceReport() {
   const isFormRoute = isNewRoute || Boolean(id);
   const routeMode = normalizeMode(searchParams.get("mode"));
   const routeShouldLoadDraft = searchParams.get("draft") === "1";
+  const routeDraftKey = String(searchParams.get("draftKey") || searchParams.get("draftId") || "").trim();
   const routeKeyword = String(searchParams.get("keyword") || "").trim().toLowerCase();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -1754,7 +1840,8 @@ export function ServiceReport() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [form, setForm] = useState<ReportForm>(() => defaultForm(routeMode));
-  const [createDraft, setCreateDraft] = useState<ReportForm | null>(null);
+  const [createDrafts, setCreateDrafts] = useState<CreateDraftItem[]>([]);
+  const [currentCreateDraftKey, setCurrentCreateDraftKey] = useState("");
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
@@ -1778,6 +1865,7 @@ export function ServiceReport() {
   const [savingTargetDevice, setSavingTargetDevice] = useState(false);
   const [targetDeviceSearch, setTargetDeviceSearch] = useState("");
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
+  const [targetDeviceOpenId, setTargetDeviceOpenId] = useState<string | null>(null);
   const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
   const [installModelSuggestionDeviceId, setInstallModelSuggestionDeviceId] = useState<string | null>(null);
   const [installModelSuggestions, setInstallModelSuggestions] = useState<ModelSuggestion[]>([]);
@@ -1913,6 +2001,11 @@ export function ServiceReport() {
   ), [form.installDevices]);
   const activeInstallDevices = useMemo(() => form.installDevices.filter(installDeviceHasContent), [form.installDevices]);
   const activeInstallDeviceCount = activeInstallDevices.length;
+  const targetDeviceRows = useMemo(() => (
+    form.targetDevices.length ? form.targetDevices : [emptyTargetDevice()]
+  ), [form.targetDevices]);
+  const activeTargetDevices = useMemo(() => form.targetDevices.filter(targetDeviceHasContent), [form.targetDevices]);
+  const activeTargetDeviceCount = activeTargetDevices.length;
   const installationPartEntries = useMemo(
     () => form.parts
       .map((part, index) => ({ part, index }))
@@ -1930,6 +2023,7 @@ export function ServiceReport() {
     installationParts.length ? `硬件部件安装 ${installationParts.length}` : "",
     generalParts.length ? `部件记录 ${generalParts.length}` : "",
     isInspection ? "巡检文档" : "",
+    showTargetDeviceFields && activeTargetDeviceCount ? `维护设备 ${activeTargetDeviceCount}` : "",
     isInstall && activeInstallDeviceCount ? `安装设备 ${activeInstallDeviceCount}` : "",
   ].filter(Boolean);
   const partsModuleTitle = hasReplacementModule && !showInlineInstallParts && hasHardwareInstallDetails ? "备件更换与硬件部件明细" : hasHardwareInstallDetails && !showInlineInstallParts ? "硬件部件安装明细" : "备件更换明细";
@@ -1992,6 +2086,11 @@ export function ServiceReport() {
         ...current,
         deviceId: current.deviceId && validDeviceIds.has(current.deviceId) ? current.deviceId : "",
         targetDeviceIds: current.targetDeviceIds.filter((deviceId) => validDeviceIds.has(deviceId)),
+        targetDevices: current.targetDevices.map((device) => (
+          device.deviceId && !validDeviceIds.has(device.deviceId)
+            ? { ...device, inputMode: "manual", deviceId: "" }
+            : device
+        )),
         installDevices: current.installDevices.map((device) => (
           device.deviceId && !validDeviceIds.has(device.deviceId)
             ? { ...device, inputMode: "manual", deviceId: "" }
@@ -2015,11 +2114,30 @@ export function ServiceReport() {
       await loadReferenceData();
       const [orderData, draftData] = await Promise.all([
         api.get("/service-orders?mine=1&pageSize=100&sortBy=createdAt&sortDir=desc"),
-        api.get("/service-orders/draft/self-report").catch(() => ({ item: null })),
+        api.get("/service-orders/draft/self-report?all=1").catch(() => ({ items: [], item: null })),
       ]);
       setOrders((orderData?.items || []) as ServiceOrder[]);
-      const draftPayload = draftData?.item?.payload;
-      setCreateDraft(draftPayload && typeof draftPayload === "object" ? normalizeLoadedForm(draftPayload, normalizeMode(draftPayload.serviceMode)) : null);
+      const draftItems = Array.isArray(draftData?.items)
+        ? draftData.items
+        : draftData?.item
+          ? [draftData.item]
+          : [];
+      setCreateDrafts(draftItems
+        .map((item: any) => {
+          const draftPayload = item?.payload;
+          if (!draftPayload || typeof draftPayload !== "object") return null;
+          const draftKey = String(item?.draftKey || item?.draftId || item?.id || "").trim();
+          if (!draftKey) return null;
+          return {
+            id: item?.id,
+            draftKey,
+            payload: normalizeLoadedForm(draftPayload, normalizeMode(draftPayload.serviceMode)),
+            clientUpdatedAt: item?.clientUpdatedAt,
+            createdAt: item?.createdAt,
+            updatedAt: item?.updatedAt,
+          } as CreateDraftItem;
+        })
+        .filter(Boolean) as CreateDraftItem[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -2059,7 +2177,7 @@ export function ServiceReport() {
         setCurrentOrder(null);
         const base = defaultForm(routeMode);
         const draftData = routeShouldLoadDraft
-          ? await api.get("/service-orders/draft/self-report").catch(() => ({ item: null }))
+          ? await api.get(`/service-orders/draft/self-report${routeDraftKey ? `?draftKey=${encodeURIComponent(routeDraftKey)}` : ""}`).catch(() => ({ item: null }))
           : { item: null };
         const draftPayload = draftData?.item?.payload;
         if (routeShouldLoadDraft && draftPayload && typeof draftPayload === "object" && normalizeMode(draftPayload.serviceMode) === routeMode) {
@@ -2069,8 +2187,10 @@ export function ServiceReport() {
             ...(routeMode === "office" ? { timesheetCategory: base.timesheetCategory } : {}),
           }, routeMode));
           setEditDraftLoaded(true);
+          setCurrentCreateDraftKey(String(draftData?.item?.draftKey || routeDraftKey || "").trim());
         } else {
           setForm(normalizeLoadedForm(base, routeMode));
+          setCurrentCreateDraftKey("");
         }
       }
       setInspectionFiles([]);
@@ -2083,7 +2203,7 @@ export function ServiceReport() {
     } finally {
       setFormLoading(false);
     }
-  }, [id, isFormRoute, loadReferenceData, routeMode, routeShouldLoadDraft]);
+  }, [id, isFormRoute, loadReferenceData, routeDraftKey, routeMode, routeShouldLoadDraft]);
 
   useEffect(() => {
     if (isFormRoute) {
@@ -2307,6 +2427,7 @@ export function ServiceReport() {
       customerConfirmName: preferredContact?.name || customer.contactName || form.customerConfirmName,
       deviceId: "",
       targetDeviceIds: [],
+      targetDevices: [emptyTargetDevice()],
       parts: form.parts.map((part) => ({ ...part, deviceId: "", installDeviceDraftId: "" })),
       installDevices: isInstall ? [emptyInstallDevice()] : form.installDevices,
     });
@@ -2501,6 +2622,39 @@ export function ServiceReport() {
     };
   }
 
+  function primaryTargetDevicePatch(devices: TargetDeviceDraft[]): Partial<ReportForm> {
+    const primary = devices.find(targetDeviceHasContent) || devices[0];
+    if (!primary) {
+      return {
+        deviceId: "",
+        deviceName: "",
+        deviceModel: "",
+        devicePn: "",
+        deviceSerialNo: "",
+        deviceRemark: "",
+        targetDeviceIds: [],
+      };
+    }
+    if (primary.inputMode === "existing" && primary.deviceId) {
+      const device = selectedCustomerDevices.find((item) => String(item.id) === primary.deviceId);
+      return targetDevicePatch(device || {
+        id: primary.deviceId,
+        model: primary.model,
+        pn: primary.pn,
+        serialNo: primary.serialNo,
+        remark: primary.remark,
+      });
+    }
+    return {
+      deviceId: "",
+      deviceName: "",
+      deviceModel: primary.model,
+      devicePn: primary.pn,
+      deviceSerialNo: primary.serialNo,
+      deviceRemark: primary.remark,
+    };
+  }
+
   function primaryInstallDevicePatch(devices: InstallDeviceDraft[]): Partial<ReportForm> {
     const primary = devices.find(installDeviceHasContent) || devices[0];
     if (!primary) {
@@ -2547,6 +2701,33 @@ export function ServiceReport() {
       .slice(0, 8);
   }
 
+  function targetDeviceValue(device: TargetDeviceDraft) {
+    if (device.inputMode === "existing" && device.deviceId) {
+      const selectedDevice = selectedCustomerDevices.find((item) => String(item.id) === device.deviceId);
+      return selectedDevice ? deviceSelectLabel(selectedDevice) : device.model;
+    }
+    return device.model;
+  }
+
+  function targetDeviceOptions(device: TargetDeviceDraft) {
+    const keyword = device.inputMode === "existing" ? "" : device.model;
+    return selectedCustomerDevices
+      .filter((item) => deviceMatchesKeyword(item, keyword))
+      .slice(0, 8);
+  }
+
+  function patchTargetDevices(devices: TargetDeviceDraft[], patch: Partial<ReportForm> = {}) {
+    const targetDeviceIds = devices
+      .filter((device) => device.inputMode === "existing" && device.deviceId)
+      .map((device) => String(device.deviceId));
+    patchForm({
+      ...patch,
+      ...primaryTargetDevicePatch(devices),
+      targetDeviceIds: [...new Set(targetDeviceIds)],
+      targetDevices: devices,
+    });
+  }
+
   function patchInstallDevices(devices: InstallDeviceDraft[], patch: Partial<ReportForm> = {}) {
     patchForm({
       ...patch,
@@ -2565,26 +2746,24 @@ export function ServiceReport() {
 
   function setTargetDevices(deviceIds: string[]) {
     const ids = [...new Set(deviceIds.map((id) => String(id)).filter(Boolean))];
-    const primary = ids.length
-      ? selectedCustomerDevices.find((device) => String(device.id) === ids[0])
-      : null;
-    if (!primary) {
-      patchForm({
-        deviceId: "",
-        deviceName: "",
-        deviceModel: "",
-        devicePn: "",
-        deviceSerialNo: "",
-        targetDeviceIds: [],
-        parts: form.parts.map((part) => (part.deviceId ? part : { ...part, deviceId: "" })),
-      });
-      return;
-    }
     const validIds = ids.filter((id) => selectedCustomerDevices.some((device) => String(device.id) === id));
-    patchForm({
-      ...targetDevicePatch(primary),
-      targetDeviceIds: validIds,
-      parts: partsWithTargetDevice(String(primary.id)),
+    const nextDevices = validIds.length
+      ? validIds.map((deviceId) => {
+          const existing = form.targetDevices.find((device) => device.deviceId === deviceId);
+          const customerDevice = selectedCustomerDevices.find((device) => String(device.id) === deviceId);
+          return emptyTargetDevice({
+            ...(existing || {}),
+            inputMode: "existing",
+            deviceId,
+            model: existing?.model || customerDevice?.model || "",
+            pn: existing?.pn || customerDevice?.pn || "",
+            serialNo: existing?.serialNo || customerDevice?.serialNo || "",
+            remark: existing?.remark || customerDevice?.remark || "",
+          });
+        })
+      : [emptyTargetDevice()];
+    patchTargetDevices(nextDevices, {
+      parts: form.parts.map((part) => (part.deviceId ? part : { ...part, deviceId: validIds[0] || "" })),
     });
   }
 
@@ -2596,6 +2775,82 @@ export function ServiceReport() {
 
   function removeTargetDevice(deviceId: string) {
     setTargetDevices(form.targetDeviceIds.filter((id) => id !== deviceId));
+  }
+
+  function changeTargetDevice(targetDeviceDraftIdValue: string, value: string) {
+    const nextDevices = form.targetDevices.map((device) => (
+      device.id === targetDeviceDraftIdValue
+        ? { ...device, inputMode: "manual" as InstallDeviceInputMode, deviceId: "", model: value }
+        : device
+    ));
+    patchTargetDevices(nextDevices, {
+      parts: form.parts.map((part) => (
+        part.deviceId && !nextDevices.some((device) => device.deviceId === part.deviceId) ? { ...part, deviceId: "" } : part
+      )),
+    });
+    setTargetDeviceOpenId(targetDeviceDraftIdValue);
+    scheduleInstallModelSearch(targetDeviceDraftIdValue, value);
+  }
+
+  function chooseTargetDevice(targetDeviceDraftIdValue: string, deviceId: string) {
+    const device = selectedCustomerDevices.find((item) => String(item.id) === deviceId);
+    if (!device) {
+      const nextDevices = form.targetDevices.map((item) => (
+        item.id === targetDeviceDraftIdValue ? { ...item, inputMode: "manual" as InstallDeviceInputMode, deviceId: "" } : item
+      ));
+      patchTargetDevices(nextDevices);
+      return;
+    }
+    const nextDevices = form.targetDevices.map((item) => (
+      item.id === targetDeviceDraftIdValue
+        ? emptyTargetDevice({
+            id: item.id,
+            inputMode: "existing",
+            deviceId: String(device.id),
+            model: device.model || deviceLabel(device),
+            pn: device.pn || "",
+            serialNo: device.serialNo || "",
+            remark: device.remark || "",
+          })
+        : item
+    ));
+    patchTargetDevices(nextDevices, {
+      parts: partsWithTargetDevice(String(device.id), hasReplacementModule),
+    });
+    setInstallModelSuggestions([]);
+    setInstallModelSuggestionDeviceId(null);
+    setTargetDeviceOpenId(null);
+  }
+
+  function applyTargetModelSuggestion(targetDeviceDraftIdValue: string, suggestion: ModelSuggestion) {
+    const model = suggestion.canonicalModel || "";
+    if (!model) return;
+    updateTargetDevice(targetDeviceDraftIdValue, { model });
+    setInstallModelSuggestions([]);
+    setInstallModelSuggestionDeviceId(null);
+    setTargetDeviceOpenId(null);
+  }
+
+  function updateTargetDevice(targetDeviceDraftIdValue: string, patch: Partial<TargetDeviceDraft>) {
+    const nextDevices = form.targetDevices.map((device) => (
+      device.id === targetDeviceDraftIdValue ? normalizeTargetDeviceDraft({ ...device, ...patch }) : device
+    ));
+    patchTargetDevices(nextDevices);
+  }
+
+  function addTargetDeviceRow() {
+    patchTargetDevices([...form.targetDevices, emptyTargetDevice()]);
+  }
+
+  function removeTargetDeviceRow(targetDeviceDraftIdValue: string) {
+    const nextDevices = form.targetDevices.filter((device) => device.id !== targetDeviceDraftIdValue);
+    patchTargetDevices(nextDevices.length ? nextDevices : [emptyTargetDevice()], {
+      parts: form.parts.map((part) => (
+        part.deviceId && form.targetDevices.some((device) => device.id === targetDeviceDraftIdValue && device.deviceId === part.deviceId)
+          ? { ...part, deviceId: "" }
+          : part
+      )),
+    });
   }
 
   async function createTargetDevice() {
@@ -2650,6 +2905,69 @@ export function ServiceReport() {
     } finally {
       setSavingTargetDevice(false);
     }
+  }
+
+  async function resolveTargetDevicesForSubmit() {
+    if (isInstall || !showTargetDeviceFields) return form.targetDeviceIds.map(Number).filter(Boolean);
+    if (!form.customerId) return [];
+    const activeDevices = form.targetDevices.filter(targetDeviceHasContent);
+    const resolvedIds: string[] = [];
+    const createdDevices: DeviceOption[] = [];
+    const nextDrafts: TargetDeviceDraft[] = [];
+
+    for (const device of activeDevices) {
+      if (device.inputMode === "existing" && device.deviceId) {
+        resolvedIds.push(String(device.deviceId));
+        nextDrafts.push(device);
+        continue;
+      }
+      const model = device.model.trim();
+      const serialNo = device.serialNo.trim();
+      if (!model || !serialNo) {
+        throw new Error("请补齐维护设备的型号和序列号");
+      }
+      const data = await api.post("/devices", {
+        customerId: Number(form.customerId),
+        name: null,
+        model,
+        pn: device.pn.trim() || undefined,
+        serialNo,
+        remark: device.remark.trim() || undefined,
+      });
+      const newDevice: DeviceOption = {
+        id: data?.id,
+        customerId: form.customerId,
+        model,
+        pn: device.pn.trim(),
+        serialNo,
+        remark: device.remark.trim(),
+      };
+      if (!newDevice.id) throw new Error("维护设备已创建，但未返回设备 ID");
+      const newDeviceId = String(newDevice.id);
+      resolvedIds.push(newDeviceId);
+      createdDevices.push(newDevice);
+      nextDrafts.push(emptyTargetDevice({
+        id: device.id,
+        inputMode: "existing",
+        deviceId: newDeviceId,
+        model,
+        pn: device.pn.trim(),
+        serialNo,
+        remark: device.remark.trim(),
+      }));
+    }
+
+    const uniqueIds = [...new Set(resolvedIds)];
+    if (createdDevices.length) {
+      setCustomerDevices((current) => [
+        ...createdDevices,
+        ...current.filter((device) => !createdDevices.some((created) => String(created.id) === String(device.id))),
+      ]);
+    }
+    if (activeDevices.length) {
+      patchTargetDevices(nextDrafts);
+    }
+    return uniqueIds.map(Number).filter(Boolean);
   }
 
   function updatePart(index: number, patch: Partial<ServicePartDraft>) {
@@ -3023,14 +3341,16 @@ export function ServiceReport() {
     }
   }
 
-  async function deleteCreateDraft() {
-    if (!createDraft || deletingDraft) return;
+  async function deleteCreateDraft(draftKey: string) {
+    const key = String(draftKey || "").trim();
+    if (!key || deletingDraft) return;
     if (!window.confirm("确认删除当前草稿？")) return;
     setDeletingDraft(true);
     setError("");
     try {
-      await api.delete("/service-orders/draft/self-report");
-      setCreateDraft(null);
+      await api.delete(`/service-orders/draft/self-report?draftKey=${encodeURIComponent(key)}`);
+      setCreateDrafts((current) => current.filter((draft) => draft.draftKey !== key));
+      if (currentCreateDraftKey === key) setCurrentCreateDraftKey("");
       toast.success("草稿已删除");
     } catch (err) {
       setError(err instanceof Error ? err.message : "草稿删除失败");
@@ -3107,7 +3427,7 @@ export function ServiceReport() {
     return ATTACHMENT_PURPOSES[purpose].label;
   }
 
-  function buildPayload() {
+  function buildPayload(resolvedTargetDeviceIds?: number[]) {
     const payloadModules = normalizeServiceModules(form, form.serviceMode);
     const payloadServiceType = derivePrimaryServiceType(form.serviceMode, payloadModules);
     const payloadTimesheetCategory = isRemote ? deriveRemoteTimesheetCategory(payloadModules) : form.timesheetCategory;
@@ -3118,13 +3438,16 @@ export function ServiceReport() {
       : null;
     const payloadTargetDeviceIds = isInstall
       ? []
-      : [...new Set((form.targetDeviceIds.length ? form.targetDeviceIds : form.deviceId ? [form.deviceId] : []).map(Number).filter(Boolean))];
+      : resolvedTargetDeviceIds
+        ? [...new Set(resolvedTargetDeviceIds.map(Number).filter(Boolean))]
+        : [...new Set((form.targetDeviceIds.length ? form.targetDeviceIds : form.deviceId ? [form.deviceId] : []).map(Number).filter(Boolean))];
     const primaryTargetDeviceId = payloadTargetDeviceIds[0] || null;
     const officeName = user?.realName || user?.username || "内勤工程师";
     const payloadCustomerName = isOffice ? (form.customerName.trim() || "敦阳科技（内勤）") : form.customerName.trim();
     const payloadContactName = form.contactName.trim() || (isOffice ? officeName : "");
     const payloadContactPhone = form.contactPhone.trim() || (isOffice ? String(user?.phone || user?.mobile || "") : "");
     return {
+      draftKey: !id && currentCreateDraftKey ? currentCreateDraftKey : undefined,
       customerId: form.customerId ? Number(form.customerId) : null,
       customerName: payloadCustomerName,
       customerAddress: form.customerAddress.trim(),
@@ -3214,6 +3537,21 @@ export function ServiceReport() {
         }
       });
     }
+    if (showTargetDeviceFields) {
+      const maintenanceTargets = form.targetDevices.filter(targetDeviceHasContent);
+      if (!maintenanceTargets.length) {
+        missing.push(isRemote ? "远程目标设备" : "维护设备");
+      }
+      maintenanceTargets.forEach((device, index) => {
+        const deviceLabelText = `${isRemote ? "远程目标设备" : "维护设备"} ${index + 1}`;
+        if (device.inputMode === "existing") {
+          if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
+        } else {
+          if (!device.model.trim()) missing.push(`${deviceLabelText}型号`);
+          if (!device.serialNo.trim()) missing.push(`${deviceLabelText}序列号`);
+        }
+      });
+    }
     const invalidPart = activeParts().find((part) => {
       const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
       const needsDevice = ["replacement", "installation"].includes(action);
@@ -3248,11 +3586,14 @@ export function ServiceReport() {
     setSaving(true);
     setError("");
     try {
-      await api.put("/service-orders/draft/self-report", {
+      const draftData = await api.put("/service-orders/draft/self-report", {
         serviceOrderId: id ? Number(id) : null,
+        draftKey: !id && currentCreateDraftKey ? currentCreateDraftKey : undefined,
         payload: form,
         clientUpdatedAt: new Date().toISOString(),
       });
+      const savedDraftKey = String(draftData?.item?.draftKey || currentCreateDraftKey || "").trim();
+      if (!id && savedDraftKey) setCurrentCreateDraftKey(savedDraftKey);
       const savedAt = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
       setDraftSavedAt(savedAt);
       if (!silent) {
@@ -3330,7 +3671,8 @@ export function ServiceReport() {
     setSaving(true);
     setError("");
     try {
-      const payload = buildPayload();
+      const resolvedTargetDeviceIds = await resolveTargetDevicesForSubmit();
+      const payload = buildPayload(resolvedTargetDeviceIds);
       let submittedOrderId = id || currentOrder?.id || "";
       if (id) {
         await uploadOrderFiles(id);
@@ -3340,7 +3682,14 @@ export function ServiceReport() {
         submittedOrderId = created?.id || "";
         if (submittedOrderId) await uploadOrderFiles(submittedOrderId);
       }
-      await api.delete(`/service-orders/draft/self-report${id ? `?serviceOrderId=${id}` : ""}`).catch(() => {});
+      const draftDeleteQuery = id
+        ? `?serviceOrderId=${id}`
+        : currentCreateDraftKey
+          ? `?draftKey=${encodeURIComponent(currentCreateDraftKey)}`
+          : "";
+      if (draftDeleteQuery) {
+        await api.delete(`/service-orders/draft/self-report${draftDeleteQuery}`).catch(() => {});
+      }
       const shouldCreateSignatureRequest = isOnsite
         && form.customerSignatureMode === "electronic"
         && !form.customerSignature
@@ -3635,13 +3984,13 @@ export function ServiceReport() {
 
           <div className="grid gap-3 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardHeader className={`${createDraft ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+              <CardHeader className={`${createDrafts.length ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <Save className="h-4 w-4" />
-                  草稿 ({createDraft ? 1 : 0})
+                  草稿 ({createDrafts.length})
                 </CardTitle>
               </CardHeader>
-              {createDraft ? (
+              {createDrafts.length ? (
                 <CardContent className="p-2.5 sm:p-4">
                   <div className="space-y-3">
                     <div className={`${REPORT_ORDER_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
@@ -3653,7 +4002,8 @@ export function ServiceReport() {
                       <div>状态</div>
                       <div className="text-right">操作</div>
                     </div>
-                    {(() => {
+                    {createDrafts.map((draftItem) => {
+                      const createDraft = draftItem.payload;
                       const draftMode = normalizeMode(createDraft.serviceMode);
                       const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
                       const explicitDraftModules = Array.isArray(createDraft.serviceModules)
@@ -3662,7 +4012,7 @@ export function ServiceReport() {
                       const draftHasSelectedModules = draftMode === "office"
                         || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
                       const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
-                      const draftRoute = `/service-report/new?mode=${draftMode}&draft=1`;
+                      const draftRoute = `/service-report/new?mode=${draftMode}&draft=1&draftKey=${encodeURIComponent(draftItem.draftKey)}`;
                       const draftEngineerNames = createDraft.engineerIds?.length
                         ? engineers
                             .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
@@ -3674,6 +4024,7 @@ export function ServiceReport() {
                         : user?.realName || user?.username || user?.name || "本人草稿";
                       return (
                         <div
+                          key={draftItem.draftKey}
                           role="button"
                           tabIndex={0}
                           aria-label="继续编辑草稿"
@@ -3714,7 +4065,7 @@ export function ServiceReport() {
                                       继续编辑
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onSelect={() => deleteCreateDraft()}
+                                      onSelect={() => deleteCreateDraft(draftItem.draftKey)}
                                       disabled={deletingDraft}
                                     >
                                       {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -3784,7 +4135,7 @@ export function ServiceReport() {
                                 disabled={deletingDraft}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  deleteCreateDraft();
+                                  deleteCreateDraft(draftItem.draftKey);
                                 }}
                               >
                                 {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -3794,7 +4145,7 @@ export function ServiceReport() {
                           </div>
                         </div>
                       );
-                    })()}
+                    })}
                   </div>
                 </CardContent>
               ) : null}

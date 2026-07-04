@@ -544,27 +544,59 @@ async function ensureServiceReportTravelColumns() {
 }
 
 async function ensureSelfReportDraftsTable(connection = null) {
-  if (!connection && selfReportDraftsTableReady) return
-  const executor = connection || { execute: query }
-  await executor.execute(
+  if (selfReportDraftsTableReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
     `CREATE TABLE IF NOT EXISTS self_report_drafts (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       engineer_id BIGINT UNSIGNED NOT NULL,
       draft_scope VARCHAR(16) NOT NULL,
       service_order_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      draft_key VARCHAR(64) NOT NULL DEFAULT '',
       payload_json LONGTEXT NOT NULL,
       client_updated_at VARCHAR(64) NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
-      UNIQUE KEY uk_self_report_drafts_engineer_scope_order (engineer_id, draft_scope, service_order_id),
+      UNIQUE KEY uk_self_report_drafts_engineer_scope_order_key (engineer_id, draft_scope, service_order_id, draft_key),
       KEY idx_self_report_drafts_service_order_id (service_order_id),
       CONSTRAINT fk_self_report_drafts_engineer_id FOREIGN KEY (engineer_id) REFERENCES users (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  if (!connection) {
-    selfReportDraftsTableReady = true
+  const [columnRows] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'self_report_drafts'
+       AND column_name = 'draft_key'`,
+  )
+  if (!columnRows.length) {
+    await execute("ALTER TABLE self_report_drafts ADD COLUMN draft_key VARCHAR(64) NULL AFTER service_order_id")
   }
+  await execute(
+    `UPDATE self_report_drafts
+     SET draft_key = CASE
+       WHEN draft_scope = 'create' THEN CONCAT('legacy-', id)
+       ELSE ''
+     END
+     WHERE draft_key IS NULL OR draft_key = ''`,
+  )
+  await execute("ALTER TABLE self_report_drafts MODIFY COLUMN draft_key VARCHAR(64) NOT NULL DEFAULT ''")
+  const [indexRows] = await execute(
+    `SELECT DISTINCT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'self_report_drafts'
+       AND index_name IN ('uk_self_report_drafts_engineer_scope_order', 'uk_self_report_drafts_engineer_scope_order_key')`,
+  )
+  const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (indexes.has('uk_self_report_drafts_engineer_scope_order')) {
+    await execute('ALTER TABLE self_report_drafts DROP INDEX uk_self_report_drafts_engineer_scope_order')
+  }
+  if (!indexes.has('uk_self_report_drafts_engineer_scope_order_key')) {
+    await execute('ALTER TABLE self_report_drafts ADD UNIQUE KEY uk_self_report_drafts_engineer_scope_order_key (engineer_id, draft_scope, service_order_id, draft_key)')
+  }
+  selfReportDraftsTableReady = true
 }
 
 async function ensureServicePartsColumns(connection = null) {
@@ -687,12 +719,34 @@ function normalizeDraftOrderId(orderId) {
   return value > 0 ? value : 0
 }
 
+function normalizeDraftKey(value) {
+  return String(value || '').trim().slice(0, 64)
+}
+
+function createDraftKey() {
+  return crypto.randomUUID()
+}
+
 function parseDraftPayload(raw) {
   if (!raw) return null
   try {
     return JSON.parse(raw)
   } catch {
     return null
+  }
+}
+
+function formatSelfReportDraft(item) {
+  if (!item) return null
+  return {
+    id: item.id,
+    draftKey: item.draft_key || '',
+    scope: item.draft_scope,
+    serviceOrderId: Number(item.service_order_id || 0) || null,
+    payload: parseDraftPayload(item.payload_json) || {},
+    clientUpdatedAt: item.client_updated_at || '',
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
   }
 }
 
@@ -2660,13 +2714,17 @@ async function createSelfReport(req, res) {
     })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
-    await connection.execute(
-      `DELETE FROM self_report_drafts
-       WHERE engineer_id = :engineerId
-         AND draft_scope = 'create'
-         AND service_order_id = 0`,
-      { engineerId: req.user.id },
-    )
+    const submittedDraftKey = normalizeDraftKey(req.body?.draftKey || req.body?.draftId || req.body?.selfReportDraftKey)
+    if (submittedDraftKey) {
+      await connection.execute(
+        `DELETE FROM self_report_drafts
+         WHERE engineer_id = :engineerId
+           AND draft_scope = 'create'
+           AND service_order_id = 0
+           AND draft_key = :draftKey`,
+        { engineerId: req.user.id, draftKey: submittedDraftKey },
+      )
+    }
     return {
       id: orderResult.insertId,
       orderNo,
@@ -3226,17 +3284,37 @@ async function getSelfReportDraft(req, res) {
   await ensureSelfReportDraftsTable()
   const orderId = normalizeDraftOrderId(req.query.serviceOrderId)
   const draftScope = normalizeDraftScope(orderId)
+  const draftKey = normalizeDraftKey(req.query.draftKey || req.query.draftId)
+  if (!orderId && (String(req.query.all || '') === '1' || String(req.query.list || '') === '1')) {
+    const rows = await query(
+      `SELECT id, engineer_id, draft_scope, service_order_id, draft_key, payload_json, client_updated_at, created_at, updated_at
+       FROM self_report_drafts
+       WHERE engineer_id = :engineerId
+         AND draft_scope = 'create'
+         AND service_order_id = 0
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 50`,
+      { engineerId: req.user.id },
+    )
+    const items = rows.map(formatSelfReportDraft)
+    res.json({ items, item: items[0] || null })
+    return
+  }
+  const draftKeySql = !orderId && draftKey ? 'AND draft_key = :draftKey' : ''
   const rows = await query(
-    `SELECT id, engineer_id, draft_scope, service_order_id, payload_json, client_updated_at, created_at, updated_at
+    `SELECT id, engineer_id, draft_scope, service_order_id, draft_key, payload_json, client_updated_at, created_at, updated_at
      FROM self_report_drafts
      WHERE engineer_id = :engineerId
        AND draft_scope = :draftScope
        AND service_order_id = :serviceOrderId
+       ${draftKeySql}
+     ORDER BY updated_at DESC, id DESC
      LIMIT 1`,
     {
       engineerId: req.user.id,
       draftScope,
       serviceOrderId: orderId,
+      draftKey,
     },
   )
   const item = rows[0]
@@ -3244,16 +3322,7 @@ async function getSelfReportDraft(req, res) {
     res.json({ item: null })
     return
   }
-  res.json({
-    item: {
-      scope: item.draft_scope,
-      serviceOrderId: item.service_order_id,
-      payload: parseDraftPayload(item.payload_json) || {},
-      clientUpdatedAt: item.client_updated_at || '',
-      createdAt: item.created_at,
-      updatedAt: item.updated_at,
-    },
-  })
+  res.json({ item: formatSelfReportDraft(item) })
 }
 
 async function saveSelfReportDraft(req, res) {
@@ -3263,9 +3332,11 @@ async function saveSelfReportDraft(req, res) {
   }
   const orderId = normalizeDraftOrderId(req.body?.serviceOrderId)
   const draftScope = normalizeDraftScope(orderId)
+  const draftKey = orderId ? '' : normalizeDraftKey(req.body?.draftKey || req.body?.draftId) || createDraftKey()
   const clientUpdatedAt = String(req.body?.clientUpdatedAt || '').trim() || null
   await ensureSelfReportDraftsTable()
 
+  let savedItem = null
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
     if (orderId) {
@@ -3276,8 +3347,8 @@ async function saveSelfReportDraft(req, res) {
     }
 
     await connection.execute(
-      `INSERT INTO self_report_drafts (engineer_id, draft_scope, service_order_id, payload_json, client_updated_at)
-       VALUES (:engineerId, :draftScope, :serviceOrderId, :payloadJson, :clientUpdatedAt)
+      `INSERT INTO self_report_drafts (engineer_id, draft_scope, service_order_id, draft_key, payload_json, client_updated_at)
+       VALUES (:engineerId, :draftScope, :serviceOrderId, :draftKey, :payloadJson, :clientUpdatedAt)
        ON DUPLICATE KEY UPDATE
          payload_json = VALUES(payload_json),
          client_updated_at = VALUES(client_updated_at),
@@ -3286,28 +3357,52 @@ async function saveSelfReportDraft(req, res) {
         engineerId: req.user.id,
         draftScope,
         serviceOrderId: orderId,
+        draftKey,
         payloadJson: JSON.stringify(payload),
         clientUpdatedAt,
       },
     )
+    const [rows] = await connection.execute(
+      `SELECT id, engineer_id, draft_scope, service_order_id, draft_key, payload_json, client_updated_at, created_at, updated_at
+       FROM self_report_drafts
+       WHERE engineer_id = :engineerId
+         AND draft_scope = :draftScope
+         AND service_order_id = :serviceOrderId
+         AND draft_key = :draftKey
+       LIMIT 1`,
+      {
+        engineerId: req.user.id,
+        draftScope,
+        serviceOrderId: orderId,
+        draftKey,
+      },
+    )
+    savedItem = rows[0] || null
   })
 
-  res.status(204).end()
+  res.json({ item: formatSelfReportDraft(savedItem) })
 }
 
 async function deleteSelfReportDraft(req, res) {
   await ensureSelfReportDraftsTable()
   const orderId = normalizeDraftOrderId(req.query.serviceOrderId || req.body?.serviceOrderId)
   const draftScope = normalizeDraftScope(orderId)
+  const draftKey = orderId ? '' : normalizeDraftKey(req.query.draftKey || req.query.draftId || req.body?.draftKey || req.body?.draftId)
+  if (!orderId && !draftKey) {
+    res.status(204).end()
+    return
+  }
   await query(
     `DELETE FROM self_report_drafts
      WHERE engineer_id = :engineerId
        AND draft_scope = :draftScope
-       AND service_order_id = :serviceOrderId`,
+       AND service_order_id = :serviceOrderId
+       AND draft_key = :draftKey`,
     {
       engineerId: req.user.id,
       draftScope,
       serviceOrderId: orderId,
+      draftKey,
     },
   )
   res.status(204).end()
