@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,7 +74,10 @@ interface ServiceOrder {
   report?: ServiceReport | null;
   parts?: ServicePart[];
   installedDevices?: InstalledDevice[];
+  targetDevices?: DeviceOption[];
   files?: OrderFile[];
+  deletePreview?: ServiceOrderDeletePreview;
+  customerSignatureRequest?: CustomerSignatureRequest | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -126,6 +129,8 @@ interface InstalledDevice {
   pn?: string;
   serialNo?: string;
   remark?: string;
+  willDelete?: boolean;
+  blockedReasons?: string[];
 }
 
 interface OrderFile {
@@ -155,8 +160,21 @@ interface DeviceOption {
   id: string | number;
   name?: string;
   model?: string;
+  pn?: string;
   serialNo?: string;
   customerId?: string | number;
+}
+
+interface CustomerSignatureRequest {
+  id?: string | number;
+  recipientEmail?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+interface ServiceOrderDeletePreview {
+  editDraftCount?: number;
+  customerSignatureRequestCount?: number;
 }
 
 const ORDER_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
