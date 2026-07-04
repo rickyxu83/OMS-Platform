@@ -1267,8 +1267,12 @@ async function update(req, res) {
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
   const normalizedName = hasName ? normalizeText(name) : null
   const normalizedModel = normalizeText(model)
+  const normalizedSerialNo = normalizeText(serialNo)
   if (!normalizedModel) {
     throw badRequest('设备型号不能为空')
+  }
+  if (!normalizedSerialNo) {
+    throw badRequest('S/N 序列号不能为空')
   }
   const existing = await query(
     `SELECT d.id, d.customer_id, c.salesperson AS customer_salesperson
@@ -1288,6 +1292,17 @@ async function update(req, res) {
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)
   await ensureMaintenancePartyExists(normalizedMaintenancePartyId)
+  const duplicateSerialNo = await query(
+    `SELECT id
+     FROM devices
+     WHERE serial_no = :serialNo
+       AND id <> :id
+     LIMIT 1`,
+    { id: req.params.id, serialNo: normalizedSerialNo },
+  )
+  if (duplicateSerialNo[0]) {
+    throw badRequest('SN 已存在')
+  }
 
   await query(
     `UPDATE devices
@@ -1312,7 +1327,7 @@ async function update(req, res) {
       name: normalizedName,
       model: normalizedModel,
       pn: pn || null,
-      serialNo: serialNo || null,
+      serialNo: normalizedSerialNo,
       mrNo: normalizeText(mrNo),
       remark: remark || null,
       maintenanceType: normalizedMaintenanceType,
