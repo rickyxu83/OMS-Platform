@@ -4794,7 +4794,7 @@ export function ServiceReport() {
 
             {showAssetSection ? (
               <ReportSection
-                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : "设备与备件信息"}
+                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : showTargetDeviceFields ? "目标设备与备件信息" : "设备与备件信息"}
                 icon={Wrench}
                 step={assetSectionStep}
                 tag={isRemote ? "目标设备与远程信息" : "根据已选模块填写"}
@@ -4808,12 +4808,12 @@ export function ServiceReport() {
                     <div className="space-y-3 rounded-lg border p-3">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "维护设备"}</div>
-                          <div className="text-xs text-muted-foreground">选择客户已有设备会直接关联；不在列表内的设备可手动填写型号和序列号，提交时自动加入设备档案。</div>
+                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "目标设备"}</div>
+                          <div className="text-xs text-muted-foreground">输入设备型号，或选择下拉中的客户已有设备；新设备提交后会加入客户设备档案。</div>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={addTargetDeviceRow}>
                           <Plus className="h-4 w-4" />
-                          增加维护设备
+                          新增设备
                         </Button>
                       </div>
                       <div className="space-y-3">
@@ -4830,7 +4830,7 @@ export function ServiceReport() {
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex min-w-0 items-center gap-2">
                                   <span className="text-sm font-medium">{targetDeviceTitle(targetDevice, deviceIndex)}</span>
-                                  {targetDevice.inputMode === "existing" ? <Badge variant="secondary">已有设备</Badge> : <Badge variant="outline">新设备</Badge>}
+                                  {targetDevice.inputMode === "existing" ? <Badge variant="secondary">已有设备</Badge> : null}
                                 </div>
                                 {targetDeviceRows.length > 1 ? (
                                   <Button
@@ -4848,7 +4848,7 @@ export function ServiceReport() {
 
                               <div className={`grid gap-3 ${targetDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                                 <div className="relative space-y-2">
-                                  <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : "维护设备 / 设备型号"}</Label>
+                                  <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : "目标设备 / 设备型号"}</Label>
                                   <Input
                                     value={targetDeviceValue(targetDevice)}
                                     placeholder="输入设备型号，或选择客户已有设备"
@@ -4942,20 +4942,12 @@ export function ServiceReport() {
                                     <Field label="序列号 / SN" required>
                                       <Input value={targetDevice.serialNo} onChange={(event) => updateTargetDevice(targetDevice.id, { serialNo: event.target.value })} />
                                     </Field>
-                                    <Field label="料号 / PN">
-                                      {renderModelCatalogSuggestionInput({
-                                        inputId: `target-pn-${targetDevice.id}`,
-                                        value: targetDevice.pn,
-                                        valueMode: "partNo",
-                                        placeholder: "可选",
-                                        onChange: (pn) => updateTargetDevice(targetDevice.id, { pn }),
-                                      })}
-                                    </Field>
                                     <div className="md:col-span-2">
-                                      <Field label="设备备注">
-                                        <Input
+                                      <Field label="备注">
+                                        <Textarea
+                                          rows={3}
                                           value={targetDevice.remark}
-                                          placeholder="可填写维护对象说明、IP、版本或位置"
+                                          placeholder="可填写设备具体配置、维护对象说明、IP、版本或位置"
                                           onChange={(event) => updateTargetDevice(targetDevice.id, { remark: event.target.value })}
                                         />
                                       </Field>
