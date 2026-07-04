@@ -3585,7 +3585,50 @@ export function ServiceReport() {
     return missing;
   }
 
+  function hasDraftContent() {
+    const textFields = [
+      form.customerId,
+      form.customerName,
+      form.customerAddress,
+      form.contactName,
+      form.contactPhone,
+      form.deviceId,
+      form.deviceName,
+      form.deviceModel,
+      form.devicePn,
+      form.deviceSerialNo,
+      form.deviceRemark,
+      form.timesheetCategory,
+      form.timesheetSalesperson,
+      form.issueDescription,
+      form.departureAt,
+      form.actualStartAt,
+      form.actualEndAt,
+      form.returnAt,
+      form.workContent,
+      form.resultDescription,
+      form.customerConfirmName,
+      form.customerSignature,
+      form.customerSignatureFileId,
+    ];
+    return textFields.some((value) => String(value || "").trim())
+      || form.serviceModules.length > 0
+      || form.targetDeviceIds.length > 0
+      || form.engineerIds.length > 0
+      || form.installDevices.some(installDeviceHasContent)
+      || form.targetDevices.some(targetDeviceHasContent)
+      || form.parts.some(servicePartHasContent);
+  }
+
   async function saveDraft(silent = false) {
+    if (!hasDraftContent()) {
+      if (!silent) {
+        const message = "请先填写内容后再保存草稿";
+        setError(message);
+        toast.error(message);
+      }
+      return;
+    }
     setSaving(true);
     setError("");
     try {
