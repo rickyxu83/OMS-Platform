@@ -2468,6 +2468,10 @@ export function ServiceReport() {
       toast.error("请先选择系统客户，再新增目标设备");
       return;
     }
+    if (form.deviceId) {
+      toast.info("已关联客户库存设备，无需新增目标设备");
+      return;
+    }
     const model = form.deviceModel.trim();
     const serialNo = form.deviceSerialNo.trim();
     if (!model || !serialNo) {
@@ -4345,11 +4349,11 @@ export function ServiceReport() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "目标设备"}</div>
-                          <div className="text-xs text-muted-foreground">用于故障排除、配置修改及备件更换处理；可关联客户库存设备，也可将当前目标设备新增到客户设备档案。</div>
+                          <div className="text-xs text-muted-foreground">用于故障排除、配置修改及备件更换处理；选择已有设备时直接关联，手动填写时可新增到设备档案。</div>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={createTargetDevice} disabled={savingTargetDevice}>
-                          {savingTargetDevice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                          新增目标设备
+                        <Button type="button" variant="outline" size="sm" onClick={createTargetDevice} disabled={savingTargetDevice || Boolean(form.deviceId)}>
+                          {savingTargetDevice ? <Loader2 className="h-4 w-4 animate-spin" /> : form.deviceId ? <CheckCircle className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                          {form.deviceId ? "已关联已有设备" : "新增到设备档案"}
                         </Button>
                       </div>
                       <div className="grid gap-4 md:grid-cols-2">
