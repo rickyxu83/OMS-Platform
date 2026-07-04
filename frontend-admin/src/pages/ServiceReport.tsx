@@ -383,7 +383,7 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "紧急" },
 ];
 const ONSITE_SERVICE_MODULE_OPTIONS: ServiceModuleOption[] = [
-  { value: "repair", label: "故障排查", description: "现场排查故障原因，并记录处理过程与支持资料", descriptionItems: ["目标设备", "日志/配置文件"], icon: Wrench },
+  { value: "repair", label: "故障排查", description: "故障排除、配置修改与支持记录", descriptionItems: ["目标设备", "配置/日志文件"], icon: Wrench },
   { value: "install", label: "安装", description: "记录新设备或硬件部件的安装交付信息", descriptionItems: ["新设备安装", "硬件部件安装"], icon: HardDrive },
   { value: "inspect", label: "巡检", description: "记录巡检结果，并上传巡检文档与现场照片", descriptionItems: ["巡检文档", "现场照片"], icon: ClipboardCheck },
   { value: "replacement", label: "备件更换", description: "记录故障备件拆下、换上及相关明细", descriptionItems: ["换下备件", "换上备件"], icon: Package },
@@ -1826,7 +1826,7 @@ export function ServiceReport() {
   const workContentLabel = isOffice
     ? "工作内容"
     : isOnsite
-      ? isRepairModule ? "故障排查记录" : isInspection ? "巡检处理记录" : "现场处理记录"
+      ? isRepairModule ? "故障排查 / 配置修改记录" : isInspection ? "巡检处理记录" : "现场处理记录"
       : isRemoteSupportModule ? "远程支持记录" : "处理记录";
   const shouldShowAttachments = isInstall || isRepairModule || isRemoteSupportModule || isInspection || hasReplacementModule;
   const workSectionStep = 3;
@@ -4345,7 +4345,7 @@ export function ServiceReport() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "目标设备"}</div>
-                          <div className="text-xs text-muted-foreground">用于故障排查及备件更换处理；可关联已有设备，也可将当前目标设备新增到客户设备档案。</div>
+                          <div className="text-xs text-muted-foreground">用于故障排除、配置修改及备件更换处理；可关联客户库存设备，也可将当前目标设备新增到客户设备档案。</div>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={createTargetDevice} disabled={savingTargetDevice}>
                           {savingTargetDevice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
