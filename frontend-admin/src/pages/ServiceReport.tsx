@@ -789,8 +789,8 @@ function installDeviceTitle(device: InstallDeviceDraft, index: number) {
 }
 
 function targetDeviceTitle(device: TargetDeviceDraft, index: number) {
-  if (device.inputMode === "existing") return `维护设备 ${index + 1}`;
-  return device.model.trim() || `维护设备 ${index + 1}`;
+  if (device.inputMode === "existing") return `目标设备 ${index + 1}`;
+  return device.model.trim() || `目标设备 ${index + 1}`;
 }
 
 function optionText(options: Array<{ value: string; label: string }>, value?: string, fallback = "-") {
@@ -1862,8 +1862,6 @@ export function ServiceReport() {
   const [deletingDraft, setDeletingDraft] = useState(false);
   const [customerDevices, setCustomerDevices] = useState<DeviceOption[]>([]);
   const [loadingCustomerDevices, setLoadingCustomerDevices] = useState(false);
-  const [savingTargetDevice, setSavingTargetDevice] = useState(false);
-  const [targetDeviceSearch, setTargetDeviceSearch] = useState("");
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [targetDeviceOpenId, setTargetDeviceOpenId] = useState<string | null>(null);
   const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
@@ -1964,14 +1962,6 @@ export function ServiceReport() {
   const selectedCustomerDevices = useMemo(() => (
     form.customerId ? customerDevices : []
   ), [customerDevices, form.customerId]);
-  const selectedTargetDevices = useMemo(() => (
-    form.targetDeviceIds
-      .map((deviceId) => selectedCustomerDevices.find((device) => String(device.id) === deviceId))
-      .filter(Boolean) as DeviceOption[]
-  ), [form.targetDeviceIds, selectedCustomerDevices]);
-  const filteredTargetDeviceOptions = useMemo(() => (
-    selectedCustomerDevices.filter((device) => deviceMatchesKeyword(device, targetDeviceSearch))
-  ), [selectedCustomerDevices, targetDeviceSearch]);
   const matchingReportOrders = useMemo(() => (
     orders
       .filter((order) => (order.workflowStatus || order.status || "") !== "cancelled")
@@ -2023,7 +2013,7 @@ export function ServiceReport() {
     installationParts.length ? `硬件部件安装 ${installationParts.length}` : "",
     generalParts.length ? `部件记录 ${generalParts.length}` : "",
     isInspection ? "巡检文档" : "",
-    showTargetDeviceFields && activeTargetDeviceCount ? `维护设备 ${activeTargetDeviceCount}` : "",
+    showTargetDeviceFields && activeTargetDeviceCount ? `目标设备 ${activeTargetDeviceCount}` : "",
     isInstall && activeInstallDeviceCount ? `安装设备 ${activeInstallDeviceCount}` : "",
   ].filter(Boolean);
   const partsModuleTitle = hasReplacementModule && !showInlineInstallParts && hasHardwareInstallDetails ? "备件更换与硬件部件明细" : hasHardwareInstallDetails && !showInlineInstallParts ? "硬件部件安装明细" : "备件更换明细";
@@ -2221,10 +2211,6 @@ export function ServiceReport() {
     if (!isFormRoute) return;
     loadCustomerDevices(form.customerId);
   }, [form.customerId, isFormRoute, loadCustomerDevices]);
-
-  useEffect(() => {
-    setTargetDeviceSearch("");
-  }, [form.customerId]);
 
   useEffect(() => () => {
     if (customerSearchTimerRef.current) window.clearTimeout(customerSearchTimerRef.current);
@@ -2431,7 +2417,6 @@ export function ServiceReport() {
       parts: form.parts.map((part) => ({ ...part, deviceId: "", installDeviceDraftId: "" })),
       installDevices: isInstall ? [emptyInstallDevice()] : form.installDevices,
     });
-    setTargetDeviceSearch("");
     setCustomerOptionsOpen(false);
     setGeoCandidates([]);
     setGeoHint(customer.latitude && customer.longitude ? `已载入客户定位：${coordinateLabel(String(customer.latitude), String(customer.longitude))}` : "");
@@ -2524,7 +2509,6 @@ export function ServiceReport() {
       customerId: "",
       customerName: value,
     });
-    setTargetDeviceSearch("");
     setGeoCandidates([]);
     setGeoHint(value.trim()
       ? coordinateLabel(form.customerLatitude, form.customerLongitude)
@@ -2747,39 +2731,6 @@ export function ServiceReport() {
     return nextParts;
   }
 
-  function setTargetDevices(deviceIds: string[]) {
-    const ids = [...new Set(deviceIds.map((id) => String(id)).filter(Boolean))];
-    const validIds = ids.filter((id) => selectedCustomerDevices.some((device) => String(device.id) === id));
-    const nextDevices = validIds.length
-      ? validIds.map((deviceId) => {
-          const existing = form.targetDevices.find((device) => device.deviceId === deviceId);
-          const customerDevice = selectedCustomerDevices.find((device) => String(device.id) === deviceId);
-          return emptyTargetDevice({
-            ...(existing || {}),
-            inputMode: "existing",
-            deviceId,
-            model: existing?.model || customerDevice?.model || "",
-            pn: existing?.pn || customerDevice?.pn || "",
-            serialNo: existing?.serialNo || customerDevice?.serialNo || "",
-            remark: existing?.remark || customerDevice?.remark || "",
-          });
-        })
-      : [emptyTargetDevice()];
-    patchTargetDevices(nextDevices, {
-      parts: form.parts.map((part) => (part.deviceId ? part : { ...part, deviceId: validIds[0] || "" })),
-    });
-  }
-
-  function addTargetDevice(deviceId: string) {
-    if (form.targetDeviceIds.includes(deviceId)) return;
-    setTargetDevices([...form.targetDeviceIds, deviceId]);
-    setTargetDeviceSearch("");
-  }
-
-  function removeTargetDevice(deviceId: string) {
-    setTargetDevices(form.targetDeviceIds.filter((id) => id !== deviceId));
-  }
-
   function changeTargetDevice(targetDeviceDraftIdValue: string, value: string) {
     const nextDevices = form.targetDevices.map((device) => (
       device.id === targetDeviceDraftIdValue
@@ -2856,60 +2807,6 @@ export function ServiceReport() {
     });
   }
 
-  async function createTargetDevice() {
-    if (!form.customerId) {
-      toast.error("请先选择系统客户，再新增目标设备");
-      return;
-    }
-    if (form.deviceId) {
-      toast.info("已关联客户库存设备，无需新增目标设备");
-      return;
-    }
-    const model = form.deviceModel.trim();
-    const serialNo = form.deviceSerialNo.trim();
-    if (!model || !serialNo) {
-      toast.error("请先填写目标设备的型号和序列号");
-      return;
-    }
-
-    setSavingTargetDevice(true);
-    try {
-      const data = await api.post("/devices", {
-        customerId: Number(form.customerId),
-        name: form.deviceName.trim() || null,
-        model,
-        pn: form.devicePn.trim() || undefined,
-        serialNo,
-      });
-      const newDevice: DeviceOption = {
-        id: data?.id,
-        customerId: form.customerId,
-        name: form.deviceName.trim(),
-        model,
-        pn: form.devicePn.trim(),
-        serialNo,
-      };
-      if (!newDevice.id) {
-        throw new Error("设备已创建，但未返回设备 ID");
-      }
-      const newDeviceId = String(newDevice.id);
-      setCustomerDevices((current) => [
-        newDevice,
-        ...current.filter((device) => String(device.id) !== newDeviceId),
-      ]);
-      patchForm({
-        ...targetDevicePatch(newDevice),
-        targetDeviceIds: [...new Set([...form.targetDeviceIds, newDeviceId])],
-        parts: partsWithTargetDevice(newDeviceId, hasReplacementModule),
-      });
-      toast.success(hasReplacementModule ? "目标设备已新增，并已关联到备件更换明细" : "目标设备已新增");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "新增目标设备失败");
-    } finally {
-      setSavingTargetDevice(false);
-    }
-  }
-
   async function resolveTargetDevicesForSubmit() {
     if (isInstall || !showTargetDeviceFields) return form.targetDeviceIds.map(Number).filter(Boolean);
     if (!form.customerId) return [];
@@ -2927,7 +2824,7 @@ export function ServiceReport() {
       const model = device.model.trim();
       const serialNo = device.serialNo.trim();
       if (!model || !serialNo) {
-        throw new Error("请补齐维护设备的型号和序列号");
+        throw new Error("请补齐目标设备的型号和序列号");
       }
       const data = await api.post("/devices", {
         customerId: Number(form.customerId),
@@ -2945,7 +2842,7 @@ export function ServiceReport() {
         serialNo,
         remark: device.remark.trim(),
       };
-      if (!newDevice.id) throw new Error("维护设备已创建，但未返回设备 ID");
+      if (!newDevice.id) throw new Error("目标设备已创建，但未返回设备 ID");
       const newDeviceId = String(newDevice.id);
       resolvedIds.push(newDeviceId);
       createdDevices.push(newDevice);
@@ -3543,10 +3440,10 @@ export function ServiceReport() {
     if (showTargetDeviceFields) {
       const maintenanceTargets = form.targetDevices.filter(targetDeviceHasContent);
       if (!maintenanceTargets.length) {
-        missing.push(isRemote ? "远程目标设备" : "维护设备");
+        missing.push(isRemote ? "远程目标设备" : "目标设备");
       }
       maintenanceTargets.forEach((device, index) => {
-        const deviceLabelText = `${isRemote ? "远程目标设备" : "维护设备"} ${index + 1}`;
+        const deviceLabelText = `${isRemote ? "远程目标设备" : "目标设备"} ${index + 1}`;
         if (device.inputMode === "existing") {
           if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
         } else {
