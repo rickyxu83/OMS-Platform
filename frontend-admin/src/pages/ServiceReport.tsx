@@ -2565,11 +2565,14 @@ export function ServiceReport() {
     });
   }
 
-  function toggleTargetDevice(deviceId: string, checked: boolean) {
-    const ids = checked
-      ? [...form.targetDeviceIds, deviceId]
-      : form.targetDeviceIds.filter((id) => id !== deviceId);
-    setTargetDevices(ids);
+  function addTargetDevice(deviceId: string) {
+    if (form.targetDeviceIds.includes(deviceId)) return;
+    setTargetDevices([...form.targetDeviceIds, deviceId]);
+    setTargetDeviceSearch("");
+  }
+
+  function removeTargetDevice(deviceId: string) {
+    setTargetDevices(form.targetDeviceIds.filter((id) => id !== deviceId));
   }
 
   async function createTargetDevice() {
@@ -4499,6 +4502,26 @@ export function ServiceReport() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <Field label="关联已有设备（可多选）">
                           <div className="rounded-lg border bg-background p-2">
+                            {selectedTargetDevices.length ? (
+                              <div className="mb-2 rounded-md border bg-muted/30 p-2">
+                                <div className="mb-1.5 text-xs font-medium text-muted-foreground">已关联 {selectedTargetDevices.length} 台设备</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {selectedTargetDevices.map((device) => (
+                                    <Badge key={device.id} variant="secondary" className="gap-1 pr-1">
+                                      <span className="max-w-[180px] truncate">{deviceLabel(device)}</span>
+                                      <button
+                                        type="button"
+                                        className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                                        onClick={() => removeTargetDevice(String(device.id))}
+                                        aria-label={`移除${deviceLabel(device)}`}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
                             <div className="relative mb-2">
                               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                               <Input
@@ -4521,23 +4544,28 @@ export function ServiceReport() {
                               ) : filteredTargetDeviceOptions.length ? (
                                 filteredTargetDeviceOptions.map((device) => {
                                   const deviceId = String(device.id);
-                                  const checked = form.targetDeviceIds.includes(deviceId);
+                                  const selected = form.targetDeviceIds.includes(deviceId);
                                   return (
-                                    <label
+                                    <button
                                       key={device.id}
-                                      className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${
-                                        checked ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
+                                      type="button"
+                                      className={`flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                                        selected ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
                                       }`}
+                                      onClick={() => addTargetDevice(deviceId)}
+                                      disabled={selected}
                                     >
-                                      <Checkbox
-                                        checked={checked}
-                                        onCheckedChange={(value) => toggleTargetDevice(deviceId, Boolean(value))}
-                                      />
                                       <span className="min-w-0 flex-1">
                                         <span className="block truncate font-medium">{deviceSelectLabel(device)}</span>
                                         <span className="block truncate text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
                                       </span>
-                                    </label>
+                                      <span className={`mt-0.5 flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium ${
+                                        selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                      }`}>
+                                        {selected ? <CheckCircle className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                                        {selected ? "已添加" : "添加"}
+                                      </span>
+                                    </button>
                                   );
                                 })
                               ) : selectedCustomerDevices.length ? (
@@ -4547,13 +4575,6 @@ export function ServiceReport() {
                               )}
                             </div>
                           </div>
-                          {selectedTargetDevices.length ? (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {selectedTargetDevices.map((device) => (
-                                <Badge key={device.id} variant="secondary">{deviceLabel(device)}</Badge>
-                              ))}
-                            </div>
-                          ) : null}
                         </Field>
 	                        <Field label={isRemote ? "远程目标 / 系统名称" : "主机名"}>
                           <Input value={form.deviceName} onChange={(event) => patchForm({ deviceName: event.target.value })} />
