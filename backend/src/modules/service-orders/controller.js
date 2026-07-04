@@ -1062,6 +1062,80 @@ async function deleteFileRowsForOrderIds(connection, orderIds) {
   return rows.map((row) => row.storage_path).filter(Boolean)
 }
 
+async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).map(Number).filter(Boolean))]
+  if (!ids.length) return { deletedDeviceIds: [], skippedDeviceIds: [] }
+
+  await ensureServicePartsColumns(connection)
+  const orderParams = idParams(ids, 'installSourceOrderId')
+  const [deviceRows] = await connection.execute(
+    `SELECT id
+     FROM devices
+     WHERE installation_source_service_order_id IN (${orderParams.placeholders})`,
+    orderParams.params,
+  )
+  const deviceIds = deviceRows.map((row) => Number(row.id)).filter(Boolean)
+  if (!deviceIds.length) return { deletedDeviceIds: [], skippedDeviceIds: [] }
+
+  const deviceParams = idParams(deviceIds, 'installDeviceId')
+  const [blockedRows] = await connection.execute(
+    `SELECT DISTINCT d.id
+     FROM devices d
+     WHERE d.id IN (${deviceParams.placeholders})
+       AND (
+         EXISTS (
+           SELECT 1
+           FROM service_orders so
+           WHERE so.device_id = d.id
+             AND so.id NOT IN (${orderParams.placeholders})
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM service_parts sp
+           WHERE sp.device_id = d.id
+             AND sp.service_order_id NOT IN (${orderParams.placeholders})
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM inspection_schedules isch
+           WHERE isch.device_id = d.id
+         )
+       )`,
+    { ...deviceParams.params, ...orderParams.params },
+  )
+  const blocked = new Set(blockedRows.map((row) => Number(row.id)).filter(Boolean))
+  const deletableDeviceIds = deviceIds.filter((id) => !blocked.has(id))
+  if (!deletableDeviceIds.length) {
+    return { deletedDeviceIds: [], skippedDeviceIds: [...blocked] }
+  }
+
+  const deletableParams = idParams(deletableDeviceIds, 'deleteInstallDeviceId')
+  await connection.execute(
+    `UPDATE service_orders
+     SET device_id = NULL
+     WHERE id IN (${orderParams.placeholders})
+       AND device_id IN (${deletableParams.placeholders})`,
+    { ...orderParams.params, ...deletableParams.params },
+  )
+  await connection.execute(
+    `UPDATE service_parts
+     SET device_id = NULL
+     WHERE service_order_id IN (${orderParams.placeholders})
+       AND device_id IN (${deletableParams.placeholders})`,
+    { ...orderParams.params, ...deletableParams.params },
+  )
+  await connection.execute(
+    `DELETE FROM devices
+     WHERE id IN (${deletableParams.placeholders})`,
+    deletableParams.params,
+  )
+
+  return {
+    deletedDeviceIds: deletableDeviceIds,
+    skippedDeviceIds: [...blocked],
+  }
+}
+
 async function recordCustomerContact(connection, customerId, name, phone = null, engineerId = null) {
   if (!customerId || !name) return
   const normalizedPhone = normalizeCustomerContactPhone(phone)
@@ -3625,13 +3699,18 @@ async function transition(req, res) {
              WHEN internal_note IS NULL OR internal_note = '' THEN :reason
              ELSE CONCAT(internal_note, '\n', :reason)
            END
-       WHERE id = :id`,
+      WHERE id = :id`,
       { id: req.params.id, status, actorId: req.user.id, reason },
     )
+    const installationDeviceCleanup = status === 'cancelled'
+      ? await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
+      : { deletedDeviceIds: [], skippedDeviceIds: [] }
     await writeAudit(connection, req.user.id, req.params.id, 'transition', {
       from: order.status,
       to: status,
       reason,
+      deletedInstalledDeviceCount: installationDeviceCleanup.deletedDeviceIds.length,
+      skippedInstalledDeviceCount: installationDeviceCleanup.skippedDeviceIds.length,
     })
   })
 
@@ -3720,10 +3799,13 @@ async function cancelByEngineer(req, res) {
        WHERE id = :id`,
       { id: req.params.id },
     )
+    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
     await writeAudit(connection, req.user.id, req.params.id, 'cancel', {
       orderNo: order.order_no,
       previousStatus: order.status,
       source: 'engineer_rc',
+      deletedInstalledDeviceCount: installationDeviceCleanup.deletedDeviceIds.length,
+      skippedInstalledDeviceCount: installationDeviceCleanup.skippedDeviceIds.length,
     })
   })
 
@@ -3762,11 +3844,14 @@ async function remove(req, res) {
          AND service_order_id = :id`,
       { id: req.params.id },
     )
+    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
     await connection.execute('DELETE FROM service_orders WHERE id = :id', { id: req.params.id })
     await writeAudit(connection, req.user.id, req.params.id, 'delete', {
       orderNo: order.order_no,
       previousStatus: order.status,
       source: engineerScopedRoles.has(req.user.role) ? 'engineer' : 'ops',
+      deletedInstalledDeviceCount: installationDeviceCleanup.deletedDeviceIds.length,
+      skippedInstalledDeviceCount: installationDeviceCleanup.skippedDeviceIds.length,
     })
     return deletedFilePaths
   })
@@ -3805,10 +3890,15 @@ async function bulkDelete(req, res) {
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
+    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_orders WHERE id IN (${found.placeholders})`, found.params)
 
     for (const row of rows) {
-      await writeAudit(connection, req.user.id, row.id, 'delete', { orderNo: row.order_no })
+      await writeAudit(connection, req.user.id, row.id, 'delete', {
+        orderNo: row.order_no,
+        deletedInstalledDeviceCount: installationDeviceCleanup.deletedDeviceIds.length,
+        skippedInstalledDeviceCount: installationDeviceCleanup.skippedDeviceIds.length,
+      })
     }
     return deletedFilePaths
   })
