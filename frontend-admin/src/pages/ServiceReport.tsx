@@ -1720,6 +1720,7 @@ export function ServiceReport() {
   const isNewRoute = location.pathname.endsWith("/new");
   const isFormRoute = isNewRoute || Boolean(id);
   const routeMode = normalizeMode(searchParams.get("mode"));
+  const routeShouldLoadDraft = searchParams.get("draft") === "1";
   const routeKeyword = String(searchParams.get("keyword") || "").trim().toLowerCase();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -2033,10 +2034,12 @@ export function ServiceReport() {
         }
       } else {
         setCurrentOrder(null);
-        const draftData = await api.get("/service-orders/draft/self-report").catch(() => ({ item: null }));
-        const draftPayload = draftData?.item?.payload;
         const base = defaultForm(routeMode);
-        if (draftPayload && typeof draftPayload === "object" && normalizeMode(draftPayload.serviceMode) === routeMode) {
+        const draftData = routeShouldLoadDraft
+          ? await api.get("/service-orders/draft/self-report").catch(() => ({ item: null }))
+          : { item: null };
+        const draftPayload = draftData?.item?.payload;
+        if (routeShouldLoadDraft && draftPayload && typeof draftPayload === "object" && normalizeMode(draftPayload.serviceMode) === routeMode) {
           setForm(normalizeLoadedForm({
             ...base,
             ...draftPayload,
@@ -2057,7 +2060,7 @@ export function ServiceReport() {
     } finally {
       setFormLoading(false);
     }
-  }, [id, isFormRoute, loadReferenceData, routeMode]);
+  }, [id, isFormRoute, loadReferenceData, routeMode, routeShouldLoadDraft]);
 
   useEffect(() => {
     if (isFormRoute) {
@@ -3633,7 +3636,7 @@ export function ServiceReport() {
                       const draftHasSelectedModules = draftMode === "office"
                         || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
                       const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
-                      const draftRoute = `/service-report/new?mode=${draftMode}`;
+                      const draftRoute = `/service-report/new?mode=${draftMode}&draft=1`;
                       const draftEngineerNames = createDraft.engineerIds?.length
                         ? engineers
                             .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
