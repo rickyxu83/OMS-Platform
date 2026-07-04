@@ -559,6 +559,7 @@ async function ensureSelfReportDraftsTable(connection = null) {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       UNIQUE KEY uk_self_report_drafts_engineer_scope_order_key (engineer_id, draft_scope, service_order_id, draft_key),
+      KEY idx_self_report_drafts_engineer_id (engineer_id),
       KEY idx_self_report_drafts_service_order_id (service_order_id),
       CONSTRAINT fk_self_report_drafts_engineer_id FOREIGN KEY (engineer_id) REFERENCES users (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
@@ -587,9 +588,12 @@ async function ensureSelfReportDraftsTable(connection = null) {
      FROM information_schema.statistics
      WHERE table_schema = DATABASE()
        AND table_name = 'self_report_drafts'
-       AND index_name IN ('uk_self_report_drafts_engineer_scope_order', 'uk_self_report_drafts_engineer_scope_order_key')`,
+       AND index_name IN ('uk_self_report_drafts_engineer_scope_order', 'uk_self_report_drafts_engineer_scope_order_key', 'idx_self_report_drafts_engineer_id')`,
   )
   const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (!indexes.has('idx_self_report_drafts_engineer_id')) {
+    await execute('ALTER TABLE self_report_drafts ADD KEY idx_self_report_drafts_engineer_id (engineer_id)')
+  }
   if (indexes.has('uk_self_report_drafts_engineer_scope_order')) {
     await execute('ALTER TABLE self_report_drafts DROP INDEX uk_self_report_drafts_engineer_scope_order')
   }
