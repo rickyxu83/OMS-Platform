@@ -113,6 +113,7 @@ interface ServiceOrder {
   engineers?: EngineerOption[];
   contacts?: CustomerContact[];
   customerSignatureRequest?: CustomerSignatureRequest | null;
+  deletePreview?: ServiceOrderDeletePreview;
 }
 
 interface ServiceReport {
@@ -156,6 +157,13 @@ interface InstalledDevice {
   remark?: string;
   createdAt?: string;
   updatedAt?: string;
+  willDelete?: boolean;
+  blockedReasons?: string[];
+}
+
+interface ServiceOrderDeletePreview {
+  editDraftCount?: number;
+  customerSignatureRequestCount?: number;
 }
 
 interface OrderFile {
@@ -633,6 +641,18 @@ function deletePreviewDeviceLabel(device: InstalledDevice | DeviceOption) {
   ].filter(Boolean).join(" / ");
 }
 
+function deletePreviewInstalledDeviceLabel(device: InstalledDevice) {
+  const label = deletePreviewDeviceLabel(device);
+  if (device.willDelete === false) {
+    const reasons = Array.isArray(device.blockedReasons) && device.blockedReasons.length
+      ? `仍关联：${device.blockedReasons.join("、")}`
+      : "仍有关联数据";
+    return `${label}（保留，${reasons}）`;
+  }
+  if (device.willDelete === true) return `${label}（将删除）`;
+  return `${label}（删除时再次检查是否有关联）`;
+}
+
 function deletePreviewFileLabel(file: OrderFile) {
   return `${file.originalName || `附件 #${file.id}`}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
 }
@@ -658,15 +678,18 @@ function buildDeleteConfirmationMessage(order: ServiceOrder) {
     details.push(`目标设备关联 ${targetDevices.length} 台：${targetDevices.slice(0, 3).map(deletePreviewDeviceLabel).join("、")}${targetDevices.length > 3 ? "…" : ""}（仅解除关联，不删除设备）`);
   }
   if (installedDevices.length) {
-    details.push(`随工单删除的新安装设备 ${installedDevices.length} 台：${installedDevices.slice(0, 3).map(deletePreviewDeviceLabel).join("、")}${installedDevices.length > 3 ? "…" : ""}`);
+    details.push(`安装来源设备 ${installedDevices.length} 台：${installedDevices.slice(0, 3).map(deletePreviewInstalledDeviceLabel).join("、")}${installedDevices.length > 3 ? "…" : ""}`);
   }
-  details.push("编辑草稿（如存在）");
+  const signatureRequestCount = Number(order.deletePreview?.customerSignatureRequestCount || 0);
+  if (signatureRequestCount > 0) details.push(`客户签署请求 ${signatureRequestCount} 条`);
+  const editDraftCount = Number(order.deletePreview?.editDraftCount || 0);
+  if (editDraftCount > 0) details.push(`编辑草稿 ${editDraftCount} 份`);
   return [
     `确认删除 ${reportOrderDisplayId(order)}？以下内容会被删除或解除关联：`,
     "",
     ...details.map((item) => `- ${item}`),
     "",
-    "其中“新安装设备”只有在未被其他工单、部件记录或巡检计划引用时才会一起删除。",
+    "安装来源设备如果仍被其他工单、部件记录或巡检计划引用，会保留在设备列表中。",
   ].join("\n");
 }
 
