@@ -15,6 +15,7 @@ const {
 const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
 let devicePartHistoryColumnsReady = false
+let serviceOrderDevicesTableReady = false
 const modelNormalizationJobs = new Map()
 const modelNormalizationJobTtlMs = 60 * 60 * 1000
 const modelNormalizationJobMaxCount = 500
@@ -751,6 +752,26 @@ async function ensureDevicePartHistoryColumns() {
   devicePartHistoryColumnsReady = true
 }
 
+async function ensureServiceOrderDevicesTable() {
+  if (serviceOrderDevicesTableReady) return
+  await query(
+    `CREATE TABLE IF NOT EXISTS service_order_devices (
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (service_order_id, device_id),
+      KEY idx_service_order_devices_device_id (device_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await query(
+    `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+     SELECT id, device_id
+     FROM service_orders
+     WHERE device_id IS NOT NULL`,
+  )
+  serviceOrderDevicesTableReady = true
+}
+
 function devicePayload(row) {
   return {
     id: row.id,
@@ -779,6 +800,7 @@ function devicePayload(row) {
 
 async function loadRelatedServiceOrders(deviceId) {
   await ensureDevicePartHistoryColumns()
+  await ensureServiceOrderDevicesTable()
   const rows = await query(
     `SELECT related.*
      FROM (
@@ -788,6 +810,16 @@ async function loadRelatedServiceOrders(deviceId) {
        FROM service_orders so
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        WHERE so.device_id = :deviceId
+
+       UNION
+
+       SELECT so.id, so.order_no, so.status, so.service_mode, so.service_type, so.issue_description,
+              so.submitted_at, so.created_at, u.real_name AS engineer_name, u.username AS engineer_username,
+              'service_order_target_device' AS relation_type
+       FROM service_order_devices sod
+       JOIN service_orders so ON so.id = sod.service_order_id
+       LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       WHERE sod.device_id = :deviceId
 
        UNION
 
