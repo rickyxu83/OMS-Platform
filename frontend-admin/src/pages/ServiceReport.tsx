@@ -596,6 +596,35 @@ function deviceMeta(device?: DeviceOption) {
     .join(" · ");
 }
 
+function normalizeDeviceSearchText(value?: string | number | null) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function deviceSearchText(device?: DeviceOption) {
+  if (!device) return "";
+  return [
+    device.id,
+    device.name,
+    device.model,
+    device.pn,
+    device.serialNo,
+    device.remark,
+    device.location,
+    deviceSelectLabel(device),
+    deviceMeta(device),
+  ]
+    .map(normalizeDeviceSearchText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function deviceMatchesKeyword(device: DeviceOption, keyword: string) {
+  const terms = normalizeDeviceSearchText(keyword).split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = deviceSearchText(device);
+  return terms.every((term) => haystack.includes(term));
+}
+
 function formatFileSize(value?: number) {
   const size = Number(value || 0);
   if (!size) return "-";
@@ -1678,6 +1707,7 @@ export function ServiceReport() {
   const [customerDevices, setCustomerDevices] = useState<DeviceOption[]>([]);
   const [loadingCustomerDevices, setLoadingCustomerDevices] = useState(false);
   const [savingTargetDevice, setSavingTargetDevice] = useState(false);
+  const [targetDeviceSearch, setTargetDeviceSearch] = useState("");
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
   const [installModelSuggestionDeviceId, setInstallModelSuggestionDeviceId] = useState<string | null>(null);
@@ -1782,6 +1812,9 @@ export function ServiceReport() {
       .map((deviceId) => selectedCustomerDevices.find((device) => String(device.id) === deviceId))
       .filter(Boolean) as DeviceOption[]
   ), [form.targetDeviceIds, selectedCustomerDevices]);
+  const filteredTargetDeviceOptions = useMemo(() => (
+    selectedCustomerDevices.filter((device) => deviceMatchesKeyword(device, targetDeviceSearch))
+  ), [selectedCustomerDevices, targetDeviceSearch]);
   const matchingReportOrders = useMemo(() => (
     orders
       .filter((order) => (order.workflowStatus || order.status || "") !== "cancelled")
@@ -1998,6 +2031,10 @@ export function ServiceReport() {
     loadCustomerDevices(form.customerId);
   }, [form.customerId, isFormRoute, loadCustomerDevices]);
 
+  useEffect(() => {
+    setTargetDeviceSearch("");
+  }, [form.customerId]);
+
   useEffect(() => () => {
     if (customerSearchTimerRef.current) window.clearTimeout(customerSearchTimerRef.current);
     if (installModelSearchTimerRef.current) window.clearTimeout(installModelSearchTimerRef.current);
@@ -2202,6 +2239,7 @@ export function ServiceReport() {
       parts: form.parts.map((part) => ({ ...part, deviceId: "", installDeviceDraftId: "" })),
       installDevices: isInstall ? [emptyInstallDevice()] : form.installDevices,
     });
+    setTargetDeviceSearch("");
     setCustomerOptionsOpen(false);
     setGeoCandidates([]);
     setGeoHint(customer.latitude && customer.longitude ? `已载入客户定位：${coordinateLabel(String(customer.latitude), String(customer.longitude))}` : "");
@@ -2294,6 +2332,7 @@ export function ServiceReport() {
       customerId: "",
       customerName: value,
     });
+    setTargetDeviceSearch("");
     setGeoCandidates([]);
     setGeoHint(value.trim()
       ? coordinateLabel(form.customerLatitude, form.customerLongitude)
@@ -2431,19 +2470,9 @@ export function ServiceReport() {
   }
 
   function installTargetOptions(device: InstallDeviceDraft) {
-    const keyword = device.inputMode === "existing" ? "" : device.model.trim().toLowerCase();
+    const keyword = device.inputMode === "existing" ? "" : device.model;
     return selectedCustomerDevices
-      .filter((item) => {
-        if (!keyword) return true;
-        return [
-          deviceLabel(item),
-          deviceSelectLabel(item),
-          item.model,
-          item.serialNo,
-          item.pn,
-          item.remark,
-        ].some((value) => String(value || "").toLowerCase().includes(keyword));
-      })
+      .filter((item) => deviceMatchesKeyword(item, keyword))
       .slice(0, 8);
   }
 
@@ -4420,7 +4449,19 @@ export function ServiceReport() {
                       </div>
                       <div className="grid gap-4 md:grid-cols-2">
                         <Field label="关联已有设备（可多选）">
-                          <div className="max-h-56 space-y-2 overflow-auto rounded-lg border bg-background p-2">
+                          <div className="rounded-lg border bg-background p-2">
+                            <div className="relative mb-2">
+                              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                inputMode="search"
+                                className="h-9 pl-9"
+                                value={targetDeviceSearch}
+                                placeholder="按型号或序列号过滤已有设备"
+                                disabled={loadingCustomerDevices || !form.customerId || !selectedCustomerDevices.length}
+                                onChange={(event) => setTargetDeviceSearch(event.target.value)}
+                              />
+                            </div>
+                            <div className="max-h-48 space-y-2 overflow-auto">
                             {loadingCustomerDevices ? (
                               <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -4428,8 +4469,8 @@ export function ServiceReport() {
                               </div>
                             ) : !form.customerId ? (
                               <div className="px-2 py-3 text-sm text-muted-foreground">请先选择客户</div>
-                            ) : selectedCustomerDevices.length ? (
-                              selectedCustomerDevices.map((device) => {
+                            ) : filteredTargetDeviceOptions.length ? (
+                              filteredTargetDeviceOptions.map((device) => {
                                 const deviceId = String(device.id);
                                 const checked = form.targetDeviceIds.includes(deviceId);
                                 return (
@@ -4450,9 +4491,12 @@ export function ServiceReport() {
                                   </label>
                                 );
                               })
+                            ) : selectedCustomerDevices.length ? (
+                              <div className="px-2 py-3 text-sm text-muted-foreground">没有匹配的已有设备</div>
                             ) : (
                               <div className="px-2 py-3 text-sm text-muted-foreground">该客户暂无设备</div>
                             )}
+                            </div>
                           </div>
                           {selectedTargetDevices.length ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
