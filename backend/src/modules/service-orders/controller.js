@@ -28,6 +28,7 @@ let serviceReportTravelColumnsReady = false
 let selfReportDraftsTableReady = false
 let serviceOrderInspectionColumnsReady = false
 let servicePartsColumnsReady = false
+let serviceOrderDevicesTableReady = false
 let customerSignatureRequestsTableReady = false
 
 const CUSTOMER_SIGNATURE_REQUEST_TTL_DAYS = 7
@@ -620,6 +621,31 @@ async function ensureServicePartsColumns(connection = null) {
   }
 }
 
+async function ensureServiceOrderDevicesTable(connection = null) {
+  if (!connection && serviceOrderDevicesTableReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
+    `CREATE TABLE IF NOT EXISTS service_order_devices (
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (service_order_id, device_id),
+      KEY idx_service_order_devices_device_id (device_id),
+      CONSTRAINT fk_service_order_devices_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+      CONSTRAINT fk_service_order_devices_device_id FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await execute(
+    `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+     SELECT id, device_id
+     FROM service_orders
+     WHERE device_id IS NOT NULL`,
+  )
+  if (!connection) {
+    serviceOrderDevicesTableReady = true
+  }
+}
+
 async function ensureCustomerSignatureRequestsTable(connection = null) {
   if (!connection && customerSignatureRequestsTableReady) return
   const executor = connection || { execute: query }
@@ -1067,6 +1093,7 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
   if (!ids.length) return { deletedDeviceIds: [], skippedDeviceIds: [] }
 
   await ensureServicePartsColumns(connection)
+  await ensureServiceOrderDevicesTable(connection)
   const orderParams = idParams(ids, 'installSourceOrderId')
   const [deviceRows] = await connection.execute(
     `SELECT id
@@ -1097,6 +1124,12 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
          )
          OR EXISTS (
            SELECT 1
+           FROM service_order_devices sod
+           WHERE sod.device_id = d.id
+             AND sod.service_order_id NOT IN (${orderParams.placeholders})
+         )
+         OR EXISTS (
+           SELECT 1
            FROM inspection_schedules isch
            WHERE isch.device_id = d.id
          )
@@ -1120,6 +1153,12 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
   await connection.execute(
     `UPDATE service_parts
      SET device_id = NULL
+     WHERE service_order_id IN (${orderParams.placeholders})
+       AND device_id IN (${deletableParams.placeholders})`,
+    { ...orderParams.params, ...deletableParams.params },
+  )
+  await connection.execute(
+    `DELETE FROM service_order_devices
      WHERE service_order_id IN (${orderParams.placeholders})
        AND device_id IN (${deletableParams.placeholders})`,
     { ...orderParams.params, ...deletableParams.params },
@@ -2110,6 +2149,42 @@ async function saveServiceParts(connection, orderId, parts, { customerId, fallba
   }
 }
 
+function normalizeTargetDeviceIds(values = [], fallbackDeviceId = null) {
+  const rawValues = Array.isArray(values) ? values : []
+  const ids = rawValues.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+  const fallback = Number(fallbackDeviceId || 0)
+  if (fallback > 0) ids.unshift(fallback)
+  return [...new Set(ids)]
+}
+
+async function loadOrderTargetDeviceIds(connection, orderId) {
+  await ensureServiceOrderDevicesTable(connection)
+  const [rows] = await connection.execute(
+    `SELECT device_id
+     FROM service_order_devices
+     WHERE service_order_id = :orderId
+     ORDER BY created_at ASC, device_id ASC`,
+    { orderId },
+  )
+  return rows.map((row) => Number(row.device_id)).filter(Boolean)
+}
+
+async function saveOrderTargetDevices(connection, orderId, targetDeviceIds, customerId) {
+  await ensureServiceOrderDevicesTable(connection)
+  const ids = normalizeTargetDeviceIds(targetDeviceIds)
+  for (const deviceId of ids) {
+    await assertDeviceBelongsToCustomer(connection, deviceId, customerId)
+  }
+  await connection.execute('DELETE FROM service_order_devices WHERE service_order_id = :orderId', { orderId })
+  for (const deviceId of ids) {
+    await connection.execute(
+      `INSERT INTO service_order_devices (service_order_id, device_id)
+       VALUES (:orderId, :deviceId)`,
+      { orderId, deviceId },
+    )
+  }
+}
+
 function defaultPartActionType(serviceMode, serviceType, timesheetCategory = '') {
   const remoteCategory = String(timesheetCategory || '').trim()
   if (serviceMode === 'remote' && ['协调', '远程协调', '沟通协调'].includes(remoteCategory)) return 'replacement'
@@ -2255,6 +2330,7 @@ async function createSelfReport(req, res) {
     devicePn,
     deviceSerialNo,
     deviceRemark,
+    targetDeviceIds = [],
     serviceMode = 'onsite',
     serviceType = 'repair',
     serviceModules,
@@ -2428,6 +2504,10 @@ async function createSelfReport(req, res) {
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : Number(deviceId || 0) || null
+    let effectiveTargetDeviceIds = shouldManageInstallDevice ? [] : normalizeTargetDeviceIds(targetDeviceIds, effectiveDeviceId)
+    if (!shouldManageInstallDevice && !effectiveDeviceId && effectiveTargetDeviceIds.length) {
+      effectiveDeviceId = effectiveTargetDeviceIds[0]
+    }
     if (effectiveDeviceId && !shouldManageInstallDevice) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
@@ -2487,6 +2567,7 @@ async function createSelfReport(req, res) {
     }
 
     await replaceOrderEngineers(connection, orderResult.insertId, normalizeEngineerIds(engineerIds, req.user.id), req.user.id)
+    await saveOrderTargetDevices(connection, orderResult.insertId, effectiveTargetDeviceIds, effectiveCustomerId)
     const savedWorkEntries =
       effectiveServiceMode === 'office'
         ? []
@@ -2592,6 +2673,16 @@ async function loadDetailItem(orderId, user, options = {}) {
      ORDER BY sp.id ASC`,
     { id: orderId },
   )
+  await ensureServiceOrderDevicesTable()
+  const targetDevices = await query(
+    `SELECT d.id, d.customer_id, ${deviceDisplaySql('d')} AS name, d.model, d.pn, d.serial_no, d.remark,
+            d.location, d.created_at, d.updated_at
+     FROM service_order_devices sod
+     JOIN devices d ON d.id = sod.device_id
+     WHERE sod.service_order_id = :id
+     ORDER BY sod.created_at ASC, sod.device_id ASC`,
+    { id: orderId },
+  )
   const installedDevices = await query(
     `SELECT id, name, model, pn, serial_no, remark, created_at, updated_at
      FROM devices
@@ -2635,6 +2726,18 @@ async function loadDetailItem(orderId, user, options = {}) {
       remark: part.remark,
       createdAt: part.created_at,
       updatedAt: part.updated_at,
+    })),
+    targetDevices: targetDevices.map((device) => ({
+      id: device.id,
+      customerId: device.customer_id,
+      name: device.name,
+      model: device.model,
+      pn: device.pn,
+      serialNo: device.serial_no,
+      remark: device.remark,
+      location: device.location,
+      createdAt: device.created_at,
+      updatedAt: device.updated_at,
     })),
     installedDevices: installedDevices.map((device) => ({
       id: device.id,
@@ -3179,6 +3282,7 @@ async function updateSelfReport(req, res) {
     devicePn,
     deviceSerialNo,
     deviceRemark,
+    targetDeviceIds = [],
     serviceMode = order.service_mode || 'onsite',
     serviceType = order.service_type,
     serviceModules,
@@ -3215,6 +3319,7 @@ async function updateSelfReport(req, res) {
   const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
   const normalizedResult = normalizeReportResult(result)
   const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
+  const hasTargetDeviceIdsField = Object.prototype.hasOwnProperty.call(req.body || {}, 'targetDeviceIds')
   const existingSignature = await query(
     `SELECT customer_signature_file_id, customer_signature
      FROM service_reports
@@ -3430,6 +3535,15 @@ async function updateSelfReport(req, res) {
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
+    let effectiveTargetDeviceIds = []
+    if (!shouldManageInstallDevice) {
+      effectiveTargetDeviceIds = hasTargetDeviceIdsField || hasDeviceIdField
+        ? normalizeTargetDeviceIds(targetDeviceIds, effectiveDeviceId)
+        : await loadOrderTargetDeviceIds(connection, req.params.id)
+      if (!effectiveDeviceId && effectiveTargetDeviceIds.length) {
+        effectiveDeviceId = effectiveTargetDeviceIds[0]
+      }
+    }
     if (effectiveDeviceId && !shouldManageInstallDevice) {
       await assertDeviceBelongsToCustomer(connection, effectiveDeviceId, effectiveCustomerId)
     }
@@ -3486,6 +3600,7 @@ async function updateSelfReport(req, res) {
 
     const normalizedEngineerIds = normalizeEngineerIds(engineerIds, req.user.id)
     await replaceOrderEngineers(connection, req.params.id, normalizedEngineerIds, req.user.id)
+    await saveOrderTargetDevices(connection, req.params.id, effectiveTargetDeviceIds, effectiveCustomerId)
     await pruneWorkEntriesToEngineers(connection, req.params.id, normalizedEngineerIds)
 
     const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
@@ -3832,7 +3947,9 @@ async function remove(req, res) {
     await ensureServiceReportWorkEntriesTable(connection)
     await ensureSelfReportDraftsTable(connection)
     await ensureCustomerSignatureRequestsTable(connection)
+    await ensureServiceOrderDevicesTable(connection)
     await connection.execute('DELETE FROM service_report_work_entries WHERE service_order_id = :id', { id: req.params.id })
+    await connection.execute('DELETE FROM service_order_devices WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_customer_signature_requests WHERE service_order_id = :id', { id: req.params.id })
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, [req.params.id])
@@ -3884,7 +4001,9 @@ async function bulkDelete(req, res) {
   const filePathsToCleanup = await transaction(async (connection) => {
     await ensureServiceReportWorkEntriesTable(connection)
     await ensureCustomerSignatureRequestsTable(connection)
+    await ensureServiceOrderDevicesTable(connection)
     await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${found.placeholders})`, found.params)
+    await connection.execute(`DELETE FROM service_order_devices WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${found.placeholders})`, found.params)
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)

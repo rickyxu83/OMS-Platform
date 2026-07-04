@@ -1289,8 +1289,8 @@ export function ServiceOrders() {
     if (!selectedIds.length) return;
     const canUseBulkDeleteEndpoint = canBulkDeleteOrders;
     const message = canUseBulkDeleteEndpoint
-      ? `确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联。`
-      : `确认删除选中的 ${selectedIds.length} 张工单？只有未提交且符合当前角色权限的工单可以删除。`;
+      ? `确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联；如果工单新建了安装设备，且这些设备未被其他工单、部件记录或巡检计划引用，也会一起删除。`
+      : `确认删除选中的 ${selectedIds.length} 张工单？只有未提交且符合当前角色权限的工单可以删除；如果工单新建了安装设备，且这些设备未被其他记录引用，也会一起删除。`;
     if (!window.confirm(message)) return;
     setSaving(true);
     setError("");

@@ -193,6 +193,16 @@ CREATE TABLE service_order_engineers (
   CONSTRAINT fk_service_order_engineers_joined_by FOREIGN KEY (joined_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE service_order_devices (
+  service_order_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (service_order_id, device_id),
+  KEY idx_service_order_devices_device_id (device_id),
+  CONSTRAINT fk_service_order_devices_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+  CONSTRAINT fk_service_order_devices_device_id FOREIGN KEY (device_id) REFERENCES devices (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE inspection_schedules (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(160) NULL,

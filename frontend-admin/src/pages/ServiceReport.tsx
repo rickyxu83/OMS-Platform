@@ -106,6 +106,7 @@ interface ServiceOrder {
   updatedAt?: string;
   inspectionScheduleId?: string | number;
   report?: ServiceReport | null;
+  targetDevices?: DeviceOption[];
   parts?: ServicePart[];
   installedDevices?: InstalledDevice[];
   files?: OrderFile[];
@@ -306,6 +307,7 @@ interface ReportForm {
   devicePn: string;
   deviceSerialNo: string;
   deviceRemark: string;
+  targetDeviceIds: string[];
   installDeviceInputMode: InstallDeviceInputMode;
   serviceModules: ServiceModuleId[];
   serviceType: string;
@@ -499,6 +501,7 @@ function defaultForm(mode: ServiceMode = "onsite"): ReportForm {
     devicePn: "",
     deviceSerialNo: "",
     deviceRemark: "",
+    targetDeviceIds: [],
     installDeviceInputMode: "manual",
     serviceModules: [],
     serviceType: mode === "onsite" ? "repair" : "other",
@@ -1016,6 +1019,8 @@ function mergeAttachmentFiles(current: File[], incoming: File[]) {
 function payloadFromOrder(order: ServiceOrder): ReportForm {
   const mode = normalizeMode(order.serviceMode);
   const report = order.report || {};
+  const targetDeviceIds = (order.targetDevices || []).map((device) => device.id ? String(device.id) : "").filter(Boolean);
+  const effectiveTargetDeviceIds = targetDeviceIds.length ? targetDeviceIds : order.deviceId ? [String(order.deviceId)] : [];
   const workContent = report.workContent
     || (Array.isArray(report.workEntries) ? report.workEntries.map((entry) => entry.workContent || entry.work_content || "").filter(Boolean).join("\n\n") : "");
   const normalizedParts = (order.parts || []).map((part) => ({
@@ -1082,6 +1087,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     devicePn: order.devicePn || "",
     deviceSerialNo: order.deviceSerialNo || "",
     deviceRemark: order.deviceRemark || "",
+    targetDeviceIds: effectiveTargetDeviceIds,
     serviceModules: normalizeServiceModules({
       serviceMode: mode,
       serviceModules: order.serviceModules,
@@ -1149,6 +1155,9 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
     serviceModules: normalizeServiceModules(merged, mode),
     result: mode === "office" ? "" : normalizeResult(merged.result),
     customerSignatureMode: merged.customerSignatureMode === "electronic" ? "electronic" : "onsite",
+    targetDeviceIds: Array.isArray(merged.targetDeviceIds)
+      ? [...new Set(merged.targetDeviceIds.map((id) => String(id)).filter(Boolean))]
+      : merged.deviceId ? [String(merged.deviceId)] : [],
     installDeviceInputMode: mergedInstallInputMode,
     installDevices: normalizedInstallDevices,
     parts: Array.isArray(merged.parts)
@@ -1768,6 +1777,11 @@ export function ServiceReport() {
   const selectedCustomerDevices = useMemo(() => (
     form.customerId ? customerDevices : []
   ), [customerDevices, form.customerId]);
+  const selectedTargetDevices = useMemo(() => (
+    form.targetDeviceIds
+      .map((deviceId) => selectedCustomerDevices.find((device) => String(device.id) === deviceId))
+      .filter(Boolean) as DeviceOption[]
+  ), [form.targetDeviceIds, selectedCustomerDevices]);
   const matchingReportOrders = useMemo(() => (
     orders
       .filter((order) => (order.workflowStatus || order.status || "") !== "cancelled")
@@ -1875,6 +1889,7 @@ export function ServiceReport() {
       setForm((current) => ({
         ...current,
         deviceId: current.deviceId && validDeviceIds.has(current.deviceId) ? current.deviceId : "",
+        targetDeviceIds: current.targetDeviceIds.filter((deviceId) => validDeviceIds.has(deviceId)),
         installDevices: current.installDevices.map((device) => (
           device.deviceId && !validDeviceIds.has(device.deviceId)
             ? { ...device, inputMode: "manual", deviceId: "" }
@@ -2183,6 +2198,7 @@ export function ServiceReport() {
       contactPhone: preferredContact?.phone || customer.contactPhone || form.contactPhone,
       customerConfirmName: preferredContact?.name || customer.contactName || form.customerConfirmName,
       deviceId: "",
+      targetDeviceIds: [],
       parts: form.parts.map((part) => ({ ...part, deviceId: "", installDeviceDraftId: "" })),
       installDevices: isInstall ? [emptyInstallDevice()] : form.installDevices,
     });
@@ -2447,20 +2463,36 @@ export function ServiceReport() {
     return nextParts;
   }
 
-  function chooseDevice(deviceId: string) {
-    if (deviceId === "none") {
-      patchForm({ deviceId: "", deviceName: "" });
+  function setTargetDevices(deviceIds: string[]) {
+    const ids = [...new Set(deviceIds.map((id) => String(id)).filter(Boolean))];
+    const primary = ids.length
+      ? selectedCustomerDevices.find((device) => String(device.id) === ids[0])
+      : null;
+    if (!primary) {
+      patchForm({
+        deviceId: "",
+        deviceName: "",
+        deviceModel: "",
+        devicePn: "",
+        deviceSerialNo: "",
+        targetDeviceIds: [],
+        parts: form.parts.map((part) => (part.deviceId ? part : { ...part, deviceId: "" })),
+      });
       return;
     }
-    const device = selectedCustomerDevices.find((item) => String(item.id) === deviceId);
-    if (!device) {
-      patchForm({ deviceId: "", deviceName: "" });
-      return;
-    }
+    const validIds = ids.filter((id) => selectedCustomerDevices.some((device) => String(device.id) === id));
     patchForm({
-      ...targetDevicePatch(device),
-      parts: partsWithTargetDevice(deviceId),
+      ...targetDevicePatch(primary),
+      targetDeviceIds: validIds,
+      parts: partsWithTargetDevice(String(primary.id)),
     });
+  }
+
+  function toggleTargetDevice(deviceId: string, checked: boolean) {
+    const ids = checked
+      ? [...form.targetDeviceIds, deviceId]
+      : form.targetDeviceIds.filter((id) => id !== deviceId);
+    setTargetDevices(ids);
   }
 
   async function createTargetDevice() {
@@ -2506,6 +2538,7 @@ export function ServiceReport() {
       ]);
       patchForm({
         ...targetDevicePatch(newDevice),
+        targetDeviceIds: [...new Set([...form.targetDeviceIds, newDeviceId])],
         parts: partsWithTargetDevice(newDeviceId, hasReplacementModule),
       });
       toast.success(hasReplacementModule ? "目标设备已新增，并已关联到备件更换明细" : "目标设备已新增");
@@ -2847,7 +2880,7 @@ export function ServiceReport() {
   async function deleteServiceOrder(order: ServiceOrder) {
     if (!canDeleteServiceOrder(order) || deletingOrderId) return;
     const displayId = reportOrderDisplayId(order);
-    if (!window.confirm(`确认删除 ${displayId}？此操作会删除相关报告、配件、附件和草稿。`)) return;
+    if (!window.confirm(`确认删除 ${displayId}？此操作会删除相关报告、配件、附件和草稿；如果工单新建了安装设备，且这些设备未被其他工单、部件记录或巡检计划引用，也会一起删除。`)) return;
     setDeletingOrderId(order.id);
     setError("");
     try {
@@ -2979,6 +3012,10 @@ export function ServiceReport() {
     const firstInstallDeviceId = firstInstallDevice.inputMode === "existing" && firstInstallDevice.deviceId
       ? Number(firstInstallDevice.deviceId)
       : null;
+    const payloadTargetDeviceIds = isInstall
+      ? []
+      : [...new Set((form.targetDeviceIds.length ? form.targetDeviceIds : form.deviceId ? [form.deviceId] : []).map(Number).filter(Boolean))];
+    const primaryTargetDeviceId = payloadTargetDeviceIds[0] || null;
     const officeName = user?.realName || user?.username || "内勤工程师";
     const payloadCustomerName = isOffice ? (form.customerName.trim() || "敦阳科技（内勤）") : form.customerName.trim();
     const payloadContactName = form.contactName.trim() || (isOffice ? officeName : "");
@@ -2995,7 +3032,8 @@ export function ServiceReport() {
       customerMapAddress: form.customerMapAddress || null,
       contactName: payloadContactName,
       contactPhone: payloadContactPhone,
-      deviceId: isInstall ? firstInstallDeviceId : (form.deviceId ? Number(form.deviceId) : null),
+      deviceId: isInstall ? firstInstallDeviceId : primaryTargetDeviceId,
+      targetDeviceIds: payloadTargetDeviceIds,
       deviceName: isInstall ? "" : form.deviceName.trim(),
       deviceModel: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.model.trim() : "") : form.deviceModel.trim(),
       devicePn: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.pn.trim() : "") : form.devicePn.trim(),
@@ -3725,6 +3763,18 @@ export function ServiceReport() {
                 const serviceTime = reportOrderServiceTime(previewOrder);
                 const serviceTimeText = serviceTime.start === "-" && serviceTime.end === "-" ? "-" : `${serviceTime.start} 至 ${serviceTime.end}`;
                 const installedDeviceRows = previewOrder.installedDevices || [];
+                const targetDeviceRows = previewOrder.targetDevices?.length
+                  ? previewOrder.targetDevices
+                  : previewOrder.deviceName || previewOrder.deviceModel || previewOrder.deviceSerialNo
+                    ? [{
+                        id: previewOrder.deviceId,
+                        name: previewOrder.deviceName,
+                        model: previewOrder.deviceModel,
+                        pn: previewOrder.devicePn,
+                        serialNo: previewOrder.deviceSerialNo,
+                        remark: previewOrder.deviceRemark,
+                      }]
+                    : [];
                 const partRows = (previewOrder.parts || []).filter((part) => (
                   [part.deviceName, part.partName || part.part_name, part.partNo || part.part_no, part.quantity, part.unit, part.remark]
                     .some((value) => String(value || "").trim())
@@ -3772,13 +3822,6 @@ export function ServiceReport() {
                   { label: "更新时间", value: formatDateTime(previewOrder.updatedAt) },
                   { label: "提交时间", value: formatDateTime(previewOrder.submittedAt) },
                 ].filter((field) => hasPreviewValue(field.value) && field.value !== "-");
-                const deviceFields = [
-                  { label: "目标设备", value: previewOrder.deviceName },
-                  { label: "设备型号", value: previewOrder.deviceModel },
-                  { label: "料号 / PN", value: previewOrder.devicePn },
-                  { label: "序列号 / SN", value: previewOrder.deviceSerialNo },
-                  { label: "设备备注", value: previewOrder.deviceRemark, className: "md:col-span-2" },
-                ].filter((field) => hasPreviewValue(field.value));
                 const reportFields = [
                   { label: "出发时间", value: formatDateTime(previewOrder.report?.departureAt) },
                   { label: "到达/开始时间", value: formatDateTime(previewOrder.report?.actualStartAt) },
@@ -3835,13 +3878,32 @@ export function ServiceReport() {
                       </div>
                     ) : null}
 
-                    {deviceFields.length ? (
+                    {targetDeviceRows.length ? (
                       <div>
                         <div className="mb-2 text-xs text-muted-foreground">目标设备</div>
-                        <div className="grid gap-4 rounded-lg border bg-muted/20 p-3 md:grid-cols-3">
-                          {deviceFields.map((field) => (
-                            <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
-                          ))}
+                        <div className="space-y-2">
+                          {targetDeviceRows.map((device, deviceIndex) => {
+                            const fields = [
+                              { label: "设备名称", value: device.name },
+                              { label: "设备型号", value: device.model },
+                              { label: "料号 / PN", value: device.pn },
+                              { label: "序列号 / SN", value: device.serialNo },
+                              { label: "备注", value: device.remark, className: "md:col-span-2" },
+                            ].filter((field) => hasPreviewValue(field.value));
+                            return (
+                              <div key={`${device.id || "target"}-${deviceIndex}`} className="rounded-lg border bg-muted/20 p-3">
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground">{displayText(device.name || device.model || device.serialNo, `目标设备 ${deviceIndex + 1}`)}</span>
+                                  {deviceIndex === 0 ? <Badge variant="outline">主设备</Badge> : null}
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                  {fields.map((field) => (
+                                    <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : null}
@@ -4357,27 +4419,46 @@ export function ServiceReport() {
                         </Button>
                       </div>
                       <div className="grid gap-4 md:grid-cols-2">
-                        <Field label="关联已有设备">
-                          <Select value={form.deviceId || "none"} onValueChange={chooseDevice} disabled={loadingCustomerDevices}>
-                            <SelectTrigger><SelectValue placeholder="可选设备" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">
-                                {loadingCustomerDevices
-                                  ? "正在加载设备…"
-                                  : !form.customerId
-                                    ? "请先选择客户"
-                                    : selectedCustomerDevices.length
-                                      ? "不关联设备，手动填写"
-                                      : "该客户暂无设备"}
-                              </SelectItem>
-                              {selectedCustomerDevices.map((device) => (
-                                <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
+                        <Field label="关联已有设备（可多选）">
+                          <div className="max-h-56 space-y-2 overflow-auto rounded-lg border bg-background p-2">
+                            {loadingCustomerDevices ? (
+                              <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                正在加载设备…
+                              </div>
+                            ) : !form.customerId ? (
+                              <div className="px-2 py-3 text-sm text-muted-foreground">请先选择客户</div>
+                            ) : selectedCustomerDevices.length ? (
+                              selectedCustomerDevices.map((device) => {
+                                const deviceId = String(device.id);
+                                const checked = form.targetDeviceIds.includes(deviceId);
+                                return (
+                                  <label
+                                    key={device.id}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${
+                                      checked ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
+                                    }`}
+                                  >
+                                    <Checkbox
+                                      checked={checked}
+                                      onCheckedChange={(value) => toggleTargetDevice(deviceId, Boolean(value))}
+                                    />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate font-medium">{deviceSelectLabel(device)}</span>
+                                      <span className="block truncate text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+                                    </span>
+                                  </label>
+                                );
+                              })
+                            ) : (
+                              <div className="px-2 py-3 text-sm text-muted-foreground">该客户暂无设备</div>
+                            )}
+                          </div>
+                          {selectedTargetDevices.length ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {selectedTargetDevices.map((device) => (
+                                <Badge key={device.id} variant="secondary">{deviceLabel(device)}</Badge>
                               ))}
-                            </SelectContent>
-                          </Select>
-                          {form.deviceId ? (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {deviceMeta(selectedCustomerDevices.find((device) => String(device.id) === form.deviceId)) || "已关联设备"}
                             </div>
                           ) : null}
                         </Field>
