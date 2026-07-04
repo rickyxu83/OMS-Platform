@@ -1175,6 +1175,57 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
   }
 }
 
+async function loadInstallationDeviceDeletePreview(orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).map(Number).filter(Boolean))]
+  const preview = new Map()
+  if (!ids.length) return preview
+
+  await ensureServicePartsColumns()
+  await ensureServiceOrderDevicesTable()
+  const orderParams = idParams(ids, 'installPreviewOrderId')
+  const rows = await query(
+    `SELECT d.id,
+            EXISTS (
+              SELECT 1
+              FROM service_orders so
+              WHERE so.device_id = d.id
+                AND so.id NOT IN (${orderParams.placeholders})
+            ) AS used_by_other_order,
+            EXISTS (
+              SELECT 1
+              FROM service_parts sp
+              WHERE sp.device_id = d.id
+                AND sp.service_order_id NOT IN (${orderParams.placeholders})
+            ) AS used_by_other_part,
+            EXISTS (
+              SELECT 1
+              FROM service_order_devices sod
+              WHERE sod.device_id = d.id
+                AND sod.service_order_id NOT IN (${orderParams.placeholders})
+            ) AS used_by_other_target,
+            EXISTS (
+              SELECT 1
+              FROM inspection_schedules isch
+              WHERE isch.device_id = d.id
+            ) AS used_by_inspection_schedule
+     FROM devices d
+     WHERE d.installation_source_service_order_id IN (${orderParams.placeholders})`,
+    orderParams.params,
+  )
+  for (const row of rows) {
+    const reasons = []
+    if (Number(row.used_by_other_order || 0)) reasons.push('其他工单主设备')
+    if (Number(row.used_by_other_part || 0)) reasons.push('其他工单部件记录')
+    if (Number(row.used_by_other_target || 0)) reasons.push('其他工单目标设备关联')
+    if (Number(row.used_by_inspection_schedule || 0)) reasons.push('巡检计划')
+    preview.set(Number(row.id), {
+      willDelete: reasons.length === 0,
+      blockedReasons: reasons,
+    })
+  }
+  return preview
+}
+
 async function recordCustomerContact(connection, customerId, name, phone = null, engineerId = null) {
   if (!customerId || !name) return
   const normalizedPhone = normalizeCustomerContactPhone(phone)
@@ -2690,6 +2741,7 @@ async function loadDetailItem(orderId, user, options = {}) {
      ORDER BY id ASC`,
     { id: orderId },
   )
+  const installedDeviceDeletePreview = await loadInstallationDeviceDeletePreview([orderId])
   const files = await query(
     `SELECT id, owner_type, owner_id, purpose, original_name, mime_type, size, uploaded_by, created_at
      FROM files
@@ -2698,6 +2750,20 @@ async function loadDetailItem(orderId, user, options = {}) {
     { id: orderId },
   )
   const customerSignatureRequest = await latestCustomerSignatureRequest(orderId)
+  await ensureSelfReportDraftsTable()
+  await ensureCustomerSignatureRequestsTable()
+  const deletePreviewRows = await query(
+    `SELECT
+       (SELECT COUNT(*)
+        FROM self_report_drafts
+        WHERE draft_scope = 'edit'
+          AND service_order_id = :id) AS edit_draft_count,
+       (SELECT COUNT(*)
+        FROM service_order_customer_signature_requests
+        WHERE service_order_id = :id) AS customer_signature_request_count`,
+    { id: orderId },
+  )
+  const deletePreview = deletePreviewRows[0] || {}
 
   return {
     ...orderPayload(order, user),
@@ -2740,6 +2806,7 @@ async function loadDetailItem(orderId, user, options = {}) {
       updatedAt: device.updated_at,
     })),
     installedDevices: installedDevices.map((device) => ({
+      ...installedDeviceDeletePreview.get(Number(device.id)),
       id: device.id,
       name: device.name,
       model: device.model,
@@ -2760,6 +2827,10 @@ async function loadDetailItem(orderId, user, options = {}) {
       uploadedBy: file.uploaded_by,
       createdAt: file.created_at,
     })),
+    deletePreview: {
+      editDraftCount: Number(deletePreview.edit_draft_count || 0),
+      customerSignatureRequestCount: Number(deletePreview.customer_signature_request_count || 0),
+    },
   }
 }
 
