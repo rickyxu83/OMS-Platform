@@ -42,7 +42,21 @@ interface Device {
   warrantyUntil?: string;
   createdAt?: string;
   updatedAt?: string;
+  relatedServiceOrders?: DeviceRelatedServiceOrder[];
   partHistory?: DevicePartHistory[];
+}
+
+interface DeviceRelatedServiceOrder {
+  id: string | number;
+  orderNo?: string;
+  status?: string;
+  serviceMode?: string;
+  serviceType?: string;
+  relationType?: string;
+  issueDescription?: string;
+  engineerName?: string;
+  serviceAt?: string;
+  createdAt?: string;
 }
 
 interface DevicePartHistory {
@@ -364,6 +378,37 @@ function serviceTypeLabel(value?: string) {
     other: "其他事项",
   };
   return labels[value || ""] || value || "服务记录";
+}
+
+function orderStatusLabel(value?: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    pending_confirmation: "待确认",
+    awaiting_customer_signature: "待客户签署",
+    assigned: "已派发",
+    in_progress: "处理中",
+    submitted: "已提交",
+    rejected: "已退回",
+    approved: "已审核",
+    archived: "已归档",
+    cancelled: "已作废",
+  };
+  return labels[value || ""] || value || "-";
+}
+
+function orderRelationLabel(value?: string) {
+  const labels = String(value || "")
+    .split(",")
+    .map((item) => {
+      if (item === "service_order_device") return "主设备";
+      if (item === "installation_source") return "安装来源";
+      if (item === "service_part:replacement") return "备件更换";
+      if (item === "service_part:installation") return "硬件部件安装";
+      if (item.startsWith("service_part:")) return "部件记录";
+      return "";
+    })
+    .filter(Boolean);
+  return [...new Set(labels)].join(" / ") || "关联";
 }
 
 function partQuantityText(item: DevicePartHistory) {
@@ -1770,6 +1815,7 @@ export function Devices() {
             const maintenanceType = canonicalMaintenanceType(detailTarget.maintenanceType);
             const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
             const statusLabel = DEVICE_STATUS_LABELS[detailTarget.status || ""] || detailTarget.status || "在用";
+            const relatedServiceOrders = Array.isArray(detailTarget.relatedServiceOrders) ? detailTarget.relatedServiceOrders : [];
             const partHistory = Array.isArray(detailTarget.partHistory) ? detailTarget.partHistory : [];
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
@@ -1870,6 +1916,49 @@ export function Devices() {
                     <div className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 text-sm leading-6">
                       {detailTarget.remark || "-"}
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">关联工单</div>
+                        <div className="mt-1 text-xs text-muted-foreground">引用这台设备的服务单、安装来源和部件记录</div>
+                      </div>
+                      <Badge variant="secondary">{relatedServiceOrders.length} 张</Badge>
+                    </div>
+                    {relatedServiceOrders.length ? (
+                      <div className="mt-3 grid gap-3">
+                        {relatedServiceOrders.map((order) => (
+                          <div key={`${order.id}-${order.relationType || "order"}`} className="rounded-md border bg-slate-50/60 p-3">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant={order.status === "cancelled" ? "destructive" : "secondary"}>
+                                    {orderStatusLabel(order.status)}
+                                  </Badge>
+                                  <Badge variant="outline">{orderRelationLabel(order.relationType)}</Badge>
+                                  <span className="font-medium text-slate-900">{order.orderNo || `工单 #${order.id}`}</span>
+                                </div>
+                                <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                                  {serviceTypeLabel(order.serviceType)}
+                                  {order.serviceAt || order.createdAt ? ` · ${formatDate(order.serviceAt || order.createdAt)}` : ""}
+                                  {order.engineerName ? ` · ${order.engineerName}` : ""}
+                                </div>
+                                {order.issueDescription ? (
+                                  <div className="mt-2 rounded bg-white/80 px-3 py-2 text-sm leading-6 text-slate-700">
+                                    {compactText(order.issueDescription)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                        暂无关联工单
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-lg border p-4">

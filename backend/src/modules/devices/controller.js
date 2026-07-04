@@ -777,6 +777,94 @@ function devicePayload(row) {
   }
 }
 
+async function loadRelatedServiceOrders(deviceId) {
+  await ensureDevicePartHistoryColumns()
+  const rows = await query(
+    `SELECT related.*
+     FROM (
+       SELECT so.id, so.order_no, so.status, so.service_mode, so.service_type, so.issue_description,
+              so.submitted_at, so.created_at, u.real_name AS engineer_name, u.username AS engineer_username,
+              'service_order_device' AS relation_type
+       FROM service_orders so
+       LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       WHERE so.device_id = :deviceId
+
+       UNION
+
+       SELECT so.id, so.order_no, so.status, so.service_mode, so.service_type, so.issue_description,
+              so.submitted_at, so.created_at, u.real_name AS engineer_name, u.username AS engineer_username,
+              'installation_source' AS relation_type
+       FROM devices d
+       JOIN service_orders so ON so.id = d.installation_source_service_order_id
+       LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       WHERE d.id = :deviceId
+
+       UNION
+
+       SELECT so.id, so.order_no, so.status, so.service_mode, so.service_type, so.issue_description,
+              so.submitted_at, so.created_at, u.real_name AS engineer_name, u.username AS engineer_username,
+              CONCAT('service_part:', COALESCE(sp.action_type, 'general')) AS relation_type
+       FROM service_parts sp
+       JOIN service_orders so ON so.id = sp.service_order_id
+       LEFT JOIN users u ON u.id = so.assigned_engineer_id
+       WHERE sp.device_id = :deviceId
+     ) related
+     ORDER BY COALESCE(related.submitted_at, related.created_at) DESC, related.id DESC
+     LIMIT 100`,
+    { deviceId },
+  )
+  const items = []
+  const byId = new Map()
+  for (const row of rows) {
+    const key = String(row.id)
+    const relationType = String(row.relation_type || '').trim()
+    const existing = byId.get(key)
+    if (existing) {
+      const relationTypes = new Set(String(existing.relationType || '').split(',').filter(Boolean))
+      if (relationType) relationTypes.add(relationType)
+      existing.relationType = [...relationTypes].join(',')
+      continue
+    }
+    const item = {
+      id: row.id,
+      orderNo: row.order_no,
+      status: row.status,
+      serviceMode: row.service_mode,
+      serviceType: row.service_type,
+      relationType,
+      issueDescription: row.issue_description,
+      engineerName: row.engineer_name || row.engineer_username,
+      serviceAt: row.submitted_at || row.created_at,
+      createdAt: row.created_at,
+    }
+    byId.set(key, item)
+    items.push(item)
+  }
+  return items
+}
+
+async function duplicateSerialNoMessage(deviceId, serialNo) {
+  const rows = await query(
+    `SELECT d.id, d.model, d.serial_no, c.name AS customer_name
+     FROM devices d
+     LEFT JOIN customers c ON c.id = d.customer_id
+     WHERE d.id = :deviceId
+     LIMIT 1`,
+    { deviceId },
+  )
+  const device = rows[0]
+  if (!device) return 'SN 已存在'
+  const relatedOrders = await loadRelatedServiceOrders(deviceId)
+  const orderText = relatedOrders
+    .slice(0, 5)
+    .map((order) => order.orderNo || `#${order.id}`)
+    .join('、')
+  const deviceText = `设备 #${device.id}${device.customer_name ? `（${device.customer_name}）` : ''}`
+  return orderText
+    ? `SN ${serialNo} 已存在，当前属于${deviceText}，关联工单：${orderText}`
+    : `SN ${serialNo} 已存在，当前属于${deviceText}`
+}
+
 async function list(req, res) {
   await ensureDeviceIdentityColumns()
   const { customerId = null } = req.query
@@ -846,7 +934,7 @@ async function create(req, res) {
   await ensureMaintenancePartyExists(normalizedMaintenancePartyId)
   const existingDevice = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: normalizedSerialNo })
   if (existingDevice[0]) {
-    throw badRequest('SN 已存在')
+    throw badRequest(await duplicateSerialNoMessage(existingDevice[0].id, normalizedSerialNo))
   }
   const catalogMatch = await findCatalogMatch(normalizedModel)
   const modelNormalizationResult = catalogMatch
@@ -1138,6 +1226,7 @@ async function detail(req, res) {
   res.json({
     item: {
       ...devicePayload(rows[0]),
+      relatedServiceOrders: await loadRelatedServiceOrders(req.params.id),
       partHistory: partRows.map((part) => ({
         id: part.id,
         serviceOrderId: part.service_order_id,
@@ -1301,7 +1390,7 @@ async function update(req, res) {
     { id: req.params.id, serialNo: normalizedSerialNo },
   )
   if (duplicateSerialNo[0]) {
-    throw badRequest('SN 已存在')
+    throw badRequest(await duplicateSerialNoMessage(duplicateSerialNo[0].id, normalizedSerialNo))
   }
 
   await query(
