@@ -594,6 +594,56 @@ function displayServiceParts(parts?: ServicePart[]) {
     .join("\n");
 }
 
+function installedDeviceLabel(device: InstalledDevice | DeviceOption) {
+  return [
+    device.model || device.name || (device.id ? `设备 #${device.id}` : "未命名设备"),
+    device.serialNo ? `SN ${device.serialNo}` : "",
+    "pn" in device && device.pn ? `PN ${device.pn}` : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function fileDeleteLabel(file: OrderFile) {
+  return `${file.originalName || `附件 #${file.id}`}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
+}
+
+function buildDeleteConfirmationMessage(orders: ServiceOrder[]) {
+  const lines = orders.map((order) => {
+    const details: string[] = [];
+    const installedDevices = order.installedDevices || [];
+    const targetDevices = ((order as ServiceOrder & { targetDevices?: DeviceOption[] }).targetDevices || []);
+    const parts = order.parts || [];
+    const files = order.files || [];
+    if (order.report) details.push("服务记录 1 份");
+    if (parts.length) {
+      details.push(`部件记录 ${parts.length} 条：${parts.slice(0, 3).map((part) => `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}`).join("、")}${parts.length > 3 ? "…" : ""}`);
+    }
+    if (files.length) details.push(`附件 ${files.length} 个：${files.slice(0, 3).map(fileDeleteLabel).join("、")}${files.length > 3 ? "…" : ""}`);
+    if (targetDevices.length) {
+      details.push(`目标设备关联 ${targetDevices.length} 台：${targetDevices.slice(0, 3).map(installedDeviceLabel).join("、")}${targetDevices.length > 3 ? "…" : ""}（仅解除关联，不删除设备）`);
+    }
+    if (installedDevices.length) {
+      details.push(`随工单删除的新安装设备 ${installedDevices.length} 台：${installedDevices.slice(0, 3).map(installedDeviceLabel).join("、")}${installedDevices.length > 3 ? "…" : ""}`);
+    }
+    details.push("编辑草稿（如存在）");
+    return `- ${displayId(order)}\n  ${details.join("\n  ")}`;
+  });
+  return [
+    `确认删除 ${orders.length} 张工单？以下内容会被删除或解除关联：`,
+    "",
+    ...lines,
+    "",
+    "其中“新安装设备”只有在未被其他工单、部件记录或巡检计划引用时才会一起删除。",
+  ].join("\n");
+}
+
+async function loadDeleteConfirmationOrders(ids: Array<string | number>) {
+  const details = await Promise.all(ids.map(async (id) => {
+    const data = await api.get(`/service-orders/${id}`);
+    return (data?.item || data) as ServiceOrder;
+  }));
+  return details.filter(Boolean);
+}
+
 function filePurposeLabel(value?: string) {
   if (value === "inspection_document") return "巡检文档";
   if (value === "support_config") return "配置与支持文件";
@@ -1287,14 +1337,15 @@ export function ServiceOrders() {
 
   async function bulkDeleteOrders() {
     if (!selectedIds.length) return;
-    const canUseBulkDeleteEndpoint = canBulkDeleteOrders;
-    const message = canUseBulkDeleteEndpoint
-      ? `确认删除选中的 ${selectedIds.length} 张工单？此操作会删除相关报告、附件和工程师关联；如果工单新建了安装设备，且这些设备未被其他工单、部件记录或巡检计划引用，也会一起删除。`
-      : `确认删除选中的 ${selectedIds.length} 张工单？只有未提交且符合当前角色权限的工单可以删除；如果工单新建了安装设备，且这些设备未被其他记录引用，也会一起删除。`;
-    if (!window.confirm(message)) return;
     setSaving(true);
     setError("");
     try {
+      const canUseBulkDeleteEndpoint = canBulkDeleteOrders;
+      const confirmationOrders = await loadDeleteConfirmationOrders(selectedIds);
+      const message = confirmationOrders.length
+        ? buildDeleteConfirmationMessage(confirmationOrders)
+        : `确认删除选中的 ${selectedIds.length} 张工单？`;
+      if (!window.confirm(message)) return;
       if (canUseBulkDeleteEndpoint) {
         await api.post("/service-orders/bulk-delete", { ids: selectedIds });
       } else {

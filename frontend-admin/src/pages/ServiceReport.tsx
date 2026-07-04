@@ -625,6 +625,51 @@ function deviceMatchesKeyword(device: DeviceOption, keyword: string) {
   return terms.every((term) => haystack.includes(term));
 }
 
+function deletePreviewDeviceLabel(device: InstalledDevice | DeviceOption) {
+  return [
+    device.model || device.name || (device.id ? `设备 #${device.id}` : "未命名设备"),
+    device.serialNo ? `SN ${device.serialNo}` : "",
+    "pn" in device && device.pn ? `PN ${device.pn}` : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function deletePreviewFileLabel(file: OrderFile) {
+  return `${file.originalName || `附件 #${file.id}`}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
+}
+
+function deletePreviewPartActionLabel(value?: string) {
+  if (value === "replacement") return "备件更换";
+  if (value === "installation") return "硬件部件安装";
+  return "部件记录";
+}
+
+function buildDeleteConfirmationMessage(order: ServiceOrder) {
+  const details: string[] = [];
+  const installedDevices = order.installedDevices || [];
+  const targetDevices = order.targetDevices || [];
+  const parts = order.parts || [];
+  const files = order.files || [];
+  if (order.report) details.push("服务记录 1 份");
+  if (parts.length) {
+    details.push(`部件记录 ${parts.length} 条：${parts.slice(0, 3).map((part) => `${deletePreviewPartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}`).join("、")}${parts.length > 3 ? "…" : ""}`);
+  }
+  if (files.length) details.push(`附件 ${files.length} 个：${files.slice(0, 3).map(deletePreviewFileLabel).join("、")}${files.length > 3 ? "…" : ""}`);
+  if (targetDevices.length) {
+    details.push(`目标设备关联 ${targetDevices.length} 台：${targetDevices.slice(0, 3).map(deletePreviewDeviceLabel).join("、")}${targetDevices.length > 3 ? "…" : ""}（仅解除关联，不删除设备）`);
+  }
+  if (installedDevices.length) {
+    details.push(`随工单删除的新安装设备 ${installedDevices.length} 台：${installedDevices.slice(0, 3).map(deletePreviewDeviceLabel).join("、")}${installedDevices.length > 3 ? "…" : ""}`);
+  }
+  details.push("编辑草稿（如存在）");
+  return [
+    `确认删除 ${reportOrderDisplayId(order)}？以下内容会被删除或解除关联：`,
+    "",
+    ...details.map((item) => `- ${item}`),
+    "",
+    "其中“新安装设备”只有在未被其他工单、部件记录或巡检计划引用时才会一起删除。",
+  ].join("\n");
+}
+
 function formatFileSize(value?: number) {
   const size = Number(value || 0);
   if (!size) return "-";
@@ -2908,11 +2953,12 @@ export function ServiceReport() {
 
   async function deleteServiceOrder(order: ServiceOrder) {
     if (!canDeleteServiceOrder(order) || deletingOrderId) return;
-    const displayId = reportOrderDisplayId(order);
-    if (!window.confirm(`确认删除 ${displayId}？此操作会删除相关报告、配件、附件和草稿；如果工单新建了安装设备，且这些设备未被其他工单、部件记录或巡检计划引用，也会一起删除。`)) return;
     setDeletingOrderId(order.id);
     setError("");
     try {
+      const data = await api.get(`/service-orders/${order.id}?mine=1`);
+      const detailOrder = (data?.item || data || order) as ServiceOrder;
+      if (!window.confirm(buildDeleteConfirmationMessage(detailOrder))) return;
       await api.delete(`/service-orders/${order.id}?mine=1`);
       setOrders((current) => current.filter((item) => String(item.id) !== String(order.id)));
       setPreviewOrder((current) => (current && String(current.id) === String(order.id) ? null : current));
