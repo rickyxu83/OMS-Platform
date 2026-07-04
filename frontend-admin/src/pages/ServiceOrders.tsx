@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
+import { RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -624,42 +624,168 @@ function fileDeleteLabel(file: OrderFile) {
   return `${file.originalName || `附件 #${file.id}`}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
 }
 
-function buildDeleteConfirmationMessage(orders: ServiceOrder[]) {
-  const lines = orders.map((order) => {
-    const details: string[] = [];
-    const installedDevices = order.installedDevices || [];
-    const targetDevices = ((order as ServiceOrder & { targetDevices?: DeviceOption[] }).targetDevices || []);
-    const parts = order.parts || [];
-    const files = order.files || [];
-    if (order.report) details.push("服务记录 1 份");
-    if (parts.length) {
-      details.push(`部件记录 ${parts.length} 条：${parts.slice(0, 3).map((part) => `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}`).join("、")}${parts.length > 3 ? "…" : ""}`);
-    }
-    if (files.length) details.push(`附件 ${files.length} 个：${files.slice(0, 3).map(fileDeleteLabel).join("、")}${files.length > 3 ? "…" : ""}`);
-    if (targetDevices.length) {
-      details.push(`目标设备关联 ${targetDevices.length} 台：${targetDevices.slice(0, 3).map(installedDeviceLabel).join("、")}${targetDevices.length > 3 ? "…" : ""}（仅解除关联，不删除设备）`);
-    }
-    if (installedDevices.length) {
-      details.push(`随工单删除的新安装设备 ${installedDevices.length} 台：${installedDevices.slice(0, 3).map(installedDeviceLabel).join("、")}${installedDevices.length > 3 ? "…" : ""}`);
-    }
-    details.push("编辑草稿（如存在）");
-    return `- ${displayId(order)}\n  ${details.join("\n  ")}`;
-  });
-  return [
-    `确认删除 ${orders.length} 张工单？以下内容会被删除或解除关联：`,
-    "",
-    ...lines,
-    "",
-    "其中“新安装设备”只有在未被其他工单、部件记录或巡检计划引用时才会一起删除。",
-  ].join("\n");
-}
-
 async function loadDeleteConfirmationOrders(ids: Array<string | number>) {
   const details = await Promise.all(ids.map(async (id) => {
     const data = await api.get(`/service-orders/${id}`);
     return (data?.item || data) as ServiceOrder;
   }));
   return details.filter(Boolean);
+}
+
+function signatureRequestStatusLabel(value?: string) {
+  const labels: Record<string, string> = {
+    created: "已创建",
+    sent: "已发送",
+    signed: "已签署",
+    revoked: "已撤销",
+    expired: "已过期",
+  };
+  return labels[value || ""] || value || "未知状态";
+}
+
+function engineerDeleteLabel(engineer: NonNullable<ServiceOrder["engineers"]>[number]) {
+  return engineer.realName || engineer.name || engineer.username || (engineer.id ? `工程师 #${engineer.id}` : "未命名工程师");
+}
+
+function installedDeviceDeleteLabel(device: InstalledDevice) {
+  const label = installedDeviceLabel(device);
+  if (device.willDelete === false) {
+    const reasons = Array.isArray(device.blockedReasons) && device.blockedReasons.length
+      ? `仍关联：${device.blockedReasons.join("、")}`
+      : "仍有关联数据";
+    return `${label}（保留，${reasons}）`;
+  }
+  if (device.willDelete === true) return `${label}（将删除）`;
+  return `${label}（删除时再次检查是否有关联）`;
+}
+
+function orderDeleteImpactSections(order: ServiceOrder) {
+  const sections: Array<{ key: string; title: string; count: number; description?: string; items: string[] }> = [];
+  const reportItems = [
+    order.report ? "服务记录正文、处理结果、客户确认信息" : "",
+    ...(order.report?.workEntries || []).map((entry) => `${entry.engineerName || entry.engineer_name || entry.engineerUsername || entry.engineer_username || "工程师"}：${compactText(entry.workContent || entry.work_content, "工时明细")}`),
+  ].filter(Boolean);
+  if (reportItems.length) {
+    sections.push({ key: "report", title: "服务记录", count: reportItems.length, items: reportItems });
+  }
+  const parts = order.parts || [];
+  if (parts.length) {
+    sections.push({
+      key: "parts",
+      title: "备件与硬件部件记录",
+      count: parts.length,
+      items: parts.map((part) => `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}${part.deviceName || part.device_name ? `（设备：${part.deviceName || part.device_name}）` : ""}`),
+    });
+  }
+  const files = order.files || [];
+  if (files.length) {
+    sections.push({ key: "files", title: "附件文件", count: files.length, items: files.map(fileDeleteLabel) });
+  }
+  const targetDevices = order.targetDevices || [];
+  if (targetDevices.length) {
+    sections.push({
+      key: "target-devices",
+      title: "目标设备关联",
+      count: targetDevices.length,
+      description: "只解除工单与设备的关联，不删除这些既有设备。",
+      items: targetDevices.map(installedDeviceLabel),
+    });
+  }
+  const installedDevices = order.installedDevices || [];
+  if (installedDevices.length) {
+    sections.push({
+      key: "installed-devices",
+      title: "安装来源设备",
+      count: installedDevices.length,
+      description: "没有被其他工单、部件记录或巡检计划引用的安装设备会随工单删除；仍被引用的设备会保留。",
+      items: installedDevices.map(installedDeviceDeleteLabel),
+    });
+  }
+  const engineers = order.engineers || [];
+  if (engineers.length) {
+    sections.push({ key: "engineers", title: "派单工程师关联", count: engineers.length, items: engineers.map(engineerDeleteLabel) });
+  }
+  const signatureRequestCount = Number(order.deletePreview?.customerSignatureRequestCount || 0);
+  if (signatureRequestCount > 0) {
+    const latest = order.customerSignatureRequest;
+    sections.push({
+      key: "signature-requests",
+      title: "客户签署请求",
+      count: signatureRequestCount,
+      items: latest
+        ? [`最新请求：${latest.recipientEmail || "未填写邮箱"} / ${signatureRequestStatusLabel(latest.status)}${latest.createdAt ? ` / ${formatDateTime(latest.createdAt)}` : ""}`]
+        : [`客户签署请求 ${signatureRequestCount} 条`],
+    });
+  }
+  const editDraftCount = Number(order.deletePreview?.editDraftCount || 0);
+  if (editDraftCount > 0) {
+    sections.push({ key: "drafts", title: "工程师编辑草稿", count: editDraftCount, items: [`编辑草稿 ${editDraftCount} 份`] });
+  }
+  if (!sections.length) {
+    sections.push({ key: "order", title: "工单主体", count: 1, items: ["仅删除工单主体记录"] });
+  }
+  return sections;
+}
+
+function orderDeleteImpactSummary(orders: ServiceOrder[]) {
+  const summary = {
+    reports: 0,
+    parts: 0,
+    files: 0,
+    targetDevices: 0,
+    installedDevicesToDelete: 0,
+    installedDevicesToKeep: 0,
+    drafts: 0,
+    signatureRequests: 0,
+  };
+  for (const order of orders) {
+    if (order.report) summary.reports += 1;
+    summary.parts += order.parts?.length || 0;
+    summary.files += order.files?.length || 0;
+    summary.targetDevices += order.targetDevices?.length || 0;
+    for (const device of order.installedDevices || []) {
+      if (device.willDelete === false) summary.installedDevicesToKeep += 1;
+      else summary.installedDevicesToDelete += 1;
+    }
+    summary.drafts += Number(order.deletePreview?.editDraftCount || 0);
+    summary.signatureRequests += Number(order.deletePreview?.customerSignatureRequestCount || 0);
+  }
+  return summary;
+}
+
+function buildDeleteConfirmationMessage(orders: ServiceOrder[]) {
+  const summary = orderDeleteImpactSummary(orders);
+  const lines = [
+    `确认删除 ${orders.length} 张工单？`,
+    "",
+    "将同时处理：",
+  ];
+  const impactLines = [
+    summary.reports ? `服务记录 ${summary.reports} 份` : "",
+    summary.parts ? `备件与硬件部件记录 ${summary.parts} 条` : "",
+    summary.files ? `附件文件 ${summary.files} 个` : "",
+    summary.targetDevices ? `目标设备关联 ${summary.targetDevices} 条（只解除关联，不删除既有设备）` : "",
+    summary.installedDevicesToDelete ? `安装来源设备 ${summary.installedDevicesToDelete} 台（无其他关联时随工单删除）` : "",
+    summary.installedDevicesToKeep ? `保留安装来源设备 ${summary.installedDevicesToKeep} 台（仍有关联）` : "",
+    summary.signatureRequests ? `客户签署请求 ${summary.signatureRequests} 条` : "",
+    summary.drafts ? `工程师编辑草稿 ${summary.drafts} 份` : "",
+  ].filter(Boolean);
+  if (impactLines.length) {
+    lines.push(...impactLines.map((line) => `- ${line}`));
+  } else {
+    lines.push("- 仅删除工单主体记录");
+  }
+  if (orders.length <= 3) {
+    lines.push("");
+    lines.push("工单：");
+    for (const order of orders) {
+      const sections = orderDeleteImpactSections(order);
+      lines.push(`- ${order.orderNo || `工单 #${order.id}`}: ${sections.map((section) => `${section.title} ${section.count}`).join("；")}`);
+    }
+  }
+  lines.push("");
+  lines.push("此操作不可恢复。");
+  return lines.join("\n");
 }
 
 function filePurposeLabel(value?: string) {
@@ -774,6 +900,10 @@ export function ServiceOrders() {
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
   const [selectedIds, setSelectedIds] = useState<Array<string | number>>([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePreviewOrders, setDeletePreviewOrders] = useState<ServiceOrder[]>([]);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
+  const [deletePreviewError, setDeletePreviewError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createFiles, setCreateFiles] = useState<File[]>([]);
   const [createForm, setCreateForm] = useState({
@@ -1355,15 +1485,38 @@ export function ServiceOrders() {
 
   async function bulkDeleteOrders() {
     if (!selectedIds.length) return;
+    setError("");
+    setDeletePreviewError("");
+    setDeletePreviewOrders([]);
+    setDeleteOpen(true);
+    setDeletePreviewLoading(true);
+    try {
+      const confirmationOrders = await loadDeleteConfirmationOrders(selectedIds);
+      setDeletePreviewOrders(confirmationOrders);
+      if (!confirmationOrders.length) {
+        setDeletePreviewError("未能加载所选工单的删除影响明细");
+      }
+    } catch (e) {
+      setDeletePreviewError(e instanceof Error ? e.message : "删除影响明细加载失败");
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (saving) return;
+    setDeleteOpen(false);
+    setDeletePreviewOrders([]);
+    setDeletePreviewError("");
+  }
+
+  async function confirmDeleteOrders() {
+    if (!selectedIds.length || deletePreviewLoading || deletePreviewError) return;
     setSaving(true);
     setError("");
+    setDeletePreviewError("");
     try {
       const canUseBulkDeleteEndpoint = canBulkDeleteOrders;
-      const confirmationOrders = await loadDeleteConfirmationOrders(selectedIds);
-      const message = confirmationOrders.length
-        ? buildDeleteConfirmationMessage(confirmationOrders)
-        : `确认删除选中的 ${selectedIds.length} 张工单？`;
-      if (!window.confirm(message)) return;
       if (canUseBulkDeleteEndpoint) {
         await api.post("/service-orders/bulk-delete", { ids: selectedIds });
       } else {
@@ -1372,9 +1525,13 @@ export function ServiceOrders() {
         }
       }
       setSelectedIds([]);
+      setDeleteOpen(false);
+      setDeletePreviewOrders([]);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "批量删除失败");
+      const message = e instanceof Error ? e.message : "批量删除失败";
+      setDeletePreviewError(message);
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -2202,6 +2359,106 @@ export function ServiceOrders() {
             <Button onClick={assignOrderToEngineer} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               {saving ? "派单中…" : "确认派单"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              删除工单
+            </DialogTitle>
+            <DialogDescription>
+              删除后工单主体及下列关联内容不可恢复；目标设备只会解除关联，安装来源设备会按下方预览处理。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-700">
+              请确认这些工单及关联内容都不再需要。删除操作会写入审计日志。
+            </div>
+            {deletePreviewLoading ? (
+              <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
+                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                正在加载删除影响明细…
+              </div>
+            ) : deletePreviewError ? (
+              <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-600">
+                {deletePreviewError}
+              </div>
+            ) : deletePreviewOrders.length ? (() => {
+              const summary = orderDeleteImpactSummary(deletePreviewOrders);
+              const summaryItems = [
+                ["服务记录", summary.reports],
+                ["部件记录", summary.parts],
+                ["附件", summary.files],
+                ["目标设备关联", summary.targetDevices],
+                ["将删除安装设备", summary.installedDevicesToDelete],
+                ["保留安装设备", summary.installedDevicesToKeep],
+                ["签署请求", summary.signatureRequests],
+                ["编辑草稿", summary.drafts],
+              ] as const;
+              return (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {summaryItems.map(([label, count]) => (
+                      <div key={label} className="rounded-md border bg-white px-3 py-2">
+                        <div className="text-xs text-muted-foreground">{label}</div>
+                        <div className="text-base font-semibold text-slate-900">{count}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-3">
+                    {deletePreviewOrders.map((order) => {
+                      const sections = orderDeleteImpactSections(order);
+                      return (
+                        <details key={`delete-preview-${order.id}`} className="rounded-lg border bg-white" open={deletePreviewOrders.length === 1}>
+                          <summary className="cursor-pointer px-3 py-2 font-medium">
+                            {displayId(order)} · {textValue(order.customerName)}
+                          </summary>
+                          <div className="space-y-3 px-3 pb-3">
+                            {sections.map((section) => (
+                              <div key={`${order.id}-${section.key}`} className="rounded-md bg-slate-50 px-3 py-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="font-medium text-slate-900">{section.title}</div>
+                                  <Badge variant="secondary">{section.count}</Badge>
+                                </div>
+                                {section.description ? (
+                                  <div className="mt-1 text-xs text-muted-foreground">{section.description}</div>
+                                ) : null}
+                                <div className="mt-2 space-y-1.5">
+                                  {section.items.map((item, index) => (
+                                    <div key={`${section.key}-${index}`} className="rounded bg-white px-2 py-1.5 text-xs leading-5 text-slate-700">
+                                      {item}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
+                未加载到删除影响明细。
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={saving}>取消</Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteOrders}
+              disabled={saving || deletePreviewLoading || Boolean(deletePreviewError) || !deletePreviewOrders.length}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {saving ? "删除中…" : `确认删除 ${deletePreviewOrders.length || selectedIds.length} 张工单`}
             </Button>
           </DialogFooter>
         </DialogContent>
