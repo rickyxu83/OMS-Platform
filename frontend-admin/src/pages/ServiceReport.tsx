@@ -4462,40 +4462,40 @@ export function ServiceReport() {
                               />
                             </div>
                             <div className="max-h-48 space-y-2 overflow-auto">
-                            {loadingCustomerDevices ? (
-                              <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                正在加载设备…
-                              </div>
-                            ) : !form.customerId ? (
-                              <div className="px-2 py-3 text-sm text-muted-foreground">请先选择客户</div>
-                            ) : filteredTargetDeviceOptions.length ? (
-                              filteredTargetDeviceOptions.map((device) => {
-                                const deviceId = String(device.id);
-                                const checked = form.targetDeviceIds.includes(deviceId);
-                                return (
-                                  <label
-                                    key={device.id}
-                                    className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${
-                                      checked ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
-                                    }`}
-                                  >
-                                    <Checkbox
-                                      checked={checked}
-                                      onCheckedChange={(value) => toggleTargetDevice(deviceId, Boolean(value))}
-                                    />
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate font-medium">{deviceSelectLabel(device)}</span>
-                                      <span className="block truncate text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
-                                    </span>
-                                  </label>
-                                );
-                              })
-                            ) : selectedCustomerDevices.length ? (
-                              <div className="px-2 py-3 text-sm text-muted-foreground">没有匹配的已有设备</div>
-                            ) : (
-                              <div className="px-2 py-3 text-sm text-muted-foreground">该客户暂无设备</div>
-                            )}
+                              {loadingCustomerDevices ? (
+                                <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  正在加载设备…
+                                </div>
+                              ) : !form.customerId ? (
+                                <div className="px-2 py-3 text-sm text-muted-foreground">请先选择客户</div>
+                              ) : filteredTargetDeviceOptions.length ? (
+                                filteredTargetDeviceOptions.map((device) => {
+                                  const deviceId = String(device.id);
+                                  const checked = form.targetDeviceIds.includes(deviceId);
+                                  return (
+                                    <label
+                                      key={device.id}
+                                      className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${
+                                        checked ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        checked={checked}
+                                        onCheckedChange={(value) => toggleTargetDevice(deviceId, Boolean(value))}
+                                      />
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium">{deviceSelectLabel(device)}</span>
+                                        <span className="block truncate text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+                                      </span>
+                                    </label>
+                                  );
+                                })
+                              ) : selectedCustomerDevices.length ? (
+                                <div className="px-2 py-3 text-sm text-muted-foreground">没有匹配的已有设备</div>
+                              ) : (
+                                <div className="px-2 py-3 text-sm text-muted-foreground">该客户暂无设备</div>
+                              )}
                             </div>
                           </div>
                           {selectedTargetDevices.length ? (
