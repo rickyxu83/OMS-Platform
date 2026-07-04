@@ -4106,8 +4106,12 @@ async function remove(req, res) {
   if (req.user.role === 'assistant' && order.status !== 'draft') {
     throw badRequest('助理只能删除未派发的草稿工单')
   }
-  if (!['draft', 'assigned', 'rejected'].includes(order.status)) {
-    throw badRequest('仅未提交的草稿服务单可以删除')
+  const canDeleteCancelledOrder = req.user.role === 'admin' && order.status === 'cancelled'
+  if (!['draft', 'assigned', 'rejected'].includes(order.status) && !canDeleteCancelledOrder) {
+    if (order.status === 'cancelled') {
+      throw badRequest('已作废工单仅管理员可以删除')
+    }
+    throw badRequest('仅未提交、已派发或已退回的服务单可以删除')
   }
   if (engineerScopedRoles.has(req.user.role)) {
     await assertEngineerOwns(order, req.user)
