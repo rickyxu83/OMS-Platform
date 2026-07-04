@@ -2712,6 +2712,9 @@ export function ServiceReport() {
   function targetDeviceOptions(device: TargetDeviceDraft) {
     const keyword = device.inputMode === "existing" ? "" : device.model;
     return selectedCustomerDevices
+      .filter((item) => !form.targetDevices.some((targetDevice) => (
+        targetDevice.id !== device.id && targetDevice.deviceId === String(item.id)
+      )))
       .filter((item) => deviceMatchesKeyword(item, keyword))
       .slice(0, 8);
   }
@@ -3499,7 +3502,7 @@ export function ServiceReport() {
       parts: activeParts().map((part) => {
         const actionType = part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory);
         return {
-          deviceId: part.deviceId ? Number(part.deviceId) : (isInstall ? null : (form.deviceId ? Number(form.deviceId) : null)),
+          deviceId: part.deviceId ? Number(part.deviceId) : (isInstall ? null : primaryTargetDeviceId),
           installDeviceDraftId: part.installDeviceDraftId || null,
           actionType,
           partName: part.partName.trim(),
@@ -4863,107 +4866,166 @@ export function ServiceReport() {
                   </div>
                   {showTargetDeviceFields ? (
                     <div className="space-y-3 rounded-lg border p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "目标设备"}</div>
-                          <div className="text-xs text-muted-foreground">用于故障排除、配置修改及备件更换处理；选择已有设备时直接关联，手动填写时可新增到设备档案。</div>
+                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "维护设备"}</div>
+                          <div className="text-xs text-muted-foreground">选择客户已有设备会直接关联；不在列表内的设备可手动填写型号和序列号，提交时自动加入设备档案。</div>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={createTargetDevice} disabled={savingTargetDevice || Boolean(form.deviceId)}>
-                          {savingTargetDevice ? <Loader2 className="h-4 w-4 animate-spin" /> : form.deviceId ? <CheckCircle className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                          {form.deviceId ? "已关联已有设备" : "新增到设备档案"}
+                        <Button type="button" variant="outline" size="sm" onClick={addTargetDeviceRow}>
+                          <Plus className="h-4 w-4" />
+                          增加维护设备
                         </Button>
                       </div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <Field label="关联已有设备（可多选）">
-                          <div className="rounded-lg border bg-background p-2">
-                            {selectedTargetDevices.length ? (
-                              <div className="mb-2 rounded-md border bg-muted/30 p-2">
-                                <div className="mb-1.5 text-xs font-medium text-muted-foreground">已关联 {selectedTargetDevices.length} 台设备</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {selectedTargetDevices.map((device) => (
-                                    <Badge key={device.id} variant="secondary" className="gap-1 pr-1">
-                                      <span className="max-w-[180px] truncate">{deviceLabel(device)}</span>
-                                      <button
-                                        type="button"
-                                        className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                                        onClick={() => removeTargetDevice(String(device.id))}
-                                        aria-label={`移除${deviceLabel(device)}`}
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    </Badge>
-                                  ))}
+                      <div className="space-y-3">
+                        {targetDeviceRows.map((targetDevice, deviceIndex) => {
+                          const selectedDevice = targetDevice.deviceId
+                            ? selectedCustomerDevices.find((device) => String(device.id) === targetDevice.deviceId) || null
+                            : null;
+                          const options = targetDeviceOptions(targetDevice);
+                          const showModelSuggestions = installModelSuggestionDeviceId === targetDevice.id;
+                          const modelSuggestions = showModelSuggestions ? installModelSuggestions : [];
+                          const modelLoading = showModelSuggestions ? installModelLoading : false;
+                          return (
+                            <div key={targetDevice.id} className="space-y-3 rounded-lg border bg-muted/10 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="text-sm font-medium">{targetDeviceTitle(targetDevice, deviceIndex)}</span>
+                                  {targetDevice.inputMode === "existing" ? <Badge variant="secondary">已有设备</Badge> : <Badge variant="outline">新设备</Badge>}
                                 </div>
+                                {targetDeviceRows.length > 1 ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() => removeTargetDeviceRow(targetDevice.id)}
+                                  >
+                                    <X className="h-4 w-4" />
+                                    删除设备
+                                  </Button>
+                                ) : null}
                               </div>
-                            ) : null}
-                            <div className="relative mb-2">
-                              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                inputMode="search"
-                                className="h-9 pl-9"
-                                value={targetDeviceSearch}
-                                placeholder="按型号或序列号过滤已有设备"
-                                disabled={loadingCustomerDevices || !form.customerId || !selectedCustomerDevices.length}
-                                onChange={(event) => setTargetDeviceSearch(event.target.value)}
-                              />
-                            </div>
-                            <div className="max-h-48 space-y-2 overflow-auto">
-                              {loadingCustomerDevices ? (
-                                <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  正在加载设备…
+
+                              <div className={`grid gap-3 ${targetDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+                                <div className="relative space-y-2">
+                                  <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : "维护设备 / 设备型号"}</Label>
+                                  <Input
+                                    value={targetDeviceValue(targetDevice)}
+                                    placeholder="输入设备型号，或选择客户已有设备"
+                                    autoComplete="off"
+                                    onFocus={() => {
+                                      setTargetDeviceOpenId(targetDevice.id);
+                                      if (targetDevice.inputMode !== "existing" && targetDevice.model.trim().length >= 2) {
+                                        scheduleInstallModelSearch(targetDevice.id, targetDevice.model);
+                                      }
+                                    }}
+                                    onBlur={() => window.setTimeout(() => {
+                                      setTargetDeviceOpenId((current) => current === targetDevice.id ? null : current);
+                                    }, 160)}
+                                    onChange={(event) => changeTargetDevice(targetDevice.id, event.target.value)}
+                                  />
+                                  {targetDeviceOpenId === targetDevice.id ? (
+                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                                      {loadingCustomerDevices ? (
+                                        <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          正在加载客户设备…
+                                        </div>
+                                      ) : null}
+                                      {!form.customerId ? (
+                                        <div className="px-3 py-2 text-muted-foreground">请先选择客户；未选择下拉项时会按新设备保存。</div>
+                                      ) : null}
+                                      {options.length ? (
+                                        <div className="border-b p-1">
+                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">客户已有设备</div>
+                                          {options.map((device) => (
+                                            <button
+                                              key={device.id}
+                                              type="button"
+                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+                                              onMouseDown={(event) => {
+                                                event.preventDefault();
+                                                chooseTargetDevice(targetDevice.id, String(device.id));
+                                              }}
+                                            >
+                                              <span className="font-medium">{deviceSelectLabel(device)}</span>
+                                              <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {modelLoading || modelSuggestions.length ? (
+                                        <div className="p-1">
+                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
+                                          {modelLoading ? (
+                                            <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                              搜索型号中…
+                                            </div>
+                                          ) : null}
+                                          {modelSuggestions.map((suggestion, suggestionIndex) => (
+                                            <button
+                                              key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
+                                              type="button"
+                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+                                              onMouseDown={(event) => {
+                                                event.preventDefault();
+                                                applyTargetModelSuggestion(targetDevice.id, suggestion);
+                                              }}
+                                            >
+                                              <span className="font-medium">{suggestion.canonicalModel}</span>
+                                              <span className="text-xs text-muted-foreground">
+                                                {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {form.customerId && !loadingCustomerDevices && !options.length && !modelLoading && !modelSuggestions.length ? (
+                                        <div className="px-3 py-2 text-muted-foreground">没有匹配的客户设备，继续输入会按新设备保存。</div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </div>
-                              ) : !form.customerId ? (
-                                <div className="px-2 py-3 text-sm text-muted-foreground">请先选择客户</div>
-                              ) : filteredTargetDeviceOptions.length ? (
-                                filteredTargetDeviceOptions.map((device) => {
-                                  const deviceId = String(device.id);
-                                  const selected = form.targetDeviceIds.includes(deviceId);
-                                  return (
-                                    <button
-                                      key={device.id}
-                                      type="button"
-                                      className={`flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                                        selected ? "border-primary bg-primary/5" : "border-transparent hover:bg-accent/50"
-                                      }`}
-                                      onClick={() => addTargetDevice(deviceId)}
-                                      disabled={selected}
-                                    >
-                                      <span className="min-w-0 flex-1">
-                                        <span className="block truncate font-medium">{deviceSelectLabel(device)}</span>
-                                        <span className="block truncate text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
-                                      </span>
-                                      <span className={`mt-0.5 flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium ${
-                                        selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                                      }`}>
-                                        {selected ? <CheckCircle className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                                        {selected ? "已添加" : "添加"}
-                                      </span>
-                                    </button>
-                                  );
-                                })
-                              ) : selectedCustomerDevices.length ? (
-                                <div className="px-2 py-3 text-sm text-muted-foreground">没有匹配的已有设备</div>
-                              ) : (
-                                <div className="px-2 py-3 text-sm text-muted-foreground">该客户暂无设备</div>
-                              )}
+
+                                {targetDevice.inputMode === "existing" ? (
+                                  <>
+                                    <Field label="设备型号">
+                                      <Input readOnly value={selectedDevice?.model || targetDevice.model || ""} />
+                                    </Field>
+                                    <Field label="序列号 / SN">
+                                      <Input readOnly value={selectedDevice?.serialNo || targetDevice.serialNo || ""} />
+                                    </Field>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Field label="序列号 / SN" required>
+                                      <Input value={targetDevice.serialNo} onChange={(event) => updateTargetDevice(targetDevice.id, { serialNo: event.target.value })} />
+                                    </Field>
+                                    <Field label="料号 / PN">
+                                      {renderModelCatalogSuggestionInput({
+                                        inputId: `target-pn-${targetDevice.id}`,
+                                        value: targetDevice.pn,
+                                        valueMode: "partNo",
+                                        placeholder: "可选",
+                                        onChange: (pn) => updateTargetDevice(targetDevice.id, { pn }),
+                                      })}
+                                    </Field>
+                                    <div className="md:col-span-2">
+                                      <Field label="设备备注">
+                                        <Input
+                                          value={targetDevice.remark}
+                                          placeholder="可填写维护对象说明、IP、版本或位置"
+                                          onChange={(event) => updateTargetDevice(targetDevice.id, { remark: event.target.value })}
+                                        />
+                                      </Field>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </Field>
-	                        <Field label={isRemote ? "远程目标 / 系统名称" : "主机名"}>
-                          <Input value={form.deviceName} onChange={(event) => patchForm({ deviceName: event.target.value })} />
-                        </Field>
-                        <Field label={isRemote ? "型号 / 版本 / IP" : "型号 / 版本"}>
-                          {renderModelCatalogSuggestionInput({
-                            inputId: "target-device-model",
-                            value: form.deviceModel,
-                            placeholder: isRemote ? "输入型号、版本或 IP" : "输入设备型号或版本",
-                            onChange: (deviceModel) => patchForm({ deviceModel }),
-                          })}
-                        </Field>
-                        <Field label="序列号 / SN">
-                          <Input value={form.deviceSerialNo} onChange={(event) => patchForm({ deviceSerialNo: event.target.value })} />
-                        </Field>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}

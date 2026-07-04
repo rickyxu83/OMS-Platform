@@ -1470,16 +1470,19 @@ async function remove(req, res) {
   }
 
   await ensureDevicePartHistoryColumns()
-  const [serviceOrders, schedules, serviceParts] = await Promise.all([
+  await ensureServiceOrderDevicesTable()
+  const [serviceOrders, targetOrders, schedules, serviceParts] = await Promise.all([
     query('SELECT COUNT(*) AS total FROM service_orders WHERE device_id = :id', { id: req.params.id }),
+    query('SELECT COUNT(*) AS total FROM service_order_devices WHERE device_id = :id', { id: req.params.id }),
     query('SELECT COUNT(*) AS total FROM inspection_schedules WHERE device_id = :id', { id: req.params.id }),
     query('SELECT COUNT(*) AS total FROM service_parts WHERE device_id = :id', { id: req.params.id }),
   ])
   const serviceOrderCount = Number(serviceOrders[0]?.total || 0)
+  const targetOrderCount = Number(targetOrders[0]?.total || 0)
   const scheduleCount = Number(schedules[0]?.total || 0)
   const servicePartCount = Number(serviceParts[0]?.total || 0)
-  if (serviceOrderCount || scheduleCount || servicePartCount) {
-    throw badRequest(`设备已被 ${serviceOrderCount} 张工单、${scheduleCount} 个巡检计划、${servicePartCount} 条部件记录引用，不能删除`)
+  if (serviceOrderCount || targetOrderCount || scheduleCount || servicePartCount) {
+    throw badRequest(`设备已被 ${serviceOrderCount} 张主设备工单、${targetOrderCount} 张目标设备工单、${scheduleCount} 个巡检计划、${servicePartCount} 条部件记录引用，不能删除`)
   }
 
   await query('DELETE FROM devices WHERE id = :id', { id: req.params.id })
