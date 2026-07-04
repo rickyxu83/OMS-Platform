@@ -657,8 +657,9 @@ async function ensureServicePartsColumns(connection = null) {
   }
 }
 
-async function ensureServiceOrderDevicesTable(connection = null) {
+async function ensureServiceOrderDevicesTable(connection = null, options = {}) {
   if (!connection && serviceOrderDevicesTableReady) return
+  const backfillLegacyDevice = options.backfillLegacyDevice !== false
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   await execute(
     `CREATE TABLE IF NOT EXISTS service_order_devices (
@@ -671,12 +672,14 @@ async function ensureServiceOrderDevicesTable(connection = null) {
       CONSTRAINT fk_service_order_devices_device_id FOREIGN KEY (device_id) REFERENCES devices (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  await execute(
-    `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
-     SELECT id, device_id
-     FROM service_orders
-     WHERE device_id IS NOT NULL`,
-  )
+  if (backfillLegacyDevice) {
+    await execute(
+      `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+       SELECT id, device_id
+       FROM service_orders
+       WHERE device_id IS NOT NULL`,
+    )
+  }
   if (!connection) {
     serviceOrderDevicesTableReady = true
   }
@@ -1146,12 +1149,12 @@ async function deleteFileRowsForOrderIds(connection, orderIds) {
   return rows.map((row) => row.storage_path).filter(Boolean)
 }
 
-async function cleanupInstallationDevicesForOrderIds(connection, orderIds) {
+async function cleanupInstallationDevicesForOrderIds(connection, orderIds, options = {}) {
   const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).map(Number).filter(Boolean))]
   if (!ids.length) return { deletedDeviceIds: [], skippedDeviceIds: [] }
 
   await ensureServicePartsColumns(connection)
-  await ensureServiceOrderDevicesTable(connection)
+  await ensureServiceOrderDevicesTable(connection, { backfillLegacyDevice: options.backfillLegacyDevice !== false })
   const orderParams = idParams(ids, 'installSourceOrderId')
   const [deviceRows] = await connection.execute(
     `SELECT id
@@ -4135,7 +4138,7 @@ async function remove(req, res) {
          AND service_order_id = :id`,
       { id: req.params.id },
     )
-    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
+    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id], { backfillLegacyDevice: false })
     await connection.execute('DELETE FROM service_orders WHERE id = :id', { id: req.params.id })
     await writeAudit(connection, req.user.id, req.params.id, 'delete', {
       orderNo: order.order_no,
@@ -4183,7 +4186,7 @@ async function bulkDelete(req, res) {
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
-    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, foundIds)
+    const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, foundIds, { backfillLegacyDevice: false })
     await connection.execute(`DELETE FROM service_orders WHERE id IN (${found.placeholders})`, found.params)
 
     for (const row of rows) {
