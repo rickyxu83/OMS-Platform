@@ -1536,24 +1536,37 @@ function FullscreenSignatureDialog({
   onChange: (value: string) => void;
 }) {
   const [draftValue, setDraftValue] = useState(value);
-  const [touchSignatureLayout, setTouchSignatureLayout] = useState(() => (
-    typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false
-  ));
+  const [signatureViewport, setSignatureViewport] = useState(() => ({
+    touch: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
+    landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
+  }));
 
   useEffect(() => {
     if (open) setDraftValue(value);
   }, [open, value]);
 
   useEffect(() => {
-    const media = window.matchMedia("(hover: none), (pointer: coarse)");
-    const updateLayout = () => setTouchSignatureLayout(media.matches);
+    const touchMedia = window.matchMedia("(hover: none), (pointer: coarse)");
+    const landscapeMedia = window.matchMedia("(orientation: landscape)");
+    const updateLayout = () => setSignatureViewport({
+      touch: touchMedia.matches,
+      landscape: landscapeMedia.matches,
+    });
     updateLayout();
-    media.addEventListener("change", updateLayout);
-    return () => media.removeEventListener("change", updateLayout);
+    touchMedia.addEventListener("change", updateLayout);
+    landscapeMedia.addEventListener("change", updateLayout);
+    window.addEventListener("resize", updateLayout);
+    return () => {
+      touchMedia.removeEventListener("change", updateLayout);
+      landscapeMedia.removeEventListener("change", updateLayout);
+      window.removeEventListener("resize", updateLayout);
+    };
   }, []);
 
-  const dialogClassName = touchSignatureLayout
-    ? "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+  const dialogClassName = signatureViewport.touch
+    ? signatureViewport.landscape
+      ? "h-[100dvh] max-h-none w-[100dvw] max-w-none overflow-hidden rounded-none border-0 p-3"
+      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
     : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
 
   return (
