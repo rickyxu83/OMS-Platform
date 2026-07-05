@@ -1370,7 +1370,7 @@ export function Customers() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">{t.title}</h1>
@@ -1405,7 +1405,7 @@ export function Customers() {
         ))}
       </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="pb-0">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -1485,8 +1485,8 @@ export function Customers() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-6">
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+        <CardContent className="min-w-0 pt-6">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain rounded-md border">
               <table className="w-full min-w-[1180px] table-fixed caption-bottom text-sm">
               <colgroup>
                 {canDeleteCustomer ? <col className="w-11" /> : null}
