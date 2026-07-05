@@ -1741,14 +1741,16 @@ export function ServiceOrders() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
+          <div className="mt-3 grid grid-cols-2 gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
             <div className="min-w-0 space-y-1.5">
               <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
                 {t.filters.startDate}
               </Label>
               <Input
                 id="service-orders-start-date"
+                data-compact-date="true"
                 aria-label={t.filters.startDate}
+                className="!min-w-0"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -1760,14 +1762,16 @@ export function ServiceOrders() {
               </Label>
               <Input
                 id="service-orders-end-date"
+                data-compact-date="true"
                 aria-label={t.filters.endDate}
+                className="!min-w-0"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
             <Button
-              className="w-full sm:col-span-2 2xl:col-span-1 2xl:w-auto"
+              className="col-span-2 w-full 2xl:col-span-1 2xl:w-auto"
               variant="outline"
               onClick={resetFilters}
             >

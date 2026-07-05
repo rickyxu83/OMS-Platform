@@ -199,19 +199,23 @@
     line-height: 1.45;
   }
 
-  input[type="date"],
-  input[type="time"] {
+  input[type="date"]:not([data-compact-date="true"]),
+  input[type="time"]:not([data-compact-date="true"]) {
     min-inline-size: 11.5rem;
   }
 
-  input[type="datetime-local"] {
+  input[type="datetime-local"]:not([data-compact-date="true"]) {
     min-inline-size: 14.5rem;
   }
 
+  input[data-compact-date="true"] {
+    min-inline-size: 0;
+  }
+
   @media (max-width: 640px) {
-    input[type="date"],
-    input[type="time"],
-    input[type="datetime-local"] {
+    input[type="date"]:not([data-compact-date="true"]),
+    input[type="time"]:not([data-compact-date="true"]),
+    input[type="datetime-local"]:not([data-compact-date="true"]) {
       min-inline-size: 100%;
     }
   }
