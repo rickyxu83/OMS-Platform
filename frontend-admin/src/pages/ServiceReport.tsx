@@ -1576,7 +1576,7 @@ function FullscreenSignatureDialog({
 
   const dialogClassName = signatureViewport.touch
     ? signatureViewport.landscape
-      ? "h-[100dvh] max-h-none w-[100dvw] max-w-none overflow-hidden rounded-none border-0 p-3"
+      ? "!fixed !inset-0 !left-0 !top-0 !h-[100dvh] !max-h-none !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
       : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
     : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
 
