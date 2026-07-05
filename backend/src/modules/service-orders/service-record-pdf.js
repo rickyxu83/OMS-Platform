@@ -493,8 +493,8 @@ function drawSheet(doc, fonts, item, logoImage) {
   cell(458, 158, 292, 102, '联系人', contactDisplay(item))
   cell(68, 204, 390, 122, 'Case号', item.orderNo || item.id || '-')
   cell(458, 204, 292, 102, '填写日期', cleanText(finishedDate, '-'))
-  cell(68, 250, 422, 122, '地址', cleanText(item.customerAddress, remote ? '远程服务未填写地址' : '-'))
-  cell(490, 250, 260, 102, '服务事项', serviceItemsContent(item))
+  cell(68, 250, 390, 122, '地址', cleanText(item.customerAddress, remote ? '远程服务未填写地址' : '-'))
+  cell(458, 250, 292, 102, '服务事项', serviceItemsContent(item))
 
   // 问题描述
   fillRect(doc, 68, summaryY, 682, 108, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
