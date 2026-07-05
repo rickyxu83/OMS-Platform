@@ -425,8 +425,8 @@ const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; icon: type
   screenshot_log: { label: "截图/日志文件", icon: Upload },
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
 };
-const REPORT_ORDER_LIST_GRID = "lg:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_176px]";
-const REPORT_ORDER_HEADER_CLASS = "hidden rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur lg:grid lg:items-center lg:gap-3";
+const REPORT_ORDER_LIST_GRID = "lg:grid-cols-[minmax(112px,0.9fr)_minmax(118px,0.8fr)_minmax(150px,1.2fr)_minmax(64px,0.45fr)_132px_76px_164px] xl:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_176px]";
+const REPORT_ORDER_HEADER_CLASS = "hidden w-full rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur lg:grid lg:items-center lg:gap-2 xl:gap-3";
 const REPORT_ORDER_STICKY_HEADER_CLASS = `${REPORT_ORDER_HEADER_CLASS} sticky top-0 z-10`;
 const FORM_SKIN = [
   "[&_[data-slot=input]]:h-[42px]",
@@ -3801,7 +3801,7 @@ export function ServiceReport() {
                     }
                   }}
                 >
-                  <div className={`grid min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
+                  <div className={`grid w-full min-w-0 gap-2.5 lg:grid lg:gap-2 ${REPORT_ORDER_LIST_GRID} lg:items-center xl:gap-3`}>
                     <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
                       <div className="min-w-0">
                         <div className="truncate font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
@@ -3911,7 +3911,7 @@ export function ServiceReport() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-8 min-w-[68px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[78px]"
+                            className="h-8 min-w-[68px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[78px] lg:min-w-[66px] xl:min-w-[78px]"
                             disabled={!canExportRecord || Boolean(exportingOrderId)}
                             aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
                             title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
@@ -3949,7 +3949,7 @@ export function ServiceReport() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[72px]"
+                        className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[72px] lg:min-w-[66px] xl:min-w-[72px]"
                         disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
                         aria-label={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
                         title={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
@@ -4076,7 +4076,7 @@ export function ServiceReport() {
                             }
                           }}
                         >
-                          <div className={`grid min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
+                          <div className={`grid w-full min-w-0 gap-2.5 lg:grid lg:gap-2 ${REPORT_ORDER_LIST_GRID} lg:items-center xl:gap-3`}>
                             <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
                               <div className="min-w-0">
                                 <div className="truncate font-semibold text-foreground">最近草稿</div>
@@ -4156,7 +4156,7 @@ export function ServiceReport() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 min-w-[64px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[72px]"
+                                className="h-8 min-w-[64px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[72px] lg:min-w-[66px] xl:min-w-[72px]"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   navigate(draftRoute);
@@ -4169,7 +4169,7 @@ export function ServiceReport() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive sm:min-w-[72px]"
+                                className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive sm:min-w-[72px] lg:min-w-[66px] xl:min-w-[72px]"
                                 disabled={deletingDraft}
                                 onClick={(event) => {
                                   event.stopPropagation();
