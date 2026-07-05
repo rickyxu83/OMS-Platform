@@ -1775,7 +1775,7 @@ export function ServiceOrders() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
             <div className="min-w-0 overflow-hidden space-y-1.5">
               <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
                 {t.filters.startDate}
@@ -1799,11 +1799,11 @@ export function ServiceOrders() {
               />
             </div>
             <Button
-              className="col-span-2 w-full 2xl:col-span-1 2xl:w-auto"
+              className="h-9 shrink-0 whitespace-nowrap px-2.5 sm:px-3"
               variant="outline"
               onClick={resetFilters}
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
+              <RotateCcw className="mr-1.5 h-4 w-4" />
               {t.actions.reset}
             </Button>
           </div>
