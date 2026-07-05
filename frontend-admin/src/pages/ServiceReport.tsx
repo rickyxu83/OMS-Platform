@@ -425,8 +425,8 @@ const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; icon: type
   screenshot_log: { label: "截图/日志文件", icon: Upload },
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
 };
-const REPORT_ORDER_LIST_GRID = "xl:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_176px]";
-const REPORT_ORDER_HEADER_CLASS = "hidden rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur xl:grid xl:items-center xl:gap-3";
+const REPORT_ORDER_LIST_GRID = "lg:grid-cols-[minmax(140px,1fr)_minmax(168px,0.95fr)_minmax(150px,1.3fr)_minmax(96px,0.75fr)_150px_84px_176px]";
+const REPORT_ORDER_HEADER_CLASS = "hidden rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur lg:grid lg:items-center lg:gap-3";
 const REPORT_ORDER_STICKY_HEADER_CLASS = `${REPORT_ORDER_HEADER_CLASS} sticky top-0 z-10`;
 const FORM_SKIN = [
   "[&_[data-slot=input]]:h-[42px]",
@@ -3801,13 +3801,13 @@ export function ServiceReport() {
                     }
                   }}
                 >
-                  <div className={`grid min-w-0 gap-2.5 xl:grid xl:gap-3 ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
-                    <div className="flex min-w-0 items-start justify-between gap-3 xl:block">
+                  <div className={`grid min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
+                    <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
                       <div className="min-w-0">
                         <div className="truncate font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
                         <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
+                      <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
                         <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
                           {orderStatusLabel(order)}
                         </Badge>
@@ -3883,11 +3883,11 @@ export function ServiceReport() {
                       <span className="block truncate text-sm font-medium">{reportOrderMainContent(order)}</span>
                     </div>
 
-                    <div className="hidden min-w-0 text-sm xl:block">
+                    <div className="hidden min-w-0 text-sm lg:block">
                       <span className="block truncate">{reportOrderEngineerText(order)}</span>
                     </div>
 
-                    <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs xl:block">
+                    <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs lg:block">
                       <div>
                         <span className="text-muted-foreground">开始：</span>
                         <span>{serviceTime.start}</span>
@@ -3898,13 +3898,13 @@ export function ServiceReport() {
                       </div>
                     </div>
 
-                    <div className="hidden xl:block">
+                    <div className="hidden lg:block">
                       <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
                         {orderStatusLabel(order)}
                       </Badge>
                     </div>
 
-                    <div className="hidden min-w-0 flex-wrap gap-1.5 xl:flex xl:flex-nowrap xl:justify-end">
+                    <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex lg:flex-nowrap lg:justify-end">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -4076,13 +4076,13 @@ export function ServiceReport() {
                             }
                           }}
                         >
-                          <div className={`grid min-w-0 gap-2.5 xl:grid xl:gap-3 ${REPORT_ORDER_LIST_GRID} xl:items-center`}>
-                            <div className="flex min-w-0 items-start justify-between gap-3 xl:block">
+                          <div className={`grid min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
+                            <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
                               <div className="min-w-0">
                                 <div className="truncate font-semibold text-foreground">最近草稿</div>
                                 <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
                               </div>
-                              <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
+                              <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
                                 <Badge variant="draft">草稿</Badge>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
@@ -4132,11 +4132,11 @@ export function ServiceReport() {
                               <span className="block truncate text-sm font-medium">{compactDraftLabel(createDraft)}</span>
                             </div>
 
-                            <div className="hidden min-w-0 text-sm xl:block">
+                            <div className="hidden min-w-0 text-sm lg:block">
                               <span className="block truncate">{draftEngineerText}</span>
                             </div>
 
-                            <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs xl:block">
+                            <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs lg:block">
                               <div>
                                 <span className="text-muted-foreground">开始：</span>
                                 <span>{formatDateTime(createDraft.actualStartAt || createDraft.departureAt)}</span>
@@ -4147,11 +4147,11 @@ export function ServiceReport() {
                               </div>
                             </div>
 
-                            <div className="hidden xl:block">
+                            <div className="hidden lg:block">
                               <Badge variant="draft">草稿</Badge>
                             </div>
 
-                            <div className="hidden min-w-0 flex-wrap gap-1.5 xl:flex xl:flex-nowrap xl:justify-end">
+                            <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex lg:flex-nowrap lg:justify-end">
                               <Button
                                 type="button"
                                 variant="ghost"
