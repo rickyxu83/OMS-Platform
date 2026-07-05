@@ -1741,17 +1741,25 @@ export function ServiceOrders() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
-            <div className="min-w-0">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
+                {t.filters.startDate}
+              </Label>
               <Input
+                id="service-orders-start-date"
                 aria-label={t.filters.startDate}
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
+                {t.filters.endDate}
+              </Label>
               <Input
+                id="service-orders-end-date"
                 aria-label={t.filters.endDate}
                 type="date"
                 value={endDate}
