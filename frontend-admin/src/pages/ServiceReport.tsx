@@ -1539,6 +1539,8 @@ function FullscreenSignatureDialog({
   const [signatureViewport, setSignatureViewport] = useState(() => ({
     coarsePointer: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
     landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
+    width: typeof window !== "undefined" ? window.innerWidth : 0,
+    height: typeof window !== "undefined" ? window.innerHeight : 0,
   }));
 
   useEffect(() => {
@@ -1552,6 +1554,8 @@ function FullscreenSignatureDialog({
       setSignatureViewport({
         coarsePointer: coarseQuery.matches,
         landscape: landscapeQuery.matches,
+        width: Math.max(1, window.innerWidth),
+        height: Math.max(1, window.innerHeight),
       });
     };
     const updateViewport = () => {
@@ -1569,16 +1573,35 @@ function FullscreenSignatureDialog({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !signatureViewport.coarsePointer) return;
+    const orientation = window.screen?.orientation as (ScreenOrientation & {
+      lock?: (orientation: string) => Promise<void>;
+      unlock?: () => void;
+    }) | undefined;
+    orientation?.lock?.(signatureViewport.landscape ? "landscape" : "portrait").catch(() => {});
+    return () => {
+      orientation?.unlock?.();
+    };
+  }, [open, signatureViewport.coarsePointer, signatureViewport.landscape]);
+
   const dialogClassName = signatureViewport.coarsePointer
     ? signatureViewport.landscape
-      ? "h-[100dvh] max-h-none w-[100dvw] max-w-none overflow-hidden rounded-none border-0 p-3"
-      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+      ? "max-h-none max-w-none overflow-hidden rounded-none border-0 p-3"
+      : "max-h-none max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
     : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
+  const dialogStyle = signatureViewport.coarsePointer
+    ? {
+        width: `${signatureViewport.landscape ? signatureViewport.width : signatureViewport.height}px`,
+        height: `${signatureViewport.landscape ? signatureViewport.height : signatureViewport.width}px`,
+      }
+    : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={dialogClassName}
+        style={dialogStyle}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex h-full min-h-0 flex-col gap-3">
