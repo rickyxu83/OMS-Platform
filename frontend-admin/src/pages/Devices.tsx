@@ -1473,24 +1473,35 @@ export function Devices() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-3xl font-semibold">设备资产</h1>
           <p className="text-muted-foreground mt-1">管理客户设备和维保信息</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => load(searchQuery)}>
+        <div className="flex flex-wrap gap-2 lg:flex-nowrap">
+          <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={() => load(searchQuery)}>
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
           {canEditDevices ? (
-            <Button variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
+            <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
               {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {modelComparing ? `校正 ${modelCompareProgress}%` : "型号校正"}
+              {modelComparing ? (
+                <>
+                  <span className="lg:hidden xl:inline">校正 {modelCompareProgress}%</span>
+                  <span className="hidden lg:inline xl:hidden">{modelCompareProgress}%</span>
+                </>
+              ) : (
+                <>
+                  <span className="lg:hidden xl:inline">型号校正</span>
+                  <span className="hidden lg:inline xl:hidden">校正</span>
+                </>
+              )}
             </Button>
           ) : null}
           {canCreateDevices ? (
             <>
               <Button
+                className="shrink-0 whitespace-nowrap"
                 variant="outline"
                 onClick={async () => {
                   setError("");
@@ -1502,19 +1513,23 @@ export function Devices() {
                 }}
               >
                 <Download className="w-4 h-4 mr-2" />
-                下载模板
+                <span className="lg:hidden xl:inline">下载模板</span>
+                <span className="hidden lg:inline xl:hidden">模板</span>
               </Button>
-              <Button variant="outline" onClick={openImportDialog}>
+              <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={openImportDialog}>
                 <Upload className="w-4 h-4 mr-2" />
-                导入 Excel
+                <span className="lg:hidden xl:inline">导入 Excel</span>
+                <span className="hidden lg:inline xl:hidden">导入</span>
               </Button>
-              <Button variant="outline" onClick={openBulkCreate}>
+              <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={openBulkCreate}>
                 <Plus className="w-4 h-4 mr-2" />
-                批量新增
+                <span className="lg:hidden xl:inline">批量新增</span>
+                <span className="hidden lg:inline xl:hidden">批量</span>
               </Button>
-              <Button onClick={openCreate}>
+              <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
                 <Plus className="w-4 h-4 mr-2" />
-                新增设备
+                <span className="lg:hidden xl:inline">新增设备</span>
+                <span className="hidden lg:inline xl:hidden">新增</span>
               </Button>
             </>
           ) : null}
