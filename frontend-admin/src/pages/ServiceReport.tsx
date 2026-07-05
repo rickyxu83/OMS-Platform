@@ -1536,15 +1536,30 @@ function FullscreenSignatureDialog({
   onChange: (value: string) => void;
 }) {
   const [draftValue, setDraftValue] = useState(value);
+  const [touchSignatureLayout, setTouchSignatureLayout] = useState(() => (
+    typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false
+  ));
 
   useEffect(() => {
     if (open) setDraftValue(value);
   }, [open, value]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(hover: none), (pointer: coarse)");
+    const updateLayout = () => setTouchSignatureLayout(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
+
+  const dialogClassName = touchSignatureLayout
+    ? "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+    : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3 sm:h-[90dvh] sm:w-[90vw] sm:rotate-0 sm:rounded-lg sm:border sm:p-4"
+        className={dialogClassName}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex h-full min-h-0 flex-col gap-3">
