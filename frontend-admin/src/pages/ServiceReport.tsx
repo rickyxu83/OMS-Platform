@@ -1536,49 +1536,15 @@ function FullscreenSignatureDialog({
   onChange: (value: string) => void;
 }) {
   const [draftValue, setDraftValue] = useState(value);
-  const [signatureViewport, setSignatureViewport] = useState(() => ({
-    coarsePointer: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
-    landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
-  }));
 
   useEffect(() => {
     if (open) setDraftValue(value);
   }, [open, value]);
 
-  useEffect(() => {
-    const coarseQuery = window.matchMedia("(hover: none), (pointer: coarse)");
-    const landscapeQuery = window.matchMedia("(orientation: landscape)");
-    const captureViewport = () => {
-      setSignatureViewport({
-        coarsePointer: coarseQuery.matches,
-        landscape: landscapeQuery.matches,
-      });
-    };
-    const updateViewport = () => {
-      if (open) return;
-      captureViewport();
-    };
-    captureViewport();
-    coarseQuery.addEventListener("change", updateViewport);
-    landscapeQuery.addEventListener("change", updateViewport);
-    window.addEventListener("resize", updateViewport);
-    return () => {
-      coarseQuery.removeEventListener("change", updateViewport);
-      landscapeQuery.removeEventListener("change", updateViewport);
-      window.removeEventListener("resize", updateViewport);
-    };
-  }, [open]);
-
-  const dialogClassName = signatureViewport.coarsePointer
-    ? signatureViewport.landscape
-      ? "h-[100dvh] max-h-none w-[100dvw] max-w-none overflow-hidden rounded-none border-0 p-3"
-      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
-    : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={dialogClassName}
+        className="h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3 sm:h-[90dvh] sm:w-[90vw] sm:rotate-0 sm:rounded-lg sm:border sm:p-4"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex h-full min-h-0 flex-col gap-3">
@@ -1977,7 +1943,6 @@ export function ServiceReport() {
   const [signatureShareError, setSignatureShareError] = useState("");
   const [signatureShareNotice, setSignatureShareNotice] = useState("");
   const [signatureQrCodeUrl, setSignatureQrCodeUrl] = useState("");
-  const signatureEnteredFullscreenRef = useRef(false);
   const customerSearchTimerRef = useRef<number | null>(null);
   const customerSearchRequestRef = useRef(0);
   const installModelSearchTimerRef = useRef<number | null>(null);
@@ -3211,76 +3176,6 @@ export function ServiceReport() {
       }
     }
     await copySignatureRequestLink();
-  }
-
-  async function lockSignatureOrientationFromGesture() {
-    const isTouchDevice = window.matchMedia("(hover: none), (pointer: coarse)").matches;
-    if (!isTouchDevice) return;
-
-    const fullscreenDocument = document as Document & {
-      webkitFullscreenElement?: Element | null;
-      webkitExitFullscreen?: () => Promise<void> | void;
-    };
-    const fullscreenElement = document.documentElement as HTMLElement & {
-      webkitRequestFullscreen?: () => Promise<void> | void;
-    };
-
-    try {
-      if (!document.fullscreenElement && !fullscreenDocument.webkitFullscreenElement) {
-        if (fullscreenElement.requestFullscreen) {
-          await fullscreenElement.requestFullscreen({ navigationUI: "hide" } as FullscreenOptions);
-          signatureEnteredFullscreenRef.current = true;
-        } else if (fullscreenElement.webkitRequestFullscreen) {
-          await fullscreenElement.webkitRequestFullscreen();
-          signatureEnteredFullscreenRef.current = true;
-        }
-      }
-    } catch {
-      signatureEnteredFullscreenRef.current = false;
-    }
-
-    const orientation = window.screen?.orientation as (ScreenOrientation & {
-      lock?: (orientation: string) => Promise<void>;
-    }) | undefined;
-    const lockDirection = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
-    await orientation?.lock?.(lockDirection).catch(() => {});
-  }
-
-  async function releaseSignatureOrientationLock() {
-    const orientation = window.screen?.orientation as (ScreenOrientation & {
-      unlock?: () => void;
-    }) | undefined;
-    orientation?.unlock?.();
-
-    const fullscreenDocument = document as Document & {
-      webkitFullscreenElement?: Element | null;
-      webkitExitFullscreen?: () => Promise<void> | void;
-    };
-    if (!signatureEnteredFullscreenRef.current) return;
-    signatureEnteredFullscreenRef.current = false;
-    try {
-      if (document.fullscreenElement && document.exitFullscreen) {
-        await document.exitFullscreen();
-      } else if (fullscreenDocument.webkitFullscreenElement && fullscreenDocument.webkitExitFullscreen) {
-        await fullscreenDocument.webkitExitFullscreen();
-      }
-    } catch {
-      // Some mobile browsers reject fullscreen exit during page transitions.
-    }
-  }
-
-  async function openSignatureFullscreen() {
-    await lockSignatureOrientationFromGesture();
-    setSignatureFullscreenOpen(true);
-  }
-
-  function handleSignatureFullscreenOpenChange(nextOpen: boolean) {
-    if (nextOpen) {
-      void openSignatureFullscreen();
-      return;
-    }
-    setSignatureFullscreenOpen(false);
-    void releaseSignatureOrientationLock();
   }
 
   async function sendSignatureRequestMail() {
@@ -5613,7 +5508,7 @@ export function ServiceReport() {
                               type="button"
                               variant="outline"
                               className="w-full sm:hidden"
-                              onClick={openSignatureFullscreen}
+                              onClick={() => setSignatureFullscreenOpen(true)}
                             >
                               横屏全屏签名
                             </Button>
@@ -5655,7 +5550,7 @@ export function ServiceReport() {
     <FullscreenSignatureDialog
       open={signatureFullscreenOpen}
       value={form.customerSignature}
-      onOpenChange={handleSignatureFullscreenOpenChange}
+      onOpenChange={setSignatureFullscreenOpen}
       onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })}
     />
     <Dialog open={signatureShareOpen} onOpenChange={setSignatureShareOpen}>
