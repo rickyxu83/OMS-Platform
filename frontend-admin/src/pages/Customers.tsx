@@ -1486,16 +1486,16 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto overscroll-x-contain rounded-md border">
-              <table className="w-full min-w-[1040px] table-fixed caption-bottom text-sm xl:min-w-[1180px]">
+          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+              <table className="w-full min-w-[1180px] table-fixed caption-bottom text-sm">
               <colgroup>
                 {canDeleteCustomer ? <col className="w-11" /> : null}
-                <col className="w-[248px] xl:w-[288px]" />
-                <col className="w-[112px] xl:w-[132px]" />
-                <col className="w-[148px] xl:w-[176px]" />
-                <col className="w-[104px] xl:w-[128px]" />
+                <col className="w-[288px]" />
+                <col className="w-[132px]" />
+                <col className="w-[176px]" />
+                <col className="w-[128px]" />
                 <col />
-                <col className="w-[148px] xl:w-[176px]" />
+                <col className="w-[176px]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
@@ -1510,7 +1510,7 @@ export function Customers() {
                     </span>
                   </TableHead>
                   <TableHead>{t.list.address}</TableHead>
-                  <TableHead className="w-[148px] pr-5 text-right xl:w-[176px]">{t.list.action}</TableHead>
+                  <TableHead className="w-[176px] text-right pr-5">{t.list.action}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
