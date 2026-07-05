@@ -1457,9 +1457,20 @@ function SignaturePad({
   }, [value]);
 
   useEffect(() => {
+    let frame = 0;
+    const scheduleSetup = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(setupCanvas);
+    };
     setupCanvas();
-    window.addEventListener("resize", setupCanvas);
-    return () => window.removeEventListener("resize", setupCanvas);
+    window.addEventListener("resize", scheduleSetup);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(scheduleSetup) : null;
+    if (canvasRef.current) observer?.observe(canvasRef.current);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleSetup);
+      observer?.disconnect();
+    };
   }, [setupCanvas]);
 
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -1506,7 +1517,7 @@ function SignaturePad({
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="min-h-0 overflow-hidden rounded-md border bg-card">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border bg-card">
         <canvas
           ref={canvasRef}
           className={`block w-full touch-none ${canvasClassName}`}
