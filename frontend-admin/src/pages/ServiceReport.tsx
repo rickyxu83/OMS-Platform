@@ -593,10 +593,21 @@ function submitDateTime(value: string) {
   return value ? value.replace("T", " ") : null;
 }
 
+function splitInputDateTime(value: string) {
+  return {
+    date: value ? value.slice(0, 10) : "",
+    time: value ? value.slice(11, 16) : "",
+  };
+}
+
 function inputNow() {
   const date = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function inputToday() {
+  return inputNow().slice(0, 10);
 }
 
 function optionLabel(option?: EngineerOption) {
@@ -1760,6 +1771,86 @@ function Field({ label, children, required = false }: { label: string; children:
         {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
       </Label>
       {children}
+    </div>
+  );
+}
+
+function DateTimeFieldControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { date, time } = splitInputDateTime(value);
+  const [draftDate, setDraftDate] = useState(date || inputToday());
+
+  useEffect(() => {
+    setDraftDate(date || inputToday());
+  }, [date]);
+
+  function setDate(nextDate: string) {
+    const effectiveDate = nextDate || inputToday();
+    setDraftDate(effectiveDate);
+    if (time) onChange(`${effectiveDate}T${time}`);
+  }
+
+  function setTime(nextTime: string) {
+    if (!nextTime) {
+      onChange("");
+      return;
+    }
+    onChange(`${draftDate || inputToday()}T${nextTime}`);
+  }
+
+  function fillNow() {
+    onChange(inputNow());
+  }
+
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto] gap-2">
+      <div className="relative min-w-0 overflow-hidden">
+        <input
+          aria-label={`${label}日期`}
+          type="date"
+          value={draftDate}
+          onChange={(event) => setDate(event.target.value)}
+          className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm transition-[background-color,border-color,color,box-shadow] peer-focus-visible:border-primary peer-focus-visible:ring-primary/20 peer-focus-visible:ring-[3px]"
+        >
+          <span className="min-w-0 truncate tabular-nums">
+            {draftDate}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </div>
+      </div>
+      <div className="relative min-w-0 overflow-hidden">
+        <input
+          aria-label={`${label}时间`}
+          type="time"
+          value={time}
+          onChange={(event) => setTime(event.target.value)}
+          className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm transition-[background-color,border-color,color,box-shadow] peer-focus-visible:border-primary peer-focus-visible:ring-primary/20 peer-focus-visible:ring-[3px]"
+        >
+          <span className={time ? "min-w-0 truncate tabular-nums" : "min-w-0 truncate text-slate-400"}>
+            {time || "时间"}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </div>
+      </div>
+      <Button type="button" variant="outline" className="h-9 shrink-0 px-2.5" onClick={fillNow} aria-label={`填入当前${label}`}>
+        <Clock className="h-4 w-4 sm:mr-1.5" />
+        <span className="hidden sm:inline">现在</span>
+      </Button>
     </div>
   );
 }
@@ -3069,10 +3160,6 @@ export function ServiceReport() {
 
   function activeParts() {
     return activePartRows;
-  }
-
-  function fillTime(field: "departureAt" | "actualStartAt" | "actualEndAt" | "returnAt") {
-    patchForm({ [field]: inputNow() });
   }
 
   async function useLatestCustomerSignature() {
@@ -4828,58 +4915,34 @@ export function ServiceReport() {
               <div className="grid gap-4 p-4 md:grid-cols-2">
                 {isOnsite ? (
                   <Field label="出发时间">
-                    <div className="flex gap-2">
-                      <Input
-                        type="datetime-local"
-                        value={form.departureAt}
-                        onClick={() => { if (!form.departureAt) fillTime("departureAt"); }}
-                        onChange={(event) => patchForm({ departureAt: event.target.value })}
-                      />
-                      <Button type="button" variant="outline" size="icon" onClick={() => fillTime("departureAt")} aria-label="填入当前出发时间">
-                        <Clock className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <DateTimeFieldControl
+                      label="出发时间"
+                      value={form.departureAt}
+                      onChange={(departureAt) => patchForm({ departureAt })}
+                    />
                   </Field>
                 ) : null}
                 <Field label={isOnsite ? "到达时间" : "开始时间"} required>
-                  <div className="flex gap-2">
-                    <Input
-                      type="datetime-local"
-                      value={form.actualStartAt}
-                      onClick={() => { if (!form.actualStartAt) fillTime("actualStartAt"); }}
-                      onChange={(event) => patchForm({ actualStartAt: event.target.value })}
-                    />
-                    <Button type="button" variant="outline" size="icon" onClick={() => fillTime("actualStartAt")} aria-label="填入当前开始时间">
-                      <Clock className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <DateTimeFieldControl
+                    label={isOnsite ? "到达时间" : "开始时间"}
+                    value={form.actualStartAt}
+                    onChange={(actualStartAt) => patchForm({ actualStartAt })}
+                  />
                 </Field>
                 <Field label={isOnsite ? "完成时间" : "结束时间"} required>
-                  <div className="flex gap-2">
-                    <Input
-                      type="datetime-local"
-                      value={form.actualEndAt}
-                      onClick={() => { if (!form.actualEndAt) fillTime("actualEndAt"); }}
-                      onChange={(event) => patchForm({ actualEndAt: event.target.value })}
-                    />
-                    <Button type="button" variant="outline" size="icon" onClick={() => fillTime("actualEndAt")} aria-label="填入当前完成时间">
-                      <Clock className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <DateTimeFieldControl
+                    label={isOnsite ? "完成时间" : "结束时间"}
+                    value={form.actualEndAt}
+                    onChange={(actualEndAt) => patchForm({ actualEndAt })}
+                  />
                 </Field>
                 {isOnsite ? (
                   <Field label="返回时间">
-                    <div className="flex gap-2">
-                      <Input
-                        type="datetime-local"
-                        value={form.returnAt}
-                        onClick={() => { if (!form.returnAt) fillTime("returnAt"); }}
-                        onChange={(event) => patchForm({ returnAt: event.target.value })}
-                      />
-                      <Button type="button" variant="outline" size="icon" onClick={() => fillTime("returnAt")} aria-label="填入当前返回时间">
-                        <Clock className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <DateTimeFieldControl
+                      label="返回时间"
+                      value={form.returnAt}
+                      onChange={(returnAt) => patchForm({ returnAt })}
+                    />
                   </Field>
                 ) : null}
                 <div className="md:col-span-2">
