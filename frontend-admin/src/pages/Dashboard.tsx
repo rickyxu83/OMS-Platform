@@ -1035,16 +1035,25 @@ export function Dashboard() {
                         order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                       }`} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden lg:flex xl:hidden">
                           <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
                           <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
                             {order.statusLabel}
                           </Badge>
                         </div>
-                        <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                        <div className="mt-1 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
+                        <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden lg:block xl:hidden" title={order.title}>{order.title}</span>
+                        <div className="mt-1 flex min-w-0 items-center gap-3 text-xs text-muted-foreground sm:hidden lg:flex xl:hidden">
                           <span className="shrink-0 whitespace-nowrap">{order.date}</span>
                           <span className="min-w-0 truncate font-medium text-foreground" title={order.engineer}>{order.engineer}</span>
+                        </div>
+                        <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid lg:hidden xl:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
+                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
+                          <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
+                          <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
+                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
+                            {order.statusLabel}
+                          </Badge>
                         </div>
                       </div>
                     </div>
