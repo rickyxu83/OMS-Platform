@@ -850,15 +850,15 @@ export function Dashboard() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-3 sm:p-6 lg:space-y-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold sm:text-3xl">{t.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">{t.subtitle}</p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
-          <div className="relative min-w-0 flex-1 md:flex-none">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
+          <div className="relative min-w-0 flex-1 md:w-48 md:flex-none lg:w-52 xl:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              className="h-10 w-full bg-card pl-9 md:w-64"
+              className="h-10 w-full bg-card pl-9"
               placeholder={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -867,12 +867,12 @@ export function Dashboard() {
               }}
             />
           </div>
-          <Button className="h-10 flex-1 sm:flex-none" variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
+          <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
             <Search className="w-4 h-4 mr-2" />
             搜索
           </Button>
           {canUseWorkSummary && (
-            <Button className="h-10 flex-1 sm:flex-none" onClick={openReportDialog} disabled={exporting}>
+            <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
               {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
