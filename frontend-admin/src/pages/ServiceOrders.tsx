@@ -1741,7 +1741,7 @@ export function ServiceOrders() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
             <div className="min-w-0">
               <Input
                 aria-label={t.filters.startDate}
@@ -1759,7 +1759,7 @@ export function ServiceOrders() {
               />
             </div>
             <Button
-              className="w-full sm:col-span-2 xl:col-span-1 xl:w-auto"
+              className="w-full sm:col-span-2 2xl:col-span-1 2xl:w-auto"
               variant="outline"
               onClick={resetFilters}
             >
