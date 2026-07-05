@@ -1569,18 +1569,6 @@ function FullscreenSignatureDialog({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open || !signatureViewport.coarsePointer) return;
-    const orientation = window.screen?.orientation as (ScreenOrientation & {
-      lock?: (orientation: string) => Promise<void>;
-      unlock?: () => void;
-    }) | undefined;
-    orientation?.lock?.(signatureViewport.landscape ? "landscape" : "portrait").catch(() => {});
-    return () => {
-      orientation?.unlock?.();
-    };
-  }, [open, signatureViewport.coarsePointer, signatureViewport.landscape]);
-
   const dialogClassName = signatureViewport.coarsePointer
     ? signatureViewport.landscape
       ? "h-[100dvh] max-h-none w-[100dvw] max-w-none overflow-hidden rounded-none border-0 p-3"
@@ -1989,6 +1977,7 @@ export function ServiceReport() {
   const [signatureShareError, setSignatureShareError] = useState("");
   const [signatureShareNotice, setSignatureShareNotice] = useState("");
   const [signatureQrCodeUrl, setSignatureQrCodeUrl] = useState("");
+  const signatureEnteredFullscreenRef = useRef(false);
   const customerSearchTimerRef = useRef<number | null>(null);
   const customerSearchRequestRef = useRef(0);
   const installModelSearchTimerRef = useRef<number | null>(null);
@@ -3222,6 +3211,76 @@ export function ServiceReport() {
       }
     }
     await copySignatureRequestLink();
+  }
+
+  async function lockSignatureOrientationFromGesture() {
+    const isTouchDevice = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+    if (!isTouchDevice) return;
+
+    const fullscreenDocument = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    const fullscreenElement = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+
+    try {
+      if (!document.fullscreenElement && !fullscreenDocument.webkitFullscreenElement) {
+        if (fullscreenElement.requestFullscreen) {
+          await fullscreenElement.requestFullscreen({ navigationUI: "hide" } as FullscreenOptions);
+          signatureEnteredFullscreenRef.current = true;
+        } else if (fullscreenElement.webkitRequestFullscreen) {
+          await fullscreenElement.webkitRequestFullscreen();
+          signatureEnteredFullscreenRef.current = true;
+        }
+      }
+    } catch {
+      signatureEnteredFullscreenRef.current = false;
+    }
+
+    const orientation = window.screen?.orientation as (ScreenOrientation & {
+      lock?: (orientation: string) => Promise<void>;
+    }) | undefined;
+    const lockDirection = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
+    await orientation?.lock?.(lockDirection).catch(() => {});
+  }
+
+  async function releaseSignatureOrientationLock() {
+    const orientation = window.screen?.orientation as (ScreenOrientation & {
+      unlock?: () => void;
+    }) | undefined;
+    orientation?.unlock?.();
+
+    const fullscreenDocument = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    if (!signatureEnteredFullscreenRef.current) return;
+    signatureEnteredFullscreenRef.current = false;
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (fullscreenDocument.webkitFullscreenElement && fullscreenDocument.webkitExitFullscreen) {
+        await fullscreenDocument.webkitExitFullscreen();
+      }
+    } catch {
+      // Some mobile browsers reject fullscreen exit during page transitions.
+    }
+  }
+
+  async function openSignatureFullscreen() {
+    await lockSignatureOrientationFromGesture();
+    setSignatureFullscreenOpen(true);
+  }
+
+  function handleSignatureFullscreenOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      void openSignatureFullscreen();
+      return;
+    }
+    setSignatureFullscreenOpen(false);
+    void releaseSignatureOrientationLock();
   }
 
   async function sendSignatureRequestMail() {
@@ -5554,7 +5613,7 @@ export function ServiceReport() {
                               type="button"
                               variant="outline"
                               className="w-full sm:hidden"
-                              onClick={() => setSignatureFullscreenOpen(true)}
+                              onClick={openSignatureFullscreen}
                             >
                               横屏全屏签名
                             </Button>
@@ -5596,7 +5655,7 @@ export function ServiceReport() {
     <FullscreenSignatureDialog
       open={signatureFullscreenOpen}
       value={form.customerSignature}
-      onOpenChange={setSignatureFullscreenOpen}
+      onOpenChange={handleSignatureFullscreenOpenChange}
       onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })}
     />
     <Dialog open={signatureShareOpen} onOpenChange={setSignatureShareOpen}>
