@@ -1372,14 +1372,71 @@ function SignaturePad({
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
+  function canvasCssSize(canvas: HTMLCanvasElement) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      width: Math.max(1, canvas.clientWidth || rect.width),
+      height: Math.max(1, canvas.clientHeight || rect.height),
+    };
+  }
+
+  function clampPoint(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function transformedCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    const { width, height } = canvasCssSize(canvas);
+    const rectWidth = Math.max(1, rect.width);
+    const rectHeight = Math.max(1, rect.height);
+    const getBoxQuads = (canvas as HTMLCanvasElement & {
+      getBoxQuads?: () => Array<{
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        p4: { x: number; y: number };
+      }>;
+    }).getBoxQuads;
+    const quad = getBoxQuads?.call(canvas)?.[0];
+    if (quad) {
+      const xAxis = { x: quad.p2.x - quad.p1.x, y: quad.p2.y - quad.p1.y };
+      const yAxis = { x: quad.p4.x - quad.p1.x, y: quad.p4.y - quad.p1.y };
+      const pointer = { x: clientX - quad.p1.x, y: clientY - quad.p1.y };
+      const determinant = xAxis.x * yAxis.y - xAxis.y * yAxis.x;
+      if (Math.abs(determinant) > 0.001) {
+        const xRatio = (pointer.x * yAxis.y - pointer.y * yAxis.x) / determinant;
+        const yRatio = (xAxis.x * pointer.y - xAxis.y * pointer.x) / determinant;
+        return {
+          x: clampPoint(xRatio * width, 0, width),
+          y: clampPoint(yRatio * height, 0, height),
+        };
+      }
+    }
+
+    const hasTransformedBounds = Math.abs(rectWidth - width) > 2 || Math.abs(rectHeight - height) > 2;
+    const quarterRotated = hasTransformedBounds && Math.abs(rectWidth - height) < 2 && Math.abs(rectHeight - width) < 2;
+    if (quarterRotated) {
+      const relativeX = clientX - rect.left;
+      const relativeY = clientY - rect.top;
+      return {
+        x: clampPoint((relativeY / rectHeight) * width, 0, width),
+        y: clampPoint(height - (relativeX / rectWidth) * height, 0, height),
+      };
+    }
+
+    return {
+      x: clampPoint(((clientX - rect.left) / rectWidth) * width, 0, width),
+      y: clampPoint(((clientY - rect.top) / rectHeight) * height, 0, height),
+    };
+  }
+
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const { width, height } = canvasCssSize(canvas);
     const ratio = window.devicePixelRatio || 1;
     const snapshot = value;
-    canvas.width = Math.max(1, Math.round(rect.width * ratio));
-    canvas.height = Math.max(1, Math.round(rect.height * ratio));
+    canvas.width = Math.max(1, Math.round(width * ratio));
+    canvas.height = Math.max(1, Math.round(height * ratio));
     const context = canvas.getContext("2d");
     if (!context) return;
     const styles = window.getComputedStyle(document.documentElement);
@@ -1387,14 +1444,14 @@ function SignaturePad({
     const foregroundColor = styles.getPropertyValue("--foreground").trim() || "#111827";
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = backgroundColor;
-    context.fillRect(0, 0, rect.width, rect.height);
+    context.fillRect(0, 0, width, height);
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = 2;
     context.strokeStyle = foregroundColor;
     if (snapshot) {
       const image = new Image();
-      image.onload = () => context.drawImage(image, 0, 0, rect.width, rect.height);
+      image.onload = () => context.drawImage(image, 0, 0, width, height);
       image.src = snapshot;
     }
   }, [value]);
@@ -1408,8 +1465,7 @@ function SignaturePad({
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return transformedCanvasPoint(canvas, event.clientX, event.clientY);
   }
 
   function begin(event: React.PointerEvent<HTMLCanvasElement>) {
