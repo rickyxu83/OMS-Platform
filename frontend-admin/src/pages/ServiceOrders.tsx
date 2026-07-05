@@ -439,6 +439,40 @@ function formatDateOnly(value?: string) {
   return String(value).replace("T", " ").slice(0, 10);
 }
 
+function CompactDateFilterInput({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative min-w-0 overflow-hidden">
+      <input
+        id={id}
+        aria-label={label}
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-base text-slate-900 shadow-sm transition-[background-color,border-color,color,box-shadow] peer-focus-visible:border-primary peer-focus-visible:ring-primary/20 peer-focus-visible:ring-[3px] md:text-sm"
+      >
+        <span className={value ? "min-w-0 truncate tabular-nums" : "min-w-0 truncate text-slate-400"}>
+          {value || "YYYY-MM-DD"}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
 function formatFileSize(value?: number) {
   const size = Number(value || 0);
   if (!size) return "-";
@@ -1746,28 +1780,22 @@ export function ServiceOrders() {
               <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
                 {t.filters.startDate}
               </Label>
-              <Input
+              <CompactDateFilterInput
                 id="service-orders-start-date"
-                data-compact-date="true"
-                aria-label={t.filters.startDate}
-                className="w-full max-w-full !min-w-0"
-                type="date"
+                label={t.filters.startDate}
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
               />
             </div>
             <div className="min-w-0 overflow-hidden space-y-1.5">
               <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
                 {t.filters.endDate}
               </Label>
-              <Input
+              <CompactDateFilterInput
                 id="service-orders-end-date"
-                data-compact-date="true"
-                aria-label={t.filters.endDate}
-                className="w-full max-w-full !min-w-0"
-                type="date"
+                label={t.filters.endDate}
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
               />
             </div>
             <Button
