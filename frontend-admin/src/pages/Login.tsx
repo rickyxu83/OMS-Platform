@@ -31,10 +31,6 @@ const LOGIN_BACKGROUND_BLOBS = [
 const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
 const LOGIN_MOTION_EASE = 0.22;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
-const LOGIN_ORIENTATION_MAX_TILT = 9;
-const LOGIN_ORIENTATION_X_BOOST = 1.45;
-const LOGIN_ORIENTATION_Y_BOOST = 1.25;
-const LOGIN_ORIENTATION_ACTIVATION_EVENTS = ["pointerdown", "touchstart"] as const;
 const LOGIN_DEEP_BLOB_COUNT = 4;
 const LOGIN_DEEP_BLOB_FOCUS_SLOTS = [0, 1, 2, 3];
 const LOGIN_DEEP_BLOB_EDGE_SLOTS = [4, 5, 6, 7];
@@ -106,10 +102,6 @@ const LOGIN_DEEP_BLOB_COLOR_GROUPS = [
 ];
 
 type LoginMotionPoint = { x: number; y: number };
-type OrientationBaseline = { beta: number; gamma: number };
-type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
-  requestPermission?: () => Promise<"granted" | "denied">;
-};
 
 function clampMotionValue(value: number) {
   return Math.max(-1, Math.min(1, value));
@@ -183,41 +175,6 @@ function isTouchOrCoarsePointer() {
   return window.matchMedia("(hover: none), (pointer: coarse)").matches;
 }
 
-function screenOrientationAngle() {
-  const orientationAngle = window.screen.orientation?.angle;
-  if (typeof orientationAngle === "number") return orientationAngle;
-  return typeof window.orientation === "number" ? window.orientation : 0;
-}
-
-function motionFromDeviceOrientation(
-  event: DeviceOrientationEvent,
-  baseline: OrientationBaseline,
-): LoginMotionPoint | null {
-  if (event.beta === null || event.gamma === null) return null;
-
-  const deltaBeta = event.beta - baseline.beta;
-  const deltaGamma = event.gamma - baseline.gamma;
-  const angle = ((screenOrientationAngle() % 360) + 360) % 360;
-  let x = deltaGamma;
-  let y = deltaBeta;
-
-  if (angle === 90) {
-    x = -deltaBeta;
-    y = deltaGamma;
-  } else if (angle === 270) {
-    x = deltaBeta;
-    y = -deltaGamma;
-  } else if (angle === 180) {
-    x = -deltaGamma;
-    y = -deltaBeta;
-  }
-
-  return {
-    x: clampMotionValue((x / LOGIN_ORIENTATION_MAX_TILT) * LOGIN_ORIENTATION_X_BOOST),
-    y: clampMotionValue((y / LOGIN_ORIENTATION_MAX_TILT) * LOGIN_ORIENTATION_Y_BOOST),
-  };
-}
-
 function LoginMotionBackground() {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -273,11 +230,6 @@ function LoginMotionBackground() {
       ensureFrame();
     };
 
-    const setMotionTarget = (target: LoginMotionPoint) => {
-      targetRef.current = target;
-      ensureFrame();
-    };
-
     const handlePointerMove = (event: PointerEvent) => {
       updateTarget(event.clientX, event.clientY);
     };
@@ -287,7 +239,6 @@ function LoginMotionBackground() {
     };
 
     const handleTouchMove = (event: TouchEvent) => {
-      if (orientationState.hasOrientationInput) return;
       const touch = event.touches[0];
       if (!touch) return;
       updateTarget(touch.clientX, touch.clientY);
@@ -299,56 +250,8 @@ function LoginMotionBackground() {
     };
 
     const isMobileMotion = isTouchOrCoarsePointer();
-    const supportsDeviceOrientation = "DeviceOrientationEvent" in window;
-    const OrientationEvent = window.DeviceOrientationEvent as DeviceOrientationEventWithPermission;
-    const requestOrientationPermission = OrientationEvent?.requestPermission;
-    const needsOrientationPermission = typeof requestOrientationPermission === "function";
-    const orientationState = {
-      listening: false,
-      hasOrientationInput: false,
-      permissionRequested: false,
-      baseline: null as OrientationBaseline | null,
-    };
-
-    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
-      if (event.beta === null || event.gamma === null) return;
-      if (!orientationState.baseline) {
-        orientationState.baseline = { beta: event.beta, gamma: event.gamma };
-      }
-      const motion = motionFromDeviceOrientation(event, orientationState.baseline);
-      if (!motion) return;
-      orientationState.hasOrientationInput = true;
-      setMotionTarget(motion);
-    };
-
-    const startOrientationTracking = () => {
-      if (!isMobileMotion || !supportsDeviceOrientation || orientationState.listening) return;
-      orientationState.listening = true;
-      window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
-    };
-
-    const requestOrientationAccess = () => {
-      if (!isMobileMotion || !supportsDeviceOrientation || orientationState.permissionRequested) return;
-      orientationState.permissionRequested = true;
-      if (!needsOrientationPermission) {
-        startOrientationTracking();
-        return;
-      }
-      requestOrientationPermission()
-        .then((permission) => {
-          if (permission === "granted") startOrientationTracking();
-        })
-        .catch(() => {
-          orientationState.hasOrientationInput = false;
-        });
-    };
-
     const supportsPointerEvent = "PointerEvent" in window;
     if (isMobileMotion) {
-      if (!needsOrientationPermission) startOrientationTracking();
-      LOGIN_ORIENTATION_ACTIVATION_EVENTS.forEach((eventName) => {
-        window.addEventListener(eventName, requestOrientationAccess, { passive: true });
-      });
       window.addEventListener("touchmove", handleTouchMove, { passive: true });
     } else if (supportsPointerEvent) {
       window.addEventListener("pointermove", handlePointerMove, { passive: true });
@@ -357,11 +260,7 @@ function LoginMotionBackground() {
     }
     document.addEventListener("pointerleave", handlePointerLeave);
     return () => {
-      window.removeEventListener("deviceorientation", handleDeviceOrientation);
       if (isMobileMotion) {
-        LOGIN_ORIENTATION_ACTIVATION_EVENTS.forEach((eventName) => {
-          window.removeEventListener(eventName, requestOrientationAccess);
-        });
         window.removeEventListener("touchmove", handleTouchMove);
       } else if (supportsPointerEvent) {
         window.removeEventListener("pointermove", handlePointerMove);
