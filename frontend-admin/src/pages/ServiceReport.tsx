@@ -1548,13 +1548,17 @@ function FullscreenSignatureDialog({
   useEffect(() => {
     const coarseQuery = window.matchMedia("(hover: none), (pointer: coarse)");
     const landscapeQuery = window.matchMedia("(orientation: landscape)");
-    const updateViewport = () => {
+    const captureViewport = () => {
       setSignatureViewport({
         coarsePointer: coarseQuery.matches,
         landscape: landscapeQuery.matches,
       });
     };
-    updateViewport();
+    const updateViewport = () => {
+      if (open) return;
+      captureViewport();
+    };
+    captureViewport();
     coarseQuery.addEventListener("change", updateViewport);
     landscapeQuery.addEventListener("change", updateViewport);
     window.addEventListener("resize", updateViewport);
@@ -1563,7 +1567,7 @@ function FullscreenSignatureDialog({
       landscapeQuery.removeEventListener("change", updateViewport);
       window.removeEventListener("resize", updateViewport);
     };
-  }, []);
+  }, [open]);
 
   const dialogClassName = signatureViewport.coarsePointer
     ? signatureViewport.landscape
