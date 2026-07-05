@@ -352,13 +352,13 @@ interface CreateDraftItem {
 }
 
 const MODE_OPTIONS: Array<{ value: ServiceMode; label: string; description: string; icon: typeof Wrench }> = [
-  { value: "onsite", label: "现场", description: "客户现场服务、设备安装、故障排查与巡检", icon: Wrench },
+  { value: "onsite", label: "现场", description: "客户现场服务、设备安装、技术处理与巡检", icon: Wrench },
   { value: "remote", label: "远程", description: "远程连接、故障排查与协同支持", icon: MonitorCog },
   { value: "office", label: "内勤", description: "方案准备、文档整理与内部协作", icon: ClipboardPenLine },
 ];
 
 const SERVICE_TYPE_OPTIONS = [
-  { value: "repair", label: "故障排查" },
+  { value: "repair", label: "技术处理" },
   { value: "install", label: "安装" },
   { value: "maintain", label: "调优" },
   { value: "inspect", label: "巡检" },
@@ -405,7 +405,7 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "紧急" },
 ];
 const ONSITE_SERVICE_MODULE_OPTIONS: ServiceModuleOption[] = [
-  { value: "repair", label: "故障排查", description: "故障排除、配置修改与支持记录", descriptionItems: ["目标设备", "配置/日志文件"], icon: Wrench },
+  { value: "repair", label: "技术处理", description: "故障排查、配置修改、调整优化等。", descriptionItems: ["目标设备", "配置/日志文件"], icon: Wrench },
   { value: "install", label: "安装", description: "记录新设备或硬件部件的安装交付信息", descriptionItems: ["新设备安装", "硬件部件安装"], icon: HardDrive },
   { value: "inspect", label: "巡检", description: "记录巡检结果，并上传巡检文档与现场照片", descriptionItems: ["巡检文档", "现场照片"], icon: ClipboardCheck },
   { value: "replacement", label: "备件更换", description: "记录故障备件拆下、换上及相关明细", descriptionItems: ["换下备件", "换上备件"], icon: Package },
@@ -1064,7 +1064,7 @@ function reportWorkContentPreviewLabel(order: ServiceOrder) {
   if (mode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (mode === "onsite") {
-    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("repair")) return "技术处理记录";
     if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
     return "现场处理记录";
   }
@@ -2210,7 +2210,7 @@ export function ServiceReport() {
   const workContentLabel = isOffice
     ? "工作内容"
     : isOnsite
-      ? isRepairModule ? "故障排查 / 配置修改记录" : isInspection ? "巡检处理记录" : "现场处理记录"
+      ? isRepairModule ? "技术处理记录" : isInspection ? "巡检处理记录" : "现场处理记录"
       : isRemoteSupportModule ? "远程支持记录" : "处理记录";
   const shouldShowAttachments = isInstall || isRepairModule || isRemoteSupportModule || isInspection || hasReplacementModule;
   const workSectionStep = 3;

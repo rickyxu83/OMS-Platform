@@ -148,7 +148,7 @@ function serviceOrderSearchClause(index) {
           OR so.status LIKE ${likeParam}
           OR CASE so.service_type
                WHEN 'install' THEN '安装 install'
-               WHEN 'repair' THEN '排障 维修 repair'
+               WHEN 'repair' THEN '技术处理 故障排查 配置修改 调整优化 排障 维修 repair'
                WHEN 'maintain' THEN '调优 保养 维护 maintain'
                WHEN 'inspect' THEN '巡检 巡检类 inspect'
                WHEN 'training' THEN '培训 training'

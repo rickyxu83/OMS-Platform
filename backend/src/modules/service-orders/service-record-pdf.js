@@ -100,7 +100,7 @@ function serviceModuleLabels(item = {}) {
   const modules = normalizeServiceModules(rawModules, mode)
   const labels = mode === 'remote'
     ? { repair: '远程技术支持', replacement: '备件更换远程协助' }
-    : { repair: '故障排查', install: '安装', inspect: '巡检', replacement: '备件更换' }
+    : { repair: '技术处理', install: '安装', inspect: '巡检', replacement: '备件更换' }
   return modules.map((module) => labels[module]).filter(Boolean)
 }
 
@@ -127,7 +127,7 @@ function officeCategoryDisplay(item) {
 function serviceTypeLabel(value) {
   const labels = {
     install: '安装',
-    repair: '排障',
+    repair: '技术处理',
     maintain: '调优',
     inspect: '巡检',
     training: '培训',

@@ -22,7 +22,7 @@ export interface ServiceItemSource {
 
 const SERVICE_TYPE_LABELS: Record<string, string> = {
   install: "安装",
-  repair: "故障排查",
+  repair: "技术处理",
   maintain: "调优",
   inspect: "巡检",
   training: "培训",
@@ -40,7 +40,7 @@ const REMOTE_CATEGORY_LABELS: Record<string, string> = {
 };
 
 const ONSITE_MODULE_LABELS: Record<string, string> = {
-  repair: "故障排查",
+  repair: "技术处理",
   install: "安装",
   inspect: "巡检",
   replacement: "备件更换",

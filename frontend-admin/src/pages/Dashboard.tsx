@@ -593,7 +593,7 @@ function workContentPreviewLabel(order: Order) {
   if (order.serviceMode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (order.serviceMode === "onsite") {
-    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("repair")) return "技术处理记录";
     if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
     return "现场处理记录";
   }

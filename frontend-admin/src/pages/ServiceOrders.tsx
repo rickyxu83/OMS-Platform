@@ -415,7 +415,7 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
 
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
   install: "安装 install",
-  repair: "排障 维修 repair",
+  repair: "技术处理 故障排查 配置修改 调整优化 排障 维修 repair",
   maintain: "调优 保养 维护 maintain",
   inspect: "巡检 巡检类 inspect",
   training: "培训 training",
@@ -839,7 +839,7 @@ function workContentPreviewLabel(order: ServiceOrder) {
   if (order.serviceMode === "office") return "工作内容";
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (order.serviceMode === "onsite") {
-    if (modules.includes("repair")) return "故障排查记录";
+    if (modules.includes("repair")) return "技术处理记录";
     if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
     return "现场处理记录";
   }
