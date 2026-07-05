@@ -209,7 +209,23 @@
   }
 
   input[data-compact-date="true"] {
+    box-sizing: border-box;
     min-inline-size: 0;
+    max-inline-size: 100%;
+    inline-size: 100%;
+    overflow: hidden;
+    padding-inline: 0.625rem;
+  }
+
+  input[data-compact-date="true"]::-webkit-date-and-time-value {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    text-align: start;
+  }
+
+  input[data-compact-date="true"]::-webkit-calendar-picker-indicator {
+    margin-inline-start: 0;
+    padding-inline: 0;
   }
 
   @media (max-width: 640px) {

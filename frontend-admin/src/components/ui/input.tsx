@@ -6,6 +6,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => {
     const isDateInput = type === "date" || type === "time";
     const isDateTimeInput = type === "datetime-local";
+    const isCompactDate = (props as Record<string, unknown>)["data-compact-date"] === "true";
 
     return (
       <input
@@ -17,8 +18,8 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           "focus-visible:border-primary focus-visible:ring-primary/20 focus-visible:ring-[3px]",
           "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
           className,
-          isDateInput && "min-w-full sm:min-w-[11.5rem]",
-          isDateTimeInput && "min-w-full sm:min-w-[14.5rem]",
+          isDateInput && !isCompactDate && "min-w-full sm:min-w-[11.5rem]",
+          isDateTimeInput && !isCompactDate && "min-w-full sm:min-w-[14.5rem]",
         )}
         {...props}
       />

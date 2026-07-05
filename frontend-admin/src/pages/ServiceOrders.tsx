@@ -1741,8 +1741,8 @@ export function ServiceOrders() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
-            <div className="min-w-0 space-y-1.5">
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto] 2xl:items-end">
+            <div className="min-w-0 overflow-hidden space-y-1.5">
               <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
                 {t.filters.startDate}
               </Label>
@@ -1750,13 +1750,13 @@ export function ServiceOrders() {
                 id="service-orders-start-date"
                 data-compact-date="true"
                 aria-label={t.filters.startDate}
-                className="!min-w-0"
+                className="w-full max-w-full !min-w-0"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
-            <div className="min-w-0 space-y-1.5">
+            <div className="min-w-0 overflow-hidden space-y-1.5">
               <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
                 {t.filters.endDate}
               </Label>
@@ -1764,7 +1764,7 @@ export function ServiceOrders() {
                 id="service-orders-end-date"
                 data-compact-date="true"
                 aria-label={t.filters.endDate}
-                className="!min-w-0"
+                className="w-full max-w-full !min-w-0"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
