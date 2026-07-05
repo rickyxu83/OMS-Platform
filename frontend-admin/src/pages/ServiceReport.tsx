@@ -1535,13 +1535,27 @@ function FullscreenSignatureDialog({
   onOpenChange: (open: boolean) => void;
   onChange: (value: string) => void;
 }) {
+  function currentOrientationAngle() {
+    const screenAngle = window.screen?.orientation?.angle;
+    if (typeof screenAngle === "number") return screenAngle;
+    const legacyAngle = (window as Window & { orientation?: number }).orientation;
+    if (typeof legacyAngle === "number") return legacyAngle;
+    return window.matchMedia("(orientation: landscape)").matches ? 90 : 0;
+  }
+
+  function normalizeAngle(angle: number) {
+    return ((((angle + 180) % 360) + 360) % 360) - 180;
+  }
+
   const [draftValue, setDraftValue] = useState(value);
   const [signatureViewport, setSignatureViewport] = useState(() => ({
     coarsePointer: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
     landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
     width: typeof window !== "undefined" ? window.innerWidth : 0,
     height: typeof window !== "undefined" ? window.innerHeight : 0,
+    angle: typeof window !== "undefined" ? currentOrientationAngle() : 0,
   }));
+  const [currentAngle, setCurrentAngle] = useState(() => (typeof window !== "undefined" ? currentOrientationAngle() : 0));
 
   useEffect(() => {
     if (open) setDraftValue(value);
@@ -1556,7 +1570,9 @@ function FullscreenSignatureDialog({
         landscape: landscapeQuery.matches,
         width: Math.max(1, window.innerWidth),
         height: Math.max(1, window.innerHeight),
+        angle: currentOrientationAngle(),
       });
+      setCurrentAngle(currentOrientationAngle());
     };
     const updateViewport = () => {
       if (open) return;
@@ -1575,6 +1591,20 @@ function FullscreenSignatureDialog({
 
   useEffect(() => {
     if (!open || !signatureViewport.coarsePointer) return;
+    const updateAngle = () => setCurrentAngle(currentOrientationAngle());
+    updateAngle();
+    window.addEventListener("resize", updateAngle);
+    window.addEventListener("orientationchange", updateAngle);
+    window.screen?.orientation?.addEventListener?.("change", updateAngle);
+    return () => {
+      window.removeEventListener("resize", updateAngle);
+      window.removeEventListener("orientationchange", updateAngle);
+      window.screen?.orientation?.removeEventListener?.("change", updateAngle);
+    };
+  }, [open, signatureViewport.coarsePointer]);
+
+  useEffect(() => {
+    if (!open || !signatureViewport.coarsePointer) return;
     const orientation = window.screen?.orientation as (ScreenOrientation & {
       lock?: (orientation: string) => Promise<void>;
       unlock?: () => void;
@@ -1588,12 +1618,16 @@ function FullscreenSignatureDialog({
   const dialogClassName = signatureViewport.coarsePointer
     ? signatureViewport.landscape
       ? "max-h-none max-w-none overflow-hidden rounded-none border-0 p-3"
-      : "max-h-none max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+      : "max-h-none max-w-none overflow-hidden rounded-none border-0 p-3"
     : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
+  const signatureBaseRotation = signatureViewport.landscape ? 0 : 90;
+  const signatureRotation = signatureBaseRotation - normalizeAngle(currentAngle - signatureViewport.angle);
   const dialogStyle = signatureViewport.coarsePointer
     ? {
         width: `${signatureViewport.landscape ? signatureViewport.width : signatureViewport.height}px`,
         height: `${signatureViewport.landscape ? signatureViewport.height : signatureViewport.width}px`,
+        transform: `translate(-50%, -50%) rotate(${signatureRotation}deg)`,
+        transformOrigin: "center center",
       }
     : undefined;
 
