@@ -1805,12 +1805,8 @@ function DateTimeFieldControl({
     onChange(`${draftDate || inputToday()}T${nextTime}`);
   }
 
-  function fillNow() {
-    onChange(inputNow());
-  }
-
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto] gap-2">
+    <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
       <div className="relative min-w-0 overflow-hidden">
         <input
           aria-label={`${label}日期`}
@@ -1847,10 +1843,11 @@ function DateTimeFieldControl({
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
       </div>
-      <Button type="button" variant="outline" className="h-9 shrink-0 px-2.5" onClick={fillNow} aria-label={`填入当前${label}`}>
-        <Clock className="h-4 w-4 sm:mr-1.5" />
-        <span className="hidden sm:inline">现在</span>
-      </Button>
+      {value ? (
+        <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
+          <X className="h-4 w-4" />
+        </Button>
+      ) : null}
     </div>
   );
 }
