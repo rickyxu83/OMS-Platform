@@ -198,6 +198,23 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.45;
   }
+
+  input[type="date"],
+  input[type="time"] {
+    min-inline-size: 11.5rem;
+  }
+
+  input[type="datetime-local"] {
+    min-inline-size: 14.5rem;
+  }
+
+  @media (max-width: 640px) {
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"] {
+      min-inline-size: 100%;
+    }
+  }
 }
 
 @layer components {

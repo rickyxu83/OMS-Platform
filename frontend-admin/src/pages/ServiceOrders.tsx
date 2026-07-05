@@ -1697,8 +1697,8 @@ export function ServiceOrders() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-[1_1_280px]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.15fr)_minmax(170px,0.7fr)_minmax(260px,1fr)]">
+            <div className="relative min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -1711,7 +1711,7 @@ export function ServiceOrders() {
                 }}
               />
             </div>
-            <div className="min-w-[150px] flex-[1_1_170px]">
+            <div className="min-w-0">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder={t.filters.statusPlaceholder} />
@@ -1725,7 +1725,7 @@ export function ServiceOrders() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-[220px] flex-[1_1_260px]">
+            <div className="min-w-0">
               <Select value={customerFilter} onValueChange={setCustomerFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder={t.filters.customerPlaceholder} />
@@ -1740,7 +1740,9 @@ export function ServiceOrders() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-[145px] flex-[1_1_150px]">
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
+            <div className="min-w-0">
               <Input
                 aria-label={t.filters.startDate}
                 type="date"
@@ -1748,7 +1750,7 @@ export function ServiceOrders() {
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
-            <div className="min-w-[145px] flex-[1_1_150px]">
+            <div className="min-w-0">
               <Input
                 aria-label={t.filters.endDate}
                 type="date"
@@ -1757,7 +1759,7 @@ export function ServiceOrders() {
               />
             </div>
             <Button
-              className="min-w-[96px] flex-[1_1_96px] sm:flex-none"
+              className="w-full sm:col-span-2 xl:col-span-1 xl:w-auto"
               variant="outline"
               onClick={resetFilters}
             >
