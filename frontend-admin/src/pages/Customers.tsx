@@ -8,13 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -647,6 +640,9 @@ function previewScheduleMeta(schedule: CustomerSchedule, labels: { enabled: stri
   ].filter(Boolean).join(" · ");
 }
 
+const CUSTOMER_LIST_GRID = "grid-cols-[44px_288px_132px_176px_128px_minmax(236px,1fr)_176px]";
+const CUSTOMER_LIST_READONLY_GRID = "grid-cols-[288px_132px_176px_128px_minmax(236px,1fr)_176px]";
+
 export function Customers() {
   const { lang } = useLanguage();
   const { user, hasPermission } = useAuth();
@@ -692,6 +688,8 @@ export function Customers() {
   const canForceDeleteCustomer = canDeleteCustomer;
   const canMergeCustomer = hasPermission("customer.merge");
   const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
+  const customerListGrid = canDeleteCustomer ? CUSTOMER_LIST_GRID : CUSTOMER_LIST_READONLY_GRID;
+  const customerListMinWidth = canDeleteCustomer ? "min-w-[1180px]" : "min-w-[1136px]";
 
   const primaryContact = form.contacts[0] || { name: "", phone: "" };
   const salespersonOptions = useMemo(() => {
@@ -1487,56 +1485,38 @@ export function Customers() {
         </CardHeader>
         <CardContent className="min-w-0 pt-6">
           <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain rounded-md border">
-              <table className="w-full min-w-[1180px] table-fixed caption-bottom text-sm">
-              <colgroup>
-                {canDeleteCustomer ? <col className="w-11" /> : null}
-                <col className="w-[288px]" />
-                <col className="w-[132px]" />
-                <col className="w-[176px]" />
-                <col className="w-[128px]" />
-                <col />
-                <col className="w-[176px]" />
-              </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
-                <TableRow>
-                  {canDeleteCustomer ? <TableHead className="w-11 text-center" /> : null}
-                  <TableHead>{t.list.name}</TableHead>
-                  <TableHead className="text-center">{t.list.contact}</TableHead>
-                  <TableHead className="text-center">{t.list.phone}</TableHead>
-                  <TableHead className="text-center">
+            {initialLoading ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t.list.loading}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+            ) : (
+              <div className={customerListMinWidth}>
+                <div className={`sticky top-0 z-10 grid border-b bg-muted/70 px-2 py-2 text-xs font-medium text-muted-foreground backdrop-blur ${customerListGrid} items-center gap-0`}>
+                  {canDeleteCustomer ? <div className="text-center" aria-hidden="true" /> : null}
+                  <div>{t.list.name}</div>
+                  <div className="text-center">{t.list.contact}</div>
+                  <div className="text-center">{t.list.phone}</div>
+                  <div className="text-center">
                     <span className="inline-flex items-center justify-center gap-1.5">
                       {t.list.level}
                       <HelpTooltip label={t.dialog.levelHelp} />
                     </span>
-                  </TableHead>
-                  <TableHead>{t.list.address}</TableHead>
-                  <TableHead className="w-[176px] text-right pr-5">{t.list.action}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {initialLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={canDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
-                      <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" /> {t.list.loading}
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={canDeleteCustomer ? 7 : 6} className="text-center py-10 text-muted-foreground">
-                      {t.list.empty}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((c) => {
+                  </div>
+                  <div>{t.list.address}</div>
+                  <div className="pr-3 text-right">{t.list.action}</div>
+                </div>
+                {filtered.map((c) => {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     const selected = selectedCustomerIds.includes(String(c.id));
                     return (
-                      <TableRow
+                      <div
                         key={c.id}
                         role="button"
                         tabIndex={0}
-                        className="cursor-pointer"
+                        className={`grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
                         onClick={() => setDetailTarget(c)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
@@ -1547,16 +1527,16 @@ export function Customers() {
                         }}
                       >
                         {canDeleteCustomer ? (
-                          <TableCell onClick={(event) => event.stopPropagation()}>
+                          <div className="px-2 text-center" onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               checked={selected}
                               onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
                               disabled={deleting}
                               aria-label={`选择客户 ${c.name || c.id}`}
                             />
-                          </TableCell>
+                          </div>
                         ) : null}
-                        <TableCell className="min-w-0">
+                        <div className="min-w-0 px-2">
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0 flex-1">
@@ -1583,12 +1563,12 @@ export function Customers() {
                               ) : null}
                             </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-center">
+                        </div>
+                        <div className="min-w-0 px-2 text-center">
                           <div className="truncate" title={c.contactName || t.misc.unknown}>{c.contactName || t.misc.unknown}</div>
-                        </TableCell>
-                        <TableCell className="text-center tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
-                        <TableCell className="text-center">
+                        </div>
+                        <div className="min-w-0 px-2 text-center tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</div>
+                        <div className="px-2 text-center">
                           <Badge
                             role="button"
                             tabIndex={0}
@@ -1608,11 +1588,11 @@ export function Customers() {
                           >
                             {lvLabel}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="truncate text-muted-foreground">
+                        </div>
+                        <div className="truncate px-2 text-muted-foreground">
                           {c.address || t.misc.unknown}
-                        </TableCell>
-                        <TableCell className="text-right">
+                        </div>
+                        <div className="px-2 text-right">
                           <div className="flex justify-end gap-1">
                             {canManageCustomer ? (
                               <Button
@@ -1643,13 +1623,12 @@ export function Customers() {
                               </Button>
                             ) : null}
                           </div>
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                      </div>
                     );
-                  })
-                )}
-              </TableBody>
-              </table>
+                  })}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
