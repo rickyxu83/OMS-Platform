@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -1547,13 +1547,33 @@ function FullscreenSignatureDialog({
   onChange: (value: string) => void;
 }) {
   const [draftValue, setDraftValue] = useState(value);
+  const readSignatureViewport = () => {
+    if (typeof window === "undefined") {
+      return { touch: false, landscape: false, shortSide: 0, longSide: 0 };
+    }
+    const width = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+    const height = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
+    return {
+      touch: window.matchMedia("(hover: none), (pointer: coarse)").matches,
+      landscape: window.matchMedia("(orientation: landscape)").matches,
+      shortSide: Math.max(1, Math.min(width, height)),
+      longSide: Math.max(1, Math.max(width, height)),
+    };
+  };
   const [signatureViewport, setSignatureViewport] = useState(() => ({
-    touch: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
-    landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
+    touch: readSignatureViewport().touch,
+    landscape: readSignatureViewport().landscape,
   }));
+  const [signatureSessionSize, setSignatureSessionSize] = useState<{ shortSide: number; longSide: number } | null>(null);
 
   useEffect(() => {
-    if (open) setDraftValue(value);
+    if (open) {
+      const viewport = readSignatureViewport();
+      setDraftValue(value);
+      setSignatureSessionSize({ shortSide: viewport.shortSide, longSide: viewport.longSide });
+    } else {
+      setSignatureSessionSize(null);
+    }
   }, [open, value]);
 
   useEffect(() => {
@@ -1574,16 +1594,25 @@ function FullscreenSignatureDialog({
     };
   }, []);
 
+  const activeSignatureSize = open ? signatureSessionSize || readSignatureViewport() : null;
+  const dialogStyle = signatureViewport.touch && activeSignatureSize
+    ? ({
+        width: `${activeSignatureSize.longSide}px`,
+        height: `${activeSignatureSize.shortSide}px`,
+      } satisfies CSSProperties)
+    : undefined;
+  const touchDialogBase = "overflow-hidden rounded-none border-0 p-3 shadow-none transition-none data-[state=closed]:animate-none data-[state=open]:animate-none sm:!max-w-none";
   const dialogClassName = signatureViewport.touch
     ? signatureViewport.landscape
-      ? "!fixed !inset-0 !left-0 !top-0 !h-[100dvh] !max-h-none !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
-      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+      ? `!fixed !left-0 !top-0 !max-h-none !max-w-none !translate-x-0 !translate-y-0 ${touchDialogBase}`
+      : `!fixed !left-1/2 !top-1/2 !max-h-none !max-w-none rotate-90 ${touchDialogBase}`
     : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={dialogClassName}
+        style={dialogStyle}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex h-full min-h-0 flex-col gap-3">
