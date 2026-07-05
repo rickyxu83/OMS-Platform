@@ -734,7 +734,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {/* Page Content */}
         <main
           ref={contentRef}
-          className={`mobile-admin-content flex-1 overflow-auto bg-transparent relative z-0 lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
+          className={`mobile-admin-content relative z-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
         >
           {children}
         </main>
