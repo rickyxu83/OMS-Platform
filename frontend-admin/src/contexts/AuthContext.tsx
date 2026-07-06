@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { api, saveSession, clearSession, getCurrentUser } from '@/services/api'
+import { api, saveSession, saveUser, clearSession, getCurrentUser } from '@/services/api'
 import type { WorkspaceOption } from '@/config/app'
 
 const ADMIN_ACCESS_ROLES = [
@@ -30,6 +30,7 @@ interface AuthContextType {
   loading: boolean
   login: (username: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => void
+  refreshUser: () => Promise<User | null>
   isAuthenticated: boolean
   hasPermission: (...permissions: string[]) => boolean
 }
@@ -94,10 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false)
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    const data = await api.get('/users/me')
+    const nextUser = {
+      ...user,
+      ...data.user,
+      permissions: user?.permissions || data.user?.permissions || [],
+      permissionDetails: user?.permissionDetails || data.user?.permissionDetails || [],
+      availableWorkspaces: user?.availableWorkspaces || data.user?.availableWorkspaces || [],
+      defaultWorkspace: user?.defaultWorkspace || data.user?.defaultWorkspace || '',
+    }
+    saveUser(nextUser)
+    setUser(nextUser)
+    setIsAuthenticated(hasAdminWorkspace(nextUser))
+    return nextUser
+  }, [user])
+
   const hasPermission = useCallback((...permissions: string[]) => userHasPermission(user, ...permissions), [user])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, isAuthenticated, hasPermission }}>
       {children}
     </AuthContext.Provider>
   )

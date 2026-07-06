@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { APP_VERSION, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
+import { APP_VERSION, getPreferredWorkspace, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { releaseInteractionLocks } from "@/services/api";
@@ -468,6 +468,12 @@ export function Login() {
       }
 
       if (workspaces.length > 1) {
+        const preferredWorkspace = getPreferredWorkspace(result.user?.id);
+        const preferredChoice = workspaces.find((workspace) => workspace.key === preferredWorkspace);
+        if (preferredChoice) {
+          enterWorkspace(preferredChoice.key, preferredChoice.home || "");
+          return;
+        }
         setWorkspaceChoices(workspaces);
         return;
       }

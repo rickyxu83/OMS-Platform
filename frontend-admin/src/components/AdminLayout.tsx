@@ -28,6 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
@@ -36,6 +44,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
+import { MySettingsDialog, UserAvatar } from "./MySettingsDialog";
 
 interface NavItem {
   label: string;
@@ -287,6 +296,10 @@ function formatHeaderTime(value: Date) {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
 }
 
+function displayUserName(user: Record<string, any> | null | undefined) {
+  return String(user?.realName || user?.name || user?.username || "用户");
+}
+
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -315,6 +328,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
+  const [mySettingsOpen, setMySettingsOpen] = useState(false);
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
@@ -456,6 +470,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     setQuickNavOpen(false);
     setFeedbackOpen(false);
     setAnnouncementOpen(false);
+    setMySettingsOpen(false);
     logout();
     window.setTimeout(() => {
       window.location.replace(`${import.meta.env.BASE_URL}login`);
@@ -511,6 +526,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     : currentAnnouncement?.kind === "success"
       ? "✅"
       : "📣";
+  const currentRoleLabel = strings.roles[currentUser.role] || currentUser.role || "";
+  const currentDisplayName = displayUserName(currentUser);
 
   return (
     <div className="flex h-screen bg-background" style={layoutStyle}>
@@ -650,11 +667,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
-              onClick={logoutToLogin}
-              aria-label="退出登录"
+              className="h-8 w-8 rounded-full p-0"
+              onClick={() => setMySettingsOpen(true)}
+              aria-label="我的设置"
             >
-              <LogOut className="w-4 h-4" />
+              <UserAvatar user={currentUser} className="h-8 w-8" textClassName="text-xs" />
             </Button>
           </div>
 
@@ -712,22 +729,47 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             <Separator orientation="vertical" className="hidden h-8 xl:block" />
 
             {/* User Info */}
-            <div className="flex items-center gap-3">
-              <div className="hidden text-right xl:block">
-                <div className="whitespace-nowrap text-sm font-medium">{currentUser.name}</div>
-                <div className="whitespace-nowrap text-xs text-muted-foreground">
-                  {strings.roles[currentUser.role] || currentUser.role}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={logoutToLogin}
-                aria-label="退出登录"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-3 rounded-full px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="打开我的设置"
+                >
+                  <div className="hidden min-w-0 text-right xl:block">
+                    <div className="max-w-[9rem] truncate whitespace-nowrap text-sm font-medium">{currentDisplayName}</div>
+                    <div className="whitespace-nowrap text-xs text-muted-foreground">
+                      {currentRoleLabel}
+                    </div>
+                  </div>
+                  <UserAvatar user={currentUser} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="min-w-0">
+                    <div className="truncate">{currentDisplayName}</div>
+                    <div className="truncate text-xs font-normal text-muted-foreground">{currentRoleLabel}</div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setMySettingsOpen(true)}>
+                  <Settings className="h-4 w-4" />
+                  我的设置
+                </DropdownMenuItem>
+                {canSwitchEngineer ? (
+                  <DropdownMenuItem onSelect={() => goToWorkspace("engineer")}>
+                    <ClipboardPenLine className="h-4 w-4" />
+                    工单填写
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={logoutToLogin} variant="destructive">
+                  <LogOut className="h-4 w-4" />
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
@@ -896,6 +938,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <MySettingsDialog
+        open={mySettingsOpen}
+        onOpenChange={setMySettingsOpen}
+        roleLabel={currentRoleLabel}
+      />
     </div>
   );
 }
