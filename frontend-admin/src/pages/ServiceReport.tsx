@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -40,8 +40,6 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { TimePicker } from "antd";
-import dayjs, { type Dayjs } from "dayjs";
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -624,6 +622,68 @@ function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
   event.preventDefault();
   openNativePicker(event.currentTarget);
 }
+
+function useDesktopTimePicker() {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)");
+    const update = () => setEnabled(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return enabled;
+}
+
+interface TimeInputProps {
+  label: string;
+  time: string;
+  onTimeChange: (time: string) => void;
+}
+
+function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
+  return (
+    <input
+      aria-label={`${label}时间`}
+      type="time"
+      value={time}
+      onChange={(event) => onTimeChange(event.target.value)}
+      onPointerDown={openPickerOnMouse}
+      className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+    />
+  );
+}
+
+const DesktopTimePicker = lazy(async () => {
+  const [{ TimePicker }, dayjsModule] = await Promise.all([
+    import("antd"),
+    import("dayjs"),
+  ]);
+  const dayjs = dayjsModule.default;
+
+  function LoadedDesktopTimePicker({ label, time, onTimeChange }: TimeInputProps) {
+    const timeValue = time ? dayjs(time, "HH:mm") : null;
+    return (
+      <TimePicker
+        aria-label={`${label}时间`}
+        value={timeValue}
+        format="HH:mm"
+        minuteStep={5}
+        allowClear={false}
+        needConfirm={false}
+        showNow={false}
+        popupClassName="service-report-time-picker"
+        className="service-report-time-input h-9 w-full min-w-0 rounded-md border-slate-300 bg-white text-sm shadow-sm hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
+        placeholder="选择时间"
+        onChange={(nextTime) => onTimeChange(nextTime ? nextTime.format("HH:mm") : "")}
+      />
+    );
+  }
+
+  return { default: LoadedDesktopTimePicker };
+});
 
 function inputNow() {
   const date = new Date();
@@ -1876,7 +1936,7 @@ function DateTimeFieldControl({
 }) {
   const { date, time } = splitInputDateTime(value);
   const [draftDate, setDraftDate] = useState(date || inputToday());
-  const timeValue = time ? dayjs(time, "HH:mm") : null;
+  const useDesktopPicker = useDesktopTimePicker();
 
   useEffect(() => {
     setDraftDate(date || inputToday());
@@ -1896,14 +1956,6 @@ function DateTimeFieldControl({
     onChange(`${draftDate || inputToday()}T${nextTime}`);
   }
 
-  function setTimeValue(nextTime: Dayjs | null) {
-    if (!nextTime) {
-      onChange("");
-      return;
-    }
-    setTime(nextTime.format("HH:mm"));
-  }
-
   return (
     <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
       <input
@@ -1914,19 +1966,13 @@ function DateTimeFieldControl({
         onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
-      <TimePicker
-        aria-label={`${label}时间`}
-        value={timeValue}
-        format="HH:mm"
-        minuteStep={5}
-        allowClear={false}
-        needConfirm={false}
-        showNow={false}
-        popupClassName="service-report-time-picker"
-        className="service-report-time-input h-9 w-full min-w-0 rounded-md border-slate-300 bg-white text-sm shadow-sm hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
-        placeholder="选择时间"
-        onChange={setTimeValue}
-      />
+      {useDesktopPicker ? (
+        <Suspense fallback={<NativeTimeInput label={label} time={time} onTimeChange={setTime} />}>
+          <DesktopTimePicker label={label} time={time} onTimeChange={setTime} />
+        </Suspense>
+      ) : (
+        <NativeTimeInput label={label} time={time} onTimeChange={setTime} />
+      )}
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
           <X className="h-4 w-4" />
