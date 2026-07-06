@@ -623,12 +623,6 @@ function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
   openNativePicker(event.currentTarget);
 }
 
-const TIME_PICKER_OPTIONS = Array.from({ length: 24 * 60 }, (_, index) => {
-  const hour = Math.floor(index / 60);
-  const minute = index % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-});
-
 function inputNow() {
   const date = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -1909,18 +1903,14 @@ function DateTimeFieldControl({
         onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
-      <select
+      <input
         aria-label={`${label}时间`}
+        type="time"
         value={time}
         onChange={(event) => setTime(event.target.value)}
+        onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-      >
-        <option value="">时间</option>
-        {time && !TIME_PICKER_OPTIONS.includes(time) ? <option value={time}>{time}</option> : null}
-        {TIME_PICKER_OPTIONS.map((option) => (
-          <option key={option} value={option}>{option}</option>
-        ))}
-      </select>
+      />
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
           <X className="h-4 w-4" />
