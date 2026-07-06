@@ -291,11 +291,6 @@ interface Announcement {
   kind: "info" | "warning" | "success";
 }
 
-function formatHeaderTime(value: Date) {
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
-}
-
 function displayUserName(user: Record<string, any> | null | undefined) {
   return String(user?.realName || user?.name || user?.username || "用户");
 }
@@ -326,7 +321,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
   const strings = STRINGS[lang];
@@ -362,11 +356,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [location.key, navigationType]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -676,10 +665,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </div>
 
           <div className="hidden min-w-0 flex-shrink-0 items-center gap-2 lg:flex xl:gap-4 2xl:gap-6">
-            <div className="hidden whitespace-nowrap text-sm text-muted-foreground xl:block">
-              {formatHeaderTime(currentTime)}
-            </div>
-
             {/* Quick Nav */}
             <Button
               variant="outline"
