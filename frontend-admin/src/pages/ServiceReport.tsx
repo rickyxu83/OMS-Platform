@@ -623,6 +623,9 @@ function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
   openNativePicker(event.currentTarget);
 }
 
+const TIME_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const TIME_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, "0"));
+
 function inputNow() {
   const date = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -1873,6 +1876,10 @@ function DateTimeFieldControl({
   onChange: (value: string) => void;
 }) {
   const { date, time } = splitInputDateTime(value);
+  const [hour, minute] = time ? time.split(":") : ["", ""];
+  const minuteOptions = minute && !TIME_MINUTE_OPTIONS.includes(minute)
+    ? [minute, ...TIME_MINUTE_OPTIONS]
+    : TIME_MINUTE_OPTIONS;
   const [draftDate, setDraftDate] = useState(date || inputToday());
 
   useEffect(() => {
@@ -1893,6 +1900,22 @@ function DateTimeFieldControl({
     onChange(`${draftDate || inputToday()}T${nextTime}`);
   }
 
+  function setHour(nextHour: string) {
+    if (!nextHour) {
+      onChange("");
+      return;
+    }
+    setTime(`${nextHour}:${minute || "00"}`);
+  }
+
+  function setMinute(nextMinute: string) {
+    if (!nextMinute) {
+      onChange("");
+      return;
+    }
+    setTime(`${hour || inputNow().slice(11, 13)}:${nextMinute}`);
+  }
+
   return (
     <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
       <input
@@ -1903,14 +1926,30 @@ function DateTimeFieldControl({
         onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
-      <input
-        aria-label={`${label}时间`}
-        type="time"
-        value={time}
-        onChange={(event) => setTime(event.target.value)}
-        onPointerDown={openPickerOnMouse}
-        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-      />
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5">
+        <select
+          aria-label={`${label}小时`}
+          value={hour}
+          onChange={(event) => setHour(event.target.value)}
+          className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        >
+          <option value="">时</option>
+          {TIME_HOUR_OPTIONS.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <select
+          aria-label={`${label}分钟`}
+          value={minute}
+          onChange={(event) => setMinute(event.target.value)}
+          className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        >
+          <option value="">分</option>
+          {minuteOptions.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      </div>
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
           <X className="h-4 w-4" />
