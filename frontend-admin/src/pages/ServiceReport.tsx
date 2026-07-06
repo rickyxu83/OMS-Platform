@@ -1881,10 +1881,27 @@ function DateTimeFieldControl({
     ? [minute, ...TIME_MINUTE_OPTIONS]
     : TIME_MINUTE_OPTIONS;
   const [draftDate, setDraftDate] = useState(date || inputToday());
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const timePickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setDraftDate(date || inputToday());
   }, [date]);
+
+  useEffect(() => {
+    if (!timePickerOpen) return undefined;
+    function closeOnOutside(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (target && timePickerRef.current?.contains(target)) return;
+      setTimePickerOpen(false);
+    }
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("touchstart", closeOnOutside);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("touchstart", closeOnOutside);
+    };
+  }, [timePickerOpen]);
 
   function setDate(nextDate: string) {
     const effectiveDate = nextDate || inputToday();
@@ -1914,6 +1931,7 @@ function DateTimeFieldControl({
       return;
     }
     setTime(`${hour || inputNow().slice(11, 13)}:${nextMinute}`);
+    setTimePickerOpen(false);
   }
 
   return (
@@ -1926,29 +1944,53 @@ function DateTimeFieldControl({
         onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5">
-        <select
-          aria-label={`${label}小时`}
-          value={hour}
-          onChange={(event) => setHour(event.target.value)}
-          className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+      <div ref={timePickerRef} className="relative min-w-0">
+        <button
+          type="button"
+          aria-label={`${label}时间`}
+          aria-expanded={timePickerOpen}
+          className="flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+          onClick={() => setTimePickerOpen((open) => !open)}
         >
-          <option value="">时</option>
-          {TIME_HOUR_OPTIONS.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
-        <select
-          aria-label={`${label}分钟`}
-          value={minute}
-          onChange={(event) => setMinute(event.target.value)}
-          className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-        >
-          <option value="">分</option>
-          {minuteOptions.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
+          <span className={time ? "min-w-0 truncate tabular-nums" : "min-w-0 truncate text-slate-400"}>
+            {time || "选择时间"}
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${timePickerOpen ? "rotate-180" : ""}`} />
+        </button>
+        {timePickerOpen ? (
+          <div className="absolute left-0 top-[calc(100%+0.375rem)] z-50 grid w-[min(18rem,calc(100vw-2rem))] grid-cols-2 gap-2 rounded-lg border bg-white p-2 shadow-lg">
+            <div>
+              <div className="px-1.5 pb-1 text-xs font-medium text-muted-foreground">小时</div>
+              <div className="grid max-h-52 grid-cols-2 gap-1 overflow-y-auto pr-1">
+                {TIME_HOUR_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={`h-8 rounded-md text-sm tabular-nums transition-colors ${option === hour ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                    onClick={() => setHour(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="px-1.5 pb-1 text-xs font-medium text-muted-foreground">分钟</div>
+              <div className="grid max-h-52 grid-cols-2 gap-1 overflow-y-auto pr-1">
+                {minuteOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={`h-8 rounded-md text-sm tabular-nums transition-colors ${option === minute ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                    onClick={() => setMinute(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
