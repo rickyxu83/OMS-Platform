@@ -605,6 +605,7 @@ function splitInputDateTime(value: string) {
 }
 
 function openNativePicker(input: HTMLInputElement) {
+  input.focus({ preventScroll: true });
   try {
     if (typeof input.showPicker === "function") {
       input.showPicker();
@@ -615,6 +616,18 @@ function openNativePicker(input: HTMLInputElement) {
   }
   input.focus();
 }
+
+function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
+  if (event.pointerType !== "mouse") return;
+  event.preventDefault();
+  openNativePicker(event.currentTarget);
+}
+
+const TIME_PICKER_OPTIONS = Array.from({ length: 24 * 60 }, (_, index) => {
+  const hour = Math.floor(index / 60);
+  const minute = index % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+});
 
 function inputNow() {
   const date = new Date();
@@ -1888,44 +1901,26 @@ function DateTimeFieldControl({
 
   return (
     <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
-      <div className="relative min-w-0 overflow-hidden">
-        <input
-          aria-label={`${label}日期`}
-          type="date"
-          value={draftDate}
-          onChange={(event) => setDate(event.target.value)}
-          onClick={(event) => openNativePicker(event.currentTarget)}
-          className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm transition-[background-color,border-color,color,box-shadow] peer-focus-visible:border-primary peer-focus-visible:ring-primary/20 peer-focus-visible:ring-[3px]"
-        >
-          <span className="min-w-0 truncate tabular-nums">
-            {draftDate}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </div>
-      </div>
-      <div className="relative min-w-0 overflow-hidden">
-        <input
-          aria-label={`${label}时间`}
-          type="time"
-          value={time}
-          onChange={(event) => setTime(event.target.value)}
-          onClick={(event) => openNativePicker(event.currentTarget)}
-          className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none flex h-9 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm transition-[background-color,border-color,color,box-shadow] peer-focus-visible:border-primary peer-focus-visible:ring-primary/20 peer-focus-visible:ring-[3px]"
-        >
-          <span className={time ? "min-w-0 truncate tabular-nums" : "min-w-0 truncate text-slate-400"}>
-            {time || "时间"}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </div>
-      </div>
+      <input
+        aria-label={`${label}日期`}
+        type="date"
+        value={draftDate}
+        onChange={(event) => setDate(event.target.value)}
+        onPointerDown={openPickerOnMouse}
+        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+      />
+      <select
+        aria-label={`${label}时间`}
+        value={time}
+        onChange={(event) => setTime(event.target.value)}
+        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+      >
+        <option value="">时间</option>
+        {time && !TIME_PICKER_OPTIONS.includes(time) ? <option value={time}>{time}</option> : null}
+        {TIME_PICKER_OPTIONS.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
           <X className="h-4 w-4" />
