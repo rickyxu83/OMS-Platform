@@ -664,52 +664,54 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Button>
           </div>
 
-          <div className="hidden min-w-0 flex-shrink-0 items-center gap-2 lg:flex xl:gap-4 2xl:gap-6">
-            {/* Quick Nav */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setQuickNavOpen(true)}
-              className="gap-2"
-              aria-label={strings.common.quickNav}
-            >
-              <Search className="w-4 h-4" />
-              <span className="hidden xl:inline">{strings.common.quickNav}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFeedbackOpen(true)}
-              className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-              aria-label={strings.common.feedback}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="hidden xl:inline">{strings.common.feedback}</span>
-            </Button>
-
-            {/* Language Toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLangToggle}
-              className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-              aria-label={strings.common.langShort}
-            >
-              <Languages className="w-4 h-4" />
-              <span className="hidden text-xs font-medium xl:inline">{strings.common.langShort}</span>
-            </Button>
-
-            {canSwitchEngineer && (
+          <div className="hidden min-w-0 flex-shrink-0 items-center gap-3 lg:flex">
+            <div className="flex items-center gap-2">
+              {/* Quick Nav */}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => goToWorkspace("engineer")}
-                className="hidden xl:inline-flex"
+                onClick={() => setQuickNavOpen(true)}
+                className="gap-2"
+                aria-label={strings.common.quickNav}
               >
-                {strings.common.switchEngineer}
+                <Search className="w-4 h-4" />
+                <span className="hidden xl:inline">{strings.common.quickNav}</span>
               </Button>
-            )}
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFeedbackOpen(true)}
+                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
+                aria-label={strings.common.feedback}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span className="hidden xl:inline">{strings.common.feedback}</span>
+              </Button>
+
+              {/* Language Toggle */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLangToggle}
+                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
+                aria-label={strings.common.langShort}
+              >
+                <Languages className="w-4 h-4" />
+                <span className="hidden text-xs font-medium xl:inline">{strings.common.langShort}</span>
+              </Button>
+
+              {canSwitchEngineer && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToWorkspace("engineer")}
+                  className="hidden xl:inline-flex"
+                >
+                  {strings.common.switchEngineer}
+                </Button>
+              )}
+            </div>
 
             <Separator orientation="vertical" className="hidden h-8 xl:block" />
 
