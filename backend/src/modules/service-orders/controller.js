@@ -213,7 +213,7 @@ function orderPayload(row, viewer = null) {
     deviceRemark: row.device_remark,
     serviceMode: row.service_mode || 'onsite',
     serviceType: row.service_type,
-    ...(serviceModules.length ? { serviceModules } : {}),
+    serviceModules,
     timesheetCategory: row.timesheet_category,
     timesheetSalesperson: hideDunyangSalesperson ? null : row.timesheet_salesperson,
     priority: row.priority,
