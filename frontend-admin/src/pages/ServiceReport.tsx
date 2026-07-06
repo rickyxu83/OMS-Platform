@@ -472,6 +472,10 @@ const FORM_SKIN = [
 const INSPECTION_DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.log,.cfg,.conf,.ini,.json,.xml,.yaml,.yml,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
 const INSPECTION_DOCUMENT_EXTENSIONS = new Set(INSPECTION_DOCUMENT_ACCEPT.split(","));
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const COMPRESSIBLE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const COMPRESSIBLE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const IMAGE_COMPRESSION_MAX_EDGE = 1920;
+const IMAGE_COMPRESSION_QUALITY = 0.8;
 
 function installDeviceDraftId() {
   return `install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -598,6 +602,18 @@ function splitInputDateTime(value: string) {
     date: value ? value.slice(0, 10) : "",
     time: value ? value.slice(11, 16) : "",
   };
+}
+
+function openNativePicker(input: HTMLInputElement) {
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+  } catch {
+    // Some browsers throw when a native picker is already open or unsupported.
+  }
+  input.focus();
 }
 
 function inputNow() {
@@ -1165,6 +1181,71 @@ function validateFiles(files: File[]) {
   const oversized = files.find((file) => file.size > MAX_FILE_SIZE);
   if (oversized) return `文件大小超过 20MB：${oversized.name}`;
   return "";
+}
+
+function fileExtension(file: File) {
+  const dot = file.name.lastIndexOf(".");
+  return dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
+}
+
+function compressedImageName(file: File) {
+  const dot = file.name.lastIndexOf(".");
+  const base = dot >= 0 ? file.name.slice(0, dot) : file.name || "image";
+  return `${base}-compressed.jpg`;
+}
+
+function isCompressibleImage(file: File) {
+  const mimeType = String(file.type || "").toLowerCase();
+  return COMPRESSIBLE_IMAGE_MIME_TYPES.has(mimeType) || COMPRESSIBLE_IMAGE_EXTENSIONS.has(fileExtension(file));
+}
+
+function loadImageFile(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`图片无法读取：${file.name}`));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+async function compressImageFile(file: File) {
+  if (!isCompressibleImage(file)) return file;
+  const image = await loadImageFile(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) return file;
+  const scale = Math.min(1, IMAGE_COMPRESSION_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await canvasToBlob(canvas, "image/jpeg", IMAGE_COMPRESSION_QUALITY);
+  if (!blob || blob.size >= file.size) return file;
+  return new File([blob], compressedImageName(file), {
+    type: "image/jpeg",
+    lastModified: file.lastModified,
+  });
+}
+
+async function compressAttachmentImages(files: File[]) {
+  return Promise.all(files.map((file) => compressImageFile(file).catch(() => file)));
 }
 
 function mergeAttachmentFiles(current: File[], incoming: File[]) {
@@ -1813,6 +1894,7 @@ function DateTimeFieldControl({
           type="date"
           value={draftDate}
           onChange={(event) => setDate(event.target.value)}
+          onClick={(event) => openNativePicker(event.currentTarget)}
           className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
         />
         <div
@@ -1831,6 +1913,7 @@ function DateTimeFieldControl({
           type="time"
           value={time}
           onChange={(event) => setTime(event.target.value)}
+          onClick={(event) => openNativePicker(event.currentTarget)}
           className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
         />
         <div
@@ -3462,8 +3545,9 @@ export function ServiceReport() {
     setScreenshotLogFiles(files);
   }
 
-  function selectAttachmentFiles(purpose: AttachmentPurpose, files: File[], append = false) {
-    const nextFiles = append ? mergeAttachmentFiles(localFilesForPurpose(purpose), files) : files;
+  async function selectAttachmentFiles(purpose: AttachmentPurpose, files: File[], append = false) {
+    const processedFiles = await compressAttachmentImages(files);
+    const nextFiles = append ? mergeAttachmentFiles(localFilesForPurpose(purpose), processedFiles) : processedFiles;
     const fileError = validateFiles(nextFiles);
     if (fileError) {
       setError(fileError);
@@ -3496,7 +3580,7 @@ export function ServiceReport() {
     setDraggingAttachmentPurpose(null);
     const files = Array.from(event.dataTransfer.files || []);
     if (!files.length) return;
-    selectAttachmentFiles(purpose, files, true);
+    void selectAttachmentFiles(purpose, files, true);
   }
 
   function existingFilesForPurpose(purpose: AttachmentPurpose) {
@@ -3598,7 +3682,6 @@ export function ServiceReport() {
     if (isOnsite && !form.customerAddress.trim()) missing.push("客户地址");
     if (!isOffice && !form.contactName.trim() && !form.customerConfirmName.trim()) missing.push("客户联系人");
     if (!isOffice && !form.contactPhone.trim()) missing.push("客户联系电话");
-    if (isRemote && !selectedServiceModules.length) missing.push("服务模块");
     if (isOffice && !form.timesheetCategory.trim()) missing.push("内勤工作事项");
     if (isInstall) {
       const installTargets = form.installDevices.filter(installDeviceHasContent);
@@ -4848,7 +4931,7 @@ export function ServiceReport() {
             </div>
           </ReportSection>
 
-          <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : isOnsite ? "可选；按需选择对应字段" : "可多选；系统将按模块显示对应字段"}>
+          <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : "可选；按需选择对应字段"}>
               <div className="space-y-4 p-3 sm:p-4">
                 {!isOffice ? (
                   <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
@@ -5480,7 +5563,7 @@ export function ServiceReport() {
                             accept={INSPECTION_DOCUMENT_ACCEPT}
                             className="hidden"
                             onChange={(event) => {
-                              selectAttachmentFiles(purpose, Array.from(event.target.files || []), true);
+                              void selectAttachmentFiles(purpose, Array.from(event.target.files || []), true);
                               event.currentTarget.value = "";
                             }}
                           />
@@ -5495,7 +5578,7 @@ export function ServiceReport() {
                         >
                           <Upload className="mb-2 h-5 w-5" />
                           <span className="font-medium">{dragging ? "松开鼠标上传到此分类" : "拖拽文件到这里上传"}</span>
-                          <span className="mt-1">支持 PDF、Office、图片、日志文本与 ZIP，单个文件不超过 20MB</span>
+                          <span className="mt-1">支持 PDF、Office、图片、日志文本与 ZIP，图片会自动压缩，单个文件不超过 20MB</span>
                         </div>
                         {existingFiles.map((file) => (
                           <div key={file.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
