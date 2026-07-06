@@ -82,6 +82,13 @@ interface DevicePartHistory {
 interface Customer {
   id: string | number;
   name?: string;
+  code?: string;
+  address?: string;
+  mapAddress?: string;
+  contactName?: string;
+  contactPhone?: string;
+  sortInitial?: string;
+  sortKey?: string;
 }
 
 interface MaintenanceParty {
@@ -96,6 +103,10 @@ interface ModelSuggestion {
   brand?: string;
   category?: string;
 }
+
+type ModelSuggestionTarget =
+  | { type: "form" }
+  | { type: "batch"; index: number };
 
 interface DeviceForm {
   customerId: string;
@@ -193,6 +204,7 @@ interface ExistingModelNormalizationResult {
 }
 
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
+  pending_confirmation: "待确认",
   none: "无维保",
   vendor: "原厂维保",
   our: "我方维保",
@@ -201,6 +213,7 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
 };
 
 const MAINTENANCE_TYPE_BADGE: Record<string, "default" | "secondary" | "info" | "purple"> = {
+  pending_confirmation: "default",
   none: "secondary",
   vendor: "info",
   our: "purple",
@@ -208,7 +221,7 @@ const MAINTENANCE_TYPE_BADGE: Record<string, "default" | "secondary" | "info" | 
   our_maintenance: "purple",
 };
 
-const MAINTENANCE_TYPE_HELP = "维保类型用于区分设备当前由谁负责保障：无维保表示暂不纳入维保；我方维保表示由本公司负责服务和巡检；原厂维保表示主要由原厂或指定维保方负责。";
+const MAINTENANCE_TYPE_HELP = "待确认表示销售仍需确认是否纳入维保，会触发维保资料提醒；无维保表示明确不纳入维保，不会触发维保资料提醒；我方维保和原厂维保需填写维保截止日期。";
 
 const MAINTENANCE_TYPE_ALIASES: Record<string, string> = {
   vendor: "original_manufacturer",
@@ -242,7 +255,7 @@ function createEmptyDeviceForm(overrides: Partial<DeviceForm> = {}): DeviceForm 
     pn: "",
     serialNo: "",
     mrNo: "",
-    maintenanceType: "none",
+    maintenanceType: "pending_confirmation",
     maintenancePartyId: "",
     maintenanceStart: "",
     maintenanceEnd: "",
@@ -286,7 +299,7 @@ interface BatchEditToggles {
 
 function createEmptyBatchEditForm(): BatchEditForm {
   return {
-    maintenanceType: "none",
+    maintenanceType: "pending_confirmation",
     maintenancePartyId: "",
     maintenanceStart: "",
     maintenanceEnd: "",
@@ -329,19 +342,23 @@ function inputDate(value?: string) {
 }
 
 function canonicalMaintenanceType(value?: string) {
-  const type = String(value || "none").trim() || "none";
+  const type = String(value || "pending_confirmation").trim() || "pending_confirmation";
   return MAINTENANCE_TYPE_ALIASES[type] || type;
+}
+
+function maintenanceTypeHasParty(type?: string) {
+  return ["original_manufacturer", "our_maintenance"].includes(canonicalMaintenanceType(type));
 }
 
 function maintenancePartyMatchesType(party: MaintenanceParty, type?: string) {
   const maintenanceType = canonicalMaintenanceType(type);
-  if (maintenanceType === "none") return false;
+  if (!maintenanceTypeHasParty(maintenanceType)) return false;
   return canonicalMaintenanceType(party.partyType) === maintenanceType;
 }
 
 function resolveMaintenancePartyId(parties: MaintenanceParty[], type: string, currentId?: string | number | null) {
   const maintenanceType = canonicalMaintenanceType(type);
-  if (maintenanceType === "none" || !currentId) return "";
+  if (!maintenanceTypeHasParty(maintenanceType) || !currentId) return "";
   return parties.some((party) => (
     String(party.id) === String(currentId)
     && maintenancePartyMatchesType(party, maintenanceType)
@@ -353,8 +370,61 @@ function customerLabel(customer?: Customer | null) {
   return customer.name || `客户 #${customer.id}`;
 }
 
+function customerMeta(customer: Customer) {
+  return [customer.address || customer.mapAddress, customer.contactName, customer.contactPhone]
+    .filter(Boolean)
+    .join(" · ") || customer.code || `客户 #${customer.id}`;
+}
+
 function normalizeCustomerSearchText(value?: string | number) {
   return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function customerMatches(customer: Customer, keyword: string) {
+  const normalized = normalizeCustomerSearchText(keyword);
+  if (!normalized) return true;
+  return [
+    customer.name,
+    customer.code,
+    customer.address,
+    customer.mapAddress,
+    customer.contactName,
+    customer.contactPhone,
+    customer.id,
+  ].filter(Boolean).some((value) => normalizeCustomerSearchText(value).includes(normalized));
+}
+
+const CUSTOMER_INDEX_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
+
+function customerInitial(customer: Customer) {
+  const initial = String(customer.sortInitial || "").toUpperCase();
+  if (/^[A-Z]$/.test(initial)) return initial;
+  const first = customerLabel(customer).trim()[0]?.toUpperCase() || "";
+  return /^[A-Z]$/.test(first) ? first : "#";
+}
+
+function customerSortKey(customer: Customer) {
+  return customer.sortKey || `${customerInitial(customer)}|${customerLabel(customer).trim().toLowerCase()}`;
+}
+
+function groupCustomersByInitial(items: Customer[]) {
+  const collator = new Intl.Collator("zh-Hans-CN", { numeric: true, sensitivity: "base" });
+  const groups = new Map<string, Customer[]>();
+  const sortedItems = [...items].sort((a, b) => {
+    const groupA = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(a));
+    const groupB = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(b));
+    const rankA = groupA >= 0 ? groupA : CUSTOMER_INDEX_LETTERS.length;
+    const rankB = groupB >= 0 ? groupB : CUSTOMER_INDEX_LETTERS.length;
+    if (rankA !== rankB) return rankA - rankB;
+    return collator.compare(customerSortKey(a), customerSortKey(b));
+  });
+  sortedItems.forEach((customer) => {
+    const letter = customerInitial(customer);
+    groups.set(letter, [...(groups.get(letter) || []), customer]);
+  });
+  return CUSTOMER_INDEX_LETTERS
+    .filter((letter) => groups.has(letter))
+    .map((letter) => ({ letter, items: groups.get(letter) || [] }));
 }
 
 function deviceDisplayName(device?: Device | null) {
@@ -524,6 +594,106 @@ function mergeCustomers(current: Customer[], incoming: Customer[]) {
   return [...merged.values()];
 }
 
+function DeviceCustomerSuggestions({
+  open,
+  searching,
+  recentCustomers,
+  groups,
+  selectedCustomerId,
+  onSelect,
+}: {
+  open: boolean;
+  searching: boolean;
+  recentCustomers: Customer[];
+  groups: Array<{ letter: string; items: Customer[] }>;
+  selectedCustomerId: string;
+  onSelect: (customer: Customer) => void;
+}) {
+  const availableLetters = new Set(groups.map((group) => group.letter));
+  const hasResults = recentCustomers.length || groups.some((group) => group.items.length);
+  if (!open) return null;
+
+  function scrollToLetter(letter: string) {
+    document.getElementById(`device-customer-letter-${letter}`)?.scrollIntoView({ block: "start" });
+  }
+
+  function renderCustomer(customer: Customer, badge?: string) {
+    const selected = selectedCustomerId && String(customer.id) === selectedCustomerId;
+    return (
+      <button
+        key={`${badge || "customer"}-${customer.id}`}
+        type="button"
+        className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+          selected ? "border-primary/60 bg-primary/5" : "border-border bg-background hover:border-primary/40 hover:bg-accent/40"
+        }`}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          onSelect(customer);
+        }}
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-foreground">{customerLabel(customer)}</span>
+          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{customerMeta(customer)}</span>
+        </span>
+        {badge ? <Badge className="shrink-0" variant="secondary">{badge}</Badge> : selected ? <Badge className="shrink-0" variant="outline">已选择</Badge> : null}
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
+      <div className="relative">
+        <div className="max-h-80 overflow-y-auto p-2 pr-8">
+          {searching ? (
+            <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在检索客户…
+            </div>
+          ) : null}
+          {recentCustomers.length ? (
+            <div className="mb-3 space-y-2">
+              <div className="px-1 text-xs font-semibold text-muted-foreground">近期使用</div>
+              {recentCustomers.map((customer) => renderCustomer(customer, "近期"))}
+            </div>
+          ) : null}
+          {groups.map((group) => (
+            <div key={group.letter} id={`device-customer-letter-${group.letter}`} className="scroll-mt-2 space-y-2 pb-3">
+              <div className="sticky top-0 z-10 bg-popover/95 px-1 py-1 text-xs font-semibold text-muted-foreground backdrop-blur">
+                {group.letter}
+              </div>
+              {group.items.map((customer) => renderCustomer(customer))}
+            </div>
+          ))}
+          {!hasResults ? (
+            <div className="rounded-md border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+              未找到匹配客户，请调整关键词
+            </div>
+          ) : null}
+        </div>
+        {groups.length ? (
+          <div className="absolute bottom-2 right-1 top-2 flex flex-col items-center gap-px rounded-md bg-popover/70 px-0.5 py-1 backdrop-blur-sm">
+            {CUSTOMER_INDEX_LETTERS.map((letter) => (
+              <button
+                key={letter}
+                type="button"
+                disabled={!availableLetters.has(letter)}
+                aria-label={`跳转到 ${letter} 分组`}
+                className="flex h-4 w-4 items-center justify-center rounded-sm text-[10px] font-medium leading-none text-muted-foreground/80 transition-colors disabled:pointer-events-none disabled:text-muted-foreground/25 enabled:hover:bg-primary/10 enabled:hover:text-primary"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  scrollToLetter(letter);
+                }}
+              >
+                {letter}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 async function downloadDeviceImportTemplate() {
   const [{ Workbook }, { saveAs }] = await Promise.all([
     import("exceljs"),
@@ -643,7 +813,7 @@ async function downloadDeviceImportTemplate() {
     ["客户名称", "必填", "必须和系统内客户名称一模一样，否则该行会导入失败。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
-    ["维保类型", "选填", "可填：无维保、原厂维保、我方维保；空值按无维保处理。"],
+    ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
     ["维保方名称", "有维保时选填", "按名称和维保类型匹配已有维保方。"],
     ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
     ["质保截止", "选填", "设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。"],
@@ -688,6 +858,7 @@ export function Devices() {
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [modelSuggestionTarget, setModelSuggestionTarget] = useState<ModelSuggestionTarget>({ type: "form" });
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
   const modelSearchTimerRef = useRef<number | null>(null);
   const modelSearchRequestRef = useRef(0);
@@ -697,6 +868,7 @@ export function Devices() {
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [customerSearchTimer, setCustomerSearchTimer] = useState<number | null>(null);
+  const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [form, setForm] = useState<DeviceForm>(() => createEmptyDeviceForm());
   const [batchRows, setBatchRows] = useState<BatchDeviceRow[]>(() => createInitialBatchRows());
@@ -742,10 +914,18 @@ export function Devices() {
 
   async function loadCustomers() {
     try {
-      const data = await api.get("/customers?pageSize=200");
-      setCustomers((data?.items || []) as Customer[]);
+      const sortLocale = encodeURIComponent("zh-Hans-CN");
+      const [customerData, recentCustomerData] = await Promise.all([
+        api.get(`/customers?pageSize=200&sortLocale=${sortLocale}`),
+        api.get(`/customers?mine=1&pageSize=4&sortLocale=${sortLocale}`).catch(() => ({ items: [] })),
+      ]);
+      const regularItems = (customerData?.items || []) as Customer[];
+      const recentItems = ((recentCustomerData?.items || []) as Customer[]).slice(0, 4);
+      setRecentCustomers(recentItems);
+      setCustomers(mergeCustomers(regularItems, recentItems));
     } catch {
       setCustomers([]);
+      setRecentCustomers([]);
     }
   }
 
@@ -969,31 +1149,23 @@ export function Devices() {
     [customers, form.customerId],
   );
 
-  const dialogCustomerOptions = useMemo(() => {
-    const keyword = normalizeCustomerSearchText(customerInput);
-    const selectedId = form.customerId ? String(form.customerId) : "";
-    const matches = customers
-      .filter((customer) => {
-        if (!keyword) return true;
-        return normalizeCustomerSearchText(`${customerLabel(customer)} ${customer.id}`).includes(keyword);
-      })
-      .sort((left, right) => {
-        if (selectedId && String(left.id) === selectedId) return -1;
-        if (selectedId && String(right.id) === selectedId) return 1;
-        const leftLabel = normalizeCustomerSearchText(customerLabel(left));
-        const rightLabel = normalizeCustomerSearchText(customerLabel(right));
-        const leftStarts = keyword && leftLabel.startsWith(keyword) ? 0 : 1;
-        const rightStarts = keyword && rightLabel.startsWith(keyword) ? 0 : 1;
-        if (leftStarts !== rightStarts) return leftStarts - rightStarts;
-        return customerLabel(left).localeCompare(customerLabel(right), "zh-Hans-CN");
-      })
-      .slice(0, 60);
-
-    if (selectedCustomer && !matches.some((customer) => String(customer.id) === String(selectedCustomer.id))) {
-      return [selectedCustomer, ...matches].slice(0, 60);
+  const recentCustomerIds = useMemo(() => new Set(recentCustomers.map((customer) => String(customer.id))), [recentCustomers]);
+  const dialogRecentCustomers = useMemo(() => (
+    recentCustomers.filter((customer) => customerMatches(customer, customerInput)).slice(0, 4)
+  ), [customerInput, recentCustomers]);
+  const dialogCustomerGroups = useMemo(() => {
+    const grouped = groupCustomersByInitial(
+      customers
+        .filter((customer) => !recentCustomerIds.has(String(customer.id)))
+        .filter((customer) => customerMatches(customer, customerInput)),
+    );
+    if (selectedCustomer && !recentCustomerIds.has(String(selectedCustomer.id)) && !grouped.some((group) => (
+      group.items.some((customer) => String(customer.id) === String(selectedCustomer.id))
+    ))) {
+      return groupCustomersByInitial([selectedCustomer, ...grouped.flatMap((group) => group.items)]);
     }
-    return matches;
-  }, [customers, customerInput, form.customerId, selectedCustomer]);
+    return grouped;
+  }, [customers, customerInput, recentCustomerIds, selectedCustomer]);
 
   function selectedCustomerLabel(customerId: string | number | undefined, fallback?: string) {
     if (!customerId) return "";
@@ -1010,6 +1182,7 @@ export function Devices() {
     setCustomerInput(selectedCustomerLabel(defaultCustomerId));
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
+    setModelSuggestionTarget({ type: "form" });
     setDialogOpen(true);
   }
 
@@ -1023,6 +1196,7 @@ export function Devices() {
     setCustomerInput(selectedCustomerLabel(defaultCustomerId));
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
+    setModelSuggestionTarget({ type: "form" });
     setDialogOpen(true);
   }
 
@@ -1049,6 +1223,7 @@ export function Devices() {
     setCustomerInput(selectedCustomerLabel(device.customerId, device.customerName));
     setCustomerDropdownOpen(false);
     setModelSuggestions([]);
+    setModelSuggestionTarget({ type: "form" });
     setDialogOpen(true);
   }
 
@@ -1067,6 +1242,9 @@ export function Devices() {
       const next = rows.filter((_, rowIndex) => rowIndex !== index);
       return next.length ? next : [createEmptyBatchRow()];
     });
+    setModelSuggestionTarget((current) => (
+      current.type === "batch" && current.index === index ? { type: "form" } : current
+    ));
   }
 
   async function openDetail(device: Device) {
@@ -1109,7 +1287,7 @@ export function Devices() {
       const commonPayload: Record<string, unknown> = {
         customerId: effectiveCustomerId,
         maintenanceType,
-        maintenancePartyId: maintenanceType === "none" ? null : form.maintenancePartyId || null,
+        maintenancePartyId: maintenanceTypeHasParty(maintenanceType) ? form.maintenancePartyId || null : null,
         maintenanceStart: form.maintenanceStart || undefined,
         maintenanceEnd: form.maintenanceEnd || undefined,
         location: form.location.trim() || undefined,
@@ -1209,7 +1387,8 @@ export function Devices() {
     const timerId = window.setTimeout(async () => {
       setCustomerSearchLoading(true);
       try {
-        const data = await api.get(`/customers?pageSize=50&keyword=${encodeURIComponent(keyword)}`);
+        const sortLocale = encodeURIComponent("zh-Hans-CN");
+        const data = await api.get(`/customers?pageSize=50&keyword=${encodeURIComponent(keyword)}&sortLocale=${sortLocale}`);
         setCustomers((prev) => mergeCustomers(prev, (data?.items || []) as Customer[]));
       } catch {
         // Keep local matches usable when remote customer search is unavailable.
@@ -1226,10 +1405,11 @@ export function Devices() {
     setCustomerDropdownOpen(false);
   }
 
-  function scheduleModelSearch(value: string) {
+  function scheduleModelSearch(value: string, target: ModelSuggestionTarget = { type: "form" }) {
     if (modelSearchTimerRef.current) window.clearTimeout(modelSearchTimerRef.current);
     const keyword = value.trim();
     const requestId = ++modelSearchRequestRef.current;
+    setModelSuggestionTarget(target);
     if (keyword.length < 2) {
       setModelSuggestions([]);
       setModelLoading(false);
@@ -1257,13 +1437,62 @@ export function Devices() {
     modelSearchTimerRef.current = timerId;
   }
 
+  function showModelSuggestionsFor(target: ModelSuggestionTarget, value: string) {
+    setModelSuggestionTarget(target);
+    if (value.trim().length >= 2) {
+      if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
+      else scheduleModelSearch(value, target);
+    }
+  }
+
+  function isModelSuggestionTarget(target: ModelSuggestionTarget) {
+    return modelSuggestionTarget.type === target.type
+      && (target.type !== "batch" || (modelSuggestionTarget.type === "batch" && modelSuggestionTarget.index === target.index));
+  }
+
   function applyModelSuggestion(suggestion: ModelSuggestion) {
-    setForm((prev) => ({
-      ...prev,
-      model: suggestion.canonicalModel || prev.model,
-    }));
+    const model = suggestion.canonicalModel || suggestion.partNumber || "";
+    if (!model) return;
+    if (modelSuggestionTarget.type === "batch") {
+      updateBatchRow(modelSuggestionTarget.index, "model", model);
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        model,
+      }));
+    }
     setModelSuggestions([]);
     setModelDropdownOpen(false);
+  }
+
+  function renderModelSuggestionDropdown(target: ModelSuggestionTarget) {
+    if (!modelDropdownOpen || !isModelSuggestionTarget(target) || (!modelLoading && !modelSuggestions.length)) return null;
+    return (
+      <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
+        {modelLoading ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+          </div>
+        ) : null}
+        {modelSuggestions.map((suggestion, index) => (
+          <button
+            key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyModelSuggestion(suggestion)}
+          >
+            <Check className="w-4 h-4 mt-0.5 text-primary" />
+            <span>
+              <span className="font-medium">{suggestion.canonicalModel || suggestion.partNumber}</span>
+              <span className="block text-xs text-muted-foreground">
+                {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    );
   }
 
   async function deleteDevice(device: Device) {
@@ -1438,7 +1667,7 @@ export function Devices() {
     const fields: Record<string, unknown> = {};
     if (batchEditToggles.maintenanceType) {
       fields.maintenanceType = canonicalMaintenanceType(batchEditForm.maintenanceType);
-      if (fields.maintenanceType !== "none" && batchEditToggles.maintenancePartyId) {
+      if (maintenanceTypeHasParty(String(fields.maintenanceType || "")) && batchEditToggles.maintenancePartyId) {
         fields.maintenancePartyId = batchEditForm.maintenancePartyId || null;
       }
     } else if (batchEditToggles.maintenancePartyId) {
@@ -1585,6 +1814,7 @@ export function Devices() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="pending_confirmation">待确认</SelectItem>
                 <SelectItem value="our_maintenance">我方维保</SelectItem>
                 <SelectItem value="original_manufacturer">原厂维保</SelectItem>
                 <SelectItem value="none">无维保</SelectItem>
@@ -2051,6 +2281,8 @@ export function Devices() {
           if (!open) {
             setError("");
             setModelDropdownOpen(false);
+            setModelSuggestions([]);
+            setModelSuggestionTarget({ type: "form" });
           }
         }}
       >
@@ -2074,7 +2306,7 @@ export function Devices() {
             </div>
           ) : null}
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" ref={modelDropdownRef}>
               <div className="space-y-2 md:col-span-2">
                 <Label>客户 *</Label>
                 <div className="relative">
@@ -2093,79 +2325,29 @@ export function Devices() {
                     }}
                     placeholder="输入客户名称关键词搜索"
                   />
-                  {customerDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-64 overflow-auto">
-                      {customerSearchLoading ? (
-                        <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" /> 搜索客户中…
-                        </div>
-                      ) : null}
-                      {dialogCustomerOptions.map((customer) => {
-                        const selected = String(customer.id) === String(form.customerId);
-                        return (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => applyCustomer(customer)}
-                          >
-                            <Check className={`w-4 h-4 ${selected ? "text-primary" : "text-transparent"}`} />
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{customerLabel(customer)}</span>
-                              <span className="block text-xs text-muted-foreground">客户 #{customer.id}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {!customerSearchLoading && !dialogCustomerOptions.length ? (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">
-                          未找到匹配客户，请调整关键词
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
+                  <DeviceCustomerSuggestions
+                    open={customerDropdownOpen}
+                    searching={customerSearchLoading}
+                    recentCustomers={dialogRecentCustomers}
+                    groups={dialogCustomerGroups}
+                    selectedCustomerId={form.customerId}
+                    onSelect={applyCustomer}
+                  />
                 </div>
               </div>
               {!editingId && createMode === "bulk" ? (
-                <div className="space-y-2 relative md:col-span-2" ref={modelDropdownRef}>
+                <div className="space-y-2 relative md:col-span-2">
                   <Label>默认设备型号</Label>
                   <Input
                     value={form.model}
-                    onFocus={() => {
-                      if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
-                    }}
+                    onFocus={() => showModelSuggestionsFor({ type: "form" }, form.model)}
                     onChange={(e) => {
                       setForm({ ...form, model: e.target.value });
-                      scheduleModelSearch(e.target.value);
+                      scheduleModelSearch(e.target.value, { type: "form" });
                     }}
                     placeholder="同型号设备可在这里填一次，每行也可单独覆盖"
                   />
-                  {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
-                    <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
-                      {modelLoading ? (
-                        <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
-                        </div>
-                      ) : null}
-                      {modelSuggestions.map((suggestion, index) => (
-                        <button
-                          key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
-                          onClick={() => applyModelSuggestion(suggestion)}
-                        >
-                          <Check className="w-4 h-4 mt-0.5 text-primary" />
-                          <span>
-                            <span className="font-medium">{suggestion.canonicalModel}</span>
-                            <span className="block text-xs text-muted-foreground">
-                              {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {renderModelSuggestionDropdown({ type: "form" })}
                 </div>
               ) : (
                 <>
@@ -2177,44 +2359,18 @@ export function Devices() {
                       placeholder="例如 sz5eap01；多个值用 ; 隔开，可不填"
                     />
                   </div>
-                  <div className="space-y-2 relative" ref={modelDropdownRef}>
+                  <div className="space-y-2 relative">
                     <Label>设备型号 *</Label>
                     <Input
                       value={form.model}
-                      onFocus={() => {
-                        if (modelSuggestions.length || modelLoading) setModelDropdownOpen(true);
-                      }}
+                      onFocus={() => showModelSuggestionsFor({ type: "form" }, form.model)}
                       onChange={(e) => {
                         setForm({ ...form, model: e.target.value });
-                        scheduleModelSearch(e.target.value);
+                        scheduleModelSearch(e.target.value, { type: "form" });
                       }}
                       placeholder="例如 PowerEdge R740"
                     />
-                    {modelDropdownOpen && (modelLoading || modelSuggestions.length > 0) && (
-                      <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
-                        {modelLoading ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
-                          </div>
-                        ) : null}
-                        {modelSuggestions.map((suggestion, index) => (
-                          <button
-                            key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${index}`}
-                            type="button"
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
-                            onClick={() => applyModelSuggestion(suggestion)}
-                          >
-                            <Check className="w-4 h-4 mt-0.5 text-primary" />
-                            <span>
-                              <span className="font-medium">{suggestion.canonicalModel}</span>
-                              <span className="block text-xs text-muted-foreground">
-                                {[suggestion.brand, suggestion.partNumber, suggestion.category].filter(Boolean).join(" · ") || "标准型号"}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {renderModelSuggestionDropdown({ type: "form" })}
                   </div>
                   <div className="space-y-2">
                     <Label>序列号 SN *</Label>
@@ -2251,6 +2407,7 @@ export function Devices() {
                     <SelectValue placeholder="选择维保类型" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="pending_confirmation">待确认</SelectItem>
                     <SelectItem value="none">无维保</SelectItem>
                     <SelectItem value="our_maintenance">我方维保</SelectItem>
                     <SelectItem value="original_manufacturer">原厂维保</SelectItem>
@@ -2262,10 +2419,10 @@ export function Devices() {
                 <Select
                   value={form.maintenancePartyId}
                   onValueChange={(v) => setForm({ ...form, maintenancePartyId: v })}
-                  disabled={form.maintenanceType === "none"}
+                  disabled={!maintenanceTypeHasParty(form.maintenanceType)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={form.maintenanceType === "none" ? "无维保" : "选择维保方"} />
+                    <SelectValue placeholder={maintenanceTypeHasParty(form.maintenanceType) ? "选择维保方" : MAINTENANCE_TYPE_LABELS[canonicalMaintenanceType(form.maintenanceType)]} />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredMaintenanceParties.map((p) => (
@@ -2356,11 +2513,18 @@ export function Devices() {
                             onChange={(e) => updateBatchRow(index, "name", e.target.value)}
                             placeholder={`第 ${index + 1} 台主机名；多个值用 ; 隔开`}
                           />
-                          <Input
-                            value={row.model}
-                            onChange={(e) => updateBatchRow(index, "model", e.target.value)}
-                            placeholder="型号，空则用默认型号"
-                          />
+                          <div className="relative">
+                            <Input
+                              value={row.model}
+                              onFocus={() => showModelSuggestionsFor({ type: "batch", index }, row.model)}
+                              onChange={(e) => {
+                                updateBatchRow(index, "model", e.target.value);
+                                scheduleModelSearch(e.target.value, { type: "batch", index });
+                              }}
+                              placeholder="型号，空则用默认型号"
+                            />
+                            {renderModelSuggestionDropdown({ type: "batch", index })}
+                          </div>
                           <Input
                             value={row.serialNo}
                             onChange={(e) => updateBatchRow(index, "serialNo", e.target.value)}
@@ -2664,6 +2828,7 @@ export function Devices() {
                     <SelectValue placeholder="选择维保类型" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="pending_confirmation">待确认</SelectItem>
                     <SelectItem value="none">无维保</SelectItem>
                     <SelectItem value="our_maintenance">我方维保</SelectItem>
                     <SelectItem value="original_manufacturer">原厂维保</SelectItem>
@@ -2682,10 +2847,10 @@ export function Devices() {
                 <Select
                   value={batchEditForm.maintenancePartyId}
                   onValueChange={(v) => setBatchEditForm((f) => ({ ...f, maintenancePartyId: v }))}
-                  disabled={!batchEditToggles.maintenancePartyId || batchEditForm.maintenanceType === "none"}
+                  disabled={!batchEditToggles.maintenancePartyId || !maintenanceTypeHasParty(batchEditForm.maintenanceType)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={batchEditForm.maintenanceType === "none" ? "无维保" : "选择维保方"} />
+                    <SelectValue placeholder={maintenanceTypeHasParty(batchEditForm.maintenanceType) ? "选择维保方" : MAINTENANCE_TYPE_LABELS[canonicalMaintenanceType(batchEditForm.maintenanceType)]} />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredBatchEditMaintenanceParties.map((p) => (

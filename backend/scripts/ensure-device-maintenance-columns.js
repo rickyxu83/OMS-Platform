@@ -3,7 +3,7 @@ const { pool } = require('../src/config/db')
 const deviceColumns = [
   ['pn', 'VARCHAR(128) NULL', 'AFTER model'],
   ['remark', 'TEXT NULL', 'AFTER serial_no'],
-  ['maintenance_type', "ENUM('none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'none'", 'AFTER warranty_until'],
+  ['maintenance_type', "ENUM('pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'pending_confirmation'", 'AFTER warranty_until'],
   ['maintenance_party_id', 'BIGINT UNSIGNED NULL', 'AFTER maintenance_type'],
   ['maintenance_start', 'DATE NULL', 'AFTER maintenance_party_id'],
   ['maintenance_end', 'DATE NULL', 'AFTER maintenance_start'],
@@ -44,6 +44,19 @@ async function columnIsNullable(connection, tableName, columnName) {
     { tableName, columnName },
   )
   return String(rows[0]?.is_nullable || '').toUpperCase() === 'YES'
+}
+
+async function columnType(connection, tableName, columnName) {
+  const [rows] = await connection.execute(
+    `SELECT COLUMN_TYPE AS column_type
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = :tableName
+       AND COLUMN_NAME = :columnName
+     LIMIT 1`,
+    { tableName, columnName },
+  )
+  return String(rows[0]?.column_type || '')
 }
 
 async function indexExists(connection, tableName, indexName) {
@@ -151,6 +164,14 @@ async function ensureDeviceColumns(connection) {
     if (!(await columnExists(connection, 'devices', name))) {
       await connection.execute(`ALTER TABLE devices ADD COLUMN ${name} ${definition} ${position}`)
     }
+  }
+
+  if ((await columnExists(connection, 'devices', 'maintenance_type'))
+    && !(await columnType(connection, 'devices', 'maintenance_type')).includes('pending_confirmation')) {
+    await connection.execute(
+      "ALTER TABLE devices MODIFY COLUMN maintenance_type ENUM('pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'pending_confirmation'",
+    )
+    await connection.execute("UPDATE devices SET maintenance_type = 'pending_confirmation' WHERE maintenance_type = 'none'")
   }
 }
 

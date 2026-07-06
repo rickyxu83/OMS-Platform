@@ -2176,7 +2176,7 @@ async function resolveInstallDevices(connection, installDevices, { customerId, s
       `INSERT INTO devices (
          customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
        )
-       VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'none', :serviceOrderId)`,
+       VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'pending_confirmation', :serviceOrderId)`,
       {
         customerId,
         deviceName: device.name || null,

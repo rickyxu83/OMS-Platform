@@ -558,7 +558,7 @@ function startScheduler() {
          JOIN customers c ON c.id = d.customer_id
          WHERE d.maintenance_end IS NOT NULL
            AND DATEDIFF(d.maintenance_end, CURDATE()) = :expiryDays
-           AND d.maintenance_type != 'none'`,
+           AND d.maintenance_type IN ('original_manufacturer', 'our_maintenance')`,
         { expiryDays: nSettings.maintenanceExpiryDays },
       )
       if (!devices.length) {
@@ -631,10 +631,10 @@ function startScheduler() {
          WHERE (
              d.maintenance_type IS NULL
              OR d.maintenance_type = ''
-             OR d.maintenance_type = 'none'
+             OR d.maintenance_type = 'pending_confirmation'
              OR (
-               d.maintenance_type <> 'none'
-               AND (d.maintenance_start IS NULL OR d.maintenance_end IS NULL)
+               d.maintenance_type IN ('original_manufacturer', 'our_maintenance')
+               AND d.maintenance_end IS NULL
              )
            )
            AND c.salesperson IS NOT NULL

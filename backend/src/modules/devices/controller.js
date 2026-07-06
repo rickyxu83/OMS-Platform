@@ -12,7 +12,7 @@ const {
   shouldReportNormalization,
 } = require('../device-model-catalog/asset-normalization')
 
-const maintenanceTypes = new Set(['none', 'original_manufacturer', 'our_maintenance'])
+const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
 let devicePartHistoryColumnsReady = false
 let serviceOrderDevicesTableReady = false
@@ -43,7 +43,14 @@ const importHeaderLookup = Object.freeze(Object.entries(importHeaderAliases).red
 }, {}))
 
 const maintenanceTypeImportAliases = Object.freeze({
-  '': 'none',
+  '': 'pending_confirmation',
+  待确认: 'pending_confirmation',
+  待確認: 'pending_confirmation',
+  未确认: 'pending_confirmation',
+  未確認: 'pending_confirmation',
+  pending: 'pending_confirmation',
+  pendingconfirmation: 'pending_confirmation',
+  pending_confirmation: 'pending_confirmation',
   none: 'none',
   无维保: 'none',
   暂无维保: 'none',
@@ -117,7 +124,7 @@ function maintenancePartyPayload(row) {
 }
 
 function normalizeMaintenanceType(value) {
-  const maintenanceType = String(value || 'none').trim() || 'none'
+  const maintenanceType = String(value || 'pending_confirmation').trim() || 'pending_confirmation'
   if (!maintenanceTypes.has(maintenanceType)) {
     throw badRequest('维护类型不合法')
   }
@@ -126,7 +133,7 @@ function normalizeMaintenanceType(value) {
 
 function normalizeMaintenancePartyId(value, maintenanceType) {
   const id = Number(value || 0)
-  if (maintenanceType === 'none') return null
+  if (!['original_manufacturer', 'our_maintenance'].includes(maintenanceType)) return null
   return id > 0 ? id : null
 }
 
@@ -239,7 +246,7 @@ function normalizeImportDate(cell, fieldLabel) {
 function normalizeImportMaintenanceType(value) {
   const text = String(value || '').trim()
   const key = text.replace(/\s+/g, '').toLowerCase()
-  return normalizeMaintenanceType(maintenanceTypeImportAliases[text] || maintenanceTypeImportAliases[key] || text || 'none')
+  return normalizeMaintenanceType(maintenanceTypeImportAliases[text] || maintenanceTypeImportAliases[key] || text || 'pending_confirmation')
 }
 
 function normalizeImportId(value) {
@@ -311,7 +318,7 @@ async function findImportCustomer(row, user) {
 }
 
 async function findImportMaintenanceParty(row) {
-  if (row.maintenanceType === 'none') return null
+  if (!['original_manufacturer', 'our_maintenance'].includes(row.maintenanceType)) return null
   let party = null
   if (row.maintenancePartyId) {
     const rows = await query(
@@ -685,11 +692,11 @@ async function ensureDeviceIdentityColumns() {
   if (deviceIdentityColumnsReady) return
 
   const rows = await query(
-    `SELECT column_name, is_nullable
+    `SELECT column_name, is_nullable, column_type
      FROM information_schema.COLUMNS
      WHERE table_schema = DATABASE()
        AND table_name = 'devices'
-       AND column_name IN ('name', 'mr_no')`,
+       AND column_name IN ('name', 'mr_no', 'maintenance_type')`,
   )
   const nameColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'name')
   if (nameColumn && String(nameColumn.is_nullable || '').toUpperCase() !== 'YES') {
@@ -698,6 +705,11 @@ async function ensureDeviceIdentityColumns() {
   const mrNoColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'mr_no')
   if (!mrNoColumn) {
     await query('ALTER TABLE devices ADD COLUMN mr_no VARCHAR(128) NULL AFTER serial_no')
+  }
+  const maintenanceTypeColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'maintenance_type')
+  if (maintenanceTypeColumn && !String(maintenanceTypeColumn.column_type || '').includes('pending_confirmation')) {
+    await query("ALTER TABLE devices MODIFY COLUMN maintenance_type ENUM('pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'pending_confirmation'")
+    await query("UPDATE devices SET maintenance_type = 'pending_confirmation' WHERE maintenance_type = 'none'")
   }
 
   deviceIdentityColumnsReady = true
@@ -1301,7 +1313,7 @@ async function batchUpdate(req, res) {
     const maintenanceType = normalizeMaintenanceType(fields.maintenanceType)
     setClauses.push('maintenance_type = :maintenanceType')
     params.maintenanceType = maintenanceType
-    if (maintenanceType === 'none') {
+    if (!['original_manufacturer', 'our_maintenance'].includes(maintenanceType)) {
       setClauses.push('maintenance_party_id = NULL')
     } else if (Object.prototype.hasOwnProperty.call(fields, 'maintenancePartyId')) {
       const partyId = normalizeMaintenancePartyId(fields.maintenancePartyId, maintenanceType)

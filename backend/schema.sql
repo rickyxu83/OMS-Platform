@@ -106,7 +106,7 @@ CREATE TABLE devices (
   remark TEXT NULL,
   location VARCHAR(255) NULL,
   warranty_until DATE NULL,
-  maintenance_type ENUM('none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'none',
+  maintenance_type ENUM('pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'pending_confirmation',
   maintenance_party_id BIGINT UNSIGNED NULL,
   maintenance_start DATE NULL,
   maintenance_end DATE NULL,

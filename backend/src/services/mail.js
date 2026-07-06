@@ -81,6 +81,7 @@ function statusLabel(status) {
 }
 
 function maintenanceTypeLabel(type) {
+  if (type === 'pending_confirmation') return '待确认'
   if (type === 'original_manufacturer') return '原厂维保'
   if (type === 'our_maintenance') return '自维保'
   if (type === 'none') return '无维保'
@@ -89,10 +90,9 @@ function maintenanceTypeLabel(type) {
 
 function missingMaintenanceText(device) {
   const missing = []
-  if (!device.maintenance_type || device.maintenance_type === 'none') missing.push('维保类型')
-  if (device.maintenance_type && device.maintenance_type !== 'none') {
-    if (!device.maintenance_start) missing.push('维保开始日期')
-    if (!device.maintenance_end) missing.push('维保结束日期')
+  if (!device.maintenance_type || device.maintenance_type === 'pending_confirmation') missing.push('确认是否纳入维保')
+  if (['original_manufacturer', 'our_maintenance'].includes(device.maintenance_type)) {
+    if (!device.maintenance_end) missing.push('维保截止日期')
   }
   return missing.join('、') || '维保信息'
 }
