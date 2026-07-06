@@ -1,7 +1,7 @@
 const path = require('path')
 const multer = require('multer')
 const ExcelJS = require('exceljs')
-const { query } = require('../../config/db')
+const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
@@ -16,6 +16,7 @@ const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manu
 let deviceIdentityColumnsReady = false
 let devicePartHistoryColumnsReady = false
 let serviceOrderDevicesTableReady = false
+let inspectionScheduleDevicesTableReady = false
 const modelNormalizationJobs = new Map()
 const modelNormalizationJobTtlMs = 60 * 60 * 1000
 const modelNormalizationJobMaxCount = 500
@@ -784,6 +785,33 @@ async function ensureServiceOrderDevicesTable() {
   serviceOrderDevicesTableReady = true
 }
 
+async function ensureInspectionScheduleDevicesTable(executeQuery = query) {
+  if (executeQuery === query && inspectionScheduleDevicesTableReady) return
+  await executeQuery(
+    `CREATE TABLE IF NOT EXISTS inspection_schedule_devices (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      schedule_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_schedule_device (schedule_id, device_id),
+      KEY idx_schedule_devices_device (device_id),
+      CONSTRAINT fk_device_delete_schedule_devices_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+      CONSTRAINT fk_device_delete_schedule_devices_device FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await executeQuery(
+    `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
+     SELECT s.id, s.device_id FROM inspection_schedules s
+     WHERE s.device_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM inspection_schedule_devices d
+         WHERE d.schedule_id = s.id AND d.device_id = s.device_id
+       )`,
+  )
+  if (executeQuery === query) inspectionScheduleDevicesTableReady = true
+}
+
 function devicePayload(row) {
   return {
     id: row.id,
@@ -808,6 +836,151 @@ function devicePayload(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+function isForceDeleteRequest(req) {
+  return ['1', 'true', 'yes', 'on'].includes(String(req.query.force || req.body?.force || '').toLowerCase())
+}
+
+function relationOrderPayload(row) {
+  return {
+    id: row.id,
+    orderNo: row.order_no,
+    status: row.status,
+    customerName: row.customer_name,
+  }
+}
+
+function relationSchedulePayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    customerName: row.customer_name,
+    cadence: row.cadence,
+    active: Boolean(row.active),
+  }
+}
+
+function relationPartPayload(row) {
+  return {
+    id: row.id,
+    orderId: row.service_order_id,
+    orderNo: row.order_no,
+    actionType: row.action_type,
+    partName: row.part_name,
+    partNo: row.part_no,
+  }
+}
+
+function relationLabel(items, formatter, limit = 5) {
+  if (!items.length) return ''
+  const labels = items.slice(0, limit).map(formatter).filter(Boolean)
+  const suffix = items.length > limit ? ` 等 ${items.length} 项` : ''
+  return `${labels.join('、')}${suffix}`
+}
+
+function deviceDeleteBlockedMessage(summary) {
+  const parts = []
+  if (summary.relations.mainServiceOrders.length) {
+    parts.push(`主设备工单：${relationLabel(summary.relations.mainServiceOrders, (item) => item.orderNo || `#${item.id}`)}`)
+  }
+  if (summary.relations.targetServiceOrders.length) {
+    parts.push(`目标设备工单：${relationLabel(summary.relations.targetServiceOrders, (item) => item.orderNo || `#${item.id}`)}`)
+  }
+  if (summary.relations.serviceParts.length) {
+    parts.push(`部件记录：${relationLabel(summary.relations.serviceParts, (item) => `${item.orderNo || `工单 #${item.orderId}`} ${item.partName || item.partNo || `部件 #${item.id}`}`)}`)
+  }
+  if (summary.relations.inspectionSchedules.length) {
+    parts.push(`巡检计划：${relationLabel(summary.relations.inspectionSchedules, (item) => item.name || `计划 #${item.id}`)}`)
+  }
+  if (!parts.length) return ''
+  const device = summary.device
+  const deviceName = [device.model, device.serialNo].filter(Boolean).join(' / ') || device.name || `设备 #${device.id}`
+  const customerText = device.customerName ? `，所属客户：${device.customerName}` : ''
+  return `设备「${deviceName}」仍有关联数据${customerText}。${parts.join('；')}。`
+}
+
+async function loadDeviceDeleteSummary(deviceId, executeQuery = query) {
+  await ensureDevicePartHistoryColumns()
+  await ensureServiceOrderDevicesTable()
+  await ensureInspectionScheduleDevicesTable(executeQuery)
+  const deviceRows = await executeQuery(
+    `SELECT d.id, d.name, d.model, d.serial_no, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     WHERE d.id = :deviceId
+     LIMIT 1`,
+    { deviceId },
+  )
+  const mainOrders = await executeQuery(
+    `SELECT so.id, so.order_no, so.status, c.name AS customer_name
+     FROM service_orders so
+     JOIN customers c ON c.id = so.customer_id
+     WHERE so.device_id = :deviceId
+     ORDER BY so.id DESC
+     LIMIT 20`,
+    { deviceId },
+  )
+  const targetOrders = await executeQuery(
+    `SELECT so.id, so.order_no, so.status, c.name AS customer_name
+     FROM service_order_devices sod
+     JOIN service_orders so ON so.id = sod.service_order_id
+     JOIN customers c ON c.id = so.customer_id
+     WHERE sod.device_id = :deviceId
+     ORDER BY so.id DESC
+     LIMIT 20`,
+    { deviceId },
+  )
+  const schedules = await executeQuery(
+    `SELECT s.id, s.name, s.cadence, s.active, c.name AS customer_name
+     FROM inspection_schedules s
+     JOIN customers c ON c.id = s.customer_id
+     WHERE s.device_id = :deviceId
+        OR EXISTS (
+          SELECT 1 FROM inspection_schedule_devices sd
+          WHERE sd.schedule_id = s.id AND sd.device_id = :deviceId
+        )
+     ORDER BY s.active DESC, s.id DESC
+     LIMIT 20`,
+    { deviceId },
+  )
+  const serviceParts = await executeQuery(
+    `SELECT sp.id, sp.service_order_id, sp.action_type, sp.part_name, sp.part_no, so.order_no
+     FROM service_parts sp
+     JOIN service_orders so ON so.id = sp.service_order_id
+     WHERE sp.device_id = :deviceId
+     ORDER BY sp.id DESC
+     LIMIT 20`,
+    { deviceId },
+  )
+  const device = deviceRows[0]
+  if (!device) return null
+  const summary = {
+    device: {
+      id: device.id,
+      name: device.name,
+      model: device.model,
+      serialNo: device.serial_no,
+      customerId: device.customer_id,
+      customerName: device.customer_name,
+      customerSalesperson: device.customer_salesperson,
+    },
+    relations: {
+      mainServiceOrders: mainOrders.map(relationOrderPayload),
+      targetServiceOrders: targetOrders.map(relationOrderPayload),
+      inspectionSchedules: schedules.map(relationSchedulePayload),
+      serviceParts: serviceParts.map(relationPartPayload),
+    },
+  }
+  summary.counts = {
+    mainServiceOrders: summary.relations.mainServiceOrders.length,
+    targetServiceOrders: summary.relations.targetServiceOrders.length,
+    inspectionSchedules: summary.relations.inspectionSchedules.length,
+    serviceParts: summary.relations.serviceParts.length,
+  }
+  summary.blocked = Object.values(summary.counts).some((count) => count > 0)
+  summary.message = deviceDeleteBlockedMessage(summary)
+  return summary
 }
 
 async function loadRelatedServiceOrders(deviceId) {
@@ -1476,29 +1649,51 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
-  const rows = await query('SELECT id, name FROM devices WHERE id = :id LIMIT 1', { id: req.params.id })
-  if (!rows[0]) {
+  const deviceId = Number(req.params.id)
+  const forced = isForceDeleteRequest(req)
+  if (!deviceId) {
     throw notFound('设备不存在')
   }
 
-  await ensureDevicePartHistoryColumns()
-  await ensureServiceOrderDevicesTable()
-  const [serviceOrders, targetOrders, schedules, serviceParts] = await Promise.all([
-    query('SELECT COUNT(*) AS total FROM service_orders WHERE device_id = :id', { id: req.params.id }),
-    query('SELECT COUNT(*) AS total FROM service_order_devices WHERE device_id = :id', { id: req.params.id }),
-    query('SELECT COUNT(*) AS total FROM inspection_schedules WHERE device_id = :id', { id: req.params.id }),
-    query('SELECT COUNT(*) AS total FROM service_parts WHERE device_id = :id', { id: req.params.id }),
-  ])
-  const serviceOrderCount = Number(serviceOrders[0]?.total || 0)
-  const targetOrderCount = Number(targetOrders[0]?.total || 0)
-  const scheduleCount = Number(schedules[0]?.total || 0)
-  const servicePartCount = Number(serviceParts[0]?.total || 0)
-  if (serviceOrderCount || targetOrderCount || scheduleCount || servicePartCount) {
-    throw badRequest(`设备已被 ${serviceOrderCount} 张主设备工单、${targetOrderCount} 张目标设备工单、${scheduleCount} 个巡检计划、${servicePartCount} 条部件记录引用，不能删除`)
+  if (!forced) {
+    const summary = await loadDeviceDeleteSummary(deviceId)
+    if (!summary) {
+      throw notFound('设备不存在')
+    }
+    assertSalesCanAccessSalesperson(summary.device.customerSalesperson, req.user, forbidden)
+    if (summary.blocked) {
+      throw badRequest(summary.message || '设备仍有关联数据，不能直接删除', {
+        code: 'DEVICE_DELETE_BLOCKED',
+        canForceDelete: true,
+        ...summary,
+      })
+    }
+    await query('DELETE FROM devices WHERE id = :id', { id: deviceId })
+    res.status(204).end()
+    return
   }
 
-  await query('DELETE FROM devices WHERE id = :id', { id: req.params.id })
-  res.status(204).end()
+  const result = await transaction(async (connection) => {
+    const execute = async (sql, params = {}) => {
+      const [rows] = await connection.execute(sql, params)
+      return rows
+    }
+    const summary = await loadDeviceDeleteSummary(deviceId, execute)
+    if (!summary) {
+      throw notFound('设备不存在')
+    }
+    assertSalesCanAccessSalesperson(summary.device.customerSalesperson, req.user, forbidden)
+
+    await connection.execute('UPDATE service_orders SET device_id = NULL WHERE device_id = :id', { id: deviceId })
+    await connection.execute('DELETE FROM service_order_devices WHERE device_id = :id', { id: deviceId })
+    await connection.execute('UPDATE service_parts SET device_id = NULL WHERE device_id = :id', { id: deviceId })
+    await connection.execute('UPDATE inspection_schedules SET device_id = NULL WHERE device_id = :id', { id: deviceId })
+    await connection.execute('DELETE FROM inspection_schedule_devices WHERE device_id = :id', { id: deviceId })
+    await connection.execute('DELETE FROM devices WHERE id = :id', { id: deviceId })
+    return summary
+  })
+
+  res.json({ deleted: true, forced: true, ...result })
 }
 
 module.exports = {

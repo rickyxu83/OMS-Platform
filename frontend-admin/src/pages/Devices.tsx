@@ -203,6 +203,46 @@ interface ExistingModelNormalizationResult {
   items: ExistingModelNormalizationItem[];
 }
 
+interface DeviceDeleteRelationOrder {
+  id: string | number;
+  orderNo?: string;
+  status?: string;
+  customerName?: string;
+}
+
+interface DeviceDeleteRelationSchedule {
+  id: string | number;
+  name?: string;
+  customerName?: string;
+}
+
+interface DeviceDeleteRelationPart {
+  id: string | number;
+  orderId?: string | number;
+  orderNo?: string;
+  partName?: string;
+  partNo?: string;
+}
+
+interface DeviceDeleteBlockedDetails {
+  code?: string;
+  canForceDelete?: boolean;
+  message?: string;
+  device?: {
+    id?: string | number;
+    name?: string;
+    model?: string;
+    serialNo?: string;
+    customerName?: string;
+  };
+  relations?: {
+    mainServiceOrders?: DeviceDeleteRelationOrder[];
+    targetServiceOrders?: DeviceDeleteRelationOrder[];
+    inspectionSchedules?: DeviceDeleteRelationSchedule[];
+    serviceParts?: DeviceDeleteRelationPart[];
+  };
+}
+
 const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   pending_confirmation: "待确认",
   none: "无维保",
@@ -581,6 +621,44 @@ function existingModelIssueBadgeClass(action?: string) {
   if (action === "suggested_correction") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800";
   if (action === "created") return "border-sky-200 bg-sky-50 text-sky-800";
   return "border-violet-200 bg-violet-50 text-violet-800";
+}
+
+function apiErrorDetails(error: unknown): DeviceDeleteBlockedDetails | null {
+  const details = (error as { details?: unknown } | null)?.details;
+  if (!details || typeof details !== "object") return null;
+  return details as DeviceDeleteBlockedDetails;
+}
+
+function deviceDeleteName(device?: DeviceDeleteBlockedDetails["device"] | Device | null) {
+  if (!device) return "设备";
+  return [device.model, "serialNo" in device ? device.serialNo : undefined].filter(Boolean).join(" / ")
+    || device.name
+    || (device.id ? `设备 #${device.id}` : "设备");
+}
+
+function compactList(values: string[], limit = 5) {
+  const filtered = values.filter(Boolean);
+  if (!filtered.length) return "";
+  const visible = filtered.slice(0, limit).join("、");
+  return filtered.length > limit ? `${visible} 等 ${filtered.length} 项` : visible;
+}
+
+function formatDeviceDeleteBlockedDetails(details: DeviceDeleteBlockedDetails) {
+  const relations = details.relations || {};
+  const lines = [
+    `设备：${deviceDeleteName(details.device)}${details.device?.customerName ? `（${details.device.customerName}）` : ""}`,
+  ];
+  const mainOrders = compactList((relations.mainServiceOrders || []).map((item) => item.orderNo || `#${item.id}`));
+  if (mainOrders) lines.push(`主设备工单：${mainOrders}`);
+  const targetOrders = compactList((relations.targetServiceOrders || []).map((item) => item.orderNo || `#${item.id}`));
+  if (targetOrders) lines.push(`目标设备工单：${targetOrders}`);
+  const parts = compactList((relations.serviceParts || []).map((item) => (
+    `${item.orderNo || `工单 #${item.orderId || "-"}`} ${item.partName || item.partNo || `部件 #${item.id}`}`
+  )));
+  if (parts) lines.push(`部件记录：${parts}`);
+  const schedules = compactList((relations.inspectionSchedules || []).map((item) => item.name || `计划 #${item.id}`));
+  if (schedules) lines.push(`巡检计划：${schedules}`);
+  return lines.join("\n");
 }
 
 function mergeCustomers(current: Customer[], incoming: Customer[]) {
@@ -1498,15 +1576,35 @@ export function Devices() {
   async function deleteDevice(device: Device) {
     if (!device.id) return;
     const label = deviceDisplayName(device);
-    if (!window.confirm(`确认删除设备「${label}」？已有工单或巡检计划引用的设备不能删除。`)) return;
+    if (!window.confirm(`确认删除设备「${label}」？有关联数据的设备会提示原因，可再选择强制删除。`)) return;
     setSaving(true);
     setError("");
     try {
       await api.delete(`/devices/${device.id}`);
       if (detailTarget && String(detailTarget.id) === String(device.id)) setDetailTarget(null);
       await load();
+      toast.success(`已删除设备「${label}」`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除失败");
+      const details = apiErrorDetails(e);
+      const message = e instanceof Error ? e.message : "删除失败";
+      if (details?.code === "DEVICE_DELETE_BLOCKED" && details.canForceDelete) {
+        const reason = formatDeviceDeleteBlockedDetails(details);
+        setError(`${message}\n${reason}`);
+        const confirmed = window.confirm(`${message}\n\n${reason}\n\n是否强制删除该设备？强制删除会解除设备与上述工单、部件记录、巡检计划的关联，但不会删除工单或客户。`);
+        if (confirmed) {
+          try {
+            await api.delete(`/devices/${device.id}?force=1`);
+            if (detailTarget && String(detailTarget.id) === String(device.id)) setDetailTarget(null);
+            await load();
+            setError("");
+            toast.success(`已强制删除设备「${label}」`);
+          } catch (forceError) {
+            setError(forceError instanceof Error ? forceError.message : "强制删除失败");
+          }
+        }
+      } else {
+        setError(message);
+      }
     } finally {
       setSaving(false);
     }
@@ -1514,15 +1612,79 @@ export function Devices() {
 
   async function bulkDeleteDevices() {
     if (!selectedDeviceIds.length) return;
-    if (!window.confirm(`确认删除选中的 ${selectedDeviceIds.length} 台设备？已有工单或巡检计划引用的设备不能删除，失败项会保留。`)) return;
+    if (!window.confirm(`确认删除选中的 ${selectedDeviceIds.length} 台设备？有关联数据的设备会提示原因，可再选择强制删除。`)) return;
     setSaving(true);
     setError("");
     try {
+      const failed: Array<{ id: string; message: string; details?: DeviceDeleteBlockedDetails | null }> = [];
+      let deletedCount = 0;
       for (const id of selectedDeviceIds) {
-        await api.delete(`/devices/${id}`);
+        try {
+          await api.delete(`/devices/${id}`);
+          deletedCount += 1;
+        } catch (error) {
+          failed.push({
+            id,
+            message: error instanceof Error ? error.message : "删除失败",
+            details: apiErrorDetails(error),
+          });
+        }
       }
-      if (detailTarget && selectedDeviceIds.includes(String(detailTarget.id))) setDetailTarget(null);
-      setSelectedDeviceIds([]);
+
+      if (!failed.length) {
+        if (detailTarget && selectedDeviceIds.includes(String(detailTarget.id))) setDetailTarget(null);
+        setSelectedDeviceIds([]);
+        await load();
+        toast.success(`已删除 ${deletedCount} 台设备`);
+        return;
+      }
+
+      const blocked = failed.filter((item) => item.details?.code === "DEVICE_DELETE_BLOCKED" && item.details.canForceDelete);
+      const nonForceFailures = failed.filter((item) => !blocked.includes(item));
+      const reason = blocked
+        .map((item, index) => `${index + 1}. ${formatDeviceDeleteBlockedDetails(item.details as DeviceDeleteBlockedDetails)}`)
+        .join("\n\n");
+      const summary = [
+        deletedCount ? `已删除 ${deletedCount} 台设备。` : "",
+        nonForceFailures.length ? `有 ${nonForceFailures.length} 台删除失败：${nonForceFailures.map((item) => item.message).join("；")}` : "",
+        blocked.length ? `有 ${blocked.length} 台设备存在关联数据：\n${reason}` : "",
+      ].filter(Boolean).join("\n\n");
+      setError(summary);
+
+      if (blocked.length) {
+        const confirmed = window.confirm(`${summary}\n\n是否强制删除这些有关联数据的设备？强制删除会解除设备与上述工单、部件记录、巡检计划的关联，但不会删除工单或客户。`);
+        if (confirmed) {
+          let forcedCount = 0;
+          const forceFailures: Array<{ id: string; message: string }> = [];
+          for (const item of blocked) {
+            try {
+              await api.delete(`/devices/${item.id}?force=1`);
+              forcedCount += 1;
+            } catch (error) {
+              forceFailures.push({
+                id: item.id,
+                message: error instanceof Error ? error.message : `设备 #${item.id} 强制删除失败`,
+              });
+            }
+          }
+          if (detailTarget && selectedDeviceIds.includes(String(detailTarget.id))) setDetailTarget(null);
+          if (forceFailures.length) {
+            setError(`已强制删除 ${forcedCount} 台设备，${forceFailures.length} 台失败：${forceFailures.map((item) => item.message).join("；")}`);
+          } else {
+            setError("");
+            toast.success(`已删除 ${deletedCount} 台，强制删除 ${forcedCount} 台`);
+          }
+          const remainingIds = new Set([
+            ...nonForceFailures.map((item) => item.id),
+            ...forceFailures.map((item) => item.id),
+          ]);
+          setSelectedDeviceIds((ids) => ids.filter((id) => remainingIds.has(id)));
+        } else {
+          setSelectedDeviceIds((ids) => ids.filter((id) => failed.some((item) => item.id === id)));
+        }
+      } else {
+        setSelectedDeviceIds((ids) => ids.filter((id) => failed.some((item) => item.id === id)));
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "批量删除失败");
@@ -2301,7 +2463,7 @@ export function Devices() {
             </DialogDescription>
           </DialogHeader>
           {error ? (
-            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 whitespace-pre-line">
               {error}
             </div>
           ) : null}
@@ -2678,7 +2840,7 @@ export function Devices() {
             </DialogDescription>
           </DialogHeader>
           {error ? (
-            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 whitespace-pre-line">
               {error}
             </div>
           ) : null}
@@ -2800,7 +2962,7 @@ export function Devices() {
             </DialogDescription>
           </DialogHeader>
           {error ? (
-            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 whitespace-pre-line">
               {error}
             </div>
           ) : null}

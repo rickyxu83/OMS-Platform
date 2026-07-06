@@ -82,7 +82,11 @@ export async function request(path: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const message = payload?.error?.message || payload?.message || payload?.error || response.statusText
-    throw new Error(message)
+    const error = new Error(message) as Error & { status?: number; details?: unknown; payload?: unknown }
+    error.status = response.status
+    error.details = payload?.error?.details
+    error.payload = payload
+    throw error
   }
 
   return payload
