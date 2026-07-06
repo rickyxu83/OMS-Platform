@@ -3598,7 +3598,7 @@ export function ServiceReport() {
     if (isOnsite && !form.customerAddress.trim()) missing.push("客户地址");
     if (!isOffice && !form.contactName.trim() && !form.customerConfirmName.trim()) missing.push("客户联系人");
     if (!isOffice && !form.contactPhone.trim()) missing.push("客户联系电话");
-    if ((isOnsite || isRemote) && !selectedServiceModules.length) missing.push("服务模块");
+    if (isRemote && !selectedServiceModules.length) missing.push("服务模块");
     if (isOffice && !form.timesheetCategory.trim()) missing.push("内勤工作事项");
     if (isInstall) {
       const installTargets = form.installDevices.filter(installDeviceHasContent);
@@ -4848,7 +4848,7 @@ export function ServiceReport() {
             </div>
           </ReportSection>
 
-          <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : "可多选；系统将按模块显示对应字段"}>
+          <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : isOnsite ? "可选；按需选择对应字段" : "可多选；系统将按模块显示对应字段"}>
               <div className="space-y-4 p-3 sm:p-4">
                 {!isOffice ? (
                   <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
