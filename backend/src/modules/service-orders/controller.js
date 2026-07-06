@@ -1470,7 +1470,7 @@ function triggerAssignmentMail(order, orderId = order?.id) {
 async function queueSalesServiceOrderNotificationSafely(orderId) {
   try {
     const result = await queueSalesServiceOrderNotification(orderId)
-    if (result?.skipped && !['sales_service_order_notify_disabled', 'no_customer_salesperson'].includes(result.reason)) {
+    if (result?.skipped && !['sales_service_order_notify_disabled', 'no_customer_salesperson', 'already_notified'].includes(result.reason)) {
       console.warn('[mail] sales service-order notification queue skipped', {
         orderId,
         reason: result.reason || 'unknown',
@@ -3201,6 +3201,7 @@ async function submitCustomerSignatureRequest(req, res) {
     return { orderId: row.service_order_id }
   })
 
+  await queueSalesServiceOrderNotificationSafely(signed.orderId)
   res.json({ ok: true, serviceOrderId: signed.orderId })
 }
 

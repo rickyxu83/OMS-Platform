@@ -36,6 +36,22 @@ function normalizeDelayMinutes(value) {
   return Math.max(5, Math.min(1440, Number(value || 60)))
 }
 
+function isSalesNotifiableOrderStatus(status) {
+  return ['submitted', 'approved', 'archived'].includes(String(status || ''))
+}
+
+async function currentNotificationStatus(serviceOrderId, connection = null) {
+  const rows = await executeWith(
+    connection,
+    `SELECT status
+     FROM service_order_sales_notifications
+     WHERE service_order_id = :serviceOrderId
+     LIMIT 1`,
+    { serviceOrderId },
+  )
+  return rows[0]?.status || null
+}
+
 async function orderHasSalesperson(serviceOrderId, connection = null) {
   const rows = await executeWith(
     connection,
@@ -61,6 +77,10 @@ async function queueSalesServiceOrderNotification(serviceOrderId, connection = n
   }
 
   await ensureSalesNotificationQueueTable(connection)
+  const existingStatus = await currentNotificationStatus(id, connection)
+  if (existingStatus === 'sent') {
+    return { skipped: true, reason: 'already_notified', serviceOrderId: id }
+  }
   if (!(await orderHasSalesperson(id, connection))) {
     return { skipped: true, reason: 'no_customer_salesperson' }
   }
@@ -102,7 +122,7 @@ async function loadSalesNotificationContext(serviceOrderId) {
   const salespersonExpr = "COALESCE(NULLIF(c.salesperson, ''), NULLIF(so.timesheet_salesperson, ''))"
   const rows = await query(
     `SELECT
-       so.id, so.order_no, so.service_mode, so.service_type, so.timesheet_category,
+       so.id, so.order_no, so.status, so.service_mode, so.service_type, so.timesheet_category,
        so.issue_description, so.internal_note, so.submitted_at, so.updated_at,
        c.name AS customer_name, ${salespersonExpr} AS salesperson,
        so.contact_name, so.contact_phone,
@@ -204,6 +224,11 @@ async function processDueSalesServiceOrderNotifications(limit = 20) {
       const context = await loadSalesNotificationContext(orderId)
       if (!context) {
         await markNotification(orderId, 'skipped', { lastError: 'service_order_not_found' })
+        skipped += 1
+        continue
+      }
+      if (!isSalesNotifiableOrderStatus(context.order.status)) {
+        await markNotification(orderId, 'skipped', { lastError: `order_status_not_notifiable:${context.order.status || ''}` })
         skipped += 1
         continue
       }
