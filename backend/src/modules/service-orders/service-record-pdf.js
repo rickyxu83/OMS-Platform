@@ -294,6 +294,19 @@ function servicePartsContent(parts = []) {
     .join('\n')
 }
 
+function deviceWorkRecordsContent(devices = []) {
+  if (!Array.isArray(devices)) return ''
+  const filled = devices
+    .map((device, index) => {
+      const workContent = String(device.workContent || device.work_content || '').trim()
+      if (!workContent) return ''
+      const label = cleanText(device.name || device.model || device.serialNo || device.serial_no, `目标设备 ${index + 1}`)
+      return `${label}：\n${workContent}`
+    })
+    .filter(Boolean)
+  return filled.join('\n\n')
+}
+
 function dataUrlToImageBuffer(dataUrl) {
   const match = String(dataUrl || '').match(/^data:image\/(?:png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/)
   if (!match) return null
@@ -429,7 +442,7 @@ function drawSheet(doc, fonts, item, logoImage) {
   const returned = formatDateTime(report.returnAt) || '—'
   const finishedDate = formatDateTime(report.actualEndAt || item.submittedAt || item.updatedAt || item.createdAt).slice(0, 10)
   const summaryText = cleanText(item.issueDescription || item.problemDescription || '', '未填写问题描述')
-  const workContent = exportWorkContent(report, item) || '未填写处理记录'
+  const workContent = deviceWorkRecordsContent(item.targetDevices || item.target_devices) || exportWorkContent(report, item) || '未填写处理记录'
   const partContent = servicePartsContent(item.parts)
   const workRecord = [workContent, partContent ? `备件与硬件部件：\n${partContent}` : ''].filter(Boolean).join('\n')
   const titleText = remote ? '远程服务记录单' : '技术服务记录单'

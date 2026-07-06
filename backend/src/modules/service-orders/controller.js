@@ -666,6 +666,7 @@ async function ensureServiceOrderDevicesTable(connection = null, options = {}) {
     `CREATE TABLE IF NOT EXISTS service_order_devices (
       service_order_id BIGINT UNSIGNED NOT NULL,
       device_id BIGINT UNSIGNED NOT NULL,
+      work_content TEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (service_order_id, device_id),
       KEY idx_service_order_devices_device_id (device_id),
@@ -680,6 +681,17 @@ async function ensureServiceOrderDevicesTable(connection = null, options = {}) {
        FROM service_orders
        WHERE device_id IS NOT NULL`,
     )
+  }
+  const [columnRows] = await execute(
+    `SELECT column_name AS columnName
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'service_order_devices'
+       AND column_name = 'work_content'
+     LIMIT 1`,
+  )
+  if (!columnRows?.[0]) {
+    await execute('ALTER TABLE service_order_devices ADD COLUMN work_content TEXT NULL AFTER device_id')
   }
   if (!connection) {
     serviceOrderDevicesTableReady = true
@@ -2294,30 +2306,80 @@ function normalizeTargetDeviceIds(values = [], fallbackDeviceId = null) {
   return [...new Set(ids)]
 }
 
-async function loadOrderTargetDeviceIds(connection, orderId) {
+function normalizeTargetDeviceEntries(targetDeviceIds = [], targetDevices = [], fallbackDeviceId = null) {
+  const records = new Map()
+  const addRecord = (deviceId, workContent = '') => {
+    const id = Number(deviceId || 0)
+    if (!Number.isFinite(id) || id <= 0) return
+    const text = String(workContent || '').trim()
+    const existing = records.get(id)
+    records.set(id, {
+      deviceId: id,
+      workContent: text || existing?.workContent || '',
+    })
+  }
+
+  normalizeTargetDeviceIds(targetDeviceIds, fallbackDeviceId).forEach((deviceId) => addRecord(deviceId))
+  if (Array.isArray(targetDevices)) {
+    for (const device of targetDevices) {
+      const rawDeviceId = device?.deviceId || device?.device_id || (Number(device?.id) ? device.id : null)
+      addRecord(rawDeviceId, device?.workContent || device?.work_content)
+    }
+  }
+  return Array.from(records.values())
+}
+
+function targetDeviceIdsFromEntries(entries = []) {
+  return [...new Set(entries.map((entry) => Number(entry?.deviceId || 0)).filter(Boolean))]
+}
+
+function hasSubmittedTargetDeviceWorkContent(entries = []) {
+  return entries.some((entry) => String(entry?.workContent || '').trim())
+}
+
+function mergedTargetDeviceWorkContent(entries = []) {
+  const filled = entries
+    .map((entry, index) => ({
+      label: `目标设备 ${index + 1}`,
+      workContent: String(entry?.workContent || '').trim(),
+    }))
+    .filter((entry) => entry.workContent)
+  if (filled.length === 1) return filled[0].workContent
+  return filled.map((entry) => `${entry.label}：\n${entry.workContent}`).join('\n\n')
+}
+
+async function loadOrderTargetDeviceEntries(connection, orderId) {
   await ensureServiceOrderDevicesTable(connection)
   const [rows] = await connection.execute(
-    `SELECT device_id
+    `SELECT device_id, work_content
      FROM service_order_devices
      WHERE service_order_id = :orderId
      ORDER BY created_at ASC, device_id ASC`,
     { orderId },
   )
-  return rows.map((row) => Number(row.device_id)).filter(Boolean)
+  return rows.map((row) => ({
+    deviceId: Number(row.device_id),
+    workContent: String(row.work_content || '').trim(),
+  })).filter((entry) => entry.deviceId)
 }
 
-async function saveOrderTargetDevices(connection, orderId, targetDeviceIds, customerId) {
+async function saveOrderTargetDevices(connection, orderId, targetDeviceEntries, customerId) {
   await ensureServiceOrderDevicesTable(connection)
-  const ids = normalizeTargetDeviceIds(targetDeviceIds)
+  const entries = Array.isArray(targetDeviceEntries) ? targetDeviceEntries : []
+  const ids = targetDeviceIdsFromEntries(entries)
   for (const deviceId of ids) {
     await assertDeviceBelongsToCustomer(connection, deviceId, customerId)
   }
   await connection.execute('DELETE FROM service_order_devices WHERE service_order_id = :orderId', { orderId })
-  for (const deviceId of ids) {
+  for (const entry of entries.filter((item) => ids.includes(Number(item.deviceId)))) {
     await connection.execute(
-      `INSERT INTO service_order_devices (service_order_id, device_id)
-       VALUES (:orderId, :deviceId)`,
-      { orderId, deviceId },
+      `INSERT INTO service_order_devices (service_order_id, device_id, work_content)
+       VALUES (:orderId, :deviceId, :workContent)`,
+      {
+        orderId,
+        deviceId: Number(entry.deviceId),
+        workContent: String(entry.workContent || '').trim() || null,
+      },
     )
   }
 }
@@ -2468,6 +2530,7 @@ async function createSelfReport(req, res) {
     deviceSerialNo,
     deviceRemark,
     targetDeviceIds = [],
+    targetDevices = [],
     serviceMode = 'onsite',
     serviceType = 'repair',
     serviceModules,
@@ -2499,6 +2562,7 @@ async function createSelfReport(req, res) {
     timesheetCategory,
     parts,
   })
+  const submittedTargetDeviceEntries = normalizeTargetDeviceEntries(targetDeviceIds, targetDevices, deviceId)
   const useElectronicCustomerSignature = effectiveServiceMode === 'onsite'
     && String(customerSignatureMode || '').trim() === 'electronic'
     && !customerSignature
@@ -2515,7 +2579,9 @@ async function createSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : effectiveServiceMode === 'office' ? '内勤工作事项' : '月报工作内容')
-  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
+  if (!hasSubmittedWorkContent(workContent, workEntries) && !hasSubmittedTargetDeviceWorkContent(submittedTargetDeviceEntries)) {
+    missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
+  }
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
@@ -2641,7 +2707,8 @@ async function createSelfReport(req, res) {
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : Number(deviceId || 0) || null
-    let effectiveTargetDeviceIds = shouldManageInstallDevice ? [] : normalizeTargetDeviceIds(targetDeviceIds, effectiveDeviceId)
+    const effectiveTargetDeviceEntries = shouldManageInstallDevice ? [] : normalizeTargetDeviceEntries(targetDeviceIds, targetDevices, effectiveDeviceId)
+    let effectiveTargetDeviceIds = targetDeviceIdsFromEntries(effectiveTargetDeviceEntries)
     if (!shouldManageInstallDevice && !effectiveDeviceId && effectiveTargetDeviceIds.length) {
       effectiveDeviceId = effectiveTargetDeviceIds[0]
     }
@@ -2704,12 +2771,14 @@ async function createSelfReport(req, res) {
     }
 
     await replaceOrderEngineers(connection, orderResult.insertId, normalizeEngineerIds(engineerIds, req.user.id), req.user.id)
-    await saveOrderTargetDevices(connection, orderResult.insertId, effectiveTargetDeviceIds, effectiveCustomerId)
+    await saveOrderTargetDevices(connection, orderResult.insertId, effectiveTargetDeviceEntries, effectiveCustomerId)
     const savedWorkEntries =
       effectiveServiceMode === 'office'
         ? []
         : await saveWorkEntries(connection, orderResult.insertId, workEntries, workContent, req.user.id)
-    const effectiveWorkContent = String(workContent || '').trim() || mergedWorkContent(savedWorkEntries, workContent)
+    const effectiveWorkContent = String(workContent || '').trim()
+      || mergedTargetDeviceWorkContent(effectiveTargetDeviceEntries)
+      || mergedWorkContent(savedWorkEntries, workContent)
 
     const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
     if (customerSignatureFileId && !reusableSignatureFileId && !customerSignature) {
@@ -2817,7 +2886,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   await ensureServiceOrderDevicesTable()
   const targetDevices = await query(
     `SELECT d.id, d.customer_id, ${deviceDisplaySql('d')} AS name, d.model, d.pn, d.serial_no, d.remark,
-            d.location, d.created_at, d.updated_at
+            d.location, sod.work_content, d.created_at, d.updated_at
      FROM service_order_devices sod
      JOIN devices d ON d.id = sod.device_id
      WHERE sod.service_order_id = :id
@@ -2891,6 +2960,7 @@ async function loadDetailItem(orderId, user, options = {}) {
       pn: device.pn,
       serialNo: device.serial_no,
       remark: device.remark,
+      workContent: device.work_content,
       location: device.location,
       createdAt: device.created_at,
       updatedAt: device.updated_at,
@@ -3481,6 +3551,7 @@ async function updateSelfReport(req, res) {
     deviceSerialNo,
     deviceRemark,
     targetDeviceIds = [],
+    targetDevices = [],
     serviceMode = order.service_mode || 'onsite',
     serviceType = order.service_type,
     serviceModules,
@@ -3513,11 +3584,13 @@ async function updateSelfReport(req, res) {
     timesheetCategory,
     parts,
   })
+  const submittedTargetDeviceEntries = normalizeTargetDeviceEntries(targetDeviceIds, targetDevices, deviceId)
   const shouldSyncCustomerProfile = effectiveServiceMode !== 'office'
   const customerProfileContactPhone = shouldSyncCustomerProfile ? normalizeCustomerContactPhone(contactPhone) : null
   const normalizedResult = normalizeReportResult(result)
   const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
   const hasTargetDeviceIdsField = Object.prototype.hasOwnProperty.call(req.body || {}, 'targetDeviceIds')
+  const hasTargetDevicesField = Object.prototype.hasOwnProperty.call(req.body || {}, 'targetDevices')
   const existingSignature = await query(
     `SELECT customer_signature_file_id, customer_signature
      FROM service_reports
@@ -3540,7 +3613,9 @@ async function updateSelfReport(req, res) {
   if (effectiveServiceMode === 'onsite' && !serviceType) missing.push('服务类型')
   if (effectiveServiceMode !== 'onsite' && !timesheetCategory) missing.push('月报类别')
   if (!issueDescription) missing.push(effectiveServiceMode === 'onsite' ? '问题描述' : effectiveServiceMode === 'office' ? '内勤工作事项' : '月报工作内容')
-  if (!hasSubmittedWorkContent(workContent, workEntries)) missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
+  if (!hasSubmittedWorkContent(workContent, workEntries) && !hasSubmittedTargetDeviceWorkContent(submittedTargetDeviceEntries)) {
+    missing.push(effectiveServiceMode === 'onsite' ? '现场处理记录' : effectiveServiceMode === 'office' ? '工作内容' : '处理记录')
+  }
   if (effectiveServiceMode !== 'office' && !normalizedResult) missing.push(effectiveServiceMode === 'onsite' ? '服务结果' : '处理进度')
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
@@ -3733,11 +3808,13 @@ async function updateSelfReport(req, res) {
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
+    let effectiveTargetDeviceEntries = []
     let effectiveTargetDeviceIds = []
     if (!shouldManageInstallDevice) {
-      effectiveTargetDeviceIds = hasTargetDeviceIdsField || hasDeviceIdField
-        ? normalizeTargetDeviceIds(targetDeviceIds, effectiveDeviceId)
-        : await loadOrderTargetDeviceIds(connection, req.params.id)
+      effectiveTargetDeviceEntries = hasTargetDeviceIdsField || hasTargetDevicesField || hasDeviceIdField
+        ? normalizeTargetDeviceEntries(targetDeviceIds, targetDevices, effectiveDeviceId)
+        : await loadOrderTargetDeviceEntries(connection, req.params.id)
+      effectiveTargetDeviceIds = targetDeviceIdsFromEntries(effectiveTargetDeviceEntries)
       if (!effectiveDeviceId && effectiveTargetDeviceIds.length) {
         effectiveDeviceId = effectiveTargetDeviceIds[0]
       }
@@ -3798,7 +3875,7 @@ async function updateSelfReport(req, res) {
 
     const normalizedEngineerIds = normalizeEngineerIds(engineerIds, req.user.id)
     await replaceOrderEngineers(connection, req.params.id, normalizedEngineerIds, req.user.id)
-    await saveOrderTargetDevices(connection, req.params.id, effectiveTargetDeviceIds, effectiveCustomerId)
+    await saveOrderTargetDevices(connection, req.params.id, effectiveTargetDeviceEntries, effectiveCustomerId)
     await pruneWorkEntriesToEngineers(connection, req.params.id, normalizedEngineerIds)
 
     const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
@@ -3810,7 +3887,9 @@ async function updateSelfReport(req, res) {
       effectiveServiceMode === 'office'
         ? []
         : await saveWorkEntries(connection, req.params.id, workEntries, workContent, req.user.id)
-    const effectiveWorkContent = String(workContent || '').trim() || mergedWorkContent(savedWorkEntries, workContent)
+    const effectiveWorkContent = String(workContent || '').trim()
+      || mergedTargetDeviceWorkContent(effectiveTargetDeviceEntries)
+      || mergedWorkContent(savedWorkEntries, workContent)
 
     await connection.execute(
       `INSERT INTO service_reports (

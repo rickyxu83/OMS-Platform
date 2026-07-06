@@ -248,6 +248,7 @@ interface DeviceOption {
   serialNo?: string;
   location?: string;
   remark?: string;
+  workContent?: string;
 }
 
 interface ModelSuggestion {
@@ -296,7 +297,9 @@ interface InstallDeviceDraft {
   remark: string;
 }
 
-type TargetDeviceDraft = InstallDeviceDraft;
+interface TargetDeviceDraft extends InstallDeviceDraft {
+  workContent: string;
+}
 
 interface ReportForm {
   serviceMode: ServiceMode;
@@ -502,6 +505,7 @@ function emptyTargetDevice(patch: Partial<TargetDeviceDraft> = {}): TargetDevice
     pn: patch.pn || "",
     serialNo: patch.serialNo || "",
     remark: patch.remark || "",
+    workContent: patch.workContent || "",
   };
 }
 
@@ -764,7 +768,7 @@ function installDeviceHasContent(device: InstallDeviceDraft) {
 }
 
 function targetDeviceHasContent(device: TargetDeviceDraft) {
-  return Boolean(device.deviceId) || [device.model, device.pn, device.serialNo, device.remark].some((value) => value.trim());
+  return Boolean(device.deviceId) || [device.model, device.pn, device.serialNo].some((value) => value.trim());
 }
 
 function normalizeInstallDeviceDraft(
@@ -1182,6 +1186,8 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
   const report = order.report || {};
   const targetDeviceIds = (order.targetDevices || []).map((device) => device.id ? String(device.id) : "").filter(Boolean);
   const effectiveTargetDeviceIds = targetDeviceIds.length ? targetDeviceIds : order.deviceId ? [String(order.deviceId)] : [];
+  const workContent = report.workContent
+    || (Array.isArray(report.workEntries) ? report.workEntries.map((entry) => entry.workContent || entry.work_content || "").filter(Boolean).join("\n\n") : "");
   const targetDevices = (order.targetDevices || []).length
     ? (order.targetDevices || []).map((device) => emptyTargetDevice({
         inputMode: "existing",
@@ -1190,6 +1196,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
         pn: device.pn || "",
         serialNo: device.serialNo || "",
         remark: device.remark || "",
+        workContent: device.workContent || "",
       }))
     : order.deviceId || order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
       ? [emptyTargetDevice({
@@ -1201,8 +1208,11 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
           remark: order.deviceRemark || "",
         })]
       : [emptyTargetDevice()];
-  const workContent = report.workContent
-    || (Array.isArray(report.workEntries) ? report.workEntries.map((entry) => entry.workContent || entry.work_content || "").filter(Boolean).join("\n\n") : "");
+  const targetDevicesWithWorkContent = targetDevices.map((device, index) => (
+    device.workContent || targetDevices.length !== 1
+      ? device
+      : { ...device, workContent: workContent && index === 0 ? workContent : "" }
+  ));
   const normalizedParts = (order.parts || []).map((part) => ({
     ...emptyPart(),
     deviceId: part.deviceId || part.device_id ? String(part.deviceId || part.device_id) : "",
@@ -1268,7 +1278,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     deviceSerialNo: order.deviceSerialNo || "",
     deviceRemark: order.deviceRemark || "",
     targetDeviceIds: effectiveTargetDeviceIds,
-    targetDevices,
+    targetDevices: targetDevicesWithWorkContent,
     serviceModules: normalizeServiceModules({
       serviceMode: mode,
       serviceModules: order.serviceModules,
@@ -1335,7 +1345,7 @@ function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMo
     : (Array.isArray(merged.targetDeviceIds) && merged.targetDeviceIds.length
         ? [...new Set(merged.targetDeviceIds.map((id) => String(id)).filter(Boolean))].map((deviceId) => emptyTargetDevice({ inputMode: "existing", deviceId }))
         : merged.deviceId
-          ? [emptyTargetDevice({ inputMode: "existing", deviceId: String(merged.deviceId), model: merged.deviceModel, pn: merged.devicePn, serialNo: merged.deviceSerialNo, remark: merged.deviceRemark })]
+          ? [emptyTargetDevice({ inputMode: "existing", deviceId: String(merged.deviceId), model: merged.deviceModel, pn: merged.devicePn, serialNo: merged.deviceSerialNo, remark: merged.deviceRemark, workContent: merged.workContent })]
           : [emptyTargetDevice()]);
   const installDeviceDraftIdByDeviceId = new Map(
     normalizedInstallDevices
@@ -2168,6 +2178,7 @@ export function ServiceReport() {
   const hasHardwareInstallDetails = isInstall || installationParts.length > 0;
   const showAssetSection = isInstall || isRepairModule || isRemoteSupportModule || hasReplacementModule || generalParts.length > 0;
   const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasReplacementModule;
+  const usesTargetDeviceWorkContent = isRepairModule && showTargetDeviceFields;
   const showInlineInstallParts = isInstall;
   const showPartsModule = hasReplacementModule || generalParts.length > 0 || (!showInlineInstallParts && hasHardwareInstallDetails);
   const installDeviceRows = useMemo(() => (
@@ -2992,7 +3003,7 @@ export function ServiceReport() {
   }
 
   async function resolveTargetDevicesForSubmit() {
-    if (isInstall || !showTargetDeviceFields) return form.targetDeviceIds.map(Number).filter(Boolean);
+    if (isInstall || !showTargetDeviceFields) return form.targetDevices;
     if (!form.customerId) return [];
     const activeDevices = form.targetDevices.filter(targetDeviceHasContent);
     const resolvedIds: string[] = [];
@@ -3016,7 +3027,6 @@ export function ServiceReport() {
         model,
         pn: device.pn.trim() || undefined,
         serialNo,
-        remark: device.remark.trim() || undefined,
       });
       const newDevice: DeviceOption = {
         id: data?.id,
@@ -3024,7 +3034,6 @@ export function ServiceReport() {
         model,
         pn: device.pn.trim(),
         serialNo,
-        remark: device.remark.trim(),
       };
       if (!newDevice.id) throw new Error("目标设备已创建，但未返回设备 ID");
       const newDeviceId = String(newDevice.id);
@@ -3037,7 +3046,7 @@ export function ServiceReport() {
         model,
         pn: device.pn.trim(),
         serialNo,
-        remark: device.remark.trim(),
+        workContent: device.workContent,
       }));
     }
 
@@ -3051,7 +3060,9 @@ export function ServiceReport() {
     if (activeDevices.length) {
       patchTargetDevices(nextDrafts);
     }
-    return uniqueIds.map(Number).filter(Boolean);
+    return nextDrafts.length
+      ? nextDrafts
+      : uniqueIds.map((deviceId) => emptyTargetDevice({ inputMode: "existing", deviceId }));
   }
 
   function updatePart(index: number, patch: Partial<ServicePartDraft>) {
@@ -3507,25 +3518,29 @@ export function ServiceReport() {
     return ATTACHMENT_PURPOSES[purpose].label;
   }
 
-  function buildPayload(resolvedTargetDeviceIds?: number[]) {
+  function buildPayload(resolvedTargetDevices?: TargetDeviceDraft[]) {
     const payloadModules = normalizeServiceModules(form, form.serviceMode);
     const payloadServiceType = derivePrimaryServiceType(form.serviceMode, payloadModules);
     const payloadTimesheetCategory = isRemote ? deriveRemoteTimesheetCategory(payloadModules) : form.timesheetCategory;
     const installDevices = isInstall ? form.installDevices.filter(installDeviceHasContent) : [];
+    const targetDevicesForPayload = isInstall
+      ? []
+      : (resolvedTargetDevices || form.targetDevices).filter((device) => targetDeviceHasContent(device));
     const firstInstallDevice = installDevices[0] || emptyInstallDevice();
     const firstInstallDeviceId = firstInstallDevice.inputMode === "existing" && firstInstallDevice.deviceId
       ? Number(firstInstallDevice.deviceId)
       : null;
     const payloadTargetDeviceIds = isInstall
       ? []
-      : resolvedTargetDeviceIds
-        ? [...new Set(resolvedTargetDeviceIds.map(Number).filter(Boolean))]
+      : targetDevicesForPayload.length
+        ? [...new Set(targetDevicesForPayload.map((device) => Number(device.deviceId)).filter(Boolean))]
         : [...new Set((form.targetDeviceIds.length ? form.targetDeviceIds : form.deviceId ? [form.deviceId] : []).map(Number).filter(Boolean))];
     const primaryTargetDeviceId = payloadTargetDeviceIds[0] || null;
     const officeName = user?.realName || user?.username || "内勤工程师";
     const payloadCustomerName = isOffice ? (form.customerName.trim() || "敦阳科技（内勤）") : form.customerName.trim();
     const payloadContactName = form.contactName.trim() || (isOffice ? officeName : "");
     const payloadContactPhone = form.contactPhone.trim() || (isOffice ? String(user?.phone || user?.mobile || "") : "");
+    const payloadWorkContent = usesTargetDeviceWorkContent ? "" : form.workContent.trim();
     return {
       draftKey: !id && currentCreateDraftKey ? currentCreateDraftKey : undefined,
       customerId: form.customerId ? Number(form.customerId) : null,
@@ -3541,6 +3556,12 @@ export function ServiceReport() {
       contactPhone: payloadContactPhone,
       deviceId: isInstall ? firstInstallDeviceId : primaryTargetDeviceId,
       targetDeviceIds: payloadTargetDeviceIds,
+      targetDevices: targetDevicesForPayload
+        .filter((device) => device.deviceId)
+        .map((device) => ({
+          deviceId: Number(device.deviceId),
+          workContent: device.workContent.trim(),
+        })),
       deviceName: isInstall ? "" : form.deviceName.trim(),
       deviceModel: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.model.trim() : "") : form.deviceModel.trim(),
       devicePn: isInstall ? (firstInstallDevice.inputMode === "manual" ? firstInstallDevice.pn.trim() : "") : form.devicePn.trim(),
@@ -3567,8 +3588,8 @@ export function ServiceReport() {
       actualStartAt: submitDateTime(form.actualStartAt),
       actualEndAt: submitDateTime(form.actualEndAt),
       returnAt: submitDateTime(form.returnAt),
-      workContent: form.workContent.trim(),
-      workEntries: currentUserId ? [{ engineerId: Number(currentUserId), workContent: form.workContent.trim() }] : [],
+      workContent: payloadWorkContent,
+      workEntries: currentUserId && payloadWorkContent ? [{ engineerId: Number(currentUserId), workContent: payloadWorkContent }] : [],
       result: isOffice ? null : form.result,
       resultDescription: "",
       customerConfirmName: payloadContactName,
@@ -3652,7 +3673,13 @@ export function ServiceReport() {
       if (!hasReplacementPart) missing.push("备件更换明细");
     }
     if (!form.issueDescription.trim()) missing.push(issueFieldLabel);
-    if (!form.workContent.trim()) missing.push(workContentLabel);
+    if (usesTargetDeviceWorkContent) {
+      if (!form.targetDevices.some((device) => targetDeviceHasContent(device) && device.workContent.trim())) {
+        missing.push("目标设备技术处理记录");
+      }
+    } else if (!form.workContent.trim()) {
+      missing.push(workContentLabel);
+    }
     if (!isOffice && !form.result) missing.push(isOnsite ? "服务结果" : "处理结果");
     if (!form.actualStartAt) missing.push(isOnsite ? "到达时间" : "开始时间");
     if (!form.actualEndAt) missing.push(isOnsite ? "完成时间" : "结束时间");
@@ -4343,6 +4370,11 @@ export function ServiceReport() {
                 const serviceTime = reportOrderServiceTime(previewOrder);
                 const serviceTimeText = serviceTime.start === "-" && serviceTime.end === "-" ? "-" : `${serviceTime.start} 至 ${serviceTime.end}`;
                 const installedDeviceRows = previewOrder.installedDevices || [];
+                const workContent = previewOrder.report?.workContent
+                  || (previewOrder.report?.workEntries || [])
+                    .map((entry) => entry.workContent || entry.work_content || "")
+                    .filter(Boolean)
+                    .join("\n\n");
                 const targetDeviceRows = previewOrder.targetDevices?.length
                   ? previewOrder.targetDevices
                   : previewOrder.deviceName || previewOrder.deviceModel || previewOrder.deviceSerialNo
@@ -4353,6 +4385,7 @@ export function ServiceReport() {
                         pn: previewOrder.devicePn,
                         serialNo: previewOrder.deviceSerialNo,
                         remark: previewOrder.deviceRemark,
+                        workContent: workContent,
                       }]
                     : [];
                 const partRows = (previewOrder.parts || []).filter((part) => (
@@ -4360,13 +4393,11 @@ export function ServiceReport() {
                     .some((value) => String(value || "").trim())
                 ));
                 const fileRows = previewOrder.files || [];
-                const workContent = previewOrder.report?.workContent
-                  || (previewOrder.report?.workEntries || [])
-                    .map((entry) => entry.workContent || entry.work_content || "")
-                    .filter(Boolean)
-                    .join("\n\n");
+                const hasTargetDeviceWorkContent = targetDeviceRows.some((device) => String(device.workContent || "").trim());
                 const displayWorkContent = mode === "office"
                   ? workContent
+                  : hasTargetDeviceWorkContent
+                    ? ""
                   : samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
                 const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
                 const signatureLabel = mode === "onsite"
@@ -4468,7 +4499,6 @@ export function ServiceReport() {
                               { label: "设备型号", value: device.model },
                               { label: "料号 / PN", value: device.pn },
                               { label: "序列号 / SN", value: device.serialNo },
-                              { label: "备注", value: device.remark, className: "md:col-span-2" },
                             ].filter((field) => hasPreviewValue(field.value));
                             return (
                               <div key={`${device.id || "target"}-${deviceIndex}`} className="rounded-lg border bg-muted/20 p-3">
@@ -4478,9 +4508,14 @@ export function ServiceReport() {
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-3">
                                   {fields.map((field) => (
-                                    <ReportPreviewField key={field.label} label={field.label} value={field.value} className={field.className} />
+                                    <ReportPreviewField key={field.label} label={field.label} value={field.value} />
                                   ))}
                                 </div>
+                                {device.workContent ? (
+                                  <div className="mt-3">
+                                    <ReportPreviewBlock label="技术处理记录" value={device.workContent} markdown />
+                                  </div>
+                                ) : null}
                               </div>
                             );
                           })}
@@ -4942,11 +4977,13 @@ export function ServiceReport() {
                     />
                   </Field>
                 ) : null}
-                <div className="md:col-span-2">
-                  <Field label={workContentLabel} required>
-                    <MarkdownTextarea value={form.workContent} onChange={(workContent) => patchForm({ workContent })} rows={6} />
-                  </Field>
-                </div>
+                {!usesTargetDeviceWorkContent ? (
+                  <div className="md:col-span-2">
+                    <Field label={workContentLabel} required>
+                      <MarkdownTextarea value={form.workContent} onChange={(workContent) => patchForm({ workContent })} rows={6} />
+                    </Field>
+                  </div>
+                ) : null}
               </div>
               </ReportSection>
 
@@ -5100,19 +5137,18 @@ export function ServiceReport() {
                                     <Field label="序列号 / SN" required>
                                       <Input value={targetDevice.serialNo} onChange={(event) => updateTargetDevice(targetDevice.id, { serialNo: event.target.value })} />
                                     </Field>
-                                    <div className="md:col-span-2">
-                                      <Field label="备注">
-                                        <Textarea
-                                          rows={3}
-                                          value={targetDevice.remark}
-                                          placeholder="可填写设备具体配置、维护对象说明、IP、版本或位置"
-                                          onChange={(event) => updateTargetDevice(targetDevice.id, { remark: event.target.value })}
-                                        />
-                                      </Field>
-                                    </div>
                                   </>
                                 )}
                               </div>
+                              {usesTargetDeviceWorkContent ? (
+                                <Field label="技术处理记录" required>
+                                  <MarkdownTextarea
+                                    value={targetDevice.workContent}
+                                    onChange={(workContent) => updateTargetDevice(targetDevice.id, { workContent })}
+                                    rows={5}
+                                  />
+                                </Field>
+                              ) : null}
                             </div>
                           );
                         })}
