@@ -30,6 +30,7 @@ let serviceOrderInspectionColumnsReady = false
 let servicePartsColumnsReady = false
 let serviceOrderDevicesTableReady = false
 let customerSignatureRequestsTableReady = false
+let deviceMaintenanceTypeEnumReady = false
 
 const CUSTOMER_SIGNATURE_REQUEST_TTL_DAYS = 7
 const SIGNATURE_REQUEST_ACTIVE_STATUSES = new Set(['created', 'sent'])
@@ -2136,7 +2137,31 @@ function normalizeInstallDevicesPayload(installDevices = [], legacyDevice = {}) 
   return legacy.hasPayload ? [legacy] : []
 }
 
+async function ensureDeviceMaintenanceTypeEnum(connection) {
+  if (!connection && deviceMaintenanceTypeEnumReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  const [rows] = await execute(
+    `SELECT column_type AS columnType
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'devices'
+       AND column_name = 'maintenance_type'
+     LIMIT 1`,
+  )
+  const columnType = rows[0]?.columnType || rows[0]?.column_type || ''
+  if (columnType && !String(columnType).includes('pending_confirmation')) {
+    await execute(
+      "ALTER TABLE devices MODIFY COLUMN maintenance_type ENUM('pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance') NOT NULL DEFAULT 'pending_confirmation'",
+    )
+    await execute("UPDATE devices SET maintenance_type = 'pending_confirmation' WHERE maintenance_type = 'none'")
+  }
+  if (!connection) {
+    deviceMaintenanceTypeEnumReady = true
+  }
+}
+
 async function resolveInstallDevices(connection, installDevices, { customerId, serviceOrderId = null, updateLegacyExisting = false } = {}) {
+  await ensureDeviceMaintenanceTypeEnum(connection)
   const installDeviceIdMap = new Map()
   const createdDeviceIds = []
   const resolvedDevices = []
