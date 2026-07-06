@@ -1421,7 +1421,7 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
     targetDevices,
     serviceModules: normalizeServiceModules({
       serviceMode: mode,
-      serviceModules: order.serviceModules,
+      serviceModules: Array.isArray(order.serviceModules) ? order.serviceModules : [],
       serviceType: order.serviceType || "repair",
       timesheetCategory: order.timesheetCategory || "",
       parts: (order.parts || []).map((part) => ({
