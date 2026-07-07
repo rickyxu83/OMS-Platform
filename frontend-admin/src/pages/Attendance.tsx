@@ -660,14 +660,7 @@ export function Attendance() {
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <Card id="attendance-supervisor-role-rules">
-          <CardHeader>
-            <CardTitle>审批角色规则</CardTitle>
-            <CardDescription>当前账号没有 attendance.manage 权限，无法维护审批角色规则。</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      ) : null}
 
       <Card>
         <CardHeader>
