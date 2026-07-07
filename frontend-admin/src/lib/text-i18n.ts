@@ -317,10 +317,23 @@ export function normalizeSearchText(value: unknown) {
     .trim()
 }
 
+function searchTextVariants(value: unknown) {
+  return Array.from(new Set([
+    String(value ?? ""),
+    toSimplified(value),
+    toTraditional(value),
+    toTraditional(toSimplified(value)),
+    toSimplified(toTraditional(value)),
+  ].map((item) => String(item || "").toLowerCase().replace(/\s+/g, "").trim()).filter(Boolean)))
+}
+
 export function matchesSearchText(value: unknown, keyword: unknown) {
-  const normalizedKeyword = normalizeSearchText(keyword)
-  if (!normalizedKeyword) return true
-  return normalizeSearchText(value).includes(normalizedKeyword)
+  const keywordVariants = searchTextVariants(keyword)
+  if (!keywordVariants.length) return true
+  const valueVariants = searchTextVariants(value)
+  return valueVariants.some((valueVariant) => keywordVariants.some((keywordVariant) => (
+    valueVariant.includes(keywordVariant) || keywordVariant.includes(valueVariant)
+  )))
 }
 
 function hasHan(value: string) {

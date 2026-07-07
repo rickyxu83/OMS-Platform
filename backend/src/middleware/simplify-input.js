@@ -16,9 +16,21 @@ function simplifyInput(req, res, next) {
     req.body = toSimplifiedDeep(req.body, skippedBodyKeys)
   }
   if (req.query && typeof req.query === 'object') {
+    const rawQuery = { ...req.query }
     const simplifiedQuery = toSimplifiedDeep(req.query, skippedBodyKeys)
     try {
-      req.query = simplifiedQuery
+      Object.defineProperty(req, 'rawQuery', {
+        value: rawQuery,
+        configurable: true,
+        enumerable: false,
+        writable: true,
+      })
+      Object.defineProperty(req, 'query', {
+        value: simplifiedQuery,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+      })
     } catch {
       Object.keys(req.query).forEach((key) => { delete req.query[key] })
       Object.assign(req.query, simplifiedQuery)

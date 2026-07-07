@@ -1,7 +1,7 @@
 const fs = require('fs')
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
-const { customerNameKey } = require('../../utils/chinese')
+const { customerNameKey, toSimplified, toTraditional } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const {
   assertSalesCanAccessSalesperson,
@@ -23,6 +23,39 @@ try {
 
 function deviceDisplaySql(alias = 'd') {
   return `COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(${alias}.model, ''), NULLIF(${alias}.serial_no, '')), ''), NULLIF(${alias}.name, ''), '-')`
+}
+
+function searchTextVariants(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return []
+  return [...new Set([text, toSimplified(text), toTraditional(text), toTraditional(toSimplified(text)), toSimplified(toTraditional(text))]
+    .map((item) => String(item || '').toLowerCase().replace(/\s+/g, '').trim())
+    .filter(Boolean))]
+}
+
+function matchesSearchText(value, keyword) {
+  const keywordVariants = searchTextVariants(keyword)
+  if (!keywordVariants.length) return true
+  const valueVariants = searchTextVariants(value)
+  return valueVariants.some((valueVariant) => keywordVariants.some((keywordVariant) => (
+    valueVariant.includes(keywordVariant) || keywordVariant.includes(valueVariant)
+  )))
+}
+
+function customerMatchesKeyword(row, keyword) {
+  if (!String(keyword || '').trim()) return true
+  return [
+    row.name,
+    row.name_key,
+    row.code,
+    row.contact_name,
+    row.contact_phone,
+    row.salesperson,
+    row.address,
+    row.remark,
+    row.map_poi_name,
+    row.map_address,
+  ].some((value) => matchesSearchText(value, keyword))
 }
 
 async function ensureCustomerLevelColumn() {
@@ -806,8 +839,12 @@ async function list(req, res) {
   const { salesperson = '', mine = '' } = req.query
   const sortLocale = normalizeSortLocale(req.query.sortLocale || req.query.lang)
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const rawKeyword = String(req.rawQuery?.keyword ?? req.rawQuery?.q ?? keyword).trim()
+  const shouldPostFilterKeyword = Boolean(rawKeyword)
+  const sqlKeyword = shouldPostFilterKeyword ? '' : keyword
   const keywordKey = customerNameKey(keyword)
   const normalizedPageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 200))
+  const limitSql = shouldPostFilterKeyword ? '' : `LIMIT ${normalizedPageSize}`
   const mineQuery = mine === '1' || mine === 'true'
   const effectiveEngineerId = mineQuery ? Number(req.user.id) : null
   const engineerCustomerWhere = effectiveEngineerId
@@ -878,22 +915,23 @@ async function list(req, res) {
          OR c.map_address LIKE :likeKeyword
        )
      ORDER BY ${orderBy}
-     LIMIT ${normalizedPageSize}`,
+     ${limitSql}`,
     {
-      keyword,
+      keyword: sqlKeyword,
       salesperson,
       effectiveEngineerId,
-      likeKeyword: `%${keyword}%`,
-      likeKeywordKey: `%${keywordKey}%`,
+      likeKeyword: `%${sqlKeyword}%`,
+      likeKeywordKey: `%${shouldPostFilterKeyword ? '' : keywordKey}%`,
       internalCustomerName: INTERNAL_CUSTOMER_NAME,
       internalCustomerNameKey: INTERNAL_CUSTOMER_NAME_KEY,
       ...salesScope.params,
     },
   )
 
-  await cleanupDuplicateContacts(rows.map((row) => row.id))
-  const contactsByCustomer = await loadContacts(rows.map((row) => row.id), req.user.id)
-  res.json({ items: rows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale)) })
+  const visibleRows = shouldPostFilterKeyword ? rows.filter((row) => customerMatchesKeyword(row, rawKeyword)).slice(0, normalizedPageSize) : rows
+  await cleanupDuplicateContacts(visibleRows.map((row) => row.id))
+  const contactsByCustomer = await loadContacts(visibleRows.map((row) => row.id), req.user.id)
+  res.json({ items: visibleRows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale)) })
 }
 
 async function create(req, res) {
