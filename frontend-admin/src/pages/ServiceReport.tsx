@@ -57,6 +57,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
+import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 
 type ServiceMode = "onsite" | "remote" | "office";
@@ -1009,7 +1010,7 @@ function contactsForCustomer(customer?: CustomerOption | null) {
 }
 
 function customerMatches(customer: CustomerOption, keyword: string) {
-  const text = keyword.trim().toLowerCase();
+  const text = keyword.trim();
   if (!text) return true;
   return [
     customer.name,
@@ -1019,7 +1020,7 @@ function customerMatches(customer: CustomerOption, keyword: string) {
     customer.contactName,
     customer.contactPhone,
     ...(customer.contacts || []).flatMap((contact) => [contact.name, contact.phone, contact.contactName, contact.contactPhone]),
-  ].filter(Boolean).some((value) => String(value).toLowerCase().includes(text));
+  ].filter(Boolean).some((value) => matchesSearchText(value, text));
 }
 
 const CUSTOMER_INDEX_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
@@ -1188,7 +1189,7 @@ function orderMatchesKeyword(order: ServiceOrder, keyword: string) {
     order.issueDescription,
     serviceItemsLabel(order),
     orderStatusLabel(order),
-  ].some((value) => String(value || "").toLowerCase().includes(keyword));
+  ].some((value) => matchesSearchText(value, keyword));
 }
 
 function isDispatchOrder(order: ServiceOrder) {
@@ -2144,7 +2145,7 @@ export function ServiceReport() {
   const routeMode = normalizeMode(searchParams.get("mode"));
   const routeShouldLoadDraft = searchParams.get("draft") === "1";
   const routeDraftKey = String(searchParams.get("draftKey") || searchParams.get("draftId") || "").trim();
-  const routeKeyword = String(searchParams.get("keyword") || "").trim().toLowerCase();
+  const routeKeyword = normalizeSearchText(searchParams.get("keyword") || "");
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [recentCustomers, setRecentCustomers] = useState<CustomerOption[]>([]);

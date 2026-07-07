@@ -27,6 +27,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
+import { matchesSearchText } from "@/lib/text-i18n";
 
 interface Party {
   id: string | number;
@@ -331,13 +332,13 @@ export function MaintenanceParties() {
   }, [searchQuery, typeFilter, t.errors.loadFailed]);
 
   const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
+    const keyword = searchQuery.trim();
     return parties.filter((p) => {
       if (typeFilter !== "all" && canonicalPartyType(p.partyType) !== typeFilter) return false;
       if (!keyword) return true;
       return [p.name, p.phone, p.contact, p.officialWebsite, p.remark, ...contactsForParty(p).flatMap((contact) => [contact.name, contact.phone])]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(keyword));
+        .some((v) => matchesSearchText(v, keyword));
     });
   }, [parties, searchQuery, typeFilter]);
 

@@ -18,6 +18,7 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { matchesSearchText } from "@/lib/text-i18n";
 
 interface User {
   id: string | number;
@@ -146,14 +147,14 @@ export function Users() {
   }, [roleFilter, statusFilter]);
 
   const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
+    const keyword = searchQuery.trim();
     return users.filter((u) => {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
       if (!keyword) return true;
       const roleLabel = ROLE_LABELS[u.role || ""] || u.role || "";
       return [displayName(u), u.username, u.loginAlias, u.phone, u.email, roleLabel]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(keyword));
+        .some((v) => matchesSearchText(v, keyword));
     });
   }, [users, searchQuery, statusFilter]);
 

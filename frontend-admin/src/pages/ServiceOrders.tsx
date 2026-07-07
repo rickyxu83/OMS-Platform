@@ -36,6 +36,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
+import { normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -858,7 +859,7 @@ function splitSearchTerms(value: string) {
   return value
     .trim()
     .split(/[\s,，、]+/)
-    .map((term) => term.trim().toLowerCase())
+    .map((term) => normalizeSearchText(term))
     .filter(Boolean)
     .slice(0, 8);
 }
@@ -1085,8 +1086,9 @@ export function ServiceOrders() {
         SERVICE_MODE_SEARCH_ALIASES[order.serviceMode || ""],
         workflowStatus,
         t.status[workflowStatus as keyof typeof t.status],
-      ].filter(Boolean).join(" ").toLowerCase();
-      return terms.every((term) => searchText.includes(term));
+      ].filter(Boolean).join(" ");
+      const normalizedSearchText = normalizeSearchText(searchText);
+      return terms.every((term) => normalizedSearchText.includes(term));
     });
   }, [orders, debouncedSearch, t.mode, t.status, t.type]);
 

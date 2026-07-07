@@ -5,7 +5,7 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
-const { customerNameKey } = require('../../utils/chinese')
+const { customerNameKey, toSimplified } = require('../../utils/chinese')
 const { normalizeAlias } = require('../device-model-catalog/normalize')
 const {
   findCatalogMatch,
@@ -189,7 +189,7 @@ function normalizeDate(value) {
 }
 
 function normalizeText(value) {
-  const text = String(value || '').trim()
+  const text = String(toSimplified(value) || '').trim()
   return text || null
 }
 

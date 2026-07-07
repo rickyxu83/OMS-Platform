@@ -26,6 +26,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
 
 interface Device {
@@ -434,7 +435,7 @@ function customerMeta(customer: Customer) {
 }
 
 function normalizeCustomerSearchText(value?: string | number) {
-  return String(value || "").toLowerCase().replace(/\s+/g, "");
+  return normalizeSearchText(value);
 }
 
 function customerMatches(customer: Customer, keyword: string) {
@@ -1223,7 +1224,7 @@ export function Devices() {
   }
 
   const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
+    const keyword = searchQuery.trim();
     return devices.filter((d) => {
       const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
       const status = d.status || "active";
@@ -1232,7 +1233,7 @@ export function Devices() {
       if (!keyword) return true;
       return [d.name, d.model, d.pn, d.serialNo, d.mrNo, d.customerName, d.maintenancePartyName]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(keyword));
+        .some((v) => matchesSearchText(v, keyword));
     });
   }, [devices, maintenanceFilter, searchQuery, statusFilter]);
 
@@ -2015,7 +2016,7 @@ export function Devices() {
               <DropdownMenuTrigger asChild>
                 <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing}>
                   {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                  导入
+                  批量导入
                   <ChevronDown className="w-4 h-4 ml-2" />
                 </Button>
               </DropdownMenuTrigger>
@@ -2042,7 +2043,7 @@ export function Devices() {
             disabled={exporting || loading || !filtered.length}
           >
             {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
-            导出
+            批量导出
           </Button>
           {canEditDevices ? (
             <DropdownMenu>

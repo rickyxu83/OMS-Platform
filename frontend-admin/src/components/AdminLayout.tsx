@@ -43,6 +43,7 @@ import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWor
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
+import { matchesSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 import { MySettingsDialog, UserAvatar } from "./MySettingsDialog";
 
@@ -438,7 +439,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const filteredNavItems = searchQuery
     ? allNavItems.filter(item =>
-        item.label.toLowerCase().includes(searchQuery.toLowerCase())
+        matchesSearchText(item.label, searchQuery)
       )
     : allNavItems;
 

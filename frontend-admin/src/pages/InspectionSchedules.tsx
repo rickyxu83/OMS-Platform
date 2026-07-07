@@ -22,6 +22,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { matchesSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
 
 interface Schedule {
@@ -193,7 +194,7 @@ export function InspectionSchedules() {
   }, [searchParams]);
 
   const filtered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
+    const keyword = searchQuery.trim();
     return schedules.filter((s) => {
       if (customerFilter !== "all" && String(s.customerId) !== customerFilter) return false;
       if (cadenceFilter !== "all" && s.cadence !== cadenceFilter) return false;
@@ -201,7 +202,7 @@ export function InspectionSchedules() {
       if (statusFilter === "disabled" && s.active) return false;
       if (!keyword) return true;
       const searchText = [s.name, s.customerName, s.targetEngineerName, ...(s.deviceNames || [])].filter(Boolean).join(" ");
-      return searchText.toLowerCase().includes(keyword);
+      return matchesSearchText(searchText, keyword);
     });
   }, [schedules, searchQuery, customerFilter, cadenceFilter, statusFilter]);
 
@@ -259,23 +260,23 @@ export function InspectionSchedules() {
   );
 
   const filteredCustomerOptions = useMemo(() => {
-    const keyword = customerSearch.trim().toLowerCase();
+    const keyword = customerSearch.trim();
     if (!keyword) return customers.slice(0, 80);
     return customers
       .filter((customer) => {
-        const text = [customer.name, customer.id].filter(Boolean).join(" ").toLowerCase();
-        return text.includes(keyword);
+        const text = [customer.name, customer.id].filter(Boolean).join(" ");
+        return matchesSearchText(text, keyword);
       })
       .slice(0, 80);
   }, [customers, customerSearch]);
 
   const filteredEngineerOptions = useMemo(() => {
-    const keyword = engineerSearch.trim().toLowerCase();
+    const keyword = engineerSearch.trim();
     if (!keyword) return engineers.slice(0, 80);
     return engineers
       .filter((engineer) => {
-        const text = [engineer.realName, engineer.username, engineer.id].filter(Boolean).join(" ").toLowerCase();
-        return text.includes(keyword);
+        const text = [engineer.realName, engineer.username, engineer.id].filter(Boolean).join(" ");
+        return matchesSearchText(text, keyword);
       })
       .slice(0, 80);
   }, [engineers, engineerSearch]);

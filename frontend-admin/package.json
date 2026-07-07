@@ -1,7 +1,7 @@
 {
   "name": "oms-platform-admin",
   "private": true,
-  "version": "26.704.0092",
+  "version": "26.704.0093",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -23,6 +23,7 @@
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "lucide-react": "^0.487.0",
+    "opencc-js": "^1.4.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { matchesSearchText } from "@/lib/text-i18n";
 
 interface FeedbackItem {
   id: string | number;
@@ -84,7 +85,7 @@ export function Feedback() {
   }, [status]);
 
   const filtered = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
+    const keyword = query.trim();
     if (!keyword) return items;
     return items.filter((item) => [
       item.content,
@@ -94,7 +95,7 @@ export function Feedback() {
       TYPE_LABEL[item.type],
     ]
       .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(keyword)));
+      .some((value) => matchesSearchText(value, keyword)));
   }, [items, query]);
 
   async function updateStatus(item: FeedbackItem, nextStatus: "open" | "resolved") {
