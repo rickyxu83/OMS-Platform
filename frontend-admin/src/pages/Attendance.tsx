@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, Check, Loader2, RefreshCw, RotateCcw, Save, Send, ShieldCheck, X } from "lucide-react";
+import { CalendarClock, Check, Loader2, Plus, RefreshCw, RotateCcw, Save, Send, ShieldCheck, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 
 type RequestType = "leave" | "overtime" | "comp_time";
+type AnnualLeavePeriod = "morning" | "afternoon" | "day";
 
 interface AttendanceRequest {
   id: number | string;
@@ -24,6 +25,8 @@ interface AttendanceRequest {
   leaveType?: string | null;
   overtimeKind?: string | null;
   overtimeResult?: string | null;
+  overtimeDayType?: string | null;
+  overtimePayMultiplier?: number | null;
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
@@ -61,6 +64,8 @@ interface MonthlyReportItem {
   overtimeHours?: number;
   overtimeToCompHours?: number;
   overtimeToPayHours?: number;
+  legalHolidayOvertimePayHours?: number;
+  overtimePayWeightedHours?: number;
   compTimeUsedHours?: number;
   annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
@@ -84,6 +89,13 @@ interface SupervisorRoleRulePayload {
   items?: SupervisorRoleRule[];
 }
 
+interface LegalHolidayItem {
+  date: string;
+  name: string;
+  source: string;
+  active?: boolean;
+}
+
 interface OvertimeSegment {
   key: string;
   kind: "travel" | "work";
@@ -91,6 +103,8 @@ interface OvertimeSegment {
   startAt: string;
   endAt: string;
   hours: number;
+  dayType?: string;
+  payMultiplier?: number | null;
   allowedResults?: string[];
 }
 
@@ -135,6 +149,18 @@ const OVERTIME_KIND_LABELS: Record<string, string> = {
 const OVERTIME_RESULT_LABELS: Record<string, string> = {
   comp_time: "转调休",
   pay: "加班费",
+};
+
+const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {
+  workday: "工作日",
+  rest_day: "休息日",
+  legal_holiday: "法定节假日",
+};
+
+const HOLIDAY_SOURCE_LABELS: Record<string, string> = {
+  builtin: "内置",
+  manual: "手动",
+  auto: "自动",
 };
 
 const SERVICE_MODE_LABELS: Record<string, string> = {
@@ -186,6 +212,10 @@ function todayMonth() {
   return new Date().toISOString().slice(0, 7);
 }
 
+function todayYear() {
+  return new Date().getFullYear().toString();
+}
+
 function nowLocalValue(offsetHours = 0) {
   const date = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
@@ -208,6 +238,53 @@ function normalizeHourValue(value: string) {
 function annualLeaveStartValue(value: string) {
   const source = value || nowLocalValue();
   return `${String(source).slice(0, 10)}T09:00`;
+}
+
+function dateValue(value?: string) {
+  return String(value || nowLocalValue()).slice(0, 10);
+}
+
+function dateIndex(value: string) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function annualLeaveRange(form: {
+  annualStartDate?: string;
+  annualEndDate?: string;
+  annualPeriod?: string;
+  annualStartPeriod?: string;
+  annualEndPeriod?: string;
+}) {
+  const startDate = dateValue(form.annualStartDate);
+  const endDate = dateValue(form.annualEndDate || startDate);
+  if (startDate === endDate) {
+    const period = (["morning", "afternoon", "day"].includes(String(form.annualPeriod)) ? form.annualPeriod : "morning") as AnnualLeavePeriod;
+    if (period === "afternoon") return { startAt: `${startDate}T14:00`, endAt: `${startDate}T18:00`, hours: 4 };
+    if (period === "day") return { startAt: `${startDate}T09:00`, endAt: `${startDate}T18:00`, hours: 8 };
+    return { startAt: `${startDate}T09:00`, endAt: `${startDate}T14:00`, hours: 4 };
+  }
+  const startPeriod = form.annualStartPeriod === "afternoon" ? "afternoon" : "morning";
+  const endPeriod = form.annualEndPeriod === "morning" ? "morning" : "afternoon";
+  const startHalf = dateIndex(startDate) * 2 + (startPeriod === "afternoon" ? 1 : 0);
+  const endHalf = dateIndex(endDate) * 2 + (endPeriod === "afternoon" ? 1 : 0);
+  const halfDays = Math.max(1, endHalf - startHalf + 1);
+  return {
+    startAt: `${startDate}T${startPeriod === "afternoon" ? "14" : "09"}:00`,
+    endAt: `${endDate}T${endPeriod === "afternoon" ? "18" : "14"}:00`,
+    hours: halfDays * 4,
+  };
+}
+
+function applyAnnualLeaveRange<T extends {
+  annualStartDate?: string;
+  annualEndDate?: string;
+  annualPeriod?: string;
+  annualStartPeriod?: string;
+  annualEndPeriod?: string;
+}>(form: T) {
+  const range = annualLeaveRange(form);
+  return { ...form, startAt: range.startAt, endAt: range.endAt, hours: String(range.hours) };
 }
 
 function formatDateTime(value?: string) {
@@ -263,9 +340,19 @@ function overtimeRows(order: OvertimeServiceOrder | null) {
 function requestDetail(item: AttendanceRequest) {
   if (item.requestType === "leave") return LEAVE_TYPE_LABELS[item.leaveType || ""] || "-";
   if (item.requestType === "overtime") {
-    return `${OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"} / ${OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-"}`;
+    const result = OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-";
+    const multiplier = item.overtimeResult === "pay" && Number(item.overtimePayMultiplier || 0) > 1
+      ? `（${hours(Number(item.overtimePayMultiplier))}倍）`
+      : "";
+    const dayType = OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType || ""] || "";
+    return `${OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"} / ${result}${multiplier}${dayType ? ` / ${dayType}` : ""}`;
   }
   return "调休";
+}
+
+function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {
+  const multiplier = Number(segment?.payMultiplier || 1);
+  return multiplier > 1 ? `加班费（${hours(multiplier)}倍）` : "加班费";
 }
 
 function requestTypeLabel(type?: string) {
@@ -282,16 +369,18 @@ function roleLabel(role?: string | null) {
 }
 
 function createBlankForm() {
-  const startAt = annualLeaveStartValue(nowLocalValue());
-  return {
+  const today = dateValue();
+  return applyAnnualLeaveRange({
     requestType: "leave" as RequestType,
     leaveType: "annual",
     overtimeKind: "work",
     overtimeResult: "comp_time",
-    startAt,
-    endAt: addHoursValue(startAt, 4),
-    hours: "4",
-  };
+    annualStartDate: today,
+    annualEndDate: today,
+    annualPeriod: "morning" as AnnualLeavePeriod,
+    annualStartPeriod: "morning" as AnnualLeavePeriod,
+    annualEndPeriod: "morning" as AnnualLeavePeriod,
+  });
 }
 
 export function Attendance() {
@@ -320,6 +409,9 @@ export function Attendance() {
   const [leaveStepHours, setLeaveStepHours] = useState<4 | 8>(4);
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
+  const [holidayYear, setHolidayYear] = useState(todayYear());
+  const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
+  const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "" });
 
   async function load() {
     setLoading(true);
@@ -335,8 +427,10 @@ export function Attendance() {
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
         calls.push(api.get("/attendance/supervisor-role-rules"));
+        const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
+        calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
-      const [meData, mineData, supervisorData, allData, employeeData, reportData, roleRuleData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
@@ -351,6 +445,7 @@ export function Attendance() {
         setSupervisorRoleRules(ruleItems);
         setSupervisorRoleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
         setEmployeeDrafts(Object.fromEntries(employeeList.map((employee) => [String(employee.id), { ...employee }])));
+        setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -362,7 +457,7 @@ export function Attendance() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewAll, reportMonth]);
+  }, [canViewAll, reportMonth, holidayYear]);
 
   async function loadOvertimeOrders() {
     setOvertimeLoading(true);
@@ -447,6 +542,25 @@ export function Attendance() {
     });
   }
 
+  function setAnnualDraft(patch: Partial<{
+    annualStartDate: string;
+    annualEndDate: string;
+    annualPeriod: AnnualLeavePeriod;
+    annualStartPeriod: AnnualLeavePeriod;
+    annualEndPeriod: AnnualLeavePeriod;
+  }>) {
+    setForm((current) => {
+      const next = { ...current, ...patch };
+      if (patch.annualStartDate && dateIndex(next.annualEndDate) < dateIndex(patch.annualStartDate)) {
+        next.annualEndDate = patch.annualStartDate;
+      }
+      if (patch.annualEndDate && dateIndex(patch.annualEndDate) < dateIndex(next.annualStartDate)) {
+        next.annualStartDate = patch.annualEndDate;
+      }
+      return applyAnnualLeaveRange(next);
+    });
+  }
+
   async function submitRequest() {
     setSubmitting(true);
     try {
@@ -457,12 +571,13 @@ export function Attendance() {
           overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
         });
       } else {
+        const annualRange = form.requestType === "leave" && form.leaveType === "annual" ? annualLeaveRange(form) : null;
         await api.post("/attendance/requests", {
           requestType: form.requestType,
           leaveType: form.requestType === "leave" ? form.leaveType : undefined,
-          startAt: form.startAt,
-          endAt: form.endAt,
-          hours: Number(form.hours),
+          startAt: annualRange?.startAt || form.startAt,
+          endAt: annualRange?.endAt || form.endAt,
+          hours: annualRange?.hours || Number(form.hours),
         });
       }
       toast.success("申请已提交");
@@ -540,6 +655,44 @@ export function Attendance() {
     }
   }
 
+  async function saveLegalHoliday() {
+    const date = holidayDraft.date;
+    const name = holidayDraft.name.trim();
+    if (!date || !name) {
+      toast.error("请填写节假日日期和名称");
+      return;
+    }
+    try {
+      await api.put(`/attendance/legal-holidays/${encodeURIComponent(date)}`, { name, source: "manual" });
+      toast.success("法定节假日已保存");
+      setHolidayDraft({ date, name: "" });
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    }
+  }
+
+  async function disableLegalHoliday(item: LegalHolidayItem) {
+    if (!window.confirm(`停用 ${item.date} ${item.name}？`)) return;
+    try {
+      await api.delete(`/attendance/legal-holidays/${encodeURIComponent(item.date)}`);
+      toast.success("法定节假日已停用");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "停用失败");
+    }
+  }
+
+  async function enableLegalHoliday(item: LegalHolidayItem) {
+    try {
+      await api.put(`/attendance/legal-holidays/${encodeURIComponent(item.date)}`, { name: item.name, source: item.source || "manual" });
+      toast.success("法定节假日已启用");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "启用失败");
+    }
+  }
+
   function setEmployeeDraft(id: number | string, patch: Partial<EmployeeProfile>) {
     setEmployeeDrafts((current) => ({ ...current, [String(id)]: { ...(current[String(id)] || {}), ...patch } }));
   }
@@ -553,6 +706,8 @@ export function Attendance() {
 
   const requestsForAdmin = allRequests.filter((item) => item.status === "pending_admin");
   const requestsForSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor");
+  const annualPreview = form.requestType === "leave" && form.leaveType === "annual" ? annualLeaveRange(form) : null;
+  const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const scrollToSupervisorRoleRules = () => {
     document.getElementById("attendance-supervisor-role-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -676,13 +831,11 @@ export function Attendance() {
               <Label>申请类型</Label>
               <Select
                 value={form.requestType}
-                onValueChange={(value) => setForm((current) => ({
-                  ...current,
-                  requestType: value as RequestType,
-                  hours: value === "leave" ? "4" : "1",
-                  startAt: value === "leave" && current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt,
-                  endAt: addHoursValue(value === "leave" && current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt, value === "leave" ? 4 : 1),
-                }))}
+                onValueChange={(value) => setForm((current) => {
+                  const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
+                  if (value === "leave" && next.leaveType === "annual") return applyAnnualLeaveRange(next);
+                  return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
+                })}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -698,6 +851,15 @@ export function Attendance() {
                 <Select
                   value={form.leaveType}
                   onValueChange={(value) => setForm((current) => {
+                    if (value === "annual") {
+                      const date = dateValue(current.startAt);
+                      return applyAnnualLeaveRange({
+                        ...current,
+                        leaveType: value,
+                        annualStartDate: current.annualStartDate || date,
+                        annualEndDate: current.annualEndDate || date,
+                      });
+                    }
                     const startAt = value === "annual" ? annualLeaveStartValue(current.startAt) : normalizeHourValue(current.startAt);
                     return { ...current, leaveType: value, startAt, endAt: addHoursValue(startAt, Number(current.hours) || 4) };
                   })}
@@ -768,6 +930,7 @@ export function Attendance() {
                                   <div className="font-medium">{segment.label}</div>
                                   <div className="mt-1 text-xs text-muted-foreground">
                                     {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)} / {hours(segment.hours)} 小时
+                                    {segment.dayType ? ` / ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
                                   </div>
                                 </div>
                                 <div onClick={(event) => event.stopPropagation()}>
@@ -781,7 +944,7 @@ export function Attendance() {
                                       <SelectTrigger><SelectValue /></SelectTrigger>
                                       <SelectContent>
                                         <SelectItem value="comp_time">转调休</SelectItem>
-                                        <SelectItem value="pay">加班费</SelectItem>
+                                        <SelectItem value="pay">{overtimePayLabel(segment)}</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   )}
@@ -804,26 +967,86 @@ export function Attendance() {
               </>
             ) : (
               <>
-                <div className="space-y-2">
-                  <Label>开始时间</Label>
-                  <Input type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>结束时间</Label>
-                  <Input type="datetime-local" step="3600" value={form.endAt} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "调休小时数"}</Label>
-                  {form.requestType === "leave" ? (
-                    <div className="flex gap-2">
-                      <Input type="number" min={leaveStepHours} step={leaveStepHours} value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                      <Button type="button" variant={leaveStepHours === 4 ? "default" : "outline"} onClick={() => setLeaveHours(4)}>半天</Button>
-                      <Button type="button" variant={leaveStepHours === 8 ? "default" : "outline"} onClick={() => setLeaveHours(8)}>一天</Button>
+                {form.requestType === "leave" && form.leaveType === "annual" ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>开始日期</Label>
+                      <Input type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
                     </div>
-                  ) : (
-                    <Input type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                  )}
-                </div>
+                    <div className="space-y-2">
+                      <Label>结束日期</Label>
+                      <Input type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
+                    </div>
+                    {annualSingleDay ? (
+                      <div className="space-y-2">
+                        <Label>时段</Label>
+                        <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="morning">上午 09:00-14:00</SelectItem>
+                            <SelectItem value="afternoon">下午 14:00-18:00</SelectItem>
+                            <SelectItem value="day">一天 09:00-18:00</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Label>开始时段</Label>
+                          <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 09:00 起</SelectItem>
+                              <SelectItem value="afternoon">下午 14:00 起</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>结束时段</Label>
+                          <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 14:00 止</SelectItem>
+                              <SelectItem value="afternoon">下午 18:00 止</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                    <div className="space-y-2">
+                      <Label>年假时长</Label>
+                      <div className="rounded-md border px-3 py-2 text-sm">
+                        {days(Number(annualPreview?.hours || 0) / 8)} 天
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {formatDateTime(annualPreview?.startAt)} - {formatDateTime(annualPreview?.endAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label>开始时间</Label>
+                      <Input type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>结束时间</Label>
+                      <Input type="datetime-local" step="3600" value={form.endAt} readOnly />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "调休小时数"}</Label>
+                      {form.requestType === "leave" ? (
+                        <div className="flex gap-2">
+                          <Input type="number" min={leaveStepHours} step={leaveStepHours} value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                          <Button type="button" variant={leaveStepHours === 4 ? "default" : "outline"} onClick={() => setLeaveHours(4)}>半天</Button>
+                          <Button type="button" variant={leaveStepHours === 8 ? "default" : "outline"} onClick={() => setLeaveHours(8)}>一天</Button>
+                        </div>
+                      ) : (
+                        <Input type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -899,6 +1122,97 @@ export function Attendance() {
 
           <Card>
             <CardHeader>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle>法定节假日</CardTitle>
+                  <CardDescription>启用状态会影响加班类型和 3 倍加班费折算</CardDescription>
+                </div>
+                <div className="w-36 space-y-2">
+                  <Label>年份</Label>
+                  <Input
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    value={holidayYear}
+                    onChange={(event) => setHolidayYear(event.target.value)}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {canManage ? (
+                <div className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
+                  <div className="space-y-2">
+                    <Label>日期</Label>
+                    <Input
+                      type="date"
+                      value={holidayDraft.date}
+                      onChange={(event) => setHolidayDraft((current) => ({ ...current, date: event.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>名称</Label>
+                    <Input
+                      value={holidayDraft.name}
+                      onChange={(event) => setHolidayDraft((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="如：国庆节"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button onClick={saveLegalHoliday}>
+                      <Plus className="mr-1 h-4 w-4" /> 保存
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="overflow-x-auto rounded-md border">
+                <Table className="min-w-[720px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>日期</TableHead>
+                      <TableHead>名称</TableHead>
+                      <TableHead>来源</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {legalHolidays.map((item) => (
+                      <TableRow key={item.date}>
+                        <TableCell className="font-medium">{item.date}</TableCell>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
+                        <TableCell>
+                          <Badge variant={item.active === false ? "outline" : "success"}>{item.active === false ? "停用" : "启用"}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {canManage ? (
+                            item.active === false ? (
+                              <Button size="sm" variant="outline" onClick={() => enableLegalHoliday(item)}>
+                                <Check className="mr-1 h-4 w-4" /> 启用
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={() => disableLegalHoliday(item)}>
+                                <Trash2 className="mr-1 h-4 w-4" /> 停用
+                              </Button>
+                            )
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {legalHolidays.length === 0 ? (
+                      <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">暂无法定节假日</TableCell></TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>月度报表</CardTitle>
               <CardDescription>按业务发生月份统计，不做月结锁定</CardDescription>
             </CardHeader>
@@ -908,7 +1222,7 @@ export function Attendance() {
                 <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
               </div>
               <div className="overflow-x-auto rounded-md border">
-                <Table className="min-w-[920px]">
+                <Table className="min-w-[1040px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>员工</TableHead>
@@ -920,6 +1234,8 @@ export function Attendance() {
                       <TableHead>加班</TableHead>
                       <TableHead>转调休</TableHead>
                       <TableHead>加班费</TableHead>
+                      <TableHead>法定节假日加班费</TableHead>
+                      <TableHead>加班费折算</TableHead>
                       <TableHead>调休</TableHead>
                       <TableHead>年假余额</TableHead>
                       <TableHead>调休余额</TableHead>
@@ -937,13 +1253,15 @@ export function Attendance() {
                         <TableCell>{hours(item.overtimeHours)}</TableCell>
                         <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
                         <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
+                        <TableCell>{hours(item.legalHolidayOvertimePayHours)}</TableCell>
+                        <TableCell>{hours(item.overtimePayWeightedHours)}</TableCell>
                         <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
                         <TableCell>{days(annualBalanceDays(item))} 天</TableCell>
                         <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
                       </TableRow>
                     ))}
                     {reportItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={12} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={14} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
                     ) : null}
                   </TableBody>
                 </Table>

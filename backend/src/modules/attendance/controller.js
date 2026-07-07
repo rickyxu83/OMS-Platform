@@ -23,6 +23,25 @@ const defaultSupervisorRoleRules = Object.freeze({
 let schemaReadyPromise = null
 
 const WORK_HOURS_PER_DAY = 8
+const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
+const DEFAULT_PAY_MULTIPLIER = 1
+const BUILTIN_LEGAL_HOLIDAYS = Object.freeze([
+  { date: '2026-01-01', name: '元旦' },
+  { date: '2026-02-16', name: '春节' },
+  { date: '2026-02-17', name: '春节' },
+  { date: '2026-02-18', name: '春节' },
+  { date: '2026-02-19', name: '春节' },
+  { date: '2026-04-05', name: '清明节' },
+  { date: '2026-05-01', name: '劳动节' },
+  { date: '2026-05-02', name: '劳动节' },
+  { date: '2026-06-19', name: '端午节' },
+  { date: '2026-09-25', name: '中秋节' },
+  { date: '2026-10-01', name: '国庆节' },
+  { date: '2026-10-02', name: '国庆节' },
+  { date: '2026-10-03', name: '国庆节' },
+])
+const legalHolidayCache = new Map()
+const holidaySources = new Set(['builtin', 'manual', 'auto'])
 
 function text(value) {
   return String(value ?? '').trim()
@@ -31,6 +50,19 @@ function text(value) {
 function nullableText(value) {
   const normalized = text(value)
   return normalized || null
+}
+
+function normalizeHolidayDate(value) {
+  const normalized = text(value).replace('T', ' ').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw badRequest('节假日日期格式不正确')
+  return normalized
+}
+
+function normalizeHolidayYear(value) {
+  const normalized = text(value)
+  if (!normalized) return ''
+  if (!/^\d{4}$/.test(normalized)) throw badRequest('节假日年份格式不正确')
+  return normalized
 }
 
 function positiveNumber(value, label) {
@@ -75,6 +107,44 @@ function annualLeaveStartAt(value) {
   return `${date} 09:00:00`
 }
 
+function annualLeaveSlot(value, boundary) {
+  const normalized = text(value).replace('T', ' ')
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!match) throw badRequest(boundary === 'start' ? '年假开始时间格式不正确' : '年假结束时间格式不正确')
+  const [, date, hour, minute, second = '00'] = match
+  if (minute !== '00' || second !== '00') throw badRequest('年假时段必须以整点为单位')
+  if (boundary === 'start') {
+    if (hour === '09') return { date, half: 0, value: `${date} 09:00:00` }
+    if (hour === '14') return { date, half: 1, value: `${date} 14:00:00` }
+    throw badRequest('年假开始时段必须是上午或下午')
+  }
+  if (hour === '14') return { date, half: 0, value: `${date} 14:00:00` }
+  if (hour === '18') return { date, half: 1, value: `${date} 18:00:00` }
+  throw badRequest('年假结束时段必须是上午或下午')
+}
+
+function annualLeaveDateIndex(date) {
+  const match = text(date).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) throw badRequest('年假日期格式不正确')
+  const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  return Math.floor(utc / 86400000)
+}
+
+function normalizeAnnualLeaveRange(startAt, endAt, inputHours) {
+  const start = annualLeaveSlot(startAt, 'start')
+  const end = annualLeaveSlot(endAt, 'end')
+  const startIndex = annualLeaveDateIndex(start.date) * 2 + start.half
+  const endIndex = annualLeaveDateIndex(end.date) * 2 + end.half
+  if (endIndex < startIndex) throw badRequest('年假结束时段不能早于开始时段')
+  const hours = (endIndex - startIndex + 1) * 4
+  if (Math.abs(hours - Number(inputHours)) > 0.0001) throw badRequest('年假时长必须与开始、结束时段一致')
+  return {
+    startAt: start.value,
+    endAt: end.value,
+    hours,
+  }
+}
+
 function addHoursDateTime(startAt, hours) {
   const start = new Date(String(startAt).replace(' ', 'T'))
   if (!Number.isFinite(start.getTime())) throw badRequest('开始时间格式不正确')
@@ -89,6 +159,26 @@ function optionalDate(value) {
 function toIsoMinute(value) {
   if (!value) return ''
   return String(value).replace('T', ' ').slice(0, 16)
+}
+
+function dateKey(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function overtimeDayType(startAt) {
+  const date = toDate(startAt)
+  if (!date) return 'workday'
+  if (legalHolidayCache.has(dateKey(date))) return 'legal_holiday'
+  if (date.getDay() === 0 || date.getDay() === 6) return 'rest_day'
+  return 'workday'
+}
+
+function overtimePayMultiplier(dayType, result = '') {
+  if (result !== 'pay') return null
+  return dayType === 'legal_holiday' ? LEGAL_HOLIDAY_PAY_MULTIPLIER : DEFAULT_PAY_MULTIPLIER
 }
 
 function userDisplayName(user) {
@@ -126,6 +216,8 @@ async function ensureSchema() {
           leave_type VARCHAR(32) NULL,
           overtime_kind VARCHAR(32) NULL,
           overtime_result VARCHAR(32) NULL,
+          overtime_day_type VARCHAR(32) NULL,
+          overtime_pay_multiplier DECIMAL(4,2) NULL,
           supervisor_role VARCHAR(64) NULL,
           source_type VARCHAR(32) NULL,
           source_id BIGINT UNSIGNED NULL,
@@ -197,6 +289,23 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
+      await query(
+        `CREATE TABLE IF NOT EXISTS attendance_legal_holidays (
+          holiday_date DATE NOT NULL,
+          holiday_name VARCHAR(100) NOT NULL,
+          source VARCHAR(32) NOT NULL DEFAULT 'manual',
+          is_active TINYINT(1) NOT NULL DEFAULT 1,
+          created_by BIGINT UNSIGNED NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (holiday_date),
+          KEY idx_attendance_legal_holidays_source (source),
+          KEY idx_attendance_legal_holidays_active (is_active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      )
+
+      await seedBuiltinLegalHolidays()
+      await refreshLegalHolidayCache()
       await ensureAttendanceRequestColumns()
       await ensureAnnualLeaveLedgerUnit()
       await ensureDefaultSupervisorRoleRules()
@@ -204,6 +313,53 @@ async function ensureSchema() {
     })()
   }
   return schemaReadyPromise
+}
+
+async function seedBuiltinLegalHolidays() {
+  for (const item of BUILTIN_LEGAL_HOLIDAYS) {
+    await query(
+      `INSERT IGNORE INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active)
+       VALUES (:date, :name, 'builtin', 1)`,
+      item,
+    )
+  }
+}
+
+async function refreshLegalHolidayCache() {
+  const rows = await query(
+    `SELECT holiday_date, holiday_name
+     FROM attendance_legal_holidays
+     WHERE is_active = 1`,
+  )
+  legalHolidayCache.clear()
+  rows.forEach((row) => {
+    legalHolidayCache.set(normalizeHolidayDate(row.holiday_date), row.holiday_name)
+  })
+}
+
+async function recalculateOvertimeRulesForDate(date) {
+  const targetDate = normalizeHolidayDate(date)
+  const rows = await query(
+    `SELECT id, start_at, overtime_result
+     FROM attendance_requests
+     WHERE request_type = 'overtime'
+       AND DATE(start_at) = :targetDate`,
+    { targetDate },
+  )
+  for (const row of rows) {
+    const dayType = overtimeDayType(row.start_at)
+    await query(
+      `UPDATE attendance_requests
+       SET overtime_day_type = :dayType,
+           overtime_pay_multiplier = :payMultiplier
+       WHERE id = :id`,
+      {
+        id: row.id,
+        dayType,
+        payMultiplier: overtimePayMultiplier(dayType, row.overtime_result),
+      },
+    )
+  }
 }
 
 async function ensureAnnualLeaveLedgerUnit() {
@@ -238,11 +394,18 @@ async function ensureAttendanceRequestColumns() {
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id', 'source_detail')`,
+       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id', 'source_detail', 'overtime_day_type', 'overtime_pay_multiplier')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
+  if (!existing.has('overtime_day_type')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN overtime_day_type VARCHAR(32) NULL AFTER overtime_result')
+  }
+  if (!existing.has('overtime_pay_multiplier')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN overtime_pay_multiplier DECIMAL(4,2) NULL AFTER overtime_day_type')
+  }
   if (!existing.has('supervisor_role')) {
-    await query('ALTER TABLE attendance_requests ADD COLUMN supervisor_role VARCHAR(64) NULL AFTER overtime_result')
+    const afterColumn = existing.has('overtime_pay_multiplier') ? 'overtime_pay_multiplier' : 'overtime_result'
+    await query(`ALTER TABLE attendance_requests ADD COLUMN supervisor_role VARCHAR(64) NULL AFTER ${afterColumn}`)
   }
   if (!existing.has('source_type')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN source_type VARCHAR(32) NULL AFTER supervisor_role')
@@ -263,6 +426,31 @@ async function ensureAttendanceRequestColumns() {
   )
   if (!indexRows[0]) {
     await query('ALTER TABLE attendance_requests ADD KEY idx_attendance_requests_source (source_type, source_id)')
+  }
+  await backfillOvertimeRuleColumns()
+}
+
+async function backfillOvertimeRuleColumns() {
+  const rows = await query(
+    `SELECT id, start_at, overtime_result
+     FROM attendance_requests
+     WHERE request_type = 'overtime'
+       AND overtime_day_type IS NULL
+     LIMIT 1000`,
+  )
+  for (const row of rows) {
+    const dayType = overtimeDayType(row.start_at)
+    await query(
+      `UPDATE attendance_requests
+       SET overtime_day_type = :dayType,
+           overtime_pay_multiplier = :payMultiplier
+       WHERE id = :id`,
+      {
+        id: row.id,
+        dayType,
+        payMultiplier: overtimePayMultiplier(dayType, row.overtime_result),
+      },
+    )
   }
 }
 
@@ -326,6 +514,8 @@ function requestPayload(row) {
     leaveType: row.leave_type,
     overtimeKind: row.overtime_kind,
     overtimeResult: row.overtime_result,
+    overtimeDayType: row.overtime_day_type,
+    overtimePayMultiplier: row.overtime_pay_multiplier === null || row.overtime_pay_multiplier === undefined ? null : Number(row.overtime_pay_multiplier),
     sourceType: row.source_type,
     sourceId: row.source_id,
     sourceDetail: row.source_detail,
@@ -430,6 +620,78 @@ async function updateSupervisorRoleRules(req, res) {
     }
   })
   return listSupervisorRoleRules(req, res)
+}
+
+function legalHolidayPayload(row) {
+  return {
+    date: normalizeHolidayDate(row.holiday_date),
+    name: row.holiday_name,
+    source: row.source,
+    active: Boolean(row.is_active),
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+async function listLegalHolidays(req, res) {
+  await ensureSchema()
+  const year = normalizeHolidayYear(req.query.year)
+  const where = year ? 'WHERE holiday_date >= :startDate AND holiday_date < :endDate' : ''
+  const params = year ? { startDate: `${year}-01-01`, endDate: `${Number(year) + 1}-01-01` } : {}
+  const rows = await query(
+    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
+     FROM attendance_legal_holidays
+     ${where}
+     ORDER BY holiday_date ASC`,
+    params,
+  )
+  res.json({ year: year || null, items: rows.map(legalHolidayPayload) })
+}
+
+async function upsertLegalHoliday(req, res) {
+  await ensureSchema()
+  if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
+  const date = normalizeHolidayDate(req.params.date || req.body?.date)
+  const name = text(req.body?.name)
+  if (!name) throw badRequest('节假日名称不能为空')
+  const requestedSource = text(req.body?.source) || 'manual'
+  const source = holidaySources.has(requestedSource) ? requestedSource : 'manual'
+  await query(
+    `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active, created_by)
+     VALUES (:date, :name, :source, 1, :createdBy)
+     ON DUPLICATE KEY UPDATE
+       holiday_name = VALUES(holiday_name),
+       source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE VALUES(source) END,
+       is_active = 1`,
+    { date, name, source, createdBy: req.user.id },
+  )
+  await refreshLegalHolidayCache()
+  await recalculateOvertimeRulesForDate(date)
+  const rows = await query(
+    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
+     FROM attendance_legal_holidays
+     WHERE holiday_date = :date
+     LIMIT 1`,
+    { date },
+  )
+  res.json({ item: legalHolidayPayload(rows[0]) })
+}
+
+async function deleteLegalHoliday(req, res) {
+  await ensureSchema()
+  if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
+  const date = normalizeHolidayDate(req.params.date)
+  const result = await query(
+    `UPDATE attendance_legal_holidays
+     SET is_active = 0
+     WHERE holiday_date = :date`,
+    { date },
+  )
+  if (!result.affectedRows) throw notFound('节假日不存在')
+  await refreshLegalHolidayCache()
+  await recalculateOvertimeRulesForDate(date)
+  res.json({ ok: true })
 }
 
 async function supervisorRoleForApplicantRole(role) {
@@ -558,24 +820,30 @@ function normalizeRequestInput(body) {
     if (!leaveTypes.has(leaveType)) throw badRequest('假别不正确')
   }
 
-  const hours = positiveNumber(body?.hours, '申请小时数')
+  let hours = positiveNumber(body?.hours, '申请小时数')
   assertWholeHour(hours, '申请小时数')
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
   if (requestType === 'leave' && leaveType === 'annual') {
-    startAt = annualLeaveStartAt(startAt)
-    endAt = addHoursDateTime(startAt, hours)
+    const annualRange = normalizeAnnualLeaveRange(startAt, endAt, hours)
+    startAt = annualRange.startAt
+    endAt = annualRange.endAt
+    hours = annualRange.hours
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
-  if (Math.abs(durationHours - hours) > 0.0001) throw badRequest('申请小时数必须与开始、结束时间一致')
+  if (!(requestType === 'leave' && leaveType === 'annual') && Math.abs(durationHours - hours) > 0.0001) {
+    throw badRequest('申请小时数必须与开始、结束时间一致')
+  }
 
   const payload = {
     requestType,
     leaveType,
     overtimeKind: null,
     overtimeResult: null,
+    overtimeDayType: null,
+    overtimePayMultiplier: null,
     startAt,
     endAt,
     hours,
@@ -594,6 +862,8 @@ function normalizeRequestInput(body) {
     if (payload.overtimeKind === 'travel' && payload.overtimeResult !== 'comp_time') {
       throw badRequest('来回路上实际时间只能转调休')
     }
+    payload.overtimeDayType = overtimeDayType(payload.startAt)
+    payload.overtimePayMultiplier = overtimePayMultiplier(payload.overtimeDayType, payload.overtimeResult)
   }
 
   return payload
@@ -608,9 +878,9 @@ async function createRequest(req, res) {
 
   const result = await query(
     `INSERT INTO attendance_requests
-       (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, start_at, end_at, hours, reason, status, submitted_by)
+       (employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, reason, status, submitted_by)
      VALUES
-       (:employeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :supervisorRole, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+       (:employeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
     {
       employeeId: employee.id,
       submittedBy: req.user.id,
@@ -647,10 +917,11 @@ function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
-  const weekend = start.getDay() === 0 || start.getDay() === 6
+  const dayType = overtimeDayType(start)
+  const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
   const endHour = end.getHours() + end.getMinutes() / 60
-  if (!weekend && endHour <= 18) return null
-  const overtimeStart = weekend
+  if (!fullDayOvertime && endHour <= 18) return null
+  const overtimeStart = fullDayOvertime
     ? start
     : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
   const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
@@ -662,6 +933,7 @@ function overtimeWindow(startAt, endAt) {
     startAt: formatMysqlDateTime(effectiveStart),
     endAt: formatMysqlDateTime(effectiveEnd),
     hours,
+    dayType,
   }
 }
 
@@ -688,6 +960,8 @@ function overtimeSegments(row, usedSegments = new Set()) {
         startAt: toIsoMinute(window.startAt),
         endAt: toIsoMinute(window.endAt),
         hours: window.hours,
+        dayType: window.dayType,
+        payMultiplier: overtimePayMultiplier(window.dayType, 'pay') || DEFAULT_PAY_MULTIPLIER,
         allowedResults: segment.kind === 'travel' ? ['comp_time'] : ['comp_time', 'pay'],
       }
     })
@@ -704,6 +978,8 @@ function combineTravelSegments(segments) {
     startAt: items[0].startAt,
     endAt: items[items.length - 1].endAt,
     hours: Math.round(items.reduce((sum, item) => sum + Number(item.hours || 0), 0) * 100) / 100,
+    dayType: items.some((item) => item.dayType === 'legal_holiday') ? 'legal_holiday' : items[0].dayType,
+    payMultiplier: null,
     allowedResults: ['comp_time'],
   }
 }
@@ -817,6 +1093,8 @@ async function createServiceOrderOvertimeRequest(req, res) {
     if (!segment) throw badRequest('该工单时段不符合加班申请条件')
     if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
     if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
+    const dayType = segment.dayType || overtimeDayType(segment.startAt)
+    const payMultiplier = overtimePayMultiplier(dayType, overtimeResult)
 
     const [existingRows] = await connection.execute(
       `SELECT id
@@ -840,13 +1118,15 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
     const [inserted] = await connection.execute(
       `INSERT INTO attendance_requests
-         (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, reason, status, submitted_by)
+         (employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, reason, status, submitted_by)
        VALUES
-         (:employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+         (:employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
       {
         employeeId: employee.id,
         overtimeKind: segment.kind,
         overtimeResult,
+        overtimeDayType: dayType,
+        overtimePayMultiplier: payMultiplier,
         supervisorRole,
         serviceOrderId,
         sourceDetail: segment.key,
@@ -1149,6 +1429,8 @@ async function monthlyReport(req, res) {
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' THEN r.hours ELSE 0 END), 0) AS overtime_hours,
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'comp_time' THEN r.hours ELSE 0 END), 0) AS overtime_to_comp_hours,
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'pay' THEN r.hours ELSE 0 END), 0) AS overtime_to_pay_hours,
+            COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'pay' AND r.overtime_day_type = 'legal_holiday' THEN r.hours ELSE 0 END), 0) AS legal_holiday_overtime_pay_hours,
+            COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'pay' THEN r.hours * COALESCE(r.overtime_pay_multiplier, 1) ELSE 0 END), 0) AS overtime_pay_weighted_hours,
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'comp_time' THEN r.hours ELSE 0 END), 0) AS comp_time_used_hours,
             COALESCE((SELECT SUM(l.delta_hours) FROM attendance_balance_ledger l WHERE l.employee_id = p.id AND l.balance_type = 'annual_leave'), 0) AS annual_leave_balance_days,
             COALESCE((SELECT SUM(l.delta_hours) FROM attendance_balance_ledger l WHERE l.employee_id = p.id AND l.balance_type = 'comp_time'), 0) AS comp_time_balance_hours
@@ -1171,6 +1453,8 @@ async function monthlyReport(req, res) {
     overtimeHours: Number(row.overtime_hours || 0),
     overtimeToCompHours: Number(row.overtime_to_comp_hours || 0),
     overtimeToPayHours: Number(row.overtime_to_pay_hours || 0),
+    legalHolidayOvertimePayHours: Number(row.legal_holiday_overtime_pay_hours || 0),
+    overtimePayWeightedHours: Number(row.overtime_pay_weighted_hours || 0),
     compTimeUsedHours: Number(row.comp_time_used_hours || 0),
     annualLeaveBalanceDays: Number(row.annual_leave_balance_days || 0),
     annualLeaveBalanceHours: roundBalance(Number(row.annual_leave_balance_days || 0) * WORK_HOURS_PER_DAY),
@@ -1184,6 +1468,9 @@ module.exports = {
   me,
   listSupervisorRoleRules,
   updateSupervisorRoleRules,
+  listLegalHolidays,
+  upsertLegalHoliday,
+  deleteLegalHoliday,
   updateEmployee,
   createRequest,
   listOvertimeServiceOrders,

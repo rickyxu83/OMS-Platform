@@ -8,6 +8,9 @@ router.get('/employees', requirePermission('attendance.view', 'attendance.manage
 router.get('/me', requirePermission('attendance.apply', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.me)
 router.get('/supervisor-role-rules', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listSupervisorRoleRules)
 router.put('/supervisor-role-rules', requirePermission('attendance.manage'), controller.updateSupervisorRoleRules)
+router.get('/legal-holidays', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listLegalHolidays)
+router.put('/legal-holidays/:date', requirePermission('attendance.manage'), controller.upsertLegalHoliday)
+router.delete('/legal-holidays/:date', requirePermission('attendance.manage'), controller.deleteLegalHoliday)
 router.put('/employees/:id', requirePermission('attendance.manage'), controller.updateEmployee)
 router.post('/employees/:id/adjust-balance', requirePermission('attendance.manage'), controller.adjustBalance)
 
