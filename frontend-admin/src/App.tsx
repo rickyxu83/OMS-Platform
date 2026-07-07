@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { useAdminDomTextI18n } from "@/lib/text-i18n"
+import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))

@@ -429,40 +429,44 @@ function translateTree(root: ParentNode, enabled: boolean) {
   root.querySelectorAll?.("*").forEach((element) => translateElementAttrs(element, enabled))
 }
 
+export function setupAdminDomTextI18n(enabled: boolean) {
+  translateTree(document.body, enabled)
+  if (!enabled) return undefined
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "characterData" && mutation.target instanceof Text) {
+        translateTextNode(mutation.target, true)
+        continue
+      }
+      if (mutation.type === "attributes" && mutation.target instanceof Element) {
+        translateElementAttrs(mutation.target, true)
+        continue
+      }
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof Text) translateTextNode(node, true)
+        if (node instanceof Element) translateTree(node, true)
+      })
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: displayAttrs,
+  })
+
+  return () => {
+    observer.disconnect()
+    translateTree(document.body, false)
+  }
+}
+
 export function useAdminDomTextI18n(lang: AppLang) {
   useEffect(() => {
     const enabled = lang === "zh-TW"
-    translateTree(document.body, enabled)
-    if (!enabled) return
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "characterData" && mutation.target instanceof Text) {
-          translateTextNode(mutation.target, true)
-          continue
-        }
-        if (mutation.type === "attributes" && mutation.target instanceof Element) {
-          translateElementAttrs(mutation.target, true)
-          continue
-        }
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof Text) translateTextNode(node, true)
-          if (node instanceof Element) translateTree(node, true)
-        })
-      }
-    })
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: displayAttrs,
-    })
-
-    return () => {
-      observer.disconnect()
-      translateTree(document.body, false)
-    }
+    return setupAdminDomTextI18n(enabled)
   }, [lang])
 }
