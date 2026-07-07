@@ -76,6 +76,8 @@ async function ensureSchema() {
           leave_type VARCHAR(32) NULL,
           overtime_kind VARCHAR(32) NULL,
           overtime_result VARCHAR(32) NULL,
+          source_type VARCHAR(32) NULL,
+          source_id BIGINT UNSIGNED NULL,
           start_at DATETIME NOT NULL,
           end_at DATETIME NOT NULL,
           hours DECIMAL(8,2) NOT NULL,
@@ -99,6 +101,7 @@ async function ensureSchema() {
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           KEY idx_attendance_requests_employee (employee_id),
+          KEY idx_attendance_requests_source (source_type, source_id),
           KEY idx_attendance_requests_status (status),
           KEY idx_attendance_requests_type (request_type),
           KEY idx_attendance_requests_start_at (start_at)
@@ -123,10 +126,39 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
+      await ensureAttendanceRequestSourceColumns()
       await syncUserProfiles()
     })()
   }
   return schemaReadyPromise
+}
+
+async function ensureAttendanceRequestSourceColumns() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_requests'
+       AND COLUMN_NAME IN ('source_type', 'source_id')`,
+  )
+  const existing = new Set(rows.map((row) => row.columnName))
+  if (!existing.has('source_type')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN source_type VARCHAR(32) NULL AFTER overtime_result')
+  }
+  if (!existing.has('source_id')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN source_id BIGINT UNSIGNED NULL AFTER source_type')
+  }
+  const indexRows = await query(
+    `SELECT INDEX_NAME AS indexName
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_requests'
+       AND INDEX_NAME = 'idx_attendance_requests_source'
+     LIMIT 1`,
+  )
+  if (!indexRows[0]) {
+    await query('ALTER TABLE attendance_requests ADD KEY idx_attendance_requests_source (source_type, source_id)')
+  }
 }
 
 async function syncUserProfiles() {
@@ -173,6 +205,8 @@ function requestPayload(row) {
     leaveType: row.leave_type,
     overtimeKind: row.overtime_kind,
     overtimeResult: row.overtime_result,
+    sourceType: row.source_type,
+    sourceId: row.source_id,
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
@@ -210,6 +244,18 @@ async function currentEmployee(userId) {
   return rows[0] || null
 }
 
+async function currentEmployeeForConnection(connection, userId) {
+  const [rows] = await connection.execute(
+    `SELECT p.*
+     FROM attendance_employee_profiles p
+     WHERE p.user_id = :userId
+       AND p.attendance_enabled = 1
+     LIMIT 1`,
+    { userId },
+  )
+  return rows[0] || null
+}
+
 async function canViewAll(user) {
   return hasAnyPermission(user.role, ['attendance.view', 'attendance.manage', 'attendance.admin.approve'])
 }
@@ -236,6 +282,25 @@ async function listEmployees(req, res) {
     { keyword, likeKeyword: `%${keyword}%` },
   )
   res.json({ items: rows.map(profilePayload) })
+}
+
+async function me(req, res) {
+  await ensureSchema()
+  await syncUserProfiles()
+  const rows = await query(
+    `SELECT p.*, u.username, u.role, s.employee_name AS supervisor_name,
+            COALESCE(SUM(CASE WHEN l.balance_type = 'annual_leave' THEN l.delta_hours ELSE 0 END), 0) AS annual_leave_balance_hours,
+            COALESCE(SUM(CASE WHEN l.balance_type = 'comp_time' THEN l.delta_hours ELSE 0 END), 0) AS comp_time_balance_hours
+     FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
+     LEFT JOIN attendance_employee_profiles s ON s.id = p.supervisor_employee_id
+     LEFT JOIN attendance_balance_ledger l ON l.employee_id = p.id
+     WHERE p.user_id = :userId
+     GROUP BY p.id, u.username, u.role, s.employee_name
+     LIMIT 1`,
+    { userId: req.user.id },
+  )
+  res.json({ item: rows[0] ? profilePayload(rows[0]) : null })
 }
 
 async function updateEmployee(req, res) {
@@ -307,6 +372,7 @@ function normalizeRequestInput(body) {
   if (requestType === 'leave') {
     payload.leaveType = text(body?.leaveType)
     if (!leaveTypes.has(payload.leaveType)) throw badRequest('假别不正确')
+    if (payload.hours % 4 !== 0) throw badRequest('请假时长必须以半天为单位')
   }
 
   if (requestType === 'overtime') {
@@ -315,7 +381,7 @@ function normalizeRequestInput(body) {
     if (!overtimeKinds.has(payload.overtimeKind)) throw badRequest('加班类型不正确')
     if (!overtimeResults.has(payload.overtimeResult)) throw badRequest('加班处理结果不正确')
     if (payload.overtimeKind === 'travel' && payload.overtimeResult !== 'comp_time') {
-      throw badRequest('来回路上实际时间只能转换休')
+      throw badRequest('来回路上实际时间只能转调休')
     }
   }
 
@@ -434,17 +500,17 @@ async function balanceHours(connection, employeeId, balanceType) {
 
 async function applyApprovalLedger(connection, request, userId) {
   if (request.request_type === 'overtime' && request.overtime_result === 'comp_time') {
-    await insertLedger(connection, request, Number(request.hours), 'comp_time', 'earn', '加班转换休入账', userId)
+    await insertLedger(connection, request, Number(request.hours), 'comp_time', 'earn', '加班转调休入账', userId)
   }
   if (request.request_type === 'comp_time') {
     const currentBalance = await balanceHours(connection, request.employee_id, 'comp_time')
-    if (currentBalance < Number(request.hours)) throw badRequest('换休余额不足，不能通过终审')
-    await insertLedger(connection, request, -Number(request.hours), 'comp_time', 'use', '换休使用', userId)
+    if (currentBalance < Number(request.hours)) throw badRequest('调休余额不足，不能通过终审')
+    await insertLedger(connection, request, -Number(request.hours), 'comp_time', 'use', '调休使用', userId)
   }
   if (request.request_type === 'leave' && request.leave_type === 'annual') {
     const currentBalance = await balanceHours(connection, request.employee_id, 'annual_leave')
-    if (currentBalance < Number(request.hours)) throw badRequest('特休余额不足，不能通过终审')
-    await insertLedger(connection, request, -Number(request.hours), 'annual_leave', 'use', '特休使用', userId)
+    if (currentBalance < Number(request.hours)) throw badRequest('年假余额不足，不能通过终审')
+    await insertLedger(connection, request, -Number(request.hours), 'annual_leave', 'use', '年假使用', userId)
   }
 }
 
@@ -637,8 +703,134 @@ async function monthlyReport(req, res) {
   })) })
 }
 
+function overtimeWindow(startAt, endAt) {
+  const start = new Date(String(startAt || '').replace(' ', 'T'))
+  const end = new Date(String(endAt || '').replace(' ', 'T'))
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return null
+  const weekend = start.getDay() === 0 || start.getDay() === 6
+  const startHour = start.getHours() + start.getMinutes() / 60
+  const endHour = end.getHours() + end.getMinutes() / 60
+  if (!weekend && endHour <= 18) return null
+  const overtimeStart = weekend
+    ? start
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
+  const effectiveStart = start > overtimeStart ? start : overtimeStart
+  if (end <= effectiveStart) return null
+  const hours = Math.round(((end.getTime() - effectiveStart.getTime()) / 3600000) * 100) / 100
+  if (hours <= 0) return null
+  return {
+    startAt: formatMysqlDateTime(effectiveStart),
+    endAt: formatMysqlDateTime(end),
+    hours,
+  }
+}
+
+function formatMysqlDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+async function upsertServiceOrderOvertimeRequest(connection, {
+  userId,
+  serviceOrderId,
+  orderNo,
+  actualStartAt,
+  actualEndAt,
+}) {
+  const employee = await currentEmployeeForConnection(connection, userId)
+  if (!employee || !employee.supervisor_employee_id) return { skipped: true, reason: 'missing_employee_or_supervisor' }
+
+  const overtime = overtimeWindow(actualStartAt, actualEndAt)
+  const [existingRows] = await connection.execute(
+    `SELECT id, status
+     FROM attendance_requests
+     WHERE source_type = 'service_order'
+       AND source_id = :serviceOrderId
+       AND submitted_by = :userId
+     ORDER BY id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    { serviceOrderId, userId },
+  )
+  const existing = existingRows[0]
+  const note = orderNo ? `工单自动生成：${orderNo}` : '工单自动生成'
+
+  if (!overtime) {
+    if (existing && !finalStatuses.has(existing.status)) {
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'withdrawn',
+             withdrawn_by = :userId,
+             withdrawn_at = NOW()
+         WHERE id = :id`,
+        { id: existing.id, userId },
+      )
+    }
+    return { skipped: true, reason: 'not_overtime' }
+  }
+
+  if (existing && finalStatuses.has(existing.status)) {
+    return { skipped: true, reason: 'final_request_exists' }
+  }
+
+  if (existing) {
+    await connection.execute(
+      `UPDATE attendance_requests
+       SET employee_id = :employeeId,
+           request_type = 'overtime',
+           leave_type = NULL,
+           overtime_kind = 'work',
+           overtime_result = 'comp_time',
+           start_at = :startAt,
+           end_at = :endAt,
+           hours = :hours,
+           reason = :reason,
+           status = 'pending_supervisor',
+           supervisor_approved_by = NULL,
+           supervisor_approved_at = NULL,
+           admin_approved_by = NULL,
+           admin_approved_at = NULL,
+           rejected_by = NULL,
+           rejected_at = NULL,
+           rejected_reason = NULL,
+           withdrawn_by = NULL,
+           withdrawn_at = NULL
+       WHERE id = :id`,
+      {
+        id: existing.id,
+        employeeId: employee.id,
+        startAt: overtime.startAt,
+        endAt: overtime.endAt,
+        hours: overtime.hours,
+        reason: note,
+      },
+    )
+    return { id: existing.id, updated: true }
+  }
+
+  const [result] = await connection.execute(
+    `INSERT INTO attendance_requests
+       (employee_id, request_type, leave_type, overtime_kind, overtime_result, source_type, source_id, start_at, end_at, hours, reason, status, submitted_by)
+     VALUES
+       (:employeeId, 'overtime', NULL, 'work', 'comp_time', 'service_order', :serviceOrderId, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :userId)`,
+    {
+      employeeId: employee.id,
+      serviceOrderId,
+      startAt: overtime.startAt,
+      endAt: overtime.endAt,
+      hours: overtime.hours,
+      reason: note,
+      userId,
+    },
+  )
+  return { id: result.insertId, created: true }
+}
+
 module.exports = {
+  ensureSchema,
   listEmployees,
+  me,
   updateEmployee,
   createRequest,
   listRequests,
@@ -649,4 +841,5 @@ module.exports = {
   voidRequest,
   adjustBalance,
   monthlyReport,
+  upsertServiceOrderOvertimeRequest,
 }

@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
@@ -27,7 +26,6 @@ interface AttendanceRequest {
   startAt?: string;
   endAt?: string;
   hours?: number;
-  reason?: string;
   status?: string;
 }
 
@@ -67,11 +65,11 @@ interface MonthlyReportItem {
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   leave: "请假",
   overtime: "加班",
-  comp_time: "换休",
+  comp_time: "调休",
 };
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
-  annual: "特休",
+  annual: "年假",
   sick: "病假",
   personal: "事假",
   marriage: "婚假",
@@ -84,7 +82,7 @@ const OVERTIME_KIND_LABELS: Record<string, string> = {
 };
 
 const OVERTIME_RESULT_LABELS: Record<string, string> = {
-  comp_time: "转换休",
+  comp_time: "转调休",
   pay: "加班费",
 };
 
@@ -131,7 +129,7 @@ function requestDetail(item: AttendanceRequest) {
   if (item.requestType === "overtime") {
     return `${OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"} / ${OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-"}`;
   }
-  return "消耗换休余额";
+  return "调休";
 }
 
 function requestTypeLabel(type?: string) {
@@ -154,8 +152,7 @@ const blankForm = {
   overtimeResult: "comp_time",
   startAt: nowLocalValue(),
   endAt: nowLocalValue(1),
-  hours: "8",
-  reason: "",
+  hours: "4",
 };
 
 export function Attendance() {
@@ -170,6 +167,7 @@ export function Attendance() {
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
   const [supervisorTodo, setSupervisorTodo] = useState<AttendanceRequest[]>([]);
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
+  const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [employeeDrafts, setEmployeeDrafts] = useState<Record<string, Partial<EmployeeProfile>>>({});
   const [adjustDrafts, setAdjustDrafts] = useState<Record<string, { balanceType: string; deltaHours: string; note: string }>>({});
@@ -181,6 +179,7 @@ export function Attendance() {
     setError("");
     try {
       const calls: Array<Promise<any>> = [
+        api.get("/attendance/me").catch(() => ({ item: null })),
         api.get("/attendance/requests?scope=mine"),
         api.get("/attendance/requests?scope=supervisor"),
       ];
@@ -189,7 +188,8 @@ export function Attendance() {
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
       }
-      const [mineData, supervisorData, allData, employeeData, reportData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, allData, employeeData, reportData] = await Promise.all(calls);
+      setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
       if (canViewAll) {
@@ -233,10 +233,9 @@ export function Attendance() {
         startAt: form.startAt,
         endAt: form.endAt,
         hours: Number(form.hours),
-        reason: form.reason,
       });
       toast.success("申请已提交");
-      setForm({ ...blankForm, startAt: nowLocalValue(), endAt: nowLocalValue(1) });
+      setForm({ ...blankForm, startAt: nowLocalValue(), endAt: nowLocalValue(1), hours: form.requestType === "leave" ? "4" : "1" });
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
@@ -303,18 +302,33 @@ export function Attendance() {
 
   const requestsForAdmin = allRequests.filter((item) => item.status === "pending_admin");
   const requestsForSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor");
+  const missingSupervisorCount = employees.filter((employee) => {
+    const draft = employeeDrafts[String(employee.id)] || employee;
+    return draft.attendanceEnabled !== false && !draft.supervisorEmployeeId;
+  }).length;
+  const scrollToSupervisorSettings = () => {
+    document.getElementById("attendance-supervisor-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold md:text-3xl">后勤考勤</h1>
-          <p className="mt-1 text-sm text-muted-foreground">请假、加班、换休申请与月度汇总</p>
+          <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          刷新
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canManage ? (
+            <Button variant="outline" onClick={scrollToSupervisorSettings}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              设置直属主管
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={load} disabled={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
+        </div>
       </div>
 
       <ErrorToast message={error} />
@@ -330,24 +344,118 @@ export function Attendance() {
         ))}
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="pt-5">
+            <div className="text-sm text-muted-foreground">当前可用年假</div>
+            <div className="mt-1 text-2xl font-semibold">{hours(myProfile?.annualLeaveBalanceHours)} 小时</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="text-sm text-muted-foreground">当前可用调休</div>
+            <div className="mt-1 text-2xl font-semibold">{hours(myProfile?.compTimeBalanceHours)} 小时</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {canManage ? (
+        <Card id="attendance-supervisor-settings">
+          <CardHeader>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle>直属主管设置</CardTitle>
+                <CardDescription>员工提交申请后，会先流转给这里指定的直属主管</CardDescription>
+              </div>
+              {missingSupervisorCount > 0 ? <Badge variant="warning">{missingSupervisorCount} 人未设置</Badge> : <Badge variant="success">已设置</Badge>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-md border">
+              <Table className="min-w-[640px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>员工</TableHead>
+                    <TableHead>直属主管</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employees.map((employee) => {
+                    const draft = employeeDrafts[String(employee.id)] || employee;
+                    const hasSupervisor = Boolean(draft.supervisorEmployeeId);
+                    return (
+                      <TableRow key={employee.id}>
+                        <TableCell className="font-medium">
+                          <div>{String(draft.employeeName || employeeName(employee))}</div>
+                          <div className="text-xs text-muted-foreground">{employee.role || employee.username || "-"}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={draft.supervisorEmployeeId ? String(draft.supervisorEmployeeId) : "none"}
+                            onValueChange={(value) => setEmployeeDraft(employee.id, { supervisorEmployeeId: value === "none" ? null : value })}
+                          >
+                            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">未设置</SelectItem>
+                              {employees.filter((item) => String(item.id) !== String(employee.id)).map((item) => (
+                                <SelectItem key={item.id} value={String(item.id)}>{employeeName(item)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>{hasSupervisor ? <Badge variant="success">可提交</Badge> : <Badge variant="warning">待设置</Badge>}</TableCell>
+                        <TableCell>
+                          <Button size="sm" onClick={() => saveEmployee(employee)}>
+                            <Save className="mr-1 h-4 w-4" /> 保存
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {employees.length === 0 ? (
+                    <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">暂无员工档案</TableCell></TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card id="attendance-supervisor-settings">
+          <CardHeader>
+            <CardTitle>直属主管设置</CardTitle>
+            <CardDescription>当前账号没有 attendance.manage 权限，无法维护员工直属主管。请由管理员在“成员与角色”中开启该权限。</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Send className="h-5 w-5" />
             提交申请
           </CardTitle>
-          <CardDescription>支持事后补单，底层按小时统计</CardDescription>
+          <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
             <div className="space-y-2">
               <Label>申请类型</Label>
-              <Select value={form.requestType} onValueChange={(value) => setForm((current) => ({ ...current, requestType: value as RequestType }))}>
+              <Select
+                value={form.requestType}
+                onValueChange={(value) => setForm((current) => ({
+                  ...current,
+                  requestType: value as RequestType,
+                  hours: value === "leave" ? "4" : "1",
+                }))}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="leave">请假</SelectItem>
                   <SelectItem value="overtime">加班</SelectItem>
-                  <SelectItem value="comp_time">换休</SelectItem>
+                  <SelectItem value="comp_time">调休</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -386,7 +494,7 @@ export function Attendance() {
                   <Select value={form.overtimeResult} onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="comp_time">转换休</SelectItem>
+                      <SelectItem value="comp_time">转调休</SelectItem>
                       {form.overtimeKind !== "travel" ? <SelectItem value="pay">加班费</SelectItem> : null}
                     </SelectContent>
                   </Select>
@@ -402,17 +510,17 @@ export function Attendance() {
               <Input type="datetime-local" value={form.endAt} onChange={(event) => setForm((current) => ({ ...current, endAt: event.target.value }))} />
             </div>
             <div className="space-y-2">
-              <Label>小时数</Label>
-              <div className="flex gap-2">
+              <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "小时数"}</Label>
+              {form.requestType === "leave" ? (
+                <div className="flex gap-2">
+                  <Input type="number" min="4" step="4" value={form.hours} onChange={(event) => setForm((current) => ({ ...current, hours: event.target.value }))} />
+                  <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "4" }))}>半天</Button>
+                  <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "8" }))}>一天</Button>
+                </div>
+              ) : (
                 <Input type="number" min="0.5" step="0.5" value={form.hours} onChange={(event) => setForm((current) => ({ ...current, hours: event.target.value }))} />
-                <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "4" }))}>半天</Button>
-                <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "8" }))}>一天</Button>
-              </div>
+              )}
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>原因</Label>
-            <Textarea value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="min-h-[84px]" />
           </div>
           <div className="flex justify-end">
             <Button onClick={submitRequest} disabled={submitting}>
@@ -499,16 +607,17 @@ export function Attendance() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>员工</TableHead>
-                      <TableHead>特休</TableHead>
+                      <TableHead>年假</TableHead>
                       <TableHead>病假</TableHead>
                       <TableHead>事假</TableHead>
                       <TableHead>婚假</TableHead>
                       <TableHead>丧假</TableHead>
                       <TableHead>加班</TableHead>
-                      <TableHead>转休</TableHead>
+                      <TableHead>转调休</TableHead>
                       <TableHead>加班费</TableHead>
-                      <TableHead>换休使用</TableHead>
-                      <TableHead>换休余额</TableHead>
+                      <TableHead>调休</TableHead>
+                      <TableHead>年假余额</TableHead>
+                      <TableHead>调休余额</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -524,11 +633,12 @@ export function Attendance() {
                         <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
                         <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
                         <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
+                        <TableCell>{hours(item.annualLeaveBalanceHours)}</TableCell>
                         <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
                       </TableRow>
                     ))}
                     {reportItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={11} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={12} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
                     ) : null}
                   </TableBody>
                 </Table>
@@ -542,7 +652,7 @@ export function Attendance() {
         <Card>
           <CardHeader>
             <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>上线前需要为员工补齐直属主管；特休规则先预留，不自动计算</CardDescription>
+            <CardDescription>上线前需要为员工补齐直属主管；年假规则先预留，不自动计算</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
@@ -554,8 +664,8 @@ export function Attendance() {
                     <TableHead>入职日</TableHead>
                     <TableHead>直属主管</TableHead>
                     <TableHead>启用</TableHead>
-                    <TableHead>特休余额</TableHead>
-                    <TableHead>换休余额</TableHead>
+                    <TableHead>年假余额</TableHead>
+                    <TableHead>调休余额</TableHead>
                     <TableHead>余额调整</TableHead>
                     <TableHead>操作</TableHead>
                   </TableRow>
@@ -623,8 +733,8 @@ export function Attendance() {
                             <Select value={adjust.balanceType} onValueChange={(value) => setAdjustDraft(employee.id, { balanceType: value })}>
                               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="comp_time">换休</SelectItem>
-                                <SelectItem value="annual_leave">特休</SelectItem>
+                                <SelectItem value="comp_time">调休</SelectItem>
+                                <SelectItem value="annual_leave">年假</SelectItem>
                               </SelectContent>
                             </Select>
                             <Input
@@ -636,7 +746,7 @@ export function Attendance() {
                               className="w-24"
                             />
                             <Input
-                              placeholder="原因"
+                              placeholder="备注"
                               value={adjust.note}
                               onChange={(event) => setAdjustDraft(employee.id, { note: event.target.value })}
                               className="w-32"

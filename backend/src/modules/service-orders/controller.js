@@ -14,6 +14,10 @@ const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-dra
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
+const {
+  ensureSchema: ensureAttendanceSchema,
+  upsertServiceOrderOvertimeRequest,
+} = require('../attendance/controller')
 const { ROLE_GROUPS } = require('../../permissions/roles')
 const { hasAnyPermission } = require('../../permissions/store')
 const {
@@ -2609,6 +2613,7 @@ async function createSelfReport(req, res) {
   await ensureDeviceMaintenanceTypeEnum()
   await ensureInstallationSourceIndex()
   await ensureCustomerSignatureRequestsTable()
+  await ensureAttendanceSchema()
 
   const created = await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
@@ -2821,6 +2826,13 @@ async function createSelfReport(req, res) {
     })
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
+    await upsertServiceOrderOvertimeRequest(connection, {
+      userId: req.user.id,
+      serviceOrderId: orderResult.insertId,
+      orderNo,
+      actualStartAt,
+      actualEndAt,
+    })
     const submittedDraftKey = normalizeDraftKey(req.body?.draftKey || req.body?.draftId || req.body?.selfReportDraftKey)
     if (submittedDraftKey) {
       await connection.execute(
@@ -3659,6 +3671,7 @@ async function updateSelfReport(req, res) {
   await ensureServiceOrderDevicesTable()
   await ensureDeviceMaintenanceTypeEnum()
   await ensureInstallationSourceIndex()
+  await ensureAttendanceSchema()
 
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
@@ -3998,6 +4011,13 @@ async function updateSelfReport(req, res) {
       await recordCustomerContact(connection, effectiveCustomerId, contactName || customerConfirmName, contactPhone, req.user.id)
     }
     await writeAudit(connection, req.user.id, req.params.id, 'self_report_update')
+    await upsertServiceOrderOvertimeRequest(connection, {
+      userId: req.user.id,
+      serviceOrderId: req.params.id,
+      orderNo: order.order_no,
+      actualStartAt,
+      actualEndAt,
+    })
     await connection.execute(
       `DELETE FROM self_report_drafts
        WHERE engineer_id = :engineerId
