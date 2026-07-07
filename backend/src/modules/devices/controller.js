@@ -5,6 +5,7 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
+const { customerNameKey } = require('../../utils/chinese')
 const { normalizeAlias } = require('../device-model-catalog/normalize')
 const {
   findCatalogMatch,
@@ -316,6 +317,101 @@ async function findImportCustomer(row, user) {
   if (!customer) throw badRequest('客户不存在，请先维护客户资料')
   assertSalesCanAccessSalesperson(customer.salesperson, user, forbidden)
   return customer
+}
+
+function importCustomerLooseKey(value) {
+  let key = customerNameKey(value)
+  const suffixes = [
+    '有限责任公司',
+    '股份有限公司',
+    '集团有限公司',
+    '集团股份有限公司',
+    '有限公司',
+    '集团公司',
+    '分公司',
+    '集团',
+    '公司',
+  ]
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const suffix of suffixes) {
+      if (key.length > suffix.length + 1 && key.endsWith(suffix)) {
+        key = key.slice(0, -suffix.length)
+        changed = true
+        break
+      }
+    }
+  }
+  return key
+}
+
+function importCustomerCorrectionPayload(row, customer, matchType) {
+  return {
+    rowNumber: row.rowNumber,
+    sn: row.serialNo || '',
+    inputCustomerName: row.customerName || '',
+    customerId: customer.id,
+    customerName: customer.name,
+    matchType,
+  }
+}
+
+async function resolveImportCustomerCorrection(row, user) {
+  if (row.customerId || !row.customerName) return null
+
+  const salesScope = buildSalesCustomerScope(user, 'c', 'importCustomerScope')
+  const exactRows = await query(
+    `SELECT c.id, c.name, c.name_key, c.salesperson
+     FROM customers c
+     WHERE c.name = :name
+       ${salesScope.sql}
+     LIMIT 2`,
+    { name: row.customerName, ...salesScope.params },
+  )
+  if (exactRows.length > 1) throw badRequest('客户名称匹配到多条记录，请改用客户ID')
+  if (exactRows[0]) return null
+
+  const key = customerNameKey(row.customerName)
+  if (key) {
+    const keyRows = await query(
+      `SELECT c.id, c.name, c.name_key, c.salesperson
+       FROM customers c
+       WHERE c.name_key = :nameKey
+         ${salesScope.sql}
+       LIMIT 2`,
+      { nameKey: key, ...salesScope.params },
+    )
+    if (keyRows.length > 1) throw badRequest('客户名称匹配到多条记录，请改用客户ID')
+    if (keyRows[0] && keyRows[0].name !== row.customerName) {
+      return importCustomerCorrectionPayload(row, keyRows[0], '名称规范化')
+    }
+  }
+
+  const looseKey = importCustomerLooseKey(row.customerName)
+  if (looseKey.length < 2) return null
+
+  const candidates = await query(
+    `SELECT c.id, c.name, c.name_key, c.salesperson
+     FROM customers c
+     WHERE c.name_key LIKE :likeKey
+       ${salesScope.sql}
+     ORDER BY CHAR_LENGTH(c.name_key) ASC, c.name ASC
+     LIMIT 20`,
+    { likeKey: `%${looseKey}%`, ...salesScope.params },
+  )
+  const matches = candidates.filter((candidate) => {
+    const candidateKey = customerNameKey(candidate.name)
+    const candidateLooseKey = importCustomerLooseKey(candidate.name)
+    return candidateLooseKey === looseKey
+      || (looseKey.length >= 4 && candidateKey.includes(looseKey))
+  })
+  const uniqueById = new Map(matches.map((candidate) => [String(candidate.id), candidate]))
+  const uniqueMatches = [...uniqueById.values()]
+  if (uniqueMatches.length === 1 && uniqueMatches[0].name !== row.customerName) {
+    return importCustomerCorrectionPayload(row, uniqueMatches[0], '客户名简称匹配')
+  }
+  return null
 }
 
 async function findImportMaintenanceParty(row) {
@@ -1245,10 +1341,28 @@ async function importDevices(req, res) {
   const duplicateSnKeys = new Set([...snCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key))
   const confirmModelCorrections = shouldConfirmModelCorrections(req.body?.confirmModelCorrections)
   const skipModelCorrections = shouldConfirmModelCorrections(req.body?.skipModelCorrections)
+  const confirmImportCorrections = shouldConfirmModelCorrections(req.body?.confirmImportCorrections) || confirmModelCorrections
+  const skipImportCorrections = shouldConfirmModelCorrections(req.body?.skipImportCorrections) || skipModelCorrections
+  const customerCorrections = []
   const modelCorrections = []
   const importModelMatchCache = new Map()
 
   for (const row of rows) {
+    try {
+      const customerCorrection = await resolveImportCustomerCorrection(row, req.user)
+      if (customerCorrection) {
+        row.correctedCustomerId = customerCorrection.customerId
+        row.correctedCustomerName = customerCorrection.customerName
+        customerCorrections.push(customerCorrection)
+      }
+    } catch (error) {
+      row.skipImport = true
+      errors.push(importRowError(row, error.message || '客户名称匹配失败'))
+    }
+  }
+
+  for (const row of rows) {
+    if (row.skipImport) continue
     try {
       const modelCacheKey = row.model.toLowerCase()
       let matchedModel = importModelMatchCache.get(modelCacheKey)
@@ -1278,12 +1392,14 @@ async function importDevices(req, res) {
     }
   }
 
-  if (modelCorrections.length && !confirmModelCorrections && !skipModelCorrections) {
+  if ((customerCorrections.length || modelCorrections.length) && !confirmImportCorrections && !skipImportCorrections) {
     res.json({
-      requiresModelConfirmation: true,
+      requiresImportConfirmation: true,
+      requiresModelConfirmation: Boolean(modelCorrections.length),
       created: 0,
       failed: errors.length,
       errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
+      customerCorrections,
       modelCorrections,
     })
     return
@@ -1293,7 +1409,11 @@ async function importDevices(req, res) {
   for (const row of rows) {
     try {
       if (row.skipImport) continue
-      if (confirmModelCorrections && row.correctedModel) {
+      if (confirmImportCorrections && row.correctedCustomerId) {
+        row.customerId = row.correctedCustomerId
+        row.customerName = row.correctedCustomerName
+      }
+      if (confirmImportCorrections && row.correctedModel) {
         const confirmedNormalization = await normalizeDeviceModelForAsset(row.model, { confirmAiSuggestion: true })
         row.model = confirmedNormalization.model || row.correctedModel
       }

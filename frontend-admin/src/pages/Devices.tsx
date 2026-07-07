@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -155,11 +154,22 @@ interface ImportModelCorrection {
   partNumber?: string;
 }
 
+interface ImportCustomerCorrection {
+  rowNumber: number;
+  sn?: string;
+  inputCustomerName?: string;
+  customerId?: string | number;
+  customerName?: string;
+  matchType?: string;
+}
+
 interface ImportResult {
   created: number;
   failed: number;
   errors: ImportErrorRow[];
+  requiresImportConfirmation?: boolean;
   requiresModelConfirmation?: boolean;
+  customerCorrections?: ImportCustomerCorrection[];
   modelCorrections?: ImportModelCorrection[];
 }
 
@@ -813,7 +823,7 @@ async function downloadDeviceImportTemplate() {
   worksheet.mergeCells("A3:L3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
-  worksheet.getCell("A3").value = "客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。";
+  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正；重复 SN 会自动跳过。";
   [1, 2, 3].forEach((rowNumber) => {
     const row = worksheet.getRow(rowNumber);
     row.height = rowNumber === 1 ? 26 : 22;
@@ -869,7 +879,7 @@ async function downloadDeviceImportTemplate() {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
-        ? "必填项，必须和系统内客户名称一模一样，否则该行会导入失败。"
+        ? "必填项，建议填写系统内标准名称；可唯一匹配时会提示确认纠正。"
         : "必填项，不能为空。";
     }
   });
@@ -895,7 +905,7 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户名称", "必填", "必须和系统内客户名称一模一样，否则该行会导入失败。"],
+    ["客户名称", "必填", "建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
@@ -1839,18 +1849,26 @@ export function Devices() {
     try {
       const formData = new FormData();
       formData.append("file", importFile);
-      if (mode === "confirm") formData.append("confirmModelCorrections", "1");
-      if (mode === "skip") formData.append("skipModelCorrections", "1");
+      if (mode === "confirm") {
+        formData.append("confirmImportCorrections", "1");
+        formData.append("confirmModelCorrections", "1");
+      }
+      if (mode === "skip") {
+        formData.append("skipImportCorrections", "1");
+        formData.append("skipModelCorrections", "1");
+      }
       const data = await api.postForm("/devices/import", formData);
       const result = {
         created: Number(data?.created || 0),
         failed: Number(data?.failed || 0),
         errors: Array.isArray(data?.errors) ? data.errors : [],
+        requiresImportConfirmation: Boolean(data?.requiresImportConfirmation),
         requiresModelConfirmation: Boolean(data?.requiresModelConfirmation),
+        customerCorrections: Array.isArray(data?.customerCorrections) ? data.customerCorrections : [],
         modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
       };
       setImportResult(result);
-      if (!result.requiresModelConfirmation) await load();
+      if (!result.requiresImportConfirmation && !result.requiresModelConfirmation) await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "导入失败");
     } finally {
@@ -1992,43 +2010,56 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={exporting || importing}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
-                更多操作
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={handleExportDevices} disabled={exporting || loading || !filtered.length}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
-                导出 Excel
-              </DropdownMenuItem>
-              {canEditDevices || canCreateDevices ? <DropdownMenuSeparator /> : null}
-              {canEditDevices ? (
+          {canCreateDevices ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing}>
+                  {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  导入
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
+                  <Download className="w-4 h-4 mr-2" />
+                  下载导入模板
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={openImportDialog}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  上传已填模板
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={openBulkCreate}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  页面批量新增
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          <Button
+            className="shrink-0 whitespace-nowrap"
+            variant="outline"
+            onClick={handleExportDevices}
+            disabled={exporting || loading || !filtered.length}
+          >
+            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+            导出
+          </Button>
+          {canEditDevices ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={loading}>
+                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
+                  {modelComparing ? `校正 ${modelCompareProgress}%` : "其他"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
                   {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
                 </DropdownMenuItem>
-              ) : null}
-              {canCreateDevices ? (
-                <>
-                  <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
-                    <Download className="w-4 h-4 mr-2" />
-                    下载模板
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={openImportDialog}>
-                    <Upload className="w-4 h-4 mr-2" />
-                    导入 Excel
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={openBulkCreate}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    批量新增
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
           {canCreateDevices ? (
             <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />
@@ -2958,7 +2989,7 @@ export function Devices() {
           <div className="space-y-4 py-2">
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
               只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
-              客户名称必须与系统内记录完全一致，否则对应行会导入失败；重复 SN 会自动跳过。
+              客户名称建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正；重复 SN 会自动跳过。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
@@ -2976,24 +3007,50 @@ export function Devices() {
             </div>
             {importResult ? (
               <div className="space-y-3">
-                {importResult.requiresModelConfirmation && importResult.modelCorrections?.length ? (
-                  <div className="rounded-md border border-violet-200 bg-violet-50/80">
-                    <div className="border-b border-violet-200 px-3 py-2 text-sm font-medium text-violet-900">
-                      发现 {importResult.modelCorrections.length} 行设备型号可自动纠正
-                    </div>
-                    <div className="max-h-64 overflow-auto divide-y divide-violet-100">
-                      {importResult.modelCorrections.map((item, index) => (
-                        <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
-                          <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
-                          <span className="truncate text-muted-foreground" title={item.inputModel || ""}>原型号：{item.inputModel || "-"}</span>
-                          <span className="truncate text-violet-900" title={item.canonicalModel || ""}>标准型号：{item.canonicalModel || "-"}</span>
+                {importResult.requiresImportConfirmation || importResult.requiresModelConfirmation ? (
+                  <>
+                    {importResult.customerCorrections?.length ? (
+                      <div className="rounded-md border border-sky-200 bg-sky-50/80">
+                        <div className="border-b border-sky-200 px-3 py-2 text-sm font-medium text-sky-900">
+                          发现 {importResult.customerCorrections.length} 行客户名称可自动纠正
                         </div>
-                      ))}
+                        <div className="max-h-64 overflow-auto divide-y divide-sky-100">
+                          {importResult.customerCorrections.map((item, index) => (
+                            <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
+                              <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
+                              <span className="truncate text-muted-foreground" title={item.inputCustomerName || ""}>原客户：{item.inputCustomerName || "-"}</span>
+                              <span className="truncate text-sky-900" title={item.customerName || ""}>系统客户：{item.customerName || "-"}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="px-3 py-2 text-xs text-sky-900">
+                          确认后，以上行会绑定到系统客户名称；未列出的行保持 Excel 原值。
+                        </div>
+                      </div>
+                    ) : null}
+                    {importResult.modelCorrections?.length ? (
+                      <div className="rounded-md border border-violet-200 bg-violet-50/80">
+                        <div className="border-b border-violet-200 px-3 py-2 text-sm font-medium text-violet-900">
+                          发现 {importResult.modelCorrections.length} 行设备型号可自动纠正
+                        </div>
+                        <div className="max-h-64 overflow-auto divide-y divide-violet-100">
+                          {importResult.modelCorrections.map((item, index) => (
+                            <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
+                              <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
+                              <span className="truncate text-muted-foreground" title={item.inputModel || ""}>原型号：{item.inputModel || "-"}</span>
+                              <span className="truncate text-violet-900" title={item.canonicalModel || ""}>标准型号：{item.canonicalModel || "-"}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="px-3 py-2 text-xs text-violet-900">
+                          确认后，以上行会按标准型号写入；未列出的行保持 Excel 原值。
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      请核对以上建议。确认后会应用这些纠正并继续导入；如按原内容导入，无法匹配客户名称的行仍会失败。
                     </div>
-                    <div className="px-3 py-2 text-xs text-violet-900">
-                      确认后，以上行会按标准型号写入；未列出的行保持 Excel 原值。
-                    </div>
-                  </div>
+                  </>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-md border bg-emerald-50 px-3 py-2">
@@ -3027,9 +3084,9 @@ export function Devices() {
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
               关闭
             </Button>
-            {importResult?.requiresModelConfirmation ? (
+            {importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation ? (
               <Button variant="outline" onClick={() => submitImport("skip")} disabled={importing || !importFile}>
-                按原型号导入
+                按原内容导入
               </Button>
             ) : null}
             <Button
@@ -3048,11 +3105,11 @@ export function Devices() {
               下载模板
             </Button>
             <Button
-              onClick={() => submitImport(importResult?.requiresModelConfirmation ? "confirm" : "check")}
+              onClick={() => submitImport((importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "confirm" : "check")}
               disabled={importing || !importFile}
             >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-              {importing ? "导入中…" : importResult?.requiresModelConfirmation ? "自动纠正并导入" : "开始导入"}
+              {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认纠正并导入" : "开始导入"}
             </Button>
           </DialogFooter>
         </DialogContent>
