@@ -6,6 +6,8 @@ const router = express.Router()
 
 router.get('/employees', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listEmployees)
 router.get('/me', requirePermission('attendance.apply', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.me)
+router.get('/supervisor-role-rules', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listSupervisorRoleRules)
+router.put('/supervisor-role-rules', requirePermission('attendance.manage'), controller.updateSupervisorRoleRules)
 router.put('/employees/:id', requirePermission('attendance.manage'), controller.updateEmployee)
 router.post('/employees/:id/adjust-balance', requirePermission('attendance.manage'), controller.adjustBalance)
 

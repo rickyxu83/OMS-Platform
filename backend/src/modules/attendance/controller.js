@@ -1,12 +1,25 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
+const { ALL_ROLES, ROLE_LABELS } = require('../../permissions/catalog')
 
 const requestTypes = new Set(['leave', 'overtime', 'comp_time'])
 const leaveTypes = new Set(['annual', 'sick', 'personal', 'marriage', 'bereavement'])
 const overtimeKinds = new Set(['travel', 'work'])
 const overtimeResults = new Set(['comp_time', 'pay'])
 const finalStatuses = new Set(['approved', 'rejected', 'withdrawn', 'voided'])
+const roleSet = new Set(ALL_ROLES)
+const defaultSupervisorRoleRules = Object.freeze({
+  admin: 'admin',
+  assistant: 'operations_director',
+  dispatcher: 'operations_director',
+  operations_director: 'admin',
+  engineering_supervisor: 'operations_director',
+  administrative_supervisor: 'admin',
+  sales_supervisor: 'operations_director',
+  sales: 'sales_supervisor',
+  engineer: 'engineering_supervisor',
+})
 let schemaReadyPromise = null
 
 function text(value) {
@@ -76,6 +89,7 @@ async function ensureSchema() {
           leave_type VARCHAR(32) NULL,
           overtime_kind VARCHAR(32) NULL,
           overtime_result VARCHAR(32) NULL,
+          supervisor_role VARCHAR(64) NULL,
           source_type VARCHAR(32) NULL,
           source_id BIGINT UNSIGNED NULL,
           start_at DATETIME NOT NULL,
@@ -126,24 +140,39 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
-      await ensureAttendanceRequestSourceColumns()
+      await query(
+        `CREATE TABLE IF NOT EXISTS attendance_supervisor_role_rules (
+          applicant_role VARCHAR(64) NOT NULL,
+          supervisor_role VARCHAR(64) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (applicant_role),
+          KEY idx_attendance_supervisor_role (supervisor_role)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      )
+
+      await ensureAttendanceRequestColumns()
+      await ensureDefaultSupervisorRoleRules()
       await syncUserProfiles()
     })()
   }
   return schemaReadyPromise
 }
 
-async function ensureAttendanceRequestSourceColumns() {
+async function ensureAttendanceRequestColumns() {
   const rows = await query(
     `SELECT COLUMN_NAME AS columnName
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('source_type', 'source_id')`,
+       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
+  if (!existing.has('supervisor_role')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN supervisor_role VARCHAR(64) NULL AFTER overtime_result')
+  }
   if (!existing.has('source_type')) {
-    await query('ALTER TABLE attendance_requests ADD COLUMN source_type VARCHAR(32) NULL AFTER overtime_result')
+    await query('ALTER TABLE attendance_requests ADD COLUMN source_type VARCHAR(32) NULL AFTER supervisor_role')
   }
   if (!existing.has('source_id')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN source_id BIGINT UNSIGNED NULL AFTER source_type')
@@ -158,6 +187,18 @@ async function ensureAttendanceRequestSourceColumns() {
   )
   if (!indexRows[0]) {
     await query('ALTER TABLE attendance_requests ADD KEY idx_attendance_requests_source (source_type, source_id)')
+  }
+}
+
+async function ensureDefaultSupervisorRoleRules() {
+  const values = Object.entries(defaultSupervisorRoleRules)
+    .map(([applicantRole, supervisorRole]) => ({ applicantRole, supervisorRole }))
+  for (const item of values) {
+    await query(
+      `INSERT IGNORE INTO attendance_supervisor_role_rules (applicant_role, supervisor_role)
+       VALUES (:applicantRole, :supervisorRole)`,
+      item,
+    )
   }
 }
 
@@ -201,6 +242,8 @@ function requestPayload(row) {
     userId: row.user_id,
     supervisorEmployeeId: row.supervisor_employee_id,
     supervisorName: row.supervisor_name,
+    applicantRole: row.applicant_role,
+    supervisorRole: row.supervisor_role,
     requestType: row.request_type,
     leaveType: row.leave_type,
     overtimeKind: row.overtime_kind,
@@ -246,8 +289,9 @@ async function currentEmployee(userId) {
 
 async function currentEmployeeForConnection(connection, userId) {
   const [rows] = await connection.execute(
-    `SELECT p.*
+    `SELECT p.*, u.role
      FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
      WHERE p.user_id = :userId
        AND p.attendance_enabled = 1
      LIMIT 1`,
@@ -258,6 +302,81 @@ async function currentEmployeeForConnection(connection, userId) {
 
 async function canViewAll(user) {
   return hasAnyPermission(user.role, ['attendance.view', 'attendance.manage', 'attendance.admin.approve'])
+}
+
+function rolePayload(row) {
+  return {
+    role: row.role,
+    label: ROLE_LABELS[row.role] || row.role,
+  }
+}
+
+async function listSupervisorRoleRules(req, res) {
+  await ensureSchema()
+  const rows = await query(
+    `SELECT applicant_role, supervisor_role
+     FROM attendance_supervisor_role_rules
+     ORDER BY FIELD(applicant_role, ${ALL_ROLES.map((_, index) => `:roleOrder${index}`).join(', ')})`,
+    Object.fromEntries(ALL_ROLES.map((role, index) => [`roleOrder${index}`, role])),
+  )
+  const rules = new Map(rows.map((row) => [row.applicant_role, row.supervisor_role]))
+  res.json({
+    roles: ALL_ROLES.map((role) => rolePayload({ role })),
+    items: ALL_ROLES.map((role) => ({
+      applicantRole: role,
+      applicantRoleLabel: ROLE_LABELS[role] || role,
+      supervisorRole: rules.get(role) || defaultSupervisorRoleRules[role] || 'admin',
+      supervisorRoleLabel: ROLE_LABELS[rules.get(role) || defaultSupervisorRoleRules[role] || 'admin'] || rules.get(role) || 'admin',
+    })),
+  })
+}
+
+async function updateSupervisorRoleRules(req, res) {
+  await ensureSchema()
+  if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
+  const items = Array.isArray(req.body?.items) ? req.body.items : []
+  await transaction(async (connection) => {
+    for (const item of items) {
+      const applicantRole = text(item?.applicantRole)
+      const supervisorRole = text(item?.supervisorRole)
+      if (!roleSet.has(applicantRole) || !roleSet.has(supervisorRole)) {
+        throw badRequest('角色规则不正确')
+      }
+      await connection.execute(
+        `INSERT INTO attendance_supervisor_role_rules (applicant_role, supervisor_role)
+         VALUES (:applicantRole, :supervisorRole)
+         ON DUPLICATE KEY UPDATE supervisor_role = VALUES(supervisor_role)`,
+        { applicantRole, supervisorRole },
+      )
+    }
+  })
+  return listSupervisorRoleRules(req, res)
+}
+
+async function supervisorRoleForApplicantRole(role) {
+  const normalized = text(role)
+  if (!roleSet.has(normalized)) throw badRequest('申请人角色不正确')
+  const rows = await query(
+    `SELECT supervisor_role
+     FROM attendance_supervisor_role_rules
+     WHERE applicant_role = :applicantRole
+     LIMIT 1`,
+    { applicantRole: normalized },
+  )
+  return rows[0]?.supervisor_role || defaultSupervisorRoleRules[normalized] || 'admin'
+}
+
+async function supervisorRoleForApplicantRoleConnection(connection, role) {
+  const normalized = text(role)
+  if (!roleSet.has(normalized)) return defaultSupervisorRoleRules.engineer
+  const [rows] = await connection.execute(
+    `SELECT supervisor_role
+     FROM attendance_supervisor_role_rules
+     WHERE applicant_role = :applicantRole
+     LIMIT 1`,
+    { applicantRole: normalized },
+  )
+  return rows[0]?.supervisor_role || defaultSupervisorRoleRules[normalized] || 'admin'
 }
 
 async function listEmployees(req, res) {
@@ -310,9 +429,10 @@ async function updateEmployee(req, res) {
   const rows = await query('SELECT id FROM attendance_employee_profiles WHERE id = :id LIMIT 1', { id })
   if (!rows[0]) throw notFound('员工档案不存在')
 
-  const supervisorEmployeeId = req.body?.supervisorEmployeeId ? Number(req.body.supervisorEmployeeId) : null
-  if (supervisorEmployeeId === id) throw badRequest('直属主管不能是本人')
-  if (supervisorEmployeeId) {
+  const hasSupervisorEmployeeId = Object.prototype.hasOwnProperty.call(req.body || {}, 'supervisorEmployeeId')
+  const supervisorEmployeeId = hasSupervisorEmployeeId && req.body?.supervisorEmployeeId ? Number(req.body.supervisorEmployeeId) : null
+  if (hasSupervisorEmployeeId && supervisorEmployeeId === id) throw badRequest('直属主管不能是本人')
+  if (hasSupervisorEmployeeId && supervisorEmployeeId) {
     const supervisors = await query('SELECT id FROM attendance_employee_profiles WHERE id = :id LIMIT 1', { id: supervisorEmployeeId })
     if (!supervisors[0]) throw badRequest('直属主管不存在')
   }
@@ -329,7 +449,7 @@ async function updateEmployee(req, res) {
          nationality = :nationality,
          hire_date = :hireDate,
          leave_date = :leaveDate,
-         supervisor_employee_id = :supervisorEmployeeId,
+         supervisor_employee_id = CASE WHEN :hasSupervisorEmployeeId = 1 THEN :supervisorEmployeeId ELSE supervisor_employee_id END,
          attendance_enabled = :attendanceEnabled,
          annual_leave_rule = :annualLeaveRule
      WHERE id = :id`,
@@ -339,6 +459,7 @@ async function updateEmployee(req, res) {
       nationality,
       hireDate: optionalDate(req.body?.hireDate),
       leaveDate: optionalDate(req.body?.leaveDate),
+      hasSupervisorEmployeeId: hasSupervisorEmployeeId ? 1 : 0,
       supervisorEmployeeId,
       attendanceEnabled,
       annualLeaveRule,
@@ -392,17 +513,18 @@ async function createRequest(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
-  if (!employee.supervisor_employee_id) throw badRequest('员工档案未设置直属主管，暂不能提交申请')
   const input = normalizeRequestInput(req.body)
+  const supervisorRole = await supervisorRoleForApplicantRole(req.user.role)
 
   const result = await query(
     `INSERT INTO attendance_requests
-       (employee_id, request_type, leave_type, overtime_kind, overtime_result, start_at, end_at, hours, reason, status, submitted_by)
+       (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, start_at, end_at, hours, reason, status, submitted_by)
      VALUES
-       (:employeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+       (:employeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :supervisorRole, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
     {
       employeeId: employee.id,
       submittedBy: req.user.id,
+      supervisorRole,
       ...input,
     },
   )
@@ -419,8 +541,12 @@ function listScopeSql(scope, user, employee) {
   }
   if (scope === 'supervisor') {
     return {
-      sql: 'p.supervisor_employee_id = :supervisorEmployeeId',
-      params: { supervisorEmployeeId: employee?.id || 0 },
+      sql: `r.status = 'pending_supervisor'
+        AND (
+          r.supervisor_role = :currentRole
+          OR (r.supervisor_role IS NULL AND p.supervisor_employee_id = :supervisorEmployeeId)
+        )`,
+      params: { currentRole: user.role, supervisorEmployeeId: employee?.id || 0 },
     }
   }
   return {
@@ -437,14 +563,15 @@ async function listRequests(req, res) {
   const requestType = text(req.query.requestType)
   const allAllowed = await canViewAll(req.user)
   if (scope === 'all' && !allAllowed) throw forbidden()
-  if (scope === 'supervisor' && !employee) throw forbidden('当前账号没有员工档案')
+  if (scope === 'supervisor' && !employee && !req.user.role) throw forbidden('当前账号没有员工档案')
   if (scope === 'mine' && !employee) return res.json({ items: [] })
 
   const scoped = listScopeSql(scope, req.user, employee)
   const rows = await query(
-    `SELECT r.*, p.employee_name, p.user_id, p.supervisor_employee_id, s.employee_name AS supervisor_name
+    `SELECT r.*, p.employee_name, p.user_id, u.role AS applicant_role, p.supervisor_employee_id, s.employee_name AS supervisor_name
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     LEFT JOIN users u ON u.id = p.user_id
      LEFT JOIN attendance_employee_profiles s ON s.id = p.supervisor_employee_id
      WHERE ${scoped.sql}
        AND (:status = '' OR r.status = :status)
@@ -458,9 +585,10 @@ async function listRequests(req, res) {
 
 async function requestForUpdate(connection, id) {
   const [rows] = await connection.execute(
-    `SELECT r.*, p.employee_name, p.user_id, p.supervisor_employee_id
+    `SELECT r.*, p.employee_name, p.user_id, u.role AS applicant_role, p.supervisor_employee_id
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     LEFT JOIN users u ON u.id = p.user_id
      WHERE r.id = :id
      LIMIT 1
      FOR UPDATE`,
@@ -534,13 +662,14 @@ async function reverseApprovalLedger(connection, request, userId) {
 async function approveSupervisor(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
-  if (!employee) throw forbidden('当前账号没有员工档案')
   const id = Number(req.params.id)
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (request.status !== 'pending_supervisor') throw badRequest('当前状态不能主管审批')
-    if (Number(request.supervisor_employee_id) !== Number(employee.id)) throw forbidden('只有直属主管可以审批')
+    const isRoleSupervisor = request.supervisor_role && request.supervisor_role === req.user.role
+    const isLegacySupervisor = !request.supervisor_role && employee && Number(request.supervisor_employee_id) === Number(employee.id)
+    if (!isRoleSupervisor && !isLegacySupervisor) throw forbidden('只有对应审批角色可以审批')
     await connection.execute(
       `UPDATE attendance_requests
        SET status = 'pending_admin',
@@ -583,7 +712,9 @@ async function rejectRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (finalStatuses.has(request.status)) throw badRequest('当前状态不能驳回')
-    const isSupervisor = request.status === 'pending_supervisor' && employee && Number(request.supervisor_employee_id) === Number(employee.id)
+    const isRoleSupervisor = request.status === 'pending_supervisor' && request.supervisor_role && request.supervisor_role === req.user.role
+    const isLegacySupervisor = request.status === 'pending_supervisor' && !request.supervisor_role && employee && Number(request.supervisor_employee_id) === Number(employee.id)
+    const isSupervisor = isRoleSupervisor || isLegacySupervisor
     const isAdmin = request.status === 'pending_admin' && await hasPermission(req.user.role, 'attendance.admin.approve')
     if (!isSupervisor && !isAdmin) throw forbidden()
     await connection.execute(
@@ -650,6 +781,7 @@ async function adjustBalance(req, res) {
   if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
   const deltaHours = Number(req.body?.deltaHours)
   if (!Number.isFinite(deltaHours) || deltaHours === 0) throw badRequest('调整小时数不能为 0')
+  if (balanceType === 'annual_leave' && deltaHours % 4 !== 0) throw badRequest('年假调整必须以半天为单位')
   const note = nullableText(req.body?.note)
   const employees = await query('SELECT id FROM attendance_employee_profiles WHERE id = :employeeId LIMIT 1', { employeeId })
   if (!employees[0]) throw notFound('员工档案不存在')
@@ -739,7 +871,8 @@ async function upsertServiceOrderOvertimeRequest(connection, {
   actualEndAt,
 }) {
   const employee = await currentEmployeeForConnection(connection, userId)
-  if (!employee || !employee.supervisor_employee_id) return { skipped: true, reason: 'missing_employee_or_supervisor' }
+  if (!employee) return { skipped: true, reason: 'missing_employee' }
+  const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
 
   const overtime = overtimeWindow(actualStartAt, actualEndAt)
   const [existingRows] = await connection.execute(
@@ -782,6 +915,7 @@ async function upsertServiceOrderOvertimeRequest(connection, {
            leave_type = NULL,
            overtime_kind = 'work',
            overtime_result = 'comp_time',
+           supervisor_role = :supervisorRole,
            start_at = :startAt,
            end_at = :endAt,
            hours = :hours,
@@ -804,6 +938,7 @@ async function upsertServiceOrderOvertimeRequest(connection, {
         endAt: overtime.endAt,
         hours: overtime.hours,
         reason: note,
+        supervisorRole,
       },
     )
     return { id: existing.id, updated: true }
@@ -811,11 +946,12 @@ async function upsertServiceOrderOvertimeRequest(connection, {
 
   const [result] = await connection.execute(
     `INSERT INTO attendance_requests
-       (employee_id, request_type, leave_type, overtime_kind, overtime_result, source_type, source_id, start_at, end_at, hours, reason, status, submitted_by)
+       (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, source_type, source_id, start_at, end_at, hours, reason, status, submitted_by)
      VALUES
-       (:employeeId, 'overtime', NULL, 'work', 'comp_time', 'service_order', :serviceOrderId, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :userId)`,
+       (:employeeId, 'overtime', NULL, 'work', 'comp_time', :supervisorRole, 'service_order', :serviceOrderId, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :userId)`,
     {
       employeeId: employee.id,
+      supervisorRole,
       serviceOrderId,
       startAt: overtime.startAt,
       endAt: overtime.endAt,
@@ -831,6 +967,8 @@ module.exports = {
   ensureSchema,
   listEmployees,
   me,
+  listSupervisorRoleRules,
+  updateSupervisorRoleRules,
   updateEmployee,
   createRequest,
   listRequests,

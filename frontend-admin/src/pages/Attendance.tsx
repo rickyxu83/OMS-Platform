@@ -18,7 +18,8 @@ interface AttendanceRequest {
   id: number | string;
   employeeId: number | string;
   employeeName?: string;
-  supervisorEmployeeId?: number | string;
+  applicantRole?: string | null;
+  supervisorRole?: string | null;
   requestType: RequestType;
   leaveType?: string | null;
   overtimeKind?: string | null;
@@ -38,8 +39,6 @@ interface EmployeeProfile {
   nationality?: string;
   hireDate?: string;
   leaveDate?: string;
-  supervisorEmployeeId?: number | string | null;
-  supervisorName?: string;
   attendanceEnabled?: boolean;
   annualLeaveRule?: string;
   annualLeaveBalanceHours?: number;
@@ -60,6 +59,23 @@ interface MonthlyReportItem {
   compTimeUsedHours?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
+}
+
+interface RoleOption {
+  role: string;
+  label: string;
+}
+
+interface SupervisorRoleRule {
+  applicantRole: string;
+  applicantRoleLabel?: string;
+  supervisorRole: string;
+  supervisorRoleLabel?: string;
+}
+
+interface SupervisorRoleRulePayload {
+  roles?: RoleOption[];
+  items?: SupervisorRoleRule[];
 }
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
@@ -104,6 +120,18 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warn
   voided: "outline",
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: "管理员",
+  assistant: "助理",
+  dispatcher: "调度",
+  operations_director: "运营负责人",
+  engineering_supervisor: "工程主管",
+  administrative_supervisor: "行政主管",
+  sales_supervisor: "业务主管",
+  sales: "业务",
+  engineer: "工程师",
+};
+
 function todayMonth() {
   return new Date().toISOString().slice(0, 7);
 }
@@ -141,8 +169,8 @@ function statusBadge(status?: string) {
   return <Badge variant={STATUS_VARIANT[key] || "secondary"}>{STATUS_LABELS[key] || key || "-"}</Badge>;
 }
 
-function employeeName(employee: EmployeeProfile) {
-  return employee.employeeName || employee.username || `员工 #${employee.id}`;
+function roleLabel(role?: string | null) {
+  return ROLE_LABELS[role || ""] || role || "-";
 }
 
 const blankForm = {
@@ -170,6 +198,9 @@ export function Attendance() {
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [employeeDrafts, setEmployeeDrafts] = useState<Record<string, Partial<EmployeeProfile>>>({});
+  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
+  const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
+  const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
   const [adjustDrafts, setAdjustDrafts] = useState<Record<string, { balanceType: string; deltaHours: string; note: string }>>({});
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
@@ -187,16 +218,22 @@ export function Attendance() {
         calls.push(api.get("/attendance/requests?scope=all"));
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
+        calls.push(api.get("/attendance/supervisor-role-rules"));
       }
-      const [meData, mineData, supervisorData, allData, employeeData, reportData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, allData, employeeData, reportData, roleRuleData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
       if (canViewAll) {
         const employeeList = (employeeData?.items || []) as EmployeeProfile[];
+        const roleRules = (roleRuleData || {}) as SupervisorRoleRulePayload;
+        const ruleItems = roleRules.items || [];
         setAllRequests((allData?.items || []) as AttendanceRequest[]);
         setEmployees(employeeList);
         setReportItems((reportData?.items || []) as MonthlyReportItem[]);
+        setRoleOptions(roleRules.roles || []);
+        setSupervisorRoleRules(ruleItems);
+        setSupervisorRoleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
         setEmployeeDrafts(Object.fromEntries(employeeList.map((employee) => [String(employee.id), { ...employee }])));
       }
     } catch (e) {
@@ -262,7 +299,6 @@ export function Attendance() {
         nationality: draft.nationality || employee.nationality || "mainland",
         hireDate: draft.hireDate || null,
         leaveDate: draft.leaveDate || null,
-        supervisorEmployeeId: draft.supervisorEmployeeId || null,
         attendanceEnabled: draft.attendanceEnabled !== false,
         annualLeaveRule: draft.annualLeaveRule || draft.nationality || "mainland",
       });
@@ -289,6 +325,21 @@ export function Attendance() {
     }
   }
 
+  async function saveSupervisorRoleRules() {
+    try {
+      await api.put("/attendance/supervisor-role-rules", {
+        items: supervisorRoleRules.map((item) => ({
+          applicantRole: item.applicantRole,
+          supervisorRole: supervisorRoleDrafts[item.applicantRole] || item.supervisorRole,
+        })),
+      });
+      toast.success("审批角色规则已保存");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    }
+  }
+
   function setEmployeeDraft(id: number | string, patch: Partial<EmployeeProfile>) {
     setEmployeeDrafts((current) => ({ ...current, [String(id)]: { ...(current[String(id)] || {}), ...patch } }));
   }
@@ -302,12 +353,8 @@ export function Attendance() {
 
   const requestsForAdmin = allRequests.filter((item) => item.status === "pending_admin");
   const requestsForSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor");
-  const missingSupervisorCount = employees.filter((employee) => {
-    const draft = employeeDrafts[String(employee.id)] || employee;
-    return draft.attendanceEnabled !== false && !draft.supervisorEmployeeId;
-  }).length;
-  const scrollToSupervisorSettings = () => {
-    document.getElementById("attendance-supervisor-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const scrollToSupervisorRoleRules = () => {
+    document.getElementById("attendance-supervisor-role-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -319,9 +366,9 @@ export function Attendance() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canManage ? (
-            <Button variant="outline" onClick={scrollToSupervisorSettings}>
+            <Button variant="outline" onClick={scrollToSupervisorRoleRules}>
               <ShieldCheck className="mr-2 h-4 w-4" />
-              设置直属主管
+              设置审批角色
             </Button>
           ) : null}
           <Button variant="outline" onClick={load} disabled={loading}>
@@ -360,62 +407,53 @@ export function Attendance() {
       </div>
 
       {canManage ? (
-        <Card id="attendance-supervisor-settings">
+        <Card id="attendance-supervisor-role-rules">
           <CardHeader>
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle>直属主管设置</CardTitle>
-                <CardDescription>员工提交申请后，会先流转给这里指定的直属主管</CardDescription>
+                <CardTitle>审批角色规则</CardTitle>
+                <CardDescription>员工提交申请后，按申请人角色流转给对应审批角色</CardDescription>
               </div>
-              {missingSupervisorCount > 0 ? <Badge variant="warning">{missingSupervisorCount} 人未设置</Badge> : <Badge variant="success">已设置</Badge>}
+              <Button size="sm" onClick={saveSupervisorRoleRules}>
+                <Save className="mr-1 h-4 w-4" /> 保存规则
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[640px]">
+              <Table className="min-w-[520px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>员工</TableHead>
-                    <TableHead>直属主管</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>操作</TableHead>
+                    <TableHead>申请人角色</TableHead>
+                    <TableHead>主管审批角色</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.map((employee) => {
-                    const draft = employeeDrafts[String(employee.id)] || employee;
-                    const hasSupervisor = Boolean(draft.supervisorEmployeeId);
+                  {supervisorRoleRules.map((rule) => {
+                    const currentRole = supervisorRoleDrafts[rule.applicantRole] || rule.supervisorRole;
                     return (
-                      <TableRow key={employee.id}>
+                      <TableRow key={rule.applicantRole}>
                         <TableCell className="font-medium">
-                          <div>{String(draft.employeeName || employeeName(employee))}</div>
-                          <div className="text-xs text-muted-foreground">{employee.role || employee.username || "-"}</div>
+                          {rule.applicantRoleLabel || roleLabel(rule.applicantRole)}
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={draft.supervisorEmployeeId ? String(draft.supervisorEmployeeId) : "none"}
-                            onValueChange={(value) => setEmployeeDraft(employee.id, { supervisorEmployeeId: value === "none" ? null : value })}
+                            value={currentRole}
+                            onValueChange={(value) => setSupervisorRoleDrafts((current) => ({ ...current, [rule.applicantRole]: value }))}
                           >
                             <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="none">未设置</SelectItem>
-                              {employees.filter((item) => String(item.id) !== String(employee.id)).map((item) => (
-                                <SelectItem key={item.id} value={String(item.id)}>{employeeName(item)}</SelectItem>
+                              {roleOptions.map((item) => (
+                                <SelectItem key={item.role} value={item.role}>{item.label || roleLabel(item.role)}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell>{hasSupervisor ? <Badge variant="success">可提交</Badge> : <Badge variant="warning">待设置</Badge>}</TableCell>
-                        <TableCell>
-                          <Button size="sm" onClick={() => saveEmployee(employee)}>
-                            <Save className="mr-1 h-4 w-4" /> 保存
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     );
                   })}
-                  {employees.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">暂无员工档案</TableCell></TableRow>
+                  {supervisorRoleRules.length === 0 ? (
+                    <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">暂无审批角色规则</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
@@ -423,10 +461,10 @@ export function Attendance() {
           </CardContent>
         </Card>
       ) : (
-        <Card id="attendance-supervisor-settings">
+        <Card id="attendance-supervisor-role-rules">
           <CardHeader>
-            <CardTitle>直属主管设置</CardTitle>
-            <CardDescription>当前账号没有 attendance.manage 权限，无法维护员工直属主管。请由管理员在“成员与角色”中开启该权限。</CardDescription>
+            <CardTitle>审批角色规则</CardTitle>
+            <CardDescription>当前账号没有 attendance.manage 权限，无法维护审批角色规则。</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -652,17 +690,16 @@ export function Attendance() {
         <Card>
           <CardHeader>
             <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>上线前需要为员工补齐直属主管；年假规则先预留，不自动计算</CardDescription>
+            <CardDescription>年假规则先预留，不自动计算；年假余额调整按半天，调休按小时</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[1180px]">
+              <Table className="min-w-[1040px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
                     <TableHead>籍别</TableHead>
                     <TableHead>入职日</TableHead>
-                    <TableHead>直属主管</TableHead>
                     <TableHead>启用</TableHead>
                     <TableHead>年假余额</TableHead>
                     <TableHead>调休余额</TableHead>
@@ -674,6 +711,7 @@ export function Attendance() {
                   {employees.map((employee) => {
                     const draft = employeeDrafts[String(employee.id)] || employee;
                     const adjust = adjustDrafts[String(employee.id)] || { balanceType: "comp_time", deltaHours: "", note: "" };
+                    const annualAdjust = adjust.balanceType === "annual_leave";
                     return (
                       <TableRow key={employee.id}>
                         <TableCell>
@@ -702,20 +740,6 @@ export function Attendance() {
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={draft.supervisorEmployeeId ? String(draft.supervisorEmployeeId) : "none"}
-                            onValueChange={(value) => setEmployeeDraft(employee.id, { supervisorEmployeeId: value === "none" ? null : value })}
-                          >
-                            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">未设置</SelectItem>
-                              {employees.filter((item) => String(item.id) !== String(employee.id)).map((item) => (
-                                <SelectItem key={item.id} value={String(item.id)}>{employeeName(item)}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select
                             value={draft.attendanceEnabled === false ? "0" : "1"}
                             onValueChange={(value) => setEmployeeDraft(employee.id, { attendanceEnabled: value === "1" })}
                           >
@@ -730,7 +754,13 @@ export function Attendance() {
                         <TableCell>{hours(employee.compTimeBalanceHours)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Select value={adjust.balanceType} onValueChange={(value) => setAdjustDraft(employee.id, { balanceType: value })}>
+                            <Select
+                              value={adjust.balanceType}
+                              onValueChange={(value) => setAdjustDraft(employee.id, {
+                                balanceType: value,
+                                deltaHours: value === "annual_leave" ? "4" : "",
+                              })}
+                            >
                               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="comp_time">调休</SelectItem>
@@ -739,12 +769,18 @@ export function Attendance() {
                             </Select>
                             <Input
                               type="number"
-                              step="0.5"
-                              placeholder="+/-小时"
+                              step={annualAdjust ? "4" : "0.5"}
+                              placeholder={annualAdjust ? "+/-半天" : "+/-小时"}
                               value={adjust.deltaHours}
                               onChange={(event) => setAdjustDraft(employee.id, { deltaHours: event.target.value })}
                               className="w-24"
                             />
+                            {annualAdjust ? (
+                              <>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "4" })}>半天</Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "8" })}>一天</Button>
+                              </>
+                            ) : null}
                             <Input
                               placeholder="备注"
                               value={adjust.note}
