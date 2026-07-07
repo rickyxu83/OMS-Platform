@@ -44,6 +44,7 @@ interface EmployeeProfile {
   leaveDate?: string;
   attendanceEnabled?: boolean;
   annualLeaveRule?: string;
+  annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
 }
@@ -51,6 +52,7 @@ interface EmployeeProfile {
 interface MonthlyReportItem {
   employeeId: number | string;
   employeeName?: string;
+  annualLeaveDays?: number;
   annualLeaveHours?: number;
   sickLeaveHours?: number;
   personalLeaveHours?: number;
@@ -60,6 +62,7 @@ interface MonthlyReportItem {
   overtimeToCompHours?: number;
   overtimeToPayHours?: number;
   compTimeUsedHours?: number;
+  annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
 }
@@ -215,6 +218,22 @@ function formatDateTime(value?: string) {
 function hours(value?: number) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function days(value?: number) {
+  return hours(value);
+}
+
+function annualBalanceDays(item?: { annualLeaveBalanceDays?: number; annualLeaveBalanceHours?: number } | null) {
+  if (!item) return 0;
+  if (typeof item.annualLeaveBalanceDays === "number") return item.annualLeaveBalanceDays;
+  return Number(item.annualLeaveBalanceHours || 0) / 8;
+}
+
+function annualUsageDays(item?: { annualLeaveDays?: number; annualLeaveHours?: number } | null) {
+  if (!item) return 0;
+  if (typeof item.annualLeaveDays === "number") return item.annualLeaveDays;
+  return Number(item.annualLeaveHours || 0) / 8;
 }
 
 function combineTravelSegments(segments: OvertimeSegment[]) {
@@ -489,10 +508,13 @@ export function Attendance() {
 
   async function adjustBalance(employee: EmployeeProfile) {
     const draft = adjustDrafts[String(employee.id)] || { balanceType: "comp_time", deltaHours: "", note: "" };
+    const amount = Number(draft.deltaHours);
+    const annualAdjust = draft.balanceType === "annual_leave";
     try {
       await api.post(`/attendance/employees/${employee.id}/adjust-balance`, {
         balanceType: draft.balanceType || "comp_time",
-        deltaHours: Number(draft.deltaHours),
+        deltaDays: annualAdjust ? amount : undefined,
+        deltaHours: annualAdjust ? undefined : amount,
         note: draft.note,
       });
       toast.success("余额已调整");
@@ -573,7 +595,7 @@ export function Attendance() {
         <Card>
           <CardContent className="pt-5">
             <div className="text-sm text-muted-foreground">当前可用年假</div>
-            <div className="mt-1 text-2xl font-semibold">{hours(myProfile?.annualLeaveBalanceHours)} 小时</div>
+            <div className="mt-1 text-2xl font-semibold">{days(annualBalanceDays(myProfile))} 天</div>
           </CardContent>
         </Card>
         <Card>
@@ -914,7 +936,7 @@ export function Attendance() {
                     {reportItems.map((item) => (
                       <TableRow key={item.employeeId}>
                         <TableCell className="font-medium">{item.employeeName}</TableCell>
-                        <TableCell>{hours(item.annualLeaveHours)}</TableCell>
+                        <TableCell>{days(annualUsageDays(item))} 天</TableCell>
                         <TableCell>{hours(item.sickLeaveHours)}</TableCell>
                         <TableCell>{hours(item.personalLeaveHours)}</TableCell>
                         <TableCell>{hours(item.marriageLeaveHours)}</TableCell>
@@ -923,7 +945,7 @@ export function Attendance() {
                         <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
                         <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
                         <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
-                        <TableCell>{hours(item.annualLeaveBalanceHours)}</TableCell>
+                        <TableCell>{days(annualBalanceDays(item))} 天</TableCell>
                         <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
                       </TableRow>
                     ))}
@@ -942,7 +964,7 @@ export function Attendance() {
         <Card>
           <CardHeader>
             <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>年假规则先预留，不自动计算；年假余额调整按半天，调休按小时</CardDescription>
+            <CardDescription>年假规则先预留，不自动计算；年假余额按天调整，调休按小时调整</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
@@ -1002,7 +1024,7 @@ export function Attendance() {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell>{hours(employee.annualLeaveBalanceHours)}</TableCell>
+                        <TableCell>{days(annualBalanceDays(employee))} 天</TableCell>
                         <TableCell>{hours(employee.compTimeBalanceHours)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
@@ -1010,7 +1032,7 @@ export function Attendance() {
                               value={adjust.balanceType}
                               onValueChange={(value) => setAdjustDraft(employee.id, {
                                 balanceType: value,
-                                deltaHours: value === "annual_leave" ? "4" : "",
+                                deltaHours: value === "annual_leave" ? "0.5" : "",
                               })}
                             >
                               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
@@ -1021,18 +1043,23 @@ export function Attendance() {
                             </Select>
                             <Input
                               type="number"
-                              step={annualAdjust ? "4" : "0.5"}
-                              placeholder={annualAdjust ? "+/-半天" : "+/-小时"}
+                              step="0.5"
+                              placeholder={annualAdjust ? "+/-天" : "+/-小时"}
                               value={adjust.deltaHours}
                               onChange={(event) => setAdjustDraft(employee.id, { deltaHours: event.target.value })}
                               className="w-24"
                             />
                             {annualAdjust ? (
                               <>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "4" })}>半天</Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "8" })}>一天</Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "0.5" })}>0.5天</Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "1" })}>1天</Button>
                               </>
-                            ) : null}
+                            ) : (
+                              <>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "0.5" })}>0.5小时</Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "1" })}>1小时</Button>
+                              </>
+                            )}
                             <Input
                               placeholder="备注"
                               value={adjust.note}

@@ -22,6 +22,8 @@ const defaultSupervisorRoleRules = Object.freeze({
 })
 let schemaReadyPromise = null
 
+const WORK_HOURS_PER_DAY = 8
+
 function text(value) {
   return String(value ?? '').trim()
 }
@@ -35,6 +37,20 @@ function positiveNumber(value, label) {
   const number = Number(value)
   if (!Number.isFinite(number) || number <= 0) throw badRequest(`${label}必须大于 0`)
   return Math.round(number * 100) / 100
+}
+
+function roundBalance(value) {
+  return Math.round(Number(value) * 100) / 100
+}
+
+function annualLeaveDaysFromHours(hours) {
+  return roundBalance(Number(hours || 0) / WORK_HOURS_PER_DAY)
+}
+
+function assertHalfUnit(value, label) {
+  if (Math.abs(Number(value) * 2 - Math.round(Number(value) * 2)) > 0.0001) {
+    throw badRequest(`${label}必须以 0.5 为单位`)
+  }
 }
 
 function assertWholeHour(value, label) {
@@ -163,6 +179,14 @@ async function ensureSchema() {
       )
 
       await query(
+        `CREATE TABLE IF NOT EXISTS attendance_schema_migrations (
+          migration_key VARCHAR(100) NOT NULL,
+          applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (migration_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      )
+
+      await query(
         `CREATE TABLE IF NOT EXISTS attendance_supervisor_role_rules (
           applicant_role VARCHAR(64) NOT NULL,
           supervisor_role VARCHAR(64) NOT NULL,
@@ -174,11 +198,38 @@ async function ensureSchema() {
       )
 
       await ensureAttendanceRequestColumns()
+      await ensureAnnualLeaveLedgerUnit()
       await ensureDefaultSupervisorRoleRules()
       await syncUserProfiles()
     })()
   }
   return schemaReadyPromise
+}
+
+async function ensureAnnualLeaveLedgerUnit() {
+  const key = 'annual_leave_ledger_days_v1'
+  const rows = await query(
+    `SELECT migration_key
+     FROM attendance_schema_migrations
+     WHERE migration_key = :key
+     LIMIT 1`,
+    { key },
+  )
+  if (rows[0]) return
+  await transaction(async (connection) => {
+    const [inserted] = await connection.execute(
+      `INSERT IGNORE INTO attendance_schema_migrations (migration_key)
+       VALUES (:key)`,
+      { key },
+    )
+    if (!inserted.affectedRows) return
+    await connection.execute(
+      `UPDATE attendance_balance_ledger
+       SET delta_hours = ROUND(delta_hours / :workHoursPerDay, 2)
+       WHERE balance_type = 'annual_leave'`,
+      { workHoursPerDay: WORK_HOURS_PER_DAY },
+    )
+  })
 }
 
 async function ensureAttendanceRequestColumns() {
@@ -239,6 +290,7 @@ async function syncUserProfiles() {
 }
 
 function profilePayload(row) {
+  const annualLeaveBalanceDays = Number(row.annual_leave_balance_days ?? row.annual_leave_balance_hours ?? 0)
   return {
     id: row.id,
     userId: row.user_id,
@@ -252,7 +304,8 @@ function profilePayload(row) {
     supervisorName: row.supervisor_name,
     attendanceEnabled: Boolean(row.attendance_enabled),
     annualLeaveRule: row.annual_leave_rule,
-    annualLeaveBalanceHours: Number(row.annual_leave_balance_hours || 0),
+    annualLeaveBalanceDays,
+    annualLeaveBalanceHours: roundBalance(annualLeaveBalanceDays * WORK_HOURS_PER_DAY),
     compTimeBalanceHours: Number(row.comp_time_balance_hours || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -411,7 +464,7 @@ async function listEmployees(req, res) {
   const keyword = text(req.query.keyword)
   const rows = await query(
     `SELECT p.*, u.username, u.role, s.employee_name AS supervisor_name,
-            COALESCE(SUM(CASE WHEN l.balance_type = 'annual_leave' THEN l.delta_hours ELSE 0 END), 0) AS annual_leave_balance_hours,
+            COALESCE(SUM(CASE WHEN l.balance_type = 'annual_leave' THEN l.delta_hours ELSE 0 END), 0) AS annual_leave_balance_days,
             COALESCE(SUM(CASE WHEN l.balance_type = 'comp_time' THEN l.delta_hours ELSE 0 END), 0) AS comp_time_balance_hours
      FROM attendance_employee_profiles p
      LEFT JOIN users u ON u.id = p.user_id
@@ -434,7 +487,7 @@ async function me(req, res) {
   await syncUserProfiles()
   const rows = await query(
     `SELECT p.*, u.username, u.role, s.employee_name AS supervisor_name,
-            COALESCE(SUM(CASE WHEN l.balance_type = 'annual_leave' THEN l.delta_hours ELSE 0 END), 0) AS annual_leave_balance_hours,
+            COALESCE(SUM(CASE WHEN l.balance_type = 'annual_leave' THEN l.delta_hours ELSE 0 END), 0) AS annual_leave_balance_days,
             COALESCE(SUM(CASE WHEN l.balance_type = 'comp_time' THEN l.delta_hours ELSE 0 END), 0) AS comp_time_balance_hours
      FROM attendance_employee_profiles p
      LEFT JOIN users u ON u.id = p.user_id
@@ -914,9 +967,10 @@ async function applyApprovalLedger(connection, request, userId) {
     await insertLedger(connection, request, -Number(request.hours), 'comp_time', 'use', '调休使用', userId)
   }
   if (request.request_type === 'leave' && request.leave_type === 'annual') {
+    const annualLeaveDays = annualLeaveDaysFromHours(request.hours)
     const currentBalance = await balanceHours(connection, request.employee_id, 'annual_leave')
-    if (currentBalance < Number(request.hours)) throw badRequest('年假余额不足，不能通过终审')
-    await insertLedger(connection, request, -Number(request.hours), 'annual_leave', 'use', '年假使用', userId)
+    if (currentBalance < annualLeaveDays) throw badRequest('年假余额不足，不能通过终审')
+    await insertLedger(connection, request, -annualLeaveDays, 'annual_leave', 'use', '年假使用', userId)
   }
 }
 
@@ -1057,9 +1111,18 @@ async function adjustBalance(req, res) {
   const employeeId = Number(req.params.id)
   const balanceType = text(req.body?.balanceType)
   if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
-  const deltaHours = Number(req.body?.deltaHours)
-  if (!Number.isFinite(deltaHours) || deltaHours === 0) throw badRequest('调整小时数不能为 0')
-  if (balanceType === 'annual_leave' && deltaHours % 4 !== 0) throw badRequest('年假调整必须以半天为单位')
+  const hasDeltaDays = Object.prototype.hasOwnProperty.call(req.body || {}, 'deltaDays')
+  const deltaAmount = balanceType === 'annual_leave'
+    ? Number(hasDeltaDays ? req.body?.deltaDays : Number(req.body?.deltaHours) / WORK_HOURS_PER_DAY)
+    : Number(req.body?.deltaHours)
+  if (!Number.isFinite(deltaAmount) || deltaAmount === 0) {
+    throw badRequest(balanceType === 'annual_leave' ? '调整天数不能为 0' : '调整小时数不能为 0')
+  }
+  if (balanceType === 'annual_leave') {
+    assertHalfUnit(deltaAmount, '年假调整')
+  } else {
+    assertHalfUnit(deltaAmount, '调休调整')
+  }
   const note = nullableText(req.body?.note)
   const employees = await query('SELECT id FROM attendance_employee_profiles WHERE id = :employeeId LIMIT 1', { employeeId })
   if (!employees[0]) throw notFound('员工档案不存在')
@@ -1068,7 +1131,7 @@ async function adjustBalance(req, res) {
        (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
      VALUES
        (:employeeId, NULL, :balanceType, :deltaHours, 'adjust', :note, :createdBy)`,
-    { employeeId, balanceType, deltaHours: Math.round(deltaHours * 100) / 100, note, createdBy: req.user.id },
+    { employeeId, balanceType, deltaHours: roundBalance(deltaAmount), note, createdBy: req.user.id },
   )
   res.json({ ok: true })
 }
@@ -1087,7 +1150,7 @@ async function monthlyReport(req, res) {
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'comp_time' THEN r.hours ELSE 0 END), 0) AS overtime_to_comp_hours,
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'overtime' AND r.overtime_result = 'pay' THEN r.hours ELSE 0 END), 0) AS overtime_to_pay_hours,
             COALESCE(SUM(CASE WHEN r.status = 'approved' AND r.request_type = 'comp_time' THEN r.hours ELSE 0 END), 0) AS comp_time_used_hours,
-            COALESCE((SELECT SUM(l.delta_hours) FROM attendance_balance_ledger l WHERE l.employee_id = p.id AND l.balance_type = 'annual_leave'), 0) AS annual_leave_balance_hours,
+            COALESCE((SELECT SUM(l.delta_hours) FROM attendance_balance_ledger l WHERE l.employee_id = p.id AND l.balance_type = 'annual_leave'), 0) AS annual_leave_balance_days,
             COALESCE((SELECT SUM(l.delta_hours) FROM attendance_balance_ledger l WHERE l.employee_id = p.id AND l.balance_type = 'comp_time'), 0) AS comp_time_balance_hours
      FROM attendance_employee_profiles p
      LEFT JOIN attendance_requests r ON r.employee_id = p.id AND DATE_FORMAT(r.start_at, '%Y-%m') = :month
@@ -1099,6 +1162,7 @@ async function monthlyReport(req, res) {
   res.json({ month, items: rows.map((row) => ({
     employeeId: row.employee_id,
     employeeName: row.employee_name,
+    annualLeaveDays: annualLeaveDaysFromHours(row.annual_leave_hours),
     annualLeaveHours: Number(row.annual_leave_hours || 0),
     sickLeaveHours: Number(row.sick_leave_hours || 0),
     personalLeaveHours: Number(row.personal_leave_hours || 0),
@@ -1108,7 +1172,8 @@ async function monthlyReport(req, res) {
     overtimeToCompHours: Number(row.overtime_to_comp_hours || 0),
     overtimeToPayHours: Number(row.overtime_to_pay_hours || 0),
     compTimeUsedHours: Number(row.comp_time_used_hours || 0),
-    annualLeaveBalanceHours: Number(row.annual_leave_balance_hours || 0),
+    annualLeaveBalanceDays: Number(row.annual_leave_balance_days || 0),
+    annualLeaveBalanceHours: roundBalance(Number(row.annual_leave_balance_days || 0) * WORK_HOURS_PER_DAY),
     compTimeBalanceHours: Number(row.comp_time_balance_hours || 0),
   })) })
 }
