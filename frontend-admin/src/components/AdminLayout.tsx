@@ -9,6 +9,7 @@ import {
   Server,
   Building2,
   BarChart3,
+  CalendarClock,
   Settings,
   Shield,
   LogOut,
@@ -134,6 +135,7 @@ const STRINGS: Record<AppLang, {
       customers: "客户档案",
       devices: "设备资产",
       "maintenance-parties": "维保方目录",
+      attendance: "后勤考勤",
       timesheets: "月报导出",
       users: "成员与角色",
       "audit-logs": "操作审计",
@@ -194,6 +196,7 @@ const STRINGS: Record<AppLang, {
       customers: "客戶檔案",
       devices: "設備資產",
       "maintenance-parties": "維保方目錄",
+      attendance: "後勤考勤",
       timesheets: "月報導出",
       users: "成員與角色",
       "audit-logs": "操作審計",
@@ -240,6 +243,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "reports",
     items: [
+      { labelKey: "attendance", icon: CalendarClock, path: "attendance", requiredPermissions: ["attendance.apply", "attendance.view", "attendance.admin.approve", "attendance.manage"] },
       { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
     ],
   },
