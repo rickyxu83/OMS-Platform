@@ -22,6 +22,7 @@ yarn-error.log*
 # Local deployment/private agent context
 AGENTS.local.md
 docs/deploy.local.md
+docs/*.local.md
 scripts/deploy.local.env
 .env.deploy.local
 
