@@ -37,11 +37,20 @@ function positiveNumber(value, label) {
   return Math.round(number * 100) / 100
 }
 
+function assertWholeHour(value, label) {
+  if (Math.abs(Number(value) - Math.round(Number(value))) > 0.0001) throw badRequest(`${label}必须以整小时为单位`)
+}
+
 function assertTimeRange(startAt, endAt) {
   const startTime = Date.parse(startAt.replace(' ', 'T'))
   const endTime = Date.parse(endAt.replace(' ', 'T'))
   if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) throw badRequest('开始或结束时间格式不正确')
   if (endTime <= startTime) throw badRequest('结束时间必须晚于开始时间')
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+  if (start.getMinutes() || start.getSeconds() || end.getMinutes() || end.getSeconds()) {
+    throw badRequest('开始和结束时间必须为整点')
+  }
 }
 
 function optionalDate(value) {
@@ -92,6 +101,7 @@ async function ensureSchema() {
           supervisor_role VARCHAR(64) NULL,
           source_type VARCHAR(32) NULL,
           source_id BIGINT UNSIGNED NULL,
+          source_detail VARCHAR(64) NULL,
           start_at DATETIME NOT NULL,
           end_at DATETIME NOT NULL,
           hours DECIMAL(8,2) NOT NULL,
@@ -165,7 +175,7 @@ async function ensureAttendanceRequestColumns() {
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id')`,
+       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id', 'source_detail')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
   if (!existing.has('supervisor_role')) {
@@ -176,6 +186,9 @@ async function ensureAttendanceRequestColumns() {
   }
   if (!existing.has('source_id')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN source_id BIGINT UNSIGNED NULL AFTER source_type')
+  }
+  if (!existing.has('source_detail')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN source_detail VARCHAR(64) NULL AFTER source_id')
   }
   const indexRows = await query(
     `SELECT INDEX_NAME AS indexName
@@ -250,6 +263,7 @@ function requestPayload(row) {
     overtimeResult: row.overtime_result,
     sourceType: row.source_type,
     sourceId: row.source_id,
+    sourceDetail: row.source_detail,
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
@@ -474,10 +488,13 @@ function normalizeRequestInput(body) {
   if (!requestTypes.has(requestType)) throw badRequest('申请类型不正确')
 
   const hours = positiveNumber(body?.hours, '申请小时数')
+  assertWholeHour(hours, '申请小时数')
   const startAt = text(body?.startAt).replace('T', ' ')
   const endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
   assertTimeRange(startAt, endAt)
+  const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
+  if (Math.abs(durationHours - hours) > 0.0001) throw badRequest('申请小时数必须与开始、结束时间一致')
 
   const payload = {
     requestType,
@@ -530,6 +547,205 @@ async function createRequest(req, res) {
   )
 
   res.status(201).json({ id: result.insertId })
+}
+
+function toDate(value) {
+  const date = new Date(String(value || '').replace(' ', 'T'))
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+function ceilToHour(date) {
+  const rounded = new Date(date)
+  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0)
+  } else {
+    rounded.setMinutes(0, 0, 0)
+  }
+  return rounded
+}
+
+function floorToHour(date) {
+  const rounded = new Date(date)
+  rounded.setMinutes(0, 0, 0)
+  return rounded
+}
+
+function overtimeWindow(startAt, endAt) {
+  const start = toDate(startAt)
+  const end = toDate(endAt)
+  if (!start || !end || end <= start) return null
+  const weekend = start.getDay() === 0 || start.getDay() === 6
+  const endHour = end.getHours() + end.getMinutes() / 60
+  if (!weekend && endHour <= 18) return null
+  const overtimeStart = weekend
+    ? start
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
+  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
+  const effectiveEnd = floorToHour(end)
+  if (effectiveEnd <= effectiveStart) return null
+  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
+  if (hours <= 0) return null
+  return {
+    startAt: formatMysqlDateTime(effectiveStart),
+    endAt: formatMysqlDateTime(effectiveEnd),
+    hours,
+  }
+}
+
+function formatMysqlDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function overtimeSegments(row, usedSegments = new Set()) {
+  const candidates = [
+    { key: 'travel_out', kind: 'travel', label: '路上时间（出发-到达）', start: row.departure_at, end: row.actual_start_at },
+    { key: 'work', kind: 'work', label: '实际工作时间', start: row.actual_start_at, end: row.actual_end_at },
+    { key: 'travel_back', kind: 'travel', label: '路上时间（完成-返回）', start: row.actual_end_at, end: row.return_at },
+  ]
+  return candidates
+    .map((segment) => {
+      const window = overtimeWindow(segment.start, segment.end)
+      if (!window || usedSegments.has(segment.key)) return null
+      return {
+        key: segment.key,
+        kind: segment.kind,
+        label: segment.label,
+        startAt: toIsoMinute(window.startAt),
+        endAt: toIsoMinute(window.endAt),
+        hours: window.hours,
+        allowedResults: segment.kind === 'travel' ? ['comp_time'] : ['comp_time', 'pay'],
+      }
+    })
+    .filter(Boolean)
+}
+
+async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connection = null) {
+  const sql = `SELECT so.id, so.order_no, so.status, c.name AS customer_name,
+                      sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
+                      COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
+               FROM service_orders so
+               JOIN customers c ON c.id = so.customer_id
+               JOIN service_reports sr ON sr.service_order_id = so.id
+               WHERE (:serviceOrderId IS NULL OR so.id = :serviceOrderId)
+                 AND so.status NOT IN ('draft', 'cancelled')
+                 AND (
+                   so.assigned_engineer_id = :userId
+                   OR EXISTS (
+                     SELECT 1
+                     FROM service_order_engineers soe
+                     WHERE soe.service_order_id = so.id AND soe.engineer_id = :userId
+                   )
+                 )
+               ORDER BY service_at DESC, so.id DESC
+               LIMIT 100`
+  const params = { userId, serviceOrderId }
+  if (connection) {
+    const [rows] = await connection.execute(sql, params)
+    return rows
+  }
+  return query(sql, params)
+}
+
+async function usedOvertimeSegments(orderIds, userId) {
+  const ids = orderIds.map((id) => Number(id)).filter(Boolean)
+  if (!ids.length) return new Map()
+  const params = Object.fromEntries(ids.map((id, index) => [`orderId${index}`, id]))
+  const rows = await query(
+    `SELECT source_id, source_detail
+     FROM attendance_requests
+     WHERE source_type = 'service_order'
+       AND source_id IN (${ids.map((_, index) => `:orderId${index}`).join(',')})
+       AND submitted_by = :userId
+       AND status NOT IN ('rejected', 'withdrawn', 'voided')`,
+    { ...params, userId },
+  )
+  return rows.reduce((map, row) => {
+    const key = Number(row.source_id)
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key).add(row.source_detail || 'work')
+    return map
+  }, new Map())
+}
+
+async function listOvertimeServiceOrders(req, res) {
+  await ensureSchema()
+  const employee = await currentEmployee(req.user.id)
+  if (!employee) throw forbidden('当前账号没有启用的员工档案')
+  const rows = await serviceOrderOvertimeRows(req.user.id)
+  const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
+  const items = rows
+    .map((row) => ({
+      id: row.id,
+      orderNo: row.order_no,
+      customerName: row.customer_name,
+      status: row.status,
+      serviceAt: toIsoMinute(row.service_at),
+      segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
+    }))
+    .filter((item) => item.segments.length)
+  res.json({ items })
+}
+
+async function createServiceOrderOvertimeRequest(req, res) {
+  await ensureSchema()
+  const serviceOrderId = Number(req.params.id)
+  if (!serviceOrderId) throw badRequest('工单 ID 不正确')
+  const segmentKey = text(req.body?.segmentKey)
+  const overtimeResult = text(req.body?.overtimeResult)
+  if (!['travel_out', 'work', 'travel_back'].includes(segmentKey)) throw badRequest('工单时段不正确')
+  if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
+
+  const result = await transaction(async (connection) => {
+    const employee = await currentEmployeeForConnection(connection, req.user.id)
+    if (!employee) throw forbidden('当前账号没有启用的员工档案')
+    const rows = await serviceOrderOvertimeRows(req.user.id, serviceOrderId, connection)
+    const order = rows[0]
+    if (!order) throw notFound('没有可申请的工单')
+    const segment = overtimeSegments(order).find((item) => item.key === segmentKey)
+    if (!segment) throw badRequest('该工单时段不符合加班申请条件')
+    if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
+    if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
+
+    const [existingRows] = await connection.execute(
+      `SELECT id
+       FROM attendance_requests
+       WHERE source_type = 'service_order'
+         AND source_id = :serviceOrderId
+         AND (source_detail = :segmentKey OR (:segmentKey = 'work' AND source_detail IS NULL))
+         AND submitted_by = :userId
+         AND status NOT IN ('rejected', 'withdrawn', 'voided')
+       LIMIT 1
+       FOR UPDATE`,
+      { serviceOrderId, segmentKey, userId: req.user.id },
+    )
+    if (existingRows[0]) throw badRequest('该工单时段已提交加班申请')
+
+    const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
+    const [inserted] = await connection.execute(
+      `INSERT INTO attendance_requests
+         (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, reason, status, submitted_by)
+       VALUES
+         (:employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+      {
+        employeeId: employee.id,
+        overtimeKind: segment.kind,
+        overtimeResult,
+        supervisorRole,
+        serviceOrderId,
+        sourceDetail: segment.key,
+        startAt: segment.startAt.replace('T', ' '),
+        endAt: segment.endAt.replace('T', ' '),
+        hours: segment.hours,
+        reason: `工单申请：${order.order_no || serviceOrderId} / ${segment.label}`,
+        submittedBy: req.user.id,
+      },
+    )
+    return { id: inserted.insertId }
+  })
+
+  res.status(201).json(result)
 }
 
 function listScopeSql(scope, user, employee) {
@@ -835,134 +1051,6 @@ async function monthlyReport(req, res) {
   })) })
 }
 
-function overtimeWindow(startAt, endAt) {
-  const start = new Date(String(startAt || '').replace(' ', 'T'))
-  const end = new Date(String(endAt || '').replace(' ', 'T'))
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return null
-  const weekend = start.getDay() === 0 || start.getDay() === 6
-  const startHour = start.getHours() + start.getMinutes() / 60
-  const endHour = end.getHours() + end.getMinutes() / 60
-  if (!weekend && endHour <= 18) return null
-  const overtimeStart = weekend
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  const effectiveStart = start > overtimeStart ? start : overtimeStart
-  if (end <= effectiveStart) return null
-  const hours = Math.round(((end.getTime() - effectiveStart.getTime()) / 3600000) * 100) / 100
-  if (hours <= 0) return null
-  return {
-    startAt: formatMysqlDateTime(effectiveStart),
-    endAt: formatMysqlDateTime(end),
-    hours,
-  }
-}
-
-function formatMysqlDateTime(value) {
-  const date = value instanceof Date ? value : new Date(value)
-  const pad = (number) => String(number).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
-
-async function upsertServiceOrderOvertimeRequest(connection, {
-  userId,
-  serviceOrderId,
-  orderNo,
-  actualStartAt,
-  actualEndAt,
-}) {
-  const employee = await currentEmployeeForConnection(connection, userId)
-  if (!employee) return { skipped: true, reason: 'missing_employee' }
-  const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
-
-  const overtime = overtimeWindow(actualStartAt, actualEndAt)
-  const [existingRows] = await connection.execute(
-    `SELECT id, status
-     FROM attendance_requests
-     WHERE source_type = 'service_order'
-       AND source_id = :serviceOrderId
-       AND submitted_by = :userId
-     ORDER BY id DESC
-     LIMIT 1
-     FOR UPDATE`,
-    { serviceOrderId, userId },
-  )
-  const existing = existingRows[0]
-  const note = orderNo ? `工单自动生成：${orderNo}` : '工单自动生成'
-
-  if (!overtime) {
-    if (existing && !finalStatuses.has(existing.status)) {
-      await connection.execute(
-        `UPDATE attendance_requests
-         SET status = 'withdrawn',
-             withdrawn_by = :userId,
-             withdrawn_at = NOW()
-         WHERE id = :id`,
-        { id: existing.id, userId },
-      )
-    }
-    return { skipped: true, reason: 'not_overtime' }
-  }
-
-  if (existing && finalStatuses.has(existing.status)) {
-    return { skipped: true, reason: 'final_request_exists' }
-  }
-
-  if (existing) {
-    await connection.execute(
-      `UPDATE attendance_requests
-       SET employee_id = :employeeId,
-           request_type = 'overtime',
-           leave_type = NULL,
-           overtime_kind = 'work',
-           overtime_result = 'comp_time',
-           supervisor_role = :supervisorRole,
-           start_at = :startAt,
-           end_at = :endAt,
-           hours = :hours,
-           reason = :reason,
-           status = 'pending_supervisor',
-           supervisor_approved_by = NULL,
-           supervisor_approved_at = NULL,
-           admin_approved_by = NULL,
-           admin_approved_at = NULL,
-           rejected_by = NULL,
-           rejected_at = NULL,
-           rejected_reason = NULL,
-           withdrawn_by = NULL,
-           withdrawn_at = NULL
-       WHERE id = :id`,
-      {
-        id: existing.id,
-        employeeId: employee.id,
-        startAt: overtime.startAt,
-        endAt: overtime.endAt,
-        hours: overtime.hours,
-        reason: note,
-        supervisorRole,
-      },
-    )
-    return { id: existing.id, updated: true }
-  }
-
-  const [result] = await connection.execute(
-    `INSERT INTO attendance_requests
-       (employee_id, request_type, leave_type, overtime_kind, overtime_result, supervisor_role, source_type, source_id, start_at, end_at, hours, reason, status, submitted_by)
-     VALUES
-       (:employeeId, 'overtime', NULL, 'work', 'comp_time', :supervisorRole, 'service_order', :serviceOrderId, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :userId)`,
-    {
-      employeeId: employee.id,
-      supervisorRole,
-      serviceOrderId,
-      startAt: overtime.startAt,
-      endAt: overtime.endAt,
-      hours: overtime.hours,
-      reason: note,
-      userId,
-    },
-  )
-  return { id: result.insertId, created: true }
-}
-
 module.exports = {
   ensureSchema,
   listEmployees,
@@ -971,6 +1059,8 @@ module.exports = {
   updateSupervisorRoleRules,
   updateEmployee,
   createRequest,
+  listOvertimeServiceOrders,
+  createServiceOrderOvertimeRequest,
   listRequests,
   approveSupervisor,
   approveAdmin,
@@ -979,5 +1069,4 @@ module.exports = {
   voidRequest,
   adjustBalance,
   monthlyReport,
-  upsertServiceOrderOvertimeRequest,
 }

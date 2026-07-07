@@ -24,6 +24,9 @@ interface AttendanceRequest {
   leaveType?: string | null;
   overtimeKind?: string | null;
   overtimeResult?: string | null;
+  sourceType?: string | null;
+  sourceId?: number | string | null;
+  sourceDetail?: string | null;
   startAt?: string;
   endAt?: string;
   hours?: number;
@@ -76,6 +79,25 @@ interface SupervisorRoleRule {
 interface SupervisorRoleRulePayload {
   roles?: RoleOption[];
   items?: SupervisorRoleRule[];
+}
+
+interface OvertimeSegment {
+  key: string;
+  kind: "travel" | "work";
+  label: string;
+  startAt: string;
+  endAt: string;
+  hours: number;
+  allowedResults?: string[];
+}
+
+interface OvertimeServiceOrder {
+  id: number | string;
+  orderNo?: string;
+  customerName?: string;
+  status?: string;
+  serviceAt?: string;
+  segments: OvertimeSegment[];
 }
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
@@ -139,7 +161,20 @@ function todayMonth() {
 function nowLocalValue(offsetHours = 0) {
   const date = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 16);
+  return `${local.toISOString().slice(0, 13)}:00`;
+}
+
+function addHoursValue(value: string, amount: number) {
+  const base = new Date(String(value || nowLocalValue()).replace("T", " "));
+  if (!Number.isFinite(base.getTime())) return nowLocalValue(amount);
+  const next = new Date(base.getTime() + amount * 60 * 60 * 1000);
+  const local = new Date(next.getTime() - next.getTimezoneOffset() * 60 * 1000);
+  return `${local.toISOString().slice(0, 13)}:00`;
+}
+
+function normalizeHourValue(value: string) {
+  if (!value) return "";
+  return `${String(value).slice(0, 13)}:00`;
 }
 
 function formatDateTime(value?: string) {
@@ -202,6 +237,10 @@ export function Attendance() {
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
   const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
   const [adjustDrafts, setAdjustDrafts] = useState<Record<string, { balanceType: string; deltaHours: string; note: string }>>({});
+  const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
+  const [overtimeLoading, setOvertimeLoading] = useState(false);
+  const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
+  const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
 
@@ -248,6 +287,26 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth]);
 
+  async function loadOvertimeOrders() {
+    setOvertimeLoading(true);
+    try {
+      const data = await api.get("/attendance/overtime/service-orders");
+      const items = (data?.items || []) as OvertimeServiceOrder[];
+      setOvertimeOrders(items);
+      setSelectedOvertimeOrderId((current) => current || String(items[0]?.id || ""));
+      setSelectedSegmentKey((current) => current || String(items[0]?.segments?.[0]?.key || ""));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
+    } finally {
+      setOvertimeLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (form.requestType === "overtime") loadOvertimeOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.requestType]);
+
   const stats = useMemo(() => {
     const pendingMine = mine.filter((item) => item.status === "pending_supervisor" || item.status === "pending_admin").length;
     const pendingSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor").length;
@@ -259,21 +318,68 @@ export function Attendance() {
     ];
   }, [mine, supervisorTodo, allRequests, canAdminApprove]);
 
+  const selectedOvertimeOrder = useMemo(
+    () => overtimeOrders.find((item) => String(item.id) === selectedOvertimeOrderId) || null,
+    [overtimeOrders, selectedOvertimeOrderId],
+  );
+  const selectedSegment = useMemo(
+    () => selectedOvertimeOrder?.segments.find((item) => item.key === selectedSegmentKey) || null,
+    [selectedOvertimeOrder, selectedSegmentKey],
+  );
+
+  useEffect(() => {
+    if (!selectedOvertimeOrder) {
+      setSelectedSegmentKey("");
+      return;
+    }
+    const exists = selectedOvertimeOrder.segments.some((item) => item.key === selectedSegmentKey);
+    if (!exists) setSelectedSegmentKey(selectedOvertimeOrder.segments[0]?.key || "");
+  }, [selectedOvertimeOrder, selectedSegmentKey]);
+
+  useEffect(() => {
+    if (selectedSegment?.kind === "travel" && form.overtimeResult !== "comp_time") {
+      setForm((current) => ({ ...current, overtimeResult: "comp_time" }));
+    }
+  }, [selectedSegment, form.overtimeResult]);
+
+  function setStartAt(value: string) {
+    const startAt = normalizeHourValue(value);
+    const numericHours = Math.max(1, Math.round(Number(form.hours) || 1));
+    setForm((current) => ({ ...current, startAt, endAt: addHoursValue(startAt, numericHours) }));
+  }
+
+  function setHours(value: string) {
+    const rawHours = Math.round(Number(value) || 1);
+    const numericHours = form.requestType === "leave"
+      ? Math.max(4, Math.round(rawHours / 4) * 4)
+      : Math.max(1, rawHours);
+    setForm((current) => ({ ...current, hours: String(numericHours), endAt: addHoursValue(current.startAt, numericHours) }));
+  }
+
   async function submitRequest() {
     setSubmitting(true);
     try {
-      await api.post("/attendance/requests", {
-        requestType: form.requestType,
-        leaveType: form.requestType === "leave" ? form.leaveType : undefined,
-        overtimeKind: form.requestType === "overtime" ? form.overtimeKind : undefined,
-        overtimeResult: form.requestType === "overtime" ? form.overtimeResult : undefined,
-        startAt: form.startAt,
-        endAt: form.endAt,
-        hours: Number(form.hours),
-      });
+      if (form.requestType === "overtime") {
+        if (!selectedOvertimeOrder || !selectedSegment) throw new Error("请选择工单和加班时段");
+        await api.post(`/attendance/overtime/service-orders/${selectedOvertimeOrder.id}/apply`, {
+          segmentKey: selectedSegment.key,
+          overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
+        });
+      } else {
+        await api.post("/attendance/requests", {
+          requestType: form.requestType,
+          leaveType: form.requestType === "leave" ? form.leaveType : undefined,
+          startAt: form.startAt,
+          endAt: form.endAt,
+          hours: Number(form.hours),
+        });
+      }
       toast.success("申请已提交");
       setForm({ ...blankForm, startAt: nowLocalValue(), endAt: nowLocalValue(1), hours: form.requestType === "leave" ? "4" : "1" });
+      setSelectedOvertimeOrderId("");
+      setSelectedSegmentKey("");
       await load();
+      if (form.requestType === "overtime") await loadOvertimeOrders();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
     } finally {
@@ -487,6 +593,7 @@ export function Attendance() {
                   ...current,
                   requestType: value as RequestType,
                   hours: value === "leave" ? "4" : "1",
+                  endAt: addHoursValue(current.startAt, value === "leave" ? 4 : 1),
                 }))}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -510,55 +617,95 @@ export function Attendance() {
             ) : null}
             {form.requestType === "overtime" ? (
               <>
-                <div className="space-y-2">
-                  <Label>加班类型</Label>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>工单</Label>
                   <Select
-                    value={form.overtimeKind}
-                    onValueChange={(value) => setForm((current) => ({
-                      ...current,
-                      overtimeKind: value,
-                      overtimeResult: value === "travel" ? "comp_time" : current.overtimeResult,
-                    }))}
+                    value={selectedOvertimeOrderId}
+                    onValueChange={(value) => {
+                      setSelectedOvertimeOrderId(value);
+                      const order = overtimeOrders.find((item) => String(item.id) === value);
+                      setSelectedSegmentKey(order?.segments?.[0]?.key || "");
+                    }}
+                    disabled={overtimeLoading || overtimeOrders.length === 0}
+                  >
+                    <SelectTrigger><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
+                    <SelectContent>
+                      {overtimeOrders.map((order) => (
+                        <SelectItem key={order.id} value={String(order.id)}>
+                          {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>时段</Label>
+                  <Select value={selectedSegmentKey} onValueChange={setSelectedSegmentKey} disabled={!selectedOvertimeOrder}>
+                    <SelectTrigger><SelectValue placeholder="选择时段" /></SelectTrigger>
+                    <SelectContent>
+                      {(selectedOvertimeOrder?.segments || []).map((segment) => (
+                        <SelectItem key={segment.key} value={segment.key}>
+                          {segment.label} / {hours(segment.hours)} 小时
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>处理方式</Label>
+                  <Select
+                    value={selectedSegment?.kind === "travel" ? "comp_time" : form.overtimeResult}
+                    onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}
+                    disabled={!selectedSegment || selectedSegment.kind === "travel"}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="work">实际工作时间</SelectItem>
-                      <SelectItem value="travel">来回路上实际</SelectItem>
+                      <SelectItem value="comp_time">转调休</SelectItem>
+                      {selectedSegment?.kind === "work" ? <SelectItem value="pay">加班费</SelectItem> : null}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>处理结果</Label>
-                  <Select value={form.overtimeResult} onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="comp_time">转调休</SelectItem>
-                      {form.overtimeKind !== "travel" ? <SelectItem value="pay">加班费</SelectItem> : null}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>加班时间</Label>
+                  <div className="rounded-md border px-3 py-2 text-sm">
+                    {selectedSegment ? (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <span>{OVERTIME_KIND_LABELS[selectedSegment.kind]}</span>
+                        <span>{formatDateTime(selectedSegment.startAt)} - {formatDateTime(selectedSegment.endAt)}</span>
+                        <span>{hours(selectedSegment.hours)} 小时</span>
+                      </div>
+                    ) : overtimeLoading ? (
+                      <span className="text-muted-foreground">正在加载…</span>
+                    ) : (
+                      <span className="text-muted-foreground">暂无可申请加班的工单</span>
+                    )}
+                  </div>
                 </div>
               </>
-            ) : null}
-            <div className="space-y-2">
-              <Label>开始时间</Label>
-              <Input type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>结束时间</Label>
-              <Input type="datetime-local" value={form.endAt} onChange={(event) => setForm((current) => ({ ...current, endAt: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "小时数"}</Label>
-              {form.requestType === "leave" ? (
-                <div className="flex gap-2">
-                  <Input type="number" min="4" step="4" value={form.hours} onChange={(event) => setForm((current) => ({ ...current, hours: event.target.value }))} />
-                  <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "4" }))}>半天</Button>
-                  <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, hours: "8" }))}>一天</Button>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>开始时间</Label>
+                  <Input type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
                 </div>
-              ) : (
-                <Input type="number" min="0.5" step="0.5" value={form.hours} onChange={(event) => setForm((current) => ({ ...current, hours: event.target.value }))} />
-              )}
-            </div>
+                <div className="space-y-2">
+                  <Label>结束时间</Label>
+                  <Input type="datetime-local" step="3600" value={form.endAt} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "调休小时数"}</Label>
+                  {form.requestType === "leave" ? (
+                    <div className="flex gap-2">
+                      <Input type="number" min="4" step="4" value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                      <Button type="button" variant="outline" onClick={() => setHours("4")}>半天</Button>
+                      <Button type="button" variant="outline" onClick={() => setHours("8")}>一天</Button>
+                    </div>
+                  ) : (
+                    <Input type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <div className="flex justify-end">
             <Button onClick={submitRequest} disabled={submitting}>
