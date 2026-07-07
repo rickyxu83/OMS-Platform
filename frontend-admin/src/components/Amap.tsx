@@ -159,6 +159,29 @@ function getTier(count: number): "peak" | "high" | "active" | "quiet" {
   return "quiet";
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function serviceCount(point: AmapPoint) {
+  const count = Number(point.annualServices || 0);
+  return Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
+function flightDuration(count: number) {
+  return `${clamp(3.8 - Math.log1p(count) * 0.62, 1.45, 3.9).toFixed(2)}s`;
+}
+
+function flightDelay(index: number, count: number) {
+  const spacing = clamp(0.34 - Math.log1p(count) * 0.035, 0.14, 0.34);
+  return `${((index % 14) * spacing).toFixed(2)}s`;
+}
+
+function heartbeatDuration(points: AmapPoint[]) {
+  const total = points.reduce((sum, point) => sum + serviceCount(point), 0);
+  return clamp(2.4 - Math.log1p(total) * 0.18, 1.28, 2.4);
+}
+
 function setMarkerDelay(el: HTMLElement, index: number) {
   const delay = Math.min(index, 18) * 18;
   el.style.setProperty("--ops-map-marker-delay", `${delay}ms`);
@@ -240,26 +263,29 @@ function renderFlightOverlay(
   const centerPoint = { x: Number(centerPixel.x), y: Number(centerPixel.y) };
   const rankedPoints = [...points]
     .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
-    .sort((a, b) => Number(b.annualServices || 0) - Number(a.annualServices || 0))
+    .sort((a, b) => serviceCount(b) - serviceCount(a))
     .slice(0, MAX_FLIGHT_LINES);
+  const pulseDuration = heartbeatDuration(rankedPoints);
 
   const paths = rankedPoints.map((point, index) => {
     const pixel = map.lngLatToContainer([point.lng, point.lat]);
     const target = { x: Number(pixel.x), y: Number(pixel.y) };
     const path = flightPath(centerPoint, target, index);
-    const tier = point.level || getTier(point.annualServices || 0);
-    const delay = `${(index % 12) * 0.28}s`;
+    const count = serviceCount(point);
+    const tier = point.level || getTier(count);
+    const delay = flightDelay(index, count);
+    const duration = flightDuration(count);
     return [
       `<path class="ops-map-flight-line ops-map-flight-line-${tier}" d="${path}" style="animation-delay:${delay}" />`,
-      `<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay}" />`,
+      `<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`,
     ].join("");
   }).join("");
 
   overlay.innerHTML = `
     <svg class="ops-map-flight-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
       ${paths}
-      <circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" />
-      <circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" />
+      <circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s" />
+      <circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s;animation-delay:${(pulseDuration / 2).toFixed(2)}s" />
     </svg>
   `;
 }
