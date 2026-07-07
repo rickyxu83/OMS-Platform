@@ -101,43 +101,37 @@ function assertTimeRange(startAt, endAt) {
   }
 }
 
-function annualLeaveStartAt(value) {
-  const date = text(value).replace('T', ' ').slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw badRequest('开始时间格式不正确')
-  return `${date} 09:00:00`
-}
-
-function annualLeaveSlot(value, boundary) {
+function leaveSlot(value, boundary) {
   const normalized = text(value).replace('T', ' ')
   const match = normalized.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (!match) throw badRequest(boundary === 'start' ? '年假开始时间格式不正确' : '年假结束时间格式不正确')
+  if (!match) throw badRequest(boundary === 'start' ? '请假开始时间格式不正确' : '请假结束时间格式不正确')
   const [, date, hour, minute, second = '00'] = match
-  if (minute !== '00' || second !== '00') throw badRequest('年假时段必须以整点为单位')
+  if (minute !== '00' || second !== '00') throw badRequest('请假时段必须以整点为单位')
   if (boundary === 'start') {
     if (hour === '09') return { date, half: 0, value: `${date} 09:00:00` }
     if (hour === '14') return { date, half: 1, value: `${date} 14:00:00` }
-    throw badRequest('年假开始时段必须是上午或下午')
+    throw badRequest('请假开始时段必须是上午或下午')
   }
   if (hour === '14') return { date, half: 0, value: `${date} 14:00:00` }
   if (hour === '18') return { date, half: 1, value: `${date} 18:00:00` }
-  throw badRequest('年假结束时段必须是上午或下午')
+  throw badRequest('请假结束时段必须是上午或下午')
 }
 
-function annualLeaveDateIndex(date) {
+function leaveDateIndex(date) {
   const match = text(date).match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) throw badRequest('年假日期格式不正确')
+  if (!match) throw badRequest('请假日期格式不正确')
   const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
   return Math.floor(utc / 86400000)
 }
 
-function normalizeAnnualLeaveRange(startAt, endAt, inputHours) {
-  const start = annualLeaveSlot(startAt, 'start')
-  const end = annualLeaveSlot(endAt, 'end')
-  const startIndex = annualLeaveDateIndex(start.date) * 2 + start.half
-  const endIndex = annualLeaveDateIndex(end.date) * 2 + end.half
-  if (endIndex < startIndex) throw badRequest('年假结束时段不能早于开始时段')
+function normalizeLeaveRange(startAt, endAt, inputHours) {
+  const start = leaveSlot(startAt, 'start')
+  const end = leaveSlot(endAt, 'end')
+  const startIndex = leaveDateIndex(start.date) * 2 + start.half
+  const endIndex = leaveDateIndex(end.date) * 2 + end.half
+  if (endIndex < startIndex) throw badRequest('请假结束时段不能早于开始时段')
   const hours = (endIndex - startIndex + 1) * 4
-  if (Math.abs(hours - Number(inputHours)) > 0.0001) throw badRequest('年假时长必须与开始、结束时段一致')
+  if (Math.abs(hours - Number(inputHours)) > 0.0001) throw badRequest('请假时长必须与开始、结束时段一致')
   return {
     startAt: start.value,
     endAt: end.value,
@@ -825,15 +819,15 @@ function normalizeRequestInput(body) {
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
-  if (requestType === 'leave' && leaveType === 'annual') {
-    const annualRange = normalizeAnnualLeaveRange(startAt, endAt, hours)
-    startAt = annualRange.startAt
-    endAt = annualRange.endAt
-    hours = annualRange.hours
+  if (requestType === 'leave') {
+    const leaveRange = normalizeLeaveRange(startAt, endAt, hours)
+    startAt = leaveRange.startAt
+    endAt = leaveRange.endAt
+    hours = leaveRange.hours
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
-  if (!(requestType === 'leave' && leaveType === 'annual') && Math.abs(durationHours - hours) > 0.0001) {
+  if (requestType !== 'leave' && Math.abs(durationHours - hours) > 0.0001) {
     throw badRequest('申请小时数必须与开始、结束时间一致')
   }
 

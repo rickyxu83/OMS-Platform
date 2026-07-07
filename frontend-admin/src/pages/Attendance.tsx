@@ -235,11 +235,6 @@ function normalizeHourValue(value: string) {
   return `${String(value).slice(0, 13)}:00`;
 }
 
-function annualLeaveStartValue(value: string) {
-  const source = value || nowLocalValue();
-  return `${String(source).slice(0, 10)}T09:00`;
-}
-
 function dateValue(value?: string) {
   return String(value || nowLocalValue()).slice(0, 10);
 }
@@ -406,7 +401,6 @@ export function Attendance() {
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
   const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
-  const [leaveStepHours, setLeaveStepHours] = useState<4 | 8>(4);
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
   const [holidayYear, setHolidayYear] = useState(todayYear());
@@ -465,8 +459,14 @@ export function Attendance() {
       const data = await api.get("/attendance/overtime/service-orders");
       const items = (data?.items || []) as OvertimeServiceOrder[];
       setOvertimeOrders(items);
-      setSelectedOvertimeOrderId((current) => current || String(items[0]?.id || ""));
-      setSelectedSegmentKey((current) => current || String(overtimeRows(items[0] || null)[0]?.key || ""));
+      setSelectedOvertimeOrderId((current) => {
+        if (items.some((item) => String(item.id) === current)) return current;
+        return String(items[0]?.id || "");
+      });
+      setSelectedSegmentKey((current) => {
+        if (items.some((item) => overtimeRows(item).some((row) => row.key === current))) return current;
+        return String(overtimeRows(items[0] || null)[0]?.key || "");
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
     } finally {
@@ -519,27 +519,15 @@ export function Attendance() {
   }, [selectedSegment, form.overtimeResult]);
 
   function setStartAt(value: string) {
-    const startAt = form.requestType === "leave" && form.leaveType === "annual"
-      ? annualLeaveStartValue(value)
-      : normalizeHourValue(value);
+    const startAt = normalizeHourValue(value);
     const numericHours = Math.max(1, Math.round(Number(form.hours) || 1));
     setForm((current) => ({ ...current, startAt, endAt: addHoursValue(startAt, numericHours) }));
   }
 
   function setHours(value: string) {
     const rawHours = Math.round(Number(value) || 1);
-    const numericHours = form.requestType === "leave"
-      ? Math.max(leaveStepHours, Math.round(rawHours / leaveStepHours) * leaveStepHours)
-      : Math.max(1, rawHours);
+    const numericHours = Math.max(1, rawHours);
     setForm((current) => ({ ...current, hours: String(numericHours), endAt: addHoursValue(current.startAt, numericHours) }));
-  }
-
-  function setLeaveHours(step: 4 | 8) {
-    setLeaveStepHours(step);
-    setForm((current) => {
-      const startAt = current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt;
-      return { ...current, hours: String(step), startAt, endAt: addHoursValue(startAt, step) };
-    });
   }
 
   function setAnnualDraft(patch: Partial<{
@@ -571,13 +559,13 @@ export function Attendance() {
           overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
         });
       } else {
-        const annualRange = form.requestType === "leave" && form.leaveType === "annual" ? annualLeaveRange(form) : null;
+        const leaveRange = form.requestType === "leave" ? annualLeaveRange(form) : null;
         await api.post("/attendance/requests", {
           requestType: form.requestType,
           leaveType: form.requestType === "leave" ? form.leaveType : undefined,
-          startAt: annualRange?.startAt || form.startAt,
-          endAt: annualRange?.endAt || form.endAt,
-          hours: annualRange?.hours || Number(form.hours),
+          startAt: leaveRange?.startAt || form.startAt,
+          endAt: leaveRange?.endAt || form.endAt,
+          hours: leaveRange?.hours || Number(form.hours),
         });
       }
       toast.success("申请已提交");
@@ -598,6 +586,7 @@ export function Attendance() {
       await api.post(path, body);
       toast.success(success);
       await load();
+      if (form.requestType === "overtime") await loadOvertimeOrders();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     }
@@ -706,7 +695,7 @@ export function Attendance() {
 
   const requestsForAdmin = allRequests.filter((item) => item.status === "pending_admin");
   const requestsForSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor");
-  const annualPreview = form.requestType === "leave" && form.leaveType === "annual" ? annualLeaveRange(form) : null;
+  const annualPreview = form.requestType === "leave" ? annualLeaveRange(form) : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const scrollToSupervisorRoleRules = () => {
     document.getElementById("attendance-supervisor-role-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -817,41 +806,43 @@ export function Attendance() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Send className="h-5 w-5" />
-            提交申请
-          </CardTitle>
-          <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b bg-muted/20 pb-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              提交申请
+            </CardTitle>
+            <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-            <div className="space-y-2">
-              <Label>申请类型</Label>
-              <Select
-                value={form.requestType}
-                onValueChange={(value) => setForm((current) => {
-                  const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
-                  if (value === "leave" && next.leaveType === "annual") return applyAnnualLeaveRange(next);
-                  return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
-                })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="leave">请假</SelectItem>
-                  <SelectItem value="overtime">加班</SelectItem>
-                  <SelectItem value="comp_time">调休</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.requestType === "leave" ? (
-              <div className="space-y-2">
-                <Label>假别</Label>
+        <CardContent className="p-4 md:p-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+            <div className="grid items-end gap-4 md:grid-cols-2 lg:grid-cols-12">
+              <div className="space-y-2 lg:col-span-2">
+                <Label>申请类型</Label>
                 <Select
-                  value={form.leaveType}
+                  value={form.requestType}
                   onValueChange={(value) => setForm((current) => {
-                    if (value === "annual") {
+                    const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
+                    if (value === "leave") return applyAnnualLeaveRange(next);
+                    return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
+                  })}
+                >
+                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="leave">请假</SelectItem>
+                    <SelectItem value="overtime">加班</SelectItem>
+                    <SelectItem value="comp_time">调休</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.requestType === "leave" ? (
+                <div className="space-y-2 lg:col-span-2">
+                  <Label>假别</Label>
+                  <Select
+                    value={form.leaveType}
+                    onValueChange={(value) => setForm((current) => {
                       const date = dateValue(current.startAt);
                       return applyAnnualLeaveRange({
                         ...current,
@@ -859,21 +850,18 @@ export function Attendance() {
                         annualStartDate: current.annualStartDate || date,
                         annualEndDate: current.annualEndDate || date,
                       });
-                    }
-                    const startAt = value === "annual" ? annualLeaveStartValue(current.startAt) : normalizeHourValue(current.startAt);
-                    return { ...current, leaveType: value, startAt, endAt: addHoursValue(startAt, Number(current.hours) || 4) };
-                  })}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-            {form.requestType === "overtime" ? (
-              <>
-                <div className="space-y-2 md:col-span-2">
+                    })}
+                  >
+                    <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {form.requestType === "overtime" ? (
+                <>
+                <div className="space-y-2 lg:col-span-4">
                   <Label>工单</Label>
                   <Select
                     value={selectedOvertimeOrderId}
@@ -884,7 +872,7 @@ export function Attendance() {
                     }}
                     disabled={overtimeLoading || overtimeOrders.length === 0}
                   >
-                    <SelectTrigger><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
+                    <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
                     <SelectContent>
                       {overtimeOrders.map((order) => (
                         <SelectItem key={order.id} value={String(order.id)}>
@@ -894,7 +882,7 @@ export function Attendance() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 md:col-span-4">
+                <div className="space-y-2 md:col-span-2 lg:col-span-6">
                   <Label>工单信息</Label>
                   <div className="rounded-md border px-3 py-2 text-sm">
                     {selectedOvertimeOrder ? (
@@ -965,93 +953,83 @@ export function Attendance() {
                   </div>
                 </div>
               </>
-            ) : (
+            ) : form.requestType === "leave" ? (
               <>
-                {form.requestType === "leave" && form.leaveType === "annual" ? (
-                  <>
-                    <div className="space-y-2">
-                      <Label>开始日期</Label>
-                      <Input type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>结束日期</Label>
-                      <Input type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
-                    </div>
-                    {annualSingleDay ? (
-                      <div className="space-y-2">
-                        <Label>时段</Label>
-                        <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="morning">上午 09:00-14:00</SelectItem>
-                            <SelectItem value="afternoon">下午 14:00-18:00</SelectItem>
-                            <SelectItem value="day">一天 09:00-18:00</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="space-y-2">
-                          <Label>开始时段</Label>
-                          <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="morning">上午 09:00 起</SelectItem>
-                              <SelectItem value="afternoon">下午 14:00 起</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>结束时段</Label>
-                          <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="morning">上午 14:00 止</SelectItem>
-                              <SelectItem value="afternoon">下午 18:00 止</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </>
-                    )}
-                    <div className="space-y-2">
-                      <Label>年假时长</Label>
-                      <div className="rounded-md border px-3 py-2 text-sm">
-                        {days(Number(annualPreview?.hours || 0) / 8)} 天
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {formatDateTime(annualPreview?.startAt)} - {formatDateTime(annualPreview?.endAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </>
+                <div className="space-y-2 lg:col-span-2">
+                  <Label>开始日期</Label>
+                  <Input className="h-11" type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
+                </div>
+                <div className="space-y-2 lg:col-span-2">
+                  <Label>结束日期</Label>
+                  <Input className="h-11" type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
+                </div>
+                {annualSingleDay ? (
+                  <div className="space-y-2 lg:col-span-2">
+                    <Label>时段</Label>
+                    <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
+                      <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="morning">上午 09:00-14:00</SelectItem>
+                        <SelectItem value="afternoon">下午 14:00-18:00</SelectItem>
+                        <SelectItem value="day">一天 09:00-18:00</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 ) : (
                   <>
-                    <div className="space-y-2">
-                      <Label>开始时间</Label>
-                      <Input type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
+                    <div className="space-y-2 lg:col-span-2">
+                      <Label>开始时段</Label>
+                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
+                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="morning">上午 09:00 起</SelectItem>
+                          <SelectItem value="afternoon">下午 14:00 起</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>结束时间</Label>
-                      <Input type="datetime-local" step="3600" value={form.endAt} readOnly />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "调休小时数"}</Label>
-                      {form.requestType === "leave" ? (
-                        <div className="flex gap-2">
-                          <Input type="number" min={leaveStepHours} step={leaveStepHours} value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                          <Button type="button" variant={leaveStepHours === 4 ? "default" : "outline"} onClick={() => setLeaveHours(4)}>半天</Button>
-                          <Button type="button" variant={leaveStepHours === 8 ? "default" : "outline"} onClick={() => setLeaveHours(8)}>一天</Button>
-                        </div>
-                      ) : (
-                        <Input type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                      )}
+                    <div className="space-y-2 lg:col-span-2">
+                      <Label>结束时段</Label>
+                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
+                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="morning">上午 14:00 止</SelectItem>
+                          <SelectItem value="afternoon">下午 18:00 止</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </>
                 )}
+                <div className="space-y-2 md:col-span-2 lg:col-span-2">
+                  <Label>请假时长</Label>
+                  <div className="min-h-11 rounded-md border bg-muted/30 px-3 py-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="text-base font-semibold leading-none">{days(Number(annualPreview?.hours || 0) / 8)} 天</span>
+                      <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                      {formatDateTime(annualPreview?.startAt)} - {formatDateTime(annualPreview?.endAt)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2 lg:col-span-3">
+                  <Label>开始时间</Label>
+                  <Input className="h-11" type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
+                </div>
+                <div className="space-y-2 lg:col-span-3">
+                  <Label>结束时间</Label>
+                  <Input className="h-11" type="datetime-local" step="3600" value={form.endAt} readOnly />
+                </div>
+                <div className="space-y-2 lg:col-span-2">
+                  <Label>调休小时数</Label>
+                  <Input className="h-11" type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                </div>
               </>
             )}
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={submitRequest} disabled={submitting}>
+            </div>
+            <Button className="h-11 px-6 xl:mb-0" onClick={submitRequest} disabled={submitting}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               提交
             </Button>
