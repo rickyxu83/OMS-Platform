@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -908,6 +915,91 @@ async function downloadDeviceImportTemplate() {
   saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "设备资产导入模板.xlsx");
 }
 
+async function exportDevicesToExcel(devices: Device[]) {
+  const [{ Workbook }, { saveAs }] = await Promise.all([
+    import("exceljs"),
+    import("file-saver"),
+  ]);
+  const workbook = new Workbook();
+  workbook.creator = "OMS Platform";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const worksheet = workbook.addWorksheet("设备资产");
+  worksheet.columns = [
+    { header: "客户名称", key: "customerName", width: 24 },
+    { header: "主机名", key: "name", width: 20 },
+    { header: "设备型号", key: "model", width: 24 },
+    { header: "PN", key: "pn", width: 18 },
+    { header: "SN", key: "serialNo", width: 22 },
+    { header: "MR单", key: "mrNo", width: 18 },
+    { header: "维保类型", key: "maintenanceType", width: 16 },
+    { header: "维保方名称", key: "maintenancePartyName", width: 24 },
+    { header: "维保开始", key: "maintenanceStart", width: 14 },
+    { header: "维保截止", key: "maintenanceEnd", width: 14 },
+    { header: "质保截止", key: "warrantyUntil", width: 14 },
+    { header: "位置", key: "location", width: 24 },
+    { header: "状态", key: "status", width: 12 },
+    { header: "备注", key: "remark", width: 30 },
+  ];
+
+  devices.forEach((device) => {
+    const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
+    const status = device.status || "active";
+    worksheet.addRow({
+      customerName: device.customerName || "",
+      name: device.name || "",
+      model: device.model || "",
+      pn: device.pn || "",
+      serialNo: device.serialNo || "",
+      mrNo: device.mrNo || "",
+      maintenanceType: MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "",
+      maintenancePartyName: device.maintenancePartyName || "",
+      maintenanceStart: inputDate(device.maintenanceStart),
+      maintenanceEnd: inputDate(device.maintenanceEnd),
+      warrantyUntil: inputDate(device.warrantyUntil),
+      location: device.location || "",
+      status: DEVICE_STATUS_LABELS[status] || status || "",
+      remark: device.remark || "",
+    });
+  });
+
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: worksheet.columns.length },
+  };
+  worksheet.getRow(1).height = 24;
+  worksheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FF334155" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  });
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFE2E8F0" } },
+        left: { style: "thin", color: { argb: "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        right: { style: "thin", color: { argb: "FFE2E8F0" } },
+      };
+      cell.alignment = { vertical: "middle", wrapText: rowNumber === 1 };
+    });
+  });
+
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const timestamp = [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    "-",
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+  ].join("");
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `设备资产-${timestamp}.xlsx`);
+}
+
 export function Devices() {
   const { hasPermission } = useAuth();
   const canCreateDevices = hasPermission("device.create");
@@ -956,6 +1048,7 @@ export function Devices() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
@@ -1145,6 +1238,32 @@ export function Devices() {
   }, [filtered]);
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
+
+  async function handleDownloadImportTemplate() {
+    setError("");
+    try {
+      await downloadDeviceImportTemplate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "模板下载失败");
+    }
+  }
+
+  async function handleExportDevices() {
+    if (!filtered.length) {
+      setError("当前没有可导出的设备");
+      return;
+    }
+    setExporting(true);
+    setError("");
+    try {
+      await exportDevicesToExcel(filtered);
+      toast.success(`已导出 ${filtered.length} 台设备`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "设备导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const allFilteredDevicesSelected = filtered.length > 0
     && filtered.every((device) => selectedDeviceIds.includes(String(device.id)));
@@ -1873,56 +1992,48 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          {canEditDevices ? (
-            <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
-              {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {modelComparing ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={exporting || importing}>
+                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
+                更多操作
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onSelect={handleExportDevices} disabled={exporting || loading || !filtered.length}>
+                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+                导出 Excel
+              </DropdownMenuItem>
+              {canEditDevices || canCreateDevices ? <DropdownMenuSeparator /> : null}
+              {canEditDevices ? (
+                <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
+                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                  {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
+                </DropdownMenuItem>
+              ) : null}
+              {canCreateDevices ? (
                 <>
-                  <span className="lg:hidden xl:inline">校正 {modelCompareProgress}%</span>
-                  <span className="hidden lg:inline xl:hidden">{modelCompareProgress}%</span>
+                  <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
+                    <Download className="w-4 h-4 mr-2" />
+                    下载模板
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={openImportDialog}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    导入 Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={openBulkCreate}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    批量新增
+                  </DropdownMenuItem>
                 </>
-              ) : (
-                <>
-                  <span className="lg:hidden xl:inline">型号校正</span>
-                  <span className="hidden lg:inline xl:hidden">校正</span>
-                </>
-              )}
-            </Button>
-          ) : null}
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {canCreateDevices ? (
-            <>
-              <Button
-                className="shrink-0 whitespace-nowrap"
-                variant="outline"
-                onClick={async () => {
-                  setError("");
-                  try {
-                    await downloadDeviceImportTemplate();
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : "模板下载失败");
-                  }
-                }}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                <span className="lg:hidden xl:inline">下载模板</span>
-                <span className="hidden lg:inline xl:hidden">模板</span>
-              </Button>
-              <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={openImportDialog}>
-                <Upload className="w-4 h-4 mr-2" />
-                <span className="lg:hidden xl:inline">导入 Excel</span>
-                <span className="hidden lg:inline xl:hidden">导入</span>
-              </Button>
-              <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={openBulkCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                <span className="lg:hidden xl:inline">批量新增</span>
-                <span className="hidden lg:inline xl:hidden">批量</span>
-              </Button>
-              <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                <span className="lg:hidden xl:inline">新增设备</span>
-                <span className="hidden lg:inline xl:hidden">新增</span>
-              </Button>
-            </>
+            <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              新增设备
+            </Button>
           ) : null}
         </div>
       </div>
