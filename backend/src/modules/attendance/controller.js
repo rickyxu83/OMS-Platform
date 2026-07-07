@@ -641,6 +641,20 @@ function overtimeSegments(row, usedSegments = new Set()) {
     .filter(Boolean)
 }
 
+function combineTravelSegments(segments) {
+  const items = segments.filter((item) => item.kind === 'travel')
+  if (!items.length) return null
+  return {
+    key: 'travel',
+    kind: 'travel',
+    label: '来回路上实际时间',
+    startAt: items[0].startAt,
+    endAt: items[items.length - 1].endAt,
+    hours: Math.round(items.reduce((sum, item) => sum + Number(item.hours || 0), 0) * 100) / 100,
+    allowedResults: ['comp_time'],
+  }
+}
+
 async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connection = null) {
   const sql = `SELECT so.id, so.order_no, so.status, c.name AS customer_name,
                       COALESCE(NULLIF(so.contact_name, ''), c.contact_name) AS contact_name,
@@ -689,7 +703,12 @@ async function usedOvertimeSegments(orderIds, userId) {
   return rows.reduce((map, row) => {
     const key = Number(row.source_id)
     if (!map.has(key)) map.set(key, new Set())
-    map.get(key).add(row.source_detail || 'work')
+    const detail = row.source_detail || 'work'
+    map.get(key).add(detail)
+    if (detail === 'travel') {
+      map.get(key).add('travel_out')
+      map.get(key).add('travel_back')
+    }
     return map
   }, new Map())
 }
@@ -729,7 +748,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
   const segmentKey = text(req.body?.segmentKey)
   const overtimeResult = text(req.body?.overtimeResult)
-  if (!['travel_out', 'work', 'travel_back'].includes(segmentKey)) throw badRequest('工单时段不正确')
+  if (!['travel', 'travel_out', 'work', 'travel_back'].includes(segmentKey)) throw badRequest('工单时段不正确')
   if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
 
   const result = await transaction(async (connection) => {
@@ -738,7 +757,10 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const rows = await serviceOrderOvertimeRows(req.user.id, serviceOrderId, connection)
     const order = rows[0]
     if (!order) throw notFound('没有可申请的工单')
-    const segment = overtimeSegments(order).find((item) => item.key === segmentKey)
+    const segments = overtimeSegments(order)
+    const segment = segmentKey === 'travel'
+      ? combineTravelSegments(segments)
+      : segments.find((item) => item.key === segmentKey)
     if (!segment) throw badRequest('该工单时段不符合加班申请条件')
     if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
     if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
@@ -748,7 +770,12 @@ async function createServiceOrderOvertimeRequest(req, res) {
        FROM attendance_requests
        WHERE source_type = 'service_order'
          AND source_id = :serviceOrderId
-         AND (source_detail = :segmentKey OR (:segmentKey = 'work' AND source_detail IS NULL))
+         AND (
+           source_detail = :segmentKey
+           OR (:segmentKey = 'work' AND source_detail IS NULL)
+           OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
+           OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
+         )
          AND submitted_by = :userId
          AND status NOT IN ('rejected', 'withdrawn', 'voided')
        LIMIT 1
