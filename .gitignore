@@ -34,6 +34,7 @@ scripts/deploy.local.env
 .codex/
 .opencode/
 conversation-*.txt
+tmp/
 
 # Local archives/backups
 *.tgz

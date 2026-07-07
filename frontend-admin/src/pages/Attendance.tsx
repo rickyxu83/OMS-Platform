@@ -332,6 +332,16 @@ function overtimeRows(order: OvertimeServiceOrder | null) {
   return rows;
 }
 
+function overtimeSelection(items: OvertimeServiceOrder[], currentOrderId: string, currentSegmentKey: string) {
+  const order = items.find((item) => String(item.id) === currentOrderId) || items[0] || null;
+  const rows = overtimeRows(order);
+  const segment = rows.find((item) => item.key === currentSegmentKey) || rows[0] || null;
+  return {
+    orderId: order ? String(order.id) : "",
+    segmentKey: segment?.key || "",
+  };
+}
+
 function requestDetail(item: AttendanceRequest) {
   if (item.requestType === "leave") return LEAVE_TYPE_LABELS[item.leaveType || ""] || "-";
   if (item.requestType === "overtime") {
@@ -458,15 +468,10 @@ export function Attendance() {
     try {
       const data = await api.get("/attendance/overtime/service-orders");
       const items = (data?.items || []) as OvertimeServiceOrder[];
+      const selection = overtimeSelection(items, selectedOvertimeOrderId, selectedSegmentKey);
       setOvertimeOrders(items);
-      setSelectedOvertimeOrderId((current) => {
-        if (items.some((item) => String(item.id) === current)) return current;
-        return String(items[0]?.id || "");
-      });
-      setSelectedSegmentKey((current) => {
-        if (items.some((item) => overtimeRows(item).some((row) => row.key === current))) return current;
-        return String(overtimeRows(items[0] || null)[0]?.key || "");
-      });
+      setSelectedOvertimeOrderId(selection.orderId);
+      setSelectedSegmentKey(selection.segmentKey);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
     } finally {
@@ -550,19 +555,20 @@ export function Attendance() {
   }
 
   async function submitRequest() {
+    const requestType = form.requestType;
     setSubmitting(true);
     try {
-      if (form.requestType === "overtime") {
+      if (requestType === "overtime") {
         if (!selectedOvertimeOrder || !selectedSegment) throw new Error("请选择工单和加班时段");
         await api.post(`/attendance/overtime/service-orders/${selectedOvertimeOrder.id}/apply`, {
           segmentKey: selectedSegment.key,
           overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
         });
       } else {
-        const leaveRange = form.requestType === "leave" ? annualLeaveRange(form) : null;
+        const leaveRange = requestType === "leave" ? annualLeaveRange(form) : null;
         await api.post("/attendance/requests", {
-          requestType: form.requestType,
-          leaveType: form.requestType === "leave" ? form.leaveType : undefined,
+          requestType,
+          leaveType: requestType === "leave" ? form.leaveType : undefined,
           startAt: leaveRange?.startAt || form.startAt,
           endAt: leaveRange?.endAt || form.endAt,
           hours: leaveRange?.hours || Number(form.hours),
@@ -573,7 +579,7 @@ export function Attendance() {
       setSelectedOvertimeOrderId("");
       setSelectedSegmentKey("");
       await load();
-      if (form.requestType === "overtime") await loadOvertimeOrders();
+      if (requestType === "overtime") await loadOvertimeOrders();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
     } finally {
