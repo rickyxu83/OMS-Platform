@@ -95,8 +95,18 @@ interface OvertimeServiceOrder {
   id: number | string;
   orderNo?: string;
   customerName?: string;
+  contactName?: string;
+  contactPhone?: string;
+  deviceName?: string;
+  serviceMode?: string;
+  serviceType?: string;
+  issueDescription?: string;
   status?: string;
   serviceAt?: string;
+  departureAt?: string;
+  actualStartAt?: string;
+  actualEndAt?: string;
+  returnAt?: string;
   segments: OvertimeSegment[];
 }
 
@@ -122,6 +132,21 @@ const OVERTIME_KIND_LABELS: Record<string, string> = {
 const OVERTIME_RESULT_LABELS: Record<string, string> = {
   comp_time: "转调休",
   pay: "加班费",
+};
+
+const SERVICE_MODE_LABELS: Record<string, string> = {
+  onsite: "现场",
+  remote: "远程",
+  office: "内勤",
+};
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  install: "安装",
+  repair: "维修",
+  maintain: "保养",
+  inspect: "巡检",
+  training: "培训",
+  other: "其他",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -177,6 +202,11 @@ function normalizeHourValue(value: string) {
   return `${String(value).slice(0, 13)}:00`;
 }
 
+function annualLeaveStartValue(value: string) {
+  const source = value || nowLocalValue();
+  return `${String(source).slice(0, 10)}T09:00`;
+}
+
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
@@ -208,22 +238,25 @@ function roleLabel(role?: string | null) {
   return ROLE_LABELS[role || ""] || role || "-";
 }
 
-const blankForm = {
-  requestType: "leave" as RequestType,
-  leaveType: "annual",
-  overtimeKind: "work",
-  overtimeResult: "comp_time",
-  startAt: nowLocalValue(),
-  endAt: nowLocalValue(1),
-  hours: "4",
-};
+function createBlankForm() {
+  const startAt = annualLeaveStartValue(nowLocalValue());
+  return {
+    requestType: "leave" as RequestType,
+    leaveType: "annual",
+    overtimeKind: "work",
+    overtimeResult: "comp_time",
+    startAt,
+    endAt: addHoursValue(startAt, 4),
+    hours: "4",
+  };
+}
 
 export function Attendance() {
   const { hasPermission } = useAuth();
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.manage");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
-  const [form, setForm] = useState(blankForm);
+  const [form, setForm] = useState(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -241,6 +274,7 @@ export function Attendance() {
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
   const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
+  const [leaveStepHours, setLeaveStepHours] = useState<4 | 8>(4);
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
 
@@ -343,7 +377,9 @@ export function Attendance() {
   }, [selectedSegment, form.overtimeResult]);
 
   function setStartAt(value: string) {
-    const startAt = normalizeHourValue(value);
+    const startAt = form.requestType === "leave" && form.leaveType === "annual"
+      ? annualLeaveStartValue(value)
+      : normalizeHourValue(value);
     const numericHours = Math.max(1, Math.round(Number(form.hours) || 1));
     setForm((current) => ({ ...current, startAt, endAt: addHoursValue(startAt, numericHours) }));
   }
@@ -351,9 +387,17 @@ export function Attendance() {
   function setHours(value: string) {
     const rawHours = Math.round(Number(value) || 1);
     const numericHours = form.requestType === "leave"
-      ? Math.max(4, Math.round(rawHours / 4) * 4)
+      ? Math.max(leaveStepHours, Math.round(rawHours / leaveStepHours) * leaveStepHours)
       : Math.max(1, rawHours);
     setForm((current) => ({ ...current, hours: String(numericHours), endAt: addHoursValue(current.startAt, numericHours) }));
+  }
+
+  function setLeaveHours(step: 4 | 8) {
+    setLeaveStepHours(step);
+    setForm((current) => {
+      const startAt = current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt;
+      return { ...current, hours: String(step), startAt, endAt: addHoursValue(startAt, step) };
+    });
   }
 
   async function submitRequest() {
@@ -375,7 +419,7 @@ export function Attendance() {
         });
       }
       toast.success("申请已提交");
-      setForm({ ...blankForm, startAt: nowLocalValue(), endAt: nowLocalValue(1), hours: form.requestType === "leave" ? "4" : "1" });
+      setForm(createBlankForm());
       setSelectedOvertimeOrderId("");
       setSelectedSegmentKey("");
       await load();
@@ -593,7 +637,8 @@ export function Attendance() {
                   ...current,
                   requestType: value as RequestType,
                   hours: value === "leave" ? "4" : "1",
-                  endAt: addHoursValue(current.startAt, value === "leave" ? 4 : 1),
+                  startAt: value === "leave" && current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt,
+                  endAt: addHoursValue(value === "leave" && current.leaveType === "annual" ? annualLeaveStartValue(current.startAt) : current.startAt, value === "leave" ? 4 : 1),
                 }))}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -607,7 +652,13 @@ export function Attendance() {
             {form.requestType === "leave" ? (
               <div className="space-y-2">
                 <Label>假别</Label>
-                <Select value={form.leaveType} onValueChange={(value) => setForm((current) => ({ ...current, leaveType: value }))}>
+                <Select
+                  value={form.leaveType}
+                  onValueChange={(value) => setForm((current) => {
+                    const startAt = value === "annual" ? annualLeaveStartValue(current.startAt) : normalizeHourValue(current.startAt);
+                    return { ...current, leaveType: value, startAt, endAt: addHoursValue(startAt, Number(current.hours) || 4) };
+                  })}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
@@ -632,7 +683,7 @@ export function Attendance() {
                     <SelectContent>
                       {overtimeOrders.map((order) => (
                         <SelectItem key={order.id} value={String(order.id)}>
-                          {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""}
+                          {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -669,10 +720,27 @@ export function Attendance() {
                   <Label>加班时间</Label>
                   <div className="rounded-md border px-3 py-2 text-sm">
                     {selectedSegment ? (
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        <span>{OVERTIME_KIND_LABELS[selectedSegment.kind]}</span>
-                        <span>{formatDateTime(selectedSegment.startAt)} - {formatDateTime(selectedSegment.endAt)}</span>
-                        <span>{hours(selectedSegment.hours)} 小时</span>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          <span>{OVERTIME_KIND_LABELS[selectedSegment.kind]}</span>
+                          <span>{formatDateTime(selectedSegment.startAt)} - {formatDateTime(selectedSegment.endAt)}</span>
+                          <span>{hours(selectedSegment.hours)} 小时</span>
+                        </div>
+                        {selectedOvertimeOrder ? (
+                          <div className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-2">
+                            <div>工单：{selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`}</div>
+                            <div>客户：{selectedOvertimeOrder.customerName || "-"}</div>
+                            <div>设备：{selectedOvertimeOrder.deviceName || "-"}</div>
+                            <div>类型：{SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / {SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}</div>
+                            <div>联系人：{selectedOvertimeOrder.contactName || "-"} {selectedOvertimeOrder.contactPhone || ""}</div>
+                            <div>服务日：{formatDateTime(selectedOvertimeOrder.serviceAt)}</div>
+                            <div>出发：{formatDateTime(selectedOvertimeOrder.departureAt)}</div>
+                            <div>到达：{formatDateTime(selectedOvertimeOrder.actualStartAt)}</div>
+                            <div>完成：{formatDateTime(selectedOvertimeOrder.actualEndAt)}</div>
+                            <div>返回：{formatDateTime(selectedOvertimeOrder.returnAt)}</div>
+                            <div className="md:col-span-2">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
+                          </div>
+                        ) : null}
                       </div>
                     ) : overtimeLoading ? (
                       <span className="text-muted-foreground">正在加载…</span>
@@ -696,9 +764,9 @@ export function Attendance() {
                   <Label>{form.requestType === "leave" ? "请假时长（半天为单位）" : "调休小时数"}</Label>
                   {form.requestType === "leave" ? (
                     <div className="flex gap-2">
-                      <Input type="number" min="4" step="4" value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                      <Button type="button" variant="outline" onClick={() => setHours("4")}>半天</Button>
-                      <Button type="button" variant="outline" onClick={() => setHours("8")}>一天</Button>
+                      <Input type="number" min={leaveStepHours} step={leaveStepHours} value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                      <Button type="button" variant={leaveStepHours === 4 ? "default" : "outline"} onClick={() => setLeaveHours(4)}>半天</Button>
+                      <Button type="button" variant={leaveStepHours === 8 ? "default" : "outline"} onClick={() => setLeaveHours(8)}>一天</Button>
                     </div>
                   ) : (
                     <Input type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />

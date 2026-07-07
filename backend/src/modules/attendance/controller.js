@@ -53,6 +53,18 @@ function assertTimeRange(startAt, endAt) {
   }
 }
 
+function annualLeaveStartAt(value) {
+  const date = text(value).replace('T', ' ').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw badRequest('开始时间格式不正确')
+  return `${date} 09:00:00`
+}
+
+function addHoursDateTime(startAt, hours) {
+  const start = new Date(String(startAt).replace(' ', 'T'))
+  if (!Number.isFinite(start.getTime())) throw badRequest('开始时间格式不正确')
+  return formatMysqlDateTime(new Date(start.getTime() + Number(hours) * 3600000))
+}
+
 function optionalDate(value) {
   const normalized = text(value)
   return normalized || null
@@ -487,18 +499,28 @@ function normalizeRequestInput(body) {
   const requestType = text(body?.requestType)
   if (!requestTypes.has(requestType)) throw badRequest('申请类型不正确')
 
+  let leaveType = null
+  if (requestType === 'leave') {
+    leaveType = text(body?.leaveType)
+    if (!leaveTypes.has(leaveType)) throw badRequest('假别不正确')
+  }
+
   const hours = positiveNumber(body?.hours, '申请小时数')
   assertWholeHour(hours, '申请小时数')
-  const startAt = text(body?.startAt).replace('T', ' ')
-  const endAt = text(body?.endAt).replace('T', ' ')
+  let startAt = text(body?.startAt).replace('T', ' ')
+  let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
+  if (requestType === 'leave' && leaveType === 'annual') {
+    startAt = annualLeaveStartAt(startAt)
+    endAt = addHoursDateTime(startAt, hours)
+  }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
   if (Math.abs(durationHours - hours) > 0.0001) throw badRequest('申请小时数必须与开始、结束时间一致')
 
   const payload = {
     requestType,
-    leaveType: null,
+    leaveType,
     overtimeKind: null,
     overtimeResult: null,
     startAt,
@@ -508,8 +530,6 @@ function normalizeRequestInput(body) {
   }
 
   if (requestType === 'leave') {
-    payload.leaveType = text(body?.leaveType)
-    if (!leaveTypes.has(payload.leaveType)) throw badRequest('假别不正确')
     if (payload.hours % 4 !== 0) throw badRequest('请假时长必须以半天为单位')
   }
 
@@ -623,10 +643,15 @@ function overtimeSegments(row, usedSegments = new Set()) {
 
 async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connection = null) {
   const sql = `SELECT so.id, so.order_no, so.status, c.name AS customer_name,
+                      COALESCE(NULLIF(so.contact_name, ''), c.contact_name) AS contact_name,
+                      COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone) AS contact_phone,
+                      so.service_mode, so.service_type, so.issue_description,
+                      COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
                       COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
+               LEFT JOIN devices d ON d.id = so.device_id
                JOIN service_reports sr ON sr.service_order_id = so.id
                WHERE (:serviceOrderId IS NULL OR so.id = :serviceOrderId)
                  AND so.status NOT IN ('draft', 'cancelled')
@@ -680,8 +705,18 @@ async function listOvertimeServiceOrders(req, res) {
       id: row.id,
       orderNo: row.order_no,
       customerName: row.customer_name,
+      contactName: row.contact_name,
+      contactPhone: row.contact_phone,
+      deviceName: row.device_name,
+      serviceMode: row.service_mode,
+      serviceType: row.service_type,
+      issueDescription: row.issue_description,
       status: row.status,
       serviceAt: toIsoMinute(row.service_at),
+      departureAt: toIsoMinute(row.departure_at),
+      actualStartAt: toIsoMinute(row.actual_start_at),
+      actualEndAt: toIsoMinute(row.actual_end_at),
+      returnAt: toIsoMinute(row.return_at),
       segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
     }))
     .filter((item) => item.segments.length)
