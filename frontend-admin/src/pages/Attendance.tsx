@@ -806,37 +806,61 @@ export function Attendance() {
         </Card>
       ) : null}
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/20 pb-4">
-          <div className="flex flex-col gap-1">
+      <Card className="overflow-hidden border-border/80 shadow-sm">
+        <CardHeader className="border-b bg-card px-5 py-4">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div>
             <CardTitle className="flex items-center gap-2">
               <Send className="h-5 w-5" />
               提交申请
             </CardTitle>
             <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
+            </div>
+            {form.requestType === "leave" ? (
+              <Badge variant="secondary">{LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"}</Badge>
+            ) : form.requestType === "overtime" ? (
+              <Badge variant="secondary">工单加班</Badge>
+            ) : (
+              <Badge variant="secondary">调休</Badge>
+            )}
           </div>
         </CardHeader>
-        <CardContent className="p-4 md:p-5">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-            <div className="grid items-end gap-4 md:grid-cols-2 lg:grid-cols-12">
-              <div className="space-y-2 lg:col-span-2">
-                <Label>申请类型</Label>
-                <Select
-                  value={form.requestType}
-                  onValueChange={(value) => setForm((current) => {
+        <CardContent className="p-0">
+          <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_240px]">
+            <div className="space-y-3 border-b bg-muted/20 p-4 lg:border-b-0 lg:border-r">
+              <Label>申请类型</Label>
+              <div className="grid gap-2">
+                {[
+                  { value: "leave", label: "请假", icon: CalendarClock },
+                  { value: "overtime", label: "加班", icon: Send },
+                  { value: "comp_time", label: "调休", icon: RotateCcw },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const active = form.requestType === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setForm((current) => {
+                        const value = item.value;
                     const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
                     if (value === "leave") return applyAnnualLeaveRange(next);
                     return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
-                  })}
-                >
-                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="leave">请假</SelectItem>
-                    <SelectItem value="overtime">加班</SelectItem>
-                    <SelectItem value="comp_time">调休</SelectItem>
-                  </SelectContent>
-                </Select>
+                      })}
+                      className={`flex h-11 items-center gap-3 rounded-md border px-3 text-left text-sm transition ${
+                        active ? "border-primary bg-primary/10 text-primary shadow-sm" : "bg-background hover:bg-muted/50"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span className="font-medium">{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+
+            <div className="p-4 md:p-5">
+              <div className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-12">
               {form.requestType === "leave" ? (
                 <div className="space-y-2 lg:col-span-2">
                   <Label>假别</Label>
@@ -861,7 +885,7 @@ export function Attendance() {
               ) : null}
               {form.requestType === "overtime" ? (
                 <>
-                <div className="space-y-2 lg:col-span-4">
+                <div className="space-y-2 xl:col-span-5">
                   <Label>工单</Label>
                   <Select
                     value={selectedOvertimeOrderId}
@@ -882,9 +906,9 @@ export function Attendance() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 md:col-span-2 lg:col-span-6">
+                <div className="space-y-2 md:col-span-2 xl:col-span-7">
                   <Label>工单信息</Label>
-                  <div className="rounded-md border px-3 py-2 text-sm">
+                  <div className="rounded-md border bg-muted/10 px-3 py-2 text-sm">
                     {selectedOvertimeOrder ? (
                       <div className="space-y-2">
                         <div className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-2">
@@ -955,16 +979,16 @@ export function Attendance() {
               </>
             ) : form.requestType === "leave" ? (
               <>
-                <div className="space-y-2 lg:col-span-2">
+                <div className="space-y-2 xl:col-span-3">
                   <Label>开始日期</Label>
                   <Input className="h-11" type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
                 </div>
-                <div className="space-y-2 lg:col-span-2">
+                <div className="space-y-2 xl:col-span-3">
                   <Label>结束日期</Label>
                   <Input className="h-11" type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
                 </div>
                 {annualSingleDay ? (
-                  <div className="space-y-2 lg:col-span-2">
+                  <div className="space-y-2 xl:col-span-3">
                     <Label>时段</Label>
                     <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
                       <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
@@ -977,7 +1001,7 @@ export function Attendance() {
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-2 lg:col-span-2">
+                    <div className="space-y-2 xl:col-span-3">
                       <Label>开始时段</Label>
                       <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
@@ -987,7 +1011,7 @@ export function Attendance() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2 lg:col-span-2">
+                    <div className="space-y-2 xl:col-span-3">
                       <Label>结束时段</Label>
                       <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
@@ -999,40 +1023,87 @@ export function Attendance() {
                     </div>
                   </>
                 )}
-                <div className="space-y-2 md:col-span-2 lg:col-span-2">
-                  <Label>请假时长</Label>
-                  <div className="min-h-11 rounded-md border bg-muted/30 px-3 py-2">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                      <span className="text-base font-semibold leading-none">{days(Number(annualPreview?.hours || 0) / 8)} 天</span>
-                      <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {formatDateTime(annualPreview?.startAt)} - {formatDateTime(annualPreview?.endAt)}
-                    </div>
-                  </div>
-                </div>
               </>
             ) : (
               <>
-                <div className="space-y-2 lg:col-span-3">
+                <div className="space-y-2 xl:col-span-4">
                   <Label>开始时间</Label>
                   <Input className="h-11" type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
                 </div>
-                <div className="space-y-2 lg:col-span-3">
+                <div className="space-y-2 xl:col-span-4">
                   <Label>结束时间</Label>
                   <Input className="h-11" type="datetime-local" step="3600" value={form.endAt} readOnly />
                 </div>
-                <div className="space-y-2 lg:col-span-2">
+                <div className="space-y-2 xl:col-span-3">
                   <Label>调休小时数</Label>
                   <Input className="h-11" type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
                 </div>
               </>
             )}
+              </div>
             </div>
-            <Button className="h-11 px-6 xl:mb-0" onClick={submitRequest} disabled={submitting}>
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              提交
-            </Button>
+
+            <div className="border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
+              {form.requestType === "leave" ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium">请假时长</div>
+                    <div className="mt-2 rounded-lg border bg-background p-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-semibold">{days(Number(annualPreview?.hours || 0) / 8)}</span>
+                        <span className="text-sm text-muted-foreground">天</span>
+                        <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
+                      </div>
+                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                        <div>{formatDateTime(annualPreview?.startAt)}</div>
+                        <div>{formatDateTime(annualPreview?.endAt)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    提交申请
+                  </Button>
+                </div>
+              ) : form.requestType === "overtime" ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium">加班申请</div>
+                    <div className="mt-2 rounded-lg border bg-background p-3 text-sm">
+                      <div className="font-medium">{selectedSegment?.label || "未选择时段"}</div>
+                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                        <div>{selectedSegment ? `${formatDateTime(selectedSegment.startAt)} - ${formatDateTime(selectedSegment.endAt)}` : "-"}</div>
+                        <div>{selectedSegment ? `${hours(selectedSegment.hours)} 小时` : "-"}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    提交申请
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium">调休时长</div>
+                    <div className="mt-2 rounded-lg border bg-background p-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-semibold">{hours(Number(form.hours))}</span>
+                        <span className="text-sm text-muted-foreground">小时</span>
+                      </div>
+                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                        <div>{formatDateTime(form.startAt)}</div>
+                        <div>{formatDateTime(form.endAt)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    提交申请
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
