@@ -887,6 +887,7 @@ async function createRequest(req, res) {
 }
 
 function toDate(value) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null
   const date = new Date(String(value || '').replace(' ', 'T'))
   return Number.isFinite(date.getTime()) ? date : null
 }
