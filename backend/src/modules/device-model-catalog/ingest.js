@@ -51,6 +51,34 @@ async function deactivateMissingFixtureRows(runQuery, fixtures) {
   return staleRows.length
 }
 
+async function deactivateConflictingNonFixtureRows(runQuery, fixtures) {
+  let deactivated = 0
+  const seen = new Set()
+  for (const fixture of fixtures) {
+    const brand = String(fixture?.brand || '').trim()
+    const category = String(fixture?.category || '').trim()
+    const canonicalModel = String(fixture?.canonicalModel || fixture?.canonical_model || '').trim()
+    if (!brand || !category || !canonicalModel) continue
+    const key = `${brand.toLowerCase()}|${category.toLowerCase()}|${canonicalModel.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const result = await runQuery(
+      `UPDATE device_model_catalog
+       SET is_active = 0,
+           synced_at = CURRENT_TIMESTAMP
+       WHERE brand = ?
+         AND canonical_model = ?
+         AND category <> ?
+         AND is_active = 1
+         AND (source_provider IS NULL OR source_provider <> 'fixture')`,
+      [brand, canonicalModel, category],
+    )
+    deactivated += Number(result?.affectedRows || 0)
+  }
+  return deactivated
+}
+
 async function ingestFixtureData(db, fixtures, providerScope = 'approved-v1', options = {}) {
   const runQuery = resolveQuery(db)
   const summary = { inserted: 0, updated: 0, skipped: 0, deactivated: 0 }
@@ -128,6 +156,7 @@ async function ingestFixtureData(db, fixtures, providerScope = 'approved-v1', op
   if (options.deactivateMissingFixtures) {
     summary.deactivated = await deactivateMissingFixtureRows(runQuery, fixtures)
   }
+  summary.deactivated += await deactivateConflictingNonFixtureRows(runQuery, fixtures)
 
   return summary
 }
