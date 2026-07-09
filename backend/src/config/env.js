@@ -52,6 +52,7 @@ const env = {
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',
+  disableLoginAccountLockout: process.env.DISABLE_LOGIN_ACCOUNT_LOCKOUT === 'true',
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {
