@@ -471,6 +471,17 @@ function arubaGatewayModel(model, aliases = []) {
   ])
 }
 
+function hpeFlexFabricSwitchModel(model, partNumber, aliases = []) {
+  return networkModel('HPE', `HPE FlexFabric ${model}`, partNumber || model, [
+    `HP FlexFabric ${model}`,
+    `HPE ${model}`,
+    `HP ${model}`,
+    `FlexFabric ${model}`,
+    `${model} 交换机`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 const DELL_EMC_VNX_FIXTURE_DATA = [
   ...['5100', '5300', '5500', '5700', '7500'].map(dellEmcVnxModel),
   ...['5200', '5400', '5600', '5800', '7600', '8000'].map(dellEmcVnxModel),
@@ -1079,6 +1090,30 @@ const HUAWEI_LEGACY_NETWORK_FIXTURE_DATA = [
   huaweiSwitchModel('S5735S-L48P4X-A', ['Huawei CloudEngine S5735S-L48P4X-A']),
 ]
 
+const HPE_NETWORK_FIXTURE_DATA = [
+  hpeFlexFabricSwitchModel('5940 4-slot Switch', '5940 4-slot Switch', [
+    'HPE FlexFabric 5940',
+    'HP FlexFabric 5940',
+    'FlexFabric 5940',
+    'HPE 5940',
+    'HP 5940',
+    'HPE 5940 4-slot',
+    'HP 5940 4-slot',
+    '5940 4-slot',
+    '5940 4-slot Switch',
+    '5940 Switch',
+    'HPE FlexFabric 5940 4-slot',
+    'HP FlexFabric 5940 4-slot',
+    'HPE FlexFabric 5940 4-slot Switch',
+    'HP FlexFabric 5940 4-slot Switch',
+    'FlexFabric 5940 4-slot',
+    'FlexFabric 5940 4-slot Switch',
+    '5940 交换机',
+    'HPE 5940 交换机',
+    'HP 5940 交换机',
+  ]),
+]
+
 const PALO_ALTO_NETWORKS_FIXTURE_DATA = [
   ...[
     'PA-220',
@@ -1310,6 +1345,23 @@ const VMWARE_ADDITIONAL_SERVER_FIXTURE_DATA = [
     'VMware vSphere 8',
     'vSphere 8',
     'ESXi 8 Standard',
+  ]),
+]
+
+const NCLOUD_ADDITIONAL_SERVER_FIXTURE_DATA = [
+  serverModel('N-cloud', 'N-cloud', 'N-cloud', [
+    'NCloud',
+    'N Cloud',
+    'N-Cloud',
+    'n-cloud',
+    'ncloud',
+    'n cloud',
+    'N-cloud 产品',
+    'N-cloud 设备',
+    'NCloud 产品',
+    'NCloud 设备',
+    'N Cloud 产品',
+    'N Cloud 设备',
   ]),
 ]
 
@@ -2232,6 +2284,7 @@ module.exports = mergeFixtureData([
   ...IBM_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...CISCO_UCS_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...VMWARE_ADDITIONAL_SERVER_FIXTURE_DATA,
+  ...NCLOUD_ADDITIONAL_SERVER_FIXTURE_DATA,
   ...DELL_EMC_VNX_FIXTURE_DATA,
   ...DELL_STORAGE_FIXTURE_DATA,
   ...DELL_EMC_STORAGE_FIXTURE_DATA,
@@ -2254,6 +2307,7 @@ module.exports = mergeFixtureData([
   ...HUAWEI_ROUTER_FIXTURE_DATA,
   ...HUAWEI_LEGACY_NETWORK_FIXTURE_DATA,
   ...HUAWEI_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...HPE_NETWORK_FIXTURE_DATA,
   ...PALO_ALTO_NETWORKS_FIXTURE_DATA,
   ...PALO_ALTO_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...FORTINET_ADC_FIXTURE_DATA,
