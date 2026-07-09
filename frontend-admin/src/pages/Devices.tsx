@@ -115,6 +115,13 @@ type ModelSuggestionTarget =
   | { type: "form" }
   | { type: "batch"; index: number };
 
+const IMPORT_TEMPLATE_MAX_ROWS = 1000;
+const IMPORT_TEMPLATE_OPTIONS_SHEET = "_import_options";
+const IMPORT_TEMPLATE_MAINTENANCE_TYPES = ["待确认", "无维保", "原厂维保", "我方维保"];
+
+type ExcelWorkbook = import("exceljs").Workbook;
+type ExcelWorksheet = import("exceljs").Worksheet;
+
 interface DeviceForm {
   customerId: string;
   name: string;
@@ -790,7 +797,82 @@ function DeviceCustomerSuggestions({
   );
 }
 
+function extractMaintenancePartyNames(items: unknown) {
+  const names = Array.isArray(items)
+    ? items
+      .map((item) => String((item as MaintenanceParty | null)?.name || "").trim())
+      .filter(Boolean)
+    : [];
+  return [...new Set(names)].sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
+}
+
+async function loadMaintenancePartyNamesForTemplate() {
+  const data = await api.get("/maintenance-parties?limit=1000");
+  return extractMaintenancePartyNames(data?.items);
+}
+
+function worksheetRangeFormula(sheetName: string, column: string, startRow: number, endRow: number) {
+  const escapedSheetName = sheetName.replace(/'/g, "''");
+  return `'${escapedSheetName}'!$${column}$${startRow}:$${column}$${endRow}`;
+}
+
+function applyImportTemplateDropdowns(
+  workbook: ExcelWorkbook,
+  worksheet: ExcelWorksheet,
+  headerRowNumber: number,
+  maintenancePartyNames: string[],
+) {
+  const options = workbook.addWorksheet(IMPORT_TEMPLATE_OPTIONS_SHEET);
+  options.state = "veryHidden";
+  options.columns = [
+    { key: "maintenanceType", width: 18 },
+    { key: "maintenancePartyName", width: 32 },
+  ];
+  options.getCell("A1").value = "维保类型";
+  options.getCell("B1").value = "维保方名称";
+  IMPORT_TEMPLATE_MAINTENANCE_TYPES.forEach((value, index) => {
+    options.getCell(index + 2, 1).value = value;
+  });
+  maintenancePartyNames.forEach((value, index) => {
+    options.getCell(index + 2, 2).value = value;
+  });
+
+  const firstDataRow = headerRowNumber + 1;
+  const lastDataRow = headerRowNumber + IMPORT_TEMPLATE_MAX_ROWS;
+  const maintenanceTypeFormula = worksheetRangeFormula(
+    IMPORT_TEMPLATE_OPTIONS_SHEET,
+    "A",
+    2,
+    IMPORT_TEMPLATE_MAINTENANCE_TYPES.length + 1,
+  );
+  const maintenancePartyFormula = maintenancePartyNames.length
+    ? worksheetRangeFormula(IMPORT_TEMPLATE_OPTIONS_SHEET, "B", 2, maintenancePartyNames.length + 1)
+    : "";
+
+  for (let rowNumber = firstDataRow; rowNumber <= lastDataRow; rowNumber += 1) {
+    worksheet.getCell(rowNumber, 6).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [maintenanceTypeFormula],
+      showErrorMessage: true,
+      errorTitle: "请选择维保类型",
+      error: "请从下拉列表选择维保类型，或留空按待确认处理。",
+    };
+    if (maintenancePartyFormula) {
+      worksheet.getCell(rowNumber, 7).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [maintenancePartyFormula],
+        showErrorMessage: true,
+        errorTitle: "请选择维保方名称",
+        error: "请从下拉列表选择维保方名称，或先在系统维保方目录中维护后重新下载模板。",
+      };
+    }
+  }
+}
+
 async function downloadDeviceImportTemplate() {
+  const maintenancePartyNames = await loadMaintenancePartyNamesForTemplate();
   const [{ Workbook }, { saveAs }] = await Promise.all([
     import("exceljs"),
     import("file-saver"),
@@ -910,7 +992,7 @@ async function downloadDeviceImportTemplate() {
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
-    ["维保方名称", "有维保时选填", "按名称和维保类型匹配已有维保方。"],
+    ["维保方名称", "有维保时选填", "下拉名单来自系统维保方目录；按名称和维保类型匹配已有维保方。"],
     ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
     ["质保截止", "选填", "设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。"],
     ["日期字段", "选填", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
@@ -921,6 +1003,8 @@ async function downloadDeviceImportTemplate() {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE9FE" } };
     cell.alignment = { vertical: "middle", horizontal: "center" };
   });
+
+  applyImportTemplateDropdowns(workbook, worksheet, headerRowNumber, maintenancePartyNames);
 
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "设备资产导入模板.xlsx");

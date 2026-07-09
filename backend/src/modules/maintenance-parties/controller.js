@@ -64,6 +64,12 @@ function normalizePartyType(value, fallback = 'our_maintenance') {
   return partyTypeAliases[partyType] || partyType
 }
 
+function normalizeListLimit(value) {
+  const limit = Number(value)
+  if (!Number.isFinite(limit) || limit <= 0) return 200
+  return Math.min(1000, Math.max(1, Math.floor(limit)))
+}
+
 function validatePhone(input) {
   const phone = normalizePhoneNumber(input)
   if (!phone) return null
@@ -121,6 +127,7 @@ async function list(req, res) {
   await ensureMaintenancePartyColumns()
   const { partyType = '' } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const limit = normalizeListLimit(req.query.limit)
   const normalizedPartyType = partyType ? normalizePartyType(partyType, '') : ''
   if (normalizedPartyType && !validPartyTypes.has(normalizedPartyType)) {
     throw badRequest('维护方类型不正确')
@@ -139,7 +146,7 @@ async function list(req, res) {
          OR remark LIKE :likeKeyword
        )
      ORDER BY id DESC
-     LIMIT 200`,
+     LIMIT ${limit}`,
     {
       keyword,
       partyType: normalizedPartyType,
