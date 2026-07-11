@@ -72,13 +72,25 @@ export async function request(path: string, options: RequestInit = {}) {
     throw new Error('无法连接服务器')
   }
 
-  if (response.status === 401) clearSession()
+  if (response.status === 401) {
+    clearSession()
+    // 通知 AuthContext 同步登出:仅清存储不更新 React 状态会导致页面"假登录"、后续连环 401
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('oms:unauthorized'))
+  }
   if (response.status === 204) return null
 
   const contentType = response.headers.get('content-type') || ''
-  const payload = contentType.includes('application/json')
-    ? await response.json()
-    : await response.text()
+  let payload: any
+  if (contentType.includes('application/json')) {
+    // 网关截断/响应体损坏时 response.json() 会抛未包装的 SyntaxError,降级为文本避免丢失 status 分支
+    try {
+      payload = await response.json()
+    } catch {
+      payload = await response.text().catch(() => '')
+    }
+  } else {
+    payload = await response.text()
+  }
 
   if (!response.ok) {
     const message = payload?.error?.message || payload?.message || payload?.error || response.statusText

@@ -595,6 +595,9 @@ function telHref(value?: string) {
 }
 
 function normalizeCoordinate(value?: number | string | null) {
+  // Number(null)、Number("") 都会得到 0,会把"无坐标"误判为经纬度 0;先排除空值
+  if (value == null) return null
+  if (typeof value === "string" && value.trim() === "") return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
 }

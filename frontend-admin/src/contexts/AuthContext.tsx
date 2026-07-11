@@ -65,15 +65,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await api.get('/auth/me')
         setUser(data.user)
         setIsAuthenticated(hasAdminWorkspace(data.user))
-      } catch {
-        clearSession()
-        setUser(null)
-        setIsAuthenticated(false)
+      } catch (error) {
+        const status = (error as Error & { status?: number })?.status
+        if (status === 401 || status === 403) {
+          // 仅在确认未认证时清会话;网络抖动/后端 5xx 不应清掉"记住我"的本地会话
+          clearSession()
+          setUser(null)
+          setIsAuthenticated(false)
+        } else {
+          const cached = getCurrentUser() as User | null
+          setUser(cached)
+          setIsAuthenticated(hasAdminWorkspace(cached))
+        }
       } finally {
         setLoading(false)
       }
     }
     verify()
+  }, [])
+
+  useEffect(() => {
+    // api 层收到 401 已清存储,这里同步清 React 状态,避免页面停留在"假登录"
+    const onUnauthorized = () => {
+      setUser(null)
+      setIsAuthenticated(false)
+    }
+    window.addEventListener('oms:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('oms:unauthorized', onUnauthorized)
   }, [])
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
@@ -97,13 +115,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const data = await api.get('/users/me')
+    // 以服务端返回值优先(?? 保留服务端的空数组等合法值),本地旧值仅作缺省回退,
+    // 否则权限调整后 refreshUser 永远刷不新
     const nextUser = {
       ...user,
       ...data.user,
-      permissions: user?.permissions || data.user?.permissions || [],
-      permissionDetails: user?.permissionDetails || data.user?.permissionDetails || [],
-      availableWorkspaces: user?.availableWorkspaces || data.user?.availableWorkspaces || [],
-      defaultWorkspace: user?.defaultWorkspace || data.user?.defaultWorkspace || '',
+      permissions: data.user?.permissions ?? user?.permissions ?? [],
+      permissionDetails: data.user?.permissionDetails ?? user?.permissionDetails ?? [],
+      availableWorkspaces: data.user?.availableWorkspaces ?? user?.availableWorkspaces ?? [],
+      defaultWorkspace: data.user?.defaultWorkspace ?? user?.defaultWorkspace ?? '',
     }
     saveUser(nextUser)
     setUser(nextUser)

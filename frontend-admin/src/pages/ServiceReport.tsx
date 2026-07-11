@@ -2164,6 +2164,9 @@ export function ServiceReport() {
   const [formHeaderVisible, setFormHeaderVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // 新建路径下已成功创建的工单 id:建单成功但后续步骤(附件/签署)失败时,
+  // 重试改走更新路径,避免重复建单
+  const createdOrderIdRef = useRef("");
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [inspectionFiles, setInspectionFiles] = useState<File[]>([]);
   const [supportConfigFiles, setSupportConfigFiles] = useState<File[]>([]);
@@ -3128,60 +3131,65 @@ export function ServiceReport() {
     const activeDevices = form.targetDevices.filter(targetDeviceHasContent);
     const resolvedIds: string[] = [];
     const createdDevices: DeviceOption[] = [];
-    const nextDrafts: TargetDeviceDraft[] = [];
+    // 逐台建档时若中途失败,已建成的设备必须立即回写为 existing,
+    // 否则重试会对同一设备重复 POST /devices;用 finally 保证部分成功也持久化
+    const workingDrafts: TargetDeviceDraft[] = [...activeDevices];
 
-    for (const device of activeDevices) {
-      if (device.inputMode === "existing" && device.deviceId) {
-        resolvedIds.push(String(device.deviceId));
-        nextDrafts.push(device);
-        continue;
+    try {
+      for (let i = 0; i < activeDevices.length; i += 1) {
+        const device = activeDevices[i];
+        if (device.inputMode === "existing" && device.deviceId) {
+          resolvedIds.push(String(device.deviceId));
+          continue;
+        }
+        const model = device.model.trim();
+        const serialNo = device.serialNo.trim();
+        if (!model || !serialNo) {
+          throw new Error("请补齐目标设备的型号和序列号");
+        }
+        const data = await api.post("/devices", {
+          customerId: Number(form.customerId),
+          name: null,
+          model,
+          pn: device.pn.trim() || undefined,
+          serialNo,
+          remark: device.remark.trim() || undefined,
+        });
+        const newDevice: DeviceOption = {
+          id: data?.id,
+          customerId: form.customerId,
+          model,
+          pn: device.pn.trim(),
+          serialNo,
+          remark: device.remark.trim(),
+        };
+        if (!newDevice.id) throw new Error("目标设备已创建，但未返回设备 ID");
+        const newDeviceId = String(newDevice.id);
+        resolvedIds.push(newDeviceId);
+        createdDevices.push(newDevice);
+        workingDrafts[i] = emptyTargetDevice({
+          id: device.id,
+          inputMode: "existing",
+          deviceId: newDeviceId,
+          model,
+          pn: device.pn.trim(),
+          serialNo,
+          remark: device.remark.trim(),
+        });
       }
-      const model = device.model.trim();
-      const serialNo = device.serialNo.trim();
-      if (!model || !serialNo) {
-        throw new Error("请补齐目标设备的型号和序列号");
+    } finally {
+      if (createdDevices.length) {
+        setCustomerDevices((current) => [
+          ...createdDevices,
+          ...current.filter((device) => !createdDevices.some((created) => String(created.id) === String(device.id))),
+        ]);
       }
-      const data = await api.post("/devices", {
-        customerId: Number(form.customerId),
-        name: null,
-        model,
-        pn: device.pn.trim() || undefined,
-        serialNo,
-        remark: device.remark.trim() || undefined,
-      });
-      const newDevice: DeviceOption = {
-        id: data?.id,
-        customerId: form.customerId,
-        model,
-        pn: device.pn.trim(),
-        serialNo,
-        remark: device.remark.trim(),
-      };
-      if (!newDevice.id) throw new Error("目标设备已创建，但未返回设备 ID");
-      const newDeviceId = String(newDevice.id);
-      resolvedIds.push(newDeviceId);
-      createdDevices.push(newDevice);
-      nextDrafts.push(emptyTargetDevice({
-        id: device.id,
-        inputMode: "existing",
-        deviceId: newDeviceId,
-        model,
-        pn: device.pn.trim(),
-        serialNo,
-        remark: device.remark.trim(),
-      }));
+      if (activeDevices.length) {
+        patchTargetDevices(workingDrafts);
+      }
     }
 
     const uniqueIds = [...new Set(resolvedIds)];
-    if (createdDevices.length) {
-      setCustomerDevices((current) => [
-        ...createdDevices,
-        ...current.filter((device) => !createdDevices.some((created) => String(created.id) === String(device.id))),
-      ]);
-    }
-    if (activeDevices.length) {
-      patchTargetDevices(nextDrafts);
-    }
     return uniqueIds.map(Number).filter(Boolean);
   }
 
@@ -3927,13 +3935,17 @@ export function ServiceReport() {
     try {
       const resolvedTargetDeviceIds = await resolveTargetDevicesForSubmit();
       const payload = buildPayload(resolvedTargetDeviceIds);
-      let submittedOrderId = id || currentOrder?.id || "";
-      if (id) {
-        await uploadOrderFiles(id);
-        await api.put(`/service-orders/${id}/self-report`, payload);
+      // 若上一次提交已成功建单但后续步骤失败,复用该 id 走更新,杜绝重复建单
+      const existingOrderId = id || createdOrderIdRef.current;
+      let submittedOrderId = existingOrderId || currentOrder?.id || "";
+      if (existingOrderId) {
+        await uploadOrderFiles(existingOrderId);
+        await api.put(`/service-orders/${existingOrderId}/self-report`, payload);
       } else {
         const created = await api.post("/service-orders/self-report", payload);
         submittedOrderId = created?.id || "";
+        // 记住已建工单:此后任何步骤失败,重试都走更新而非再次 POST
+        if (submittedOrderId) createdOrderIdRef.current = String(submittedOrderId);
         if (submittedOrderId) await uploadOrderFiles(submittedOrderId);
       }
       const draftDeleteQuery = id
@@ -3953,12 +3965,14 @@ export function ServiceReport() {
         setSignatureRequestOrderId(submittedOrderId);
         try {
           await createCustomerSignatureRequest(submittedOrderId, false);
+          createdOrderIdRef.current = "";
           toast.success("服务记录已提交，等待客户签署");
         } catch (linkError) {
           setError(linkError instanceof Error ? `服务记录已提交，但签署链接生成失败：${linkError.message}` : "服务记录已提交，但签署链接生成失败");
         }
         return;
       }
+      createdOrderIdRef.current = "";
       toast.success("服务记录已提交");
       setPreviewOrder(null);
       navigate("/service-report", { replace: true });
