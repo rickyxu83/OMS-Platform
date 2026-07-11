@@ -624,6 +624,14 @@ async function deleteCustomerContacts(connection, customerId) {
   await connection.execute(`DELETE FROM customer_contacts WHERE id IN (${placeholders.join(',')})`, params)
 }
 
+async function deleteFromOptionalTable(connection, sql, params) {
+  try {
+    await connection.execute(sql, params)
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') throw error
+  }
+}
+
 async function deleteServiceOrders(connection, orderIds) {
   if (!orderIds.length) return []
   const { params, placeholders } = idParams(orderIds, 'orderId')
@@ -631,6 +639,10 @@ async function deleteServiceOrders(connection, orderIds) {
 
   await connection.execute(`UPDATE devices SET installation_source_service_order_id = NULL WHERE installation_source_service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_report_work_entries WHERE service_order_id IN (${list})`, params)
+  // 这两张子表由 service-orders 模块惰性建表并带外键(REFERENCES service_orders(id)),
+  // 强删客户时必须先删,否则触发 FK 1451;表可能尚未建立,ER_NO_SUCH_TABLE 忽略。
+  await deleteFromOptionalTable(connection, `DELETE FROM service_order_devices WHERE service_order_id IN (${list})`, params)
+  await deleteFromOptionalTable(connection, `DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM self_report_drafts WHERE service_order_id IN (${list})`, params)
   const deletedFilePaths = await deleteFileRowsForOrderIds(connection, orderIds)

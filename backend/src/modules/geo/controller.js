@@ -154,10 +154,25 @@ function rankPoiResults(items, { keyword, latitude, longitude }) {
   })
 }
 
+async function fetchAmapJson(url) {
+  // 高德接口异常/超时不应让整个搜索 500,失败一律降级为 null,由调用方回退到本地库结果
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) return null
+    return await response.json()
+  } catch (error) {
+    console.error('[geo] amap request failed:', error.message)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function fetchAmapPois(params) {
-  const response = await fetch(`https://restapi.amap.com/v3/place/text?${params.toString()}`)
-  const data = await response.json()
-  if (data.status !== '1') return []
+  const data = await fetchAmapJson(`https://restapi.amap.com/v3/place/text?${params.toString()}`)
+  if (!data || data.status !== '1') return []
   return (data.pois || []).map(normalizePoi)
 }
 
@@ -178,9 +193,8 @@ async function fetchAmapGeocode(address) {
     key: amapKey,
     address,
   })
-  const response = await fetch(`https://restapi.amap.com/v3/geocode/geo?${params.toString()}`)
-  const data = await response.json()
-  if (data.status !== '1' || !data.geocodes?.length) return null
+  const data = await fetchAmapJson(`https://restapi.amap.com/v3/geocode/geo?${params.toString()}`)
+  if (!data || data.status !== '1' || !data.geocodes?.length) return null
 
   const geocode = data.geocodes[0]
   const formattedAddress = geocode.formatted_address || address

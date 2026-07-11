@@ -260,6 +260,8 @@ async function update(req, res) {
   const accountEmail = email || username ? normalizeEmail(email || username) : ''
   const normalizedAlias = loginAlias === undefined ? undefined : normalizeAlias(loginAlias)
   const normalizedPhone = normalizeOptionalPhone(phone)
+  // 请求体未携带 phone 时不覆盖(否则仅改角色/状态的调用会把手机号清空);显式传空串才表示清除
+  const setPhone = phone !== undefined
   assertUserInput({ role, status })
 
   const existing = await query('SELECT id, role, email, login_alias FROM users WHERE id = :id LIMIT 1', { id })
@@ -287,7 +289,7 @@ async function update(req, res) {
       `UPDATE users
        SET username = COALESCE(:username, username),
            real_name = COALESCE(:realName, real_name),
-           phone = :phone,
+           phone = CASE WHEN :setPhone = 1 THEN :phone ELSE phone END,
            email = :email,
            login_alias = :loginAlias,
            role = COALESCE(:role, role),
@@ -301,6 +303,7 @@ async function update(req, res) {
         id,
         username: accountEmail || null,
         realName: realName || null,
+        setPhone: setPhone ? 1 : 0,
         phone: normalizedPhone,
         email: accountEmail || existing[0].email || null,
         loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,
@@ -314,7 +317,7 @@ async function update(req, res) {
       `UPDATE users
        SET username = COALESCE(:username, username),
            real_name = COALESCE(:realName, real_name),
-           phone = :phone,
+           phone = CASE WHEN :setPhone = 1 THEN :phone ELSE phone END,
            email = :email,
            login_alias = :loginAlias,
            role = COALESCE(:role, role),
@@ -324,6 +327,7 @@ async function update(req, res) {
         id,
         username: accountEmail || null,
         realName: realName || null,
+        setPhone: setPhone ? 1 : 0,
         phone: normalizedPhone,
         email: accountEmail || existing[0].email || null,
         loginAlias: normalizedAlias === undefined ? existing[0].login_alias || null : normalizedAlias || null,

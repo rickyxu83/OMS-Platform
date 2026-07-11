@@ -16,6 +16,9 @@ const MAX_FAILED_LOGINS = 5
 const LOCKOUT_MINUTES = 15
 const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000
 
+// 账号不存在/被锁定时用它做一次等时 bcrypt 比对,消除"是否注册"的时间侧信道
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__timing_guard__', 10)
+
 function isLockActive(lockedUntil) {
   return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
 }
@@ -109,6 +112,8 @@ async function login(req, res) {
 
     const existingUser = rows[0]
     if (!existingUser || isLockActive(existingUser.locked_until)) {
+      // 做一次等时哈希比对,使不存在/被锁账号与存在账号的响应耗时一致
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH)
       return invalidLoginResult()
     }
 

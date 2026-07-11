@@ -15,6 +15,7 @@ const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename 
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
 const { ROLE_GROUPS } = require('../../permissions/roles')
+const { hasAnyPermission } = require('../../permissions/store')
 const {
   assertSalesCanAccessSalesperson,
   buildSalesCustomerScope,
@@ -25,6 +26,7 @@ const signatureRoot = path.join(uploadRoot, 'signatures')
 fs.mkdirSync(signatureRoot, { recursive: true })
 
 let serviceReportTravelColumnsReady = false
+let serviceReportWorkEntriesTableReady = false
 let selfReportDraftsTableReady = false
 let serviceOrderInspectionColumnsReady = false
 let servicePartsColumnsReady = false
@@ -316,7 +318,8 @@ function publicStatus(status) {
 }
 
 async function ensureServiceOrderInspectionColumns(connection = null) {
-  if (!connection && serviceOrderInspectionColumnsReady) return
+  // DDL 会导致 MySQL 隐式提交:一旦本进程已确认结构就绪,事务内调用必须直接跳过
+  if (serviceOrderInspectionColumnsReady) return
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   const [rows] = await execute(
     `SELECT column_name AS columnName
@@ -407,9 +410,7 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
     await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_inspection_schedule (inspection_schedule_id)')
   }
 
-  if (!connection) {
-    serviceOrderInspectionColumnsReady = true
-  }
+  serviceOrderInspectionColumnsReady = true
 }
 
 function shanghaiDateKey(offsetDays = 0) {
@@ -511,6 +512,7 @@ async function ensureTimesheetManualEntriesTable(connection = null) {
 }
 
 async function ensureServiceReportWorkEntriesTable(connection = null) {
+  if (serviceReportWorkEntriesTableReady) return
   const executor = connection || { execute: query }
   await executor.execute(
     `CREATE TABLE IF NOT EXISTS service_report_work_entries (
@@ -523,6 +525,7 @@ async function ensureServiceReportWorkEntriesTable(connection = null) {
       KEY idx_service_report_work_entries_engineer_id (engineer_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  serviceReportWorkEntriesTableReady = true
 }
 
 async function ensureServiceReportTravelColumns() {
@@ -605,7 +608,7 @@ async function ensureSelfReportDraftsTable(connection = null) {
 }
 
 async function ensureServicePartsColumns(connection = null) {
-  if (!connection && servicePartsColumnsReady) return
+  if (servicePartsColumnsReady) return
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   await execute(
     `CREATE TABLE IF NOT EXISTS service_parts (
@@ -653,13 +656,11 @@ async function ensureServicePartsColumns(connection = null) {
     await execute('ALTER TABLE service_parts ADD KEY idx_service_parts_device_id (device_id)')
   }
 
-  if (!connection) {
-    servicePartsColumnsReady = true
-  }
+  servicePartsColumnsReady = true
 }
 
 async function ensureServiceOrderDevicesTable(connection = null, options = {}) {
-  if (!connection && serviceOrderDevicesTableReady) return
+  if (serviceOrderDevicesTableReady) return
   const backfillLegacyDevice = options.backfillLegacyDevice !== false
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   await execute(
@@ -681,13 +682,11 @@ async function ensureServiceOrderDevicesTable(connection = null, options = {}) {
        WHERE device_id IS NOT NULL`,
     )
   }
-  if (!connection) {
-    serviceOrderDevicesTableReady = true
-  }
+  serviceOrderDevicesTableReady = true
 }
 
 async function ensureCustomerSignatureRequestsTable(connection = null) {
-  if (!connection && customerSignatureRequestsTableReady) return
+  if (customerSignatureRequestsTableReady) return
   const executor = connection || { execute: query }
   await executor.execute(
     `CREATE TABLE IF NOT EXISTS service_order_customer_signature_requests (
@@ -713,9 +712,18 @@ async function ensureCustomerSignatureRequestsTable(connection = null) {
       CONSTRAINT fk_customer_signature_requests_created_by FOREIGN KEY (created_by) REFERENCES users (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  if (!connection) {
-    customerSignatureRequestsTableReady = true
-  }
+  customerSignatureRequestsTableReady = true
+}
+
+async function prewarmServiceOrderSchema() {
+  // 在开启事务前于事务外完成所有惰性 DDL,避免事务内 CREATE/ALTER 触发隐式提交破坏原子性
+  await ensureServiceOrderInspectionColumns()
+  await ensureServicePartsColumns()
+  await ensureServiceOrderDevicesTable()
+  await ensureDeviceMaintenanceTypeEnum()
+  await ensureCustomerSignatureRequestsTable()
+  await ensureServiceReportWorkEntriesTable()
+  await ensureSelfReportDraftsTable()
 }
 
 function normalizeDraftScope(orderId) {
@@ -2138,7 +2146,7 @@ function normalizeInstallDevicesPayload(installDevices = [], legacyDevice = {}) 
 }
 
 async function ensureDeviceMaintenanceTypeEnum(connection) {
-  if (!connection && deviceMaintenanceTypeEnumReady) return
+  if (deviceMaintenanceTypeEnumReady) return
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   const [rows] = await execute(
     `SELECT column_type AS columnType
@@ -2155,9 +2163,7 @@ async function ensureDeviceMaintenanceTypeEnum(connection) {
     )
     await execute("UPDATE devices SET maintenance_type = 'pending_confirmation' WHERE maintenance_type = 'none'")
   }
-  if (!connection) {
-    deviceMaintenanceTypeEnumReady = true
-  }
+  deviceMaintenanceTypeEnumReady = true
 }
 
 async function resolveInstallDevices(connection, installDevices, { customerId, serviceOrderId = null, updateLegacyExisting = false } = {}) {
@@ -2533,6 +2539,11 @@ async function createSelfReport(req, res) {
   }
   await ensureServiceReportTravelColumns()
   await ensureSelfReportDraftsTable()
+  // 事务内禁止 DDL(隐式提交会破坏原子性),提前在事务外准备好所有惰性结构
+  await ensureServicePartsColumns()
+  await ensureServiceOrderDevicesTable()
+  await ensureDeviceMaintenanceTypeEnum()
+  await ensureCustomerSignatureRequestsTable()
 
   const created = await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
@@ -3142,6 +3153,7 @@ async function submitCustomerSignatureRequest(req, res) {
   if (!customerSignature) {
     throw badRequest('请先完成客户签名')
   }
+  await ensureCustomerSignatureRequestsTable()
 
   const signed = await transaction(async (connection) => {
     const row = await customerSignatureRequestByToken(req.params.token, { connection, forUpdate: true })
@@ -3292,13 +3304,29 @@ async function latestCustomerSignature(req, res) {
     ? `CASE WHEN (${customerFilters.join(' OR ')}) THEN 0 ELSE 1 END,`
     : ''
 
+  // 工程师角色只能取回自己参与过的工单上的签名,
+  // 防止按客户名/联系人枚举拉取全库客户手写签名图
+  let engineerScopeSql = ''
+  if (engineerScopedRoles.has(req.user.role)) {
+    engineerScopeSql = `
+       AND (
+         so.assigned_engineer_id = :scopeEngineerId
+         OR EXISTS (
+           SELECT 1
+           FROM service_order_engineers soe
+           WHERE soe.service_order_id = so.id AND soe.engineer_id = :scopeEngineerId
+         )
+       )`
+    params.scopeEngineerId = req.user.id
+  }
+
   const rows = await query(
     `SELECT sr.customer_signature_file_id, sr.customer_signature
      FROM service_reports sr
      JOIN service_orders so ON so.id = sr.service_order_id
      JOIN customers c ON c.id = so.customer_id
      WHERE (sr.customer_signature_file_id IS NOT NULL OR sr.customer_signature IS NOT NULL)
-       AND (${filters.join(' OR ')})
+       AND (${filters.join(' OR ')})${engineerScopeSql}
      ORDER BY ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,
@@ -3563,6 +3591,10 @@ async function updateSelfReport(req, res) {
   }
   await ensureServiceReportTravelColumns()
   await ensureSelfReportDraftsTable()
+  // 事务内禁止 DDL(隐式提交会破坏原子性),提前在事务外准备好所有惰性结构
+  await ensureServicePartsColumns()
+  await ensureServiceOrderDevicesTable()
+  await ensureDeviceMaintenanceTypeEnum()
 
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
@@ -3883,36 +3915,54 @@ async function update(req, res) {
   }
   assertEditable(order)
 
-  const { customerId, deviceId, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = req.body || {}
+  const body = req.body || {}
+  const { customerId, deviceId, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = body
   const normalizedServiceMode = ['remote', 'onsite', 'office'].includes(serviceMode) ? serviceMode : null
   const effectiveServiceMode = normalizedServiceMode || order.service_mode || 'onsite'
   const effectiveTimesheetCategory =
     effectiveServiceMode === 'remote' ? timesheetCategory || order.timesheet_category || '排障' : null
-  await query(
-    `UPDATE service_orders
-     SET customer_id = COALESCE(:customerId, customer_id),
-         device_id = :deviceId,
-         service_mode = COALESCE(:serviceMode, service_mode),
-         service_type = COALESCE(:serviceType, service_type),
-         timesheet_category = :timesheetCategory,
-         timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
-         priority = COALESCE(:priority, priority),
-         issue_description = COALESCE(:issueDescription, issue_description),
-         internal_note = :internalNote
-     WHERE id = :id`,
-    {
-      id: req.params.id,
-      customerId: customerId || null,
-      deviceId: deviceId || null,
-      serviceMode: normalizedServiceMode,
-      serviceType: serviceType || null,
-      timesheetCategory: effectiveTimesheetCategory,
-      timesheetSalesperson: timesheetSalesperson || null,
-      priority: priority || null,
-      issueDescription: issueDescription || null,
-      internalNote: effectiveServiceMode === 'office' ? null : internalNote || null,
-    },
-  )
+  // 请求体未携带的字段不应被清空:仅当显式传入 deviceId / internalNote 时才覆盖
+  const hasDeviceId = Object.prototype.hasOwnProperty.call(body, 'deviceId')
+  const hasInternalNote = Object.prototype.hasOwnProperty.call(body, 'internalNote')
+  const nextDeviceId = deviceId || null
+  const effectiveCustomerId = customerId || order.customer_id
+  // 内勤(office)模式历史上强制清空内部备注,保留该语义
+  const setInternalNote = effectiveServiceMode === 'office' || hasInternalNote
+  const nextInternalNote = effectiveServiceMode === 'office' ? null : internalNote || null
+
+  await transaction(async (connection) => {
+    if (hasDeviceId && nextDeviceId) {
+      // 挂设备前校验该设备确属目标客户,防止把 A 客户工单挂到 B 客户设备
+      await assertDeviceBelongsToCustomer(connection, nextDeviceId, effectiveCustomerId)
+    }
+    await connection.execute(
+      `UPDATE service_orders
+       SET customer_id = COALESCE(:customerId, customer_id),
+           device_id = CASE WHEN :setDevice = 1 THEN :deviceId ELSE device_id END,
+           service_mode = COALESCE(:serviceMode, service_mode),
+           service_type = COALESCE(:serviceType, service_type),
+           timesheet_category = :timesheetCategory,
+           timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
+           priority = COALESCE(:priority, priority),
+           issue_description = COALESCE(:issueDescription, issue_description),
+           internal_note = CASE WHEN :setNote = 1 THEN :internalNote ELSE internal_note END
+       WHERE id = :id`,
+      {
+        id: req.params.id,
+        customerId: customerId || null,
+        setDevice: hasDeviceId ? 1 : 0,
+        deviceId: nextDeviceId,
+        serviceMode: normalizedServiceMode,
+        serviceType: serviceType || null,
+        timesheetCategory: effectiveTimesheetCategory,
+        timesheetSalesperson: timesheetSalesperson || null,
+        priority: priority || null,
+        issueDescription: issueDescription || null,
+        setNote: setInternalNote ? 1 : 0,
+        internalNote: nextInternalNote,
+      },
+    )
+  })
 
   res.status(204).end()
 }
@@ -3981,7 +4031,7 @@ async function assign(req, res) {
 }
 
 async function transition(req, res) {
-  await ensureServiceOrderInspectionColumns()
+  await prewarmServiceOrderSchema()
   const order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
@@ -3998,6 +4048,29 @@ async function transition(req, res) {
   if (order.status === status) {
     res.json({ item: orderPayload((await attachEngineers([order]))[0]) })
     return
+  }
+
+  // 状态机:限制合法的流转路径,阻断如 cancelled→approved、draft→archived 之类的越级跳转
+  const TRANSITIONS = {
+    draft: ['assigned', 'cancelled'],
+    assigned: ['draft', 'in_progress', 'awaiting_customer_signature', 'submitted', 'cancelled'],
+    in_progress: ['assigned', 'awaiting_customer_signature', 'submitted', 'cancelled'],
+    awaiting_customer_signature: ['in_progress', 'submitted', 'cancelled'],
+    submitted: ['in_progress', 'approved', 'cancelled'],
+    approved: ['submitted', 'archived', 'cancelled'],
+    cancelled: ['draft', 'assigned'],
+    archived: [],
+  }
+  const allowedNext = TRANSITIONS[order.status] || []
+  if (!allowedNext.includes(status)) {
+    throw badRequest(`不允许从「${order.status}」流转到「${status}」`)
+  }
+
+  // 审批相关状态(置为已审核/已归档,或重开已审核工单)必须持有 order.approve,
+  // 仅有 order.edit 的助理/派单员不得越权审批。路由放行 order.edit OR order.approve,此处二次校验。
+  const requiresApproval = status === 'approved' || status === 'archived' || order.status === 'approved'
+  if (requiresApproval && !(await hasAnyPermission(req.user.role, ['order.approve']))) {
+    throw forbidden('无审批权限,不能审核 / 归档或重开已审核工单')
   }
 
   await transaction(async (connection) => {
@@ -4100,11 +4173,14 @@ async function confirmInspectionOrder(req, res) {
 }
 
 async function cancelByEngineer(req, res) {
+  await prewarmServiceOrderSchema()
   const order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
   }
   await assertEngineerOwns(order, req.user)
+  // 已审核/已归档/已作废的工单不允许工程师作废(否则可绕过审核约束并触发安装设备清理)
+  assertEditable(order)
 
   await transaction(async (connection) => {
     await connection.execute(
@@ -4127,6 +4203,7 @@ async function cancelByEngineer(req, res) {
 }
 
 async function remove(req, res) {
+  await prewarmServiceOrderSchema()
   const order = await getOrder(req.params.id)
   if (!order) {
     throw notFound('服务单不存在')
@@ -4181,6 +4258,7 @@ async function remove(req, res) {
 }
 
 async function bulkDelete(req, res) {
+  await prewarmServiceOrderSchema()
   const ids = Array.isArray(req.body?.ids)
     ? [...new Set(req.body.ids.map((id) => Number(id)).filter(Boolean))]
     : []

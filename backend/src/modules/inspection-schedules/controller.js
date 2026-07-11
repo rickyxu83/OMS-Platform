@@ -79,7 +79,7 @@ async function loadScheduleDevices(scheduleIds, connection = null) {
 }
 
 async function ensureInspectionSchedulesTable(connection = null) {
-  if (!connection && inspectionSchedulesTableReady) return
+  if (inspectionSchedulesTableReady) return
   // query() 直接返回 rows,connection.execute() 返回 [rows, fields],统一包装成后者形态
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   await execute(
@@ -129,9 +129,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
   if (!nameRows?.[0]) {
     await execute('ALTER TABLE inspection_schedules ADD COLUMN name VARCHAR(160) NULL AFTER id')
   }
-  if (!connection) {
-    inspectionSchedulesTableReady = true
-  }
+  inspectionSchedulesTableReady = true
 }
 
 function normalizeScheduleName(value) {
@@ -207,7 +205,7 @@ function todayDateKey() {
 }
 
 async function ensureInspectionOrderColumns(connection = null) {
-  if (!connection && inspectionOrderColumnsReady) return
+  if (inspectionOrderColumnsReady) return
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   const [rows] = await execute(
     `SELECT column_name AS columnName
@@ -278,9 +276,7 @@ async function ensureInspectionOrderColumns(connection = null) {
     await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_inspection_schedule (inspection_schedule_id)')
   }
 
-  if (!connection) {
-    inspectionOrderColumnsReady = true
-  }
+  inspectionOrderColumnsReady = true
 }
 
 async function nextOrderNo(connection, now = new Date()) {
@@ -414,7 +410,7 @@ function duplicateScheduleError(error) {
 let inspectionScheduleDevicesReady = false
 
 async function ensureInspectionScheduleDevicesTable(connection = null) {
-  if (!connection && inspectionScheduleDevicesReady) return
+  if (inspectionScheduleDevicesReady) return
   // query() 直接返回 rows,connection.execute() 返回 [rows, fields],统一包装成后者形态
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   await execute(
@@ -483,7 +479,14 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
     await execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
   }
 
-  if (!connection) inspectionScheduleDevicesReady = true
+  if (inspectionScheduleDevicesReady === false) inspectionScheduleDevicesReady = true
+}
+
+async function prewarmInspectionSchema() {
+  // 事务内 CREATE/ALTER 会触发 MySQL 隐式提交、破坏原子性,统一在事务外提前完成惰性 DDL
+  await ensureInspectionSchedulesTable()
+  await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionOrderColumns()
 }
 
 async function assertDeviceBelongsToCustomer(connection, customerId, deviceId) {
@@ -629,6 +632,7 @@ async function create(req, res) {
 
   let created
   try {
+    await prewarmInspectionSchema()
     created = await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
@@ -704,6 +708,7 @@ async function createBulk(req, res) {
 
   let createdIds = []
   try {
+    await prewarmInspectionSchema()
     createdIds = await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
@@ -812,6 +817,7 @@ async function update(req, res) {
   const deviceIdsForWrite = normalizedDeviceIds || [...new Set((existing._devices || []).map((d) => Number(d.device_id)).filter(Boolean))]
 
   try {
+    await prewarmInspectionSchema()
     await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
