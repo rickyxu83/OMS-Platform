@@ -798,6 +798,19 @@ export function Attendance() {
   const annualPreview = form.requestType === "leave" ? annualLeaveRange(form) : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
 
+  const overtimeOrderMeta: Array<[string, string]> = selectedOvertimeOrder ? [
+    ["工单", selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`],
+    ["客户", selectedOvertimeOrder.customerName || "-"],
+    ["设备", selectedOvertimeOrder.deviceName || "-"],
+    ["类型", `${SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / ${SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}`],
+    ["联系人", `${selectedOvertimeOrder.contactName || "-"}${selectedOvertimeOrder.contactPhone ? ` ${selectedOvertimeOrder.contactPhone}` : ""}`],
+    ["服务日", formatDateTime(selectedOvertimeOrder.serviceAt)],
+    ["出发", formatDateTime(selectedOvertimeOrder.departureAt)],
+    ["到达", formatDateTime(selectedOvertimeOrder.actualStartAt)],
+    ["完成", formatDateTime(selectedOvertimeOrder.actualEndAt)],
+    ["返回", formatDateTime(selectedOvertimeOrder.returnAt)],
+  ] : [];
+
   const statTiles = [
     { label: "可用年假", value: `${days(annualBalanceDays(myProfile))} 天` },
     { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时` },
@@ -910,7 +923,105 @@ export function Attendance() {
                 </div>
 
                 <div className="p-4 md:p-5">
-                  <div className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-12">
+                  {form.requestType === "overtime" ? (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>工单</Label>
+                          <Select
+                            value={selectedOvertimeOrderId}
+                            onValueChange={(value) => {
+                              setSelectedOvertimeOrderId(value);
+                              const order = overtimeOrders.find((item) => String(item.id) === value);
+                              setSelectedSegmentKey(overtimeRows(order || null)[0]?.key || "");
+                            }}
+                            disabled={overtimeLoading || overtimeOrders.length === 0}
+                          >
+                            <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
+                            <SelectContent>
+                              {overtimeOrders.map((order) => (
+                                <SelectItem key={order.id} value={String(order.id)}>
+                                  {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>加班结果</Label>
+                          <Select
+                            value={selectedSegment?.kind === "travel" ? "comp_time" : form.overtimeResult}
+                            onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}
+                            disabled={!selectedSegment || selectedSegment.kind === "travel"}
+                          >
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="comp_time">转调休</SelectItem>
+                              {selectedSegment && selectedSegment.kind !== "travel" ? (
+                                <SelectItem value="pay">{overtimePayLabel(selectedSegment)}</SelectItem>
+                              ) : null}
+                            </SelectContent>
+                          </Select>
+                          {selectedSegment?.kind === "travel" ? (
+                            <p className="text-xs text-muted-foreground">来回路上时间固定转调休</p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {selectedOvertimeOrder ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label>加班时段</Label>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {selectedOvertimeRows.map((segment) => {
+                                const active = selectedSegmentKey === segment.key;
+                                return (
+                                  <button
+                                    key={segment.key}
+                                    type="button"
+                                    onClick={() => setSelectedSegmentKey(segment.key)}
+                                    className={`rounded-md border p-3 text-left text-sm transition ${
+                                      active ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "bg-background hover:bg-muted/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium">{segment.label}</span>
+                                      {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)}
+                                    </div>
+                                    <div className="mt-0.5 text-xs text-muted-foreground">
+                                      {hours(segment.hours)} 小时
+                                      {segment.dayType ? ` · ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
+                                      {segment.kind === "travel" ? " · 固定转调休" : ""}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                              {selectedOvertimeRows.length === 0 ? (
+                                <div className="rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground md:col-span-2">暂无可申请时段</div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="rounded-md border bg-muted/10 p-3">
+                            <div className="text-xs font-medium text-muted-foreground">工单信息</div>
+                            <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
+                              {overtimeOrderMeta.map(([label, value]) => (
+                                <div key={label}>{label}：{value}</div>
+                              ))}
+                              <div className="sm:col-span-2 xl:col-span-3">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                          {overtimeLoading ? "正在加载…" : "暂无可申请加班的工单"}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-12">
                   {form.requestType === "leave" ? (
                     <div className="space-y-2 lg:col-span-2">
                       <Label>假别</Label>
@@ -933,101 +1044,7 @@ export function Attendance() {
                       </Select>
                     </div>
                   ) : null}
-                  {form.requestType === "overtime" ? (
-                    <>
-                    <div className="space-y-2 xl:col-span-5">
-                      <Label>工单</Label>
-                      <Select
-                        value={selectedOvertimeOrderId}
-                        onValueChange={(value) => {
-                          setSelectedOvertimeOrderId(value);
-                          const order = overtimeOrders.find((item) => String(item.id) === value);
-                          setSelectedSegmentKey(overtimeRows(order || null)[0]?.key || "");
-                        }}
-                        disabled={overtimeLoading || overtimeOrders.length === 0}
-                      >
-                        <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
-                        <SelectContent>
-                          {overtimeOrders.map((order) => (
-                            <SelectItem key={order.id} value={String(order.id)}>
-                              {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2 md:col-span-2 xl:col-span-7">
-                      <Label>工单信息</Label>
-                      <div className="rounded-md border bg-muted/10 px-3 py-2 text-sm">
-                        {selectedOvertimeOrder ? (
-                          <div className="space-y-2">
-                            <div className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-2">
-                              <div>工单：{selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`}</div>
-                              <div>客户：{selectedOvertimeOrder.customerName || "-"}</div>
-                              <div>设备：{selectedOvertimeOrder.deviceName || "-"}</div>
-                              <div>类型：{SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / {SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}</div>
-                              <div>联系人：{selectedOvertimeOrder.contactName || "-"} {selectedOvertimeOrder.contactPhone || ""}</div>
-                              <div>服务日：{formatDateTime(selectedOvertimeOrder.serviceAt)}</div>
-                              <div>出发：{formatDateTime(selectedOvertimeOrder.departureAt)}</div>
-                              <div>到达：{formatDateTime(selectedOvertimeOrder.actualStartAt)}</div>
-                              <div>完成：{formatDateTime(selectedOvertimeOrder.actualEndAt)}</div>
-                              <div>返回：{formatDateTime(selectedOvertimeOrder.returnAt)}</div>
-                              <div className="md:col-span-2">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
-                            </div>
-                            <div className="space-y-2 border-t pt-2">
-                              {selectedOvertimeRows.map((segment) => {
-                                const active = selectedSegmentKey === segment.key;
-                                return (
-                                  <div
-                                    key={segment.key}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => setSelectedSegmentKey(segment.key)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter" || event.key === " ") setSelectedSegmentKey(segment.key);
-                                    }}
-                                    className={`grid w-full gap-2 rounded-md border p-2 text-left transition md:grid-cols-[1fr_220px] ${active ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
-                                  >
-                                    <div>
-                                      <div className="font-medium">{segment.label}</div>
-                                      <div className="mt-1 text-xs text-muted-foreground">
-                                        {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)} / {hours(segment.hours)} 小时
-                                        {segment.dayType ? ` / ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
-                                      </div>
-                                    </div>
-                                    <div onClick={(event) => event.stopPropagation()}>
-                                      {segment.kind === "travel" ? (
-                                        <Select value="comp_time" disabled>
-                                          <SelectTrigger><SelectValue /></SelectTrigger>
-                                          <SelectContent><SelectItem value="comp_time">转调休</SelectItem></SelectContent>
-                                        </Select>
-                                      ) : (
-                                        <Select value={form.overtimeResult} onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}>
-                                          <SelectTrigger><SelectValue /></SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="comp_time">转调休</SelectItem>
-                                            <SelectItem value="pay">{overtimePayLabel(segment)}</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {selectedOvertimeRows.length === 0 ? (
-                                <div className="py-3 text-center text-xs text-muted-foreground">暂无可申请时段</div>
-                              ) : null}
-                            </div>
-                          </div>
-                        ) : overtimeLoading ? (
-                          <span className="text-muted-foreground">正在加载…</span>
-                        ) : (
-                          <span className="text-muted-foreground">暂无可申请加班的工单</span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : form.requestType === "leave" ? (
+                  {form.requestType === "leave" ? (
                   <>
                     <div className="space-y-2 xl:col-span-3">
                       <Label>开始日期</Label>
@@ -1090,7 +1107,8 @@ export function Attendance() {
                     </div>
                   </>
                 )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
