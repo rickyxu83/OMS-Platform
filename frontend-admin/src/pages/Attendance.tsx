@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, Check, Loader2, Plus, RefreshCw, RotateCcw, Save, Send, ShieldCheck, Trash2, X } from "lucide-react";
+import { CalendarClock, Check, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, ShieldCheck, Trash2, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,6 +16,7 @@ import { api } from "@/services/api";
 
 type RequestType = "leave" | "overtime" | "comp_time";
 type AnnualLeavePeriod = "morning" | "afternoon" | "day";
+type AttendanceTab = "apply" | "records" | "report" | "employees" | "settings";
 
 interface AttendanceRequest {
   id: number | string;
@@ -50,6 +53,21 @@ interface EmployeeProfile {
   annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
+}
+
+interface EmployeeDraft {
+  employeeName: string;
+  nationality: string;
+  hireDate: string;
+  leaveDate: string;
+  attendanceEnabled: boolean;
+  annualLeaveRule: string;
+}
+
+interface AdjustDraft {
+  balanceType: "comp_time" | "annual_leave";
+  amount: string;
+  note: string;
 }
 
 interface MonthlyReportItem {
@@ -187,9 +205,9 @@ const STATUS_LABELS: Record<string, string> = {
   voided: "已作废",
 };
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "info" | "destructive" | "outline"> = {
   pending_supervisor: "warning",
-  pending_admin: "info" as any,
+  pending_admin: "info",
   approved: "success",
   rejected: "destructive",
   withdrawn: "secondary",
@@ -206,6 +224,11 @@ const ROLE_LABELS: Record<string, string> = {
   sales_supervisor: "业务主管",
   sales: "业务",
   engineer: "工程师",
+};
+
+const NATIONALITY_LABELS: Record<string, string> = {
+  mainland: "陆籍",
+  taiwan: "台籍",
 };
 
 function todayMonth() {
@@ -285,6 +308,15 @@ function applyAnnualLeaveRange<T extends {
 function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
+}
+
+function formatDate(value?: string) {
+  if (!value) return "-";
+  return String(value).slice(0, 10);
+}
+
+function dateInputValue(value?: string) {
+  return String(value || "").slice(0, 10);
 }
 
 function hours(value?: number) {
@@ -388,11 +420,27 @@ function createBlankForm() {
   });
 }
 
+function createEmployeeDraft(employee: EmployeeProfile): EmployeeDraft {
+  return {
+    employeeName: String(employee.employeeName || ""),
+    nationality: String(employee.nationality || "mainland"),
+    hireDate: dateInputValue(employee.hireDate),
+    leaveDate: dateInputValue(employee.leaveDate),
+    attendanceEnabled: employee.attendanceEnabled !== false,
+    annualLeaveRule: String(employee.annualLeaveRule || employee.nationality || "mainland"),
+  };
+}
+
+function createAdjustDraft(): AdjustDraft {
+  return { balanceType: "comp_time", amount: "", note: "" };
+}
+
 export function Attendance() {
   const { hasPermission } = useAuth();
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.manage");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
+  const [activeTab, setActiveTab] = useState<AttendanceTab>("apply");
   const [form, setForm] = useState(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -402,11 +450,16 @@ export function Attendance() {
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
-  const [employeeDrafts, setEmployeeDrafts] = useState<Record<string, Partial<EmployeeProfile>>>({});
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
   const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
-  const [adjustDrafts, setAdjustDrafts] = useState<Record<string, { balanceType: string; deltaHours: string; note: string }>>({});
+  const [employeeDialog, setEmployeeDialog] = useState<{ employee: EmployeeProfile; draft: EmployeeDraft } | null>(null);
+  const [employeeSaving, setEmployeeSaving] = useState(false);
+  const [adjustDialog, setAdjustDialog] = useState<{ employee: EmployeeProfile; draft: AdjustDraft } | null>(null);
+  const [adjustSaving, setAdjustSaving] = useState(false);
+  const [recordStatus, setRecordStatus] = useState("all");
+  const [recordType, setRecordType] = useState("all");
+  const [recordKeyword, setRecordKeyword] = useState("");
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
@@ -439,16 +492,14 @@ export function Attendance() {
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
       if (canViewAll) {
-        const employeeList = (employeeData?.items || []) as EmployeeProfile[];
         const roleRules = (roleRuleData || {}) as SupervisorRoleRulePayload;
         const ruleItems = roleRules.items || [];
         setAllRequests((allData?.items || []) as AttendanceRequest[]);
-        setEmployees(employeeList);
+        setEmployees((employeeData?.items || []) as EmployeeProfile[]);
         setReportItems((reportData?.items || []) as MonthlyReportItem[]);
         setRoleOptions(roleRules.roles || []);
         setSupervisorRoleRules(ruleItems);
         setSupervisorRoleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
-        setEmployeeDrafts(Object.fromEntries(employeeList.map((employee) => [String(employee.id), { ...employee }])));
         setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
     } catch (e) {
@@ -484,16 +535,40 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.requestType]);
 
-  const stats = useMemo(() => {
-    const pendingMine = mine.filter((item) => item.status === "pending_supervisor" || item.status === "pending_admin").length;
-    const pendingSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor").length;
-    const pendingAdmin = allRequests.filter((item) => item.status === "pending_admin").length;
-    return [
-      { label: "我的进行中", value: pendingMine },
-      { label: "主管待审", value: pendingSupervisor },
-      { label: "行政待审", value: canAdminApprove ? pendingAdmin : "-" },
+  const pendingMine = useMemo(
+    () => mine.filter((item) => item.status === "pending_supervisor" || item.status === "pending_admin").length,
+    [mine],
+  );
+  const supervisorPending = useMemo(
+    () => supervisorTodo.filter((item) => item.status === "pending_supervisor"),
+    [supervisorTodo],
+  );
+  const adminPending = useMemo(
+    () => (canAdminApprove ? allRequests.filter((item) => item.status === "pending_admin") : []),
+    [allRequests, canAdminApprove],
+  );
+  const approvalTodos = useMemo(() => {
+    const seen = new Set(supervisorPending.map((item) => String(item.id)));
+    return [...supervisorPending, ...adminPending.filter((item) => !seen.has(String(item.id)))];
+  }, [supervisorPending, adminPending]);
+  const isApprover = canAdminApprove || supervisorPending.length > 0;
+
+  const tabs = useMemo(() => {
+    const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
+      { key: "apply", label: "申请与审批", count: approvalTodos.length },
     ];
-  }, [mine, supervisorTodo, allRequests, canAdminApprove]);
+    if (canViewAll) {
+      items.push({ key: "records", label: "全员记录" });
+      items.push({ key: "report", label: "月度报表" });
+    }
+    if (canManage) items.push({ key: "employees", label: "员工与余额" });
+    if (canViewAll) items.push({ key: "settings", label: "考勤设置" });
+    return items;
+  }, [canViewAll, canManage, approvalTodos.length]);
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("apply");
+  }, [tabs, activeTab]);
 
   const selectedOvertimeOrder = useMemo(
     () => overtimeOrders.find((item) => String(item.id) === selectedOvertimeOrderId) || null,
@@ -598,40 +673,61 @@ export function Attendance() {
     }
   }
 
-  async function saveEmployee(employee: EmployeeProfile) {
-    const draft = employeeDrafts[String(employee.id)] || {};
+  function setEmployeeDialogDraft(patch: Partial<EmployeeDraft>) {
+    setEmployeeDialog((current) => (current ? { ...current, draft: { ...current.draft, ...patch } } : current));
+  }
+
+  function setAdjustDialogDraft(patch: Partial<AdjustDraft>) {
+    setAdjustDialog((current) => (current ? { ...current, draft: { ...current.draft, ...patch } } : current));
+  }
+
+  async function saveEmployee() {
+    if (!employeeDialog) return;
+    const { employee, draft } = employeeDialog;
+    setEmployeeSaving(true);
     try {
       await api.put(`/attendance/employees/${employee.id}`, {
-        employeeName: draft.employeeName || employee.employeeName,
-        nationality: draft.nationality || employee.nationality || "mainland",
+        employeeName: draft.employeeName.trim() || employee.employeeName,
+        nationality: draft.nationality || "mainland",
         hireDate: draft.hireDate || null,
         leaveDate: draft.leaveDate || null,
-        attendanceEnabled: draft.attendanceEnabled !== false,
+        attendanceEnabled: draft.attendanceEnabled,
         annualLeaveRule: draft.annualLeaveRule || draft.nationality || "mainland",
       });
       toast.success("员工档案已保存");
+      setEmployeeDialog(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setEmployeeSaving(false);
     }
   }
 
-  async function adjustBalance(employee: EmployeeProfile) {
-    const draft = adjustDrafts[String(employee.id)] || { balanceType: "comp_time", deltaHours: "", note: "" };
-    const amount = Number(draft.deltaHours);
+  async function submitAdjustBalance() {
+    if (!adjustDialog) return;
+    const { employee, draft } = adjustDialog;
+    const amount = Number(draft.amount);
+    if (!Number.isFinite(amount) || amount === 0) {
+      toast.error(draft.balanceType === "annual_leave" ? "请填写调整天数（正数增加，负数扣减）" : "请填写调整小时数（正数增加，负数扣减）");
+      return;
+    }
     const annualAdjust = draft.balanceType === "annual_leave";
+    setAdjustSaving(true);
     try {
       await api.post(`/attendance/employees/${employee.id}/adjust-balance`, {
-        balanceType: draft.balanceType || "comp_time",
+        balanceType: draft.balanceType,
         deltaDays: annualAdjust ? amount : undefined,
         deltaHours: annualAdjust ? undefined : amount,
         note: draft.note,
       });
       toast.success("余额已调整");
-      setAdjustDrafts((current) => ({ ...current, [String(employee.id)]: { balanceType: "comp_time", deltaHours: "", note: "" } }));
+      setAdjustDialog(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "调整失败");
+    } finally {
+      setAdjustSaving(false);
     }
   }
 
@@ -688,24 +784,26 @@ export function Attendance() {
     }
   }
 
-  function setEmployeeDraft(id: number | string, patch: Partial<EmployeeProfile>) {
-    setEmployeeDrafts((current) => ({ ...current, [String(id)]: { ...(current[String(id)] || {}), ...patch } }));
-  }
+  const hasRecordFilter = recordStatus !== "all" || recordType !== "all" || recordKeyword.trim() !== "";
+  const filteredAllRequests = useMemo(() => {
+    const keyword = recordKeyword.trim().toLowerCase();
+    return allRequests.filter((item) => {
+      if (recordStatus !== "all" && item.status !== recordStatus) return false;
+      if (recordType !== "all" && item.requestType !== recordType) return false;
+      if (keyword && !String(item.employeeName || "").toLowerCase().includes(keyword)) return false;
+      return true;
+    });
+  }, [allRequests, recordStatus, recordType, recordKeyword]);
 
-  function setAdjustDraft(id: number | string, patch: Partial<{ balanceType: string; deltaHours: string; note: string }>) {
-    setAdjustDrafts((current) => ({
-      ...current,
-      [String(id)]: { ...(current[String(id)] || { balanceType: "comp_time", deltaHours: "", note: "" }), ...patch },
-    }));
-  }
-
-  const requestsForAdmin = allRequests.filter((item) => item.status === "pending_admin");
-  const requestsForSupervisor = supervisorTodo.filter((item) => item.status === "pending_supervisor");
   const annualPreview = form.requestType === "leave" ? annualLeaveRange(form) : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
-  const scrollToSupervisorRoleRules = () => {
-    document.getElementById("attendance-supervisor-role-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+
+  const statTiles = [
+    { label: "可用年假", value: `${days(annualBalanceDays(myProfile))} 天` },
+    { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时` },
+    { label: "我的进行中", value: String(pendingMine) },
+    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length) }] : []),
+  ];
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -714,96 +812,496 @@ export function Attendance() {
           <h1 className="text-2xl font-semibold md:text-3xl">后勤考勤</h1>
           <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canManage ? (
-            <Button variant="outline" onClick={scrollToSupervisorRoleRules}>
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              设置审批角色
-            </Button>
-          ) : null}
-          <Button variant="outline" onClick={load} disabled={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            刷新
-          </Button>
-        </div>
+        <Button variant="outline" onClick={load} disabled={loading}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          刷新
+        </Button>
       </div>
 
       <ErrorToast message={error} />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="pt-5">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="mt-1 text-2xl font-semibold">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : stat.value}</div>
+      {tabs.length > 1 ? (
+        <div className="flex w-full gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1">
+          {tabs.map((tab) => {
+            const active = tab.key === activeTab;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition ${
+                  active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+                {typeof tab.count === "number" && tab.count > 0 ? (
+                  <Badge variant={active ? "default" : "secondary"} className="h-5 min-w-5 px-1.5">{tab.count}</Badge>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {activeTab === "apply" ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {statTiles.map((stat) => (
+              <Card key={stat.label}>
+                <CardContent className="pt-5">
+                  <div className="text-sm text-muted-foreground">{stat.label}</div>
+                  <div className="mt-1 text-2xl font-semibold">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : stat.value}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card className="overflow-hidden border-border/80 shadow-sm">
+            <CardHeader className="border-b bg-card px-5 py-4">
+              <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Send className="h-5 w-5" />
+                    提交申请
+                  </CardTitle>
+                  <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
+                </div>
+                {form.requestType === "leave" ? (
+                  <Badge variant="secondary">{LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"}</Badge>
+                ) : form.requestType === "overtime" ? (
+                  <Badge variant="secondary">工单加班</Badge>
+                ) : (
+                  <Badge variant="secondary">调休</Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_240px]">
+                <div className="space-y-3 border-b bg-muted/20 p-4 lg:border-b-0 lg:border-r">
+                  <Label>申请类型</Label>
+                  <div className="grid gap-2">
+                    {[
+                      { value: "leave", label: "请假", icon: CalendarClock },
+                      { value: "overtime", label: "加班", icon: Send },
+                      { value: "comp_time", label: "调休", icon: RotateCcw },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const active = form.requestType === item.value;
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setForm((current) => {
+                            const value = item.value;
+                            const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
+                            if (value === "leave") return applyAnnualLeaveRange(next);
+                            return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
+                          })}
+                          className={`flex h-11 items-center gap-3 rounded-md border px-3 text-left text-sm transition ${
+                            active ? "border-primary bg-primary/10 text-primary shadow-sm" : "bg-background hover:bg-muted/50"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span className="font-medium">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-4 md:p-5">
+                  <div className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-12">
+                  {form.requestType === "leave" ? (
+                    <div className="space-y-2 lg:col-span-2">
+                      <Label>假别</Label>
+                      <Select
+                        value={form.leaveType}
+                        onValueChange={(value) => setForm((current) => {
+                          const date = dateValue(current.startAt);
+                          return applyAnnualLeaveRange({
+                            ...current,
+                            leaveType: value,
+                            annualStartDate: current.annualStartDate || date,
+                            annualEndDate: current.annualEndDate || date,
+                          });
+                        })}
+                      >
+                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {form.requestType === "overtime" ? (
+                    <>
+                    <div className="space-y-2 xl:col-span-5">
+                      <Label>工单</Label>
+                      <Select
+                        value={selectedOvertimeOrderId}
+                        onValueChange={(value) => {
+                          setSelectedOvertimeOrderId(value);
+                          const order = overtimeOrders.find((item) => String(item.id) === value);
+                          setSelectedSegmentKey(overtimeRows(order || null)[0]?.key || "");
+                        }}
+                        disabled={overtimeLoading || overtimeOrders.length === 0}
+                      >
+                        <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
+                        <SelectContent>
+                          {overtimeOrders.map((order) => (
+                            <SelectItem key={order.id} value={String(order.id)}>
+                              {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2 xl:col-span-7">
+                      <Label>工单信息</Label>
+                      <div className="rounded-md border bg-muted/10 px-3 py-2 text-sm">
+                        {selectedOvertimeOrder ? (
+                          <div className="space-y-2">
+                            <div className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-2">
+                              <div>工单：{selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`}</div>
+                              <div>客户：{selectedOvertimeOrder.customerName || "-"}</div>
+                              <div>设备：{selectedOvertimeOrder.deviceName || "-"}</div>
+                              <div>类型：{SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / {SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}</div>
+                              <div>联系人：{selectedOvertimeOrder.contactName || "-"} {selectedOvertimeOrder.contactPhone || ""}</div>
+                              <div>服务日：{formatDateTime(selectedOvertimeOrder.serviceAt)}</div>
+                              <div>出发：{formatDateTime(selectedOvertimeOrder.departureAt)}</div>
+                              <div>到达：{formatDateTime(selectedOvertimeOrder.actualStartAt)}</div>
+                              <div>完成：{formatDateTime(selectedOvertimeOrder.actualEndAt)}</div>
+                              <div>返回：{formatDateTime(selectedOvertimeOrder.returnAt)}</div>
+                              <div className="md:col-span-2">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
+                            </div>
+                            <div className="space-y-2 border-t pt-2">
+                              {selectedOvertimeRows.map((segment) => {
+                                const active = selectedSegmentKey === segment.key;
+                                return (
+                                  <div
+                                    key={segment.key}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setSelectedSegmentKey(segment.key)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") setSelectedSegmentKey(segment.key);
+                                    }}
+                                    className={`grid w-full gap-2 rounded-md border p-2 text-left transition md:grid-cols-[1fr_220px] ${active ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                                  >
+                                    <div>
+                                      <div className="font-medium">{segment.label}</div>
+                                      <div className="mt-1 text-xs text-muted-foreground">
+                                        {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)} / {hours(segment.hours)} 小时
+                                        {segment.dayType ? ` / ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
+                                      </div>
+                                    </div>
+                                    <div onClick={(event) => event.stopPropagation()}>
+                                      {segment.kind === "travel" ? (
+                                        <Select value="comp_time" disabled>
+                                          <SelectTrigger><SelectValue /></SelectTrigger>
+                                          <SelectContent><SelectItem value="comp_time">转调休</SelectItem></SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <Select value={form.overtimeResult} onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}>
+                                          <SelectTrigger><SelectValue /></SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="comp_time">转调休</SelectItem>
+                                            <SelectItem value="pay">{overtimePayLabel(segment)}</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {selectedOvertimeRows.length === 0 ? (
+                                <div className="py-3 text-center text-xs text-muted-foreground">暂无可申请时段</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : overtimeLoading ? (
+                          <span className="text-muted-foreground">正在加载…</span>
+                        ) : (
+                          <span className="text-muted-foreground">暂无可申请加班的工单</span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : form.requestType === "leave" ? (
+                  <>
+                    <div className="space-y-2 xl:col-span-3">
+                      <Label>开始日期</Label>
+                      <Input className="h-11" type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
+                    </div>
+                    <div className="space-y-2 xl:col-span-3">
+                      <Label>结束日期</Label>
+                      <Input className="h-11" type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
+                    </div>
+                    {annualSingleDay ? (
+                      <div className="space-y-2 xl:col-span-3">
+                        <Label>时段</Label>
+                        <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
+                          <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="morning">上午 09:00-14:00</SelectItem>
+                            <SelectItem value="afternoon">下午 14:00-18:00</SelectItem>
+                            <SelectItem value="day">一天 09:00-18:00</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2 xl:col-span-3">
+                          <Label>开始时段</Label>
+                          <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 09:00 起</SelectItem>
+                              <SelectItem value="afternoon">下午 14:00 起</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2 xl:col-span-3">
+                          <Label>结束时段</Label>
+                          <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 14:00 止</SelectItem>
+                              <SelectItem value="afternoon">下午 18:00 止</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2 xl:col-span-4">
+                      <Label>开始时间</Label>
+                      <Input className="h-11" type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
+                    </div>
+                    <div className="space-y-2 xl:col-span-4">
+                      <Label>结束时间</Label>
+                      <Input className="h-11" type="datetime-local" step="3600" value={form.endAt} readOnly />
+                    </div>
+                    <div className="space-y-2 xl:col-span-3">
+                      <Label>调休小时数</Label>
+                      <Input className="h-11" type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
+                    </div>
+                  </>
+                )}
+                  </div>
+                </div>
+
+                <div className="border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
+                  {form.requestType === "leave" ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm font-medium">请假时长</div>
+                        <div className="mt-2 rounded-lg border bg-background p-3">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-semibold">{days(Number(annualPreview?.hours || 0) / 8)}</span>
+                            <span className="text-sm text-muted-foreground">天</span>
+                            <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
+                          </div>
+                          <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                            <div>{formatDateTime(annualPreview?.startAt)}</div>
+                            <div>{formatDateTime(annualPreview?.endAt)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
+                        {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        提交申请
+                      </Button>
+                    </div>
+                  ) : form.requestType === "overtime" ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm font-medium">加班申请</div>
+                        <div className="mt-2 rounded-lg border bg-background p-3 text-sm">
+                          <div className="font-medium">{selectedSegment?.label || "未选择时段"}</div>
+                          <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                            <div>{selectedSegment ? `${formatDateTime(selectedSegment.startAt)} - ${formatDateTime(selectedSegment.endAt)}` : "-"}</div>
+                            <div>{selectedSegment ? `${hours(selectedSegment.hours)} 小时` : "-"}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting || !selectedSegment}>
+                        {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        提交申请
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm font-medium">调休时长</div>
+                        <div className="mt-2 rounded-lg border bg-background p-3">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-semibold">{hours(Number(form.hours))}</span>
+                            <span className="text-sm text-muted-foreground">小时</span>
+                          </div>
+                          <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                            <div>{formatDateTime(form.startAt)}</div>
+                            <div>{formatDateTime(form.endAt)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
+                        {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        提交申请
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-sm text-muted-foreground">当前可用年假</div>
-            <div className="mt-1 text-2xl font-semibold">{days(annualBalanceDays(myProfile))} 天</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-sm text-muted-foreground">当前可用调休</div>
-            <div className="mt-1 text-2xl font-semibold">{hours(myProfile?.compTimeBalanceHours)} 小时</div>
-          </CardContent>
-        </Card>
-      </div>
+          {isApprover ? (
+            <RequestList
+              title="待我审批"
+              description="主管审批与行政终审集中在这里处理"
+              items={approvalTodos}
+              loading={loading}
+              emptyText="暂无待审批的申请"
+              actions={(item) => item.status === "pending_supervisor" ? (
+                <>
+                  <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-supervisor`, "已通过主管审批")}>
+                    <Check className="mr-1 h-4 w-4" /> 通过
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                    <X className="mr-1 h-4 w-4" /> 驳回
+                  </Button>
+                </>
+              ) : canAdminApprove ? (
+                <>
+                  <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
+                    <ShieldCheck className="mr-1 h-4 w-4" /> 终审通过
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                    <X className="mr-1 h-4 w-4" /> 驳回
+                  </Button>
+                </>
+              ) : null}
+            />
+          ) : null}
 
-      {canManage ? (
-        <Card id="attendance-supervisor-role-rules">
-          <CardHeader>
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <CardTitle>审批角色规则</CardTitle>
-                <CardDescription>员工提交申请后，按申请人角色流转给对应审批角色</CardDescription>
-              </div>
-              <Button size="sm" onClick={saveSupervisorRoleRules}>
-                <Save className="mr-1 h-4 w-4" /> 保存规则
+          <RequestList
+            title="我的申请"
+            description="行政终审前可撤回"
+            items={mine}
+            loading={loading}
+            showEmployee={false}
+            actions={(item) => ["pending_supervisor", "pending_admin"].includes(item.status || "") ? (
+              <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
+                <RotateCcw className="mr-1 h-4 w-4" /> 撤回
               </Button>
+            ) : null}
+          />
+        </div>
+      ) : null}
+
+      {activeTab === "records" && canViewAll ? (
+        <RequestList
+          title="全员申请记录"
+          description="行政终审通过后可作废"
+          items={filteredAllRequests}
+          loading={loading}
+          emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
+          toolbar={(
+            <>
+              <Select value={recordStatus} onValueChange={setRecordStatus}>
+                <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={recordType} onValueChange={setRecordType}>
+                <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部类型</SelectItem>
+                  {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input
+                className="h-9 w-44"
+                placeholder="搜索员工姓名"
+                value={recordKeyword}
+                onChange={(event) => setRecordKeyword(event.target.value)}
+              />
+              {hasRecordFilter ? (
+                <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); }}>
+                  重置
+                </Button>
+              ) : null}
+            </>
+          )}
+          actions={canAdminApprove ? (item) => item.status === "approved" ? (
+            <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}>
+              <X className="mr-1 h-4 w-4" /> 作废
+            </Button>
+          ) : null : undefined}
+        />
+      ) : null}
+
+      {activeTab === "report" && canViewAll ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <CardTitle>月度报表</CardTitle>
+                <CardDescription>按业务发生月份统计，不做月结锁定</CardDescription>
+              </div>
+              <div className="w-40 space-y-2">
+                <Label>月份</Label>
+                <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
+              </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[520px]">
+              <Table className="min-w-[1040px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>申请人角色</TableHead>
-                    <TableHead>主管审批角色</TableHead>
+                    <TableHead>员工</TableHead>
+                    <TableHead>年假</TableHead>
+                    <TableHead>病假</TableHead>
+                    <TableHead>事假</TableHead>
+                    <TableHead>婚假</TableHead>
+                    <TableHead>丧假</TableHead>
+                    <TableHead>加班</TableHead>
+                    <TableHead>转调休</TableHead>
+                    <TableHead>加班费</TableHead>
+                    <TableHead>法定节假日加班费</TableHead>
+                    <TableHead>加班费折算</TableHead>
+                    <TableHead>调休</TableHead>
+                    <TableHead>年假余额</TableHead>
+                    <TableHead>调休余额</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {supervisorRoleRules.map((rule) => {
-                    const currentRole = supervisorRoleDrafts[rule.applicantRole] || rule.supervisorRole;
-                    return (
-                      <TableRow key={rule.applicantRole}>
-                        <TableCell className="font-medium">
-                          {rule.applicantRoleLabel || roleLabel(rule.applicantRole)}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={currentRole}
-                            onValueChange={(value) => setSupervisorRoleDrafts((current) => ({ ...current, [rule.applicantRole]: value }))}
-                          >
-                            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {roleOptions.map((item) => (
-                                <SelectItem key={item.role} value={item.role}>{item.label || roleLabel(item.role)}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {supervisorRoleRules.length === 0 ? (
-                    <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">暂无审批角色规则</TableCell></TableRow>
+                  {reportItems.map((item) => (
+                    <TableRow key={item.employeeId}>
+                      <TableCell className="font-medium">{item.employeeName}</TableCell>
+                      <TableCell>{days(annualUsageDays(item))} 天</TableCell>
+                      <TableCell>{hours(item.sickLeaveHours)}</TableCell>
+                      <TableCell>{hours(item.personalLeaveHours)}</TableCell>
+                      <TableCell>{hours(item.marriageLeaveHours)}</TableCell>
+                      <TableCell>{hours(item.bereavementLeaveHours)}</TableCell>
+                      <TableCell>{hours(item.overtimeHours)}</TableCell>
+                      <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
+                      <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
+                      <TableCell>{hours(item.legalHolidayOvertimePayHours)}</TableCell>
+                      <TableCell>{hours(item.overtimePayWeightedHours)}</TableCell>
+                      <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
+                      <TableCell>{days(annualBalanceDays(item))} 天</TableCell>
+                      <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {reportItems.length === 0 ? (
+                    <TableRow><TableCell colSpan={14} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
@@ -812,368 +1310,125 @@ export function Attendance() {
         </Card>
       ) : null}
 
-      <Card className="overflow-hidden border-border/80 shadow-sm">
-        <CardHeader className="border-b bg-card px-5 py-4">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <div>
-            <CardTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5" />
-              提交申请
-            </CardTitle>
-            <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
-            </div>
-            {form.requestType === "leave" ? (
-              <Badge variant="secondary">{LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"}</Badge>
-            ) : form.requestType === "overtime" ? (
-              <Badge variant="secondary">工单加班</Badge>
-            ) : (
-              <Badge variant="secondary">调休</Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_240px]">
-            <div className="space-y-3 border-b bg-muted/20 p-4 lg:border-b-0 lg:border-r">
-              <Label>申请类型</Label>
-              <div className="grid gap-2">
-                {[
-                  { value: "leave", label: "请假", icon: CalendarClock },
-                  { value: "overtime", label: "加班", icon: Send },
-                  { value: "comp_time", label: "调休", icon: RotateCcw },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  const active = form.requestType === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => setForm((current) => {
-                        const value = item.value;
-                    const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
-                    if (value === "leave") return applyAnnualLeaveRange(next);
-                    return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
-                      })}
-                      className={`flex h-11 items-center gap-3 rounded-md border px-3 text-left text-sm transition ${
-                        active ? "border-primary bg-primary/10 text-primary shadow-sm" : "bg-background hover:bg-muted/50"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span className="font-medium">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="p-4 md:p-5">
-              <div className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-12">
-              {form.requestType === "leave" ? (
-                <div className="space-y-2 lg:col-span-2">
-                  <Label>假别</Label>
-                  <Select
-                    value={form.leaveType}
-                    onValueChange={(value) => setForm((current) => {
-                      const date = dateValue(current.startAt);
-                      return applyAnnualLeaveRange({
-                        ...current,
-                        leaveType: value,
-                        annualStartDate: current.annualStartDate || date,
-                        annualEndDate: current.annualEndDate || date,
-                      });
-                    })}
-                  >
-                    <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              {form.requestType === "overtime" ? (
-                <>
-                <div className="space-y-2 xl:col-span-5">
-                  <Label>工单</Label>
-                  <Select
-                    value={selectedOvertimeOrderId}
-                    onValueChange={(value) => {
-                      setSelectedOvertimeOrderId(value);
-                      const order = overtimeOrders.find((item) => String(item.id) === value);
-                      setSelectedSegmentKey(overtimeRows(order || null)[0]?.key || "");
-                    }}
-                    disabled={overtimeLoading || overtimeOrders.length === 0}
-                  >
-                    <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
-                    <SelectContent>
-                      {overtimeOrders.map((order) => (
-                        <SelectItem key={order.id} value={String(order.id)}>
-                          {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-2 xl:col-span-7">
-                  <Label>工单信息</Label>
-                  <div className="rounded-md border bg-muted/10 px-3 py-2 text-sm">
-                    {selectedOvertimeOrder ? (
-                      <div className="space-y-2">
-                        <div className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-2">
-                          <div>工单：{selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`}</div>
-                          <div>客户：{selectedOvertimeOrder.customerName || "-"}</div>
-                          <div>设备：{selectedOvertimeOrder.deviceName || "-"}</div>
-                          <div>类型：{SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / {SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}</div>
-                          <div>联系人：{selectedOvertimeOrder.contactName || "-"} {selectedOvertimeOrder.contactPhone || ""}</div>
-                          <div>服务日：{formatDateTime(selectedOvertimeOrder.serviceAt)}</div>
-                          <div>出发：{formatDateTime(selectedOvertimeOrder.departureAt)}</div>
-                          <div>到达：{formatDateTime(selectedOvertimeOrder.actualStartAt)}</div>
-                          <div>完成：{formatDateTime(selectedOvertimeOrder.actualEndAt)}</div>
-                          <div>返回：{formatDateTime(selectedOvertimeOrder.returnAt)}</div>
-                          <div className="md:col-span-2">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
+      {activeTab === "employees" && canManage ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>员工档案与余额</CardTitle>
+            <CardDescription>年假余额按天调整，调休按小时调整；档案编辑与余额调整在弹窗中完成</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-md border">
+              <Table className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>员工</TableHead>
+                    <TableHead>籍别</TableHead>
+                    <TableHead>入职日期</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead>年假余额</TableHead>
+                    <TableHead>调休余额</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employees.map((employee) => (
+                    <TableRow key={employee.id}>
+                      <TableCell>
+                        <div className="font-medium">{employee.employeeName || "-"}</div>
+                        <div className="text-xs text-muted-foreground">{employee.username || "-"} · {roleLabel(employee.role)}</div>
+                      </TableCell>
+                      <TableCell>{NATIONALITY_LABELS[employee.nationality || "mainland"] || employee.nationality || "-"}</TableCell>
+                      <TableCell>{formatDate(employee.hireDate)}</TableCell>
+                      <TableCell>
+                        <Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>
+                          {employee.attendanceEnabled === false ? "停用" : "启用"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{days(annualBalanceDays(employee))} 天</TableCell>
+                      <TableCell>{hours(employee.compTimeBalanceHours)} 小时</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setEmployeeDialog({ employee, draft: createEmployeeDraft(employee) })}>
+                            <Pencil className="mr-1 h-4 w-4" /> 编辑
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setAdjustDialog({ employee, draft: createAdjustDraft() })}>
+                            <Wallet className="mr-1 h-4 w-4" /> 调余额
+                          </Button>
                         </div>
-                        <div className="space-y-2 border-t pt-2">
-                          {selectedOvertimeRows.map((segment) => {
-                            const active = selectedSegmentKey === segment.key;
-                            return (
-                              <div
-                                key={segment.key}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => setSelectedSegmentKey(segment.key)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") setSelectedSegmentKey(segment.key);
-                                }}
-                                className={`grid w-full gap-2 rounded-md border p-2 text-left transition md:grid-cols-[1fr_220px] ${active ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {employees.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                        {loading ? "正在加载…" : "暂无员工档案"}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "settings" && canViewAll ? (
+        <div className="space-y-6">
+          {canManage ? (
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle>审批角色规则</CardTitle>
+                    <CardDescription>员工提交申请后，按申请人角色流转给对应审批角色</CardDescription>
+                  </div>
+                  <Button size="sm" onClick={saveSupervisorRoleRules}>
+                    <Save className="mr-1 h-4 w-4" /> 保存规则
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-md border">
+                  <Table className="min-w-[520px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>申请人角色</TableHead>
+                        <TableHead>主管审批角色</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {supervisorRoleRules.map((rule) => {
+                        const currentRole = supervisorRoleDrafts[rule.applicantRole] || rule.supervisorRole;
+                        return (
+                          <TableRow key={rule.applicantRole}>
+                            <TableCell className="font-medium">
+                              {rule.applicantRoleLabel || roleLabel(rule.applicantRole)}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={currentRole}
+                                onValueChange={(value) => setSupervisorRoleDrafts((current) => ({ ...current, [rule.applicantRole]: value }))}
                               >
-                                <div>
-                                  <div className="font-medium">{segment.label}</div>
-                                  <div className="mt-1 text-xs text-muted-foreground">
-                                    {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)} / {hours(segment.hours)} 小时
-                                    {segment.dayType ? ` / ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
-                                  </div>
-                                </div>
-                                <div onClick={(event) => event.stopPropagation()}>
-                                  {segment.kind === "travel" ? (
-                                    <Select value="comp_time" disabled>
-                                      <SelectTrigger><SelectValue /></SelectTrigger>
-                                      <SelectContent><SelectItem value="comp_time">转调休</SelectItem></SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <Select value={form.overtimeResult} onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}>
-                                      <SelectTrigger><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="comp_time">转调休</SelectItem>
-                                        <SelectItem value="pay">{overtimePayLabel(segment)}</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {selectedOvertimeRows.length === 0 ? (
-                            <div className="py-3 text-center text-xs text-muted-foreground">暂无可申请时段</div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : overtimeLoading ? (
-                      <span className="text-muted-foreground">正在加载…</span>
-                    ) : (
-                      <span className="text-muted-foreground">暂无可申请加班的工单</span>
-                    )}
-                  </div>
+                                <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {roleOptions.map((item) => (
+                                    <SelectItem key={item.role} value={item.role}>{item.label || roleLabel(item.role)}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {supervisorRoleRules.length === 0 ? (
+                        <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">暂无审批角色规则</TableCell></TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
                 </div>
-              </>
-            ) : form.requestType === "leave" ? (
-              <>
-                <div className="space-y-2 xl:col-span-3">
-                  <Label>开始日期</Label>
-                  <Input className="h-11" type="date" value={form.annualStartDate} onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })} />
-                </div>
-                <div className="space-y-2 xl:col-span-3">
-                  <Label>结束日期</Label>
-                  <Input className="h-11" type="date" value={form.annualEndDate} onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })} />
-                </div>
-                {annualSingleDay ? (
-                  <div className="space-y-2 xl:col-span-3">
-                    <Label>时段</Label>
-                    <Select value={form.annualPeriod} onValueChange={(value) => setAnnualDraft({ annualPeriod: value as AnnualLeavePeriod })}>
-                      <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="morning">上午 09:00-14:00</SelectItem>
-                        <SelectItem value="afternoon">下午 14:00-18:00</SelectItem>
-                        <SelectItem value="day">一天 09:00-18:00</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-2 xl:col-span-3">
-                      <Label>开始时段</Label>
-                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
-                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="morning">上午 09:00 起</SelectItem>
-                          <SelectItem value="afternoon">下午 14:00 起</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2 xl:col-span-3">
-                      <Label>结束时段</Label>
-                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
-                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="morning">上午 14:00 止</SelectItem>
-                          <SelectItem value="afternoon">下午 18:00 止</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="space-y-2 xl:col-span-4">
-                  <Label>开始时间</Label>
-                  <Input className="h-11" type="datetime-local" step="3600" value={form.startAt} onChange={(event) => setStartAt(event.target.value)} />
-                </div>
-                <div className="space-y-2 xl:col-span-4">
-                  <Label>结束时间</Label>
-                  <Input className="h-11" type="datetime-local" step="3600" value={form.endAt} readOnly />
-                </div>
-                <div className="space-y-2 xl:col-span-3">
-                  <Label>调休小时数</Label>
-                  <Input className="h-11" type="number" min="1" step="1" value={form.hours} onChange={(event) => setHours(event.target.value)} />
-                </div>
-              </>
-            )}
-              </div>
-            </div>
-
-            <div className="border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
-              {form.requestType === "leave" ? (
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-sm font-medium">请假时长</div>
-                    <div className="mt-2 rounded-lg border bg-background p-3">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-semibold">{days(Number(annualPreview?.hours || 0) / 8)}</span>
-                        <span className="text-sm text-muted-foreground">天</span>
-                        <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
-                      </div>
-                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
-                        <div>{formatDateTime(annualPreview?.startAt)}</div>
-                        <div>{formatDateTime(annualPreview?.endAt)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
-                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                    提交申请
-                  </Button>
-                </div>
-              ) : form.requestType === "overtime" ? (
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-sm font-medium">加班申请</div>
-                    <div className="mt-2 rounded-lg border bg-background p-3 text-sm">
-                      <div className="font-medium">{selectedSegment?.label || "未选择时段"}</div>
-                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
-                        <div>{selectedSegment ? `${formatDateTime(selectedSegment.startAt)} - ${formatDateTime(selectedSegment.endAt)}` : "-"}</div>
-                        <div>{selectedSegment ? `${hours(selectedSegment.hours)} 小时` : "-"}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
-                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                    提交申请
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-sm font-medium">调休时长</div>
-                    <div className="mt-2 rounded-lg border bg-background p-3">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-semibold">{hours(Number(form.hours))}</span>
-                        <span className="text-sm text-muted-foreground">小时</span>
-                      </div>
-                      <div className="mt-2 text-xs leading-5 text-muted-foreground">
-                        <div>{formatDateTime(form.startAt)}</div>
-                        <div>{formatDateTime(form.endAt)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <Button className="h-11 w-full" onClick={submitRequest} disabled={submitting}>
-                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                    提交申请
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <RequestList
-          title="主管待办"
-          description="直属下属提交后，先由主管审批"
-          items={requestsForSupervisor}
-          loading={loading}
-          actions={(item) => (
-            <>
-              <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-supervisor`, "已通过主管审批")}>
-                <Check className="mr-1 h-4 w-4" /> 通过
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
-                <X className="mr-1 h-4 w-4" /> 驳回
-              </Button>
-            </>
-          )}
-        />
-        <RequestList
-          title="行政待办"
-          description="主管通过后，由行政终审"
-          items={requestsForAdmin}
-          loading={loading}
-          actions={canAdminApprove ? (item) => (
-            <>
-              <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
-                <ShieldCheck className="mr-1 h-4 w-4" /> 终审
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
-                <X className="mr-1 h-4 w-4" /> 驳回
-              </Button>
-            </>
-          ) : undefined}
-        />
-      </div>
-
-      <RequestList
-        title="我的申请"
-        description="行政终审前可撤回"
-        items={mine}
-        loading={loading}
-        actions={(item) => ["pending_supervisor", "pending_admin"].includes(item.status || "") ? (
-          <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
-            <RotateCcw className="mr-1 h-4 w-4" /> 撤回
-          </Button>
-        ) : null}
-      />
-
-      {canViewAll ? (
-        <>
-          <RequestList
-            title="全员申请记录"
-            description="行政终审通过后可作废"
-            items={allRequests}
-            loading={loading}
-            actions={canAdminApprove ? (item) => item.status === "approved" ? (
-              <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}>
-                <X className="mr-1 h-4 w-4" /> 作废
-              </Button>
-            ) : null : undefined}
-          />
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -1265,190 +1520,144 @@ export function Attendance() {
               </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>月度报表</CardTitle>
-              <CardDescription>按业务发生月份统计，不做月结锁定</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="max-w-xs space-y-2">
-                <Label>月份</Label>
-                <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
-              </div>
-              <div className="overflow-x-auto rounded-md border">
-                <Table className="min-w-[1040px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>员工</TableHead>
-                      <TableHead>年假</TableHead>
-                      <TableHead>病假</TableHead>
-                      <TableHead>事假</TableHead>
-                      <TableHead>婚假</TableHead>
-                      <TableHead>丧假</TableHead>
-                      <TableHead>加班</TableHead>
-                      <TableHead>转调休</TableHead>
-                      <TableHead>加班费</TableHead>
-                      <TableHead>法定节假日加班费</TableHead>
-                      <TableHead>加班费折算</TableHead>
-                      <TableHead>调休</TableHead>
-                      <TableHead>年假余额</TableHead>
-                      <TableHead>调休余额</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reportItems.map((item) => (
-                      <TableRow key={item.employeeId}>
-                        <TableCell className="font-medium">{item.employeeName}</TableCell>
-                        <TableCell>{days(annualUsageDays(item))} 天</TableCell>
-                        <TableCell>{hours(item.sickLeaveHours)}</TableCell>
-                        <TableCell>{hours(item.personalLeaveHours)}</TableCell>
-                        <TableCell>{hours(item.marriageLeaveHours)}</TableCell>
-                        <TableCell>{hours(item.bereavementLeaveHours)}</TableCell>
-                        <TableCell>{hours(item.overtimeHours)}</TableCell>
-                        <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
-                        <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
-                        <TableCell>{hours(item.legalHolidayOvertimePayHours)}</TableCell>
-                        <TableCell>{hours(item.overtimePayWeightedHours)}</TableCell>
-                        <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
-                        <TableCell>{days(annualBalanceDays(item))} 天</TableCell>
-                        <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
-                      </TableRow>
-                    ))}
-                    {reportItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={14} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
+        </div>
       ) : null}
 
-      {canManage ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>年假规则先预留，不自动计算；年假余额按天调整，调休按小时调整</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[1040px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>员工</TableHead>
-                    <TableHead>籍别</TableHead>
-                    <TableHead>入职日</TableHead>
-                    <TableHead>启用</TableHead>
-                    <TableHead>年假余额</TableHead>
-                    <TableHead>调休余额</TableHead>
-                    <TableHead>余额调整</TableHead>
-                    <TableHead>操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {employees.map((employee) => {
-                    const draft = employeeDrafts[String(employee.id)] || employee;
-                    const adjust = adjustDrafts[String(employee.id)] || { balanceType: "comp_time", deltaHours: "", note: "" };
-                    const annualAdjust = adjust.balanceType === "annual_leave";
-                    return (
-                      <TableRow key={employee.id}>
-                        <TableCell>
-                          <Input
-                            value={String(draft.employeeName || "")}
-                            onChange={(event) => setEmployeeDraft(employee.id, { employeeName: event.target.value })}
-                            className="w-36"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select value={String(draft.nationality || "mainland")} onValueChange={(value) => setEmployeeDraft(employee.id, { nationality: value, annualLeaveRule: value })}>
-                            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="mainland">陆籍</SelectItem>
-                              <SelectItem value="taiwan">台籍</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="date"
-                            value={String(draft.hireDate || "")}
-                            onChange={(event) => setEmployeeDraft(employee.id, { hireDate: event.target.value })}
-                            className="w-36"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={draft.attendanceEnabled === false ? "0" : "1"}
-                            onValueChange={(value) => setEmployeeDraft(employee.id, { attendanceEnabled: value === "1" })}
-                          >
-                            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">启用</SelectItem>
-                              <SelectItem value="0">停用</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>{days(annualBalanceDays(employee))} 天</TableCell>
-                        <TableCell>{hours(employee.compTimeBalanceHours)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Select
-                              value={adjust.balanceType}
-                              onValueChange={(value) => setAdjustDraft(employee.id, {
-                                balanceType: value,
-                                deltaHours: value === "annual_leave" ? "0.5" : "",
-                              })}
-                            >
-                              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="comp_time">调休</SelectItem>
-                                <SelectItem value="annual_leave">年假</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.5"
-                              placeholder={annualAdjust ? "+/-天" : "+/-小时"}
-                              value={adjust.deltaHours}
-                              onChange={(event) => setAdjustDraft(employee.id, { deltaHours: event.target.value })}
-                              className="w-24"
-                            />
-                            {annualAdjust ? (
-                              <>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "0.5" })}>0.5天</Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "1" })}>1天</Button>
-                              </>
-                            ) : (
-                              <>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "0.5" })}>0.5小时</Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => setAdjustDraft(employee.id, { deltaHours: "1" })}>1小时</Button>
-                              </>
-                            )}
-                            <Input
-                              placeholder="备注"
-                              value={adjust.note}
-                              onChange={(event) => setAdjustDraft(employee.id, { note: event.target.value })}
-                              className="w-32"
-                            />
-                            <Button size="sm" variant="outline" onClick={() => adjustBalance(employee)}>调整</Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button size="sm" onClick={() => saveEmployee(employee)}>
-                            <Save className="mr-1 h-4 w-4" /> 保存
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+      <Dialog open={Boolean(employeeDialog)} onOpenChange={(open) => { if (!open) setEmployeeDialog(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>编辑员工档案</DialogTitle>
+            <DialogDescription>
+              {employeeDialog ? `${employeeDialog.employee.employeeName || "-"}（${employeeDialog.employee.username || "-"} · ${roleLabel(employeeDialog.employee.role)}）` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {employeeDialog ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>姓名</Label>
+                <Input
+                  value={employeeDialog.draft.employeeName}
+                  onChange={(event) => setEmployeeDialogDraft({ employeeName: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>籍别</Label>
+                <Select
+                  value={employeeDialog.draft.nationality}
+                  onValueChange={(value) => setEmployeeDialogDraft({ nationality: value, annualLeaveRule: value })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mainland">陆籍</SelectItem>
+                    <SelectItem value="taiwan">台籍</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>入职日期</Label>
+                  <Input
+                    type="date"
+                    value={employeeDialog.draft.hireDate}
+                    onChange={(event) => setEmployeeDialogDraft({ hireDate: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>离职日期</Label>
+                  <Input
+                    type="date"
+                    value={employeeDialog.draft.leaveDate}
+                    onChange={(event) => setEmployeeDialogDraft({ leaveDate: event.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+                <div>
+                  <div className="text-sm font-medium">参与考勤</div>
+                  <div className="text-xs text-muted-foreground">停用后该员工暂不参与后勤考勤</div>
+                </div>
+                <Switch
+                  checked={employeeDialog.draft.attendanceEnabled}
+                  onCheckedChange={(checked) => setEmployeeDialogDraft({ attendanceEnabled: checked })}
+                />
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmployeeDialog(null)} disabled={employeeSaving}>取消</Button>
+            <Button onClick={saveEmployee} disabled={employeeSaving}>
+              {employeeSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(adjustDialog)} onOpenChange={(open) => { if (!open) setAdjustDialog(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>调整余额</DialogTitle>
+            <DialogDescription>
+              {adjustDialog ? `${adjustDialog.employee.employeeName || "-"} · 年假 ${days(annualBalanceDays(adjustDialog.employee))} 天 / 调休 ${hours(adjustDialog.employee.compTimeBalanceHours)} 小时` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {adjustDialog ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>余额类型</Label>
+                <Select
+                  value={adjustDialog.draft.balanceType}
+                  onValueChange={(value) => setAdjustDialogDraft({ balanceType: value as AdjustDraft["balanceType"], amount: "" })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="comp_time">调休（按小时）</SelectItem>
+                    <SelectItem value="annual_leave">年假（按天）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{adjustDialog.draft.balanceType === "annual_leave" ? "调整天数" : "调整小时数"}</Label>
+                <div className="flex flex-wrap gap-2">
+                  {["0.5", "1", "-0.5", "-1"].map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="sm"
+                      variant={adjustDialog.draft.amount === preset ? "default" : "outline"}
+                      onClick={() => setAdjustDialogDraft({ amount: preset })}
+                    >
+                      {Number(preset) > 0 ? `+${preset}` : preset}{adjustDialog.draft.balanceType === "annual_leave" ? "天" : "小时"}
+                    </Button>
+                  ))}
+                </div>
+                <Input
+                  type="number"
+                  step="0.5"
+                  placeholder="正数增加，负数扣减"
+                  value={adjustDialog.draft.amount}
+                  onChange={(event) => setAdjustDialogDraft({ amount: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>备注</Label>
+                <Input
+                  placeholder="备注（可选）"
+                  value={adjustDialog.draft.note}
+                  onChange={(event) => setAdjustDialogDraft({ note: event.target.value })}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustDialog(null)} disabled={adjustSaving}>取消</Button>
+            <Button onClick={submitAdjustBalance} disabled={adjustSaving}>
+              {adjustSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+              确认调整
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1459,13 +1668,20 @@ function RequestList({
   items,
   loading,
   actions,
+  showEmployee = true,
+  emptyText = "暂无记录",
+  toolbar,
 }: {
   title: string;
   description: string;
   items: AttendanceRequest[];
   loading: boolean;
   actions?: (item: AttendanceRequest) => ReactNode;
+  showEmployee?: boolean;
+  emptyText?: string;
+  toolbar?: ReactNode;
 }) {
+  const hasActions = typeof actions === "function";
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -1479,30 +1695,31 @@ function RequestList({
         <Badge variant="secondary">{items.length} 条</Badge>
       </CardHeader>
       <CardContent>
+        {toolbar ? <div className="mb-4 flex flex-wrap items-center gap-2">{toolbar}</div> : null}
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在加载…
           </div>
         ) : items.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">暂无记录</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">{emptyText}</div>
         ) : (
           <div className="overflow-x-auto rounded-md border">
             <Table className="min-w-[760px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>员工</TableHead>
+                  {showEmployee ? <TableHead>员工</TableHead> : null}
                   <TableHead>类型</TableHead>
                   <TableHead>明细</TableHead>
                   <TableHead>时间</TableHead>
                   <TableHead>小时</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>操作</TableHead>
+                  {hasActions ? <TableHead>操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.employeeName || "-"}</TableCell>
+                    {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
                     <TableCell>{requestTypeLabel(item.requestType)}</TableCell>
                     <TableCell>{requestDetail(item)}</TableCell>
                     <TableCell>
@@ -1511,9 +1728,11 @@ function RequestList({
                     </TableCell>
                     <TableCell>{hours(item.hours)}</TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
-                    </TableCell>
+                    {hasActions ? (
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
