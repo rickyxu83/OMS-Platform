@@ -18,6 +18,24 @@ type RequestType = "leave" | "overtime" | "comp_time";
 type AnnualLeavePeriod = "morning" | "afternoon" | "day";
 type AttendanceTab = "apply" | "records" | "report" | "employees" | "settings";
 
+interface ServiceOrderSummary {
+  id: number | string;
+  orderNo?: string | null;
+  customerName?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  deviceName?: string | null;
+  serviceMode?: string | null;
+  serviceType?: string | null;
+  issueDescription?: string | null;
+  serviceAt?: string | null;
+  departureAt?: string | null;
+  actualStartAt?: string | null;
+  actualEndAt?: string | null;
+  returnAt?: string | null;
+  unavailable?: boolean;
+}
+
 interface AttendanceRequest {
   id: number | string;
   workflowVersion?: number;
@@ -36,6 +54,7 @@ interface AttendanceRequest {
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
+  serviceOrder?: ServiceOrderSummary | null;
   startAt?: string;
   endAt?: string;
   hours?: number;
@@ -148,22 +167,8 @@ interface OvertimeSegment {
   allowedResults?: string[];
 }
 
-interface OvertimeServiceOrder {
-  id: number | string;
-  orderNo?: string;
-  customerName?: string;
-  contactName?: string;
-  contactPhone?: string;
-  deviceName?: string;
-  serviceMode?: string;
-  serviceType?: string;
-  issueDescription?: string;
+interface OvertimeServiceOrder extends ServiceOrderSummary {
   status?: string;
-  serviceAt?: string;
-  departureAt?: string;
-  actualStartAt?: string;
-  actualEndAt?: string;
-  returnAt?: string;
   segments: OvertimeSegment[];
 }
 
@@ -922,11 +927,11 @@ export function Attendance() {
     ["设备", selectedOvertimeOrder.deviceName || "-"],
     ["类型", `${SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / ${SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}`],
     ["联系人", `${selectedOvertimeOrder.contactName || "-"}${selectedOvertimeOrder.contactPhone ? ` ${selectedOvertimeOrder.contactPhone}` : ""}`],
-    ["服务日", formatDateTime(selectedOvertimeOrder.serviceAt)],
-    ["出发", formatDateTime(selectedOvertimeOrder.departureAt)],
-    ["到达", formatDateTime(selectedOvertimeOrder.actualStartAt)],
-    ["完成", formatDateTime(selectedOvertimeOrder.actualEndAt)],
-    ["返回", formatDateTime(selectedOvertimeOrder.returnAt)],
+    ["服务日", formatDateTime(selectedOvertimeOrder.serviceAt || undefined)],
+    ["出发", formatDateTime(selectedOvertimeOrder.departureAt || undefined)],
+    ["到达", formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)],
+    ["完成", formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)],
+    ["返回", formatDateTime(selectedOvertimeOrder.returnAt || undefined)],
   ] : [];
 
   const statTiles = [
@@ -1843,6 +1848,48 @@ export function Attendance() {
   );
 }
 
+function serviceOrderTypeLabel(order: ServiceOrderSummary) {
+  const mode = SERVICE_MODE_LABELS[order.serviceMode || ""] || order.serviceMode || "-";
+  const type = SERVICE_TYPE_LABELS[order.serviceType || ""] || order.serviceType || "-";
+  return `${mode} / ${type}`;
+}
+
+function ServiceOrderApprovalSummary({ order }: { order: ServiceOrderSummary }) {
+  const orderLabel = order.orderNo || `#${order.id}`;
+  if (order.unavailable) {
+    return (
+      <div className="mt-2 rounded-md border border-dashed bg-muted/10 px-3 py-2 text-xs text-muted-foreground break-words">
+        关联工单 {orderLabel} 暂不可用
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 min-w-0 rounded-md border bg-muted/10 p-3 text-xs">
+      <div className="grid min-w-0 gap-x-4 gap-y-1 text-muted-foreground sm:grid-cols-2">
+        <div className="min-w-0 break-words"><span className="font-medium text-foreground">工单：</span>{orderLabel}</div>
+        <div className="min-w-0 break-words"><span className="font-medium text-foreground">客户：</span>{order.customerName || "-"}</div>
+        <div className="min-w-0 break-words"><span className="font-medium text-foreground">设备：</span>{order.deviceName || "-"}</div>
+        <div className="min-w-0 break-words"><span className="font-medium text-foreground">类型：</span>{serviceOrderTypeLabel(order)}</div>
+        <div className="min-w-0 break-words sm:col-span-2"><span className="font-medium text-foreground">问题：</span>{order.issueDescription || "-"}</div>
+      </div>
+      <details className="mt-2 border-t pt-2">
+        <summary className="cursor-pointer select-none rounded-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          展开工单详情
+        </summary>
+        <div className="mt-2 grid min-w-0 gap-x-4 gap-y-1 text-muted-foreground sm:grid-cols-2">
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">联系人：</span>{order.contactName || "-"}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">电话：</span>{order.contactPhone || "-"}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">服务日：</span>{formatDateTime(order.serviceAt || undefined)}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">出发：</span>{formatDateTime(order.departureAt || undefined)}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">到达：</span>{formatDateTime(order.actualStartAt || undefined)}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">完成：</span>{formatDateTime(order.actualEndAt || undefined)}</div>
+          <div className="min-w-0 break-words"><span className="font-medium text-foreground">返回：</span>{formatDateTime(order.returnAt || undefined)}</div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function RequestList({
   title,
   description,
@@ -1906,6 +1953,11 @@ function RequestList({
                     <TableCell>{requestTypeLabel(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetail(item)}</div>
+                      {item.requestType === "overtime" && item.sourceType === "service_order" ? (
+                        <ServiceOrderApprovalSummary
+                          order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
+                        />
+                      ) : null}
                       {item.delegateEmployeeName ? <div className="text-xs text-muted-foreground">代理人：{item.delegateEmployeeName}</div> : null}
                       {typeof item.workingDays === "number" ? <div className="text-xs text-muted-foreground">{days(item.workingDays)} 个工作日</div> : null}
                       {item.proofFiles?.length ? (
