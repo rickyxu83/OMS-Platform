@@ -43,3 +43,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 安装 Matt Pocock 技能集
+
+**Date**: 2026-07-14
+**Task**: 安装 Matt Pocock 技能集
+**Branch**: `feature/attendance-leave`
+
+### Summary
+
+使用官方 skills 安装器将 mattpocock/skills 的 39 项技能注册到 Claude Code、Codex 和 OpenCode；完成 GitHub Issues、分诊标签与领域文档约定，并验证全局技能发现。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7a6a990` | (see git log) |
+| `abaf650` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
