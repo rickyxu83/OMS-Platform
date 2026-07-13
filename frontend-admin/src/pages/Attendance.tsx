@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, Check, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, ShieldCheck, Trash2, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -939,6 +939,10 @@ export function Attendance() {
       return true;
     });
   }, [allRequests, recordStatus, recordType, recordKeyword]);
+  const recordPendingCount = filteredAllRequests.filter((item) => String(item.status || "").startsWith("pending_")).length;
+  const recordApprovedCount = filteredAllRequests.filter((item) => item.status === "approved").length;
+  const activeEmployeeCount = employees.filter((item) => item.attendanceEnabled !== false).length;
+  const totalCompBalanceHours = employees.reduce((sum, item) => sum + Number(item.compTimeBalanceHours || 0), 0);
 
   const applicationHolidayDates = useMemo(
     () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
@@ -1502,57 +1506,75 @@ export function Attendance() {
       ) : null}
 
       {activeTab === "records" && canViewAll ? (
-        <RequestList
-          title="全员申请记录"
-          description="行政终审通过后可作废"
-          items={filteredAllRequests}
-          loading={loading}
-          onDownloadProof={downloadProof}
-          emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
-          toolbar={(
-            <>
-              <Select value={recordStatus} onValueChange={setRecordStatus}>
-                <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={recordType} onValueChange={setRecordType}>
-                <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部类型</SelectItem>
-                  {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Input
-                className="h-9 w-44"
-                placeholder="搜索员工姓名"
-                value={recordKeyword}
-                onChange={(event) => setRecordKeyword(event.target.value)}
-              />
-              {hasRecordFilter ? (
-                <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); }}>
-                  重置
-                </Button>
-              ) : null}
-            </>
-          )}
-          actions={canAdminApprove ? (item) => item.status === "approved" ? (
-            <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}>
-              <X className="mr-1 h-4 w-4" /> 作废
-            </Button>
-          ) : null : undefined}
-        />
+        <div className="space-y-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">全员记录</h2>
+              <p className="mt-1 text-sm text-muted-foreground">先看审批状态与异常，再进入完整申请流水</p>
+            </div>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <AttendanceMetric label="当前记录" value={String(filteredAllRequests.length)} note="当前筛选范围" icon={<Users className="h-4 w-4" />} />
+            <AttendanceMetric label="审批中" value={String(recordPendingCount)} note="仍在流程中的申请" icon={<Clock3 className="h-4 w-4" />} />
+            <AttendanceMetric label="已通过" value={String(recordApprovedCount)} note="已进入报表统计" icon={<CheckCircle2 className="h-4 w-4" />} />
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+            <RequestList
+              title="申请流水"
+              description="行政终审通过后可作废"
+              items={filteredAllRequests}
+              loading={loading}
+              onDownloadProof={downloadProof}
+              emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
+              toolbar={(
+                <>
+                  <Select value={recordStatus} onValueChange={setRecordStatus}>
+                    <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部状态</SelectItem>
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={recordType} onValueChange={setRecordType}>
+                    <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部类型</SelectItem>
+                      {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); }}>重置</Button> : null}
+                </>
+              )}
+              actions={canAdminApprove ? (item) => item.status === "approved" ? (
+                <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}><X className="mr-1 h-4 w-4" /> 作废</Button>
+              ) : null : undefined}
+            />
+            <Card className="h-fit">
+              <CardHeader><CardTitle className="flex items-center gap-2"><Filter className="h-4 w-4" />快速聚焦</CardTitle><CardDescription>常用范围一键筛选</CardDescription></CardHeader>
+              <CardContent className="space-y-2">
+                <QuickRecordFilter label="待行政终审" count={allRequests.filter((item) => item.status === "pending_admin").length} active={recordStatus === "pending_admin" && recordType === "all"} onClick={() => { setRecordStatus("pending_admin"); setRecordType("all"); setRecordKeyword(""); }} />
+                <QuickRecordFilter label="全部加班" count={allRequests.filter((item) => item.requestType === "overtime").length} active={recordType === "overtime" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("overtime"); setRecordKeyword(""); }} />
+                <QuickRecordFilter label="全部请假" count={allRequests.filter((item) => item.requestType === "leave").length} active={recordType === "leave" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("leave"); setRecordKeyword(""); }} />
+                <QuickRecordFilter label="已作废记录" count={allRequests.filter((item) => item.status === "voided").length} active={recordStatus === "voided" && recordType === "all"} onClick={() => { setRecordStatus("voided"); setRecordType("all"); setRecordKeyword(""); }} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       ) : null}
 
       {activeTab === "report" && canViewAll ? (
-        <Card>
-          <CardHeader>
+        <Card className="gap-0 overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <CardTitle>月度报表</CardTitle>
-                <CardDescription>按业务发生月份统计，不做月结锁定</CardDescription>
+                <CardTitle>月度数据矩阵</CardTitle>
+                <CardDescription>横向比较员工各类假勤、加班折算与当前余额</CardDescription>
               </div>
               <div className="w-40 space-y-2">
                 <Label>月份</Label>
@@ -1560,9 +1582,9 @@ export function Attendance() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[1040px]">
+              <Table className="min-w-[1160px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
@@ -1611,23 +1633,30 @@ export function Attendance() {
       ) : null}
 
       {activeTab === "employees" && canManage ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>特休余额按天调整，调休按小时调整；档案编辑与余额调整在弹窗中完成</CardDescription>
+        <Card className="gap-0 overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle>余额控制台</CardTitle>
+                <CardDescription>集中查看员工档案状态、特休余额与调休余额</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">考勤员工 {activeEmployeeCount} 人</Badge>
+                <Badge variant="secondary">调休余额池 {hours(totalCompBalanceHours)} 小时</Badge>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[760px]">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[860px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
-                    <TableHead>籍别</TableHead>
-                    <TableHead>入职日期</TableHead>
                     <TableHead>状态</TableHead>
+                    <TableHead>籍别 / 入职</TableHead>
                     <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
-                    <TableHead>操作</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1637,17 +1666,19 @@ export function Attendance() {
                         <div className="font-medium">{employee.employeeName || "-"}</div>
                         <div className="text-xs text-muted-foreground">{employee.username || "-"} · {roleLabel(employee.role)}</div>
                       </TableCell>
-                      <TableCell>{NATIONALITY_LABELS[employee.nationality || "mainland"] || employee.nationality || "-"}</TableCell>
-                      <TableCell>{formatDate(employee.hireDate)}</TableCell>
                       <TableCell>
                         <Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>
                           {employee.attendanceEnabled === false ? "停用" : "启用"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{days(annualBalanceDays(employee))} 天</TableCell>
-                      <TableCell>{hours(employee.compTimeBalanceHours)} 小时</TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-2">
+                        <div>{NATIONALITY_LABELS[employee.nationality || "mainland"] || employee.nationality || "-"}</div>
+                        <div className="text-xs text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
+                      </TableCell>
+                      <TableCell><span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span></TableCell>
+                      <TableCell><span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => setEmployeeDialog({ employee, draft: createEmployeeDraft(employee) })}>
                             <Pencil className="mr-1 h-4 w-4" /> 编辑
                           </Button>
@@ -1660,7 +1691,7 @@ export function Attendance() {
                   ))}
                   {employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                         {loading ? "正在加载…" : "暂无员工档案"}
                       </TableCell>
                     </TableRow>
@@ -1674,6 +1705,19 @@ export function Attendance() {
 
       {activeTab === "settings" && canViewAll ? (
         <div className="space-y-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">考勤设置</h2>
+              <p className="mt-1 text-sm text-muted-foreground">按影响范围管理审批流程与工作日历</p>
+            </div>
+            <Badge variant="outline"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <AttendanceMetric label="审批流程" value={`${supervisorRoleRules.length} 条`} note="申请角色对应主管角色" icon={<ShieldCheck className="h-4 w-4" />} />
+            <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-4 w-4" />} />
+            <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-4 w-4" />} />
+          </div>
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
           {canManage ? (
             <Card>
               <CardHeader>
@@ -1687,45 +1731,32 @@ export function Attendance() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto rounded-md border">
-                  <Table className="min-w-[520px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>申请人角色</TableHead>
-                        <TableHead>主管审批角色</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+              <CardContent className="space-y-3">
                       {supervisorRoleRules.map((rule) => {
                         const currentRole = supervisorRoleDrafts[rule.applicantRole] || rule.supervisorRole;
                         return (
-                          <TableRow key={rule.applicantRole}>
-                            <TableCell className="font-medium">
-                              {rule.applicantRoleLabel || roleLabel(rule.applicantRole)}
-                            </TableCell>
-                            <TableCell>
+                          <div key={rule.applicantRole} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center">
+                            <Badge variant="secondary">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
+                            <span className="text-sm text-muted-foreground">提交后由</span>
+                            <div className="sm:ml-auto">
                               <Select
                                 value={currentRole}
                                 onValueChange={(value) => setSupervisorRoleDrafts((current) => ({ ...current, [rule.applicantRole]: value }))}
                               >
-                                <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {roleOptions.map((item) => (
                                     <SelectItem key={item.role} value={item.role}>{item.label || roleLabel(item.role)}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
-                            </TableCell>
-                          </TableRow>
+                            </div>
+                          </div>
                         );
                       })}
                       {supervisorRoleRules.length === 0 ? (
-                        <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">暂无审批角色规则</TableCell></TableRow>
+                        <div className="py-8 text-center text-sm text-muted-foreground">暂无审批角色规则</div>
                       ) : null}
-                    </TableBody>
-                  </Table>
-                </div>
               </CardContent>
             </Card>
           ) : null}
@@ -1820,6 +1851,7 @@ export function Attendance() {
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
       ) : null}
 
@@ -2001,6 +2033,33 @@ function ServiceOrderApprovalSummary({ order }: { order: ServiceOrderSummary }) 
         </div>
       </details>
     </div>
+  );
+}
+
+function AttendanceMetric({ label, value, note, icon }: { label: string; value: string; note: string; icon: ReactNode }) {
+  return (
+    <Card className="gap-0 shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between text-sm text-muted-foreground"><span>{label}</span>{icon}</div>
+        <div className="mt-3 text-2xl font-semibold tracking-tight">{value}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{note}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickRecordFilter({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={active
+        ? "flex w-full items-center justify-between rounded-lg border border-primary bg-primary/5 p-3 text-left text-sm text-primary ring-1 ring-primary/15"
+        : "flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm transition hover:bg-muted/50"}
+    >
+      <span className="font-medium">{label}</span>
+      <Badge variant={active ? "default" : "secondary"}>{count}</Badge>
+    </button>
   );
 }
 
