@@ -1119,13 +1119,19 @@ function serviceOrderSnapshot(row) {
   }
 }
 
-function parseServiceOrderSnapshot(value) {
+function parseServiceOrderSnapshot(value, expectedSourceId) {
   if (!value) return null
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-    const id = Number(parsed.id || 0)
-    if (!Number.isFinite(id) || id <= 0) return null
+    const id = Number(parsed.id)
+    const expectedId = Number(expectedSourceId)
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(expectedId) || expectedId <= 0 || id !== expectedId) return null
+    const stringFields = [
+      'orderNo', 'customerName', 'contactName', 'contactPhone', 'deviceName', 'serviceMode', 'serviceType',
+      'issueDescription', 'serviceAt', 'departureAt', 'actualStartAt', 'actualEndAt', 'returnAt',
+    ]
+    if (stringFields.some((field) => parsed[field] != null && typeof parsed[field] !== 'string')) return null
     return {
       id,
       orderNo: nullableText(parsed.orderNo),
@@ -1406,7 +1412,7 @@ async function listRequests(req, res) {
   for (const row of rows) {
     const sourceId = Number(row.source_id)
     if (row.source_type !== 'service_order' || !Number.isFinite(sourceId) || sourceId <= 0) continue
-    const snapshot = parseServiceOrderSnapshot(row.source_snapshot)
+    const snapshot = parseServiceOrderSnapshot(row.source_snapshot, sourceId)
     if (snapshot) requestServiceOrderMap.set(Number(row.id), snapshot)
     else fallbackOrderIds.push(sourceId)
   }

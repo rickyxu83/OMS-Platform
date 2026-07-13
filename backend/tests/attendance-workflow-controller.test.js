@@ -578,8 +578,9 @@ async function createLeave(bodyOverrides = {}) {
 
   {
     let fallbackQueries = 0
+    let fallbackQuery = null
     const { controller } = await loadController({
-      queryHandler: async (sql) => {
+      queryHandler: async (sql, params) => {
         if (isRequestListQuery(sql)) return [
           {
             id: 904, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 90,
@@ -593,9 +594,18 @@ async function createLeave(bodyOverrides = {}) {
             id: 910, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 93,
             source_snapshot: { orderNo: 'SO-MISSING-ID' }, start_at: '2026-07-18 18:00:00', end_at: '2026-07-18 20:00:00', hours: 2,
           },
+          {
+            id: 911, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 94,
+            source_snapshot: { id: 999, orderNo: 'SO-WRONG-SOURCE' }, start_at: '2026-07-19 18:00:00', end_at: '2026-07-19 20:00:00', hours: 2,
+          },
+          {
+            id: 912, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 95,
+            source_snapshot: { id: 95, customerName: { name: '嵌套客户' } }, start_at: '2026-07-20 18:00:00', end_at: '2026-07-20 20:00:00', hours: 2,
+          },
         ]
         if (isServiceOrderSnapshotFallbackQuery(sql)) {
           fallbackQueries += 1
+          fallbackQuery = { sql, params }
           return []
         }
         return undefined
@@ -604,10 +614,22 @@ async function createLeave(bodyOverrides = {}) {
     const res = createResponse()
     await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
     assert.equal(fallbackQueries, 1)
+    assert.ok(fallbackQuery)
+    assert.deepEqual(fallbackQuery.params, {
+      orderId0: 90,
+      orderId1: 92,
+      orderId2: 93,
+      orderId3: 94,
+      orderId4: 95,
+    })
+    assert.match(fallbackQuery.sql, /:orderId4/)
+    assert.doesNotMatch(fallbackQuery.sql, /:orderId5/)
     assert.deepEqual(res.body.items.map((item) => item.serviceOrder), [
       { id: 90, unavailable: true },
       { id: 92, unavailable: true },
       { id: 93, unavailable: true },
+      { id: 94, unavailable: true },
+      { id: 95, unavailable: true },
     ])
   }
 
