@@ -2,6 +2,12 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
 const { ALL_ROLES, ROLE_LABELS } = require('../../permissions/catalog')
+const {
+  buildApprovalSteps,
+  calculateWorkingLeaveRange,
+  requestStatusForStep,
+  requiresLeaveProof,
+} = require('./workflow')
 
 const requestTypes = new Set(['leave', 'overtime', 'comp_time'])
 const leaveTypes = new Set(['annual', 'sick', 'personal', 'marriage', 'bereavement'])
@@ -205,7 +211,9 @@ async function ensureSchema() {
       await query(
         `CREATE TABLE IF NOT EXISTS attendance_requests (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          workflow_version INT UNSIGNED NOT NULL DEFAULT 1,
           employee_id BIGINT UNSIGNED NOT NULL,
+          delegate_employee_id BIGINT UNSIGNED NULL,
           request_type VARCHAR(32) NOT NULL,
           leave_type VARCHAR(32) NULL,
           overtime_kind VARCHAR(32) NULL,
@@ -219,6 +227,7 @@ async function ensureSchema() {
           start_at DATETIME NOT NULL,
           end_at DATETIME NOT NULL,
           hours DECIMAL(8,2) NOT NULL,
+          working_days DECIMAL(6,2) NULL,
           reason TEXT NULL,
           status VARCHAR(32) NOT NULL DEFAULT 'pending_supervisor',
           submitted_by BIGINT UNSIGNED NOT NULL,
@@ -243,6 +252,30 @@ async function ensureSchema() {
           KEY idx_attendance_requests_status (status),
           KEY idx_attendance_requests_type (request_type),
           KEY idx_attendance_requests_start_at (start_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      )
+
+      await query(
+        `CREATE TABLE IF NOT EXISTS attendance_request_approvals (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          request_id BIGINT UNSIGNED NOT NULL,
+          step_type VARCHAR(32) NOT NULL,
+          step_order INT UNSIGNED NOT NULL,
+          assignee_employee_id BIGINT UNSIGNED NULL,
+          assignee_role VARCHAR(64) NULL,
+          status VARCHAR(32) NOT NULL DEFAULT 'waiting',
+          approved_by BIGINT UNSIGNED NULL,
+          approved_at DATETIME NULL,
+          rejected_by BIGINT UNSIGNED NULL,
+          rejected_at DATETIME NULL,
+          rejected_reason TEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uniq_attendance_request_step (request_id, step_order),
+          KEY idx_attendance_approval_pending (status, step_type),
+          KEY idx_attendance_approval_assignee (assignee_employee_id, status),
+          KEY idx_attendance_approval_role (assignee_role, status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
@@ -388,9 +421,15 @@ async function ensureAttendanceRequestColumns() {
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('supervisor_role', 'source_type', 'source_id', 'source_detail', 'overtime_day_type', 'overtime_pay_multiplier')`,
+       AND COLUMN_NAME IN ('workflow_version', 'delegate_employee_id', 'working_days', 'supervisor_role', 'source_type', 'source_id', 'source_detail', 'overtime_day_type', 'overtime_pay_multiplier')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
+  if (!existing.has('workflow_version')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN workflow_version INT UNSIGNED NOT NULL DEFAULT 1 AFTER id')
+  }
+  if (!existing.has('delegate_employee_id')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN delegate_employee_id BIGINT UNSIGNED NULL AFTER employee_id')
+  }
   if (!existing.has('overtime_day_type')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN overtime_day_type VARCHAR(32) NULL AFTER overtime_result')
   }
@@ -409,6 +448,9 @@ async function ensureAttendanceRequestColumns() {
   }
   if (!existing.has('source_detail')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN source_detail VARCHAR(64) NULL AFTER source_id')
+  }
+  if (!existing.has('working_days')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN working_days DECIMAL(6,2) NULL AFTER hours')
   }
   const indexRows = await query(
     `SELECT INDEX_NAME AS indexName
@@ -497,9 +539,12 @@ function profilePayload(row) {
 function requestPayload(row) {
   return {
     id: row.id,
+    workflowVersion: Number(row.workflow_version || 1),
     employeeId: row.employee_id,
     employeeName: row.employee_name,
     userId: row.user_id,
+    delegateEmployeeId: row.delegate_employee_id,
+    delegateEmployeeName: row.delegate_employee_name,
     supervisorEmployeeId: row.supervisor_employee_id,
     supervisorName: row.supervisor_name,
     applicantRole: row.applicant_role,
@@ -516,6 +561,7 @@ function requestPayload(row) {
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
+    workingDays: row.working_days === null || row.working_days === undefined ? null : Number(row.working_days),
     reason: row.reason || '',
     status: row.status,
     submittedBy: row.submitted_by,
@@ -559,6 +605,18 @@ async function currentEmployeeForConnection(connection, userId) {
        AND p.attendance_enabled = 1
      LIMIT 1`,
     { userId },
+  )
+  return rows[0] || null
+}
+
+async function enabledEmployeeById(employeeId) {
+  const rows = await query(
+    `SELECT p.id, p.user_id, p.employee_name, p.attendance_enabled
+     FROM attendance_employee_profiles p
+     WHERE p.id = :employeeId
+       AND p.attendance_enabled = 1
+     LIMIT 1`,
+    { employeeId },
   )
   return rows[0] || null
 }
@@ -820,10 +878,8 @@ function normalizeRequestInput(body) {
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
   if (requestType === 'leave') {
-    const leaveRange = normalizeLeaveRange(startAt, endAt, hours)
-    startAt = leaveRange.startAt
-    endAt = leaveRange.endAt
-    hours = leaveRange.hours
+    startAt = leaveSlot(startAt, 'start').value
+    endAt = leaveSlot(endAt, 'end').value
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
@@ -870,20 +926,51 @@ async function createRequest(req, res) {
   const input = normalizeRequestInput(req.body)
   const supervisorRole = await supervisorRoleForApplicantRole(req.user.role)
 
+  let delegateEmployeeId = null
+  let workingDays = null
+  if (input.requestType === 'leave' || input.requestType === 'comp_time') {
+    delegateEmployeeId = Number(req.body?.delegateEmployeeId)
+    if (!delegateEmployeeId) throw badRequest('请选择代理人')
+    if (delegateEmployeeId === Number(employee.id)) throw badRequest('代理人不能是本人')
+    const delegate = await enabledEmployeeById(delegateEmployeeId)
+    if (!delegate) throw badRequest('代理人不存在或未启用考勤')
+
+    if (input.requestType === 'leave') {
+      try {
+        const range = calculateWorkingLeaveRange({
+          startAt: input.startAt,
+          endAt: input.endAt,
+          holidays: new Set(legalHolidayCache.keys()),
+        })
+        input.startAt = range.startAt
+        input.endAt = range.endAt
+        input.hours = range.hours
+        workingDays = range.workingDays
+      } catch (error) {
+        throw badRequest(error.message)
+      }
+    } else {
+      workingDays = roundBalance(Number(input.hours) / WORK_HOURS_PER_DAY)
+    }
+  }
+
   const result = await query(
     `INSERT INTO attendance_requests
-       (employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, reason, status, submitted_by)
+       (workflow_version, employee_id, delegate_employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (:employeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+       (:workflowVersion, :employeeId, :delegateEmployeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :workingDays, :reason, 'draft', :submittedBy)`,
     {
+      workflowVersion: 2,
       employeeId: employee.id,
+      delegateEmployeeId,
       submittedBy: req.user.id,
       supervisorRole,
+      workingDays,
       ...input,
     },
   )
 
-  res.status(201).json({ id: result.insertId })
+  res.status(201).json({ id: result.insertId, status: 'draft', hours: input.hours, workingDays })
 }
 
 function toDate(value) {
@@ -1203,6 +1290,69 @@ async function requestForUpdate(connection, id) {
   return rows[0] || null
 }
 
+async function insertApprovalSteps(connection, requestId, steps) {
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index]
+    await connection.execute(
+      `INSERT INTO attendance_request_approvals
+         (request_id, step_type, step_order, assignee_employee_id, assignee_role, status)
+       VALUES
+         (:requestId, :stepType, :stepOrder, :assigneeEmployeeId, :assigneeRole, :status)`,
+      {
+        requestId,
+        stepType: step.stepType,
+        stepOrder: index + 1,
+        assigneeEmployeeId: step.assigneeEmployeeId,
+        assigneeRole: step.assigneeRole,
+        status: index === 0 ? 'pending' : 'waiting',
+      },
+    )
+  }
+}
+
+async function submitRequest(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('申请 ID 不正确')
+  const result = await transaction(async (connection) => {
+    const request = await requestForUpdate(connection, id)
+    if (!request) throw notFound('申请不存在')
+    if (Number(request.workflow_version || 1) !== 2 || request.status !== 'draft') throw badRequest('当前申请不能提交')
+    if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
+
+    if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
+    if (request.request_type === 'leave' && requiresLeaveProof(request.leave_type)) {
+      const [proofRows] = await connection.execute(
+        `SELECT COUNT(*) AS proof_count
+         FROM files
+         WHERE owner_type = 'attendance_request'
+           AND owner_id = :requestId
+           AND purpose = 'leave_proof'`,
+        { requestId: request.id },
+      )
+      if (!Number(proofRows[0]?.proof_count || 0)) throw badRequest('病假或婚假必须上传证明')
+    }
+
+    const steps = buildApprovalSteps({
+      requestType: request.request_type,
+      workingDays: Number(request.working_days || 0),
+      delegateEmployeeId: request.delegate_employee_id,
+      supervisorRole: request.supervisor_role,
+    })
+    if (!steps.length) throw badRequest('审批流程不能为空')
+    await insertApprovalSteps(connection, request.id, steps)
+    const status = requestStatusForStep(steps[0].stepType)
+    await connection.execute(
+      `UPDATE attendance_requests
+       SET status = :status
+       WHERE id = :id`,
+      { id: request.id, status },
+    )
+    return { status }
+  })
+  res.json({ ok: true, status: result.status })
+}
+
 async function insertLedger(connection, request, deltaHours, balanceType, action, note, userId) {
   await connection.execute(
     `INSERT INTO attendance_balance_ledger
@@ -1468,6 +1618,7 @@ module.exports = {
   deleteLegalHoliday,
   updateEmployee,
   createRequest,
+  submitRequest,
   listOvertimeServiceOrders,
   createServiceOrderOvertimeRequest,
   listRequests,
