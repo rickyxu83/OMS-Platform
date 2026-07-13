@@ -31,6 +31,14 @@ function createResponse() {
   }
 }
 
+function isRequestListQuery(sql) {
+  return /FROM attendance_requests r\s+JOIN attendance_employee_profiles p ON p\.id = r\.employee_id[\s\S]*LIMIT 300/.test(sql)
+}
+
+function isServiceOrderSnapshotFallbackQuery(sql) {
+  return /FROM service_orders so[\s\S]*LEFT JOIN service_reports sr ON sr\.service_order_id = so\.id[\s\S]*WHERE so\.id IN \(:orderId0/.test(sql)
+}
+
 function requestColumnRows() {
   return [
     'workflow_version',
@@ -416,29 +424,51 @@ async function createLeave(bodyOverrides = {}) {
 
   {
     let fallbackQueries = 0
-    const snapshot = {
+    const firstSnapshot = {
       id: 88,
-      orderNo: 'SO-SNAPSHOT',
-      customerName: '申请时客户',
-      contactName: '申请时联系人',
+      orderNo: 'SO-SNAPSHOT-FIRST',
+      customerName: '首次申请客户',
+      contactName: '首次申请联系人',
       contactPhone: '13800000000',
-      deviceName: '申请时设备',
+      deviceName: '首次申请设备',
       serviceMode: 'onsite',
       serviceType: 'repair',
-      issueDescription: '申请时问题',
+      issueDescription: '首次申请问题',
       serviceAt: '2026-07-14 18:00',
       departureAt: '2026-07-14 17:00',
       actualStartAt: '2026-07-14 18:00',
       actualEndAt: '2026-07-14 21:00',
       returnAt: '2026-07-14 22:00',
     }
+    const secondSnapshot = {
+      id: 88,
+      orderNo: 'SO-SNAPSHOT-SECOND',
+      customerName: '二次申请客户',
+      contactName: '二次申请联系人',
+      contactPhone: '13900000000',
+      deviceName: '二次申请设备',
+      serviceMode: 'remote',
+      serviceType: 'support',
+      issueDescription: '二次申请问题',
+      serviceAt: '2026-07-15 19:00',
+      departureAt: '2026-07-15 18:00',
+      actualStartAt: '2026-07-15 19:00',
+      actualEndAt: '2026-07-15 22:00',
+      returnAt: '2026-07-15 23:00',
+    }
     const { controller } = await loadController({
       queryHandler: async (sql) => {
-        if (/FROM attendance_requests r/.test(sql)) return [{
-          id: 902, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
-          source_snapshot: JSON.stringify(snapshot), start_at: '2026-07-14 18:00:00', end_at: '2026-07-14 21:00:00', hours: 3,
-        }]
-        if (/FROM service_orders so/.test(sql)) {
+        if (isRequestListQuery(sql)) return [
+          {
+            id: 902, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
+            source_snapshot: JSON.stringify(firstSnapshot), start_at: '2026-07-14 18:00:00', end_at: '2026-07-14 21:00:00', hours: 3,
+          },
+          {
+            id: 906, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
+            source_snapshot: secondSnapshot, start_at: '2026-07-15 19:00:00', end_at: '2026-07-15 22:00:00', hours: 3,
+          },
+        ]
+        if (isServiceOrderSnapshotFallbackQuery(sql)) {
           fallbackQueries += 1
           return []
         }
@@ -447,47 +477,138 @@ async function createLeave(bodyOverrides = {}) {
     })
     const res = createResponse()
     await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
-    assert.deepEqual(res.body.items[0].serviceOrder, snapshot)
+    assert.deepEqual(res.body.items.map((item) => ({ id: item.id, serviceOrder: item.serviceOrder })), [
+      { id: 902, serviceOrder: firstSnapshot },
+      { id: 906, serviceOrder: secondSnapshot },
+    ])
+    assert.equal(res.body.items.every((item) => !Object.hasOwn(item, 'source_snapshot')), true)
     assert.equal(fallbackQueries, 0)
   }
 
   {
     let fallbackQueries = 0
+    let fallbackQuery = null
+    const currentOrder89 = {
+      id: 89,
+      orderNo: 'SO-CURRENT-89',
+      customerName: '当前客户 89',
+      contactName: '当前联系人 89',
+      contactPhone: '13900000089',
+      deviceName: '当前设备 89',
+      serviceMode: 'remote',
+      serviceType: 'support',
+      issueDescription: '当前问题 89',
+      serviceAt: '2026-07-15 18:00',
+      departureAt: '',
+      actualStartAt: '2026-07-15 18:00',
+      actualEndAt: '2026-07-15 20:00',
+      returnAt: '',
+    }
+    const currentOrder91 = {
+      id: 91,
+      orderNo: 'SO-CURRENT-91',
+      customerName: '当前客户 91',
+      contactName: '当前联系人 91',
+      contactPhone: '13900000091',
+      deviceName: '当前设备 91',
+      serviceMode: 'onsite',
+      serviceType: 'repair',
+      issueDescription: '当前问题 91',
+      serviceAt: '2026-07-16 19:00',
+      departureAt: '2026-07-16 18:00',
+      actualStartAt: '2026-07-16 19:00',
+      actualEndAt: '2026-07-16 22:00',
+      returnAt: '2026-07-16 23:00',
+    }
     const { controller } = await loadController({
       queryHandler: async (sql, params) => {
-        if (/FROM attendance_requests r/.test(sql)) return [{
-          id: 903, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
-          source_snapshot: null, start_at: '2026-07-15 18:00:00', end_at: '2026-07-15 20:00:00', hours: 2,
-        }]
-        if (/FROM service_orders so/.test(sql)) {
+        if (isRequestListQuery(sql)) return [
+          {
+            id: 903, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
+            source_snapshot: null, start_at: '2026-07-15 18:00:00', end_at: '2026-07-15 20:00:00', hours: 2,
+          },
+          {
+            id: 907, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 91,
+            source_snapshot: null, start_at: '2026-07-16 19:00:00', end_at: '2026-07-16 22:00:00', hours: 3,
+          },
+          {
+            id: 908, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
+            source_snapshot: null, start_at: '2026-07-17 18:00:00', end_at: '2026-07-17 20:00:00', hours: 2,
+          },
+        ]
+        if (isServiceOrderSnapshotFallbackQuery(sql)) {
           fallbackQueries += 1
-          assert.equal(params.orderId0, 89)
-          return [{ id: 89, order_no: 'SO-CURRENT', customer_name: '当前客户' }]
+          fallbackQuery = { sql, params }
+          return [
+            {
+              id: 89, order_no: 'SO-CURRENT-89', customer_name: '当前客户 89',
+              contact_name: '当前联系人 89', contact_phone: '13900000089',
+              device_name: '当前设备 89', service_mode: 'remote',
+              service_type: 'support', issue_description: '当前问题 89',
+              service_at: '2026-07-15 18:00:00', departure_at: null,
+              actual_start_at: '2026-07-15 18:00:00', actual_end_at: '2026-07-15 20:00:00', return_at: null,
+            },
+            {
+              id: 91, order_no: 'SO-CURRENT-91', customer_name: '当前客户 91',
+              contact_name: '当前联系人 91', contact_phone: '13900000091',
+              device_name: '当前设备 91', service_mode: 'onsite',
+              service_type: 'repair', issue_description: '当前问题 91',
+              service_at: '2026-07-16 19:00:00', departure_at: '2026-07-16 18:00:00',
+              actual_start_at: '2026-07-16 19:00:00', actual_end_at: '2026-07-16 22:00:00', return_at: '2026-07-16 23:00:00',
+            },
+          ]
         }
         return undefined
       },
     })
     const res = createResponse()
     await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
-    assert.equal(res.body.items[0].serviceOrder.orderNo, 'SO-CURRENT')
-    assert.equal(res.body.items[0].serviceOrder.customerName, '当前客户')
     assert.equal(fallbackQueries, 1)
+    assert.ok(fallbackQuery)
+    assert.equal(fallbackQuery.params.orderId0, 89)
+    assert.equal(fallbackQuery.params.orderId1, 91)
+    assert.equal(Object.hasOwn(fallbackQuery.params, 'orderId2'), false)
+    assert.doesNotMatch(fallbackQuery.sql, /:orderId2/)
+    assert.deepEqual(res.body.items.map((item) => ({ id: item.id, serviceOrder: item.serviceOrder })), [
+      { id: 903, serviceOrder: currentOrder89 },
+      { id: 907, serviceOrder: currentOrder91 },
+      { id: 908, serviceOrder: currentOrder89 },
+    ])
   }
 
   {
+    let fallbackQueries = 0
     const { controller } = await loadController({
       queryHandler: async (sql) => {
-        if (/FROM attendance_requests r/.test(sql)) return [{
-          id: 904, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 90,
-          source_snapshot: '{invalid-json', start_at: '2026-07-16 18:00:00', end_at: '2026-07-16 20:00:00', hours: 2,
-        }]
-        if (/FROM service_orders so/.test(sql)) return []
+        if (isRequestListQuery(sql)) return [
+          {
+            id: 904, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 90,
+            source_snapshot: '{invalid-json', start_at: '2026-07-16 18:00:00', end_at: '2026-07-16 20:00:00', hours: 2,
+          },
+          {
+            id: 909, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 92,
+            source_snapshot: [], start_at: '2026-07-17 18:00:00', end_at: '2026-07-17 20:00:00', hours: 2,
+          },
+          {
+            id: 910, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 93,
+            source_snapshot: { orderNo: 'SO-MISSING-ID' }, start_at: '2026-07-18 18:00:00', end_at: '2026-07-18 20:00:00', hours: 2,
+          },
+        ]
+        if (isServiceOrderSnapshotFallbackQuery(sql)) {
+          fallbackQueries += 1
+          return []
+        }
         return undefined
       },
     })
     const res = createResponse()
     await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
-    assert.deepEqual(res.body.items[0].serviceOrder, { id: 90, unavailable: true })
+    assert.equal(fallbackQueries, 1)
+    assert.deepEqual(res.body.items.map((item) => item.serviceOrder), [
+      { id: 90, unavailable: true },
+      { id: 92, unavailable: true },
+      { id: 93, unavailable: true },
+    ])
   }
 
   {
