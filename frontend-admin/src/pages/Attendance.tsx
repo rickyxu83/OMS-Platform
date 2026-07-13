@@ -107,6 +107,12 @@ interface EmployeeDraft {
   annualLeaveRule: string;
 }
 
+interface ProofPreview {
+  url: string;
+  originalName: string;
+  mimeType: string;
+}
+
 interface AdjustDraft {
   balanceType: "comp_time" | "annual_leave";
   amount: string;
@@ -517,6 +523,7 @@ export function Attendance() {
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
+  const [proofPreview, setProofPreview] = useState<ProofPreview | null>(null);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
   const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
@@ -802,19 +809,27 @@ export function Attendance() {
     await action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason });
   }
 
-  async function downloadProof(file: { id: number | string; originalName: string }) {
+  function closeProofPreview() {
+    setProofPreview((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  }
+
+  async function previewProof(file: { id: number | string; originalName: string; mimeType?: string }) {
     try {
       const blob = await api.download(`/files/${file.id}`);
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.originalName || `proof-${file.id}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      setProofPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return {
+          url,
+          originalName: file.originalName || `proof-${file.id}`,
+          mimeType: blob.type || file.mimeType || "application/octet-stream",
+        };
+      });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "证明下载失败");
+      toast.error(e instanceof Error ? e.message : "证明预览失败");
     }
   }
 
@@ -1454,7 +1469,7 @@ export function Attendance() {
               description="代理人、主管、人事与副总待办集中在这里处理"
               items={approvalTodos}
               loading={loading}
-              onDownloadProof={downloadProof}
+              onDownloadProof={previewProof}
               emptyText="暂无待审批的申请"
               actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
@@ -1494,7 +1509,7 @@ export function Attendance() {
             description="最终审批前可撤回"
             items={mine}
             loading={loading}
-            onDownloadProof={downloadProof}
+            onDownloadProof={previewProof}
             showEmployee={false}
             actions={(item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
@@ -1530,7 +1545,7 @@ export function Attendance() {
               description="行政终审通过后可作废"
               items={filteredAllRequests}
               loading={loading}
-              onDownloadProof={downloadProof}
+              onDownloadProof={previewProof}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
               toolbar={(
                 <>
@@ -1855,6 +1870,39 @@ export function Attendance() {
         </div>
       ) : null}
 
+      <Dialog open={Boolean(proofPreview)} onOpenChange={(open) => { if (!open) closeProofPreview(); }}>
+        <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle>证明附件预览</DialogTitle>
+            <DialogDescription className="truncate">{proofPreview?.originalName || "-"}</DialogDescription>
+          </DialogHeader>
+          {proofPreview ? (
+            <div className="min-h-0 flex-1 bg-muted/30 p-4">
+              {proofPreview.mimeType.startsWith("image/") ? (
+                <div className="flex h-full items-center justify-center overflow-auto rounded-lg border bg-background p-3">
+                  <img src={proofPreview.url} alt={proofPreview.originalName} className="max-h-full max-w-full object-contain" />
+                </div>
+              ) : proofPreview.mimeType === "application/pdf" || proofPreview.mimeType.startsWith("text/") ? (
+                <iframe title={proofPreview.originalName} src={proofPreview.url} className="h-full w-full rounded-lg border bg-background" />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border bg-background px-6 text-center">
+                  <div>
+                    <div className="font-medium">浏览器无法直接预览此文件格式</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{proofPreview.mimeType || "未知格式"}</div>
+                  </div>
+                  <Button asChild>
+                    <a href={proofPreview.url} download={proofPreview.originalName}>下载原文件</a>
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter className="border-t px-5 py-3">
+            <Button variant="outline" onClick={closeProofPreview}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(employeeDialog)} onOpenChange={(open) => { if (!open) setEmployeeDialog(null); }}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
@@ -2082,7 +2130,7 @@ function RequestList({
   showEmployee?: boolean;
   emptyText?: string;
   toolbar?: ReactNode;
-  onDownloadProof?: (file: { id: number | string; originalName: string }) => void;
+  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void;
 }) {
   const hasActions = typeof actions === "function";
   return (
