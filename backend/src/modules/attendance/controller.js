@@ -906,13 +906,13 @@ function normalizeRequestInput(body) {
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
-  if (requestType === 'leave') {
+  if (requestType === 'leave' || requestType === 'comp_time') {
     startAt = leaveSlot(startAt, 'start').value
     endAt = leaveSlot(endAt, 'end').value
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
-  if (requestType !== 'leave' && Math.abs(durationHours - hours) > 0.0001) {
+  if (!['leave', 'comp_time'].includes(requestType) && Math.abs(durationHours - hours) > 0.0001) {
     throw badRequest('申请小时数必须与开始、结束时间一致')
   }
 
@@ -964,7 +964,7 @@ async function createRequest(req, res) {
     const delegate = await enabledEmployeeById(delegateEmployeeId)
     if (!delegate) throw badRequest('代理人不存在或未启用考勤')
 
-    if (input.requestType === 'leave') {
+    if (input.requestType === 'leave' || input.requestType === 'comp_time') {
       try {
         const range = calculateWorkingLeaveRange({
           startAt: input.startAt,
@@ -978,8 +978,6 @@ async function createRequest(req, res) {
       } catch (error) {
         throw badRequest(error.message)
       }
-    } else {
-      workingDays = roundBalance(Number(input.hours) / WORK_HOURS_PER_DAY)
     }
   }
 
