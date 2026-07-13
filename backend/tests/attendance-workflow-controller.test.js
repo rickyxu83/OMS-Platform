@@ -50,6 +50,7 @@ async function loadController({
   delegateEmployeeId = 9,
   requestColumns = requestColumnRows(),
   connectionExecute = async () => [[], []],
+  queryHandler = null,
   hasPermission = async () => false,
   hasAnyPermission = async () => false,
 } = {}) {
@@ -74,6 +75,10 @@ async function loadController({
     }
     if (/FROM attendance_supervisor_role_rules/.test(sql) && /LIMIT 1/.test(sql)) {
       return [{ supervisor_role: 'engineering_supervisor' }]
+    }
+    if (queryHandler) {
+      const handled = await queryHandler(sql, params)
+      if (handled !== undefined) return handled
     }
     if (/INSERT INTO attendance_requests/.test(sql)) return { insertId: 321 }
     return []
@@ -407,6 +412,97 @@ async function createLeave(bodyOverrides = {}) {
       actualEndAt: '2026-07-14 21:00',
       returnAt: '2026-07-14 22:00',
     })
+  }
+
+  {
+    let fallbackQueries = 0
+    const snapshot = {
+      id: 88,
+      orderNo: 'SO-SNAPSHOT',
+      customerName: '申请时客户',
+      contactName: '申请时联系人',
+      contactPhone: '13800000000',
+      deviceName: '申请时设备',
+      serviceMode: 'onsite',
+      serviceType: 'repair',
+      issueDescription: '申请时问题',
+      serviceAt: '2026-07-14 18:00',
+      departureAt: '2026-07-14 17:00',
+      actualStartAt: '2026-07-14 18:00',
+      actualEndAt: '2026-07-14 21:00',
+      returnAt: '2026-07-14 22:00',
+    }
+    const { controller } = await loadController({
+      queryHandler: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql)) return [{
+          id: 902, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
+          source_snapshot: JSON.stringify(snapshot), start_at: '2026-07-14 18:00:00', end_at: '2026-07-14 21:00:00', hours: 3,
+        }]
+        if (/FROM service_orders so/.test(sql)) {
+          fallbackQueries += 1
+          return []
+        }
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
+    assert.deepEqual(res.body.items[0].serviceOrder, snapshot)
+    assert.equal(fallbackQueries, 0)
+  }
+
+  {
+    let fallbackQueries = 0
+    const { controller } = await loadController({
+      queryHandler: async (sql, params) => {
+        if (/FROM attendance_requests r/.test(sql)) return [{
+          id: 903, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
+          source_snapshot: null, start_at: '2026-07-15 18:00:00', end_at: '2026-07-15 20:00:00', hours: 2,
+        }]
+        if (/FROM service_orders so/.test(sql)) {
+          fallbackQueries += 1
+          assert.equal(params.orderId0, 89)
+          return [{ id: 89, order_no: 'SO-CURRENT', customer_name: '当前客户' }]
+        }
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
+    assert.equal(res.body.items[0].serviceOrder.orderNo, 'SO-CURRENT')
+    assert.equal(res.body.items[0].serviceOrder.customerName, '当前客户')
+    assert.equal(fallbackQueries, 1)
+  }
+
+  {
+    const { controller } = await loadController({
+      queryHandler: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql)) return [{
+          id: 904, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 90,
+          source_snapshot: '{invalid-json', start_at: '2026-07-16 18:00:00', end_at: '2026-07-16 20:00:00', hours: 2,
+        }]
+        if (/FROM service_orders so/.test(sql)) return []
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
+    assert.deepEqual(res.body.items[0].serviceOrder, { id: 90, unavailable: true })
+  }
+
+  {
+    const { controller } = await loadController({
+      queryHandler: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql)) return [{
+          id: 905, employee_id: 5, request_type: 'leave', leave_type: 'annual', source_type: null, source_id: null,
+          source_snapshot: null, start_at: '2026-07-17 09:00:00', end_at: '2026-07-17 18:00:00', hours: 8,
+        }]
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }, res)
+    assert.equal(res.body.items[0].serviceOrder, null)
   }
 
   {

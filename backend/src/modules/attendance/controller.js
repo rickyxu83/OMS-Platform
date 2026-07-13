@@ -1119,6 +1119,34 @@ function serviceOrderSnapshot(row) {
   }
 }
 
+function parseServiceOrderSnapshot(value) {
+  if (!value) return null
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const id = Number(parsed.id || 0)
+    if (!Number.isFinite(id) || id <= 0) return null
+    return {
+      id,
+      orderNo: nullableText(parsed.orderNo),
+      customerName: nullableText(parsed.customerName),
+      contactName: nullableText(parsed.contactName),
+      contactPhone: nullableText(parsed.contactPhone),
+      deviceName: nullableText(parsed.deviceName),
+      serviceMode: nullableText(parsed.serviceMode),
+      serviceType: nullableText(parsed.serviceType),
+      issueDescription: nullableText(parsed.issueDescription),
+      serviceAt: toIsoMinute(parsed.serviceAt),
+      departureAt: toIsoMinute(parsed.departureAt),
+      actualStartAt: toIsoMinute(parsed.actualStartAt),
+      actualEndAt: toIsoMinute(parsed.actualEndAt),
+      returnAt: toIsoMinute(parsed.returnAt),
+    }
+  } catch {
+    return null
+  }
+}
+
 async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connection = null) {
   const sql = `SELECT so.id, so.order_no, so.status, c.name AS customer_name,
                       COALESCE(NULLIF(so.contact_name, ''), c.contact_name) AS contact_name,
@@ -1149,6 +1177,30 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
     return rows
   }
   return query(sql, params)
+}
+
+async function serviceOrderSnapshotsById(orderIds) {
+  const ids = [...new Set(orderIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))]
+  if (!ids.length) return new Map()
+  const params = Object.fromEntries(ids.map((id, index) => [`orderId${index}`, id]))
+  const rows = await query(
+    `SELECT so.id, so.order_no, c.name AS customer_name,
+            COALESCE(NULLIF(so.contact_name, ''), c.contact_name) AS contact_name,
+            COALESCE(NULLIF(so.contact_phone, ''), c.contact_phone) AS contact_phone,
+            so.service_mode, so.service_type, so.issue_description,
+            COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
+            sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
+            COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
+     FROM service_orders so
+     LEFT JOIN customers c ON c.id = so.customer_id
+     LEFT JOIN devices d ON d.id = so.device_id
+     LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+     WHERE so.id IN (${ids.map((_, index) => `:orderId${index}`).join(', ')})`,
+    params,
+  )
+  return new Map(rows.map((row) => [Number(row.id), serviceOrderSnapshot(row)]))
 }
 
 async function usedOvertimeSegments(orderIds, userId) {
@@ -1349,6 +1401,16 @@ async function listRequests(req, res) {
      LIMIT 300`,
     { ...scoped.params, status, requestType },
   )
+  const requestServiceOrderMap = new Map()
+  const fallbackOrderIds = []
+  for (const row of rows) {
+    const sourceId = Number(row.source_id)
+    if (row.source_type !== 'service_order' || !Number.isFinite(sourceId) || sourceId <= 0) continue
+    const snapshot = parseServiceOrderSnapshot(row.source_snapshot)
+    if (snapshot) requestServiceOrderMap.set(Number(row.id), snapshot)
+    else fallbackOrderIds.push(sourceId)
+  }
+  const currentServiceOrderMap = await serviceOrderSnapshotsById(fallbackOrderIds)
   const approvalMap = new Map()
   const proofFileMap = new Map()
   if (rows.length) {
@@ -1412,6 +1474,13 @@ async function listRequests(req, res) {
   }
   res.json({ items: rows.map((row) => ({
     ...requestPayload(row),
+    serviceOrder: (() => {
+      const sourceId = Number(row.source_id)
+      if (row.source_type !== 'service_order' || !Number.isFinite(sourceId) || sourceId <= 0) return null
+      return requestServiceOrderMap.get(Number(row.id))
+        || currentServiceOrderMap.get(sourceId)
+        || { id: sourceId, unavailable: true }
+    })(),
     proofFileCount: Number(row.proof_file_count || 0),
     proofFiles: proofFileMap.get(Number(row.id)) || [],
     approvals: approvalMap.get(Number(row.id)) || [],
