@@ -994,7 +994,7 @@ export function Attendance() {
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold md:text-3xl">后勤考勤</h1>
+          <h1 className="text-2xl font-semibold md:text-3xl">考勤管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
@@ -1954,7 +1954,7 @@ export function Attendance() {
               <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
                 <div>
                   <div className="text-sm font-medium">参与考勤</div>
-                  <div className="text-xs text-muted-foreground">停用后该员工暂不参与后勤考勤</div>
+                  <div className="text-xs text-muted-foreground">停用后该员工暂不纳入考勤管理</div>
                 </div>
                 <Switch
                   checked={employeeDialog.draft.attendanceEnabled}
