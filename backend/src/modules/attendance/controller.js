@@ -15,6 +15,15 @@ const leaveTypes = new Set(['annual', 'sick', 'personal', 'marriage', 'bereaveme
 const overtimeKinds = new Set(['travel', 'work'])
 const overtimeResults = new Set(['comp_time', 'pay'])
 const finalStatuses = new Set(['approved', 'rejected', 'withdrawn', 'voided'])
+const leaveConflictStatuses = Object.freeze([
+  'pending_delegate',
+  'pending_supervisor',
+  'pending_hr',
+  'pending_vp',
+  'pending_admin',
+  'approved',
+])
+const leaveConflictStatusSql = leaveConflictStatuses.map((status) => "'" + status + "'").join(', ')
 const roleSet = new Set(ALL_ROLES)
 const defaultSupervisorRoleRules = Object.freeze({
   admin: 'admin',
@@ -49,6 +58,29 @@ const BUILTIN_LEGAL_HOLIDAYS = Object.freeze([
 ])
 const legalHolidayCache = new Map()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
+
+function activeLeaveOverlapCondition(alias = 'r') {
+  return [
+    alias + ".request_type = 'leave'",
+    alias + '.status IN (' + leaveConflictStatusSql + ')',
+    alias + '.start_at < :endAt',
+    alias + '.end_at > :startAt',
+  ].join(' AND ')
+}
+
+async function findConflictingLeave(executeRows, { employeeId, startAt, endAt }) {
+  const rows = await executeRows(
+    [
+      'SELECT r.id',
+      'FROM attendance_requests r',
+      'WHERE r.employee_id = :employeeId',
+      '  AND ' + activeLeaveOverlapCondition('r'),
+      'LIMIT 1',
+    ].join('\n'),
+    { employeeId, startAt, endAt },
+  )
+  return rows[0] || null
+}
 
 function text(value) {
   return String(value ?? '').trim()
@@ -812,20 +844,49 @@ async function listDelegates(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
+  const rawStartAt = text(req.query.startAt)
+  const rawEndAt = text(req.query.endAt)
+  if (Boolean(rawStartAt) !== Boolean(rawEndAt)) throw badRequest('请同时提供请假开始和结束时间')
+
+  let startAt = null
+  let endAt = null
+  if (rawStartAt && rawEndAt) {
+    startAt = leaveSlot(rawStartAt, 'start').value
+    endAt = leaveSlot(rawEndAt, 'end').value
+    assertTimeRange(startAt, endAt)
+  }
+
+  const unavailableSql = startAt && endAt
+    ? [
+      'EXISTS (',
+      '  SELECT 1 FROM attendance_requests r',
+      '  WHERE r.employee_id = p.id',
+      '    AND ' + activeLeaveOverlapCondition('r'),
+      ')',
+    ].join('\n')
+    : '0'
+  const sql = [
+    'SELECT p.id, p.user_id, p.employee_name,',
+    '       ' + unavailableSql + ' AS unavailable',
+    'FROM attendance_employee_profiles p',
+    'JOIN users u ON u.id = p.user_id',
+    'WHERE p.attendance_enabled = 1',
+    "  AND u.status = 'active'",
+    '  AND p.id <> :employeeId',
+    'ORDER BY p.employee_name ASC, p.id ASC',
+  ].join('\n')
+  const params = { employeeId: employee.id }
+  if (startAt && endAt) Object.assign(params, { startAt, endAt })
   const rows = await query(
-    `SELECT p.id, p.user_id, p.employee_name
-     FROM attendance_employee_profiles p
-     JOIN users u ON u.id = p.user_id
-     WHERE p.attendance_enabled = 1
-       AND u.status = 'active'
-       AND p.id <> :employeeId
-     ORDER BY p.employee_name ASC, p.id ASC`,
-    { employeeId: employee.id },
+    sql,
+    params,
   )
   res.json({ items: rows.map((row) => ({
     id: row.id,
     userId: row.user_id,
     employeeName: row.employee_name,
+    unavailable: Boolean(row.unavailable),
+    unavailableReason: row.unavailable ? '所选时段已有请假' : null,
   })) })
 }
 
@@ -982,6 +1043,18 @@ async function createRequest(req, res) {
       } catch (error) {
         throw badRequest(error.message)
       }
+    }
+
+    if (input.requestType === 'leave') {
+      const conflict = await findConflictingLeave(
+        (sql, params) => query(sql, params),
+        {
+          employeeId: delegateEmployeeId,
+          startAt: input.startAt,
+          endAt: input.endAt,
+        },
+      )
+      if (conflict) throw badRequest('所选代理人在申请时段已有请假，请选择其他代理人')
     }
   }
 
@@ -1538,6 +1611,20 @@ async function submitRequest(req, res) {
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
+    if (request.request_type === 'leave') {
+      const conflict = await findConflictingLeave(
+        async (sql, params) => {
+          const [rows] = await connection.execute(sql, params)
+          return rows
+        },
+        {
+          employeeId: request.delegate_employee_id,
+          startAt: request.start_at,
+          endAt: request.end_at,
+        },
+      )
+      if (conflict) throw badRequest('所选代理人在申请时段已有请假，请选择其他代理人')
+    }
     if (request.request_type === 'leave' && requiresLeaveProof(request.leave_type)) {
       const [proofRows] = await connection.execute(
         `SELECT COUNT(*) AS proof_count

@@ -94,6 +94,8 @@ interface EmployeeProfile {
   annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
+  unavailable?: boolean;
+  unavailableReason?: string | null;
 }
 
 interface EmployeeDraft {
@@ -513,6 +515,7 @@ export function Attendance() {
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
+  const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
@@ -543,7 +546,6 @@ export function Attendance() {
         api.get("/attendance/me").catch(() => ({ item: null })),
         api.get("/attendance/requests?scope=mine"),
         api.get("/attendance/requests?scope=supervisor"),
-        api.get("/attendance/delegates"),
         api.get("/attendance/legal-holidays"),
       ];
       if (canViewAll) {
@@ -554,11 +556,10 @@ export function Attendance() {
         const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
         calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
-      const [meData, mineData, supervisorData, delegateData, applicationHolidayData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, applicationHolidayData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
-      setDelegates((delegateData?.items || []) as EmployeeProfile[]);
       setApplicationHolidays((applicationHolidayData?.items || []) as LegalHolidayItem[]);
       if (canViewAll) {
         const roleRules = (roleRuleData || {}) as SupervisorRoleRulePayload;
@@ -582,6 +583,39 @@ export function Attendance() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth, holidayYear]);
+
+  useEffect(() => {
+    if (!["leave", "comp_time"].includes(form.requestType)) {
+      setDelegatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadDelegates() {
+      setDelegatesLoading(true);
+      try {
+        const dateQuery = form.requestType === "leave"
+          ? "?startAt=" + encodeURIComponent(form.startAt) + "&endAt=" + encodeURIComponent(form.endAt)
+          : "";
+        const data = await api.get("/attendance/delegates" + dateQuery);
+        if (cancelled) return;
+        const items = (data?.items || []) as EmployeeProfile[];
+        setDelegates(items);
+        setForm((current) => {
+          const selected = items.find((item) => String(item.id) === current.delegateEmployeeId);
+          return selected?.unavailable ? { ...current, delegateEmployeeId: "" } : current;
+        });
+      } catch (e) {
+        if (!cancelled) toast.error(e instanceof Error ? e.message : "加载代理人失败");
+      } finally {
+        if (!cancelled) setDelegatesLoading(false);
+      }
+    }
+    loadDelegates();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.requestType, form.startAt, form.endAt]);
 
   async function loadOvertimeOrders() {
     setOvertimeLoading(true);
@@ -1263,15 +1297,29 @@ export function Attendance() {
                         <Select
                           value={form.delegateEmployeeId}
                           onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
+                          disabled={delegatesLoading}
                         >
-                          <SelectTrigger className="h-11"><SelectValue placeholder="选择请假期间的代理人" /></SelectTrigger>
+                          <SelectTrigger className="h-11">
+                            <SelectValue
+                              placeholder={delegatesLoading
+                                ? "正在检查代理人状态"
+                                : form.requestType === "leave" ? "选择请假期间的代理人" : "选择调休期间的代理人"}
+                            />
+                          </SelectTrigger>
                           <SelectContent>
                             {delegates.map((item) => (
-                              <SelectItem key={item.id} value={String(item.id)}>{item.employeeName || "员工 #" + item.id}</SelectItem>
+                              <SelectItem key={item.id} value={String(item.id)} disabled={item.unavailable}>
+                                {item.employeeName || "员工 #" + item.id}
+                                {item.unavailable ? "（所选时段请假中）" : ""}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground">代理人确认后，再流转给主管审批。</p>
+                        <p className="text-xs text-muted-foreground">
+                          {form.requestType === "leave"
+                            ? "请假冲突人员不可选择；代理人无需确认，提交后直接进入主管审批。"
+                            : "调休仍需代理人确认后，再流转给主管审批。"}
+                        </p>
                       </div>
 
                       {proofRequired ? (
@@ -1383,7 +1431,13 @@ export function Attendance() {
                       {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                       提交申请
                     </Button>
-                    <p className="text-center text-xs text-muted-foreground">提交后按代理人、主管、人事与副总流程审批</p>
+                    <p className="text-center text-xs text-muted-foreground">
+                      {form.requestType === "leave"
+                        ? "提交后直接进入主管审批，代理人无需确认"
+                        : form.requestType === "comp_time"
+                          ? "提交后先由代理人确认，再进入主管审批"
+                          : "提交后进入主管审批"}
+                    </p>
                   </div>
                 </div>
               </div>

@@ -68,10 +68,11 @@ function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supe
     ]
   }
 
-  const steps = [
-    { stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null },
-    { stepType: 'supervisor', assigneeEmployeeId: null, assigneeRole: supervisorRole },
-  ]
+  const steps = []
+  if (requestType !== 'leave') {
+    steps.push({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
+  }
+  steps.push({ stepType: 'supervisor', assigneeEmployeeId: null, assigneeRole: supervisorRole })
   if (Number(workingDays) >= 3) {
     steps.push({ stepType: 'hr', assigneeEmployeeId: null, assigneeRole: 'administrative_supervisor' })
     steps.push({ stepType: 'vp', assigneeEmployeeId: null, assigneeRole: 'operations_director' })

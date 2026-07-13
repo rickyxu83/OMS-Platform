@@ -104,8 +104,8 @@ async function loadController({
   return { controller: require('../src/modules/attendance/controller'), calls }
 }
 
-async function createLeave(bodyOverrides = {}) {
-  const { controller, calls } = await loadController()
+async function createLeave(bodyOverrides = {}, loadOptions = {}) {
+  const { controller, calls } = await loadController(loadOptions)
   const req = {
     user: { id: 42, role: 'engineer' },
     body: {
@@ -157,6 +157,51 @@ async function createLeave(bodyOverrides = {}) {
   }
 
   {
+    const result = await createLeave({}, {
+      queryHandler: async (sql) => {
+        if (/SELECT r\.id[\s\S]*FROM attendance_requests r[\s\S]*r\.request_type = 'leave'/.test(sql)) {
+          return [{ id: 900 }]
+        }
+        return undefined
+      },
+    })
+    assert.equal(result.thrown?.status, 400)
+    assert.match(result.thrown?.message || '', /已有请假/)
+    assert.equal(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)), false)
+  }
+
+  {
+    const { controller, calls } = await loadController({
+      queryHandler: async (sql) => {
+        if (/AS unavailable[\s\S]*FROM attendance_employee_profiles p/.test(sql)) {
+          return [
+            { id: 9, user_id: 77, employee_name: '代理人甲', unavailable: 1 },
+            { id: 10, user_id: 78, employee_name: '代理人乙', unavailable: 0 },
+          ]
+        }
+        return undefined
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      query: { startAt: '2026-07-14T09:00', endAt: '2026-07-14T18:00' },
+    }
+    const res = createResponse()
+    await controller.listDelegates(req, res)
+    assert.deepEqual(res.body.items, [
+      { id: 9, userId: 77, employeeName: '代理人甲', unavailable: true, unavailableReason: '所选时段已有请假' },
+      { id: 10, userId: 78, employeeName: '代理人乙', unavailable: false, unavailableReason: null },
+    ])
+    const delegateQuery = calls.find((call) => /AS unavailable[\s\S]*FROM attendance_employee_profiles p/.test(call.sql))
+    assert.ok(delegateQuery)
+    assert.equal(delegateQuery.params.startAt, '2026-07-14 09:00:00')
+    assert.equal(delegateQuery.params.endAt, '2026-07-14 18:00:00')
+    assert.match(delegateQuery.sql, /pending_supervisor/)
+    assert.match(delegateQuery.sql, /approved/)
+    assert.doesNotMatch(delegateQuery.sql, /status IN \([^)]*draft/)
+  }
+
+  {
     const executeCalls = []
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -170,6 +215,8 @@ async function createLeave(bodyOverrides = {}) {
             request_type: 'leave',
             leave_type: 'annual',
             working_days: 3,
+            start_at: '2026-07-10 09:00:00',
+            end_at: '2026-07-14 18:00:00',
             supervisor_role: 'engineering_supervisor',
             status: 'draft',
             submitted_by: 42,
@@ -183,11 +230,50 @@ async function createLeave(bodyOverrides = {}) {
     const res = createResponse()
     await controller.submitRequest(req, res)
     assert.equal(res.body.ok, true)
-    assert.equal(res.body.status, 'pending_delegate')
+    assert.equal(res.body.status, 'pending_supervisor')
     const stepInserts = executeCalls.filter((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
-    assert.equal(stepInserts.length, 4)
+    assert.equal(stepInserts.length, 3)
+    assert.equal(stepInserts[0].params.stepType, 'supervisor')
     assert.equal(stepInserts[0].params.status, 'pending')
     assert.equal(stepInserts[1].params.status, 'waiting')
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 324,
+            workflow_version: 2,
+            employee_id: 5,
+            delegate_employee_id: 9,
+            request_type: 'leave',
+            leave_type: 'annual',
+            working_days: 1,
+            start_at: '2026-07-14 09:00:00',
+            end_at: '2026-07-14 18:00:00',
+            supervisor_role: 'engineering_supervisor',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/SELECT r\.id[\s\S]*FROM attendance_requests r/.test(sql)) return [[{ id: 901 }], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '324' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.submitRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /已有请假/)
+    assert.equal(executeCalls.some((call) => /INSERT INTO attendance_request_approvals/.test(call.sql)), false)
   }
 
   {

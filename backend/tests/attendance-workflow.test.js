@@ -45,7 +45,6 @@ assert.deepEqual(
     supervisorRole: 'engineering_supervisor',
   }),
   [
-    { stepType: 'delegate', assigneeEmployeeId: 9, assigneeRole: null },
     { stepType: 'supervisor', assigneeEmployeeId: null, assigneeRole: 'engineering_supervisor' },
   ],
 )
