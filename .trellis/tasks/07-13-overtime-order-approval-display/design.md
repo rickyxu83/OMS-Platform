@@ -64,6 +64,54 @@ serviceOrder: ServiceOrderSnapshot | null
 
 快照解析必须容错：数据库驱动返回对象或 JSON 字符串时都能规范化；无效类型和损坏 JSON 视为无快照并进入回退路径。
 
+## Executable Snapshot Contract
+
+### 1. Scope / Trigger
+
+当 `attendance_requests.source_type = 'service_order'` 时，`source_snapshot` 是审批展示的不可变来源；只有通过来源绑定和字段类型校验的快照才可优先于当前工单。
+
+### 2. Signatures
+
+- DB：`attendance_requests(source_type VARCHAR(32), source_id BIGINT UNSIGNED, source_snapshot JSON NULL)`。
+- 解析：`parseServiceOrderSnapshot(value, expectedSourceId)`。
+- API：`AttendanceRequest.serviceOrder = ServiceOrderSnapshot | { id, unavailable: true } | null`。
+
+### 3. Contracts
+
+- `source_snapshot.id` 必须是正数，并且等于同一申请行的 `source_id`。
+- `orderNo`、客户/联系人/设备/服务类型/问题字段及五个时间字段只允许字符串、`null` 或缺省。
+- API 不返回原始 `source_snapshot`；只返回规范化后的 `serviceOrder`。
+
+### 4. Validation & Error Matrix
+
+- JSON 损坏、数组、无有效 ID、ID 与 `source_id` 不一致、任一摘要字段为对象/数组/数字/布尔值：快照无效，进入当前工单批量回退。
+- 当前工单可读：返回当前工单摘要。
+- 当前工单不存在：返回 `{ id: source_id, unavailable: true }`，列表和审批操作继续可用。
+- 非服务工单来源：返回 `serviceOrder: null`。
+
+### 5. Good / Base / Bad Cases
+
+- Good：新申请快照 ID 与来源 ID 一致，字段均为字符串或空值，所有审批人看到同一内容。
+- Base：历史申请没有快照，列表通过一次去重批量查询读取当前工单。
+- Bad：快照 ID 指向另一工单或字段被写成嵌套对象；不得显示该快照，也不得输出 `"[object Object]"`。
+
+### 6. Tests Required
+
+- 创建申请断言插入的 JSON 快照字段完整且 ID 正确。
+- 同一工单的两条申请携带不同快照时，按申请 ID 隔离返回。
+- `89/91/89` 等输入只触发一次去重批量查询并正确映射。
+- 损坏 JSON、数组、缺失 ID、ID 不匹配和嵌套对象字段均进入回退；原始 `source_snapshot` 不出现在响应中。
+
+### 7. Wrong vs Correct
+
+```js
+// Wrong: 只信任快照自身的正数 ID，会接受另一工单或对象字段。
+parseServiceOrderSnapshot(row.source_snapshot)
+
+// Correct: 将快照绑定到申请来源，任何契约不符都回退当前工单。
+parseServiceOrderSnapshot(row.source_snapshot, Number(row.source_id))
+```
+
 ## Frontend
 
 `AttendanceRequest` 增加可空的 `serviceOrder` 类型。`RequestList` 对 `requestType === 'overtime' && sourceType === 'service_order'` 的记录渲染统一工单摘要组件。
