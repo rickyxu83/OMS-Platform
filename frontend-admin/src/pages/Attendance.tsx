@@ -20,10 +20,13 @@ type AttendanceTab = "apply" | "records" | "report" | "employees" | "settings";
 
 interface AttendanceRequest {
   id: number | string;
+  workflowVersion?: number;
   employeeId: number | string;
   employeeName?: string;
   applicantRole?: string | null;
   supervisorRole?: string | null;
+  delegateEmployeeId?: number | string | null;
+  delegateEmployeeName?: string | null;
   requestType: RequestType;
   leaveType?: string | null;
   overtimeKind?: string | null;
@@ -36,7 +39,25 @@ interface AttendanceRequest {
   startAt?: string;
   endAt?: string;
   hours?: number;
+  workingDays?: number | null;
+  proofFileCount?: number;
+  approvals?: ApprovalStep[];
   status?: string;
+}
+
+interface ApprovalStep {
+  id: number | string;
+  stepType: "delegate" | "supervisor" | "hr" | "vp";
+  stepOrder: number;
+  assigneeEmployeeId?: number | string | null;
+  assigneeEmployeeName?: string | null;
+  assigneeRole?: string | null;
+  status: "waiting" | "pending" | "approved" | "rejected" | "skipped";
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+  rejectedByName?: string | null;
+  rejectedAt?: string | null;
+  rejectedReason?: string | null;
 }
 
 interface EmployeeProfile {
@@ -152,7 +173,7 @@ const REQUEST_TYPE_LABELS: Record<string, string> = {
 };
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
-  annual: "年假",
+  annual: "特休",
   sick: "病假",
   personal: "事假",
   marriage: "婚假",
@@ -197,8 +218,12 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  pending_delegate: "待代理人",
   pending_supervisor: "待主管",
-  pending_admin: "待行政",
+  pending_hr: "待人事",
+  pending_vp: "待副总",
+  pending_admin: "待行政（旧流程）",
   approved: "已通过",
   rejected: "已驳回",
   withdrawn: "已撤回",
@@ -206,7 +231,11 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "info" | "destructive" | "outline"> = {
+  draft: "secondary",
+  pending_delegate: "warning",
   pending_supervisor: "warning",
+  pending_hr: "info",
+  pending_vp: "info",
   pending_admin: "info",
   approved: "success",
   rejected: "destructive",
@@ -292,6 +321,25 @@ function annualLeaveRange(form: {
     endAt: `${endDate}T${endPeriod === "afternoon" ? "18" : "14"}:00`,
     hours: halfDays * 4,
   };
+}
+
+function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holidays: Set<string>) {
+  const range = annualLeaveRange(form);
+  const startDate = range.startAt.slice(0, 10);
+  const endDate = range.endAt.slice(0, 10);
+  const startHalf = range.startAt.slice(11, 13) === "14" ? 1 : 0;
+  const endHalf = range.endAt.slice(11, 13) === "18" ? 1 : 0;
+  let halfDays = 0;
+  for (let timestamp = dateIndex(startDate); timestamp <= dateIndex(endDate); timestamp += 1) {
+    const cursor = new Date(timestamp * 86400000);
+    const key = cursor.toISOString().slice(0, 10);
+    const day = cursor.getUTCDay();
+    if (day === 0 || day === 6 || holidays.has(key)) continue;
+    const firstHalf = key === startDate ? startHalf : 0;
+    const lastHalf = key === endDate ? endHalf : 1;
+    if (lastHalf >= firstHalf) halfDays += lastHalf - firstHalf + 1;
+  }
+  return { ...range, hours: halfDays * 4, workingDays: halfDays / 2 };
 }
 
 function applyAnnualLeaveRange<T extends {
@@ -396,6 +444,18 @@ function requestTypeLabel(type?: string) {
   return REQUEST_TYPE_LABELS[type || ""] || type || "-";
 }
 
+function approvalStepLabel(step?: ApprovalStep) {
+  if (!step) return "";
+  const labels = { delegate: "代理人", supervisor: "主管", hr: "人事", vp: "副总" };
+  return labels[step.stepType] || step.stepType;
+}
+
+function approvalStepStatus(step?: ApprovalStep) {
+  if (!step) return "";
+  const labels = { waiting: "等待", pending: "待签核", approved: "已通过", rejected: "已驳回", skipped: "已跳过" };
+  return labels[step.status] || step.status;
+}
+
 function statusBadge(status?: string) {
   const key = status || "";
   return <Badge variant={STATUS_VARIANT[key] || "secondary"}>{STATUS_LABELS[key] || key || "-"}</Badge>;
@@ -412,6 +472,7 @@ function createBlankForm() {
     leaveType: "annual",
     overtimeKind: "work",
     overtimeResult: "comp_time",
+    delegateEmployeeId: "",
     annualStartDate: today,
     annualEndDate: today,
     annualPeriod: "morning" as AnnualLeavePeriod,
@@ -437,7 +498,7 @@ function createAdjustDraft(): AdjustDraft {
 
 export function Attendance() {
   const { hasPermission } = useAuth();
-  const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.manage");
+  const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const [activeTab, setActiveTab] = useState<AttendanceTab>("apply");
@@ -450,6 +511,8 @@ export function Attendance() {
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
+  const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
   const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
@@ -467,6 +530,7 @@ export function Attendance() {
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
   const [holidayYear, setHolidayYear] = useState(todayYear());
+  const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
   const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
   const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "" });
 
@@ -478,6 +542,8 @@ export function Attendance() {
         api.get("/attendance/me").catch(() => ({ item: null })),
         api.get("/attendance/requests?scope=mine"),
         api.get("/attendance/requests?scope=supervisor"),
+        api.get("/attendance/delegates"),
+        api.get("/attendance/legal-holidays"),
       ];
       if (canViewAll) {
         calls.push(api.get("/attendance/requests?scope=all"));
@@ -487,10 +553,12 @@ export function Attendance() {
         const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
         calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
-      const [meData, mineData, supervisorData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, delegateData, applicationHolidayData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
+      setDelegates((delegateData?.items || []) as EmployeeProfile[]);
+      setApplicationHolidays((applicationHolidayData?.items || []) as LegalHolidayItem[]);
       if (canViewAll) {
         const roleRules = (roleRuleData || {}) as SupervisorRoleRulePayload;
         const ruleItems = roleRules.items || [];
@@ -536,11 +604,11 @@ export function Attendance() {
   }, [form.requestType]);
 
   const pendingMine = useMemo(
-    () => mine.filter((item) => item.status === "pending_supervisor" || item.status === "pending_admin").length,
+    () => mine.filter((item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
     [mine],
   );
   const supervisorPending = useMemo(
-    () => supervisorTodo.filter((item) => item.status === "pending_supervisor"),
+    () => supervisorTodo.filter((item) => ["pending_delegate", "pending_supervisor", "pending_hr", "pending_vp"].includes(item.status || "")),
     [supervisorTodo],
   );
   const adminPending = useMemo(
@@ -640,17 +708,33 @@ export function Attendance() {
           overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
         });
       } else {
-        const leaveRange = requestType === "leave" ? annualLeaveRange(form) : null;
-        await api.post("/attendance/requests", {
+        if (!form.delegateEmployeeId) throw new Error("请选择代理人");
+        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
+          throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
+        }
+        const leaveRange = workingLeaveSummary(form, applicationHolidayDates);
+        if (!leaveRange.workingDays) throw new Error("申请范围内没有工作日");
+        const draft = await api.post("/attendance/requests", {
           requestType,
           leaveType: requestType === "leave" ? form.leaveType : undefined,
-          startAt: leaveRange?.startAt || form.startAt,
-          endAt: leaveRange?.endAt || form.endAt,
-          hours: leaveRange?.hours || Number(form.hours),
+          delegateEmployeeId: form.delegateEmployeeId,
+          startAt: leaveRange.startAt,
+          endAt: leaveRange.endAt,
+          hours: leaveRange.hours,
         });
+        for (const file of proofFiles) {
+          const body = new FormData();
+          body.append("file", file);
+          body.append("ownerType", "attendance_request");
+          body.append("ownerId", String(draft.id));
+          body.append("purpose", "leave_proof");
+          await api.postForm("/files", body);
+        }
+        await api.post(`/attendance/requests/${draft.id}/submit`);
       }
       toast.success("申请已提交");
       setForm(createBlankForm());
+      setProofFiles([]);
       setSelectedOvertimeOrderId("");
       setSelectedSegmentKey("");
       await load();
@@ -795,7 +879,13 @@ export function Attendance() {
     });
   }, [allRequests, recordStatus, recordType, recordKeyword]);
 
-  const annualPreview = form.requestType === "leave" ? annualLeaveRange(form) : null;
+  const applicationHolidayDates = useMemo(
+    () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
+    [applicationHolidays],
+  );
+  const annualPreview = ["leave", "comp_time"].includes(form.requestType)
+    ? workingLeaveSummary(form, applicationHolidayDates)
+    : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
 
   const overtimeOrderMeta: Array<[string, string]> = selectedOvertimeOrder ? [
@@ -812,7 +902,7 @@ export function Attendance() {
   ] : [];
 
   const statTiles = [
-    { label: "可用年假", value: `${days(annualBalanceDays(myProfile))} 天` },
+    { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天` },
     { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时` },
     { label: "我的进行中", value: String(pendingMine) },
     ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length) }] : []),
@@ -877,7 +967,7 @@ export function Attendance() {
                     <Send className="h-5 w-5" />
                     提交申请
                   </CardTitle>
-                  <CardDescription>年假和常规假别按半天申请，调休按小时申请</CardDescription>
+                  <CardDescription>特休、常规假别和调休按工作日半天申请</CardDescription>
                 </div>
                 {form.requestType === "leave" ? (
                   <Badge variant="secondary">{LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"}</Badge>
@@ -906,9 +996,9 @@ export function Attendance() {
                           type="button"
                           onClick={() => setForm((current) => {
                             const value = item.value;
-                            const next = { ...current, requestType: value as RequestType, hours: value === "leave" ? "4" : "1" };
-                            if (value === "leave") return applyAnnualLeaveRange(next);
-                            return { ...next, endAt: addHoursValue(next.startAt, value === "leave" ? 4 : 1) };
+                            const next = { ...current, requestType: value as RequestType, hours: value === "overtime" ? "1" : "4" };
+                            if (value !== "overtime") return applyAnnualLeaveRange(next);
+                            return { ...next, endAt: addHoursValue(next.startAt, 1) };
                           })}
                           className={`flex h-11 items-center gap-3 rounded-md border px-3 text-left text-sm transition ${
                             active ? "border-primary bg-primary/10 text-primary shadow-sm" : "bg-background hover:bg-muted/50"
@@ -1044,7 +1134,7 @@ export function Attendance() {
                       </Select>
                     </div>
                   ) : null}
-                  {form.requestType === "leave" ? (
+                  {["leave", "comp_time"].includes(form.requestType) ? (
                   <>
                     <div className="space-y-2 xl:col-span-3">
                       <Label>开始日期</Label>
@@ -1107,6 +1197,34 @@ export function Attendance() {
                     </div>
                   </>
                 )}
+                    <div className="space-y-2 xl:col-span-4">
+                      <Label>代理人</Label>
+                      <Select
+                        value={form.delegateEmployeeId}
+                        onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
+                      >
+                        <SelectTrigger className="h-11"><SelectValue placeholder="选择代理人" /></SelectTrigger>
+                        <SelectContent>
+                          {delegates.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>{item.employeeName || `员工 #${item.id}`}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">单位资料补齐后将启用禁止跨单位代理校验</p>
+                    </div>
+                    {form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) ? (
+                      <div className="space-y-2 xl:col-span-8">
+                        <Label>{form.leaveType === "sick" ? "病假证明" : "婚假证明"}</Label>
+                        <Input
+                          className="h-11"
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
+                          onChange={(event) => setProofFiles(Array.from(event.target.files || []))}
+                        />
+                        <p className="text-xs text-muted-foreground">必填，可上传图片、PDF 或 Word 文件</p>
+                      </div>
+                    ) : null}
                     </div>
                   )}
                 </div>
@@ -1118,13 +1236,14 @@ export function Attendance() {
                         <div className="text-sm font-medium">请假时长</div>
                         <div className="mt-2 rounded-lg border bg-background p-3">
                           <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-semibold">{days(Number(annualPreview?.hours || 0) / 8)}</span>
-                            <span className="text-sm text-muted-foreground">天</span>
+                            <span className="text-2xl font-semibold">{days(annualPreview?.workingDays)}</span>
+                            <span className="text-sm text-muted-foreground">工作日</span>
                             <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
                           </div>
                           <div className="mt-2 text-xs leading-5 text-muted-foreground">
                             <div>{formatDateTime(annualPreview?.startAt)}</div>
                             <div>{formatDateTime(annualPreview?.endAt)}</div>
+                            <div>已排除周末和法定节假日</div>
                           </div>
                         </div>
                       </div>
@@ -1156,12 +1275,14 @@ export function Attendance() {
                         <div className="text-sm font-medium">调休时长</div>
                         <div className="mt-2 rounded-lg border bg-background p-3">
                           <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-semibold">{hours(Number(form.hours))}</span>
-                            <span className="text-sm text-muted-foreground">小时</span>
+                            <span className="text-2xl font-semibold">{days(annualPreview?.workingDays)}</span>
+                            <span className="text-sm text-muted-foreground">工作日</span>
+                            <span className="text-xs text-muted-foreground">{hours(annualPreview?.hours)} 小时</span>
                           </div>
                           <div className="mt-2 text-xs leading-5 text-muted-foreground">
-                            <div>{formatDateTime(form.startAt)}</div>
-                            <div>{formatDateTime(form.endAt)}</div>
+                            <div>{formatDateTime(annualPreview?.startAt)}</div>
+                            <div>{formatDateTime(annualPreview?.endAt)}</div>
+                            <div>已排除周末和法定节假日</div>
                           </div>
                         </div>
                       </div>
@@ -1179,39 +1300,50 @@ export function Attendance() {
           {isApprover ? (
             <RequestList
               title="待我审批"
-              description="主管审批与行政终审集中在这里处理"
+              description="代理人、主管、人事与副总待办集中在这里处理"
               items={approvalTodos}
               loading={loading}
               emptyText="暂无待审批的申请"
-              actions={(item) => item.status === "pending_supervisor" ? (
-                <>
-                  <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-supervisor`, "已通过主管审批")}>
-                    <Check className="mr-1 h-4 w-4" /> 通过
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
-                    <X className="mr-1 h-4 w-4" /> 驳回
-                  </Button>
-                </>
-              ) : canAdminApprove ? (
-                <>
-                  <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
-                    <ShieldCheck className="mr-1 h-4 w-4" /> 终审通过
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
-                    <X className="mr-1 h-4 w-4" /> 驳回
-                  </Button>
-                </>
-              ) : null}
+              actions={(item) => {
+                const config: Record<string, { path: string; success: string }> = {
+                  pending_delegate: { path: "approve-delegate", success: "代理人已通过" },
+                  pending_supervisor: { path: "approve-supervisor", success: "主管已通过" },
+                  pending_hr: { path: "approve-hr", success: "人事已通过" },
+                  pending_vp: { path: "approve-vp", success: "副总已通过" },
+                };
+                const current = config[item.status || ""];
+                if (current) return (
+                  <>
+                    <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/${current.path}`, current.success)}>
+                      <Check className="mr-1 h-4 w-4" /> 通过
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                      <X className="mr-1 h-4 w-4" /> 驳回
+                    </Button>
+                  </>
+                );
+                if (item.status === "pending_admin" && canAdminApprove) return (
+                  <>
+                    <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
+                      <ShieldCheck className="mr-1 h-4 w-4" /> 终审通过
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                      <X className="mr-1 h-4 w-4" /> 驳回
+                    </Button>
+                  </>
+                );
+                return null;
+              }}
             />
           ) : null}
 
           <RequestList
             title="我的申请"
-            description="行政终审前可撤回"
+            description="最终审批前可撤回"
             items={mine}
             loading={loading}
             showEmployee={false}
-            actions={(item) => ["pending_supervisor", "pending_admin"].includes(item.status || "") ? (
+            actions={(item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
                 <RotateCcw className="mr-1 h-4 w-4" /> 撤回
               </Button>
@@ -1284,7 +1416,7 @@ export function Attendance() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
-                    <TableHead>年假</TableHead>
+                    <TableHead>特休</TableHead>
                     <TableHead>病假</TableHead>
                     <TableHead>事假</TableHead>
                     <TableHead>婚假</TableHead>
@@ -1295,7 +1427,7 @@ export function Attendance() {
                     <TableHead>法定节假日加班费</TableHead>
                     <TableHead>加班费折算</TableHead>
                     <TableHead>调休</TableHead>
-                    <TableHead>年假余额</TableHead>
+                    <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1332,7 +1464,7 @@ export function Attendance() {
         <Card>
           <CardHeader>
             <CardTitle>员工档案与余额</CardTitle>
-            <CardDescription>年假余额按天调整，调休按小时调整；档案编辑与余额调整在弹窗中完成</CardDescription>
+            <CardDescription>特休余额按天调整，调休按小时调整；档案编辑与余额调整在弹窗中完成</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-md border">
@@ -1343,7 +1475,7 @@ export function Attendance() {
                     <TableHead>籍别</TableHead>
                     <TableHead>入职日期</TableHead>
                     <TableHead>状态</TableHead>
-                    <TableHead>年假余额</TableHead>
+                    <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
                     <TableHead>操作</TableHead>
                   </TableRow>
@@ -1616,7 +1748,7 @@ export function Attendance() {
           <DialogHeader>
             <DialogTitle>调整余额</DialogTitle>
             <DialogDescription>
-              {adjustDialog ? `${adjustDialog.employee.employeeName || "-"} · 年假 ${days(annualBalanceDays(adjustDialog.employee))} 天 / 调休 ${hours(adjustDialog.employee.compTimeBalanceHours)} 小时` : ""}
+              {adjustDialog ? `${adjustDialog.employee.employeeName || "-"} · 特休 ${days(annualBalanceDays(adjustDialog.employee))} 天 / 调休 ${hours(adjustDialog.employee.compTimeBalanceHours)} 小时` : ""}
             </DialogDescription>
           </DialogHeader>
           {adjustDialog ? (
@@ -1630,7 +1762,7 @@ export function Attendance() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="comp_time">调休（按小时）</SelectItem>
-                    <SelectItem value="annual_leave">年假（按天）</SelectItem>
+                    <SelectItem value="annual_leave">特休（按天）</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1739,7 +1871,23 @@ function RequestList({
                   <TableRow key={item.id}>
                     {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
                     <TableCell>{requestTypeLabel(item.requestType)}</TableCell>
-                    <TableCell>{requestDetail(item)}</TableCell>
+                    <TableCell>
+                      <div>{requestDetail(item)}</div>
+                      {item.delegateEmployeeName ? <div className="text-xs text-muted-foreground">代理人：{item.delegateEmployeeName}</div> : null}
+                      {typeof item.workingDays === "number" ? <div className="text-xs text-muted-foreground">{days(item.workingDays)} 个工作日</div> : null}
+                      {item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
+                      {item.approvals?.length ? (
+                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {item.approvals.map((step) => (
+                            <div key={step.id}>
+                              {approvalStepLabel(step)}：{approvalStepStatus(step)}
+                              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+                              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>
                       <div>{formatDateTime(item.startAt)}</div>
                       <div className="text-xs text-muted-foreground">{formatDateTime(item.endAt)}</div>
