@@ -167,7 +167,7 @@ CREATE TABLE service_orders (
   KEY idx_service_orders_status_created (status, created_at),
   KEY idx_service_orders_target_engineer (target_engineer_id),
   KEY idx_service_orders_inspection_schedule (inspection_schedule_id),
-  UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date),
+  UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date, target_engineer_id),
   CONSTRAINT fk_service_orders_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id),
   CONSTRAINT fk_service_orders_device_id FOREIGN KEY (device_id) REFERENCES devices (id),
   CONSTRAINT fk_service_orders_engineer_id FOREIGN KEY (assigned_engineer_id) REFERENCES users (id),
@@ -207,7 +207,7 @@ CREATE TABLE inspection_schedules (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(160) NULL,
   customer_id BIGINT UNSIGNED NOT NULL,
-  device_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NULL,
   target_engineer_id BIGINT UNSIGNED NOT NULL,
   cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,
   next_run_anchor DATE NOT NULL,
@@ -220,7 +220,6 @@ CREATE TABLE inspection_schedules (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_inspection_schedules_active_combo (device_id, target_engineer_id, cadence, active_slot),
   KEY idx_inspection_schedules_customer_id (customer_id),
   KEY idx_inspection_schedules_engineer_active (target_engineer_id, active),
   KEY idx_inspection_schedules_next_run (active, next_run_anchor),
@@ -229,6 +228,33 @@ CREATE TABLE inspection_schedules (
   CONSTRAINT fk_inspection_schedules_target_engineer_id FOREIGN KEY (target_engineer_id) REFERENCES users (id),
   CONSTRAINT fk_inspection_schedules_created_by FOREIGN KEY (created_by) REFERENCES users (id),
   CONSTRAINT fk_inspection_schedules_updated_by FOREIGN KEY (updated_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspection_schedule_devices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  schedule_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_schedule_device (schedule_id, device_id),
+  KEY idx_schedule_devices_device (device_id),
+  CONSTRAINT fk_schedule_devices_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+  CONSTRAINT fk_schedule_devices_device FOREIGN KEY (device_id) REFERENCES devices (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspection_schedule_assignments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  schedule_id BIGINT UNSIGNED NOT NULL,
+  engineer_id BIGINT UNSIGNED NOT NULL,
+  device_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inspection_assignment_device (schedule_id, device_id),
+  KEY idx_inspection_assignments_engineer (engineer_id),
+  KEY idx_inspection_assignments_device (device_id),
+  CONSTRAINT fk_inspection_assignments_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+  CONSTRAINT fk_inspection_assignments_engineer FOREIGN KEY (engineer_id) REFERENCES users (id),
+  CONSTRAINT fk_inspection_assignments_device FOREIGN KEY (device_id) REFERENCES devices (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE service_reports (

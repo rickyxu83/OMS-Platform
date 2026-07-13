@@ -34,6 +34,12 @@ interface Schedule {
   deviceNames?: string[];
   targetEngineerId?: string | number;
   targetEngineerName?: string;
+  assignments?: Array<{
+    targetEngineerId: string | number;
+    targetEngineerName?: string;
+    deviceIds: number[];
+    deviceNames: string[];
+  }>;
   cadence?: string;
   nextRunAnchor?: string;
   endDate?: string;
@@ -132,6 +138,7 @@ export function InspectionSchedules() {
     customerId: "",
     deviceIds: [] as number[],
     targetEngineerIds: [] as string[],
+    deviceEngineerIds: {} as Record<string, string>,
     cadence: "monthly",
     nextRunAnchor: "",
     endDate: "",
@@ -201,7 +208,7 @@ export function InspectionSchedules() {
       if (statusFilter === "active" && !s.active) return false;
       if (statusFilter === "disabled" && s.active) return false;
       if (!keyword) return true;
-      const searchText = [s.name, s.customerName, s.targetEngineerName, ...(s.deviceNames || [])].filter(Boolean).join(" ");
+      const searchText = [s.name, s.customerName, s.targetEngineerName, ...(s.assignments || []).map((item) => item.targetEngineerName), ...(s.deviceNames || [])].filter(Boolean).join(" ");
       return matchesSearchText(searchText, keyword);
     });
   }, [schedules, searchQuery, customerFilter, cadenceFilter, statusFilter]);
@@ -349,25 +356,38 @@ export function InspectionSchedules() {
   }, [engineerOptionsOpen, engineerSearch, filteredEngineerOptions.length]);
 
   function toggleDevice(deviceId: number) {
-    setForm((prev) => ({
-      ...prev,
-      deviceIds: prev.deviceIds.includes(deviceId)
-        ? prev.deviceIds.filter((id) => id !== deviceId)
-        : [...prev.deviceIds, deviceId],
-    }));
+    setForm((prev) => {
+      if (prev.deviceIds.includes(deviceId)) {
+        const deviceEngineerIds = { ...prev.deviceEngineerIds };
+        delete deviceEngineerIds[String(deviceId)];
+        return { ...prev, deviceIds: prev.deviceIds.filter((id) => id !== deviceId), deviceEngineerIds };
+      }
+      const firstEngineerId = prev.targetEngineerIds[0] || "";
+      return {
+        ...prev,
+        deviceIds: [...prev.deviceIds, deviceId],
+        deviceEngineerIds: { ...prev.deviceEngineerIds, [String(deviceId)]: firstEngineerId },
+      };
+    });
   }
 
   function selectAllCustomerDevices() {
-    setForm((prev) => ({
-      ...prev,
-      deviceIds: customerDevices.map((d) => Number(d.id)),
-    }));
+    setForm((prev) => {
+      const deviceIds = customerDevices.map((d) => Number(d.id));
+      const firstEngineerId = prev.targetEngineerIds[0] || "";
+      return {
+        ...prev,
+        deviceIds,
+        deviceEngineerIds: Object.fromEntries(deviceIds.map((deviceId) => [String(deviceId), prev.deviceEngineerIds[String(deviceId)] || firstEngineerId])),
+      };
+    });
   }
 
   function clearSelectedDevices() {
     setForm((prev) => ({
       ...prev,
       deviceIds: [],
+      deviceEngineerIds: {},
     }));
   }
 
@@ -382,6 +402,7 @@ export function InspectionSchedules() {
       customerId: "",
       deviceIds: [],
       targetEngineerIds: [],
+      deviceEngineerIds: {},
       cadence: "monthly",
       nextRunAnchor: "",
       endDate: "",
@@ -397,11 +418,15 @@ export function InspectionSchedules() {
     setCustomerOptionsOpen(false);
     setEngineerSearch("");
     setEngineerOptionsOpen(false);
+    const assignmentRows = schedule.assignments || [];
+    const targetEngineerIds = Array.from(new Set(assignmentRows.map((item) => String(item.targetEngineerId))));
+    const deviceEngineerIds = Object.fromEntries(assignmentRows.flatMap((item) => item.deviceIds.map((deviceId) => [String(deviceId), String(item.targetEngineerId)])));
     setForm({
       name: schedule.name || "",
       customerId: schedule.customerId ? String(schedule.customerId) : "",
       deviceIds: schedule.deviceIds || [],
-      targetEngineerIds: schedule.targetEngineerId ? [String(schedule.targetEngineerId)] : [],
+      targetEngineerIds: targetEngineerIds.length ? targetEngineerIds : schedule.targetEngineerId ? [String(schedule.targetEngineerId)] : [],
+      deviceEngineerIds,
       cadence: schedule.cadence || "monthly",
       nextRunAnchor: inputDate(schedule.nextRunAnchor),
       endDate: inputDate(schedule.endDate),
@@ -412,7 +437,7 @@ export function InspectionSchedules() {
   }
 
   function updateCustomer(customerId: string) {
-    setForm((prev) => ({ ...prev, customerId, deviceIds: [] }));
+    setForm((prev) => ({ ...prev, customerId, deviceIds: [], deviceEngineerIds: {} }));
     const customer = customers.find((c) => String(c.id) === customerId);
     setCustomerSearch(customer?.name || "");
     setCustomerOptionsOpen(false);
@@ -423,7 +448,7 @@ export function InspectionSchedules() {
     setCustomerOptionsOpen(true);
     updateCustomerDropdownBox();
     if (selectedCustomer && value !== (selectedCustomer.name || `客户 #${selectedCustomer.id}`)) {
-      setForm((prev) => ({ ...prev, customerId: "", deviceIds: [] }));
+      setForm((prev) => ({ ...prev, customerId: "", deviceIds: [], deviceEngineerIds: {} }));
     }
   }
 
@@ -431,12 +456,18 @@ export function InspectionSchedules() {
     setEngineerSearch("");
     setEngineerOptionsOpen(true);
     updateEngineerDropdownBox();
-    setForm((prev) => ({
-      ...prev,
-      targetEngineerIds: prev.targetEngineerIds.includes(engineerId)
+    setForm((prev) => {
+      const removing = prev.targetEngineerIds.includes(engineerId);
+      const targetEngineerIds = removing
         ? prev.targetEngineerIds.filter((id) => id !== engineerId)
-        : [...prev.targetEngineerIds, engineerId],
-    }));
+        : [...prev.targetEngineerIds, engineerId];
+      const replacementEngineerId = targetEngineerIds[0] || "";
+      const deviceEngineerIds = Object.fromEntries(Object.entries(prev.deviceEngineerIds).map(([deviceId, assignedEngineerId]) => [
+        deviceId,
+        removing && assignedEngineerId === engineerId ? replacementEngineerId : assignedEngineerId,
+      ]));
+      return { ...prev, targetEngineerIds, deviceEngineerIds };
+    });
   }
 
   async function submit() {
@@ -450,6 +481,10 @@ export function InspectionSchedules() {
     }
     if (form.deviceIds.length === 0) {
       setError("请至少选择一台设备");
+      return;
+    }
+    if (form.deviceIds.some((deviceId) => !form.deviceEngineerIds[String(deviceId)])) {
+      setError("请为每台巡检设备指定工程师");
       return;
     }
     if (!form.cadence) {
@@ -473,6 +508,10 @@ export function InspectionSchedules() {
         deviceIds: form.deviceIds,
         targetEngineerId: form.targetEngineerIds[0],
         targetEngineerIds: form.targetEngineerIds,
+        assignments: form.deviceIds.map((deviceId) => ({
+          deviceId,
+          targetEngineerId: form.deviceEngineerIds[String(deviceId)],
+        })),
         cadence: form.cadence,
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
@@ -481,18 +520,6 @@ export function InspectionSchedules() {
       };
       if (editingId) {
         await api.put(`/inspection-schedules/${editingId}`, payload);
-      } else if (form.targetEngineerIds.length > 1) {
-        await api.post("/inspection-schedules/bulk", {
-          name: form.name.trim() || undefined,
-          customerId: form.customerId,
-          assignments: form.targetEngineerIds.flatMap((targetEngineerId) =>
-            form.deviceIds.map((deviceId) => ({ deviceId, targetEngineerId })),
-          ),
-          cadence: form.cadence,
-          nextRunAnchor: form.nextRunAnchor,
-          endDate: form.endDate || null,
-          active: form.active,
-        });
       } else {
         await api.post("/inspection-schedules", payload);
       }
@@ -830,6 +857,7 @@ export function InspectionSchedules() {
                 const customerName = String(s.customerName || "").trim();
                 const title = planName || customerName || `计划 #${s.id}`;
                 const deviceNames = s.deviceNames || [];
+                const engineerNames = (s.assignments || []).map((item) => item.targetEngineerName).filter(Boolean);
                 const selected = selectedScheduleIds.includes(String(s.id));
                 return (
                   <div
@@ -873,7 +901,9 @@ export function InspectionSchedules() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs text-muted-foreground">巡检人</div>
-                      <div className="mt-1 truncate text-sm font-semibold text-slate-900">{s.targetEngineerName || "未指定"}</div>
+                      <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                        {engineerNames.length ? `${engineerNames[0]}${engineerNames.length > 1 ? ` +${engineerNames.length - 1}` : ""}` : s.targetEngineerName || "未指定"}
+                      </div>
                     </div>
                     <div className="flex items-center">
                       <Badge variant={CADENCE_VARIANT[s.cadence || ""] || "outline"}>
@@ -941,6 +971,7 @@ export function InspectionSchedules() {
           {detailTarget ? (() => {
             const cadenceLabel = CADENCE_LABELS[detailTarget.cadence || ""] || detailTarget.cadence || "-";
             const deviceNames = detailTarget.deviceNames || [];
+            const assignments = detailTarget.assignments || [];
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
@@ -958,7 +989,7 @@ export function InspectionSchedules() {
                     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">巡检工程师</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.targetEngineerName || "未指定"}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{assignments.length || (detailTarget.targetEngineerName ? 1 : 0)} 人</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">巡检周期</div>
@@ -977,14 +1008,17 @@ export function InspectionSchedules() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-lg border p-4">
-                      <div className="text-sm font-medium">巡检设备</div>
+                      <div className="text-sm font-medium">巡检分工</div>
                       <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-                        {deviceNames.length ? deviceNames.map((name, index) => (
-                          <div key={`${name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium">
-                            {name || `设备 #${detailTarget.deviceIds?.[index] || index + 1}`}
+                        {assignments.length ? assignments.map((assignment) => (
+                          <div key={String(assignment.targetEngineerId)} className="rounded-md bg-slate-50 px-3 py-2">
+                            <div className="text-sm font-semibold">{assignment.targetEngineerName || `工程师 #${assignment.targetEngineerId}`}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{assignment.deviceNames.join("、") || `${assignment.deviceIds.length} 台设备`}</div>
                           </div>
+                        )) : deviceNames.length ? deviceNames.map((name, index) => (
+                          <div key={`${name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium">{name}</div>
                         )) : (
-                          <div className="text-sm text-muted-foreground">暂无设备</div>
+                          <div className="text-sm text-muted-foreground">暂无巡检分工</div>
                         )}
                       </div>
                     </div>
@@ -1110,7 +1144,7 @@ export function InspectionSchedules() {
               </div>
               <div className="md:col-span-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <Label>巡检设备（至少选一台）</Label>
+                  <Label>巡检设备与分工（至少选一台）</Label>
                   {form.customerId && customerDevices.length > 0 && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>已选 {selectedDeviceCount} 台</span>
@@ -1166,6 +1200,28 @@ export function InspectionSchedules() {
                             <div className="truncate text-sm font-medium">{deviceLabel(d)}</div>
                             <div className="text-xs text-muted-foreground">设备 #{d.id}</div>
                           </div>
+                          {checked ? (
+                            <div className="w-44" onClick={(event) => event.stopPropagation()}>
+                              <Select
+                                value={form.deviceEngineerIds[String(deviceId)] || ""}
+                                onValueChange={(targetEngineerId) => setForm((prev) => ({
+                                  ...prev,
+                                  deviceEngineerIds: { ...prev.deviceEngineerIds, [String(deviceId)]: targetEngineerId },
+                                }))}
+                              >
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="指定工程师" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedEngineers.map((engineer) => (
+                                    <SelectItem key={engineer.id} value={String(engineer.id)}>
+                                      {engineer.realName || engineer.username || `工程师 #${engineer.id}`}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}

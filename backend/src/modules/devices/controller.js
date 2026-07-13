@@ -905,6 +905,29 @@ async function ensureInspectionScheduleDevicesTable(executeQuery = query) {
          WHERE d.schedule_id = s.id AND d.device_id = s.device_id
        )`,
   )
+  await executeQuery(
+    `CREATE TABLE IF NOT EXISTS inspection_schedule_assignments (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      schedule_id BIGINT UNSIGNED NOT NULL,
+      engineer_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_inspection_assignment_device (schedule_id, device_id),
+      KEY idx_inspection_assignments_engineer (engineer_id),
+      KEY idx_inspection_assignments_device (device_id),
+      CONSTRAINT fk_inspection_assignments_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+      CONSTRAINT fk_inspection_assignments_engineer FOREIGN KEY (engineer_id) REFERENCES users (id),
+      CONSTRAINT fk_inspection_assignments_device FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await executeQuery(
+    `INSERT IGNORE INTO inspection_schedule_assignments (schedule_id, engineer_id, device_id)
+     SELECT sd.schedule_id, s.target_engineer_id, sd.device_id
+     FROM inspection_schedule_devices sd
+     JOIN inspection_schedules s ON s.id = sd.schedule_id
+     WHERE s.target_engineer_id IS NOT NULL`,
+  )
   if (executeQuery === query) inspectionScheduleDevicesTableReady = true
 }
 
@@ -1808,6 +1831,7 @@ async function remove(req, res) {
     await connection.execute('DELETE FROM service_order_devices WHERE device_id = :id', { id: deviceId })
     await connection.execute('UPDATE service_parts SET device_id = NULL WHERE device_id = :id', { id: deviceId })
     await connection.execute('UPDATE inspection_schedules SET device_id = NULL WHERE device_id = :id', { id: deviceId })
+    await connection.execute('DELETE FROM inspection_schedule_assignments WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM inspection_schedule_devices WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM devices WHERE id = :id', { id: deviceId })
     return summary

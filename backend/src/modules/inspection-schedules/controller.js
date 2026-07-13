@@ -20,16 +20,18 @@ const scheduleColumns = `
   s.created_at, s.updated_at
 `
 
-function schedulePayload(row, devices = []) {
+function schedulePayload(row, devices = [], assignments = []) {
+  const firstAssignment = assignments[0] || null
   return {
     id: row.id,
     name: row.name,
     customerId: row.customer_id,
     customerName: row.customer_name,
-    targetEngineerId: row.target_engineer_id,
-    targetEngineerName: row.target_engineer_name || row.target_engineer_username,
+    targetEngineerId: firstAssignment?.targetEngineerId || row.target_engineer_id,
+    targetEngineerName: firstAssignment?.targetEngineerName || row.target_engineer_name || row.target_engineer_username,
     deviceIds: devices.map((d) => d.device_id),
     deviceNames: devices.map((d) => d.device_name).filter(Boolean),
+    assignments,
     cadence: row.cadence,
     nextRunAnchor: row.next_run_anchor,
     active: Boolean(row.active),
@@ -232,6 +234,17 @@ async function ensureInspectionOrderColumns(connection = null) {
   if (!existing.has('confirmed_at')) {
     await execute('ALTER TABLE service_orders ADD COLUMN confirmed_at DATETIME NULL AFTER confirmed_by')
   }
+  await execute(
+    `CREATE TABLE IF NOT EXISTS service_order_devices (
+      service_order_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (service_order_id, device_id),
+      KEY idx_service_order_devices_device_id (device_id),
+      CONSTRAINT fk_service_order_devices_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+      CONSTRAINT fk_service_order_devices_device_id FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
 
   const [statusRows] = await execute(
     `SELECT column_type AS columnType
@@ -266,8 +279,23 @@ async function ensureInspectionOrderColumns(connection = null) {
        )`,
   )
   const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (indexes.has('uk_service_orders_inspection_occurrence')) {
+    const [indexColumns] = await execute(
+      `SELECT column_name AS columnName
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'service_orders'
+         AND index_name = 'uk_service_orders_inspection_occurrence'
+       ORDER BY seq_in_index`,
+    )
+    const columns = indexColumns.map((row) => row.columnName || row.column_name)
+    if (!columns.includes('target_engineer_id')) {
+      await execute('ALTER TABLE service_orders DROP KEY uk_service_orders_inspection_occurrence')
+      indexes.delete('uk_service_orders_inspection_occurrence')
+    }
+  }
   if (!indexes.has('uk_service_orders_inspection_occurrence')) {
-    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date)')
+    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date, target_engineer_id)')
   }
   if (!indexes.has('idx_service_orders_target_engineer')) {
     await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_target_engineer (target_engineer_id)')
@@ -290,7 +318,9 @@ async function nextOrderNo(connection, now = new Date()) {
   return buildOrderNo(Number(countRows[0]?.total || 0) + 1, now)
 }
 
-async function createInspectionOrder(connection, schedule, occurrenceDate, deviceList = []) {
+async function createInspectionOrder(connection, schedule, occurrenceDate, assignment) {
+  const deviceList = assignment.devices || []
+  const targetEngineerId = Number(assignment.targetEngineerId || 0)
   const occurrenceStartAt = toDateTimeValue(occurrenceDate, '09:00:00')
   const occurrenceEndAt = toDateTimeValue(occurrenceDate, '17:00:00')
   const existingRows = await connection.execute(
@@ -298,12 +328,13 @@ async function createInspectionOrder(connection, schedule, occurrenceDate, devic
      FROM service_orders
      WHERE inspection_schedule_id = :scheduleId
        AND inspection_occurrence_date = :occurrenceDate
+       AND target_engineer_id = :targetEngineerId
      LIMIT 1`,
-    { scheduleId: schedule.id, occurrenceDate },
+    { scheduleId: schedule.id, occurrenceDate, targetEngineerId },
   )
-  if (existingRows[0][0]) return { created: false, orderId: existingRows[0][0].id }
+  if (existingRows[0][0]) return { created: false, orderId: existingRows[0][0].id, targetEngineerId }
 
-  const deviceNames = deviceList.filter((d) => d.device_name).map((d) => d.device_name)
+  const deviceNames = deviceList.filter((device) => device.deviceName).map((device) => device.deviceName)
   const deviceNameText = deviceNames.length > 0 ? deviceNames.join('、') : ''
   const orderNo = await nextOrderNo(connection)
   const [insertResult] = await connection.execute(
@@ -331,11 +362,19 @@ async function createInspectionOrder(connection, schedule, occurrenceDate, devic
       createdBy: schedule.created_by,
       inspectionScheduleId: schedule.id,
       inspectionOccurrenceDate: occurrenceDate,
-      targetEngineerId: schedule.target_engineer_id,
+      targetEngineerId,
     },
   )
 
-  return { created: true, orderId: insertResult.insertId, orderNo }
+  for (const device of deviceList) {
+    await connection.execute(
+      `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+       VALUES (:orderId, :deviceId)`,
+      { orderId: insertResult.insertId, deviceId: device.deviceId },
+    )
+  }
+
+  return { created: true, orderId: insertResult.insertId, orderNo, targetEngineerId }
 }
 
 async function loadInspectionOrderForMail(orderId) {
@@ -408,6 +447,7 @@ function duplicateScheduleError(error) {
 }
 
 let inspectionScheduleDevicesReady = false
+let inspectionScheduleAssignmentsReady = false
 
 async function ensureInspectionScheduleDevicesTable(connection = null) {
   if (inspectionScheduleDevicesReady) return
@@ -482,10 +522,135 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
   if (inspectionScheduleDevicesReady === false) inspectionScheduleDevicesReady = true
 }
 
+async function ensureInspectionScheduleAssignmentsTable(connection = null) {
+  if (inspectionScheduleAssignmentsReady) return
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  await execute(
+    `CREATE TABLE IF NOT EXISTS inspection_schedule_assignments (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      schedule_id BIGINT UNSIGNED NOT NULL,
+      engineer_id BIGINT UNSIGNED NOT NULL,
+      device_id BIGINT UNSIGNED NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_inspection_assignment_device (schedule_id, device_id),
+      KEY idx_inspection_assignments_engineer (engineer_id),
+      KEY idx_inspection_assignments_device (device_id),
+      CONSTRAINT fk_inspection_assignments_schedule FOREIGN KEY (schedule_id) REFERENCES inspection_schedules (id) ON DELETE CASCADE,
+      CONSTRAINT fk_inspection_assignments_engineer FOREIGN KEY (engineer_id) REFERENCES users (id),
+      CONSTRAINT fk_inspection_assignments_device FOREIGN KEY (device_id) REFERENCES devices (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  await execute(
+    `INSERT IGNORE INTO inspection_schedule_assignments (schedule_id, engineer_id, device_id)
+     SELECT sd.schedule_id, s.target_engineer_id, sd.device_id
+     FROM inspection_schedule_devices sd
+     JOIN inspection_schedules s ON s.id = sd.schedule_id
+     WHERE s.target_engineer_id IS NOT NULL`,
+  )
+  const [legacyUnique] = await execute(
+    `SELECT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'inspection_schedules'
+       AND index_name = 'uk_schedule_engineer_cadence'
+     LIMIT 1`,
+  )
+  if (legacyUnique?.[0]) {
+    const [engineerIndex] = await execute(
+      `SELECT index_name AS indexName
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'inspection_schedules'
+         AND index_name = 'idx_inspection_schedules_target_engineer'
+       LIMIT 1`,
+    )
+    if (!engineerIndex?.[0]) {
+      await execute('ALTER TABLE inspection_schedules ADD KEY idx_inspection_schedules_target_engineer (target_engineer_id)')
+    }
+    await execute('ALTER TABLE inspection_schedules DROP KEY uk_schedule_engineer_cadence')
+  }
+  inspectionScheduleAssignmentsReady = true
+}
+
+function normalizeAssignments(value) {
+  if (!Array.isArray(value) || value.length === 0) throw badRequest('请至少配置一条巡检分工')
+  if (value.length > 200) throw badRequest('巡检设备数量不能超过 200 台')
+  const deviceIds = new Set()
+  const assignments = []
+  for (const item of value) {
+    const targetEngineerId = Number(item?.targetEngineerId || item?.engineerId || 0)
+    const deviceId = Number(item?.deviceId || 0)
+    if (!targetEngineerId || !deviceId) throw badRequest('巡检分工必须同时指定工程师和设备')
+    if (deviceIds.has(deviceId)) throw badRequest('同一台设备在一个巡检计划中只能分配给一名工程师')
+    deviceIds.add(deviceId)
+    assignments.push({ targetEngineerId, deviceId })
+  }
+  return assignments
+}
+
+async function replaceScheduleAssignments(connection, scheduleId, assignments) {
+  await connection.execute('DELETE FROM inspection_schedule_assignments WHERE schedule_id = :scheduleId', { scheduleId })
+  await connection.execute('DELETE FROM inspection_schedule_devices WHERE schedule_id = :scheduleId', { scheduleId })
+  for (const assignment of assignments) {
+    await connection.execute(
+      `INSERT INTO inspection_schedule_assignments (schedule_id, engineer_id, device_id)
+       VALUES (:scheduleId, :engineerId, :deviceId)`,
+      { scheduleId, engineerId: assignment.targetEngineerId, deviceId: assignment.deviceId },
+    )
+    await connection.execute(
+      `INSERT INTO inspection_schedule_devices (schedule_id, device_id)
+       VALUES (:scheduleId, :deviceId)`,
+      { scheduleId, deviceId: assignment.deviceId },
+    )
+  }
+}
+
+async function loadScheduleAssignments(scheduleIds, connection = null) {
+  if (!scheduleIds.length) return {}
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
+  const params = {}
+  const placeholders = scheduleIds.map((id, index) => {
+    params[`scheduleId${index}`] = id
+    return `:scheduleId${index}`
+  })
+  const [rows] = await execute(
+    `SELECT isa.schedule_id, isa.engineer_id, isa.device_id,
+            u.real_name AS engineer_name, u.username AS engineer_username,
+            ${deviceDisplaySql('d')} AS device_name
+     FROM inspection_schedule_assignments isa
+     JOIN users u ON u.id = isa.engineer_id
+     JOIN devices d ON d.id = isa.device_id
+     WHERE isa.schedule_id IN (${placeholders.join(',')})
+     ORDER BY isa.schedule_id, u.real_name, u.username, isa.id`,
+    params,
+  )
+  const grouped = {}
+  for (const row of rows) {
+    if (!grouped[row.schedule_id]) grouped[row.schedule_id] = new Map()
+    const engineerId = Number(row.engineer_id)
+    if (!grouped[row.schedule_id].has(engineerId)) {
+      grouped[row.schedule_id].set(engineerId, {
+        targetEngineerId: engineerId,
+        targetEngineerName: row.engineer_name || row.engineer_username || '',
+        deviceIds: [],
+        deviceNames: [],
+        devices: [],
+      })
+    }
+    const assignment = grouped[row.schedule_id].get(engineerId)
+    assignment.deviceIds.push(Number(row.device_id))
+    assignment.deviceNames.push(row.device_name || '')
+    assignment.devices.push({ deviceId: Number(row.device_id), deviceName: row.device_name || '' })
+  }
+  return Object.fromEntries(Object.entries(grouped).map(([scheduleId, byEngineer]) => [scheduleId, [...byEngineer.values()]]))
+}
+
 async function prewarmInspectionSchema() {
   // 事务内 CREATE/ALTER 会触发 MySQL 隐式提交、破坏原子性,统一在事务外提前完成惰性 DDL
   await ensureInspectionSchedulesTable()
   await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionScheduleAssignmentsTable()
   await ensureInspectionOrderColumns()
 }
 
@@ -535,6 +700,8 @@ async function assertNoDuplicateActive(connection, { id = null, customerId, targ
 }
 
 async function loadSchedule(id) {
+  await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionScheduleAssignmentsTable()
   const rows = await query(
     `SELECT ${scheduleColumns}
      FROM inspection_schedules s
@@ -548,12 +715,14 @@ async function loadSchedule(id) {
   )
   if (!rows[0]) return null
   const devices = (await loadScheduleDevices([id]))[id] || []
-  return { ...rows[0], _devices: devices }
+  const assignments = (await loadScheduleAssignments([id]))[id] || []
+  return { ...rows[0], _devices: devices, _assignments: assignments }
 }
 
 async function list(req, res) {
   await ensureInspectionSchedulesTable()
   await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionScheduleAssignmentsTable()
   const { customerId = null, deviceId = null, targetEngineerId = null, cadence = '', active = '', page = '1', pageSize = '50' } = req.query
   const normalizedPage = Math.max(1, Number(page) || 1)
   const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 50))
@@ -581,7 +750,10 @@ async function list(req, res) {
       AND (:deviceId IS NULL OR EXISTS (
         SELECT 1 FROM inspection_schedule_devices sd WHERE sd.schedule_id = s.id AND sd.device_id = :deviceId
       ))
-      AND (:targetEngineerId IS NULL OR s.target_engineer_id = :targetEngineerId)
+      AND (:targetEngineerId IS NULL OR EXISTS (
+        SELECT 1 FROM inspection_schedule_assignments isa
+        WHERE isa.schedule_id = s.id AND isa.engineer_id = :targetEngineerId
+      ))
       AND (:cadence = '' OR s.cadence = :cadence)
       AND (:active IS NULL OR s.active = :active)
   `
@@ -597,7 +769,8 @@ async function list(req, res) {
 
   const scheduleIds = rows.map((r) => r.id)
   const deviceMap = await loadScheduleDevices(scheduleIds)
-  const items = rows.map((row) => schedulePayload(row, deviceMap[row.id] || []))
+  const assignmentMap = await loadScheduleAssignments(scheduleIds)
+  const items = rows.map((row) => schedulePayload(row, deviceMap[row.id] || [], assignmentMap[row.id] || []))
 
   res.json({
     items,
@@ -608,20 +781,14 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const { name = '', customerId, deviceIds = [], targetEngineerId, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const { name = '', customerId, deviceIds = [], targetEngineerId, assignments: rawAssignments, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
-  const normalizedEngineerId = Number(targetEngineerId || 0)
-  if (!normalizedCustomerId || !normalizedEngineerId) {
-    throw badRequest('客户和目标工程师不能为空')
-  }
-  if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
-    throw badRequest('请至少指定一台巡检设备')
-  }
-  if (deviceIds.length > 200) {
-    throw badRequest('巡检设备数量不能超过 200 台')
-  }
+  if (!normalizedCustomerId) throw badRequest('客户不能为空')
+  const fallbackAssignments = Array.isArray(deviceIds)
+    ? deviceIds.map((deviceId) => ({ deviceId, targetEngineerId }))
+    : []
+  const normalizedAssignments = normalizeAssignments(rawAssignments || fallbackAssignments)
   const normalizedName = normalizeScheduleName(name)
-  const normalizedDeviceIds = [...new Set(deviceIds.map((id) => Number(id)).filter(Boolean))]
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
   const normalizedEndDate = normalizeDate(endDate, '结束日期', false)
@@ -636,16 +803,11 @@ async function create(req, res) {
     created = await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
-      await assertActiveEngineer(connection, normalizedEngineerId)
-      for (const deviceId of normalizedDeviceIds) {
-        await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, deviceId)
-      }
-      await assertNoDuplicateActive(connection, {
-        customerId: normalizedCustomerId,
-        targetEngineerId: normalizedEngineerId,
-        cadence: normalizedCadence,
-        active: normalizedActive,
-      })
+      await ensureInspectionScheduleAssignmentsTable(connection)
+      const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
+      for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
+      for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
+      const legacyTargetEngineerId = engineerIds[0]
       const [result] = await connection.execute(
         `INSERT INTO inspection_schedules (
           name, customer_id, target_engineer_id, cadence, next_run_anchor,
@@ -658,7 +820,7 @@ async function create(req, res) {
         {
           name: normalizedName,
           customerId: normalizedCustomerId,
-          targetEngineerId: normalizedEngineerId,
+          targetEngineerId: legacyTargetEngineerId,
           cadence: normalizedCadence,
           nextRunAnchor: normalizedNextRunAnchor,
           active: normalizedActive ? 1 : 0,
@@ -667,13 +829,7 @@ async function create(req, res) {
         },
       )
       const scheduleId = result.insertId
-      for (const deviceId of normalizedDeviceIds) {
-        await connection.execute(
-          `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
-           VALUES (:scheduleId, :deviceId)`,
-          { scheduleId, deviceId },
-        )
-      }
+      await replaceScheduleAssignments(connection, scheduleId, normalizedAssignments)
       return { id: scheduleId }
     })
   } catch (error) {
@@ -681,106 +837,27 @@ async function create(req, res) {
   }
 
   const row = await loadSchedule(created.id)
-  res.status(201).json({ item: schedulePayload(row, row._devices) })
+  res.status(201).json({ item: schedulePayload(row, row._devices, row._assignments) })
 }
 
 async function createBulk(req, res) {
-  const { name = '', customerId, assignments = [], cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
-  const normalizedCustomerId = Number(customerId || 0)
-  if (!normalizedCustomerId) throw badRequest('客户不能为空')
-  if (!Array.isArray(assignments) || assignments.length === 0) throw badRequest('请至少指定一台设备')
-
-  const normalizedName = normalizeScheduleName(name)
-  const normalizedCadence = normalizeCadence(cadence)
-  const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
-  const normalizedEndDate = normalizeDate(endDate, '结束日期', false)
-  if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
-  const normalizedActive = normalizeActive(active, true)
-
-  const byEngineer = new Map()
-  for (const a of assignments) {
-    const deviceId = Number(a?.deviceId || 0)
-    const engineerId = Number(a?.targetEngineerId || 0)
-    if (!deviceId || !engineerId) throw badRequest('设备 ID 和目标工程师不能为空')
-    if (!byEngineer.has(engineerId)) byEngineer.set(engineerId, { targetEngineerId: engineerId, deviceIds: [] })
-    byEngineer.get(engineerId).deviceIds.push(deviceId)
-  }
-
-  let createdIds = []
-  try {
-    await prewarmInspectionSchema()
-    createdIds = await transaction(async (connection) => {
-      await ensureInspectionSchedulesTable(connection)
-      await ensureInspectionScheduleDevicesTable(connection)
-      const ids = []
-      for (const [, group] of byEngineer) {
-        const uniqueDeviceIds = [...new Set(group.deviceIds)]
-        await assertActiveEngineer(connection, group.targetEngineerId)
-        for (const deviceId of uniqueDeviceIds) {
-          await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, deviceId)
-        }
-        await assertNoDuplicateActive(connection, {
-          customerId: normalizedCustomerId,
-          targetEngineerId: group.targetEngineerId,
-          cadence: normalizedCadence,
-          active: normalizedActive,
-        })
-        const [result] = await connection.execute(
-          `INSERT INTO inspection_schedules (
-            name, customer_id, target_engineer_id, cadence, next_run_anchor,
-            active, end_date, next_order_status, created_by
-          )
-          VALUES (
-            :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
-            :active, :endDate, 'pending_confirmation', :createdBy
-          )`,
-          {
-            name: normalizedName,
-            customerId: normalizedCustomerId,
-            targetEngineerId: group.targetEngineerId,
-            cadence: normalizedCadence,
-            nextRunAnchor: normalizedNextRunAnchor,
-            active: normalizedActive ? 1 : 0,
-            endDate: normalizedEndDate,
-            createdBy: req.user.id,
-          },
-        )
-        const scheduleId = result.insertId
-        for (const deviceId of uniqueDeviceIds) {
-          await connection.execute(
-            `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
-            { scheduleId, deviceId },
-          )
-        }
-        ids.push(scheduleId)
-      }
-      return ids
-    })
-  } catch (error) {
-    throw duplicateScheduleError(error) || error
-  }
-
-  const items = []
-  for (const id of createdIds) {
-    const row = await loadSchedule(id)
-    if (row) items.push(schedulePayload(row, row._devices))
-  }
-  res.status(201).json({ items, total: items.length })
+  return create(req, res)
 }
 
 async function detail(req, res) {
   await ensureInspectionSchedulesTable()
   await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionScheduleAssignmentsTable()
   const row = await loadSchedule(req.params.id)
   if (!row) {
     throw notFound('巡检计划不存在')
   }
   assertSalesCanAccessSalesperson(row.customer_salesperson, req.user, forbidden)
-  res.json({ item: schedulePayload(row, row._devices) })
+  res.json({ item: schedulePayload(row, row._devices, row._assignments) })
 }
 
 async function update(req, res) {
-  await ensureInspectionSchedulesTable()
+  await prewarmInspectionSchema()
   const existing = await loadSchedule(req.params.id)
   if (!existing) {
     throw notFound('巡检计划不存在')
@@ -788,24 +865,13 @@ async function update(req, res) {
 
   const body = req.body || {}
   const normalizedCustomerId = body.customerId !== undefined ? Number(body.customerId || 0) : Number(existing.customer_id)
-  const normalizedEngineerIds = Array.isArray(body.targetEngineerIds)
-    ? [...new Set(body.targetEngineerIds.map((id) => Number(id)).filter(Boolean))]
-    : null
-  if (normalizedEngineerIds && normalizedEngineerIds.length === 0) {
-    throw badRequest('客户和目标工程师不能为空')
-  }
-  const normalizedEngineerId = normalizedEngineerIds?.[0]
-    || (body.targetEngineerId !== undefined ? Number(body.targetEngineerId || 0) : Number(existing.target_engineer_id))
-  if (!normalizedCustomerId || !normalizedEngineerId) {
-    throw badRequest('客户和目标工程师不能为空')
-  }
-
-  let normalizedDeviceIds = null
-  if (body.deviceIds !== undefined) {
-    if (!Array.isArray(body.deviceIds) || body.deviceIds.length === 0) throw badRequest('请至少指定一台巡检设备')
-    if (body.deviceIds.length > 200) throw badRequest('巡检设备数量不能超过 200 台')
-    normalizedDeviceIds = [...new Set(body.deviceIds.map((id) => Number(id)).filter(Boolean))]
-  }
+  if (!normalizedCustomerId) throw badRequest('客户不能为空')
+  const existingAssignments = (existing._assignments || []).flatMap((group) =>
+    group.deviceIds.map((deviceId) => ({ targetEngineerId: group.targetEngineerId, deviceId })))
+  const fallbackAssignments = Array.isArray(body.deviceIds)
+    ? body.deviceIds.map((deviceId) => ({ deviceId, targetEngineerId: body.targetEngineerId || body.targetEngineerIds?.[0] }))
+    : existingAssignments
+  const normalizedAssignments = normalizeAssignments(body.assignments || fallbackAssignments)
 
   const normalizedCadence = body.cadence !== undefined ? normalizeCadence(body.cadence) : existing.cadence
   const normalizedNextRunAnchor = body.nextRunAnchor !== undefined ? normalizeDate(body.nextRunAnchor, '下次运行锚点') : existing.next_run_anchor
@@ -813,38 +879,15 @@ async function update(req, res) {
   const normalizedName = body.name !== undefined ? normalizeScheduleName(body.name) : existing.name
   if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
   const normalizedActive = normalizeActive(body.active, Boolean(existing.active))
-  const engineerIdsForWrite = normalizedEngineerIds || [normalizedEngineerId]
-  const deviceIdsForWrite = normalizedDeviceIds || [...new Set((existing._devices || []).map((d) => Number(d.device_id)).filter(Boolean))]
 
   try {
-    await prewarmInspectionSchema()
     await transaction(async (connection) => {
       await ensureInspectionSchedulesTable(connection)
       await ensureInspectionScheduleDevicesTable(connection)
-      if (deviceIdsForWrite.length === 0) {
-        throw badRequest('请至少指定一台巡检设备')
-      }
-      for (const deviceId of deviceIdsForWrite) {
-        await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, deviceId)
-      }
-      for (const engineerId of engineerIdsForWrite) {
-        await assertActiveEngineer(connection, engineerId)
-      }
-      await assertNoDuplicateActive(connection, {
-        id: req.params.id,
-        customerId: normalizedCustomerId,
-        targetEngineerId: engineerIdsForWrite[0],
-        cadence: normalizedCadence,
-        active: normalizedActive,
-      })
-      for (const engineerId of engineerIdsForWrite.slice(1)) {
-        await assertNoDuplicateActive(connection, {
-          customerId: normalizedCustomerId,
-          targetEngineerId: engineerId,
-          cadence: normalizedCadence,
-          active: normalizedActive,
-        })
-      }
+      await ensureInspectionScheduleAssignmentsTable(connection)
+      const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
+      for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
+      for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
       await connection.execute(
         `UPDATE inspection_schedules
          SET name = :name,
@@ -861,7 +904,7 @@ async function update(req, res) {
           id: req.params.id,
           name: normalizedName,
           customerId: normalizedCustomerId,
-          targetEngineerId: engineerIdsForWrite[0],
+          targetEngineerId: engineerIds[0],
           cadence: normalizedCadence,
           nextRunAnchor: normalizedNextRunAnchor,
           active: normalizedActive ? 1 : 0,
@@ -869,52 +912,14 @@ async function update(req, res) {
           updatedBy: req.user.id,
         },
       )
-      if (normalizedDeviceIds) {
-        await connection.execute('DELETE FROM inspection_schedule_devices WHERE schedule_id = :id', { id: req.params.id })
-        for (const deviceId of normalizedDeviceIds) {
-          await connection.execute(
-            `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
-            { scheduleId: req.params.id, deviceId },
-          )
-        }
-      }
-      for (const engineerId of engineerIdsForWrite.slice(1)) {
-        const [result] = await connection.execute(
-          `INSERT INTO inspection_schedules (
-            name, customer_id, target_engineer_id, cadence, next_run_anchor,
-            active, end_date, next_order_status, created_by, updated_by
-          )
-          VALUES (
-            :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
-            :active, :endDate, 'pending_confirmation', :createdBy, :updatedBy
-          )`,
-          {
-            name: normalizedName,
-            customerId: normalizedCustomerId,
-            targetEngineerId: engineerId,
-            cadence: normalizedCadence,
-            nextRunAnchor: normalizedNextRunAnchor,
-            active: normalizedActive ? 1 : 0,
-            endDate: normalizedEndDate,
-            createdBy: req.user.id,
-            updatedBy: req.user.id,
-          },
-        )
-        const scheduleId = result.insertId
-        for (const deviceId of deviceIdsForWrite) {
-          await connection.execute(
-            `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id) VALUES (:scheduleId, :deviceId)`,
-            { scheduleId, deviceId },
-          )
-        }
-      }
+      await replaceScheduleAssignments(connection, req.params.id, normalizedAssignments)
     })
   } catch (error) {
     throw duplicateScheduleError(error) || error
   }
 
   const row = await loadSchedule(req.params.id)
-  res.json({ item: schedulePayload(row, row._devices) })
+  res.json({ item: schedulePayload(row, row._devices, row._assignments) })
 }
 
 async function remove(req, res) {
@@ -937,6 +942,7 @@ async function remove(req, res) {
 async function generateDue(req, res) {
   await ensureInspectionSchedulesTable()
   await ensureInspectionScheduleDevicesTable()
+  await ensureInspectionScheduleAssignmentsTable()
   await ensureInspectionOrderColumns()
 
   const dueDate = normalizeDate(req.body?.dueDate || req.query?.dueDate || todayDateKey(), '生成截止日期')
@@ -958,34 +964,38 @@ async function generateDue(req, res) {
   )
 
   const scheduleIds = rows.map((r) => r.id)
-  let deviceMap = {}
-  if (scheduleIds.length) {
-    deviceMap = await loadScheduleDevices(scheduleIds)
-  }
+  const assignmentMap = scheduleIds.length ? await loadScheduleAssignments(scheduleIds) : {}
 
   const items = []
   const createdOrderIds = []
   await transaction(async (connection) => {
     await ensureInspectionSchedulesTable(connection)
     await ensureInspectionScheduleDevicesTable(connection)
+    await ensureInspectionScheduleAssignmentsTable(connection)
     await ensureInspectionOrderColumns(connection)
 
     for (const schedule of rows) {
       const occurrenceDate = toDateKey(schedule.next_run_anchor)
-      const deviceList = deviceMap[schedule.id] || []
-      const result = await createInspectionOrder(connection, schedule, occurrenceDate, deviceList)
+      const assignments = assignmentMap[schedule.id] || []
+      const results = []
+      for (const assignment of assignments) {
+        results.push(await createInspectionOrder(connection, schedule, occurrenceDate, assignment))
+      }
       const nextState = nextAnchorAfterOccurrence(schedule, occurrenceDate)
       await advanceSchedule(connection, schedule.id, nextState.nextRunAnchor, nextState.active, req.user.id)
-      items.push({
-        scheduleId: schedule.id,
-        occurrenceDate,
-        created: result.created,
-        orderId: result.orderId,
-        orderNo: result.orderNo || null,
-        nextRunAnchor: nextState.nextRunAnchor,
-        active: nextState.active,
-      })
-      if (result.created) createdOrderIds.push(result.orderId)
+      for (const result of results) {
+        items.push({
+          scheduleId: schedule.id,
+          occurrenceDate,
+          targetEngineerId: result.targetEngineerId || null,
+          created: result.created,
+          orderId: result.orderId,
+          orderNo: result.orderNo || null,
+          nextRunAnchor: nextState.nextRunAnchor,
+          active: nextState.active,
+        })
+        if (result.created) createdOrderIds.push(result.orderId)
+      }
     }
   })
 
