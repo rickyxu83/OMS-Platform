@@ -225,6 +225,7 @@ async function ensureSchema() {
           source_type VARCHAR(32) NULL,
           source_id BIGINT UNSIGNED NULL,
           source_detail VARCHAR(64) NULL,
+          source_snapshot JSON NULL,
           start_at DATETIME NOT NULL,
           end_at DATETIME NOT NULL,
           hours DECIMAL(8,2) NOT NULL,
@@ -423,7 +424,7 @@ async function ensureAttendanceRequestColumns() {
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('workflow_version', 'delegate_employee_id', 'working_days', 'supervisor_role', 'source_type', 'source_id', 'source_detail', 'overtime_day_type', 'overtime_pay_multiplier')`,
+       AND COLUMN_NAME IN ('workflow_version', 'delegate_employee_id', 'working_days', 'supervisor_role', 'source_type', 'source_id', 'source_detail', 'source_snapshot', 'overtime_day_type', 'overtime_pay_multiplier')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
   if (!existing.has('workflow_version')) {
@@ -450,6 +451,9 @@ async function ensureAttendanceRequestColumns() {
   }
   if (!existing.has('source_detail')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN source_detail VARCHAR(64) NULL AFTER source_id')
+  }
+  if (!existing.has('source_snapshot')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN source_snapshot JSON NULL AFTER source_detail')
   }
   if (!existing.has('working_days')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN working_days DECIMAL(6,2) NULL AFTER hours')
@@ -1093,6 +1097,28 @@ function combineTravelSegments(segments) {
   }
 }
 
+function serviceOrderSnapshot(row) {
+  if (!row) return null
+  const id = Number(row.id || 0)
+  if (!id) return null
+  return {
+    id,
+    orderNo: nullableText(row.order_no),
+    customerName: nullableText(row.customer_name),
+    contactName: nullableText(row.contact_name),
+    contactPhone: nullableText(row.contact_phone),
+    deviceName: nullableText(row.device_name),
+    serviceMode: nullableText(row.service_mode),
+    serviceType: nullableText(row.service_type),
+    issueDescription: nullableText(row.issue_description),
+    serviceAt: toIsoMinute(row.service_at),
+    departureAt: toIsoMinute(row.departure_at),
+    actualStartAt: toIsoMinute(row.actual_start_at),
+    actualEndAt: toIsoMinute(row.actual_end_at),
+    returnAt: toIsoMinute(row.return_at),
+  }
+}
+
 async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connection = null) {
   const sql = `SELECT so.id, so.order_no, so.status, c.name AS customer_name,
                       COALESCE(NULLIF(so.contact_name, ''), c.contact_name) AS contact_name,
@@ -1159,21 +1185,8 @@ async function listOvertimeServiceOrders(req, res) {
   const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
   const items = rows
     .map((row) => ({
-      id: row.id,
-      orderNo: row.order_no,
-      customerName: row.customer_name,
-      contactName: row.contact_name,
-      contactPhone: row.contact_phone,
-      deviceName: row.device_name,
-      serviceMode: row.service_mode,
-      serviceType: row.service_type,
-      issueDescription: row.issue_description,
+      ...serviceOrderSnapshot(row),
       status: row.status,
-      serviceAt: toIsoMinute(row.service_at),
-      departureAt: toIsoMinute(row.departure_at),
-      actualStartAt: toIsoMinute(row.actual_start_at),
-      actualEndAt: toIsoMinute(row.actual_end_at),
-      returnAt: toIsoMinute(row.return_at),
       segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
     }))
     .filter((item) => item.segments.length)
@@ -1195,6 +1208,8 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const rows = await serviceOrderOvertimeRows(req.user.id, serviceOrderId, connection)
     const order = rows[0]
     if (!order) throw notFound('没有可申请的工单')
+    const orderSnapshot = serviceOrderSnapshot(order)
+    if (!orderSnapshot) throw notFound('没有可申请的工单')
     const segments = overtimeSegments(order)
     const segment = segmentKey === 'travel'
       ? combineTravelSegments(segments)
@@ -1227,9 +1242,9 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
     const [inserted] = await connection.execute(
       `INSERT INTO attendance_requests
-         (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, working_days, reason, status, submitted_by)
+         (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
        VALUES
-         (2, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, NULL, :reason, 'pending_supervisor', :submittedBy)`,
+         (2, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, 'pending_supervisor', :submittedBy)`,
       {
         employeeId: employee.id,
         overtimeKind: segment.kind,
@@ -1239,6 +1254,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
         supervisorRole,
         serviceOrderId,
         sourceDetail: segment.key,
+        sourceSnapshot: JSON.stringify(orderSnapshot),
         startAt: segment.startAt.replace('T', ' '),
         endAt: segment.endAt.replace('T', ' '),
         hours: segment.hours,

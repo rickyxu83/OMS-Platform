@@ -40,6 +40,7 @@ function requestColumnRows() {
     'source_type',
     'source_id',
     'source_detail',
+    'source_snapshot',
     'overtime_day_type',
     'overtime_pay_multiplier',
   ].map((columnName) => ({ columnName }))
@@ -47,6 +48,7 @@ function requestColumnRows() {
 
 async function loadController({
   delegateEmployeeId = 9,
+  requestColumns = requestColumnRows(),
   connectionExecute = async () => [[], []],
   hasPermission = async () => false,
   hasAnyPermission = async () => false,
@@ -58,7 +60,7 @@ async function loadController({
   const calls = []
   async function query(sql, params = {}) {
     calls.push({ sql, params })
-    if (/information_schema\.COLUMNS/.test(sql) && /attendance_requests/.test(sql)) return requestColumnRows()
+    if (/information_schema\.COLUMNS/.test(sql) && /attendance_requests/.test(sql)) return requestColumns
     if (/information_schema\.STATISTICS/.test(sql)) return [{ indexName: 'idx_attendance_requests_source' }]
     if (/FROM attendance_schema_migrations/.test(sql)) return [{ migration_key: 'annual_leave_ledger_days_v1' }]
     if (/SELECT holiday_date, holiday_name/.test(sql) && /is_active = 1/.test(sql)) return []
@@ -332,6 +334,79 @@ async function createLeave(bodyOverrides = {}) {
       thrown = error
     }
     assert.equal(thrown?.status, 403)
+  }
+
+  {
+    const requestColumns = requestColumnRows().filter((row) => row.columnName !== 'source_snapshot')
+    const { controller, calls } = await loadController({ requestColumns })
+    const req = { user: { id: 42, role: 'engineer' }, query: { scope: 'mine' } }
+    const res = createResponse()
+    await controller.listRequests(req, res)
+    assert.ok(calls.some((call) => /ADD COLUMN source_snapshot JSON NULL/.test(call.sql)))
+  }
+
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88,
+      order_no: 'SO-20260713-088',
+      status: 'completed',
+      customer_name: '测试客户',
+      contact_name: '王小姐',
+      contact_phone: '13800000000',
+      device_name: 'PowerVault ME5 / SN-88',
+      service_mode: 'onsite',
+      service_type: 'repair',
+      issue_description: '存储控制器告警',
+      service_at: '2026-07-14 18:00:00',
+      departure_at: '2026-07-14 17:00:00',
+      actual_start_at: '2026-07-14 18:00:00',
+      actual_end_at: '2026-07-14 21:00:00',
+      return_at: '2026-07-14 22:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 901 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'work', overtimeResult: 'comp_time' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    assert.match(insert.sql, /source_snapshot/)
+    assert.deepEqual(JSON.parse(insert.params.sourceSnapshot), {
+      id: 88,
+      orderNo: 'SO-20260713-088',
+      customerName: '测试客户',
+      contactName: '王小姐',
+      contactPhone: '13800000000',
+      deviceName: 'PowerVault ME5 / SN-88',
+      serviceMode: 'onsite',
+      serviceType: 'repair',
+      issueDescription: '存储控制器告警',
+      serviceAt: '2026-07-14 18:00',
+      departureAt: '2026-07-14 17:00',
+      actualStartAt: '2026-07-14 18:00',
+      actualEndAt: '2026-07-14 21:00',
+      returnAt: '2026-07-14 22:00',
+    })
   }
 
   {
