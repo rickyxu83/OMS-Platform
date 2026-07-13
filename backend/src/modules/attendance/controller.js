@@ -1285,7 +1285,7 @@ function listScopeSql(scope, user, employee) {
               AND (
                 ap.user_id = :currentUserId
                 OR a.assignee_role = :currentRole
-                OR (:isAdmin = 1 AND a.step_type <> 'delegate')
+                OR (:isAdmin = 1 AND a.step_type IN ('hr', 'vp'))
               )
           ))
       )`,
@@ -1297,16 +1297,15 @@ function listScopeSql(scope, user, employee) {
       },
     }
   }
-  return {
-    sql: '1 = 1',
-    params: {},
-  }
+  if (scope === 'all') return { sql: '1 = 1', params: {} }
+  throw badRequest('查询范围不正确')
 }
 
 async function listRequests(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
   const scope = text(req.query.scope) || 'mine'
+  if (!['mine', 'supervisor', 'all'].includes(scope)) throw badRequest('查询范围不正确')
   const status = text(req.query.status)
   const requestType = text(req.query.requestType)
   const allAllowed = await canViewAll(req.user)
@@ -1335,6 +1334,7 @@ async function listRequests(req, res) {
     { ...scoped.params, status, requestType },
   )
   const approvalMap = new Map()
+  const proofFileMap = new Map()
   if (rows.length) {
     const params = {}
     const placeholders = rows.map((row, index) => {
@@ -1373,10 +1373,31 @@ async function listRequests(req, res) {
       })
       approvalMap.set(Number(row.request_id), items)
     }
+    const proofRows = await query(
+      `SELECT id, owner_id, original_name, mime_type, size, created_at
+       FROM files
+       WHERE owner_type = 'attendance_request'
+         AND purpose = 'leave_proof'
+         AND owner_id IN (${placeholders.join(', ')})
+       ORDER BY owner_id ASC, id ASC`,
+      params,
+    )
+    for (const row of proofRows) {
+      const items = proofFileMap.get(Number(row.owner_id)) || []
+      items.push({
+        id: row.id,
+        originalName: row.original_name,
+        mimeType: row.mime_type,
+        size: Number(row.size || 0),
+        createdAt: row.created_at,
+      })
+      proofFileMap.set(Number(row.owner_id), items)
+    }
   }
   res.json({ items: rows.map((row) => ({
     ...requestPayload(row),
     proofFileCount: Number(row.proof_file_count || 0),
+    proofFiles: proofFileMap.get(Number(row.id)) || [],
     approvals: approvalMap.get(Number(row.id)) || [],
   })) })
 }
@@ -1488,6 +1509,21 @@ async function balanceHours(connection, employeeId, balanceType) {
 }
 
 async function applyApprovalLedger(connection, request, userId) {
+  const changesBalance = (
+    (request.request_type === 'overtime' && request.overtime_result === 'comp_time')
+    || request.request_type === 'comp_time'
+    || (request.request_type === 'leave' && request.leave_type === 'annual')
+  )
+  if (changesBalance) {
+    await connection.execute(
+      `SELECT id
+       FROM attendance_employee_profiles
+       WHERE id = :employeeId
+       LIMIT 1
+       FOR UPDATE`,
+      { employeeId: request.employee_id },
+    )
+  }
   if (request.request_type === 'overtime' && request.overtime_result === 'comp_time') {
     await insertLedger(connection, request, Number(request.hours), 'comp_time', 'earn', '加班转调休入账', userId)
   }
@@ -1555,7 +1591,8 @@ function assertWorkflowStepApprover(step, user) {
     if (Number(step.assignee_user_id) !== Number(user.id)) throw forbidden('只有指定代理人可以审批')
     return
   }
-  if (user.role !== 'admin' && step.assignee_role !== user.role) throw forbidden('当前用户不是此步骤审批人')
+  if (user.role === 'admin' && ['hr', 'vp'].includes(step.step_type)) return
+  if (step.assignee_role !== user.role) throw forbidden('当前用户不是此步骤审批人')
 }
 
 async function approveLockedWorkflowStep(connection, request, expectedStepType, user) {

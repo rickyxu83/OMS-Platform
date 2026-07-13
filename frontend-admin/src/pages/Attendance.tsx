@@ -41,6 +41,7 @@ interface AttendanceRequest {
   hours?: number;
   workingDays?: number | null;
   proofFileCount?: number;
+  proofFiles?: Array<{ id: number | string; originalName: string; mimeType?: string; size?: number }>;
   approvals?: ApprovalStep[];
   status?: string;
 }
@@ -757,6 +758,33 @@ export function Attendance() {
     }
   }
 
+  async function reject(item: AttendanceRequest) {
+    const value = window.prompt("请输入驳回原因");
+    if (value === null) return;
+    const reason = value.trim();
+    if (!reason) {
+      toast.error("请填写驳回原因");
+      return;
+    }
+    await action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason });
+  }
+
+  async function downloadProof(file: { id: number | string; originalName: string }) {
+    try {
+      const blob = await api.download(`/files/${file.id}`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.originalName || `proof-${file.id}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "证明下载失败");
+    }
+  }
+
   function setEmployeeDialogDraft(patch: Partial<EmployeeDraft>) {
     setEmployeeDialog((current) => (current ? { ...current, draft: { ...current.draft, ...patch } } : current));
   }
@@ -1303,6 +1331,7 @@ export function Attendance() {
               description="代理人、主管、人事与副总待办集中在这里处理"
               items={approvalTodos}
               loading={loading}
+              onDownloadProof={downloadProof}
               emptyText="暂无待审批的申请"
               actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
@@ -1317,7 +1346,7 @@ export function Attendance() {
                     <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/${current.path}`, current.success)}>
                       <Check className="mr-1 h-4 w-4" /> 通过
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                    <Button size="sm" variant="outline" onClick={() => reject(item)}>
                       <X className="mr-1 h-4 w-4" /> 驳回
                     </Button>
                   </>
@@ -1327,7 +1356,7 @@ export function Attendance() {
                     <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
                       <ShieldCheck className="mr-1 h-4 w-4" /> 终审通过
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/reject`, "已驳回")}>
+                    <Button size="sm" variant="outline" onClick={() => reject(item)}>
                       <X className="mr-1 h-4 w-4" /> 驳回
                     </Button>
                   </>
@@ -1342,6 +1371,7 @@ export function Attendance() {
             description="最终审批前可撤回"
             items={mine}
             loading={loading}
+            onDownloadProof={downloadProof}
             showEmployee={false}
             actions={(item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
@@ -1358,6 +1388,7 @@ export function Attendance() {
           description="行政终审通过后可作废"
           items={filteredAllRequests}
           loading={loading}
+          onDownloadProof={downloadProof}
           emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
           toolbar={(
             <>
@@ -1821,6 +1852,7 @@ function RequestList({
   showEmployee = true,
   emptyText = "暂无记录",
   toolbar,
+  onDownloadProof,
 }: {
   title: string;
   description: string;
@@ -1830,6 +1862,7 @@ function RequestList({
   showEmployee?: boolean;
   emptyText?: string;
   toolbar?: ReactNode;
+  onDownloadProof?: (file: { id: number | string; originalName: string }) => void;
 }) {
   const hasActions = typeof actions === "function";
   return (
@@ -1875,7 +1908,18 @@ function RequestList({
                       <div>{requestDetail(item)}</div>
                       {item.delegateEmployeeName ? <div className="text-xs text-muted-foreground">代理人：{item.delegateEmployeeName}</div> : null}
                       {typeof item.workingDays === "number" ? <div className="text-xs text-muted-foreground">{days(item.workingDays)} 个工作日</div> : null}
-                      {item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
+                      {item.proofFiles?.length ? (
+                        <div className="text-xs text-muted-foreground">
+                          证明：{item.proofFiles.map((file, index) => (
+                            <span key={file.id}>
+                              {index ? "、" : ""}
+                              <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
+                                {file.originalName || `附件 #${file.id}`}
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
                       {item.approvals?.length ? (
                         <div className="mt-1 text-xs leading-5 text-muted-foreground">
                           {item.approvals.map((step) => (
@@ -1883,6 +1927,10 @@ function RequestList({
                               {approvalStepLabel(step)}：{approvalStepStatus(step)}
                               {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
                               {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+                              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
+                              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
+                              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
+                              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
                             </div>
                           ))}
                         </div>

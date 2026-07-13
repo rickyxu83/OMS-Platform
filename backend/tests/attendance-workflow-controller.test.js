@@ -171,6 +171,39 @@ async function createLeave(bodyOverrides = {}) {
   }
 
   {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 322,
+            workflow_version: 2,
+            employee_id: 5,
+            delegate_employee_id: 9,
+            request_type: 'leave',
+            leave_type: 'sick',
+            working_days: 1,
+            supervisor_role: 'engineering_supervisor',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '322' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.submitRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /上传证明/)
+  }
+
+  {
     clearBackendModuleCache()
     const fileCalls = []
     installMock(require.resolve('../src/config/db'), {
@@ -264,6 +297,128 @@ async function createLeave(bodyOverrides = {}) {
     assert.equal(res.body.status, 'pending_supervisor')
     assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 11))
     assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 12))
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{ id: 323, workflow_version: 2, status: 'pending_delegate' }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{
+            id: 13,
+            request_id: 323,
+            step_type: 'delegate',
+            assignee_employee_id: 9,
+            assignee_user_id: 77,
+            status: 'pending',
+          }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 78, role: 'engineer' }, params: { id: '323' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.approveDelegate(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403)
+  }
+
+  {
+    const { controller } = await loadController()
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      query: { scope: 'anything' },
+    }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.listRequests(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /查询范围/)
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 400,
+            workflow_version: 2,
+            employee_id: 5,
+            request_type: 'leave',
+            leave_type: 'personal',
+            hours: 4,
+            status: 'pending_supervisor',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{
+            id: 20,
+            request_id: 400,
+            step_type: 'supervisor',
+            assignee_role: 'engineering_supervisor',
+            status: 'pending',
+          }], []]
+        }
+        if (/status = 'waiting'/.test(sql)) return [[{ id: 21, step_type: 'hr', status: 'waiting' }], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 1, role: 'admin' }, params: { id: '400' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.approveSupervisor(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403)
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 401,
+            workflow_version: 2,
+            employee_id: 5,
+            request_type: 'leave',
+            leave_type: 'annual',
+            hours: 4,
+            status: 'pending_supervisor',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{
+            id: 22,
+            request_id: 401,
+            step_type: 'supervisor',
+            assignee_role: 'engineering_supervisor',
+            status: 'pending',
+          }], []]
+        }
+        if (/status = 'waiting'/.test(sql)) return [[], []]
+        if (/COALESCE\(SUM\(delta_hours\)/.test(sql)) return [[{ balance_hours: 10 }], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 88, role: 'engineering_supervisor' }, params: { id: '401' }, body: {} }
+    const res = createResponse()
+    await controller.approveSupervisor(req, res)
+    assert.equal(res.body.status, 'approved')
+    assert.ok(executeCalls.some((call) => /FROM attendance_employee_profiles/.test(call.sql) && /FOR UPDATE/.test(call.sql)))
   }
 })().catch((error) => {
   console.error(error)
