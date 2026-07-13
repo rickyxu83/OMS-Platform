@@ -212,6 +212,59 @@ async function createLeave(bodyOverrides = {}) {
     assert.equal(res.body.purpose, 'leave_proof')
     assert.ok(fileCalls.some((call) => /FROM attendance_requests r/.test(call.sql)))
   }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 321,
+            workflow_version: 2,
+            employee_id: 5,
+            request_type: 'leave',
+            leave_type: 'annual',
+            hours: 24,
+            working_days: 3,
+            status: 'pending_delegate',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{
+            id: 11,
+            request_id: 321,
+            step_type: 'delegate',
+            step_order: 1,
+            assignee_employee_id: 9,
+            assignee_role: null,
+            assignee_user_id: 77,
+            status: 'pending',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals/.test(sql) && /status = 'waiting'/.test(sql)) {
+          return [[{
+            id: 12,
+            request_id: 321,
+            step_type: 'supervisor',
+            step_order: 2,
+            assignee_employee_id: null,
+            assignee_role: 'engineering_supervisor',
+            status: 'waiting',
+          }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 77, role: 'engineer' }, params: { id: '321' }, body: {} }
+    const res = createResponse()
+    await controller.approveDelegate(req, res)
+    assert.equal(res.body.ok, true)
+    assert.equal(res.body.status, 'pending_supervisor')
+    assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 11))
+    assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 12))
+  }
 })().catch((error) => {
   console.error(error)
   process.exit(1)

@@ -2,6 +2,7 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
 const { ALL_ROLES, ROLE_LABELS } = require('../../permissions/catalog')
+const { ensureFilePurposeColumn } = require('../files/controller')
 const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
@@ -333,6 +334,7 @@ async function ensureSchema() {
 
       await seedBuiltinLegalHolidays()
       await refreshLegalHolidayCache()
+      await ensureFilePurposeColumn()
       await ensureAttendanceRequestColumns()
       await ensureAnnualLeaveLedgerUnit()
       await ensureDefaultSupervisorRoleRules()
@@ -622,7 +624,13 @@ async function enabledEmployeeById(employeeId) {
 }
 
 async function canViewAll(user) {
-  return hasAnyPermission(user.role, ['attendance.view', 'attendance.manage', 'attendance.admin.approve'])
+  return hasAnyPermission(user.role, [
+    'attendance.view',
+    'attendance.manage',
+    'attendance.admin.approve',
+    'attendance.hr.approve',
+    'attendance.vp.approve',
+  ])
 }
 
 function rolePayload(row) {
@@ -794,6 +802,27 @@ async function listEmployees(req, res) {
     { keyword, likeKeyword: `%${keyword}%` },
   )
   res.json({ items: rows.map(profilePayload) })
+}
+
+async function listDelegates(req, res) {
+  await ensureSchema()
+  const employee = await currentEmployee(req.user.id)
+  if (!employee) throw forbidden('当前账号没有启用的员工档案')
+  const rows = await query(
+    `SELECT p.id, p.user_id, p.employee_name
+     FROM attendance_employee_profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.attendance_enabled = 1
+       AND u.status = 'active'
+       AND p.id <> :employeeId
+     ORDER BY p.employee_name ASC, p.id ASC`,
+    { employeeId: employee.id },
+  )
+  res.json({ items: rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    employeeName: row.employee_name,
+  })) })
 }
 
 async function me(req, res) {
@@ -1200,9 +1229,9 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
     const [inserted] = await connection.execute(
       `INSERT INTO attendance_requests
-         (employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, reason, status, submitted_by)
+         (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, start_at, end_at, hours, working_days, reason, status, submitted_by)
        VALUES
-         (:employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, :reason, 'pending_supervisor', :submittedBy)`,
+         (2, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :startAt, :endAt, :hours, NULL, :reason, 'pending_supervisor', :submittedBy)`,
       {
         employeeId: employee.id,
         overtimeKind: segment.kind,
@@ -1219,7 +1248,13 @@ async function createServiceOrderOvertimeRequest(req, res) {
         submittedBy: req.user.id,
       },
     )
-    return { id: inserted.insertId }
+    await insertApprovalSteps(connection, inserted.insertId, buildApprovalSteps({
+      requestType: 'overtime',
+      workingDays: 0,
+      delegateEmployeeId: null,
+      supervisorRole,
+    }))
+    return { id: inserted.insertId, status: 'pending_supervisor' }
   })
 
   res.status(201).json(result)
@@ -1234,12 +1269,34 @@ function listScopeSql(scope, user, employee) {
   }
   if (scope === 'supervisor') {
     return {
-      sql: `r.status = 'pending_supervisor'
-        AND (
-          r.supervisor_role = :currentRole
-          OR (r.supervisor_role IS NULL AND p.supervisor_employee_id = :supervisorEmployeeId)
-        )`,
-      params: { currentRole: user.role, supervisorEmployeeId: employee?.id || 0 },
+      sql: `(
+        (COALESCE(r.workflow_version, 1) = 1
+          AND r.status = 'pending_supervisor'
+          AND (
+            r.supervisor_role = :currentRole
+            OR (r.supervisor_role IS NULL AND p.supervisor_employee_id = :supervisorEmployeeId)
+          ))
+        OR
+        (COALESCE(r.workflow_version, 1) = 2
+          AND EXISTS (
+            SELECT 1
+            FROM attendance_request_approvals a
+            LEFT JOIN attendance_employee_profiles ap ON ap.id = a.assignee_employee_id
+            WHERE a.request_id = r.id
+              AND a.status = 'pending'
+              AND (
+                ap.user_id = :currentUserId
+                OR a.assignee_role = :currentRole
+                OR (:isAdmin = 1 AND a.step_type <> 'delegate')
+              )
+          ))
+      )`,
+      params: {
+        currentRole: user.role,
+        currentUserId: user.id,
+        isAdmin: user.role === 'admin' ? 1 : 0,
+        supervisorEmployeeId: employee?.id || 0,
+      },
     }
   }
   return {
@@ -1261,11 +1318,17 @@ async function listRequests(req, res) {
 
   const scoped = listScopeSql(scope, req.user, employee)
   const rows = await query(
-    `SELECT r.*, p.employee_name, p.user_id, u.role AS applicant_role, p.supervisor_employee_id, s.employee_name AS supervisor_name
+    `SELECT r.*, p.employee_name, p.user_id, u.role AS applicant_role, p.supervisor_employee_id,
+            s.employee_name AS supervisor_name, d.employee_name AS delegate_employee_name,
+            (SELECT COUNT(*) FROM files f
+             WHERE f.owner_type = 'attendance_request'
+               AND f.owner_id = r.id
+               AND f.purpose = 'leave_proof') AS proof_file_count
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      LEFT JOIN users u ON u.id = p.user_id
      LEFT JOIN attendance_employee_profiles s ON s.id = p.supervisor_employee_id
+     LEFT JOIN attendance_employee_profiles d ON d.id = r.delegate_employee_id
      WHERE ${scoped.sql}
        AND (:status = '' OR r.status = :status)
        AND (:requestType = '' OR r.request_type = :requestType)
@@ -1273,7 +1336,51 @@ async function listRequests(req, res) {
      LIMIT 300`,
     { ...scoped.params, status, requestType },
   )
-  res.json({ items: rows.map(requestPayload) })
+  const approvalMap = new Map()
+  if (rows.length) {
+    const params = {}
+    const placeholders = rows.map((row, index) => {
+      params[`requestId${index}`] = row.id
+      return `:requestId${index}`
+    })
+    const approvalRows = await query(
+      `SELECT a.*, ep.employee_name AS assignee_employee_name,
+              COALESCE(au.real_name, au.username) AS approved_by_name,
+              COALESCE(ru.real_name, ru.username) AS rejected_by_name
+       FROM attendance_request_approvals a
+       LEFT JOIN attendance_employee_profiles ep ON ep.id = a.assignee_employee_id
+       LEFT JOIN users au ON au.id = a.approved_by
+       LEFT JOIN users ru ON ru.id = a.rejected_by
+       WHERE a.request_id IN (${placeholders.join(', ')})
+       ORDER BY a.request_id ASC, a.step_order ASC`,
+      params,
+    )
+    for (const row of approvalRows) {
+      const items = approvalMap.get(Number(row.request_id)) || []
+      items.push({
+        id: row.id,
+        stepType: row.step_type,
+        stepOrder: Number(row.step_order),
+        assigneeEmployeeId: row.assignee_employee_id,
+        assigneeEmployeeName: row.assignee_employee_name,
+        assigneeRole: row.assignee_role,
+        status: row.status,
+        approvedBy: row.approved_by,
+        approvedByName: row.approved_by_name,
+        approvedAt: row.approved_at,
+        rejectedBy: row.rejected_by,
+        rejectedByName: row.rejected_by_name,
+        rejectedAt: row.rejected_at,
+        rejectedReason: row.rejected_reason,
+      })
+      approvalMap.set(Number(row.request_id), items)
+    }
+  }
+  res.json({ items: rows.map((row) => ({
+    ...requestPayload(row),
+    proofFileCount: Number(row.proof_file_count || 0),
+    approvals: approvalMap.get(Number(row.id)) || [],
+  })) })
 }
 
 async function requestForUpdate(connection, id) {
@@ -1416,13 +1523,118 @@ async function reverseApprovalLedger(connection, request, userId) {
   }
 }
 
+async function pendingApprovalStep(connection, requestId) {
+  const [rows] = await connection.execute(
+    `SELECT a.*, ep.user_id AS assignee_user_id
+     FROM attendance_request_approvals a
+     LEFT JOIN attendance_employee_profiles ep ON ep.id = a.assignee_employee_id
+     WHERE a.request_id = :requestId
+       AND a.status = 'pending'
+     ORDER BY a.step_order ASC
+     LIMIT 1
+     FOR UPDATE`,
+    { requestId },
+  )
+  return rows[0] || null
+}
+
+async function nextWaitingApprovalStep(connection, requestId) {
+  const [rows] = await connection.execute(
+    `SELECT *
+     FROM attendance_request_approvals
+     WHERE request_id = :requestId
+       AND status = 'waiting'
+     ORDER BY step_order ASC
+     LIMIT 1
+     FOR UPDATE`,
+    { requestId },
+  )
+  return rows[0] || null
+}
+
+function assertWorkflowStepApprover(step, user) {
+  if (step.step_type === 'delegate') {
+    if (Number(step.assignee_user_id) !== Number(user.id)) throw forbidden('只有指定代理人可以审批')
+    return
+  }
+  if (user.role !== 'admin' && step.assignee_role !== user.role) throw forbidden('当前用户不是此步骤审批人')
+}
+
+async function approveLockedWorkflowStep(connection, request, expectedStepType, user) {
+  const step = await pendingApprovalStep(connection, request.id)
+  if (!step || step.step_type !== expectedStepType) throw badRequest('当前状态不能执行此审批')
+  assertWorkflowStepApprover(step, user)
+  await connection.execute(
+    `UPDATE attendance_request_approvals
+     SET status = 'approved',
+         approved_by = :userId,
+         approved_at = NOW()
+     WHERE id = :id`,
+    { id: step.id, userId: user.id },
+  )
+
+  const next = await nextWaitingApprovalStep(connection, request.id)
+  if (next) {
+    await connection.execute(
+      `UPDATE attendance_request_approvals
+       SET status = 'pending'
+       WHERE id = :id`,
+      { id: next.id },
+    )
+    const status = requestStatusForStep(next.step_type)
+    await connection.execute(
+      `UPDATE attendance_requests
+       SET status = :status
+       WHERE id = :id`,
+      { id: request.id, status },
+    )
+    return status
+  }
+
+  await applyApprovalLedger(connection, request, user.id)
+  await connection.execute(
+    `UPDATE attendance_requests
+     SET status = 'approved'
+     WHERE id = :id`,
+    { id: request.id },
+  )
+  return 'approved'
+}
+
+async function approveWorkflowStep(req, res, expectedStepType) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  const status = await transaction(async (connection) => {
+    const request = await requestForUpdate(connection, id)
+    if (!request) throw notFound('申请不存在')
+    if (Number(request.workflow_version || 1) !== 2) throw badRequest('申请不属于新版审批流程')
+    return approveLockedWorkflowStep(connection, request, expectedStepType, req.user)
+  })
+  res.json({ ok: true, status })
+}
+
+async function approveDelegate(req, res) {
+  return approveWorkflowStep(req, res, 'delegate')
+}
+
+async function approveHr(req, res) {
+  return approveWorkflowStep(req, res, 'hr')
+}
+
+async function approveVp(req, res) {
+  return approveWorkflowStep(req, res, 'vp')
+}
+
 async function approveSupervisor(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
   const id = Number(req.params.id)
-  await transaction(async (connection) => {
+  const status = await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
+    if (Number(request.workflow_version || 1) === 2) {
+      return approveLockedWorkflowStep(connection, request, 'supervisor', req.user)
+    }
     if (request.status !== 'pending_supervisor') throw badRequest('当前状态不能主管审批')
     const isRoleSupervisor = request.supervisor_role && request.supervisor_role === req.user.role
     const isLegacySupervisor = !request.supervisor_role && employee && Number(request.supervisor_employee_id) === Number(employee.id)
@@ -1435,8 +1647,9 @@ async function approveSupervisor(req, res) {
        WHERE id = :id`,
       { id, userId: req.user.id },
     )
+    return 'pending_admin'
   })
-  res.json({ ok: true })
+  res.json({ ok: true, status })
 }
 
 async function approveAdmin(req, res) {
@@ -1446,6 +1659,7 @@ async function approveAdmin(req, res) {
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
+    if (Number(request.workflow_version || 1) === 2) throw badRequest('新版申请请使用人事或副总审批')
     if (request.status !== 'pending_admin') throw badRequest('当前状态不能行政审批')
     await applyApprovalLedger(connection, request, req.user.id)
     await connection.execute(
@@ -1469,6 +1683,30 @@ async function rejectRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (finalStatuses.has(request.status)) throw badRequest('当前状态不能驳回')
+    if (Number(request.workflow_version || 1) === 2) {
+      const step = await pendingApprovalStep(connection, request.id)
+      if (!step) throw badRequest('当前申请没有待审批步骤')
+      assertWorkflowStepApprover(step, req.user)
+      await connection.execute(
+        `UPDATE attendance_request_approvals
+         SET status = 'rejected',
+             rejected_by = :userId,
+             rejected_at = NOW(),
+             rejected_reason = :reason
+         WHERE id = :id`,
+        { id: step.id, userId: req.user.id, reason },
+      )
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'rejected',
+             rejected_by = :userId,
+             rejected_at = NOW(),
+             rejected_reason = :reason
+         WHERE id = :id`,
+        { id, userId: req.user.id, reason },
+      )
+      return
+    }
     const isRoleSupervisor = request.status === 'pending_supervisor' && request.supervisor_role && request.supervisor_role === req.user.role
     const isLegacySupervisor = request.status === 'pending_supervisor' && !request.supervisor_role && employee && Number(request.supervisor_employee_id) === Number(employee.id)
     const isSupervisor = isRoleSupervisor || isLegacySupervisor
@@ -1493,7 +1731,9 @@ async function withdrawRequest(req, res) {
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
-    if (!['pending_supervisor', 'pending_admin'].includes(request.status)) throw badRequest('当前状态不能撤回')
+    if (!['draft', 'pending_delegate', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(request.status)) {
+      throw badRequest('当前状态不能撤回')
+    }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
     await connection.execute(
       `UPDATE attendance_requests
@@ -1610,6 +1850,7 @@ async function monthlyReport(req, res) {
 module.exports = {
   ensureSchema,
   listEmployees,
+  listDelegates,
   me,
   listSupervisorRoleRules,
   updateSupervisorRoleRules,
@@ -1622,7 +1863,10 @@ module.exports = {
   listOvertimeServiceOrders,
   createServiceOrderOvertimeRequest,
   listRequests,
+  approveDelegate,
   approveSupervisor,
+  approveHr,
+  approveVp,
   approveAdmin,
   rejectRequest,
   withdrawRequest,
