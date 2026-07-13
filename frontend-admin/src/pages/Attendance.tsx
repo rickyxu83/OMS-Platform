@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, Filter, Loader2, Maximize2, Minus, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -524,6 +524,9 @@ export function Attendance() {
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [proofPreview, setProofPreview] = useState<ProofPreview | null>(null);
+  const [proofImageFit, setProofImageFit] = useState(true);
+  const [proofImageScale, setProofImageScale] = useState(1);
+  const [proofImageSize, setProofImageSize] = useState<{ width: number; height: number } | null>(null);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
   const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
@@ -810,6 +813,9 @@ export function Attendance() {
   }
 
   function closeProofPreview() {
+    setProofImageFit(true);
+    setProofImageScale(1);
+    setProofImageSize(null);
     setProofPreview((current) => {
       if (current?.url) URL.revokeObjectURL(current.url);
       return null;
@@ -820,6 +826,9 @@ export function Attendance() {
     try {
       const blob = await api.download(`/files/${file.id}`);
       const url = URL.createObjectURL(blob);
+      setProofImageFit(true);
+      setProofImageScale(1);
+      setProofImageSize(null);
       setProofPreview((current) => {
         if (current?.url) URL.revokeObjectURL(current.url);
         return {
@@ -1879,8 +1888,53 @@ export function Attendance() {
           {proofPreview ? (
             <div className="min-h-0 flex-1 bg-muted/30 p-4">
               {proofPreview.mimeType.startsWith("image/") ? (
-                <div className="flex h-full items-center justify-center overflow-auto rounded-lg border bg-background p-3">
-                  <img src={proofPreview.url} alt={proofPreview.originalName} className="max-h-full max-w-full object-contain" />
+                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
+                    <div className="text-xs text-muted-foreground">
+                      {proofImageFit ? "适应窗口" : `${Math.round(proofImageScale * 100)}%`}
+                      {proofImageSize ? ` · ${proofImageSize.width} × ${proofImageSize.height}` : ""}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={!proofImageSize || (!proofImageFit && proofImageScale <= 0.25)}
+                        onClick={() => { setProofImageFit(false); setProofImageScale((current) => Math.max(0.25, current - 0.25)); }}
+                      >
+                        <Minus className="h-4 w-4" />缩小
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={!proofImageSize || (!proofImageFit && proofImageScale >= 3)}
+                        onClick={() => { setProofImageFit(false); setProofImageScale((current) => Math.min(3, current + 0.25)); }}
+                      >
+                        <ZoomIn className="h-4 w-4" />放大
+                      </Button>
+                      <Button type="button" variant={proofImageFit ? "secondary" : "ghost"} size="sm" onClick={() => setProofImageFit(true)}>
+                        <Maximize2 className="h-4 w-4" />适应窗口
+                      </Button>
+                      <Button type="button" variant={!proofImageFit && proofImageScale === 1 ? "secondary" : "ghost"} size="sm" onClick={() => { setProofImageFit(false); setProofImageScale(1); }}>
+                        显示原图
+                      </Button>
+                    </div>
+                  </div>
+                  <div className={proofImageFit ? "flex min-h-0 flex-1 items-center justify-center overflow-auto p-3" : "min-h-0 flex-1 overflow-auto p-3"}>
+                    <img
+                      src={proofPreview.url}
+                      alt={proofPreview.originalName}
+                      title="双击切换适应窗口与原图"
+                      onLoad={(event) => setProofImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+                      onDoubleClick={() => { setProofImageFit((current) => !current); setProofImageScale(1); }}
+                      className={proofImageFit ? "max-h-full max-w-full cursor-zoom-in object-contain" : "block max-w-none shrink-0 cursor-zoom-out"}
+                      style={!proofImageFit && proofImageSize ? {
+                        width: `${proofImageSize.width * proofImageScale}px`,
+                        height: `${proofImageSize.height * proofImageScale}px`,
+                      } : undefined}
+                    />
+                  </div>
                 </div>
               ) : proofPreview.mimeType === "application/pdf" || proofPreview.mimeType.startsWith("text/") ? (
                 <iframe title={proofPreview.originalName} src={proofPreview.url} className="h-full w-full rounded-lg border bg-background" />
