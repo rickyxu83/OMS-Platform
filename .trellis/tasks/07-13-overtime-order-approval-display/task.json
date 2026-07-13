@@ -3,7 +3,7 @@
   "name": "overtime-order-approval-display",
   "title": "审批全程展示加班工单",
   "description": "为工单加班申请保存审批摘要快照，并在各级审批、我的申请和全员记录中提供摘要与展开详情。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
