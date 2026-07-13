@@ -93,3 +93,17 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 | `admin`（管理员） | 全部权限 |
 
 工单填写入口请求本人相关数据时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default mattpocock/skills triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context domain documentation layout. See `docs/agents/domain.md`.
