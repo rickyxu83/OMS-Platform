@@ -8,9 +8,6 @@ This repository uses the single-context domain documentation layout.
 - Relevant ADRs under `docs/adr/`
 
 If these files don't exist, proceed silently. The `domain-modeling` workflow creates them lazily when terminology or architectural decisions are resolved.
-
-## File structure
-
 ```text
 /
 ├── CONTEXT.md
