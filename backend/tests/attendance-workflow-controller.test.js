@@ -45,7 +45,12 @@ function requestColumnRows() {
   ].map((columnName) => ({ columnName }))
 }
 
-async function loadController({ delegateEmployeeId = 9, connectionExecute = async () => [[], []] } = {}) {
+async function loadController({
+  delegateEmployeeId = 9,
+  connectionExecute = async () => [[], []],
+  hasPermission = async () => false,
+  hasAnyPermission = async () => false,
+} = {}) {
   process.env.NODE_ENV = 'test'
   process.env.JWT_SECRET = 'test-secret'
   clearBackendModuleCache()
@@ -77,8 +82,8 @@ async function loadController({ delegateEmployeeId = 9, connectionExecute = asyn
     transaction: async (callback) => callback({ execute: connectionExecute }),
   })
   installMock(require.resolve('../src/permissions/store'), {
-    hasAnyPermission: async () => false,
-    hasPermission: async () => false,
+    hasAnyPermission,
+    hasPermission,
   })
 
   return { controller: require('../src/modules/attendance/controller'), calls }
@@ -410,6 +415,7 @@ async function createLeave(bodyOverrides = {}) {
           }], []]
         }
         if (/status = 'waiting'/.test(sql)) return [[], []]
+        if (/FROM attendance_employee_profiles/.test(sql) && /FOR UPDATE/.test(sql)) return [[{ id: 5 }], []]
         if (/COALESCE\(SUM\(delta_hours\)/.test(sql)) return [[{ balance_hours: 10 }], []]
         return [{ affectedRows: 1 }, []]
       },
@@ -418,6 +424,35 @@ async function createLeave(bodyOverrides = {}) {
     const res = createResponse()
     await controller.approveSupervisor(req, res)
     assert.equal(res.body.status, 'approved')
+    assert.ok(executeCalls.some((call) => /FROM attendance_employee_profiles/.test(call.sql) && /FOR UPDATE/.test(call.sql)))
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      hasPermission: async () => true,
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 402,
+            workflow_version: 2,
+            employee_id: 5,
+            request_type: 'leave',
+            leave_type: 'annual',
+            hours: 4,
+            status: 'approved',
+          }], []]
+        }
+        if (/FROM attendance_employee_profiles/.test(sql) && /FOR UPDATE/.test(sql)) return [[{ id: 5 }], []]
+        if (/FROM attendance_balance_ledger/.test(sql) && /GROUP BY balance_type/.test(sql)) return [[], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 1, role: 'admin' }, params: { id: '402' }, body: { reason: '测试冲回' } }
+    const res = createResponse()
+    await controller.voidRequest(req, res)
+    assert.equal(res.body.ok, true)
     assert.ok(executeCalls.some((call) => /FROM attendance_employee_profiles/.test(call.sql) && /FOR UPDATE/.test(call.sql)))
   }
 })().catch((error) => {

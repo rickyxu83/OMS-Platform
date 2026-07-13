@@ -1508,22 +1508,25 @@ async function balanceHours(connection, employeeId, balanceType) {
   return Number(rows[0]?.balance_hours || 0)
 }
 
+async function lockEmployeeBalance(connection, employeeId) {
+  const [rows] = await connection.execute(
+    `SELECT id
+     FROM attendance_employee_profiles
+     WHERE id = :employeeId
+     LIMIT 1
+     FOR UPDATE`,
+    { employeeId },
+  )
+  if (!rows[0]) throw notFound('员工档案不存在')
+}
+
 async function applyApprovalLedger(connection, request, userId) {
   const changesBalance = (
     (request.request_type === 'overtime' && request.overtime_result === 'comp_time')
     || request.request_type === 'comp_time'
     || (request.request_type === 'leave' && request.leave_type === 'annual')
   )
-  if (changesBalance) {
-    await connection.execute(
-      `SELECT id
-       FROM attendance_employee_profiles
-       WHERE id = :employeeId
-       LIMIT 1
-       FOR UPDATE`,
-      { employeeId: request.employee_id },
-    )
-  }
+  if (changesBalance) await lockEmployeeBalance(connection, request.employee_id)
   if (request.request_type === 'overtime' && request.overtime_result === 'comp_time') {
     await insertLedger(connection, request, Number(request.hours), 'comp_time', 'earn', '加班转调休入账', userId)
   }
@@ -1541,6 +1544,7 @@ async function applyApprovalLedger(connection, request, userId) {
 }
 
 async function reverseApprovalLedger(connection, request, userId) {
+  await lockEmployeeBalance(connection, request.employee_id)
   const [rows] = await connection.execute(
     `SELECT balance_type, COALESCE(SUM(delta_hours), 0) AS delta_hours
      FROM attendance_balance_ledger
@@ -1824,15 +1828,16 @@ async function adjustBalance(req, res) {
     assertHalfUnit(deltaAmount, '调休调整')
   }
   const note = nullableText(req.body?.note)
-  const employees = await query('SELECT id FROM attendance_employee_profiles WHERE id = :employeeId LIMIT 1', { employeeId })
-  if (!employees[0]) throw notFound('员工档案不存在')
-  await query(
-    `INSERT INTO attendance_balance_ledger
-       (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
-     VALUES
-       (:employeeId, NULL, :balanceType, :deltaHours, 'adjust', :note, :createdBy)`,
-    { employeeId, balanceType, deltaHours: roundBalance(deltaAmount), note, createdBy: req.user.id },
-  )
+  await transaction(async (connection) => {
+    await lockEmployeeBalance(connection, employeeId)
+    await connection.execute(
+      `INSERT INTO attendance_balance_ledger
+         (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
+       VALUES
+         (:employeeId, NULL, :balanceType, :deltaHours, 'adjust', :note, :createdBy)`,
+      { employeeId, balanceType, deltaHours: roundBalance(deltaAmount), note, createdBy: req.user.id },
+    )
+  })
   res.json({ ok: true })
 }
 
