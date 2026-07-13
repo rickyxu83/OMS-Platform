@@ -864,7 +864,11 @@ export function InspectionSchedules() {
                     key={s.id}
                     role="button"
                     tabIndex={0}
-                    className="grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px] lg:items-center"
+                    className={`grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:items-center ${
+                      canManageSchedules
+                        ? "lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px]"
+                        : "lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px]"
+                    }`}
                     onClick={() => setDetailTarget(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
