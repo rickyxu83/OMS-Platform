@@ -169,6 +169,49 @@ async function createLeave(bodyOverrides = {}) {
     assert.equal(stepInserts[0].params.status, 'pending')
     assert.equal(stepInserts[1].params.status, 'waiting')
   }
+
+  {
+    clearBackendModuleCache()
+    const fileCalls = []
+    installMock(require.resolve('../src/config/db'), {
+      query: async (sql, params = {}) => {
+        fileCalls.push({ sql, params })
+        if (/information_schema\.columns/.test(sql)) return [{ exists: 1 }]
+        if (/FROM attendance_requests r/.test(sql)) {
+          return [{
+            id: 321,
+            status: 'draft',
+            submitted_by: 42,
+            is_current_approver: 0,
+          }]
+        }
+        if (/INSERT INTO files/.test(sql)) return { insertId: 700 }
+        return []
+      },
+    })
+    installMock(require.resolve('../src/permissions/store'), {
+      hasAnyPermission: async () => false,
+      hasPermission: async () => false,
+    })
+    const fileController = require('../src/modules/files/controller')
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      query: {},
+      body: { ownerType: 'attendance_request', ownerId: '321', purpose: 'leave_proof' },
+      file: {
+        originalname: 'proof.pdf',
+        path: '/tmp/oms-attendance-proof-test.pdf',
+        mimetype: 'application/pdf',
+        size: 128,
+      },
+    }
+    const res = createResponse()
+    await fileController.upload(req, res)
+    assert.equal(res.statusCode, 201)
+    assert.equal(res.body.id, 700)
+    assert.equal(res.body.purpose, 'leave_proof')
+    assert.ok(fileCalls.some((call) => /FROM attendance_requests r/.test(call.sql)))
+  }
 })().catch((error) => {
   console.error(error)
   process.exit(1)

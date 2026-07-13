@@ -104,7 +104,7 @@ const uploadMiddleware = multer({
 }).single('file')
 
 const orderFileOwnerTypes = new Set(['service_order', 'service_report', 'signature'])
-const filePurposes = new Set(['general', 'inspection_document', 'support_config', 'site_photo', 'screenshot_log'])
+const filePurposes = new Set(['general', 'inspection_document', 'support_config', 'site_photo', 'screenshot_log', 'leave_proof'])
 let filePurposeColumnReady = false
 
 async function ensureFilePurposeColumn() {
@@ -184,10 +184,45 @@ async function canAccessOrderFile(orderId, user, action, req) {
   return action === 'view' ? canView : canManage
 }
 
-async function assertCanAccessOwner(ownerType, ownerId, user, action, req) {
-  if (!orderFileOwnerTypes.has(ownerType)) {
-    throw badRequest('文件归属类型不支持')
+async function assertCanAccessAttendanceRequest(ownerId, user, action) {
+  const rows = await query(
+    `SELECT r.id, r.status, r.submitted_by,
+            EXISTS (
+              SELECT 1
+              FROM attendance_request_approvals a
+              LEFT JOIN attendance_employee_profiles ep ON ep.id = a.assignee_employee_id
+              WHERE a.request_id = r.id
+                AND a.status = 'pending'
+                AND (ep.user_id = :userId OR a.assignee_role = :role)
+            ) AS is_current_approver
+     FROM attendance_requests r
+     WHERE r.id = :ownerId
+     LIMIT 1`,
+    { ownerId, userId: user.id, role: user.role },
+  )
+  const request = rows[0]
+  if (!request) throw notFound('考勤申请不存在')
+  const isApplicant = Number(request.submitted_by) === Number(user.id)
+  if (action === 'manage') {
+    if (!isApplicant || request.status !== 'draft') throw forbidden('只有申请人可以维护草稿证明')
+    return
   }
+  const canViewAll = await hasAnyPermission(user.role, [
+    'attendance.view',
+    'attendance.manage',
+    'attendance.admin.approve',
+    'attendance.hr.approve',
+    'attendance.vp.approve',
+  ])
+  if (!isApplicant && !request.is_current_approver && !canViewAll) throw forbidden('无权查看考勤证明')
+}
+
+async function assertCanAccessOwner(ownerType, ownerId, user, action, req) {
+  if (ownerType === 'attendance_request') {
+    await assertCanAccessAttendanceRequest(ownerId, user, action)
+    return
+  }
+  if (!orderFileOwnerTypes.has(ownerType)) throw badRequest('文件归属类型不支持')
 
   const rows = await query('SELECT id FROM service_orders WHERE id = :ownerId LIMIT 1', { ownerId })
   if (!rows[0]) {
