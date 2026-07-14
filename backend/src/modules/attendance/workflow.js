@@ -1,5 +1,7 @@
 const WORK_HOURS_PER_DAY = 8
 const HALF_DAY_HOURS = WORK_HOURS_PER_DAY / 2
+const LONG_LEAVE_MIN_DAYS = 3
+const LONG_LEAVE_FINAL_APPROVER_ROLE = 'operations_director'
 
 function dateKey(date) {
   const pad = (value) => String(value).padStart(2, '0')
@@ -60,13 +62,23 @@ function requiresLeaveProof(leaveType) {
   return leaveType === 'sick' || leaveType === 'marriage'
 }
 
+function approvalRolesForRequest({ requestType, workingDays, approvalRoles }) {
+  const roles = [...(approvalRoles || [])]
+  const days = Number(workingDays)
+  if (requestType !== 'leave' || !Number.isFinite(days) || days < LONG_LEAVE_MIN_DAYS) return roles
+  return [
+    ...roles.filter((role) => role !== LONG_LEAVE_FINAL_APPROVER_ROLE),
+    LONG_LEAVE_FINAL_APPROVER_ROLE,
+  ]
+}
+
 function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supervisorRole, approvalRoles, workflowVersion = 2 }) {
   if (Number(workflowVersion) >= 3) {
     const steps = []
     if (requestType === 'comp_time') {
       steps.push({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
     }
-    for (const role of approvalRoles || []) {
+    for (const role of approvalRolesForRequest({ requestType, workingDays, approvalRoles })) {
       steps.push({ stepType: 'role', assigneeEmployeeId: null, assigneeRole: role })
     }
     return steps

@@ -13,6 +13,7 @@ const {
   sendMonthlyOperationsSummaryMail,
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
+const { processDueAttendanceEmailNotifications } = require('./attendance-notifications')
 
 const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
 
@@ -1053,7 +1054,18 @@ function startScheduler() {
     }
   })
 
-  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)`)
+  scheduleCron('* * * * *', async () => {
+    try {
+      const result = await processDueAttendanceEmailNotifications(30)
+      if (result?.processed) {
+        console.log(`[scheduler] Attendance notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Attendance notification check failed', error?.message)
+    }
+  })
+
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), attendance notifications (every minute)`)
 }
 
 module.exports = { startScheduler }

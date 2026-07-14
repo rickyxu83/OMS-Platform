@@ -11,6 +11,15 @@ const ROLE_LABELS = Object.freeze({
 })
 
 const ALL_ROLES = Object.keys(ROLE_LABELS)
+const ATTENDANCE_NON_APPLICANT_ROLES = Object.freeze([
+  'admin',
+  'dispatcher',
+  'operations_director',
+])
+const attendanceNonApplicantRoleSet = new Set(ATTENDANCE_NON_APPLICANT_ROLES)
+const ATTENDANCE_APPLICANT_ROLES = Object.freeze(
+  ALL_ROLES.filter((role) => !attendanceNonApplicantRoleSet.has(role)),
+)
 
 const PERMISSION_ENTRIES = Object.freeze([
   ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer']],
@@ -44,7 +53,8 @@ const PERMISSION_ENTRIES = Object.freeze([
   ['maintenance-party.edit', '编辑维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['maintenance-party.delete', '删除维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor']],
   ['timesheet.view', '查看工时报表', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
-  ['attendance.apply', '提交考勤申请', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer']],
+  ['attendance.apply', '提交考勤申请', ATTENDANCE_APPLICANT_ROLES],
+  ['attendance.approve', '处理考勤审批', ALL_ROLES],
   ['attendance.view', '查看考勤数据', ['admin', 'operations_director', 'administrative_supervisor']],
   ['attendance.manage', '维护考勤档案与余额', ['admin', 'administrative_supervisor']],
   ['attendance.admin.approve', '考勤行政终审', ['admin', 'administrative_supervisor']],
@@ -90,6 +100,8 @@ function getRolePermissions() {
 module.exports = {
   ALL_ROLES,
   ROLE_LABELS,
+  ATTENDANCE_APPLICANT_ROLES,
+  ATTENDANCE_NON_APPLICANT_ROLES,
   PERMISSION_ENTRIES,
   PERMISSION_KEYS,
   getDefaultPermissionMatrix,

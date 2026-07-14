@@ -83,6 +83,47 @@ assert.deepEqual(
 assert.deepEqual(
   buildApprovalSteps({
     requestType: 'leave',
+    workingDays: 2.5,
+    delegateEmployeeId: 9,
+    approvalRoles: ['engineering_supervisor'],
+    workflowVersion: 3,
+  }),
+  [
+    { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'engineering_supervisor' },
+  ],
+)
+
+assert.deepEqual(
+  buildApprovalSteps({
+    requestType: 'leave',
+    workingDays: 3,
+    delegateEmployeeId: 9,
+    approvalRoles: ['engineering_supervisor'],
+    workflowVersion: 3,
+  }),
+  [
+    { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'engineering_supervisor' },
+    { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'operations_director' },
+  ],
+)
+
+assert.deepEqual(
+  buildApprovalSteps({
+    requestType: 'leave',
+    workingDays: 5,
+    delegateEmployeeId: 9,
+    approvalRoles: ['operations_director', 'administrative_supervisor'],
+    workflowVersion: 3,
+  }),
+  [
+    { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'administrative_supervisor' },
+    { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'operations_director' },
+  ],
+)
+
+assert.deepEqual(
+  buildApprovalSteps({
+    requestType: 'leave',
     workingDays: 5,
     delegateEmployeeId: 9,
     approvalRoles: ['administrative_supervisor', 'operations_director'],

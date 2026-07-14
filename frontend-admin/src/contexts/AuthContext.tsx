@@ -7,7 +7,7 @@ const ADMIN_ACCESS_ROLES = [
   'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales',
   'engineer',
 ]
-const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = new Set(['order.engineer.own', 'workspace.engineer'])
+const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = new Set(['order.engineer.own', 'workspace.engineer', 'attendance.apply'])
 
 interface User {
   id?: string

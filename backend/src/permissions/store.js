@@ -2,12 +2,14 @@ const { query, transaction } = require('../config/db')
 const {
   ALL_ROLES,
   ROLE_LABELS,
+  ATTENDANCE_APPLICANT_ROLES,
   PERMISSION_ENTRIES,
   PERMISSION_KEYS,
   getDefaultPermissionMatrix,
 } = require('./catalog')
 
 const roleSet = new Set(ALL_ROLES)
+const attendanceApplicantRoleSet = new Set(ATTENDANCE_APPLICANT_ROLES)
 const permissionSet = new Set(PERMISSION_KEYS)
 const CACHE_TTL_MS = 30 * 1000
 const BUSINESS_ASSET_PERMISSIONS = Object.freeze([
@@ -78,7 +80,13 @@ function applyRolePermissionBaselines(matrix) {
       }
     }
   }
-  return forceAdminSuperuser(matrix)
+  forceAdminSuperuser(matrix)
+  if (permissionSet.has('attendance.apply')) {
+    for (const role of ALL_ROLES) {
+      if (!attendanceApplicantRoleSet.has(role)) matrix[role]['attendance.apply'] = false
+    }
+  }
+  return matrix
 }
 
 function applyOverrides(matrix, rows = []) {

@@ -857,6 +857,101 @@ async function sendCustomerSignatureRequestMail(order, recipientEmail, signUrl, 
   return { sent: true, to }
 }
 
+function attendanceLeaveTypeLabel(type) {
+  return {
+    annual: '年假',
+    sick: '病假',
+    personal: '事假',
+    marriage: '婚假',
+    bereavement: '丧假',
+  }[type] || type || '请假'
+}
+
+function attendanceDateRange(payload) {
+  return `${formatTime(payload.startAt)} 至 ${formatTime(payload.endAt)}`
+}
+
+function attendanceMailRows(payload) {
+  const rows = [
+    ['申请人', payload.applicantName || '-'],
+    ['假别', attendanceLeaveTypeLabel(payload.leaveType)],
+    ['请假时间', attendanceDateRange(payload)],
+    ['核算天数', payload.workingDays === null || payload.workingDays === undefined ? '-' : `${payload.workingDays} 天`],
+  ]
+  if (payload.delegateName) rows.push(['工作代理人', payload.delegateName])
+  if (payload.reason) rows.push(['申请原因', payload.reason])
+  if (payload.stepOrder && payload.stepCount) rows.push(['审批进度', `第 ${payload.stepOrder} / ${payload.stepCount} 级`])
+  return rows
+}
+
+async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+  if (mail.attendanceNotifyEnabled !== 'true') return { skipped: true, reason: 'attendance_notify_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients)
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const eventType = String(payload.eventType || '')
+  const leaveType = attendanceLeaveTypeLabel(payload.leaveType)
+  const subjectByType = {
+    approval_pending: `请假待审批：${payload.applicantName || '-'} / ${leaveType}`,
+    delegate_info: `请假代理通知：${payload.applicantName || '-'} / ${leaveType}`,
+    rejected: `请假申请已驳回：${payload.applicantName || '-'} / ${leaveType}`,
+    completed: `请假流程已完成：${payload.applicantName || '-'} / ${leaveType}`,
+  }
+  const headingByType = {
+    approval_pending: '请假待审批',
+    delegate_info: '请假代理通知',
+    rejected: '请假申请已驳回',
+    completed: '请假流程已完成',
+  }
+  const subject = subjectByType[eventType] || `请假通知：${payload.applicantName || '-'}`
+  const heading = headingByType[eventType] || '请假通知'
+  const rows = attendanceMailRows(payload)
+  if (eventType === 'rejected') {
+    rows.push(['驳回人', payload.rejectedByName || '-'])
+    rows.push(['驳回原因', payload.rejectedReason || '未填写'])
+  }
+  if (eventType === 'completed') {
+    if (payload.leaveType === 'annual') {
+      rows.push(['本次扣减', `${payload.annualLeaveUsedDays || 0} 天`])
+      rows.push(['剩余年假', `${payload.annualLeaveBalanceDays || 0} 天`])
+    } else {
+      rows.push(['余额说明', '该假别不计系统余额'])
+    }
+  }
+  const detailUrl = adminLink(settings.notification?.serviceOrderAdminBaseUrl, '/attendance')
+  const linkBlock = detailUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">打开 OMS 考勤管理</a></p>`
+    : '<p style="color:#64748b">请登录 OMS 管理端查看考勤详情。</p>'
+  const introByType = {
+    approval_pending: '当前请假申请已进入你的审批步骤，请登录 OMS 处理。',
+    delegate_info: '你被指定为本次请假期间的工作代理人，请提前做好工作交接；此邮件不需要你在系统中确认。',
+    rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
+    completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
+  }
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">${htmlEscape(heading)}</h2>
+      <p>${htmlEscape(introByType[eventType] || '请查看本次请假流程通知。')}</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:680px">
+        ${rows.map(([label, value]) => `<tr><td style="padding:6px 0;color:#64748b;width:96px;vertical-align:top">${htmlEscape(label)}</td><td style="padding:6px 0">${htmlEscape(value)}</td></tr>`).join('')}
+      </table>
+      ${mailFooter()}
+    </div>
+  `
+
+  const transporter = mailTransporter(mail)
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
@@ -869,4 +964,5 @@ module.exports = {
   sendMonthlyOperationsSummaryMail,
   sendSalesServiceOrderMail,
   sendCustomerSignatureRequestMail,
+  sendAttendanceNotificationMail,
 }

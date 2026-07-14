@@ -32,7 +32,7 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   devices: ["device.view"],
   "maintenance-parties": ["maintenance-party.view"],
   timesheets: ["timesheet.view"],
-  attendance: ["attendance.apply", "attendance.view", "attendance.admin.approve", "attendance.manage"],
+  attendance: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.admin.approve", "attendance.manage"],
   users: ["user.view"],
   "audit-logs": ["audit-log.view"],
   settings: ["settings.view"],

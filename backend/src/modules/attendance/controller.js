@@ -1,8 +1,20 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
-const { ALL_ROLES, ROLE_LABELS } = require('../../permissions/catalog')
+const {
+  ALL_ROLES,
+  ROLE_LABELS,
+  ATTENDANCE_APPLICANT_ROLES,
+  ATTENDANCE_NON_APPLICANT_ROLES,
+} = require('../../permissions/catalog')
 const { ensureFilePurposeColumn } = require('../files/controller')
+const {
+  ensureAttendanceEmailNotificationsTable,
+  queueSubmittedLeaveNotifications,
+  queueNextApprovalNotification,
+  queueRejectedLeaveNotification,
+  queueCompletedLeaveNotification,
+} = require('../../services/attendance-notifications')
 const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
@@ -26,11 +38,9 @@ const leaveConflictStatuses = Object.freeze([
 ])
 const leaveConflictStatusSql = leaveConflictStatuses.map((status) => "'" + status + "'").join(', ')
 const roleSet = new Set(ALL_ROLES)
+const attendanceApplicantRoleSet = new Set(ATTENDANCE_APPLICANT_ROLES)
 const defaultSupervisorRoleRules = Object.freeze({
-  admin: 'admin',
   assistant: 'operations_director',
-  dispatcher: 'operations_director',
-  operations_director: 'admin',
   engineering_supervisor: 'operations_director',
   administrative_supervisor: 'admin',
   sales_supervisor: 'operations_director',
@@ -379,11 +389,14 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
+      await ensureAttendanceEmailNotificationsTable()
+
       await seedBuiltinLegalHolidays()
       await refreshLegalHolidayCache()
       await ensureFilePurposeColumn()
       await ensureAttendanceRequestColumns()
       await ensureAnnualLeaveLedgerUnit()
+      await removeNonApplicantApprovalRoleRules()
       await ensureDefaultSupervisorRoleRules()
       await ensureApprovalRoleRuleSteps()
       await syncUserProfiles()
@@ -555,11 +568,32 @@ async function ensureDefaultSupervisorRoleRules() {
   }
 }
 
+async function removeNonApplicantApprovalRoleRules() {
+  const params = Object.fromEntries(
+    ATTENDANCE_NON_APPLICANT_ROLES.map((role, index) => [`excludedRole${index}`, role]),
+  )
+  const placeholders = ATTENDANCE_NON_APPLICANT_ROLES
+    .map((_, index) => `:excludedRole${index}`)
+    .join(', ')
+  await query(
+    `DELETE FROM attendance_approval_role_rule_steps
+     WHERE applicant_role IN (${placeholders})`,
+    params,
+  )
+  await query(
+    `DELETE FROM attendance_supervisor_role_rules
+     WHERE applicant_role IN (${placeholders})`,
+    params,
+  )
+}
+
 async function ensureApprovalRoleRuleSteps() {
   await query(
     `INSERT IGNORE INTO attendance_approval_role_rule_steps (applicant_role, step_order, approver_role)
      SELECT applicant_role, 1, supervisor_role
-     FROM attendance_supervisor_role_rules`,
+     FROM attendance_supervisor_role_rules
+     WHERE applicant_role IN (${ATTENDANCE_APPLICANT_ROLES.map((_, index) => `:applicantRole${index}`).join(', ')})`,
+    Object.fromEntries(ATTENDANCE_APPLICANT_ROLES.map((role, index) => [`applicantRole${index}`, role])),
   )
 }
 
@@ -699,6 +733,12 @@ function rolePayload(row) {
   }
 }
 
+function assertAttendanceApplicantRole(role) {
+  if (!attendanceApplicantRoleSet.has(text(role))) {
+    throw forbidden('当前角色无需提交考勤申请')
+  }
+}
+
 async function listSupervisorRoleRules(req, res) {
   await ensureSchema()
   const rows = await query(
@@ -710,7 +750,7 @@ async function listSupervisorRoleRules(req, res) {
   const rules = new Map(rows.map((row) => [row.applicant_role, row.supervisor_role]))
   res.json({
     roles: ALL_ROLES.map((role) => rolePayload({ role })),
-    items: ALL_ROLES.map((role) => ({
+    items: ATTENDANCE_APPLICANT_ROLES.map((role) => ({
       applicantRole: role,
       applicantRoleLabel: ROLE_LABELS[role] || role,
       supervisorRole: rules.get(role) || defaultSupervisorRoleRules[role] || 'admin',
@@ -727,7 +767,7 @@ async function updateSupervisorRoleRules(req, res) {
     for (const item of items) {
       const applicantRole = text(item?.applicantRole)
       const supervisorRole = text(item?.supervisorRole)
-      if (!roleSet.has(applicantRole) || !roleSet.has(supervisorRole)) {
+      if (!attendanceApplicantRoleSet.has(applicantRole) || !roleSet.has(supervisorRole)) {
         throw badRequest('角色规则不正确')
       }
       await connection.execute(
@@ -756,7 +796,7 @@ function normalizeApprovalRoleRuleItems(items) {
   const applicantRoles = new Set()
   return items.map((item) => {
     const applicantRole = text(item?.applicantRole)
-    if (!roleSet.has(applicantRole) || applicantRoles.has(applicantRole)) throw badRequest('申请人角色规则不正确')
+    if (!attendanceApplicantRoleSet.has(applicantRole) || applicantRoles.has(applicantRole)) throw badRequest('申请人角色规则不正确')
     applicantRoles.add(applicantRole)
     const rawSteps = Array.isArray(item?.steps) ? item.steps : []
     if (!rawSteps.length) throw badRequest(`${ROLE_LABELS[applicantRole] || applicantRole}的审批链不能为空`)
@@ -789,7 +829,7 @@ async function listApprovalRoleRules(req, res) {
   }
   res.json({
     roles: ALL_ROLES.map((role) => rolePayload({ role })),
-    items: ALL_ROLES.map((role) => ({
+    items: ATTENDANCE_APPLICANT_ROLES.map((role) => ({
       applicantRole: role,
       applicantRoleLabel: ROLE_LABELS[role] || role,
       steps: rules.get(role) || [],
@@ -904,7 +944,7 @@ async function deleteLegalHoliday(req, res) {
 
 async function supervisorRoleForApplicantRoleConnection(connection, role) {
   const normalized = text(role)
-  if (!roleSet.has(normalized)) return defaultSupervisorRoleRules.engineer
+  if (!attendanceApplicantRoleSet.has(normalized)) throw badRequest('申请人角色不正确')
   const [rows] = await connection.execute(
     `SELECT supervisor_role
      FROM attendance_supervisor_role_rules
@@ -917,7 +957,7 @@ async function supervisorRoleForApplicantRoleConnection(connection, role) {
 
 async function approvalRolesForApplicantRoleConnection(connection, role) {
   const normalized = text(role)
-  if (!roleSet.has(normalized)) throw badRequest('申请人角色不正确')
+  if (!attendanceApplicantRoleSet.has(normalized)) throw badRequest('申请人角色不正确')
   const [rows] = await connection.execute(
     `SELECT approver_role
      FROM attendance_approval_role_rule_steps
@@ -953,6 +993,12 @@ async function assertApprovalRolesAvailable(connection, approvalRoles, submitted
   }
 }
 
+function approvalRolesFromSteps(steps) {
+  return steps
+    .filter((step) => step.stepType === 'role' && step.assigneeRole)
+    .map((step) => step.assigneeRole)
+}
+
 async function listEmployees(req, res) {
   await ensureSchema()
   await syncUserProfiles()
@@ -979,6 +1025,7 @@ async function listEmployees(req, res) {
 
 async function listDelegates(req, res) {
   await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const rawStartAt = text(req.query.startAt)
@@ -1152,6 +1199,7 @@ function normalizeRequestInput(body) {
 
 async function createRequest(req, res) {
   await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const input = normalizeRequestInput(req.body)
@@ -1447,6 +1495,7 @@ async function usedOvertimeSegments(orderIds, userId) {
 
 async function listOvertimeServiceOrders(req, res) {
   await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const rows = await serviceOrderOvertimeRows(req.user.id)
@@ -1463,6 +1512,7 @@ async function listOvertimeServiceOrders(req, res) {
 
 async function createServiceOrderOvertimeRequest(req, res) {
   await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
   const serviceOrderId = Number(req.params.id)
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
   const segmentKey = text(req.body?.segmentKey)
@@ -1508,7 +1558,6 @@ async function createServiceOrderOvertimeRequest(req, res) {
     if (existingRows[0]) throw badRequest('该工单时段已提交加班申请')
 
     const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, employee.role)
-    await assertApprovalRolesAvailable(connection, approvalRoles, req.user.id)
     const approvalSteps = buildApprovalSteps({
       requestType: 'overtime',
       workingDays: 0,
@@ -1516,6 +1565,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
       approvalRoles,
       workflowVersion: 3,
     })
+    await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(approvalSteps), req.user.id)
     const status = requestStatusForStep(approvalSteps[0]?.stepType)
     if (!status) throw badRequest('审批流程不能为空')
     const [inserted] = await connection.execute(
@@ -1727,7 +1777,8 @@ async function listRequests(req, res) {
 
 async function requestForUpdate(connection, id) {
   const [rows] = await connection.execute(
-    `SELECT r.*, p.employee_name, p.user_id, u.role AS applicant_role, p.supervisor_employee_id
+    `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
+            u.role AS applicant_role, p.supervisor_employee_id
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      LEFT JOIN users u ON u.id = p.user_id
@@ -1761,6 +1812,7 @@ async function insertApprovalSteps(connection, requestId, steps) {
 
 async function submitRequest(req, res) {
   await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
   const id = Number(req.params.id)
   if (!id) throw badRequest('申请 ID 不正确')
   const result = await transaction(async (connection) => {
@@ -1800,7 +1852,6 @@ async function submitRequest(req, res) {
     let steps
     if (workflowVersion >= 3) {
       const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, request.applicant_role)
-      await assertApprovalRolesAvailable(connection, approvalRoles, request.submitted_by)
       steps = buildApprovalSteps({
         requestType: request.request_type,
         workingDays: Number(request.working_days || 0),
@@ -1808,6 +1859,7 @@ async function submitRequest(req, res) {
         approvalRoles,
         workflowVersion,
       })
+      await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(steps), request.submitted_by)
     } else {
       steps = buildApprovalSteps({
         requestType: request.request_type,
@@ -1825,6 +1877,9 @@ async function submitRequest(req, res) {
        WHERE id = :id`,
       { id: request.id, status },
     )
+    if (request.request_type === 'leave') {
+      await queueSubmittedLeaveNotifications(connection, request, steps)
+    }
     return { status }
   })
   res.json({ ok: true, status: result.status })
@@ -1983,6 +2038,9 @@ async function approveLockedWorkflowStep(connection, request, expectedStepType, 
        WHERE id = :id`,
       { id: request.id, status },
     )
+    if (request.request_type === 'leave') {
+      await queueNextApprovalNotification(connection, request, next)
+    }
     return status
   }
 
@@ -1993,6 +2051,7 @@ async function approveLockedWorkflowStep(connection, request, expectedStepType, 
      WHERE id = :id`,
     { id: request.id },
   )
+  await queueCompletedLeaveNotification(connection, request)
   return 'approved'
 }
 
@@ -2069,6 +2128,7 @@ async function approveAdmin(req, res) {
        WHERE id = :id`,
       { id, userId: req.user.id },
     )
+    await queueCompletedLeaveNotification(connection, request)
   })
   res.json({ ok: true })
 }
@@ -2104,6 +2164,7 @@ async function rejectRequest(req, res) {
          WHERE id = :id`,
         { id, userId: req.user.id, reason },
       )
+      await queueRejectedLeaveNotification(connection, request, req.user, reason)
       return
     }
     const isRoleSupervisor = request.status === 'pending_supervisor' && request.supervisor_role && request.supervisor_role === req.user.role
@@ -2120,6 +2181,7 @@ async function rejectRequest(req, res) {
        WHERE id = :id`,
       { id, userId: req.user.id, reason },
     )
+    await queueRejectedLeaveNotification(connection, request, req.user, reason)
   })
   res.json({ ok: true })
 }

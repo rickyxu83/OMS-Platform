@@ -104,10 +104,10 @@ async function loadController({
   return { controller: require('../src/modules/attendance/controller'), calls }
 }
 
-async function createLeave(bodyOverrides = {}, loadOptions = {}) {
+async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'engineer') {
   const { controller, calls } = await loadController(loadOptions)
   const req = {
-    user: { id: 42, role: 'engineer' },
+    user: { id: 42, role: userRole },
     body: {
       requestType: 'leave',
       leaveType: 'annual',
@@ -143,6 +143,16 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     assert.equal(insert.params.workingDays, 3)
     assert.equal(insert.params.hours, 24)
     assert.ok(result.calls.some((call) => /INSERT IGNORE INTO attendance_approval_role_rule_steps/.test(call.sql)))
+    assert.ok(result.calls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)))
+    assert.ok(result.calls.some((call) => /DELETE FROM attendance_supervisor_role_rules/.test(call.sql)))
+    assert.equal(result.calls.some((call) => /DELETE FROM attendance_requests/.test(call.sql)), false)
+  }
+
+  for (const role of ['admin', 'dispatcher', 'operations_director']) {
+    const result = await createLeave({}, {}, role)
+    assert.equal(result.thrown?.status, 403)
+    assert.match(result.thrown?.message || '', /无需提交考勤申请/)
+    assert.equal(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)), false)
   }
 
   {
@@ -216,6 +226,36 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
   }
 
   {
+    const { controller } = await loadController({
+      queryHandler: async (sql) => {
+        if (/SELECT applicant_role, step_order, approver_role/.test(sql)) {
+          return [
+            { applicant_role: 'admin', step_order: 1, approver_role: 'administrative_supervisor' },
+            { applicant_role: 'assistant', step_order: 1, approver_role: 'operations_director' },
+            { applicant_role: 'dispatcher', step_order: 1, approver_role: 'operations_director' },
+            { applicant_role: 'operations_director', step_order: 1, approver_role: 'admin' },
+            { applicant_role: 'engineer', step_order: 1, approver_role: 'engineering_supervisor' },
+          ]
+        }
+        return undefined
+      },
+    })
+    const req = { user: { id: 1, role: 'admin' }, body: {} }
+    const res = createResponse()
+    await controller.listApprovalRoleRules(req, res)
+    assert.deepEqual(res.body.items.map((item) => item.applicantRole), [
+      'assistant',
+      'engineering_supervisor',
+      'administrative_supervisor',
+      'sales_supervisor',
+      'sales',
+      'engineer',
+    ])
+    assert.ok(res.body.roles.some((item) => item.role === 'admin'))
+    assert.ok(res.body.roles.some((item) => item.role === 'operations_director'))
+  }
+
+  {
     const executeCalls = []
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -226,6 +266,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             workflow_version: 2,
             employee_id: 5,
             delegate_employee_id: 9,
+            employee_name: '申请人',
+            applicant_email: 'applicant@example.test',
             request_type: 'leave',
             leave_type: 'annual',
             working_days: 3,
@@ -237,6 +279,15 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
           }], []]
         }
         if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
+          return [[
+            { id: 88, name: '工程主管甲', email: 'supervisor-a@example.test' },
+            { id: 89, name: '工程主管乙', email: 'supervisor-b@example.test' },
+          ], []]
+        }
+        if (/FROM attendance_employee_profiles p/.test(sql) && /p\.id = :employeeId/.test(sql)) {
+          return [[{ id: 9, employee_name: '代理人', user_id: 77, email: 'delegate@example.test' }], []]
+        }
         return [{ affectedRows: 1, insertId: 1 }, []]
       },
     })
@@ -250,6 +301,50 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     assert.equal(stepInserts[0].params.stepType, 'supervisor')
     assert.equal(stepInserts[0].params.status, 'pending')
     assert.equal(stepInserts[1].params.status, 'waiting')
+    const notificationInserts = executeCalls.filter((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
+    assert.equal(notificationInserts.length, 2)
+    assert.deepEqual(JSON.parse(notificationInserts[0].params.recipientEmails), [
+      'supervisor-a@example.test',
+      'supervisor-b@example.test',
+    ])
+    assert.equal(notificationInserts[0].params.eventType, 'approval_pending')
+    assert.deepEqual(JSON.parse(notificationInserts[1].params.recipientEmails), ['delegate@example.test'])
+    assert.equal(notificationInserts[1].params.eventType, 'delegate_info')
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 325,
+            workflow_version: 2,
+            employee_id: 5,
+            delegate_employee_id: 9,
+            request_type: 'leave',
+            leave_type: 'annual',
+            working_days: 1,
+            supervisor_role: 'engineering_supervisor',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        if (/INSERT IGNORE INTO attendance_email_notifications/.test(sql)) throw new Error('queue unavailable')
+        return [{ affectedRows: 1, insertId: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '325' }, body: {} }
+    const res = createResponse()
+    const originalConsoleError = console.error
+    console.error = () => {}
+    try {
+      await controller.submitRequest(req, res)
+    } finally {
+      console.error = originalConsoleError
+    }
+    assert.equal(res.body.ok, true)
+    assert.equal(res.body.status, 'pending_supervisor')
   }
 
   {
@@ -371,6 +466,28 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
       user: { id: 1, role: 'admin' },
       body: {
         items: [{
+          applicantRole: 'admin',
+          steps: [{ approverRole: 'administrative_supervisor' }],
+        }],
+      },
+    }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.updateApprovalRoleRules(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /申请人角色规则不正确/)
+  }
+
+  {
+    const { controller } = await loadController({ hasPermission: async () => true })
+    const req = {
+      user: { id: 1, role: 'admin' },
+      body: {
+        items: [{
           applicantRole: 'assistant',
           steps: [
             { approverRole: 'administrative_supervisor' },
@@ -412,10 +529,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
           }], []]
         }
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
-          return [[
-            { approver_role: 'administrative_supervisor' },
-            { approver_role: 'operations_director' },
-          ], []]
+          return [[{ approver_role: 'administrative_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
           return [[
@@ -447,16 +561,14 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             delegate_employee_id: 9,
             request_type: 'leave',
             leave_type: 'annual',
+            working_days: 5,
             applicant_role: 'assistant',
             status: 'draft',
             submitted_by: 42,
           }], []]
         }
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
-          return [[
-            { approver_role: 'administrative_supervisor' },
-            { approver_role: 'operations_director' },
-          ], []]
+          return [[{ approver_role: 'administrative_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
           return [[{ role: 'administrative_supervisor', user_count: 1 }], []]
@@ -529,6 +641,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             id: 321,
             workflow_version: 2,
             employee_id: 5,
+            employee_name: '申请人',
+            applicant_email: 'applicant@example.test',
             request_type: 'leave',
             leave_type: 'annual',
             hours: 24,
@@ -955,6 +1069,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             id: 390,
             workflow_version: 3,
             employee_id: 5,
+            employee_name: '申请人',
+            applicant_email: 'applicant@example.test',
             request_type: 'leave',
             leave_type: 'personal',
             hours: 4,
@@ -982,6 +1098,10 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             status: 'waiting',
           }], []]
         }
+        if (/SELECT COUNT\(\*\) AS step_count/.test(sql)) return [[{ step_count: 2 }], []]
+        if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
+          return [[{ id: 99, name: '运营负责人', email: 'operations@example.test' }], []]
+        }
         return [{ affectedRows: 1 }, []]
       },
     })
@@ -991,6 +1111,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     assert.equal(res.body.status, 'pending_approval')
     assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 31))
     assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 32))
+    const notification = executeCalls.find((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
+    assert.equal(notification?.params.eventKey, 'request:390:approval:2')
+    assert.deepEqual(JSON.parse(notification.params.recipientEmails), ['operations@example.test'])
   }
 
   {
@@ -1059,6 +1182,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
           return [[{
             id: 393,
             workflow_version: 3,
+            employee_name: '申请人',
+            applicant_email: 'applicant@example.test',
+            request_type: 'leave',
+            leave_type: 'personal',
+            start_at: '2026-07-14 09:00:00',
+            end_at: '2026-07-14 18:00:00',
             status: 'pending_approval',
             submitted_by: 42,
           }], []]
@@ -1079,6 +1208,10 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     assert.equal(res.body.ok, true)
     assert.ok(executeCalls.some((call) => /UPDATE attendance_request_approvals/.test(call.sql) && call.params.reason === '资料不完整'))
     assert.ok(executeCalls.some((call) => /UPDATE attendance_requests/.test(call.sql) && call.params.reason === '资料不完整'))
+    const notification = executeCalls.find((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
+    assert.equal(notification?.params.eventType, 'rejected')
+    assert.deepEqual(JSON.parse(notification.params.recipientEmails), ['applicant@example.test'])
+    assert.equal(JSON.parse(notification.params.payload).rejectedReason, '资料不完整')
   }
 
   {
@@ -1121,6 +1254,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
 
   {
     const executeCalls = []
+    let balanceQueryCount = 0
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
         executeCalls.push({ sql, params })
@@ -1129,6 +1263,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
             id: 401,
             workflow_version: 2,
             employee_id: 5,
+            employee_name: '申请人',
+            applicant_email: 'applicant@example.test',
             request_type: 'leave',
             leave_type: 'annual',
             hours: 4,
@@ -1146,7 +1282,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
         }
         if (/status = 'waiting'/.test(sql)) return [[], []]
         if (/FROM attendance_employee_profiles/.test(sql) && /FOR UPDATE/.test(sql)) return [[{ id: 5 }], []]
-        if (/COALESCE\(SUM\(delta_hours\)/.test(sql)) return [[{ balance_hours: 10 }], []]
+        if (/COALESCE\(SUM\(delta_hours\)/.test(sql)) {
+          balanceQueryCount += 1
+          const balance = balanceQueryCount === 1 ? 10 : 9.5
+          return [[{ balance_hours: balance, balance_days: balance }], []]
+        }
         return [{ affectedRows: 1 }, []]
       },
     })
@@ -1155,6 +1295,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     await controller.approveSupervisor(req, res)
     assert.equal(res.body.status, 'approved')
     assert.ok(executeCalls.some((call) => /FROM attendance_employee_profiles/.test(call.sql) && /FOR UPDATE/.test(call.sql)))
+    const notification = executeCalls.find((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
+    assert.equal(notification?.params.eventType, 'completed')
+    const payload = JSON.parse(notification.params.payload)
+    assert.equal(payload.annualLeaveUsedDays, 0.5)
+    assert.equal(payload.annualLeaveBalanceDays, 9.5)
   }
 
   {
