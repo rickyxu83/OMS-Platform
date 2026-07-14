@@ -8,6 +8,24 @@ const WORK_HOURS_PER_DAY = 8
 const MAX_RANGE_DAYS = 366
 const DAY_MS = 86400000
 const REPORT_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const COMPANY_NAME = '敦阳（宁波）科技有限公司'
+const REPORT_COLORS = Object.freeze({
+  deep: 'FF2E1065',
+  primary: 'FF8B5CF6',
+  primaryDark: 'FF6D28D9',
+  accent: 'FFA855F7',
+  ink: 'FF2A2140',
+  muted: 'FF7C6F9C',
+  line: 'FFEDE9FE',
+  soft: 'FFF5F3FF',
+  white: 'FFFFFFFF',
+  success: 'FF15803D',
+  successSoft: 'FFDCFCE7',
+  warning: 'FFB45309',
+  warningSoft: 'FFFEF3C7',
+  neutralSoft: 'FFF1F5F9',
+  danger: 'FFB91C1C',
+})
 
 const LEAVE_LABELS = Object.freeze({
   annual: '特休',
@@ -342,30 +360,134 @@ function buildReportData(filters, rows) {
   }
 }
 
-function styleTitle(sheet, title, filters, generatedAt) {
-  sheet.mergeCells('A1:L1')
-  sheet.getCell('A1').value = title
-  sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
-  sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
-  sheet.getCell('A2').value = '统计范围'
-  sheet.getCell('B2').value = `${filters.startDate} 至 ${filters.endDate}（含首尾日期）`
-  sheet.getCell('A3').value = '生成时间'
-  sheet.getCell('B3').value = generatedAt
-  sheet.getCell('A4').value = '统计口径'
-  sheet.getCell('B4').value = '仅统计已通过申请；余额按业务发生日期计算；不包含申请原因、证明附件及敏感备注。'
-  for (const row of [2, 3, 4]) sheet.getCell(`A${row}`).font = { bold: true }
+function fill(color) {
+  return { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }
 }
 
-function addSection(sheet, startRow, title, headers, rows, widths) {
+function columnLetter(number) {
+  let value = number
+  let result = ''
+  while (value > 0) {
+    value -= 1
+    result = String.fromCharCode(65 + (value % 26)) + result
+    value = Math.floor(value / 26)
+  }
+  return result
+}
+
+function styleTitle(sheet, title, filters, generatedAt, maxColumns) {
+  const lastColumn = columnLetter(maxColumns)
+  sheet.mergeCells(`A1:${lastColumn}1`)
+  sheet.getCell('A1').value = title
+  sheet.getCell('A1').font = { bold: true, size: 20, color: { argb: REPORT_COLORS.white } }
+  sheet.getCell('A1').fill = fill(REPORT_COLORS.deep)
+  sheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' }
+  sheet.getRow(1).height = 34
+
+  sheet.mergeCells(`A2:${lastColumn}2`)
+  sheet.getCell('A2').value = 'ATTENDANCE REPORT  ·  考勤数据中心'
+  sheet.getCell('A2').font = { bold: true, size: 10, color: { argb: 'FFE9D5FF' } }
+  sheet.getCell('A2').fill = fill(REPORT_COLORS.deep)
+  sheet.getRow(2).height = 22
+
+  const tagEnd = Math.min(3, maxColumns)
+  sheet.mergeCells(3, 1, 3, tagEnd)
+  sheet.getCell('A3').value = COMPANY_NAME
+  sheet.getCell('A3').font = { bold: true, size: 10, color: { argb: REPORT_COLORS.primaryDark } }
+  sheet.getCell('A3').fill = fill(REPORT_COLORS.soft)
+  sheet.getCell('A3').alignment = { vertical: 'middle', horizontal: 'center' }
+  if (maxColumns > tagEnd) {
+    sheet.mergeCells(3, tagEnd + 1, 3, maxColumns)
+    const metaCell = sheet.getCell(3, tagEnd + 1)
+    metaCell.value = `生成时间  ${generatedAt}`
+    metaCell.font = { size: 9, color: { argb: REPORT_COLORS.muted } }
+    metaCell.alignment = { vertical: 'middle', horizontal: 'right' }
+  }
+  sheet.getRow(3).height = 24
+
+  sheet.mergeCells(4, 1, 4, 2)
+  sheet.getCell('A4').value = '统计周期'
+  sheet.getCell('A4').font = { bold: true, color: { argb: REPORT_COLORS.primaryDark } }
+  if (maxColumns > 2) sheet.mergeCells(4, 3, 4, maxColumns)
+  const rangeCell = sheet.getCell(4, Math.min(3, maxColumns))
+  rangeCell.value = `${filters.startDate} 至 ${filters.endDate}（含首尾日期）`
+  rangeCell.font = { bold: true, color: { argb: REPORT_COLORS.ink } }
+  sheet.getRow(4).height = 23
+
+  sheet.mergeCells(`A5:${lastColumn}5`)
+  sheet.getCell('A5').value = '口径说明｜仅统计已通过申请；余额按业务发生日期计算；不包含申请原因、证明附件及敏感备注。'
+  sheet.getCell('A5').font = { italic: true, size: 9, color: { argb: REPORT_COLORS.muted } }
+  sheet.getCell('A5').fill = fill(REPORT_COLORS.soft)
+  sheet.getRow(5).height = 25
+}
+
+function addMetricStrip(sheet, startRow, metrics, maxColumns) {
+  const groupWidth = Math.floor(maxColumns / metrics.length)
+  metrics.forEach((metric, index) => {
+    const startColumn = index * groupWidth + 1
+    const endColumn = index === metrics.length - 1 ? maxColumns : (index + 1) * groupWidth
+    sheet.mergeCells(startRow, startColumn, startRow, endColumn)
+    sheet.mergeCells(startRow + 1, startColumn, startRow + 1, endColumn)
+    const labelCell = sheet.getCell(startRow, startColumn)
+    const valueCell = sheet.getCell(startRow + 1, startColumn)
+    labelCell.value = metric.label
+    valueCell.value = metric.value
+    labelCell.font = { bold: true, size: 9, color: { argb: REPORT_COLORS.muted } }
+    valueCell.font = { bold: true, size: 15, color: { argb: REPORT_COLORS.primaryDark } }
+    labelCell.fill = fill(REPORT_COLORS.soft)
+    valueCell.fill = fill(REPORT_COLORS.soft)
+    labelCell.alignment = { vertical: 'middle', horizontal: 'center' }
+    valueCell.alignment = { vertical: 'middle', horizontal: 'center' }
+    for (const row of [startRow, startRow + 1]) {
+      for (let column = startColumn; column <= endColumn; column += 1) {
+        sheet.getCell(row, column).border = {
+          top: { style: 'thin', color: { argb: REPORT_COLORS.line } },
+          bottom: { style: 'thin', color: { argb: REPORT_COLORS.line } },
+          left: column === startColumn ? { style: 'thin', color: { argb: REPORT_COLORS.line } } : undefined,
+          right: column === endColumn ? { style: 'thin', color: { argb: REPORT_COLORS.line } } : undefined,
+        }
+      }
+    }
+  })
+  sheet.getRow(startRow).height = 20
+  sheet.getRow(startRow + 1).height = 27
+}
+
+function addSection(sheet, startRow, title, headers, rows, widths, options = {}) {
+  sheet.mergeCells(startRow, 1, startRow, headers.length)
   sheet.getCell(`A${startRow}`).value = title
-  sheet.getCell(`A${startRow}`).font = { bold: true, size: 12, color: { argb: 'FF1E3A5F' } }
+  sheet.getCell(`A${startRow}`).font = { bold: true, size: 12, color: { argb: REPORT_COLORS.primaryDark } }
+  sheet.getCell(`A${startRow}`).fill = fill(REPORT_COLORS.soft)
+  sheet.getCell(`A${startRow}`).alignment = { vertical: 'middle', horizontal: 'left' }
+  sheet.getRow(startRow).height = 25
   const headerRow = sheet.getRow(startRow + 1)
   headerRow.values = headers
-  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6A91' } }
+  headerRow.font = { bold: true, color: { argb: REPORT_COLORS.white } }
+  headerRow.fill = fill(REPORT_COLORS.primary)
   headerRow.alignment = { vertical: 'middle', horizontal: 'center' }
+  headerRow.height = 28
   const dataRows = rows.length ? rows : [headers.map((_, index) => index === 0 ? '暂无数据' : '')]
-  for (const values of dataRows) sheet.addRow(values)
+  dataRows.forEach((values, index) => {
+    const row = sheet.addRow(values)
+    row.height = 22
+    if (index % 2 === 1) row.fill = fill(REPORT_COLORS.soft)
+    row.eachCell((cell, column) => {
+      cell.font = { color: { argb: REPORT_COLORS.ink } }
+      if (headers[column - 1] === '状态') {
+        const status = String(cell.value || '')
+        if (status === '在职') {
+          cell.font = { bold: true, color: { argb: REPORT_COLORS.success } }
+          cell.fill = fill(REPORT_COLORS.successSoft)
+        } else if (status === '离职' || status === '停用') {
+          cell.font = { bold: true, color: { argb: REPORT_COLORS.warning } }
+          cell.fill = fill(REPORT_COLORS.warningSoft)
+        }
+      }
+      if (options.deltaColumn === column && typeof cell.value === 'number') {
+        cell.font = { bold: true, color: { argb: cell.value < 0 ? REPORT_COLORS.danger : REPORT_COLORS.success } }
+      }
+    })
+  })
   widths.forEach((width, index) => { sheet.getColumn(index + 1).width = Math.max(sheet.getColumn(index + 1).width || 0, width) })
   return startRow + 2 + dataRows.length
 }
@@ -378,50 +500,79 @@ function buildWorkbook(data) {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }).format(new Date()).replaceAll('/', '-')
 
-  const leave = workbook.addWorksheet('请假统计', { views: [{ state: 'frozen', ySplit: 6 }] })
-  styleTitle(leave, '请假统计', data.filters, generatedAt)
-  let next = addSection(leave, 6, '员工汇总', ['员工', '状态', '特休（天）', '病假（小时）', '事假（小时）', '婚假（小时）', '丧假（小时）', '调休（小时）', '请假总时数'],
+  const leaveTotalHours = round(data.leaveSummary.reduce((sum, row) => sum + Number(row.totalHours || 0), 0))
+  const annualTotalDays = round(data.leaveSummary.reduce((sum, row) => sum + Number(row.annualDays || 0), 0))
+  const leave = workbook.addWorksheet('请假统计', { views: [{ state: 'frozen', ySplit: 11 }], properties: { tabColor: { argb: REPORT_COLORS.primary } } })
+  styleTitle(leave, '请假统计', data.filters, generatedAt, 9)
+  addMetricStrip(leave, 7, [
+    { label: '统计员工', value: `${data.leaveSummary.length} 人` },
+    { label: '请假总时数', value: `${leaveTotalHours} 小时` },
+    { label: '特休使用', value: `${annualTotalDays} 天` },
+  ], 9)
+  let next = addSection(leave, 10, '01  员工汇总', ['员工', '状态', '特休（天）', '病假（小时）', '事假（小时）', '婚假（小时）', '丧假（小时）', '调休（小时）', '请假总时数'],
     data.leaveSummary.map((row) => [row.name, row.status, row.annualDays, row.sickHours, row.personalHours, row.marriageHours, row.bereavementHours, row.compTimeHours, row.totalHours]),
     [18, 10, 12, 13, 13, 13, 13, 13, 14])
   next += 1
-  addSection(leave, next, '申请明细', ['员工', '状态', '申请编号', '假别', '开始时间', '结束时间', '区间内时长（小时）', '特休折算（天）', '最终审批时间'],
+  addSection(leave, next, '02  申请明细', ['员工', '状态', '申请编号', '假别', '开始时间', '结束时间', '区间内时长（小时）', '特休折算（天）', '最终审批时间'],
     data.leaveDetails.map((row) => [row.employeeName, row.status, row.requestId, row.leaveType, row.startAt, row.endAt, row.hours, row.annualDays, row.approvedAt]),
     [18, 10, 12, 12, 20, 20, 18, 16, 20])
+  leave.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 9 } }
 
-  const overtime = workbook.addWorksheet('加班统计', { views: [{ state: 'frozen', ySplit: 6 }] })
-  styleTitle(overtime, '加班统计', data.filters, generatedAt)
-  next = addSection(overtime, 6, '员工汇总', ['员工', '状态', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数', '加班费折算时数'],
+  const overtimeTotalHours = round(data.overtimeSummary.reduce((sum, row) => sum + Number(row.totalHours || 0), 0))
+  const overtimeCompHours = round(data.overtimeSummary.reduce((sum, row) => sum + Number(row.compTimeHours || 0), 0))
+  const overtimePayHours = round(data.overtimeSummary.reduce((sum, row) => sum + Number(row.payHours || 0), 0))
+  const overtime = workbook.addWorksheet('加班统计', { views: [{ state: 'frozen', ySplit: 11 }], properties: { tabColor: { argb: REPORT_COLORS.accent } } })
+  styleTitle(overtime, '加班统计', data.filters, generatedAt, 13)
+  addMetricStrip(overtime, 7, [
+    { label: '加班总时数', value: `${overtimeTotalHours} 小时` },
+    { label: '转调休', value: `${overtimeCompHours} 小时` },
+    { label: '计加班费', value: `${overtimePayHours} 小时` },
+  ], 13)
+  next = addSection(overtime, 10, '01  员工汇总', ['员工', '状态', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数', '加班费折算时数'],
     data.overtimeSummary.map((row) => [row.name, row.status, row.totalHours, row.compTimeHours, row.payHours, row.legalHolidayPayHours, row.weightedPayHours]),
     [18, 10, 14, 14, 14, 22, 18])
   next += 1
-  addSection(overtime, next, '申请明细', ['员工', '状态', '申请编号', '加班类型', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '倍率', '折算时数', '最终审批时间', '来源工单'],
+  addSection(overtime, next, '02  申请明细', ['员工', '状态', '申请编号', '加班类型', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '倍率', '折算时数', '最终审批时间', '来源工单'],
     data.overtimeDetails.map((row) => [row.employeeName, row.status, row.requestId, row.kind, row.startAt, row.endAt, row.hours, row.result, row.dayType, row.multiplier, row.weightedHours, row.approvedAt, row.source]),
     [18, 10, 12, 14, 20, 20, 14, 12, 14, 10, 12, 20, 20])
+  overtime.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 7 } }
 
-  const balance = workbook.addWorksheet('假期余额', { views: [{ state: 'frozen', ySplit: 6 }] })
-  styleTitle(balance, '假期余额', data.filters, generatedAt)
-  next = addSection(balance, 6, '期末余额汇总', ['员工', '状态', '截止日期', '特休余额（天）', '特休余额（小时）', '调休余额（小时）'],
+  const annualBalanceDays = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.annualDays || 0), 0))
+  const compBalanceHours = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.compTimeHours || 0), 0))
+  const balance = workbook.addWorksheet('假期余额', { views: [{ state: 'frozen', ySplit: 11 }], properties: { tabColor: { argb: REPORT_COLORS.primaryDark } } })
+  styleTitle(balance, '假期余额', data.filters, generatedAt, 8)
+  addMetricStrip(balance, 7, [
+    { label: '统计员工', value: `${data.balanceSummary.length} 人` },
+    { label: '特休余额合计', value: `${annualBalanceDays} 天` },
+    { label: '调休余额合计', value: `${compBalanceHours} 小时` },
+  ], 8)
+  next = addSection(balance, 10, '01  期末余额汇总', ['员工', '状态', '截止日期', '特休余额（天）', '特休余额（小时）', '调休余额（小时）'],
     data.balanceSummary.map((row) => [row.name, row.status, row.endDate, row.annualDays, row.annualHours, row.compTimeHours]),
     [18, 10, 14, 16, 18, 18])
   next += 1
-  addSection(balance, next, '余额变动明细', ['员工', '状态', '业务日期', '余额类型', '变动量', '变动后余额', '来源类型', '来源编号'],
+  addSection(balance, next, '02  余额变动明细', ['员工', '状态', '业务日期', '余额类型', '变动量', '变动后余额', '来源类型', '来源编号'],
     data.balanceDetails.map((row) => [row.employeeName, row.status, row.businessDate, row.balanceType, row.delta, row.balanceAfter, row.sourceType, row.reference]),
-    [18, 10, 14, 12, 12, 14, 16, 16])
+    [18, 10, 14, 12, 12, 14, 16, 16], { deltaColumn: 5 })
+  balance.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 6 } }
 
   for (const sheet of workbook.worksheets) {
     sheet.properties.defaultRowHeight = 20
-    sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
+    sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
+    sheet.headerFooter = {
+      oddHeader: `&L&9${sheet.name}&R&9考勤报表`,
+      oddFooter: `&L&8${COMPANY_NAME}&C&8第 &P / &N 页&R&8OMS Platform`,
+    }
+    sheet.pageSetup.printTitlesRow = '1:11'
     sheet.eachRow((row) => {
       row.eachCell((cell) => {
         cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFD9E2EC' } }, bottom: { style: 'thin', color: { argb: 'FFD9E2EC' } },
-          left: { style: 'thin', color: { argb: 'FFD9E2EC' } }, right: { style: 'thin', color: { argb: 'FFD9E2EC' } },
+        if (row.number >= 10 && !cell.border?.top) cell.border = {
+          top: { style: 'thin', color: { argb: REPORT_COLORS.line } }, bottom: { style: 'thin', color: { argb: REPORT_COLORS.line } },
+          left: { style: 'thin', color: { argb: REPORT_COLORS.line } }, right: { style: 'thin', color: { argb: REPORT_COLORS.line } },
         }
         if (typeof cell.value === 'number') cell.numFmt = '0.00'
       })
     })
-    sheet.autoFilter = { from: { row: 7, column: 1 }, to: { row: 7, column: Math.max(1, sheet.columnCount) } }
   }
   return workbook
 }

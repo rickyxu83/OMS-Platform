@@ -77,8 +77,15 @@ assert.throws(
 
   const workbook = buildWorkbook(data)
   assert.deepEqual(workbook.worksheets.map((sheet) => sheet.name), ['请假统计', '加班统计', '假期余额'])
+  assert.equal(workbook.getWorksheet('请假统计').getCell('A3').value, '敦阳（宁波）科技有限公司')
+  assert.equal(workbook.getWorksheet('请假统计').getCell('A1').fill.fgColor.argb, 'FF2E1065')
+  assert.equal(workbook.getWorksheet('请假统计').getCell('A11').fill.fgColor.argb, 'FF8B5CF6')
+  assert.match(workbook.getWorksheet('假期余额').headerFooter.oddFooter, /敦阳（宁波）科技有限公司/)
   const buffer = await workbook.xlsx.writeBuffer()
   assert.ok(buffer.byteLength > 1000)
+  if (process.env.ATTENDANCE_REPORT_OUTPUT) {
+    require('node:fs').writeFileSync(process.env.ATTENDANCE_REPORT_OUTPUT, Buffer.from(buffer))
+  }
   console.log('attendance report tests passed')
 })().catch((error) => {
   console.error(error)
