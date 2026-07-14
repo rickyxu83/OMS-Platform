@@ -138,10 +138,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     const insert = result.calls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
     assert.match(insert.sql, /workflow_version/)
-    assert.equal(insert.params.workflowVersion, 2)
+    assert.equal(insert.params.workflowVersion, 3)
     assert.equal(insert.params.delegateEmployeeId, 9)
     assert.equal(insert.params.workingDays, 3)
     assert.equal(insert.params.hours, 24)
+    assert.ok(result.calls.some((call) => /INSERT IGNORE INTO attendance_approval_role_rule_steps/.test(call.sql)))
   }
 
   {
@@ -310,6 +311,159 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
   }
 
   {
+    const executeCalls = []
+    const { controller } = await loadController({
+      hasPermission: async () => true,
+      queryHandler: async (sql) => {
+        if (/SELECT applicant_role, step_order, approver_role/.test(sql)) {
+          return [
+            { applicant_role: 'assistant', step_order: 1, approver_role: 'administrative_supervisor' },
+            { applicant_role: 'assistant', step_order: 2, approver_role: 'operations_director' },
+          ]
+        }
+        return undefined
+      },
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 1, role: 'admin' },
+      body: {
+        items: [{
+          applicantRole: 'assistant',
+          steps: [
+            { approverRole: 'administrative_supervisor' },
+            { approverRole: 'operations_director' },
+          ],
+        }],
+      },
+    }
+    const res = createResponse()
+    await controller.updateApprovalRoleRules(req, res)
+    assert.deepEqual(
+      res.body.items.find((item) => item.applicantRole === 'assistant').steps.map((step) => step.approverRole),
+      ['administrative_supervisor', 'operations_director'],
+    )
+    const inserts = executeCalls.filter((call) => /INSERT INTO attendance_approval_role_rule_steps/.test(call.sql))
+    assert.deepEqual(inserts.map((call) => call.params.stepOrder), [1, 2])
+    assert.ok(executeCalls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)))
+    assert.ok(executeCalls.some((call) => /INSERT INTO attendance_supervisor_role_rules/.test(call.sql) && call.params.supervisorRole === 'administrative_supervisor'))
+  }
+
+  {
+    const { controller } = await loadController({ hasPermission: async () => true })
+    const req = {
+      user: { id: 1, role: 'admin' },
+      body: {
+        items: [{
+          applicantRole: 'assistant',
+          steps: [
+            { approverRole: 'administrative_supervisor' },
+            { approverRole: 'administrative_supervisor' },
+          ],
+        }],
+      },
+    }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.updateApprovalRoleRules(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /不能重复/)
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 330,
+            workflow_version: 3,
+            employee_id: 5,
+            delegate_employee_id: 9,
+            request_type: 'leave',
+            leave_type: 'annual',
+            working_days: 5,
+            start_at: '2026-07-14 09:00:00',
+            end_at: '2026-07-18 18:00:00',
+            applicant_role: 'assistant',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[
+            { approver_role: 'administrative_supervisor' },
+            { approver_role: 'operations_director' },
+          ], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[
+            { role: 'administrative_supervisor', user_count: 2 },
+            { role: 'operations_director', user_count: 1 },
+          ], []]
+        }
+        return [{ affectedRows: 1, insertId: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'assistant' }, params: { id: '330' }, body: {} }
+    const res = createResponse()
+    await controller.submitRequest(req, res)
+    assert.equal(res.body.status, 'pending_approval')
+    const stepInserts = executeCalls.filter((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
+    assert.equal(stepInserts.length, 2)
+    assert.deepEqual(stepInserts.map((call) => call.params.assigneeRole), ['administrative_supervisor', 'operations_director'])
+    assert.deepEqual(stepInserts.map((call) => call.params.status), ['pending', 'waiting'])
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 331,
+            workflow_version: 3,
+            employee_id: 5,
+            delegate_employee_id: 9,
+            request_type: 'leave',
+            leave_type: 'annual',
+            applicant_role: 'assistant',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[
+            { approver_role: 'administrative_supervisor' },
+            { approver_role: 'operations_director' },
+          ], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'administrative_supervisor', user_count: 1 }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'assistant' }, params: { id: '331' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.submitRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /运营负责人/)
+  }
+
+  {
     clearBackendModuleCache()
     const fileCalls = []
     installMock(require.resolve('../src/config/db'), {
@@ -471,6 +625,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
         }
         if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
         if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
         }
@@ -487,9 +647,14 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     await controller.createServiceOrderOvertimeRequest(req, res)
 
     assert.equal(res.statusCode, 201)
+    assert.equal(res.body.status, 'pending_approval')
     const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
+    assert.match(insert.sql, /\(3, :employeeId/)
     assert.match(insert.sql, /source_snapshot/)
+    const approvalInsert = executeCalls.find((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
+    assert.equal(approvalInsert?.params.stepType, 'role')
+    assert.equal(approvalInsert?.params.assigneeRole, 'engineering_supervisor')
     assert.deepEqual(JSON.parse(insert.params.sourceSnapshot), {
       id: 88,
       orderNo: 'SO-20260713-088',
@@ -749,6 +914,158 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
     }
     assert.equal(thrown?.status, 400)
     assert.match(thrown?.message || '', /查询范围/)
+  }
+
+  {
+    const { controller, calls } = await loadController({
+      queryHandler: async (sql) => {
+        if (isRequestListQuery(sql)) return []
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 88, role: 'administrative_supervisor' }, query: { scope: 'supervisor' } }, res)
+    const listQuery = calls.find((call) => isRequestListQuery(call.sql))
+    assert.ok(listQuery)
+    assert.match(listQuery.sql, /workflow_version, 1\) >= 3/)
+    assert.match(listQuery.sql, /a\.step_type = 'role'/)
+    assert.match(listQuery.sql, /r\.submitted_by <> :currentUserId/)
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 390,
+            workflow_version: 3,
+            employee_id: 5,
+            request_type: 'leave',
+            leave_type: 'personal',
+            hours: 4,
+            status: 'pending_approval',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{
+            id: 31,
+            request_id: 390,
+            step_type: 'role',
+            step_order: 1,
+            assignee_role: 'administrative_supervisor',
+            status: 'pending',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals/.test(sql) && /status = 'waiting'/.test(sql)) {
+          return [[{
+            id: 32,
+            request_id: 390,
+            step_type: 'role',
+            step_order: 2,
+            assignee_role: 'operations_director',
+            status: 'waiting',
+          }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 88, role: 'administrative_supervisor' }, params: { id: '390' }, body: {} }
+    const res = createResponse()
+    await controller.approveRole(req, res)
+    assert.equal(res.body.status, 'pending_approval')
+    assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 31))
+    assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 32))
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 391,
+            workflow_version: 3,
+            status: 'pending_approval',
+            submitted_by: 88,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 33, step_type: 'role', assignee_role: 'administrative_supervisor', status: 'pending' }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 88, role: 'administrative_supervisor' }, params: { id: '391' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.approveRole(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403)
+    assert.match(thrown?.message || '', /不能审批自己的申请/)
+  }
+
+  {
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 392,
+            workflow_version: 3,
+            status: 'pending_approval',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 34, step_type: 'role', assignee_role: 'administrative_supervisor', status: 'pending' }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 1, role: 'admin' }, params: { id: '392' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.approveRole(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403)
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 393,
+            workflow_version: 3,
+            status: 'pending_approval',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 35, step_type: 'role', assignee_role: 'administrative_supervisor', status: 'pending' }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 88, role: 'administrative_supervisor' },
+      params: { id: '393' },
+      body: { reason: '资料不完整' },
+    }
+    const res = createResponse()
+    await controller.rejectRequest(req, res)
+    assert.equal(res.body.ok, true)
+    assert.ok(executeCalls.some((call) => /UPDATE attendance_request_approvals/.test(call.sql) && call.params.reason === '资料不完整'))
+    assert.ok(executeCalls.some((call) => /UPDATE attendance_requests/.test(call.sql) && call.params.reason === '资料不完整'))
   }
 
   {

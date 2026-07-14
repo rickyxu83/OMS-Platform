@@ -60,7 +60,18 @@ function requiresLeaveProof(leaveType) {
   return leaveType === 'sick' || leaveType === 'marriage'
 }
 
-function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supervisorRole }) {
+function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supervisorRole, approvalRoles, workflowVersion = 2 }) {
+  if (Number(workflowVersion) >= 3) {
+    const steps = []
+    if (requestType === 'comp_time') {
+      steps.push({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
+    }
+    for (const role of approvalRoles || []) {
+      steps.push({ stepType: 'role', assigneeEmployeeId: null, assigneeRole: role })
+    }
+    return steps
+  }
+
   if (requestType === 'overtime') {
     return [
       { stepType: 'supervisor', assigneeEmployeeId: null, assigneeRole: supervisorRole },
@@ -86,6 +97,7 @@ function requestStatusForStep(stepType) {
     supervisor: 'pending_supervisor',
     hr: 'pending_hr',
     vp: 'pending_vp',
+    role: 'pending_approval',
   }
   return statuses[stepType] || ''
 }
