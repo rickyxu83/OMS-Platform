@@ -17,6 +17,7 @@ const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default
 const MaintenanceParties = lazy(() => import("@/pages/MaintenanceParties").then((module) => ({ default: module.MaintenanceParties })))
 const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ default: module.Timesheets })))
 const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ default: module.Attendance })))
+const AttendanceDuty = lazy(() => import("@/pages/AttendanceDuty").then((module) => ({ default: module.AttendanceDuty })))
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
@@ -33,6 +34,7 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   "maintenance-parties": ["maintenance-party.view"],
   timesheets: ["timesheet.view"],
   attendance: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.admin.approve", "attendance.manage"],
+  "attendance-duty": ["attendance.duty.manage", "attendance.duty.admin.approve"],
   users: ["user.view"],
   "audit-logs": ["audit-log.view"],
   settings: ["settings.view"],
@@ -48,6 +50,7 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/devices", permissions: ROUTE_ACCESS_PERMISSIONS.devices },
   { path: "/maintenance-parties", permissions: ROUTE_ACCESS_PERMISSIONS["maintenance-parties"] },
   { path: "/attendance", permissions: ROUTE_ACCESS_PERMISSIONS.attendance },
+  { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
   { path: "/feedback", permissions: ROUTE_ACCESS_PERMISSIONS.feedback },
 ]
@@ -271,6 +274,14 @@ export default function App() {
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
                 <Attendance />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/attendance-duty"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
+                <AttendanceDuty />
               </ProtectedAdminPage>
             }
           />

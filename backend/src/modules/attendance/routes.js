@@ -1,9 +1,18 @@
 const express = require('express')
 const controller = require('./controller')
 const report = require('./report')
+const duty = require('./duty')
 const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
+
+router.get('/duty/setup', requirePermission('attendance.duty.manage', 'attendance.duty.admin.approve'), duty.setup)
+router.put('/duty/setup/:year', requirePermission('attendance.duty.manage'), duty.saveSetup)
+router.get('/duty/monthly', requirePermission('attendance.duty.manage', 'attendance.duty.admin.approve'), duty.monthly)
+router.put('/duty/records/:id/overlap', requirePermission('attendance.duty.manage'), duty.resolveOverlap)
+router.post('/duty/monthly/:month/submit', requirePermission('attendance.duty.manage'), duty.submit)
+router.post('/duty/monthly/:month/approve', requirePermission('attendance.duty.admin.approve'), duty.approve)
+router.post('/duty/monthly/:month/reject', requirePermission('attendance.duty.admin.approve'), duty.reject)
 
 router.get('/employees', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listEmployees)
 router.get('/delegates', requirePermission('attendance.apply'), controller.listDelegates)

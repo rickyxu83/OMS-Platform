@@ -3,6 +3,7 @@ const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { calculateWorkingLeaveRange } = require('./workflow')
 const { ensureSchema } = require('./controller')
+const duty = require('./duty')
 
 const WORK_HOURS_PER_DAY = 8
 const MAX_RANGE_DAYS = 366
@@ -602,12 +603,52 @@ function buildWorkbook(data) {
   return workbook
 }
 
+async function addDutyWorksheet(workbook, filters) {
+  await duty.ensureSchema()
+  const params = { startDate: filters.startDate, endDate: filters.endDate }
+  const employeeFilter = selectedSql(filters.employeeIds, 'r.employee_id', params)
+  const rows = await query(
+    `SELECT r.id, r.duty_date, r.employee_id, p.employee_name, r.duty_type, r.reason, r.units,
+            b.supervisor_submitted_at, b.admin_approved_at,
+            COALESCE(supervisor.real_name, supervisor.username) AS supervisor_name,
+            COALESCE(admin.real_name, admin.username) AS admin_name
+     FROM attendance_duty_records r
+     JOIN attendance_duty_monthly_batches b ON b.duty_month = r.duty_month AND b.status = 'approved'
+     JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     LEFT JOIN users supervisor ON supervisor.id = b.supervisor_submitted_by
+     LEFT JOIN users admin ON admin.id = b.admin_approved_by
+     WHERE r.duty_date >= :startDate AND r.duty_date <= :endDate${employeeFilter}
+     ORDER BY r.duty_date, p.employee_name, r.duty_type`,
+    params,
+  )
+  const sheet = workbook.addWorksheet('值班津贴', { views: [{ state: 'frozen', ySplit: 11 }], properties: { tabColor: { argb: REPORT_COLORS.warning } } })
+  const generatedAt = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).replaceAll('/', '-')
+  styleTitle(sheet, '工程师值班津贴', filters, generatedAt, 10)
+  addMetricStrip(sheet, 7, [
+    { label: '值班记录', value: `${rows.length} 次` },
+    { label: '涉及员工', value: `${new Set(rows.map((row) => row.employee_id)).size} 人` },
+    { label: '7×24 值班', value: `${rows.filter((row) => row.duty_type === 'weekend_on_call').length} 次` },
+    { label: '法定节假日值班', value: `${rows.filter((row) => row.duty_type === 'legal_holiday_on_call').length} 次` },
+  ], 10)
+  addSection(sheet, 10, '01  已终审津贴明细', ['记录编号', '值班日期', '员工', '值班类型', '目的／类别', '事由', '次数', '主管提交', '行政终审', '终审时间'],
+    rows.map((row) => [row.id, row.duty_date, row.employee_name, row.duty_type === 'weekend_on_call' ? '7×24 值班' : '法定节假日值班', '加班费', row.reason, Number(row.units), row.supervisor_name || '', row.admin_name || '', mysqlDate(row.admin_approved_at)]),
+    [12, 14, 18, 20, 14, 22, 10, 16, 16, 20])
+  sheet.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 10 } }
+  sheet.properties.defaultRowHeight = 20
+  sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
+  sheet.eachRow((row) => row.eachCell((cell) => {
+    cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
+    if (typeof cell.value === 'number') cell.numFmt = '0.00'
+  }))
+}
+
 async function exportReport(req, res) {
   await ensureSchema()
   const filters = parseReportFilters(req.query)
   const rows = await loadReportRows(filters)
   const data = buildReportData(filters, rows)
   const workbook = buildWorkbook(data)
+  await addDutyWorksheet(workbook, filters)
   const buffer = await workbook.xlsx.writeBuffer()
   const filename = `考勤报表-${filters.startDate.replaceAll('-', '')}-${filters.endDate.replaceAll('-', '')}.xlsx`
   res.setHeader('Content-Type', REPORT_CONTENT_TYPE)
