@@ -54,7 +54,7 @@ assert.throws(
   }
   const overtime = {
     id: 12, employee_id: 1, request_type: 'overtime', overtime_kind: 'work', overtime_result: 'pay', overtime_day_type: 'legal_holiday',
-    overtime_pay_multiplier: 3, start_at: '2026-08-01 18:00:00', end_at: '2026-08-01 20:00:00', hours: 2, updated_at: '2026-08-02 12:00:00',
+    overtime_pay_multiplier: 3, start_at: '2026-08-01 18:00:00', end_at: '2026-08-01 20:00:00', hours: 2, reason: '客户系统升级', updated_at: '2026-08-02 12:00:00',
   }
   const compEarn = {
     id: 13, employee_id: 1, request_type: 'overtime', overtime_kind: 'work', overtime_result: 'comp_time', overtime_day_type: 'workday',
@@ -69,9 +69,15 @@ assert.throws(
   })
 
   assert.equal(data.leaveSummary[0].annualDays, 1)
+  assert.equal(data.leaveSummary[0].requestCount, 1)
   assert.equal(data.overtimeSummary[0].payHours, 2)
+  assert.equal(data.overtimeSummary[0].requestCount, 1)
   assert.equal(data.overtimeSummary[0].weightedPayHours, 6)
+  assert.equal(data.overtimeDetails[0].reason, '客户系统升级')
+  assert.equal(data.balanceSummary[0].annualOpeningDays, 10)
+  assert.equal(data.balanceSummary[0].annualUsedDays, 3)
   assert.equal(data.balanceSummary[0].annualDays, 7)
+  assert.equal(data.balanceSummary[0].compOpeningHours, 2)
   assert.equal(data.balanceSummary[0].compTimeHours, 2)
   assert.equal(data.leaveDetails[0].reason, undefined)
 
