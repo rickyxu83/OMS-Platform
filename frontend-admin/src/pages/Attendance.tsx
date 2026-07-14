@@ -185,16 +185,6 @@ interface OvertimeServiceOrder extends ServiceOrderSummary {
   segments: OvertimeSegment[];
 }
 
-interface AttendanceRuleDefinition {
-  summary: string;
-  teaser: string;
-  counting: string;
-  allowance: string;
-  proof: string;
-  balance: string;
-  salary: string;
-}
-
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   leave: "请假",
   overtime: "加班",
@@ -207,54 +197,6 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   personal: "事假",
   marriage: "婚假",
   bereavement: "丧假",
-};
-
-const LEAVE_RULES: Record<string, AttendanceRuleDefinition> = {
-  annual: {
-    summary: "使用个人特休余额，最终审批通过后按核算天数扣减。",
-    teaser: "工作日 · 扣特休余额",
-    counting: "按工作日计算，周六、周日和启用的国定假日不计入；支持半天申请。",
-    allowance: "最多可申请当前可用特休余额，最终审批时余额不足将无法通过。",
-    proof: "系统不强制上传证明。",
-    balance: "最终审批通过后扣减特休余额。",
-    salary: "本模块不自动计算薪资扣款，薪资处理以公司制度为准。",
-  },
-  sick: {
-    summary: "病假按有效工作日核算，提交前必须上传病假证明。",
-    teaser: "工作日 · 需证明",
-    counting: "按工作日计算，周六、周日和启用的国定假日不计入；支持半天申请。",
-    allowance: "系统未配置固定天数上限，实际可休天数以公司制度及审批结果为准。",
-    proof: "必须上传至少一份病假证明，可使用图片、PDF 或 Word 文件。",
-    balance: "不扣减特休或调休余额，仅记录病假时数。",
-    salary: "本模块不自动计算扣薪比例，薪资处理以公司制度为准。",
-  },
-  personal: {
-    summary: "事假按有效工作日核算，不占用特休或调休余额。",
-    teaser: "工作日 · 不强制证明",
-    counting: "按工作日计算，周六、周日和启用的国定假日不计入；支持半天申请。",
-    allowance: "系统未配置固定天数上限，实际可休天数以公司制度及审批结果为准。",
-    proof: "系统不强制上传证明。",
-    balance: "不扣减特休或调休余额，仅记录事假时数。",
-    salary: "本模块不自动计算扣薪比例，薪资处理以公司制度为准。",
-  },
-  marriage: {
-    summary: "婚假按连续自然日核算，跨周末或国定假日时这些日期也会计入。",
-    teaser: "自然日 · 需证明",
-    counting: "按自然日计算，周六、周日和国定假日均计入。例如周五请到下周四，共计 7 天。",
-    allowance: "系统未配置固定天数上限，实际可休天数以公司制度及审批结果为准。",
-    proof: "必须上传至少一份婚假证明，可使用图片、PDF 或 Word 文件。",
-    balance: "不扣减特休或调休余额，仅记录婚假天数。",
-    salary: "本模块不自动计算薪资扣款，薪资处理以公司制度为准。",
-  },
-  bereavement: {
-    summary: "丧假按连续自然日核算，跨周末或国定假日时这些日期也会计入。",
-    teaser: "自然日 · 不强制证明",
-    counting: "按自然日计算，周六、周日和国定假日均计入。例如周五请到下周四，共计 7 天。",
-    allowance: "系统未配置固定天数上限，实际可休天数以公司制度及审批结果为准。",
-    proof: "系统不强制上传证明。",
-    balance: "不扣减特休或调休余额，仅记录丧假天数。",
-    salary: "本模块不自动计算薪资扣款，薪资处理以公司制度为准。",
-  },
 };
 
 const OVERTIME_KIND_LABELS: Record<string, string> = {
@@ -479,10 +421,6 @@ function combineTravelSegments(segments: OvertimeSegment[]) {
     startAt: items[0].startAt,
     endAt: items[items.length - 1].endAt,
     hours: items.reduce((sum, item) => sum + Number(item.hours || 0), 0),
-    dayType: items.some((item) => item.dayType === "legal_holiday")
-      ? "legal_holiday"
-      : items.some((item) => item.dayType === "rest_day") ? "rest_day" : items[0].dayType,
-    payMultiplier: null,
     allowedResults: ["comp_time"],
   };
 }
@@ -523,41 +461,6 @@ function requestDetail(item: AttendanceRequest) {
 function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {
   const multiplier = Number(segment?.payMultiplier || 1);
   return multiplier > 1 ? `加班费（${hours(multiplier)}倍）` : "加班费";
-}
-
-function RuleGuide({
-  title,
-  summary,
-  items,
-  note,
-}: {
-  title: string;
-  summary: string;
-  items: Array<[string, string]>;
-  note?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-4">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
-          <ShieldCheck className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">{title}</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{summary}</p>
-        </div>
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {items.map(([label, value]) => (
-          <div key={label} className="rounded-md border bg-background/80 p-3">
-            <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-            <div className="mt-1 text-xs leading-5 text-foreground/90">{value}</div>
-          </div>
-        ))}
-      </div>
-      {note ? <p className="mt-3 text-xs leading-5 text-muted-foreground">{note}</p> : null}
-    </div>
-  );
 }
 
 function requestTypeLabel(type?: string) {
@@ -1211,27 +1114,6 @@ export function Attendance() {
   ];
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
   const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
-  const selectedLeaveRule = LEAVE_RULES[form.leaveType] || LEAVE_RULES.annual;
-  const selectedLeaveAllowance = form.leaveType === "annual"
-    ? `当前可用 ${days(annualBalanceDays(myProfile))} 天；申请不得超过最终审批时的可用余额。`
-    : selectedLeaveRule.allowance;
-  const overtimeRuleItems: Array<[string, string]> = [
-    ["可申请时长", selectedSegment
-      ? `${hours(selectedSegment.hours)} 小时，直接取自工单已记录的实际时段。`
-      : "仅可申请工单中已经形成、尚未申请的有效加班时段。"],
-    ["时间口径", selectedSegment?.dayType === "legal_holiday"
-      ? "当前时段属于国定假日，按工单有效时段及整小时核算。"
-      : selectedSegment?.dayType === "rest_day"
-        ? "当前时段属于休息日，按工单有效时段及整小时核算。"
-        : "工作日仅统计 18:00 之后的有效时段，并按整小时核算。"],
-    ["处理方式", selectedSegment?.kind === "travel"
-      ? "来回路上实际时间只能转为调休，不可选择加班费。"
-      : "实际工作时间可选择转调休或计入加班费报表。"],
-    ["余额 / 薪资", selectedSegment?.kind === "travel" || form.overtimeResult === "comp_time"
-      ? "最终审批通过后增加同等小时数的调休余额；不进入加班费报表。"
-      : `${selectedSegment?.dayType === "legal_holiday" ? "国定假日按 3 倍口径" : "当前按 1 倍口径"}计入加班费报表；本模块不直接发放薪资。`],
-  ];
-
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1341,12 +1223,6 @@ export function Attendance() {
                 <div className="p-4 md:p-5">
                   {form.requestType === "overtime" ? (
                     <div className="space-y-4">
-                      <RuleGuide
-                        title={selectedSegment ? `${selectedSegment.label}申请规则` : "加班申请规则"}
-                        summary="加班时段必须来自工单记录；系统会按日期类型、时段性质和处理方式决定调休或加班费口径。"
-                        items={overtimeRuleItems}
-                        note="提交后进入配置的审批链；审批通过前不会增加调休余额或计入加班费报表。"
-                      />
                       <div className="grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
                           <Label>工单</Label>
@@ -1447,10 +1323,9 @@ export function Attendance() {
                       {form.requestType === "leave" ? (
                         <div className="space-y-2">
                           <Label>假别</Label>
-                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          <div className="flex flex-wrap gap-2">
                             {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => {
                               const active = form.leaveType === value;
-                              const rule = LEAVE_RULES[value];
                               return (
                                 <button
                                   key={value}
@@ -1465,46 +1340,15 @@ export function Attendance() {
                                     });
                                   })}
                                   className={active
-                                    ? "min-h-16 rounded-lg border border-primary bg-primary/5 px-3 py-2 text-left ring-1 ring-primary/25 transition"
-                                    : "min-h-16 rounded-lg border bg-background px-3 py-2 text-left transition hover:bg-muted/50"}
+                                    ? "h-9 rounded-md border border-primary bg-primary/10 px-3 text-sm font-medium text-primary transition"
+                                    : "h-9 rounded-md border bg-background px-3 text-sm transition hover:bg-muted/50"}
                                 >
-                                  <span className="flex items-center justify-between gap-2 text-sm font-medium">
-                                    {label}
-                                    {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
-                                  </span>
-                                  <span className="mt-1 block text-xs leading-4 text-muted-foreground">{rule.teaser}</span>
+                                  {label}
                                 </button>
                               );
                             })}
                           </div>
-                          <RuleGuide
-                            title={`${LEAVE_TYPE_LABELS[form.leaveType] || "请假"}申请规则`}
-                            summary={selectedLeaveRule.summary}
-                            items={[
-                              ["可以请几天", selectedLeaveAllowance],
-                              ["周末 / 国定假日", selectedLeaveRule.counting],
-                              ["证明材料", selectedLeaveRule.proof],
-                              ["余额处理", selectedLeaveRule.balance],
-                              ["薪资处理", selectedLeaveRule.salary],
-                              ["审批提醒", "所有请假都要填写代理人；按公司制度代理人不得跨处级单位。核算天数达到 3 天时，最终增加运营负责人审批。"],
-                            ]}
-                            note="页面说明以系统当前实际执行规则为准；尚未配置的天数上限和薪资比例需依公司制度确认。"
-                          />
                         </div>
-                      ) : null}
-
-                      {form.requestType === "comp_time" ? (
-                        <RuleGuide
-                          title="调休申请规则"
-                          summary="使用已经入账的调休余额，按有效工作日和半天时段申请。"
-                          items={[
-                            ["可以调休多久", `当前可用 ${hours(myProfile?.compTimeBalanceHours)} 小时；最终审批时余额不足将无法通过。`],
-                            ["周末 / 国定假日", "按工作日计算，周六、周日和启用的国定假日不计入。"],
-                            ["代理人", "必须选择代理人，并先由代理人确认后再进入审批链；按公司制度不得跨处级单位代理。"],
-                            ["余额 / 薪资", "最终审批通过后扣减调休余额；本模块不自动计算薪资扣款。"],
-                          ]}
-                          note="调休来源于审批通过的加班转调休记录或管理员余额调整。"
-                        />
                       ) : null}
 
                       <div className="flex flex-wrap gap-2">
