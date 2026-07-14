@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,7 @@ interface AttendanceRequest {
 
 interface ApprovalStep {
   id: number | string;
-  stepType: "delegate" | "supervisor" | "hr" | "vp";
+  stepType: "delegate" | "supervisor" | "hr" | "vp" | "role";
   stepOrder: number;
   assigneeEmployeeId?: number | string | null;
   assigneeEmployeeName?: string | null;
@@ -144,16 +144,21 @@ interface RoleOption {
   label: string;
 }
 
-interface SupervisorRoleRule {
-  applicantRole: string;
-  applicantRoleLabel?: string;
-  supervisorRole: string;
-  supervisorRoleLabel?: string;
+interface ApprovalRoleRuleStep {
+  stepOrder: number;
+  approverRole: string;
+  approverRoleLabel?: string;
 }
 
-interface SupervisorRoleRulePayload {
+interface ApprovalRoleRule {
+  applicantRole: string;
+  applicantRoleLabel?: string;
+  steps: ApprovalRoleRuleStep[];
+}
+
+interface ApprovalRoleRulePayload {
   roles?: RoleOption[];
-  items?: SupervisorRoleRule[];
+  items?: ApprovalRoleRule[];
 }
 
 interface LegalHolidayItem {
@@ -234,6 +239,7 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
   pending_delegate: "待代理人",
+  pending_approval: "待审批",
   pending_supervisor: "待主管",
   pending_hr: "待人事",
   pending_vp: "待副总",
@@ -247,6 +253,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "info" | "destructive" | "outline"> = {
   draft: "secondary",
   pending_delegate: "warning",
+  pending_approval: "info",
   pending_supervisor: "warning",
   pending_hr: "info",
   pending_vp: "info",
@@ -455,6 +462,7 @@ function requestTypeLabel(type?: string) {
 
 function approvalStepLabel(step?: ApprovalStep) {
   if (!step) return "";
+  if (step.stepType === "role") return roleLabel(step.assigneeRole);
   const labels = { delegate: "代理人", supervisor: "主管", hr: "人事", vp: "副总" };
   return labels[step.stepType] || step.stepType;
 }
@@ -526,8 +534,9 @@ export function Attendance() {
   const [proofPreview, setProofPreview] = useState<ProofPreview | null>(null);
   const [proofImageSize, setProofImageSize] = useState<{ width: number; height: number } | null>(null);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
-  const [supervisorRoleRules, setSupervisorRoleRules] = useState<SupervisorRoleRule[]>([]);
-  const [supervisorRoleDrafts, setSupervisorRoleDrafts] = useState<Record<string, string>>({});
+  const [approvalRoleRules, setApprovalRoleRules] = useState<ApprovalRoleRule[]>([]);
+  const [approvalRoleDrafts, setApprovalRoleDrafts] = useState<Record<string, string[]>>({});
+  const [approvalRoleRulesSaving, setApprovalRoleRulesSaving] = useState(false);
   const [employeeDialog, setEmployeeDialog] = useState<{ employee: EmployeeProfile; draft: EmployeeDraft } | null>(null);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [adjustDialog, setAdjustDialog] = useState<{ employee: EmployeeProfile; draft: AdjustDraft } | null>(null);
@@ -560,7 +569,7 @@ export function Attendance() {
         calls.push(api.get("/attendance/requests?scope=all"));
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
-        calls.push(api.get("/attendance/supervisor-role-rules"));
+        calls.push(api.get("/attendance/approval-role-rules"));
         const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
         calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
@@ -570,14 +579,17 @@ export function Attendance() {
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
       setApplicationHolidays((applicationHolidayData?.items || []) as LegalHolidayItem[]);
       if (canViewAll) {
-        const roleRules = (roleRuleData || {}) as SupervisorRoleRulePayload;
+        const roleRules = (roleRuleData || {}) as ApprovalRoleRulePayload;
         const ruleItems = roleRules.items || [];
         setAllRequests((allData?.items || []) as AttendanceRequest[]);
         setEmployees((employeeData?.items || []) as EmployeeProfile[]);
         setReportItems((reportData?.items || []) as MonthlyReportItem[]);
         setRoleOptions(roleRules.roles || []);
-        setSupervisorRoleRules(ruleItems);
-        setSupervisorRoleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
+        setApprovalRoleRules(ruleItems);
+        setApprovalRoleDrafts(Object.fromEntries(ruleItems.map((item) => [
+          item.applicantRole,
+          item.steps.map((step) => step.approverRole),
+        ])));
         setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
     } catch (e) {
@@ -647,11 +659,11 @@ export function Attendance() {
   }, [form.requestType]);
 
   const pendingMine = useMemo(
-    () => mine.filter((item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
+    () => mine.filter((item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
     [mine],
   );
   const supervisorPending = useMemo(
-    () => supervisorTodo.filter((item) => ["pending_delegate", "pending_supervisor", "pending_hr", "pending_vp"].includes(item.status || "")),
+    () => supervisorTodo.filter((item) => ["pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp"].includes(item.status || "")),
     [supervisorTodo],
   );
   const adminPending = useMemo(
@@ -894,18 +906,59 @@ export function Attendance() {
     }
   }
 
-  async function saveSupervisorRoleRules() {
+  function setApprovalRoleStep(applicantRole: string, index: number, approverRole: string) {
+    setApprovalRoleDrafts((current) => ({
+      ...current,
+      [applicantRole]: (current[applicantRole] || []).map((role, stepIndex) => (stepIndex === index ? approverRole : role)),
+    }));
+  }
+
+  function addApprovalRoleStep(applicantRole: string) {
+    setApprovalRoleDrafts((current) => {
+      const steps = current[applicantRole] || [];
+      const nextRole = roleOptions.find((item) => !steps.includes(item.role))?.role;
+      if (!nextRole) return current;
+      return { ...current, [applicantRole]: [...steps, nextRole] };
+    });
+  }
+
+  function moveApprovalRoleStep(applicantRole: string, index: number, direction: -1 | 1) {
+    setApprovalRoleDrafts((current) => {
+      const steps = [...(current[applicantRole] || [])];
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= steps.length) return current;
+      [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
+      return { ...current, [applicantRole]: steps };
+    });
+  }
+
+  function removeApprovalRoleStep(applicantRole: string, index: number) {
+    setApprovalRoleDrafts((current) => {
+      const steps = current[applicantRole] || [];
+      if (steps.length <= 1) return current;
+      return { ...current, [applicantRole]: steps.filter((_, stepIndex) => stepIndex !== index) };
+    });
+  }
+
+  async function saveApprovalRoleRules() {
+    setApprovalRoleRulesSaving(true);
     try {
-      await api.put("/attendance/supervisor-role-rules", {
-        items: supervisorRoleRules.map((item) => ({
+      const items = approvalRoleRules.map((item) => {
+        const roles = approvalRoleDrafts[item.applicantRole] || [];
+        if (!roles.length) throw new Error(`${item.applicantRoleLabel || roleLabel(item.applicantRole)}的审批链不能为空`);
+        if (new Set(roles).size !== roles.length) throw new Error(`${item.applicantRoleLabel || roleLabel(item.applicantRole)}的审批角色不能重复`);
+        return {
           applicantRole: item.applicantRole,
-          supervisorRole: supervisorRoleDrafts[item.applicantRole] || item.supervisorRole,
-        })),
+          steps: roles.map((approverRole, index) => ({ stepOrder: index + 1, approverRole })),
+        };
       });
+      await api.put("/attendance/approval-role-rules", { items });
       toast.success("审批角色规则已保存");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setApprovalRoleRulesSaving(false);
     }
   }
 
@@ -961,6 +1014,10 @@ export function Attendance() {
   const recordApprovedCount = filteredAllRequests.filter((item) => item.status === "approved").length;
   const activeEmployeeCount = employees.filter((item) => item.attendanceEnabled !== false).length;
   const totalCompBalanceHours = employees.reduce((sum, item) => sum + Number(item.compTimeBalanceHours || 0), 0);
+  const approvalRoleStepCount = approvalRoleRules.reduce(
+    (sum, item) => sum + (approvalRoleDrafts[item.applicantRole]?.length || item.steps.length),
+    0,
+  );
 
   const applicationHolidayDates = useMemo(
     () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
@@ -1339,8 +1396,8 @@ export function Attendance() {
                         </Select>
                         <p className="text-xs text-muted-foreground">
                           {form.requestType === "leave"
-                            ? "请假冲突人员不可选择；代理人无需确认，提交后直接进入主管审批。"
-                            : "调休仍需代理人确认后，再流转给主管审批。"}
+                            ? "请假冲突人员不可选择；代理人无需确认，提交后直接进入配置的审批链。"
+                            : "调休仍需代理人确认后，再进入配置的审批链。"}
                         </p>
                       </div>
 
@@ -1455,10 +1512,10 @@ export function Attendance() {
                     </Button>
                     <p className="text-center text-xs text-muted-foreground">
                       {form.requestType === "leave"
-                        ? "提交后直接进入主管审批，代理人无需确认"
+                        ? "提交后直接进入配置的审批链，代理人无需确认"
                         : form.requestType === "comp_time"
-                          ? "提交后先由代理人确认，再进入主管审批"
-                          : "提交后进入主管审批"}
+                          ? "提交后先由代理人确认，再进入配置的审批链"
+                          : "提交后进入配置的审批链"}
                     </p>
                   </div>
                 </div>
@@ -1469,7 +1526,7 @@ export function Attendance() {
           {isApprover ? (
             <RequestList
               title="待我审批"
-              description="代理人、主管、人事与副总待办集中在这里处理"
+              description="代理确认与当前角色审批待办集中在这里处理"
               items={approvalTodos}
               loading={loading}
               onDownloadProof={previewProof}
@@ -1477,6 +1534,7 @@ export function Attendance() {
               actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
                   pending_delegate: { path: "approve-delegate", success: "代理人已通过" },
+                  pending_approval: { path: "approve", success: "当前审批步骤已通过" },
                   pending_supervisor: { path: "approve-supervisor", success: "主管已通过" },
                   pending_hr: { path: "approve-hr", success: "人事已通过" },
                   pending_vp: { path: "approve-vp", success: "副总已通过" },
@@ -1514,7 +1572,7 @@ export function Attendance() {
             loading={loading}
             onDownloadProof={previewProof}
             showEmployee={false}
-            actions={(item) => ["draft", "pending_delegate", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
+            actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
                 <RotateCcw className="mr-1 h-4 w-4" /> 撤回
               </Button>
@@ -1545,7 +1603,7 @@ export function Attendance() {
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
             <RequestList
               title="申请流水"
-              description="行政终审通过后可作废"
+              description="审批通过后可作废"
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
@@ -1576,7 +1634,7 @@ export function Attendance() {
             <Card className="h-fit">
               <CardHeader><CardTitle className="flex items-center gap-2"><Filter className="h-4 w-4" />快速聚焦</CardTitle><CardDescription>常用范围一键筛选</CardDescription></CardHeader>
               <CardContent className="space-y-2">
-                <QuickRecordFilter label="待行政终审" count={allRequests.filter((item) => item.status === "pending_admin").length} active={recordStatus === "pending_admin" && recordType === "all"} onClick={() => { setRecordStatus("pending_admin"); setRecordType("all"); setRecordKeyword(""); }} />
+                <QuickRecordFilter label="待审批" count={allRequests.filter((item) => item.status === "pending_approval").length} active={recordStatus === "pending_approval" && recordType === "all"} onClick={() => { setRecordStatus("pending_approval"); setRecordType("all"); setRecordKeyword(""); }} />
                 <QuickRecordFilter label="全部加班" count={allRequests.filter((item) => item.requestType === "overtime").length} active={recordType === "overtime" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("overtime"); setRecordKeyword(""); }} />
                 <QuickRecordFilter label="全部请假" count={allRequests.filter((item) => item.requestType === "leave").length} active={recordType === "leave" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("leave"); setRecordKeyword(""); }} />
                 <QuickRecordFilter label="已作废记录" count={allRequests.filter((item) => item.status === "voided").length} active={recordStatus === "voided" && recordType === "all"} onClick={() => { setRecordStatus("voided"); setRecordType("all"); setRecordKeyword(""); }} />
@@ -1731,7 +1789,7 @@ export function Attendance() {
             <Badge variant="outline"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <AttendanceMetric label="审批流程" value={`${supervisorRoleRules.length} 条`} note="申请角色对应主管角色" icon={<ShieldCheck className="h-4 w-4" />} />
+            <AttendanceMetric label="审批流程" value={`${approvalRoleRules.length} 条`} note={`${approvalRoleStepCount} 个审批步骤`} icon={<ShieldCheck className="h-4 w-4" />} />
             <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-4 w-4" />} />
             <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-4 w-4" />} />
           </div>
@@ -1742,37 +1800,91 @@ export function Attendance() {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <CardTitle>审批角色规则</CardTitle>
-                    <CardDescription>员工提交申请后，按申请人角色流转给对应审批角色</CardDescription>
+                    <CardDescription>每个申请人角色可配置一条按顺序执行的多级审批链</CardDescription>
                   </div>
-                  <Button size="sm" onClick={saveSupervisorRoleRules}>
-                    <Save className="mr-1 h-4 w-4" /> 保存规则
+                  <Button size="sm" onClick={saveApprovalRoleRules} disabled={approvalRoleRulesSaving}>
+                    {approvalRoleRulesSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 保存规则
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                      {supervisorRoleRules.map((rule) => {
-                        const currentRole = supervisorRoleDrafts[rule.applicantRole] || rule.supervisorRole;
+                      {approvalRoleRules.map((rule) => {
+                        const steps = approvalRoleDrafts[rule.applicantRole] || rule.steps.map((step) => step.approverRole);
                         return (
-                          <div key={rule.applicantRole} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center">
-                            <Badge variant="secondary">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
-                            <span className="text-sm text-muted-foreground">提交后由</span>
-                            <div className="sm:ml-auto">
-                              <Select
-                                value={currentRole}
-                                onValueChange={(value) => setSupervisorRoleDrafts((current) => ({ ...current, [rule.applicantRole]: value }))}
-                              >
-                                <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {roleOptions.map((item) => (
-                                    <SelectItem key={item.role} value={item.role}>{item.label || roleLabel(item.role)}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                          <div key={rule.applicantRole} className="space-y-3 rounded-lg border p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
+                                <span className="text-xs text-muted-foreground">提交后依次审批</span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">{steps.length} 级</span>
                             </div>
+                            <div className="space-y-2">
+                              {steps.map((approverRole, index) => (
+                                <div key={`${rule.applicantRole}-${index}`} className="flex flex-col gap-2 rounded-md bg-muted/30 p-2.5 sm:flex-row sm:items-center">
+                                  <Badge variant="outline" className="w-fit shrink-0">第 {index + 1} 级</Badge>
+                                  <Select value={approverRole} onValueChange={(value) => setApprovalRoleStep(rule.applicantRole, index, value)}>
+                                    <SelectTrigger className="w-full sm:min-w-48 sm:flex-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {roleOptions.map((item) => (
+                                        <SelectItem
+                                          key={item.role}
+                                          value={item.role}
+                                          disabled={steps.some((role, stepIndex) => stepIndex !== index && role === item.role)}
+                                        >
+                                          {item.label || roleLabel(item.role)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <div className="flex items-center gap-1 self-end sm:self-auto">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title="上移"
+                                      disabled={index === 0}
+                                      onClick={() => moveApprovalRoleStep(rule.applicantRole, index, -1)}
+                                    >
+                                      <ChevronUp className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title="下移"
+                                      disabled={index === steps.length - 1}
+                                      onClick={() => moveApprovalRoleStep(rule.applicantRole, index, 1)}
+                                    >
+                                      <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title="删除步骤"
+                                      disabled={steps.length <= 1}
+                                      onClick={() => removeApprovalRoleStep(rule.applicantRole, index)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => addApprovalRoleStep(rule.applicantRole)}
+                              disabled={steps.length >= roleOptions.length}
+                            >
+                              <Plus className="mr-1 h-4 w-4" /> 添加步骤
+                            </Button>
                           </div>
                         );
                       })}
-                      {supervisorRoleRules.length === 0 ? (
+                      {approvalRoleRules.length === 0 ? (
                         <div className="py-8 text-center text-sm text-muted-foreground">暂无审批角色规则</div>
                       ) : null}
               </CardContent>
@@ -2227,7 +2339,7 @@ function RequestList({
                           {item.approvals.map((step) => (
                             <div key={step.id}>
                               {approvalStepLabel(step)}：{approvalStepStatus(step)}
-                              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+                              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
                               {step.approvedByName ? ` · ${step.approvedByName}` : ""}
                               {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
                               {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
