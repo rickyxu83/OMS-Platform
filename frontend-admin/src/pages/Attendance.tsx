@@ -339,7 +339,7 @@ function annualLeaveRange(form: {
   };
 }
 
-function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holidays: Set<string>) {
+function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holidays: Set<string>, includeNonWorkingDays = false) {
   const range = annualLeaveRange(form);
   const startDate = range.startAt.slice(0, 10);
   const endDate = range.endAt.slice(0, 10);
@@ -350,7 +350,7 @@ function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holid
     const cursor = new Date(timestamp * 86400000);
     const key = cursor.toISOString().slice(0, 10);
     const day = cursor.getUTCDay();
-    if (day === 0 || day === 6 || holidays.has(key)) continue;
+    if (!includeNonWorkingDays && (day === 0 || day === 6 || holidays.has(key))) continue;
     const firstHalf = key === startDate ? startHalf : 0;
     const lastHalf = key === endDate ? endHalf : 1;
     if (lastHalf >= firstHalf) halfDays += lastHalf - firstHalf + 1;
@@ -766,8 +766,9 @@ export function Attendance() {
         if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
-        const leaveRange = workingLeaveSummary(form, applicationHolidayDates);
-        if (!leaveRange.workingDays) throw new Error("申请范围内没有工作日");
+        const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
+        const leaveRange = workingLeaveSummary(form, applicationHolidayDates, includeNonWorkingDays);
+        if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
         const draft = await api.post("/attendance/requests", {
           requestType,
           leaveType: requestType === "leave" ? form.leaveType : undefined,
@@ -1023,8 +1024,9 @@ export function Attendance() {
     () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
     [applicationHolidays],
   );
+  const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
   const annualPreview = ["leave", "comp_time"].includes(form.requestType)
-    ? workingLeaveSummary(form, applicationHolidayDates)
+    ? workingLeaveSummary(form, applicationHolidayDates, naturalDayLeave)
     : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
 
@@ -1485,7 +1487,7 @@ export function Attendance() {
                           </div>
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
                             <span className="text-muted-foreground">核算时长</span>
-                            <span className="font-medium">{days(annualPreview?.workingDays)} 工作日 · {hours(annualPreview?.hours)} 小时</span>
+                            <span className="font-medium">{days(annualPreview?.workingDays)} {naturalDayLeave ? "自然日" : "工作日"} · {hours(annualPreview?.hours)} 小时</span>
                           </div>
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
                             <span className="text-muted-foreground">工作代理</span>
@@ -1497,7 +1499,9 @@ export function Attendance() {
                               {proofFiles.length > 0 ? proofFiles.length + " 个文件" : proofRequired ? "未上传（必填）" : "无需附件"}
                             </span>
                           </div>
-                          <div className="pt-1 text-xs leading-5 text-muted-foreground">已排除周末和法定节假日</div>
+                          <div className="pt-1 text-xs leading-5 text-muted-foreground">
+                            {naturalDayLeave ? "婚假、丧假按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
+                          </div>
                         </>
                       )}
                     </div>

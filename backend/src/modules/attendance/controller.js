@@ -1171,6 +1171,7 @@ async function createRequest(req, res) {
           startAt: input.startAt,
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
+          includeNonWorkingDays: input.requestType === 'leave' && ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt
         input.endAt = range.endAt

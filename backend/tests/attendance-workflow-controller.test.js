@@ -146,6 +146,19 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}) {
   }
 
   {
+    const result = await createLeave({
+      leaveType: 'marriage',
+      startAt: '2026-07-10T09:00',
+      endAt: '2026-07-16T18:00',
+      hours: 56,
+    })
+    assert.equal(result.thrown, null)
+    const insert = result.calls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.equal(insert.params.workingDays, 7)
+    assert.equal(insert.params.hours, 56)
+  }
+
+  {
     const result = await createLeave({ delegateEmployeeId: null })
     assert.equal(result.thrown?.status, 400)
     assert.match(result.thrown?.message || '', /代理人/)

@@ -27,7 +27,7 @@ function halfDaySlot(value, boundary) {
   throw new Error('请假结束时段必须是上午或下午')
 }
 
-function calculateWorkingLeaveRange({ startAt, endAt, holidays = new Set() }) {
+function calculateWorkingLeaveRange({ startAt, endAt, holidays = new Set(), includeNonWorkingDays = false }) {
   const start = halfDaySlot(startAt, 'start')
   const end = halfDaySlot(endAt, 'end')
   const startDate = dateFromKey(start.date)
@@ -41,13 +41,13 @@ function calculateWorkingLeaveRange({ startAt, endAt, holidays = new Set() }) {
     const cursor = new Date(timestamp)
     const key = dateKey(cursor)
     const day = cursor.getUTCDay()
-    if (day === 0 || day === 6 || holidays.has(key)) continue
+    if (!includeNonWorkingDays && (day === 0 || day === 6 || holidays.has(key))) continue
     const firstHalf = key === start.date ? start.half : 0
     const lastHalf = key === end.date ? end.half : 1
     if (lastHalf >= firstHalf) halfDays += lastHalf - firstHalf + 1
   }
 
-  if (!halfDays) throw new Error('申请范围内没有工作日')
+  if (!halfDays) throw new Error(includeNonWorkingDays ? '申请范围内没有有效日期' : '申请范围内没有工作日')
   return {
     startAt: start.value,
     endAt: end.value,

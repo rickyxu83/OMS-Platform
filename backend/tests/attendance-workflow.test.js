@@ -37,6 +37,17 @@ const {
   )
 }
 
+{
+  const result = calculateWorkingLeaveRange({
+    startAt: '2026-07-10 09:00:00',
+    endAt: '2026-07-16 18:00:00',
+    holidays: new Set(['2026-07-13']),
+    includeNonWorkingDays: true,
+  })
+  assert.equal(result.hours, 56)
+  assert.equal(result.workingDays, 7)
+}
+
 assert.deepEqual(
   buildApprovalSteps({
     requestType: 'leave',
