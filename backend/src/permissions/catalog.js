@@ -56,6 +56,7 @@ const PERMISSION_ENTRIES = Object.freeze([
   ['attendance.apply', '提交考勤申请', ATTENDANCE_APPLICANT_ROLES],
   ['attendance.approve', '处理考勤审批', ALL_ROLES],
   ['attendance.view', '查看考勤数据', ['admin', 'operations_director', 'administrative_supervisor']],
+  ['attendance.report.export', '导出考勤报表', ['admin', 'operations_director', 'administrative_supervisor']],
   ['attendance.manage', '维护考勤档案与余额', ['admin', 'administrative_supervisor']],
   ['attendance.admin.approve', '考勤行政终审', ['admin', 'administrative_supervisor']],
   ['attendance.hr.approve', '考勤人事审批', ['admin', 'administrative_supervisor']],

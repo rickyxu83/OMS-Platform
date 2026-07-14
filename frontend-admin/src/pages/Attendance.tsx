@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -343,6 +343,13 @@ function todayMonth() {
   return new Date().toISOString().slice(0, 7);
 }
 
+function monthDateRange(month: string) {
+  const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return { startDate: "", endDate: "" };
+  const endDay = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+  return { startDate: `${match[1]}-${match[2]}-01`, endDate: `${match[1]}-${match[2]}-${String(endDay).padStart(2, "0")}` };
+}
+
 function todayYear() {
   return new Date().getFullYear().toString();
 }
@@ -615,6 +622,7 @@ export function Attendance() {
   const canApply = hasPermission("attendance.apply");
   const canApprove = hasPermission("attendance.approve");
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
+  const canExportReport = hasPermission("attendance.report.export");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const [activeTab, setActiveTab] = useState<AttendanceTab>("apply");
@@ -649,6 +657,13 @@ export function Attendance() {
   const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
+  const [reportExportOpen, setReportExportOpen] = useState(false);
+  const [reportExportMode, setReportExportMode] = useState<"month" | "range">("month");
+  const [reportExportMonth, setReportExportMonth] = useState(todayMonth());
+  const [reportExportStartDate, setReportExportStartDate] = useState(monthDateRange(todayMonth()).startDate);
+  const [reportExportEndDate, setReportExportEndDate] = useState(monthDateRange(todayMonth()).endDate);
+  const [reportExportEmployeeIds, setReportExportEmployeeIds] = useState<string[]>([]);
+  const [reportExporting, setReportExporting] = useState(false);
   const [holidayYear, setHolidayYear] = useState(todayYear());
   const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
   const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
@@ -754,6 +769,45 @@ export function Attendance() {
       toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
     } finally {
       setOvertimeLoading(false);
+    }
+  }
+
+  async function exportAttendanceReport() {
+    if (reportExporting) return;
+    const range = reportExportMode === "month"
+      ? monthDateRange(reportExportMonth)
+      : { startDate: reportExportStartDate, endDate: reportExportEndDate };
+    if (!range.startDate || !range.endDate) {
+      toast.error("请选择完整的统计日期");
+      return;
+    }
+    if (dateIndex(range.endDate) < dateIndex(range.startDate)) {
+      toast.error("结束日期不能早于开始日期");
+      return;
+    }
+    if (dateIndex(range.endDate) - dateIndex(range.startDate) + 1 > 366) {
+      toast.error("单次统计范围不能超过 366 天");
+      return;
+    }
+    setReportExporting(true);
+    try {
+      const query = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
+      if (reportExportEmployeeIds.length) query.set("employeeIds", reportExportEmployeeIds.join(","));
+      const blob = await api.download(`/attendance/reports/export?${query.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `考勤报表-${range.startDate.replace(/-/g, "")}-${range.endDate.replace(/-/g, "")}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setReportExportOpen(false);
+      toast.success("考勤报表已导出");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "考勤报表导出失败");
+    } finally {
+      setReportExporting(false);
     }
   }
 
@@ -1820,9 +1874,23 @@ export function Attendance() {
                 <CardTitle>月度数据矩阵</CardTitle>
                 <CardDescription>横向比较员工各类假勤、加班折算与当前余额</CardDescription>
               </div>
-              <div className="w-40 space-y-2">
-                <Label>月份</Label>
-                <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-40 space-y-2">
+                  <Label>月份</Label>
+                  <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
+                </div>
+                {canExportReport ? (
+                  <Button onClick={() => {
+                    setReportExportMonth(reportMonth);
+                    const range = monthDateRange(reportMonth);
+                    setReportExportStartDate(range.startDate);
+                    setReportExportEndDate(range.endDate);
+                    setReportExportOpen(true);
+                  }}>
+                    <Download className="mr-2 h-4 w-4" />
+                    导出报表
+                  </Button>
+                ) : null}
               </div>
             </div>
           </CardHeader>
@@ -2343,6 +2411,82 @@ export function Attendance() {
             <Button onClick={submitAdjustBalance} disabled={adjustSaving}>
               {adjustSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
               确认调整
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reportExportOpen} onOpenChange={(open) => { if (!reportExporting) setReportExportOpen(open); }}>
+        <DialogContent className="sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>导出考勤报表</DialogTitle>
+            <DialogDescription>生成包含请假统计、加班统计和假期余额的 Excel 文件，仅统计已通过申请。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label>统计方式</Label>
+              <Select value={reportExportMode} onValueChange={(value) => setReportExportMode(value as "month" | "range")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">按月统计</SelectItem>
+                  <SelectItem value="range">自定义日期范围</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {reportExportMode === "month" ? (
+              <div className="space-y-2">
+                <Label>月份</Label>
+                <Input type="month" value={reportExportMonth} onChange={(event) => setReportExportMonth(event.target.value)} />
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>开始日期</Label>
+                  <Input type="date" value={reportExportStartDate} onChange={(event) => setReportExportStartDate(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>结束日期</Label>
+                  <Input type="date" value={reportExportEndDate} onChange={(event) => setReportExportEndDate(event.target.value)} />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>员工范围</Label>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setReportExportEmployeeIds([])} disabled={!reportExportEmployeeIds.length}>全部员工</Button>
+              </div>
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                {employees.map((employee) => {
+                  const id = String(employee.id);
+                  const checked = reportExportEmployeeIds.includes(id);
+                  const status = employee.leaveDate ? "离职" : employee.attendanceEnabled === false ? "停用" : "在职";
+                  return (
+                    <label key={id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/60">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={checked}
+                        onChange={(event) => setReportExportEmployeeIds((current) => event.target.checked
+                          ? [...current, id]
+                          : current.filter((item) => item !== id))}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm">{employee.employeeName || `员工 #${id}`}</span>
+                      <Badge variant={status === "在职" ? "success" : "outline"}>{status}</Badge>
+                    </label>
+                  );
+                })}
+                {employees.length === 0 ? <div className="py-5 text-center text-sm text-muted-foreground">暂无员工档案</div> : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {reportExportEmployeeIds.length ? `已选择 ${reportExportEmployeeIds.length} 人` : "未选择时导出全部符合统计范围的员工"}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportExportOpen(false)} disabled={reportExporting}>取消</Button>
+            <Button onClick={exportAttendanceReport} disabled={reportExporting}>
+              {reportExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {reportExporting ? "生成中…" : "导出 Excel"}
             </Button>
           </DialogFooter>
         </DialogContent>

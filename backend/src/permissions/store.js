@@ -86,6 +86,11 @@ function applyRolePermissionBaselines(matrix) {
       if (!attendanceApplicantRoleSet.has(role)) matrix[role]['attendance.apply'] = false
     }
   }
+  if (permissionSet.has('attendance.report.export') && permissionSet.has('attendance.view')) {
+    for (const role of ALL_ROLES) {
+      if (matrix[role]?.['attendance.report.export']) matrix[role]['attendance.view'] = true
+    }
+  }
   return matrix
 }
 
@@ -265,6 +270,7 @@ async function getDefaultWorkspaceForRole(role) {
 }
 
 module.exports = {
+  applyRolePermissionBaselines,
   ensureRolePermissionsTable,
   getRolePermissionsPayload,
   hasPermission,

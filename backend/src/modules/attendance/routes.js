@@ -1,5 +1,6 @@
 const express = require('express')
 const controller = require('./controller')
+const report = require('./report')
 const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
@@ -33,5 +34,6 @@ router.post('/requests/:id/withdraw', requirePermission('attendance.apply'), con
 router.post('/requests/:id/void', requirePermission('attendance.admin.approve'), controller.voidRequest)
 
 router.get('/reports/monthly', requirePermission('attendance.view', 'attendance.admin.approve', 'attendance.manage'), controller.monthlyReport)
+router.get('/reports/export', requirePermission('attendance.report.export'), report.exportReport)
 
 module.exports = router
