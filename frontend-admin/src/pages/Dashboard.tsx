@@ -1133,7 +1133,6 @@ export function Dashboard() {
                     <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
                     <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />
                     <PreviewField label={t.detail.salesperson} value={previewOrder.timesheetSalesperson} />
-                    <PreviewField label={t.detail.timesheetCategory} value={previewOrder.timesheetCategory} />
                   </div>
 
                   <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} markdown />

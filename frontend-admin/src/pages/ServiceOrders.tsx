@@ -909,7 +909,7 @@ function DetailField({ label, value, muted = false }: { label: string; value?: s
 }
 
 function DetailBlock({ label, value, markdown = false }: { label: string; value?: string; markdown?: boolean }) {
-  const displayValue = compactText(value);
+  const displayValue = String(value || "").trim() || "-";
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -2150,7 +2150,6 @@ export function ServiceOrders() {
                   <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
                   <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
                   {showTimesheetSalesperson ? <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} /> : null}
-                  <DetailField label="工时类别" value={detailOrder.timesheetCategory} />
                 </div>
 
                 <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} markdown />
@@ -2324,9 +2323,9 @@ export function ServiceOrders() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>{createForm.serviceMode === "onsite" ? "服务类型" : "工时类别"}</Label>
-              {createForm.serviceMode === "onsite" ? (
+            {createForm.serviceMode === "onsite" ? (
+              <div className="space-y-2">
+                <Label>服务类型</Label>
                 <Select value={createForm.serviceType} onValueChange={(v) => setCreateForm({ ...createForm, serviceType: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2338,10 +2337,8 @@ export function ServiceOrders() {
                     <SelectItem value="other">其他</SelectItem>
                   </SelectContent>
                 </Select>
-              ) : (
-                <Input value={createForm.timesheetCategory} onChange={(e) => setCreateForm({ ...createForm, timesheetCategory: e.target.value })} placeholder={createForm.serviceMode === "remote" ? "排障 / 调配 / 协调 / 会议 / 其他" : "方案准备 / 文档整理 / 网络会议 / 培训学习 / 其他"} />
-              )}
-            </div>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <Label>优先级</Label>
