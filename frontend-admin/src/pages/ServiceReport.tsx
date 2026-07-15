@@ -3851,9 +3851,6 @@ export function ServiceReport() {
         const deviceLabelText = `安装设备 ${index + 1}`;
         if (device.inputMode === "existing") {
           if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
-          if (!form.parts.some((part) => part.actionType === "installation" && part.installDeviceDraftId === device.id && servicePartHasContent(part))) {
-            missing.push(`${deviceLabelText}新配件明细`);
-          }
         } else if (!device.model.trim()) {
           missing.push(`${deviceLabelText}型号`);
         }
