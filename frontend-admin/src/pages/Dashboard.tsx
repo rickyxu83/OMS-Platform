@@ -504,9 +504,9 @@ const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "p
   secondary: "secondary",
 };
 
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
+const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "indigo" | "warning" | "destructive"> = {
   low: "secondary",
-  normal: "secondary",
+  normal: "indigo",
   high: "warning",
   urgent: "destructive",
 };

@@ -402,9 +402,9 @@ const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" |
   other: "secondary",
 };
 
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
+const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "indigo" | "warning" | "destructive"> = {
   low: "secondary",
-  normal: "secondary",
+  normal: "indigo",
   high: "warning",
   urgent: "destructive",
 };
@@ -2179,7 +2179,7 @@ export function ServiceOrders() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(detailOrder)] || "secondary"}>{statusLabel}</Badge>
                   <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(detailOrder)] || "secondary"}>{typeLabel}</Badge>
-                  <Badge variant="secondary">{modeLabel}</Badge>
+                  <Badge variant={MODE_BADGE_VARIANT[detailOrder.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
                   <Badge variant={PRIORITY_BADGE_VARIANT[detailOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
                 </div>
 

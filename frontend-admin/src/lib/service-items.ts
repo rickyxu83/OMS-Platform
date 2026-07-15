@@ -125,7 +125,7 @@ export function serviceItemsBadgeColor(item: ServiceItemSource) {
   const modules = Array.isArray(item.serviceModules) ? item.serviceModules : [];
   if (mode === "office") return "warning";
   if (mode === "remote") {
-    if (modules.includes("repair")) return "info";
+    if (modules.includes("repair")) return "cyan";
     if (modules.includes("replacement")) return "teal";
     return "cyan";
   }
