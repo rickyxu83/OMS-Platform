@@ -565,15 +565,6 @@ async function ensureInspectionScheduleDevicesForPreview() {
       CONSTRAINT fk_customer_preview_schedule_devices_device FOREIGN KEY (device_id) REFERENCES devices (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  await query(
-    `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
-     SELECT s.id, s.device_id FROM inspection_schedules s
-     WHERE s.device_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM inspection_schedule_devices d
-         WHERE d.schedule_id = s.id AND d.device_id = s.device_id
-       )`,
-  )
 }
 
 function cleanupStorageFiles(filePaths = []) {
@@ -771,7 +762,6 @@ async function loadCustomerDeletePreview(customerId, user) {
        (SELECT COUNT(DISTINCT s.id)
         FROM inspection_schedules s
         WHERE s.customer_id = :customerId
-           OR s.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)
            OR EXISTS (
              SELECT 1
              FROM inspection_schedule_devices sd
@@ -815,9 +805,14 @@ async function loadCustomerDeletePreview(customerId, user) {
               ${deviceDisplaySql('d')} AS device_name
        FROM inspection_schedules s
        JOIN users u ON u.id = s.target_engineer_id
-       LEFT JOIN devices d ON d.id = s.device_id
+       LEFT JOIN devices d ON d.id = (
+         SELECT sd.device_id
+         FROM inspection_schedule_devices sd
+         WHERE sd.schedule_id = s.id
+         ORDER BY sd.id ASC
+         LIMIT 1
+       )
        WHERE s.customer_id = :customerId
-          OR s.device_id IN (SELECT id FROM devices WHERE customer_id = :customerId)
           OR EXISTS (
             SELECT 1
             FROM inspection_schedule_devices sd

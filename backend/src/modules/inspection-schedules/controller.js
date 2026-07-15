@@ -89,7 +89,6 @@ async function ensureInspectionSchedulesTable(connection = null) {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       name VARCHAR(160) NULL,
       customer_id BIGINT UNSIGNED NOT NULL,
-      device_id BIGINT UNSIGNED NULL,
       target_engineer_id BIGINT UNSIGNED NOT NULL,
       cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,
       next_run_anchor DATE NOT NULL,
@@ -108,18 +107,6 @@ async function ensureInspectionSchedulesTable(connection = null) {
       KEY idx_inspection_schedules_next_run (active, next_run_anchor)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  const [deviceRows] = await execute(
-    `SELECT is_nullable AS isNullable
-     FROM information_schema.columns
-     WHERE table_schema = DATABASE()
-       AND table_name = 'inspection_schedules'
-       AND column_name = 'device_id'
-     LIMIT 1`,
-  )
-  const deviceNullable = deviceRows?.[0]?.isNullable || deviceRows?.[0]?.is_nullable || 'YES'
-  if (String(deviceNullable).toUpperCase() !== 'YES') {
-    await execute('ALTER TABLE inspection_schedules MODIFY COLUMN device_id BIGINT UNSIGNED NULL')
-  }
   const [nameRows] = await execute(
     `SELECT column_name AS columnName
      FROM information_schema.columns
@@ -466,58 +453,6 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
       CONSTRAINT fk_schedule_devices_device FOREIGN KEY (device_id) REFERENCES devices (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-
-  await execute(
-    `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
-     SELECT s.id, s.device_id FROM inspection_schedules s
-     WHERE s.device_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM inspection_schedule_devices d
-         WHERE d.schedule_id = s.id AND d.device_id = s.device_id
-       )`,
-  )
-
-  const [dbRows] = await execute('SELECT DATABASE() AS db')
-  const dbName = dbRows?.[0]?.db || ''
-  const [oldIdx] = await execute(
-    `SELECT index_name AS indexName
-     FROM information_schema.statistics
-     WHERE table_schema = :dbName
-       AND table_name = 'inspection_schedules'
-       AND index_name = 'uk_inspection_schedules_active_combo'
-     LIMIT 1`,
-    { dbName },
-  )
-  const [newIdx] = await execute(
-    `SELECT index_name AS indexName
-     FROM information_schema.statistics
-     WHERE table_schema = :dbName
-       AND table_name = 'inspection_schedules'
-       AND index_name = 'uk_schedule_engineer_cadence'
-     LIMIT 1`,
-    { dbName },
-  )
-  if (oldIdx?.[0] && !newIdx?.[0]) {
-    // 旧唯一索引以 device_id 开头,是 fk_inspection_schedules_device_id 的支撑索引,
-    // 直接 drop 会报 "needed in a foreign key constraint":先补 device_id 普通索引接住外键
-    const [deviceIdx] = await execute(
-      `SELECT index_name AS indexName
-       FROM information_schema.statistics
-       WHERE table_schema = :dbName
-         AND table_name = 'inspection_schedules'
-         AND index_name = 'idx_inspection_schedules_device'
-       LIMIT 1`,
-      { dbName },
-    )
-    if (!deviceIdx?.[0]) {
-      await execute('ALTER TABLE inspection_schedules ADD KEY idx_inspection_schedules_device (device_id)')
-    }
-    // 先建新唯一索引再删旧索引:若因存量重复数据建失败,旧约束仍完整保留
-    await execute(
-      'ALTER TABLE inspection_schedules ADD UNIQUE KEY uk_schedule_engineer_cadence (customer_id, target_engineer_id, cadence, active_slot)',
-    )
-    await execute('ALTER TABLE inspection_schedules DROP KEY uk_inspection_schedules_active_combo')
-  }
 
   if (inspectionScheduleDevicesReady === false) inspectionScheduleDevicesReady = true
 }

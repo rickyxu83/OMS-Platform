@@ -1873,7 +1873,7 @@ async function timesheetMonthly(req, res) {
        so.issue_description, so.internal_note, so.planned_start_at,
        so.submitted_at, so.created_at, c.name AS customer_name, c.salesperson AS customer_salesperson,
        ${deviceDisplaySql('d')} AS device_name,
-       sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
+       sr.actual_start_at, sr.work_content, sr.result, sr.result_description,
        work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
      FROM service_orders so
@@ -1956,7 +1956,6 @@ async function timesheetMonthly(req, res) {
       workContent: joinTimesheetWorkContent(
         row.work_entries_content,
         row.work_content,
-        row.fault_summary,
         row.result_description,
         row.issue_description,
       ),
@@ -1967,7 +1966,7 @@ async function timesheetMonthly(req, res) {
           unresolved: '未完成',
           follow_up_required: '擱置中',
         }[row.result] || '已完成',
-      workHours: Number(row.work_hours || 1),
+      workHours: 1,
       remark: row.order_no,
     }
   })
@@ -2736,11 +2735,11 @@ async function createSelfReport(req, res) {
     await connection.execute(
       `INSERT INTO service_reports (
          service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_content,
-         result, result_description, customer_name, customer_signature_file_id, customer_signature
+         result, result_description, customer_name, customer_signature_file_id
        )
        VALUES (
          :orderId, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workContent,
-         :result, :resultDescription, :customerConfirmName, :customerSignatureFileId, NULL
+         :result, :resultDescription, :customerConfirmName, :customerSignatureFileId
        )`,
       {
         orderId: orderResult.insertId,
@@ -2975,7 +2974,7 @@ async function createCustomerSignatureRequest(req, res) {
   const created = await transaction(async (connection) => {
     await ensureCustomerSignatureRequestsTable(connection)
     const [reportRows] = await connection.execute(
-      `SELECT id, customer_signature_file_id, customer_signature
+      `SELECT id, customer_signature_file_id
        FROM service_reports
        WHERE service_order_id = :orderId
        LIMIT 1`,
@@ -2985,7 +2984,7 @@ async function createCustomerSignatureRequest(req, res) {
     if (!report) {
       throw badRequest('请先提交服务记录后再发送客户签署请求')
     }
-    if (report.customer_signature_file_id || report.customer_signature) {
+    if (report.customer_signature_file_id) {
       throw badRequest('该服务记录已有客户签名')
     }
     await connection.execute(
@@ -3087,7 +3086,7 @@ async function customerSignatureRequestByToken(token, { connection = null, forUp
        ${deviceDisplaySql('d')} AS device_name,
        sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at, sr.work_content,
        sr.result, sr.result_description, sr.customer_name AS customer_confirm_name,
-       sr.customer_signature_file_id, sr.customer_signature
+       sr.customer_signature_file_id
      FROM service_order_customer_signature_requests csr
      JOIN service_orders so ON so.id = csr.service_order_id
      JOIN customers c ON c.id = so.customer_id
@@ -3106,7 +3105,7 @@ async function customerSignatureRequestByToken(token, { connection = null, forUp
 }
 
 function publicSignatureRequestPayload(row, engineers = []) {
-  const signed = Boolean(row.signed_at || row.customer_signature_file_id || row.customer_signature || row.status === 'signed')
+  const signed = Boolean(row.signed_at || row.customer_signature_file_id || row.status === 'signed')
   return {
     id: row.id,
     serviceOrderId: row.service_order_id,
@@ -3164,7 +3163,7 @@ async function submitCustomerSignatureRequest(req, res) {
     const row = await customerSignatureRequestByToken(req.params.token, { connection, forUpdate: true })
     if (row.status === 'revoked') throw badRequest('签署链接已作废，请联系工程师重新发送')
     if (row.status === 'expired') throw badRequest('签署链接已过期，请联系工程师重新发送')
-    if (row.status === 'signed' || row.customer_signature_file_id || row.customer_signature) {
+    if (row.status === 'signed' || row.customer_signature_file_id) {
       throw badRequest('该服务记录已完成客户签署')
     }
 
@@ -3176,8 +3175,7 @@ async function submitCustomerSignatureRequest(req, res) {
     await connection.execute(
       `UPDATE service_reports
        SET customer_name = COALESCE(NULLIF(:signerName, ''), customer_name, :contactName),
-           customer_signature_file_id = :signatureFileId,
-           customer_signature = NULL
+           customer_signature_file_id = :signatureFileId
        WHERE service_order_id = :orderId`,
       {
         orderId: row.service_order_id,
@@ -3326,11 +3324,11 @@ async function latestCustomerSignature(req, res) {
   }
 
   const rows = await query(
-    `SELECT sr.customer_signature_file_id, sr.customer_signature
+    `SELECT sr.customer_signature_file_id
      FROM service_reports sr
      JOIN service_orders so ON so.id = sr.service_order_id
      JOIN customers c ON c.id = so.customer_id
-     WHERE (sr.customer_signature_file_id IS NOT NULL OR sr.customer_signature IS NOT NULL)
+     WHERE sr.customer_signature_file_id IS NOT NULL
        AND (${filters.join(' OR ')})${engineerScopeSql}
      ORDER BY ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
@@ -3338,7 +3336,7 @@ async function latestCustomerSignature(req, res) {
   )
   const signature = rows[0]?.customer_signature_file_id
     ? await signatureDataUrl(rows[0].customer_signature_file_id)
-    : rows[0]?.customer_signature || ''
+    : ''
 
   res.json({
     customerSignature: signature,
@@ -3553,14 +3551,14 @@ async function updateSelfReport(req, res) {
   const hasDeviceIdField = Object.prototype.hasOwnProperty.call(req.body || {}, 'deviceId')
   const hasTargetDeviceIdsField = Object.prototype.hasOwnProperty.call(req.body || {}, 'targetDeviceIds')
   const existingSignature = await query(
-    `SELECT customer_signature_file_id, customer_signature
+    `SELECT customer_signature_file_id
      FROM service_reports
      WHERE service_order_id = :id
      ORDER BY id DESC
      LIMIT 1`,
     { id: req.params.id },
   )
-  const hasExistingSignature = Boolean(existingSignature[0]?.customer_signature_file_id || existingSignature[0]?.customer_signature)
+  const hasExistingSignature = Boolean(existingSignature[0]?.customer_signature_file_id)
   const useElectronicCustomerSignature = effectiveServiceMode === 'onsite'
     && !hasExistingSignature
     && !customerSignature
@@ -3853,11 +3851,11 @@ async function updateSelfReport(req, res) {
     await connection.execute(
       `INSERT INTO service_reports (
          service_order_id, departure_at, actual_start_at, actual_end_at, return_at, work_content,
-         result, result_description, customer_name, customer_signature_file_id, customer_signature
+         result, result_description, customer_name, customer_signature_file_id
        )
        VALUES (
          :id, :departureAt, :actualStartAt, :actualEndAt, :returnAt, :workContent,
-         :result, :resultDescription, :customerConfirmName, :customerSignatureFileId, NULL
+         :result, :resultDescription, :customerConfirmName, :customerSignatureFileId
        )
        ON DUPLICATE KEY UPDATE
          departure_at = VALUES(departure_at),
@@ -3868,8 +3866,7 @@ async function updateSelfReport(req, res) {
          result = VALUES(result),
          result_description = VALUES(result_description),
          customer_name = VALUES(customer_name),
-         customer_signature_file_id = COALESCE(VALUES(customer_signature_file_id), customer_signature_file_id),
-         customer_signature = IF(VALUES(customer_signature_file_id) IS NULL, customer_signature, NULL)`,
+         customer_signature_file_id = COALESCE(VALUES(customer_signature_file_id), customer_signature_file_id)`,
       {
         id: req.params.id,
         departureAt: departureAt || null,

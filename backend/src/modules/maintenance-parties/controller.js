@@ -167,7 +167,7 @@ async function create(req, res) {
   const primaryContact = contacts[0] || {}
   const contact = primaryContact.name || null
   const phone = primaryContact.phone || validatePhone(req.body?.phone)
-  const officialWebsite = normalizeText(req.body?.officialWebsite ?? req.body?.serviceScope) || null
+  const officialWebsite = normalizeText(req.body?.officialWebsite) || null
   const remark = normalizeText(req.body?.remark) || null
 
   if (!validPartyTypes.has(partyType)) {
@@ -216,7 +216,6 @@ async function update(req, res) {
   const hasContacts = Object.prototype.hasOwnProperty.call(req.body || {}, 'contacts')
   const hasPhone = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')
   const hasOfficialWebsite = Object.prototype.hasOwnProperty.call(req.body || {}, 'officialWebsite')
-    || Object.prototype.hasOwnProperty.call(req.body || {}, 'serviceScope')
   const hasRemark = Object.prototype.hasOwnProperty.call(req.body || {}, 'remark')
 
   const partyType = hasPartyType ? normalizePartyType(req.body.partyType, '') : null
@@ -229,7 +228,7 @@ async function update(req, res) {
   const primaryContact = normalizedContacts?.[0] || {}
   const contact = hasContacts || hasContact ? primaryContact.name || null : null
   const phone = hasContacts || hasPhone ? primaryContact.phone || null : null
-  const officialWebsite = hasOfficialWebsite ? normalizeText(req.body.officialWebsite ?? req.body.serviceScope) || null : null
+  const officialWebsite = hasOfficialWebsite ? normalizeText(req.body.officialWebsite) || null : null
   const remark = hasRemark ? normalizeText(req.body.remark) || null : null
 
   if (hasPartyType && !validPartyTypes.has(partyType)) {

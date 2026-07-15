@@ -898,15 +898,6 @@ async function ensureInspectionScheduleDevicesTable(executeQuery = query) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   await executeQuery(
-    `INSERT IGNORE INTO inspection_schedule_devices (schedule_id, device_id)
-     SELECT s.id, s.device_id FROM inspection_schedules s
-     WHERE s.device_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM inspection_schedule_devices d
-         WHERE d.schedule_id = s.id AND d.device_id = s.device_id
-       )`,
-  )
-  await executeQuery(
     `CREATE TABLE IF NOT EXISTS inspection_schedule_assignments (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       schedule_id BIGINT UNSIGNED NOT NULL,
@@ -1055,8 +1046,7 @@ async function loadDeviceDeleteSummary(deviceId, executeQuery = query) {
     `SELECT s.id, s.name, s.cadence, s.active, c.name AS customer_name
      FROM inspection_schedules s
      JOIN customers c ON c.id = s.customer_id
-     WHERE s.device_id = :deviceId
-        OR EXISTS (
+     WHERE EXISTS (
           SELECT 1 FROM inspection_schedule_devices sd
           WHERE sd.schedule_id = s.id AND sd.device_id = :deviceId
         )
@@ -1832,7 +1822,6 @@ async function remove(req, res) {
     await connection.execute('UPDATE service_orders SET device_id = NULL WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM service_order_devices WHERE device_id = :id', { id: deviceId })
     await connection.execute('UPDATE service_parts SET device_id = NULL WHERE device_id = :id', { id: deviceId })
-    await connection.execute('UPDATE inspection_schedules SET device_id = NULL WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM inspection_schedule_assignments WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM inspection_schedule_devices WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM devices WHERE id = :id', { id: deviceId })

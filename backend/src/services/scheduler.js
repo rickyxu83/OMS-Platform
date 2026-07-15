@@ -240,7 +240,7 @@ async function buildMonthlyOperationsReport(range) {
        so.issue_description, so.internal_note, so.planned_start_at, so.submitted_at, so.created_at,
        c.name AS customer_name, c.salesperson AS customer_salesperson,
        ${deviceDisplaySql('d')} AS device_name,
-       sr.actual_start_at, sr.work_hours, sr.work_content, sr.fault_summary, sr.result, sr.result_description,
+       sr.actual_start_at, sr.work_content, sr.result, sr.result_description,
        work_entries.work_content AS work_entries_content,
        u.real_name AS engineer_name
      FROM service_orders so
@@ -325,7 +325,7 @@ async function buildMonthlyOperationsReport(range) {
   const serviceItems = serviceRows.map((row) => {
     const date = String(row.actual_start_at || row.planned_start_at || row.submitted_at || row.created_at).slice(0, 10)
     const [workNature, fallbackCategory] = timesheetType(row.service_type, row.service_mode)
-    const workHours = Number(row.work_hours || 1) || 1
+    const workHours = 1
     const participants = participantsByOrder.get(String(row.id)) || []
     const engineerIds = participants.map((engineer) => engineer.id).filter(Boolean)
     const engineerNames = participants.map((engineer) => engineer.name).filter(Boolean)
@@ -350,13 +350,12 @@ async function buildMonthlyOperationsReport(range) {
       workContent: joinWorkContent(
         row.work_entries_content,
         row.work_content,
-        row.fault_summary,
         row.result_description,
         row.issue_description,
       ),
       workEntriesByEngineer,
       reportWorkContent: row.work_content,
-      faultSummary: row.fault_summary,
+      faultSummary: null,
       resultDescription: row.result_description,
       issueDescription: row.issue_description,
       salesperson: row.timesheet_salesperson || row.customer_salesperson || '',

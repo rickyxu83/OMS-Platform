@@ -233,6 +233,18 @@ deploy_backend() {
       fi
       sleep 3
     done
+
+    for i in 1 2 3 4 5; do
+      if docker compose exec -T backend npm run ensure-legacy-compat-columns; then
+        echo '  ✓ 历史兼容字段迁移已确认'
+        break
+      fi
+      if [ "\$i" = 5 ]; then
+        echo '  ✗ 历史兼容字段迁移失败'
+        exit 1
+      fi
+      sleep 3
+    done
   "
 
   rm -f "$archive"

@@ -661,16 +661,15 @@ async function main() {
         if (isSubmitted && order.date && order.end) {
           await connection.execute(
             `INSERT INTO service_reports (
-               service_order_id, actual_start_at, actual_end_at, work_hours, fault_summary,
+               service_order_id, actual_start_at, actual_end_at,
                work_content, result, result_description, customer_name
              )
              VALUES (
-               :orderId, :date, :end, TIMESTAMPDIFF(MINUTE, :date, :end) / 60,
-               :issue, :work, :result, :resultDescription, '客户确认'
+               :orderId, :date, :end,
+               :work, :result, :resultDescription, '客户确认'
              )
              ON DUPLICATE KEY UPDATE
                actual_start_at = VALUES(actual_start_at), actual_end_at = VALUES(actual_end_at),
-               work_hours = VALUES(work_hours), fault_summary = VALUES(fault_summary),
                work_content = VALUES(work_content), result = VALUES(result),
                result_description = VALUES(result_description), customer_name = VALUES(customer_name)`,
             {
