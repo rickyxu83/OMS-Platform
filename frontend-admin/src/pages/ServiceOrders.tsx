@@ -2147,7 +2147,8 @@ export function ServiceOrders() {
                 <div className="grid gap-4 md:grid-cols-3">
                   <DetailField label="服务时间" value={serviceTime.full} />
                   <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
-                  <DetailField label="结案时间" value={formatDateTime(detailOrder.submittedAt)} />
+                  <DetailField label="提交时间" value={formatDateTime(detailOrder.submittedAt)} />
+                  <DetailField label="完成/结束时间" value={formatDateTime(detailOrder.report?.actualEndAt)} />
                   <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
                   {showTimesheetSalesperson ? <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} /> : null}
                 </div>
