@@ -2346,6 +2346,7 @@ async function create(req, res) {
   const {
     customerId,
     deviceId,
+    targetDeviceIds = [],
     serviceMode = 'onsite',
     serviceType,
     timesheetCategory,
@@ -2404,12 +2405,12 @@ async function create(req, res) {
 
     const [insertResult] = await connection.execute(
       `INSERT INTO service_orders (
-         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
+         order_no, customer_id, contact_name, contact_phone, service_mode, service_type, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
          assigned_engineer_id, target_engineer_id, planned_start_at, planned_end_at, internal_note, created_by
        )
        VALUES (
-         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
+         :orderNo, :customerId, :contactName, :contactPhone, :serviceMode, :serviceType, :timesheetCategory, :timesheetSalesperson,
          :priority, :status, :issueDescription,
          :assignedEngineerId, :targetEngineerId, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy
        )`,
@@ -2418,7 +2419,6 @@ async function create(req, res) {
         customerId,
         contactName: defaultContact.contactName,
         contactPhone: defaultContact.contactPhone,
-        deviceId: deviceId || null,
         serviceMode: effectiveServiceMode,
         serviceType,
         timesheetCategory: timesheetCategory || null,
@@ -2438,6 +2438,7 @@ async function create(req, res) {
     if (normalizedEngineerIds.length) {
       await replaceOrderEngineers(connection, insertResult.insertId, normalizedEngineerIds, req.user.id)
     }
+    await saveOrderTargetDevices(connection, insertResult.insertId, normalizeTargetDeviceIds(targetDeviceIds, deviceId), customerId)
 
     await writeAudit(connection, req.user.id, insertResult.insertId, 'create', {
       status,
@@ -2684,12 +2685,12 @@ async function createSelfReport(req, res) {
 
     const [orderResult] = await connection.execute(
       `INSERT INTO service_orders (
-         order_no, customer_id, contact_name, contact_phone, device_id, service_mode, service_type, service_modules, timesheet_category, timesheet_salesperson,
+         order_no, customer_id, contact_name, contact_phone, service_mode, service_type, service_modules, timesheet_category, timesheet_salesperson,
          priority, status, issue_description,
          assigned_engineer_id, internal_note, created_by, submitted_at
        )
        VALUES (
-         :orderNo, :customerId, :contactName, :contactPhone, :deviceId, :serviceMode, :serviceType, :serviceModules, :timesheetCategory, :timesheetSalesperson,
+         :orderNo, :customerId, :contactName, :contactPhone, :serviceMode, :serviceType, :serviceModules, :timesheetCategory, :timesheetSalesperson,
          :priority, :status, :issueDescription,
          :engineerId, :internalNote, :createdBy, :submittedAt
        )`,
@@ -2698,7 +2699,6 @@ async function createSelfReport(req, res) {
         customerId: effectiveCustomerId,
         contactName: contactName || null,
         contactPhone: customerProfileContactPhone || null,
-        deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
         serviceModules: serviceModulesJson(normalizedServiceModules),
@@ -3793,7 +3793,6 @@ async function updateSelfReport(req, res) {
        SET customer_id = :customerId,
            contact_name = :contactName,
            contact_phone = :contactPhone,
-           device_id = :deviceId,
            service_mode = :serviceMode,
            service_type = :serviceType,
            service_modules = :serviceModules,
@@ -3817,7 +3816,6 @@ async function updateSelfReport(req, res) {
         customerId: effectiveCustomerId,
         contactName: contactName || customerConfirmName || null,
         contactPhone: customerProfileContactPhone || null,
-        deviceId: effectiveDeviceId,
         serviceMode: effectiveServiceMode,
         serviceType,
         serviceModules: serviceModulesJson(normalizedServiceModules),
@@ -3918,19 +3916,23 @@ async function update(req, res) {
   assertEditable(order)
 
   const body = req.body || {}
-  const { customerId, deviceId, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = body
+  const { customerId, deviceId, targetDeviceIds, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = body
   const normalizedServiceMode = ['remote', 'onsite', 'office'].includes(serviceMode) ? serviceMode : null
   const effectiveServiceMode = normalizedServiceMode || order.service_mode || 'onsite'
   const effectiveTimesheetCategory =
     effectiveServiceMode === 'remote' ? timesheetCategory || order.timesheet_category || '排障' : null
   // 请求体未携带的字段不应被清空:仅当显式传入 deviceId / internalNote 时才覆盖
   const hasDeviceId = Object.prototype.hasOwnProperty.call(body, 'deviceId')
+  const hasTargetDeviceIds = Object.prototype.hasOwnProperty.call(body, 'targetDeviceIds')
   const hasInternalNote = Object.prototype.hasOwnProperty.call(body, 'internalNote')
   const nextDeviceId = deviceId || null
   const effectiveCustomerId = customerId || order.customer_id
   // 内勤(office)模式历史上强制清空内部备注,保留该语义
   const setInternalNote = effectiveServiceMode === 'office' || hasInternalNote
   const nextInternalNote = effectiveServiceMode === 'office' ? null : internalNote || null
+  const nextTargetDeviceIds = hasTargetDeviceIds || hasDeviceId
+    ? normalizeTargetDeviceIds(targetDeviceIds, nextDeviceId)
+    : []
 
   await transaction(async (connection) => {
     if (hasDeviceId && nextDeviceId) {
@@ -3940,7 +3942,6 @@ async function update(req, res) {
     await connection.execute(
       `UPDATE service_orders
        SET customer_id = COALESCE(:customerId, customer_id),
-           device_id = CASE WHEN :setDevice = 1 THEN :deviceId ELSE device_id END,
            service_mode = COALESCE(:serviceMode, service_mode),
            service_type = COALESCE(:serviceType, service_type),
            timesheet_category = :timesheetCategory,
@@ -3952,8 +3953,6 @@ async function update(req, res) {
       {
         id: req.params.id,
         customerId: customerId || null,
-        setDevice: hasDeviceId ? 1 : 0,
-        deviceId: nextDeviceId,
         serviceMode: normalizedServiceMode,
         serviceType: serviceType || null,
         timesheetCategory: effectiveTimesheetCategory,
@@ -3964,6 +3963,9 @@ async function update(req, res) {
         internalNote: nextInternalNote,
       },
     )
+    if (hasTargetDeviceIds || hasDeviceId) {
+      await saveOrderTargetDevices(connection, req.params.id, nextTargetDeviceIds, effectiveCustomerId)
+    }
   })
 
   res.status(204).end()

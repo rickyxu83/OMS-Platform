@@ -326,13 +326,13 @@ async function createInspectionOrder(connection, schedule, occurrenceDate, assig
   const orderNo = await nextOrderNo(connection)
   const [insertResult] = await connection.execute(
     `INSERT INTO service_orders (
-       order_no, customer_id, device_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
+       order_no, customer_id, service_mode, service_type, timesheet_category, timesheet_salesperson,
        priority, status, issue_description,
        assigned_engineer_id, planned_start_at, planned_end_at, internal_note, created_by,
        inspection_schedule_id, inspection_occurrence_date, target_engineer_id, confirmed_by, confirmed_at
      )
      VALUES (
-       :orderNo, :customerId, NULL, 'onsite', 'inspect', NULL, NULL,
+       :orderNo, :customerId, 'onsite', 'inspect', NULL, NULL,
       'normal', 'pending_confirmation', :issueDescription,
        NULL, :plannedStartAt, :plannedEndAt, :internalNote, :createdBy,
        :inspectionScheduleId, :inspectionOccurrenceDate, :targetEngineerId, NULL, NULL

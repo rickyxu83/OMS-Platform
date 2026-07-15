@@ -164,9 +164,6 @@ async function create(req, res) {
   const partyType = normalizePartyType(req.body?.partyType)
   const name = normalizeText(req.body?.name)
   const contacts = normalizeContacts(req.body?.contacts, req.body?.contact, req.body?.phone)
-  const primaryContact = contacts[0] || {}
-  const contact = primaryContact.name || null
-  const phone = primaryContact.phone || validatePhone(req.body?.phone)
   const officialWebsite = normalizeText(req.body?.officialWebsite) || null
   const remark = normalizeText(req.body?.remark) || null
 
@@ -178,9 +175,9 @@ async function create(req, res) {
   }
 
   const result = await query(
-    `INSERT INTO maintenance_parties (party_type, name, contact, contacts, phone, official_website, remark)
-     VALUES (:partyType, :name, :contact, :contacts, :phone, :officialWebsite, :remark)`,
-    { partyType, name, contact, contacts: contactsJson(contacts), phone, officialWebsite, remark },
+    `INSERT INTO maintenance_parties (party_type, name, contacts, official_website, remark)
+     VALUES (:partyType, :name, :contacts, :officialWebsite, :remark)`,
+    { partyType, name, contacts: contactsJson(contacts), officialWebsite, remark },
   )
 
   res.status(201).json({ id: result.insertId })
@@ -225,9 +222,6 @@ async function update(req, res) {
     : hasContact || hasPhone
       ? normalizeContacts(null, hasContact ? req.body.contact : existing[0].contact, hasPhone ? req.body.phone : existing[0].phone)
       : null
-  const primaryContact = normalizedContacts?.[0] || {}
-  const contact = hasContacts || hasContact ? primaryContact.name || null : null
-  const phone = hasContacts || hasPhone ? primaryContact.phone || null : null
   const officialWebsite = hasOfficialWebsite ? normalizeText(req.body.officialWebsite) || null : null
   const remark = hasRemark ? normalizeText(req.body.remark) || null : null
 
@@ -242,9 +236,7 @@ async function update(req, res) {
     `UPDATE maintenance_parties
      SET party_type = COALESCE(:partyType, party_type),
          name = COALESCE(:name, name),
-         contact = CASE WHEN :hasContactOrContacts THEN :contact ELSE contact END,
-         contacts = CASE WHEN :hasContacts THEN :contacts ELSE contacts END,
-         phone = CASE WHEN :hasPhoneOrContacts THEN :phone ELSE phone END,
+         contacts = CASE WHEN :hasContacts OR :hasContact OR :hasPhone THEN :contacts ELSE contacts END,
          official_website = CASE WHEN :hasOfficialWebsite THEN :officialWebsite ELSE official_website END,
          remark = CASE WHEN :hasRemark THEN :remark ELSE remark END
      WHERE id = :id`,
@@ -252,12 +244,10 @@ async function update(req, res) {
       id: req.params.id,
       partyType: hasPartyType ? partyType : null,
       name: hasName ? name : null,
-      hasContactOrContacts: hasContact || hasContacts,
-      contact: hasContact || hasContacts ? contact : null,
       hasContacts,
-      contacts: hasContacts ? contactsJson(normalizedContacts) : null,
-      hasPhoneOrContacts: hasPhone || hasContacts,
-      phone: hasPhone || hasContacts ? phone : null,
+      hasContact,
+      hasPhone,
+      contacts: hasContacts || hasContact || hasPhone ? contactsJson(normalizedContacts) : null,
       hasOfficialWebsite,
       officialWebsite: hasOfficialWebsite ? officialWebsite : null,
       hasRemark,

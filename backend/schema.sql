@@ -85,6 +85,7 @@ CREATE TABLE maintenance_parties (
   name VARCHAR(128) NOT NULL,
   contact VARCHAR(100) NULL,
   phone VARCHAR(32) NULL,
+  contacts LONGTEXT NULL,
   official_website VARCHAR(255) NULL,
   remark TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

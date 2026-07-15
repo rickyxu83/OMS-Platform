@@ -486,10 +486,10 @@ async function main() {
     // ── Maintenance Parties ──
     for (const [partyType, name, phone, officialWebsite] of maintenanceParties) {
       await connection.execute(
-        `INSERT INTO maintenance_parties (party_type, name, phone, official_website)
-         VALUES (:partyType, :name, :phone, :officialWebsite)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone), official_website = VALUES(official_website)`,
-        { partyType, name, phone, officialWebsite },
+        `INSERT INTO maintenance_parties (party_type, name, contacts, official_website)
+         VALUES (:partyType, :name, :contacts, :officialWebsite)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), contacts = VALUES(contacts), official_website = VALUES(official_website)`,
+        { partyType, name, contacts: JSON.stringify([{ name: '', phone }]), officialWebsite },
       )
     }
 
@@ -604,16 +604,16 @@ async function main() {
 
       await connection.execute(
         `INSERT INTO service_orders (
-           order_no, customer_id, device_id, service_mode, service_type, timesheet_category,
+           order_no, customer_id, service_mode, service_type, timesheet_category,
            priority, status, issue_description, assigned_engineer_id, planned_start_at,
            planned_end_at, created_by, submitted_at
          )
          VALUES (
-           :orderNo, :customerId, :deviceId, :mode, :type, :category, :priority, :status,
+           :orderNo, :customerId, :mode, :type, :category, :priority, :status,
            :issue, :engineerId, :date, :end, :adminId, :submittedAt
          )
          ON DUPLICATE KEY UPDATE
-           customer_id = VALUES(customer_id), device_id = VALUES(device_id), service_mode = VALUES(service_mode),
+           customer_id = VALUES(customer_id), service_mode = VALUES(service_mode),
            service_type = VALUES(service_type), timesheet_category = VALUES(timesheet_category),
            priority = VALUES(priority), issue_description = VALUES(issue_description),
            assigned_engineer_id = VALUES(assigned_engineer_id),
@@ -637,9 +637,17 @@ async function main() {
         },
       )
 
+      const orderId = await idBy(connection, 'SELECT id FROM service_orders WHERE order_no = :orderNo LIMIT 1', { orderNo: order.orderNo })
+      if (deviceId) {
+        await connection.execute(
+          `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+           VALUES (:orderId, :deviceId)`,
+          { orderId, deviceId },
+        )
+      }
+
       // Only create engineer association and report for orders with assigned engineers
       if (engineerId && order.status !== 'draft') {
-        const orderId = await idBy(connection, 'SELECT id FROM service_orders WHERE order_no = :orderNo LIMIT 1', { orderNo: order.orderNo })
         await connection.execute(
           `INSERT INTO service_order_engineers (service_order_id, engineer_id, joined_by)
            VALUES (:orderId, :engineerId, :adminId)
