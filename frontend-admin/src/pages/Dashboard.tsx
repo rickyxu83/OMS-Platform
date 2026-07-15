@@ -477,18 +477,18 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "
   completed: "success",
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "cyan" | "warning" | "info" | "purple" | "secondary"> = {
+const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "secondary"> = {
   install: "cyan",
-  repair: "warning",
+  repair: "orange",
   maintain: "info",
   inspect: "purple",
-  training: "info",
+  training: "warning",
   remote: "info",
   other: "secondary",
 };
 
-const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
-  onsite: "success",
+const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary"> = {
+  onsite: "teal",
   remote: "info",
   office: "purple",
 };

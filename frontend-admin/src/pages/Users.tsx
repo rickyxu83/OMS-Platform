@@ -64,16 +64,16 @@ const ROLE_LABELS: Record<string, string> = {
   engineer: "工程师",
 };
 
-const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "warning" | "secondary" | "rose" | "cyan" | "teal" | "orange"> = {
+const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "warning" | "secondary" | "rose" | "cyan" | "teal" | "orange" | "lime" | "fuchsia"> = {
   admin: "rose",
-  assistant: "cyan",
+  assistant: "info",
   dispatcher: "purple",
   operations_director: "success",
   engineering_supervisor: "info",
-  administrative_supervisor: "teal",
+  administrative_supervisor: "lime",
   sales_supervisor: "warning",
   sales: "orange",
-  engineer: "secondary",
+  engineer: "fuchsia",
 };
 
 const STATUS_VARIANT: Record<string, "success" | "secondary"> = {

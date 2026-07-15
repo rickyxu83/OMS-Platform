@@ -392,12 +392,12 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "s
   completed: "success",
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "cyan" | "warning" | "info" | "purple" | "secondary"> = {
+const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "secondary"> = {
   install: "cyan",
-  repair: "warning",
+  repair: "orange",
   maintain: "info",
   inspect: "purple",
-  training: "info",
+  training: "warning",
   remote: "info",
   other: "secondary",
 };
@@ -418,8 +418,8 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 const PRIORITY_HELP = "优先级用于提示工程师和调度处理顺序：普通按常规安排，高和紧急需要优先关注；它不会改变工单状态，也不代表审批结果。";
 
-const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
-  onsite: "success",
+const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary"> = {
+  onsite: "teal",
   remote: "info",
   office: "purple",
 };
