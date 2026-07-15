@@ -978,7 +978,42 @@ export function ServiceOrders() {
   const [filePreviewText, setFilePreviewText] = useState("");
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [filePreviewError, setFilePreviewError] = useState("");
+  const [attachmentThumbnailUrls, setAttachmentThumbnailUrls] = useState<Record<string, string>>({});
   const filePreviewUrlRef = useRef("");
+  const attachmentThumbnailUrlsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const photoFiles = (detailOrder?.files || []).filter((file) => file.purpose === "site_photo");
+    setAttachmentThumbnailUrls({});
+    attachmentThumbnailUrlsRef.current = {};
+    if (!photoFiles.length) return undefined;
+
+    void Promise.all(photoFiles.map(async (file) => {
+      try {
+        const blob = await api.download(`/files/${file.id}`);
+        if (attachmentPreviewKind(file, blob) !== "image") return null;
+        return [String(file.id), URL.createObjectURL(blob)] as const;
+      } catch {
+        return null;
+      }
+    })).then((entries) => {
+      if (cancelled) {
+        entries.forEach((entry) => { if (entry) URL.revokeObjectURL(entry[1]); });
+        return;
+      }
+      const urls = Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
+      attachmentThumbnailUrlsRef.current = urls;
+      setAttachmentThumbnailUrls(urls);
+    });
+
+    return () => {
+      cancelled = true;
+      Object.values(attachmentThumbnailUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      attachmentThumbnailUrlsRef.current = {};
+      setAttachmentThumbnailUrls({});
+    };
+  }, [detailOrder]);
   const userRole = String(user?.role || "");
   const isBusinessUser = isBusinessRole(userRole);
   const canCreateOrders = hasPermission("order.create");
@@ -2217,8 +2252,10 @@ export function ServiceOrders() {
                           onClick={() => openFilePreview(file, group.image ? group.files : [file])}
                           title={`预览 ${file.originalName || `附件 #${file.id}`}`}
                         >
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-sm">
-                            {group.image ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-primary shadow-sm">
+                            {group.image && attachmentThumbnailUrls[String(file.id)] ? (
+                              <img src={attachmentThumbnailUrls[String(file.id)]} alt="" className="h-full w-full object-cover" />
+                            ) : group.image ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                           </span>
                           <span className="min-w-0">
                             <span className="block truncate font-medium text-primary group-hover:underline">{file.originalName || `附件 #${file.id}`}</span>
