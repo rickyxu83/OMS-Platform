@@ -16,9 +16,6 @@ const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
 const { ROLE_GROUPS } = require('../../permissions/roles')
 const { hasAnyPermission } = require('../../permissions/store')
-const { isInternalCustomerName } = require('../customers/internal')
-
-const MONTHLY_COMPANY_NAME = '敦阳（宁波）科技有限公司'
 const {
   assertSalesCanAccessSalesperson,
   buildSalesCustomerScope,
@@ -1954,7 +1951,7 @@ async function timesheetMonthly(req, res) {
           : row.service_mode === 'office'
             ? row.timesheet_category || category
             : category,
-      customerName: isInternalCustomerName(row.customer_name) ? MONTHLY_COMPANY_NAME : row.customer_name,
+      customerName: row.customer_name,
       productName: row.service_mode === 'office' ? row.internal_note || '' : row.device_name || '',
       workContent: joinTimesheetWorkContent(
         row.work_entries_content,
