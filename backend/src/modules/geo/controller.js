@@ -1,7 +1,7 @@
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
-const { customerNameKey } = require('../../utils/chinese')
+const { buildLikeSearch } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
@@ -259,8 +259,7 @@ async function searchMapPois({ keyword, latitude, longitude }) {
 
 async function searchCompanies(req, res) {
   const { keyword = '', latitude = '', longitude = '' } = req.query
-  const likeKeyword = `%${keyword}%`
-  const likeKeywordKey = `%${customerNameKey(keyword)}%`
+  const keywordSearch = buildLikeSearch(keyword)
   const lat = toNumber(latitude)
   const lng = toNumber(longitude)
   const salesScope = buildSalesCustomerScope(req.user, 'customers')
@@ -277,21 +276,20 @@ async function searchCompanies(req, res) {
        ${salesScope.sql}
        AND (
          :keyword = ''
-         OR name LIKE :likeKeyword
-         OR name_key LIKE :likeKeywordKey
-         OR address LIKE :likeKeyword
-         OR contact_name LIKE :likeKeyword
-         OR salesperson LIKE :likeKeyword
-         OR remark LIKE :likeKeyword
-         OR map_poi_name LIKE :likeKeyword
-         OR map_address LIKE :likeKeyword
+         OR ${keywordSearch.sql('name')}
+         OR ${keywordSearch.sql('name_key')}
+         OR ${keywordSearch.sql('address')}
+         OR ${keywordSearch.sql('contact_name')}
+         OR ${keywordSearch.sql('salesperson')}
+         OR ${keywordSearch.sql('remark')}
+         OR ${keywordSearch.sql('map_poi_name')}
+         OR ${keywordSearch.sql('map_address')}
        )
      ORDER BY distance_score ASC, updated_at DESC
      LIMIT 8`,
     {
       keyword,
-      likeKeyword,
-      likeKeywordKey,
+      ...keywordSearch.params,
       latitude: lat,
       longitude: lng,
       internalCustomerName: INTERNAL_CUSTOMER_NAME,

@@ -1,5 +1,6 @@
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
+const { buildLikeSearch } = require('../../utils/chinese')
 
 function parseDetailJson(value) {
   if (!value || typeof value !== 'string') return value || null
@@ -53,6 +54,7 @@ async function list(req, res) {
   const fromDate = normalizeDate(from, '开始日期')
   const toDate = normalizeDate(to, '结束日期')
   const normalizedKeyword = String(keyword || '').trim()
+  const keywordSearch = buildLikeSearch(normalizedKeyword)
   const onlyRisky = ['1', 'true', 'yes'].includes(String(riskyOnly || '').toLowerCase())
   const sortColumns = {
     createdAt: 'al.created_at',
@@ -68,7 +70,7 @@ async function list(req, res) {
     targetType,
     action,
     keyword: normalizedKeyword,
-    likeKeyword: `%${normalizedKeyword}%`,
+    ...keywordSearch.params,
     fromDate,
     toDate,
   }
@@ -82,11 +84,11 @@ async function list(req, res) {
        AND (:toDate = '' OR al.created_at < DATE_ADD(:toDate, INTERVAL 1 DAY))
        AND (
          :keyword = ''
-         OR u.real_name LIKE :likeKeyword
-         OR u.username LIKE :likeKeyword
-         OR al.target_type LIKE :likeKeyword
-         OR al.action LIKE :likeKeyword
-         OR al.detail_json LIKE :likeKeyword
+         OR ${keywordSearch.sql('u.real_name')}
+         OR ${keywordSearch.sql('u.username')}
+         OR ${keywordSearch.sql('al.target_type')}
+         OR ${keywordSearch.sql('al.action')}
+         OR ${keywordSearch.sql('al.detail_json')}
        )
        ${onlyRisky ? `AND (
          al.action IN ('update', 'delete')

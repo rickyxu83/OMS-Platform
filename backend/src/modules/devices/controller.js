@@ -5,7 +5,7 @@ const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
-const { customerNameKey, toSimplified } = require('../../utils/chinese')
+const { buildLikeSearch, customerNameKey, toSimplified } = require('../../utils/chinese')
 const { normalizeAlias } = require('../device-model-catalog/normalize')
 const {
   findCatalogMatch,
@@ -737,6 +737,7 @@ async function loadDevicesForModelNormalization(req, ids) {
 
   const { customerId = null } = req.body || {}
   const keyword = String(req.body?.keyword ?? req.body?.q ?? '').trim()
+  const keywordSearch = buildLikeSearch(keyword)
   return query(
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.serial_no
      FROM devices d
@@ -745,17 +746,17 @@ async function loadDevicesForModelNormalization(req, ids) {
        ${salesScope.sql}
        AND (
          :keyword = ''
-         OR d.name LIKE :likeKeyword
-         OR d.model LIKE :likeKeyword
-         OR d.serial_no LIKE :likeKeyword
-         OR c.name LIKE :likeKeyword
+         OR ${keywordSearch.sql('d.name')}
+         OR ${keywordSearch.sql('d.model')}
+         OR ${keywordSearch.sql('d.serial_no')}
+         OR ${keywordSearch.sql('c.name')}
        )
      ORDER BY d.id DESC
      LIMIT 200`,
     {
       customerId: customerId || null,
       keyword,
-      likeKeyword: `%${keyword}%`,
+      ...keywordSearch.params,
       ...salesScope.params,
     },
   )
@@ -1205,6 +1206,7 @@ async function list(req, res) {
   await ensureDeviceIdentityColumns()
   const { customerId = null } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const keywordSearch = buildLikeSearch(keyword)
   const salesScope = buildSalesCustomerScope(req.user, 'c')
   const rows = await query(
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
@@ -1218,22 +1220,22 @@ async function list(req, res) {
        ${salesScope.sql}
        AND (
          :keyword = ''
-         OR d.name LIKE :likeKeyword
-         OR d.model LIKE :likeKeyword
-         OR d.pn LIKE :likeKeyword
-         OR d.serial_no LIKE :likeKeyword
-         OR d.mr_no LIKE :likeKeyword
-         OR c.name LIKE :likeKeyword
-         OR mp.name LIKE :likeKeyword
-         OR d.location LIKE :likeKeyword
-         OR d.remark LIKE :likeKeyword
+         OR ${keywordSearch.sql('d.name')}
+         OR ${keywordSearch.sql('d.model')}
+         OR ${keywordSearch.sql('d.pn')}
+         OR ${keywordSearch.sql('d.serial_no')}
+         OR ${keywordSearch.sql('d.mr_no')}
+         OR ${keywordSearch.sql('c.name')}
+         OR ${keywordSearch.sql('mp.name')}
+         OR ${keywordSearch.sql('d.location')}
+         OR ${keywordSearch.sql('d.remark')}
        )
      ORDER BY d.id DESC
      LIMIT 200`,
     {
       customerId: customerId || null,
       keyword,
-      likeKeyword: `%${keyword}%`,
+      ...keywordSearch.params,
       ...salesScope.params,
     },
   )

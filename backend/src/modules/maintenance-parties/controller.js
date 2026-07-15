@@ -1,6 +1,7 @@
 const { query } = require('../../config/db')
 const { badRequest, notFound } = require('../../utils/http-error')
 const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
+const { buildLikeSearch } = require('../../utils/chinese')
 
 const validPartyTypes = new Set(['original_manufacturer', 'our_maintenance'])
 const partyTypeAliases = {
@@ -127,6 +128,7 @@ async function list(req, res) {
   await ensureMaintenancePartyColumns()
   const { partyType = '' } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const keywordSearch = buildLikeSearch(keyword)
   const limit = normalizeListLimit(req.query.limit)
   const normalizedPartyType = partyType ? normalizePartyType(partyType, '') : ''
   if (normalizedPartyType && !validPartyTypes.has(normalizedPartyType)) {
@@ -138,19 +140,19 @@ async function list(req, res) {
      WHERE (:partyType = '' OR party_type = :partyType)
        AND (
          :keyword = ''
-         OR name LIKE :likeKeyword
-         OR contact LIKE :likeKeyword
-         OR contacts LIKE :likeKeyword
-         OR phone LIKE :likeKeyword
-         OR official_website LIKE :likeKeyword
-         OR remark LIKE :likeKeyword
+         OR ${keywordSearch.sql('name')}
+         OR ${keywordSearch.sql('contact')}
+         OR ${keywordSearch.sql('contacts')}
+         OR ${keywordSearch.sql('phone')}
+         OR ${keywordSearch.sql('official_website')}
+         OR ${keywordSearch.sql('remark')}
        )
      ORDER BY id DESC
      LIMIT ${limit}`,
     {
       keyword,
       partyType: normalizedPartyType,
-      likeKeyword: `%${keyword}%`,
+      ...keywordSearch.params,
     },
   )
 

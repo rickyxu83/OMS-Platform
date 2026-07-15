@@ -5,7 +5,7 @@ const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
-const { customerNameKey, toSimplified, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { buildLikeSearch, customerNameKey, toSimplified, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
@@ -16,6 +16,9 @@ const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
 const { ROLE_GROUPS } = require('../../permissions/roles')
 const { hasAnyPermission } = require('../../permissions/store')
+const { isInternalCustomerName } = require('../customers/internal')
+
+const MONTHLY_COMPANY_NAME = '敦阳（宁波）科技有限公司'
 const {
   assertSalesCanAccessSalesperson,
   buildSalesCustomerScope,
@@ -1657,6 +1660,7 @@ function buildListQueryParts(req) {
   }
   const sortColumn = sortColumns[sortBy] || sortColumns.createdAt
   const sortDirection = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+  const customerSearch = buildLikeSearch(customer, 'likeCustomer')
   const keywordTerms = splitSearchTerms(keyword)
   const keywordParams = {}
   const keywordWhereSql = keywordTerms.length
@@ -1678,7 +1682,7 @@ function buildListQueryParts(req) {
     LEFT JOIN users confirmer ON confirmer.id = so.confirmed_by
     WHERE ${statusWhereSql}
       AND (:customerId IS NULL OR so.customer_id = :customerId)
-      AND (:customer = '' OR c.name LIKE :likeCustomer)
+      AND (:customer = '' OR ${customerSearch.sql('c.name')})
       AND (:startDate = '' OR DATE(${serviceTimeSql}) >= :startDate)
       AND (:endDate = '' OR DATE(${serviceTimeSql}) <= :endDate)
       AND (
@@ -1701,7 +1705,7 @@ function buildListQueryParts(req) {
     customer,
     startDate,
     endDate,
-    likeCustomer: `%${customer}%`,
+    ...customerSearch.params,
     ...keywordParams,
     ...salesScope.params,
     ...businessVisibilityScope.params,
@@ -1950,7 +1954,7 @@ async function timesheetMonthly(req, res) {
           : row.service_mode === 'office'
             ? row.timesheet_category || category
             : category,
-      customerName: row.customer_name,
+      customerName: isInternalCustomerName(row.customer_name) ? MONTHLY_COMPANY_NAME : row.customer_name,
       productName: row.service_mode === 'office' ? row.internal_note || '' : row.device_name || '',
       workContent: joinTimesheetWorkContent(
         row.work_entries_content,

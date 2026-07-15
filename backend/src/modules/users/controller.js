@@ -6,6 +6,7 @@ const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
 const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
+const { buildLikeSearch } = require('../../utils/chinese')
 const { ALL_ROLES } = require('../../permissions/catalog')
 const { ensureUserLoginColumns } = require('./schema')
 
@@ -169,18 +170,19 @@ function validateSignature(dataUrl) {
 async function list(req, res) {
   await ensureUserLoginColumns()
   const { role, status = 'active', keyword = '' } = req.query
+  const keywordSearch = buildLikeSearch(keyword)
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
      WHERE (:role IS NULL OR role = :role)
        AND (:status IS NULL OR status = :status)
-       AND (:keyword = '' OR username LIKE :likeKeyword OR login_alias LIKE :likeKeyword OR real_name LIKE :likeKeyword OR phone LIKE :likeKeyword OR email LIKE :likeKeyword)
+       AND (:keyword = '' OR ${keywordSearch.sql('username')} OR ${keywordSearch.sql('login_alias')} OR ${keywordSearch.sql('real_name')} OR ${keywordSearch.sql('phone')} OR ${keywordSearch.sql('email')})
      ORDER BY id DESC`,
     {
       role: role || null,
       status: status || null,
       keyword,
-      likeKeyword: `%${keyword}%`,
+      ...keywordSearch.params,
     },
   )
 

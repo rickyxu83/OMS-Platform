@@ -1,4 +1,5 @@
 const { query } = require('../../config/db')
+const { searchTextVariants } = require('../../utils/chinese')
 const { normalizeAlias, deduplicateAliases } = require('./normalize')
 
 const catalogCategories = new Set(['server', 'storage', 'network'])
@@ -12,6 +13,20 @@ async function suggest(req, res, next) {
     }
 
     const normalizedKeyword = normalizeAlias(rawKeyword)
+    const keywordVariants = searchTextVariants(rawKeyword)
+    const variantParams = {}
+    keywordVariants.forEach((variant, index) => {
+      variantParams[`variantKeyword${index}`] = variant
+      variantParams[`variantPrefix${index}`] = `${variant}%`
+      variantParams[`variantPartial${index}`] = `%${variant}%`
+      variantParams[`variantNormalized${index}`] = normalizeAlias(variant)
+      variantParams[`variantNormalizedPartial${index}`] = `%${normalizeAlias(variant)}%`
+    })
+    const variantExactSql = (column) => keywordVariants.map((_, index) => `LOWER(${column}) = LOWER(:variantKeyword${index})`).join(' OR ')
+    const variantPrefixSql = (column) => keywordVariants.map((_, index) => `LOWER(${column}) LIKE LOWER(:variantPrefix${index})`).join(' OR ')
+    const variantPartialSql = (column) => keywordVariants.map((_, index) => `LOWER(${column}) LIKE LOWER(:variantPartial${index})`).join(' OR ')
+    const variantNormalizedExactSql = keywordVariants.map((_, index) => `a.normalized_alias = :variantNormalized${index}`).join(' OR ')
+    const variantNormalizedPartialSql = keywordVariants.map((_, index) => `a.normalized_alias LIKE :variantNormalizedPartial${index}`).join(' OR ')
     const rows = await query(
       `SELECT matched.id,
               matched.brand,
@@ -34,7 +49,7 @@ async function suggest(req, res, next) {
                 10 AS match_rank
          FROM device_model_catalog c
          WHERE c.is_active = 1
-           AND LOWER(c.canonical_model) = LOWER(:rawKeyword)
+           AND (LOWER(c.canonical_model) = LOWER(:rawKeyword) OR ${variantExactSql('c.canonical_model')})
 
          UNION ALL
 
@@ -49,7 +64,7 @@ async function suggest(req, res, next) {
                 9 AS match_rank
          FROM device_model_catalog c
          WHERE c.is_active = 1
-           AND LOWER(COALESCE(c.part_number, '')) = LOWER(:rawKeyword)
+           AND (LOWER(COALESCE(c.part_number, '')) = LOWER(:rawKeyword) OR ${variantExactSql("COALESCE(c.part_number, '')")})
 
          UNION ALL
 
@@ -65,7 +80,7 @@ async function suggest(req, res, next) {
          FROM device_model_aliases a
          JOIN device_model_catalog c ON c.id = a.catalog_id
          WHERE c.is_active = 1
-           AND a.normalized_alias = :normalizedKeyword
+           AND (a.normalized_alias = :normalizedKeyword OR ${variantNormalizedExactSql})
 
          UNION ALL
 
@@ -83,6 +98,8 @@ async function suggest(req, res, next) {
            AND (
              LOWER(c.canonical_model) LIKE LOWER(:prefixKeyword)
              OR LOWER(COALESCE(c.part_number, '')) LIKE LOWER(:prefixKeyword)
+             OR ${variantPrefixSql('c.canonical_model')}
+             OR ${variantPrefixSql("COALESCE(c.part_number, '')")}
            )
 
          UNION ALL
@@ -101,11 +118,13 @@ async function suggest(req, res, next) {
            AND (
              LOWER(c.canonical_model) LIKE LOWER(:partialKeyword)
              OR LOWER(COALESCE(c.part_number, '')) LIKE LOWER(:partialKeyword)
+             OR ${variantPartialSql('c.canonical_model')}
+             OR ${variantPartialSql("COALESCE(c.part_number, '')")}
              OR EXISTS (
                SELECT 1
                FROM device_model_aliases a
                WHERE a.catalog_id = c.id
-                 AND a.normalized_alias LIKE :partialNormalizedKeyword
+                 AND (a.normalized_alias LIKE :partialNormalizedKeyword OR ${variantNormalizedPartialSql})
              )
            )
        ) AS matched
@@ -119,6 +138,7 @@ async function suggest(req, res, next) {
         prefixKeyword: `${rawKeyword}%`,
         partialKeyword: `%${rawKeyword}%`,
         partialNormalizedKeyword: `%${normalizedKeyword}%`,
+        ...variantParams,
       },
     )
 

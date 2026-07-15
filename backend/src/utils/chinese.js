@@ -13,6 +13,27 @@ function toSimplified(value) {
   return typeof value === 'string' ? toSimplifiedConverter(value) : value
 }
 
+function searchTextVariants(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return []
+  return [...new Set([
+    text,
+    toSimplified(text),
+    toTraditional(text),
+    toTraditional(toSimplified(text)),
+    toSimplified(toTraditional(text)),
+  ].map((item) => String(item || '').toLowerCase().replace(/\s+/g, '').trim()).filter(Boolean))]
+}
+
+function buildLikeSearch(value, prefix = 'likeKeyword') {
+  const variants = searchTextVariants(value)
+  const params = Object.fromEntries(variants.map((variant, index) => [`${prefix}${index}`, `%${variant}%`]))
+  const sql = (column) => variants.length
+    ? variants.map((_, index) => `${column} LIKE :${prefix}${index}`).join(' OR ')
+    : '1 = 0'
+  return { variants, params, sql }
+}
+
 function toTraditionalDeep(value) {
   if (Array.isArray(value)) return value.map(toTraditionalDeep)
   if (value && typeof value === 'object') {
@@ -44,4 +65,6 @@ module.exports = {
   toTraditionalDeep,
   toSimplifiedDeep,
   customerNameKey,
+  searchTextVariants,
+  buildLikeSearch,
 }

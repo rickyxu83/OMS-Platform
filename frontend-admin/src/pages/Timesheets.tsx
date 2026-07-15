@@ -74,6 +74,12 @@ function getSourceLabel(source?: string) {
   return source === "service_order" ? "工单" : source === "manual" ? "手工记录" : source || "-";
 }
 
+function getMonthlyCustomerName(value?: string) {
+  return ["敦阳科技（内勤）", "敦陽科技（內勤）"].includes(String(value || "").trim())
+    ? "敦阳（宁波）科技有限公司"
+    : value || "";
+}
+
 async function downloadEngineerWorkbook(filename: string, label: string, items: TimesheetItem[]) {
   const [{ Workbook }, { saveAs }] = await Promise.all([
     import("exceljs"),
@@ -132,7 +138,7 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
         date: getServiceDate(item),
         weekday: item.weekday || "",
         workNature: item.workNature || item.serviceMode || "",
-        customerName: item.customerName || "",
+        customerName: getMonthlyCustomerName(item.customerName),
         productName: item.productName || "",
         workContent: item.workContent || "",
         progress: item.progress || "",
