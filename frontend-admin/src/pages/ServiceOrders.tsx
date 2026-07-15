@@ -2148,8 +2148,6 @@ export function ServiceOrders() {
           {detailOrder && (() => {
             const statusLabel = detailOrder.displayStatus || t.status[getWorkflowStatus(detailOrder) as keyof typeof t.status] || getWorkflowStatus(detailOrder) || "-";
             const typeLabel = serviceItemsLabel(detailOrder);
-            const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
-            const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
             const serviceTime = serviceTimeRange(detailOrder);
             const orderFiles = (detailOrder.files || []).filter((file) => file.ownerType !== "signature");
             const photoAttachments = orderFiles.filter((file) => file.purpose === "site_photo");
@@ -2177,8 +2175,6 @@ export function ServiceOrders() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(detailOrder)] || "secondary"}>{statusLabel}</Badge>
                   <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(detailOrder)] || "secondary"}>{typeLabel}</Badge>
-                  <Badge variant={MODE_BADGE_VARIANT[detailOrder.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                  <Badge variant={PRIORITY_BADGE_VARIANT[detailOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">

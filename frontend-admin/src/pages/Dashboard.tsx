@@ -1103,8 +1103,6 @@ export function Dashboard() {
               const status = getWorkflowStatus(previewOrder);
               const statusLabel = previewOrder.displayStatus || normalizeStatus(status, t.status);
               const typeLabel = t.type[previewOrder.serviceType as keyof typeof t.type] || previewOrder.serviceType || "-";
-              const modeLabel = t.mode[previewOrder.serviceMode as keyof typeof t.mode] || previewOrder.serviceMode || "-";
-              const priorityLabel = t.priority[previewOrder.priority as keyof typeof t.priority] || previewOrder.priority || "-";
               const serviceTime = reportServiceTime(previewOrder);
               const workContent = reportWorkContent(previewOrder);
               const displayWorkContent = previewOrder.serviceMode === "office"
@@ -1125,8 +1123,6 @@ export function Dashboard() {
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
                     <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(previewOrder)] || "secondary"}>{typeLabel}</Badge>
-                    <Badge variant={MODE_BADGE_VARIANT[previewOrder.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                    <Badge variant={PRIORITY_BADGE_VARIANT[previewOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
