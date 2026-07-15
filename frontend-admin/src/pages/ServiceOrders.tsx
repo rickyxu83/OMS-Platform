@@ -392,8 +392,8 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "s
   completed: "success",
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purple" | "secondary"> = {
-  install: "success",
+const TYPE_BADGE_VARIANT: Record<string, "cyan" | "warning" | "info" | "purple" | "secondary"> = {
+  install: "cyan",
   repair: "warning",
   maintain: "info",
   inspect: "purple",

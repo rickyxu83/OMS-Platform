@@ -247,7 +247,7 @@ const toTraditionalConverter = OpenCC.Converter({ from: "cn", to: "tw" })
 const toSimplifiedConverter = OpenCC.Converter({ from: "tw", to: "cn" })
 const japaneseToSimplifiedConverter = OpenCC.Converter({ from: "jp", to: "cn" })
 const phrases = (Object.entries(phraseMap) as Array<[string, string]>).sort((left, right) => right[0].length - left[0].length)
-const oneWayTraditionalPhrases = new Set(["文档", "配置"])
+const oneWayTraditionalPhrases = new Set(["文档", "配置", "文件"])
 const searchPhraseMap: Record<string, string> = {
   "儲存": "保存",
   "資訊": "信息",
