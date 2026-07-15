@@ -5,7 +5,7 @@ const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
-const { customerNameKey, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { customerNameKey, toSimplified, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
@@ -132,24 +132,25 @@ function splitSearchTerms(value) {
     .slice(0, 8)
 }
 
-function serviceOrderSearchClause(index) {
-  const likeParam = `:likeKeyword${index}`
+function serviceOrderSearchClause(index, variants = []) {
+  const likeParams = variants.map((_, variantIndex) => `:likeKeyword${index}_${variantIndex}`)
+  const likeAny = (expression) => likeParams.map((param) => `${expression} LIKE ${param}`).join('\n          OR ')
   return `
         (
-          so.order_no LIKE ${likeParam}
-          OR c.name LIKE ${likeParam}
-          OR c.address LIKE ${likeParam}
-          OR d.name LIKE ${likeParam}
-          OR d.model LIKE ${likeParam}
-          OR d.serial_no LIKE ${likeParam}
-          OR so.issue_description LIKE ${likeParam}
-          OR so.internal_note LIKE ${likeParam}
-          OR so.timesheet_category LIKE ${likeParam}
-          OR so.timesheet_salesperson LIKE ${likeParam}
-          OR so.service_type LIKE ${likeParam}
-          OR so.service_mode LIKE ${likeParam}
-          OR so.status LIKE ${likeParam}
-          OR CASE so.service_type
+          ${likeAny('so.order_no')}
+          OR ${likeAny('c.name')}
+          OR ${likeAny('c.address')}
+          OR ${likeAny('d.name')}
+          OR ${likeAny('d.model')}
+          OR ${likeAny('d.serial_no')}
+          OR ${likeAny('so.issue_description')}
+          OR ${likeAny('so.internal_note')}
+          OR ${likeAny('so.timesheet_category')}
+          OR ${likeAny('so.timesheet_salesperson')}
+          OR ${likeAny('so.service_type')}
+          OR ${likeAny('so.service_mode')}
+          OR ${likeAny('so.status')}
+          OR ${likeAny(`CASE so.service_type
                WHEN 'install' THEN '安装 install'
                WHEN 'repair' THEN '技术处理 故障排查 配置修改 调整优化 排障 维修 repair'
                WHEN 'maintain' THEN '调优 保养 维护 maintain'
@@ -158,14 +159,14 @@ function serviceOrderSearchClause(index) {
                WHEN 'remote' THEN '远程 远程支持 remote'
                WHEN 'other' THEN '其他 other'
                ELSE COALESCE(so.service_type, '')
-             END LIKE ${likeParam}
-          OR CASE so.service_mode
+             END`)}
+          OR ${likeAny(`CASE so.service_mode
                WHEN 'onsite' THEN '现场 现场服务 onsite'
                WHEN 'remote' THEN '远程 远程服务 remote'
                WHEN 'office' THEN '内勤 内勤工作 office'
                ELSE COALESCE(so.service_mode, '')
-             END LIKE ${likeParam}
-          OR CASE so.status
+             END`)}
+          OR ${likeAny(`CASE so.status
                WHEN 'draft' THEN '草稿 draft'
                WHEN 'pending_confirmation' THEN '待确认 pending confirmation'
                WHEN 'awaiting_customer_signature' THEN '待客户签署 awaiting customer signature'
@@ -178,17 +179,17 @@ function serviceOrderSearchClause(index) {
                WHEN 'completed' THEN '已完成 completed'
                WHEN 'rejected' THEN '已退回 rejected'
                ELSE COALESCE(so.status, '')
-             END LIKE ${likeParam}
-          OR u.real_name LIKE ${likeParam}
-          OR u.username LIKE ${likeParam}
-          OR target_u.real_name LIKE ${likeParam}
-          OR target_u.username LIKE ${likeParam}
+             END`)}
+          OR ${likeAny('u.real_name')}
+          OR ${likeAny('u.username')}
+          OR ${likeAny('target_u.real_name')}
+          OR ${likeAny('target_u.username')}
           OR EXISTS (
             SELECT 1
             FROM service_order_engineers keyword_soe
             JOIN users keyword_u ON keyword_u.id = keyword_soe.engineer_id
             WHERE keyword_soe.service_order_id = so.id
-              AND (keyword_u.real_name LIKE ${likeParam} OR keyword_u.username LIKE ${likeParam})
+              AND (${likeAny('keyword_u.real_name')} OR ${likeAny('keyword_u.username')})
           )
         )`
 }
@@ -1657,13 +1658,16 @@ function buildListQueryParts(req) {
   const sortColumn = sortColumns[sortBy] || sortColumns.createdAt
   const sortDirection = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC'
   const keywordTerms = splitSearchTerms(keyword)
+  const keywordParams = {}
   const keywordWhereSql = keywordTerms.length
-    ? keywordTerms.map((_, index) => serviceOrderSearchClause(index)).join('\n        AND ')
+    ? keywordTerms.map((term, index) => {
+      const variants = [...new Set([term, toSimplified(term), toTraditional(term)].map((value) => String(value || '').trim()).filter(Boolean))]
+      variants.forEach((variant, variantIndex) => {
+        keywordParams[`likeKeyword${index}_${variantIndex}`] = `%${variant}%`
+      })
+      return serviceOrderSearchClause(index, variants)
+    }).join('\n        AND ')
     : '1 = 1'
-  const keywordParams = keywordTerms.reduce((params, term, index) => {
-    params[`likeKeyword${index}`] = `%${term}%`
-    return params
-  }, {})
 
   const fromAndWhere = `
     FROM service_orders so

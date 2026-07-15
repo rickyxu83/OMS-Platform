@@ -92,11 +92,11 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
 
   const sortedGroups = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"));
   const columns = [
+    { header: "工单编号", key: "orderNo", width: 20 },
     { header: "填表人", key: "engineerName", width: 14 },
     { header: "日期", key: "date", width: 13 },
     { header: "星期", key: "weekday", width: 10 },
     { header: "工作性质", key: "workNature", width: 13 },
-    { header: "类别", key: "category", width: 16 },
     { header: "客户名称", key: "customerName", width: 24 },
     { header: "专案/产品", key: "productName", width: 24 },
     { header: "工作内容", key: "workContent", width: 42 },
@@ -107,10 +107,17 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
 
   sortedGroups.forEach(([engineer, engineerItems], index) => {
     const worksheet = workbook.addWorksheet(safeSheetName(engineer, `工程师${index + 1}`), {
-      views: [{ state: "frozen", ySplit: 1 }],
+      views: [{ state: "frozen", ySplit: 4 }],
       pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     });
-    worksheet.columns = columns;
+    worksheet.columns = columns.map(({ key, width }) => ({ key, width }));
+    worksheet.mergeCells(1, 1, 1, columns.length);
+    worksheet.getCell(1, 1).value = "敦阳（宁波）科技有限公司";
+    worksheet.mergeCells(2, 1, 2, columns.length);
+    worksheet.getCell(2, 1).value = `月报记录 · ${label}`;
+    worksheet.mergeCells(3, 1, 3, columns.length);
+    worksheet.getCell(3, 1).value = `填表人：${engineer}　记录数：${engineerItems.length}`;
+    worksheet.addRow(columns.map((column) => column.header));
 
     const sortedItems = [...engineerItems].sort((left, right) => {
       const dateCompare = String(getServiceDate(left)).localeCompare(String(getServiceDate(right)));
@@ -120,11 +127,11 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
 
     sortedItems.forEach((item) => {
       worksheet.addRow({
+        orderNo: item.orderNo || "",
         engineerName: item.engineerName || engineer,
         date: getServiceDate(item),
         weekday: item.weekday || "",
         workNature: item.workNature || item.serviceMode || "",
-        category: item.category || "",
         customerName: item.customerName || "",
         productName: item.productName || "",
         workContent: item.workContent || "",
@@ -135,32 +142,49 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
     });
 
     worksheet.autoFilter = {
-      from: { row: 1, column: 1 },
+      from: { row: 4, column: 1 },
       to: { row: Math.max(1, worksheet.rowCount), column: columns.length },
     };
 
-    worksheet.getRow(1).height = 24;
+    worksheet.getRow(1).height = 30;
     worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, size: 15, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2E1065" } };
+      cell.alignment = { vertical: "middle", horizontal: "left" };
+    });
+    worksheet.getRow(2).height = 24;
+    worksheet.getRow(2).eachCell((cell) => {
+      cell.font = { bold: true, size: 12, color: { argb: "FF5B21B6" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F3FF" } };
+      cell.alignment = { vertical: "middle", horizontal: "left" };
+    });
+    worksheet.getRow(3).height = 22;
+    worksheet.getRow(3).eachCell((cell) => {
+      cell.font = { size: 10, color: { argb: "FF7C6F9C" } };
+      cell.alignment = { vertical: "middle", horizontal: "left" };
+    });
+    worksheet.getRow(4).height = 24;
+    worksheet.getRow(4).eachCell((cell) => {
       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF8B5CF6" } };
       cell.alignment = { vertical: "middle", horizontal: "center" };
       cell.border = {
-        top: { style: "thin", color: { argb: "FFB7C9D6" } },
-        left: { style: "thin", color: { argb: "FFB7C9D6" } },
-        bottom: { style: "thin", color: { argb: "FFB7C9D6" } },
-        right: { style: "thin", color: { argb: "FFB7C9D6" } },
+        top: { style: "thin", color: { argb: "FFEDE9FE" } },
+        left: { style: "thin", color: { argb: "FFEDE9FE" } },
+        bottom: { style: "thin", color: { argb: "FFEDE9FE" } },
+        right: { style: "thin", color: { argb: "FFEDE9FE" } },
       };
     });
 
     worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
+      if (rowNumber <= 4) return;
       row.height = 22;
       row.eachCell((cell, colNumber) => {
         cell.border = {
-          top: { style: "thin", color: { argb: "FFD9E2EC" } },
-          left: { style: "thin", color: { argb: "FFD9E2EC" } },
-          bottom: { style: "thin", color: { argb: "FFD9E2EC" } },
-          right: { style: "thin", color: { argb: "FFD9E2EC" } },
+          top: { style: "thin", color: { argb: "FFEDE9FE" } },
+          left: { style: "thin", color: { argb: "FFEDE9FE" } },
+          bottom: { style: "thin", color: { argb: "FFEDE9FE" } },
+          right: { style: "thin", color: { argb: "FFEDE9FE" } },
         };
         cell.alignment = {
           vertical: "middle",
@@ -168,14 +192,14 @@ async function downloadEngineerWorkbook(filename: string, label: string, items: 
           wrapText: [7, 8, 10].includes(colNumber),
         };
         if (rowNumber % 2 === 0) {
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAFC" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F3FF" } };
         }
       });
     });
 
     worksheet.getColumn("date").numFmt = "yyyy-mm-dd";
     worksheet.properties.defaultRowHeight = 22;
-    worksheet.headerFooter.oddHeader = `&C${label} - ${engineer}`;
+    worksheet.headerFooter.oddHeader = `&C敦阳（宁波）科技有限公司　${label} - ${engineer}`;
     worksheet.headerFooter.oddFooter = "&R第 &P / &N 页";
   });
 
