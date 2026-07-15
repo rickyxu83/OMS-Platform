@@ -285,7 +285,12 @@ const simplifiedPhrases = (Object.entries(phraseMap) as Array<[string, string]>)
     [target, source] as [string, string],
     [toSimplifiedConverter(target), source] as [string, string],
   ])
-  .concat(Object.entries(searchPhraseMap) as Array<[string, string]>)
+  .sort((left, right) => right[0].length - left[0].length)
+const searchPhrases = Object.entries(searchPhraseMap)
+  .flatMap(([source, target]) => [
+    [source, target] as [string, string],
+    [toSimplifiedConverter(source), target] as [string, string],
+  ])
   .sort((left, right) => right[0].length - left[0].length)
 const textNodeOriginals = new WeakMap<Text, string>()
 const attrOriginals = new WeakMap<Element, Record<string, string>>()
@@ -312,7 +317,7 @@ export function toSimplified(value: unknown) {
 }
 
 export function normalizeSearchText(value: unknown) {
-  return toSimplified(value)
+  return applyPhrases(toSimplified(value), searchPhrases)
     .toLowerCase()
     .replace(/\s+/g, "")
     .trim()
@@ -321,7 +326,7 @@ export function normalizeSearchText(value: unknown) {
 function searchTextVariants(value: unknown) {
   return Array.from(new Set([
     String(value ?? ""),
-    toSimplified(value),
+    applyPhrases(toSimplified(value), searchPhrases),
     toTraditional(value),
     toTraditional(toSimplified(value)),
     toSimplified(toTraditional(value)),
