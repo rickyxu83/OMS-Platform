@@ -179,6 +179,7 @@ interface CustomerSignatureRequest {
   id?: string | number;
   recipientEmail?: string;
   status?: string;
+  signedAt?: string;
   createdAt?: string;
 }
 
@@ -2155,10 +2156,12 @@ export function ServiceOrders() {
             const installedDevices = detailOrder.installedDevices || [];
             const resultText = serviceResultLabel(detailOrder.report?.result);
             const customerSignatureText = detailOrder.serviceMode === "onsite"
-              ? detailOrder.report?.customerSignatureFileId
-                ? "已使用历史签名"
+              ? detailOrder.customerSignatureRequest?.signedAt || detailOrder.customerSignatureRequest?.status === "signed"
+                ? "电子签署已完成"
                 : detailOrder.report?.customerSignature
                   ? "已完成现场签名"
+                  : detailOrder.report?.customerSignatureFileId
+                    ? "已使用历史签名"
                   : ""
               : detailOrder.serviceMode === "remote" ? "远程服务无需客户手写签名" : "";
             return (

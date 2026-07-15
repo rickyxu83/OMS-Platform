@@ -4619,18 +4619,18 @@ export function ServiceReport() {
                   : samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
                 const resultLabel = previewOrder.report?.result ? optionText(RESULT_OPTIONS, previewOrder.report.result) : "";
                 const signatureLabel = mode === "onsite"
-                  ? previewOrder.report?.customerSignatureFileId
-                    ? "已使用历史签名"
+                  ? previewOrder.customerSignatureRequest?.signedAt || previewOrder.customerSignatureRequest?.status === "signed"
+                    ? "电子签署已完成"
                     : previewOrder.report?.customerSignature
                       ? "已完成现场签名"
+                      : previewOrder.report?.customerSignatureFileId
+                        ? "已使用历史签名"
                       : previewOrder.customerSignatureRequest
-                        ? previewOrder.customerSignatureRequest.signedAt
-                          ? "电子签署已完成"
-                          : previewOrder.customerSignatureRequest.status === "sent"
+                        ? previewOrder.customerSignatureRequest.status === "sent"
                             ? "电子签署已发送"
                             : previewOrder.customerSignatureRequest.status === "created"
                               ? "电子签署待发送"
-                              : previewOrder.customerSignatureRequest.status || "电子签署处理中"
+                            : previewOrder.customerSignatureRequest.status || "电子签署处理中"
                         : ""
                   : mode === "remote" ? "远程服务无需客户手写签名" : "";
                 const customerFields = [
