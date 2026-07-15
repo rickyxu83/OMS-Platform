@@ -35,7 +35,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
+import { serviceItemsBadgeColor, serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 
@@ -422,6 +422,16 @@ const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary
   onsite: "teal",
   remote: "info",
   office: "purple",
+};
+
+const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "teal" | "secondary"> = {
+  cyan: "cyan",
+  orange: "orange",
+  info: "info",
+  purple: "purple",
+  warning: "warning",
+  teal: "teal",
+  secondary: "secondary",
 };
 
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
@@ -2021,7 +2031,7 @@ export function ServiceOrders() {
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
                             <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+                            <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(order)] || "secondary"}>{itemsLabel}</Badge>
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
@@ -2168,7 +2178,7 @@ export function ServiceOrders() {
               <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(detailOrder)] || "secondary"}>{statusLabel}</Badge>
-                  <Badge variant={TYPE_BADGE_VARIANT[detailOrder.serviceType || ""] || "outline"}>{typeLabel}</Badge>
+                  <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(detailOrder)] || "secondary"}>{typeLabel}</Badge>
                   <Badge variant="secondary">{modeLabel}</Badge>
                   <Badge variant={PRIORITY_BADGE_VARIANT[detailOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
                 </div>

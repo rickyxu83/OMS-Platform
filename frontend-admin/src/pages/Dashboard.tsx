@@ -12,6 +12,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
+import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { api } from "@/services/api";
 
 interface Summary {
@@ -491,6 +492,16 @@ const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary
   onsite: "teal",
   remote: "info",
   office: "purple",
+};
+
+const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "teal" | "secondary"> = {
+  cyan: "cyan",
+  orange: "orange",
+  info: "info",
+  purple: "purple",
+  warning: "warning",
+  teal: "teal",
+  secondary: "secondary",
 };
 
 const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
@@ -1113,7 +1124,7 @@ export function Dashboard() {
                 <div className="space-y-5 py-2">
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
-                    <Badge variant={TYPE_BADGE_VARIANT[previewOrder.serviceType || ""] || "outline"}>{typeLabel}</Badge>
+                    <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(previewOrder)] || "secondary"}>{typeLabel}</Badge>
                     <Badge variant={MODE_BADGE_VARIANT[previewOrder.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
                     <Badge variant={PRIORITY_BADGE_VARIANT[previewOrder.priority || ""] || "secondary"}>{priorityLabel}</Badge>
                   </div>

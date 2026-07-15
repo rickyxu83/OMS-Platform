@@ -119,3 +119,24 @@ export function serviceItemsLabel(item: ServiceItemSource, fallback = "-") {
 export function serviceItemsSearchText(item: ServiceItemSource) {
   return serviceItemLabels(item).join(" ");
 }
+
+export function serviceItemsBadgeColor(item: ServiceItemSource) {
+  const mode = String(item.serviceMode || "onsite").trim();
+  const modules = Array.isArray(item.serviceModules) ? item.serviceModules : [];
+  if (mode === "office") return "warning";
+  if (mode === "remote") {
+    if (modules.includes("repair")) return "info";
+    if (modules.includes("replacement")) return "teal";
+    return "cyan";
+  }
+  if (modules.includes("install")) return "cyan";
+  if (modules.includes("repair")) return "orange";
+  if (modules.includes("inspect")) return "purple";
+  if (modules.includes("replacement")) return "warning";
+  if (item.serviceType === "install") return "cyan";
+  if (item.serviceType === "repair") return "orange";
+  if (item.serviceType === "maintain") return "info";
+  if (item.serviceType === "inspect") return "purple";
+  if (item.serviceType === "training") return "warning";
+  return "secondary";
+}
