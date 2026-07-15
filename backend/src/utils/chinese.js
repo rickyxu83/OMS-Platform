@@ -2,15 +2,16 @@ const OpenCC = require('opencc-js')
 
 const toTraditionalConverter = OpenCC.Converter({ from: 'cn', to: 'tw' })
 const toSimplifiedConverter = OpenCC.Converter({ from: 'tw', to: 'cn' })
+const japaneseToSimplifiedConverter = OpenCC.Converter({ from: 'jp', to: 'cn' })
 
 function toTraditional(value) {
   if (value === null || value === undefined) return value
-  return typeof value === 'string' ? toTraditionalConverter(value) : value
+  return typeof value === 'string' ? toTraditionalConverter(japaneseToSimplifiedConverter(value)) : value
 }
 
 function toSimplified(value) {
   if (value === null || value === undefined) return value
-  return typeof value === 'string' ? toSimplifiedConverter(value) : value
+  return typeof value === 'string' ? japaneseToSimplifiedConverter(toSimplifiedConverter(value)) : value
 }
 
 function searchTextVariants(value) {

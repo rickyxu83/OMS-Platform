@@ -245,6 +245,7 @@ const phraseMap: Record<string, string> = {
 
 const toTraditionalConverter = OpenCC.Converter({ from: "cn", to: "tw" })
 const toSimplifiedConverter = OpenCC.Converter({ from: "tw", to: "cn" })
+const japaneseToSimplifiedConverter = OpenCC.Converter({ from: "jp", to: "cn" })
 const phrases = (Object.entries(phraseMap) as Array<[string, string]>).sort((left, right) => right[0].length - left[0].length)
 const oneWayTraditionalPhrases = new Set(["文档", "配置"])
 const searchPhraseMap: Record<string, string> = {
@@ -300,13 +301,13 @@ function applyPhrases(value: string, replacements: Array<[string, string]>) {
 
 export function toTraditional(value: unknown) {
   const normalized = applyPhrases(String(value ?? "").split("...").join("…"), phrases)
-  const converted = toTraditionalConverter(normalized)
+  const converted = toTraditionalConverter(japaneseToSimplifiedConverter(normalized))
   return applyPhrases(converted, phrases)
 }
 
 export function toSimplified(value: unknown) {
   const normalizedTerms = applyPhrases(String(value ?? ""), simplifiedPhrases)
-  const converted = toSimplifiedConverter(normalizedTerms)
+  const converted = japaneseToSimplifiedConverter(toSimplifiedConverter(normalizedTerms))
   return applyPhrases(converted, simplifiedPhrases)
 }
 
