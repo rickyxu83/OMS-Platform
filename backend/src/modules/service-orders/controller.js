@@ -1201,8 +1201,8 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds, optio
          )
          OR EXISTS (
            SELECT 1
-           FROM inspection_schedules isch
-           WHERE isch.device_id = d.id
+           FROM inspection_schedule_devices isd
+           WHERE isd.device_id = d.id
          )
        )`,
     { ...deviceParams.params, ...orderParams.params },
@@ -1276,8 +1276,8 @@ async function loadInstallationDeviceDeletePreview(orderIds) {
             ) AS used_by_other_target,
             EXISTS (
               SELECT 1
-              FROM inspection_schedules isch
-              WHERE isch.device_id = d.id
+              FROM inspection_schedule_devices isd
+              WHERE isd.device_id = d.id
             ) AS used_by_inspection_schedule
      FROM devices d
      WHERE d.installation_source_service_order_id IN (${orderParams.placeholders})`,
