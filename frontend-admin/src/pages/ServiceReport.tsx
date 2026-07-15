@@ -6,6 +6,8 @@ import {
   Braces,
   Camera,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle,
   ClipboardCheck,
   Clock,
@@ -2168,6 +2170,7 @@ export function ServiceReport() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<OrderFile | null>(null);
+  const [attachmentPreviewFiles, setAttachmentPreviewFiles] = useState<OrderFile[]>([]);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState("");
   const [attachmentPreviewText, setAttachmentPreviewText] = useState("");
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
@@ -3530,16 +3533,18 @@ export function ServiceReport() {
       attachmentPreviewUrlRef.current = "";
     }
     setAttachmentPreviewFile(null);
+    setAttachmentPreviewFiles([]);
     setAttachmentPreviewUrl("");
     setAttachmentPreviewText("");
     setAttachmentPreviewLoading(false);
     setAttachmentPreviewError("");
   }
 
-  async function openAttachmentPreview(file: OrderFile) {
+  async function openAttachmentPreview(file: OrderFile, files: OrderFile[] = [file]) {
     if (!file.id) return;
     clearAttachmentPreview();
     setAttachmentPreviewFile(file);
+    setAttachmentPreviewFiles(files);
     setAttachmentPreviewLoading(true);
     try {
       const blob = await api.download(`/files/${file.id}?mine=1`);
@@ -3559,6 +3564,13 @@ export function ServiceReport() {
     } finally {
       setAttachmentPreviewLoading(false);
     }
+  }
+
+  function switchAttachmentPreview(delta: number) {
+    if (!attachmentPreviewFiles.length || !attachmentPreviewFile) return;
+    const currentIndex = attachmentPreviewFiles.findIndex((file) => String(file.id) === String(attachmentPreviewFile.id));
+    const nextIndex = (currentIndex + delta + attachmentPreviewFiles.length) % attachmentPreviewFiles.length;
+    void openAttachmentPreview(attachmentPreviewFiles[nextIndex], attachmentPreviewFiles);
   }
 
   async function fetchServiceRecordPdf(order: ServiceOrder) {
@@ -4811,7 +4823,7 @@ export function ServiceReport() {
                                   key={file.id}
                                   type="button"
                                   className="group flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 p-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                                  onClick={() => openAttachmentPreview(file)}
+                                  onClick={() => openAttachmentPreview(file, group.kind === "image" ? group.files : [file])}
                                   title={`预览 ${file.originalName || `附件 #${file.id}`}`}
                                 >
                                   <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-xs font-bold text-primary shadow-sm">
@@ -4877,8 +4889,10 @@ export function ServiceReport() {
                   {attachmentPreviewError}
                 </div>
               ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "image" ? (
-                <div className="flex min-h-[360px] items-center justify-center rounded-lg bg-slate-950 p-3">
+                <div className="relative flex min-h-[360px] items-center justify-center rounded-lg bg-slate-950 p-3">
+                  {attachmentPreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchAttachmentPreview(-1)} aria-label="上一张图片"><ChevronLeft className="h-4 w-4" /></Button> : null}
                   <img src={attachmentPreviewUrl} alt={attachmentPreviewFile?.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
+                  {attachmentPreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchAttachmentPreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
                 </div>
               ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
                 <iframe

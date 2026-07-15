@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +144,15 @@ interface OrderFile {
   size?: number;
   uploadedBy?: string | number;
   createdAt?: string;
+}
+
+function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | "text" | "unsupported" {
+  const mimeType = String(file.mimeType || blob?.type || "").toLowerCase();
+  const extension = String(file.originalName || "").split(".").pop()?.toLowerCase() || "";
+  if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
+  if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
+  if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
+  return "unsupported";
 }
 
 interface EngineerOption {
@@ -963,6 +972,13 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
+  const [filePreview, setFilePreview] = useState<OrderFile | null>(null);
+  const [filePreviewFiles, setFilePreviewFiles] = useState<OrderFile[]>([]);
+  const [filePreviewUrl, setFilePreviewUrl] = useState("");
+  const [filePreviewText, setFilePreviewText] = useState("");
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+  const [filePreviewError, setFilePreviewError] = useState("");
+  const filePreviewUrlRef = useRef("");
   const userRole = String(user?.role || "");
   const isBusinessUser = isBusinessRole(userRole);
   const canCreateOrders = hasPermission("order.create");
@@ -1160,12 +1176,57 @@ export function ServiceOrders() {
 
   function closeDetailOrder() {
     setDetailOrder(null);
+    clearFilePreview();
     if (!searchParams.has("orderId")) return;
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("orderId");
       return next;
     });
+  }
+
+  function clearFilePreview() {
+    if (filePreviewUrlRef.current) {
+      URL.revokeObjectURL(filePreviewUrlRef.current);
+      filePreviewUrlRef.current = "";
+    }
+    setFilePreview(null);
+    setFilePreviewFiles([]);
+    setFilePreviewUrl("");
+    setFilePreviewText("");
+    setFilePreviewLoading(false);
+    setFilePreviewError("");
+  }
+
+  async function openFilePreview(file: OrderFile, files: OrderFile[] = [file]) {
+    if (!file?.id) return;
+    clearFilePreview();
+    setFilePreview(file);
+    setFilePreviewFiles(files);
+    setFilePreviewLoading(true);
+    try {
+      const blob = await api.download(`/files/${file.id}`);
+      const kind = attachmentPreviewKind(file, blob);
+      if (kind === "unsupported") throw new Error("当前文件类型暂不支持在线预览，请下载后查看");
+      if (kind === "text") {
+        setFilePreviewText(await blob.text());
+      } else {
+        const url = URL.createObjectURL(blob);
+        filePreviewUrlRef.current = url;
+        setFilePreviewUrl(url);
+      }
+    } catch (e) {
+      setFilePreviewError(e instanceof Error ? e.message : "附件预览失败");
+    } finally {
+      setFilePreviewLoading(false);
+    }
+  }
+
+  function switchFilePreview(delta: number) {
+    if (!filePreviewFiles.length || !filePreview) return;
+    const currentIndex = filePreviewFiles.findIndex((file) => String(file.id) === String(filePreview.id));
+    const nextIndex = (currentIndex + delta + filePreviewFiles.length) % filePreviewFiles.length;
+    void openFilePreview(filePreviewFiles[nextIndex], filePreviewFiles);
   }
 
   function toggleOrderSelection(orderId: string | number, checked: boolean | "indeterminate") {
@@ -2046,8 +2107,10 @@ export function ServiceOrders() {
             const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
             const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
             const serviceTime = serviceTimeRange(detailOrder);
-            const inspectionDocuments = (detailOrder.files || []).filter((file) => file.purpose === "inspection_document");
-            const attachments = (detailOrder.files || []).filter((file) => file.purpose !== "inspection_document");
+            const orderFiles = detailOrder.files || [];
+            const photoAttachments = orderFiles.filter((file) => file.purpose === "site_photo");
+            const inspectionDocuments = orderFiles.filter((file) => file.purpose === "inspection_document");
+            const attachments = orderFiles.filter((file) => !["site_photo", "inspection_document"].includes(String(file.purpose || "")));
             const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
             const workContent = displayReportWorkContent(detailOrder);
             const displayWorkContent = detailOrder.serviceMode === "office"
@@ -2136,51 +2199,38 @@ export function ServiceOrders() {
 
                 {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} markdown /> : null}
 
-                {inspectionDocuments.length ? (
-                  <div>
-                    <div className="text-xs text-muted-foreground">巡检文档</div>
-                    <div className="mt-2 grid gap-2">
-                      {inspectionDocuments.map((file) => (
+                {[
+                  { title: "现场照片", files: photoAttachments, image: true },
+                  { title: "维修文档", files: inspectionDocuments, image: false },
+                  { title: "附件", files: attachments, image: false },
+                ].filter((group) => group.files.length).map((group) => (
+                  <div key={group.title}>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>{group.title}</span>
+                      <span>{group.files.length} 个</span>
+                    </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {group.files.map((file) => (
                         <button
                           key={file.id}
                           type="button"
-                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
+                          className="group flex min-w-0 items-center gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
                           disabled={downloadingFileId === file.id}
-                          onClick={() => downloadOrderFile(file)}
+                          onClick={() => openFilePreview(file, group.image ? group.files : [file])}
+                          title={`预览 ${file.originalName || `附件 #${file.id}`}`}
                         >
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-sm">
+                            {group.image ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          </span>
                           <span className="min-w-0">
-                            <span className="block truncate font-medium">{file.originalName || `巡检文档 #${file.id}`}</span>
+                            <span className="block truncate font-medium text-primary group-hover:underline">{file.originalName || `附件 #${file.id}`}</span>
                             <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
                           </span>
-                          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
                         </button>
                       ))}
                     </div>
                   </div>
-                ) : null}
-
-                {attachments.length ? (
-                  <div>
-                    <div className="text-xs text-muted-foreground">附件</div>
-                    <div className="mt-2 grid gap-2">
-                      {attachments.map((file) => (
-                        <button
-                          key={file.id}
-                          type="button"
-                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
-                          disabled={downloadingFileId === file.id}
-                          onClick={() => downloadOrderFile(file)}
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">{file.originalName || `附件 #${file.id}`}</span>
-                            <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
-                          </span>
-                          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                ))}
 
                 {(detailOrder.reviewedAt || detailOrder.reviewComment) && (
                   <div className="rounded-md border bg-muted/30 p-3">
@@ -2196,6 +2246,38 @@ export function ServiceOrders() {
           })()}
           <DialogFooter>
             <Button variant="outline" onClick={closeDetailOrder}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(filePreview)} onOpenChange={(open) => { if (!open) clearFilePreview(); }}>
+        <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+          <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
+            <DialogTitle className="truncate">{filePreview?.originalName || "附件预览"}</DialogTitle>
+            <DialogDescription>{filePreview ? `${filePreview.mimeType || "附件"} · ${formatFileSize(filePreview.size)}` : ""}</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
+            {filePreviewLoading ? (
+              <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在加载附件…</div>
+            ) : filePreviewError ? (
+              <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-destructive">{filePreviewError}</div>
+            ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "image" ? (
+              <div className="relative flex min-h-[360px] items-center justify-center rounded-lg bg-slate-950 p-3">
+                {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(-1)} aria-label="上一张图片"><ChevronLeft className="h-4 w-4" /></Button> : null}
+                <img src={filePreviewUrl} alt={filePreview.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
+                {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
+              </div>
+            ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "pdf" ? (
+              <iframe title={filePreview.originalName || "PDF 附件预览"} src={filePreviewUrl} className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background" />
+            ) : filePreviewText ? (
+              <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">{filePreviewText}</pre>
+            ) : (
+              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">暂无可显示的附件内容</div>
+            )}
+          </div>
+          <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
+            <Button variant="outline" onClick={clearFilePreview}>取消预览</Button>
+            {filePreview ? <Button variant="outline" onClick={() => downloadOrderFile(filePreview)} disabled={downloadingFileId === filePreview.id}>{downloadingFileId === filePreview.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}下载文件</Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
