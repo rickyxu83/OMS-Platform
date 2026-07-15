@@ -1984,7 +1984,6 @@ export function ServiceOrders() {
                   filteredOrders.map((order) => {
                     const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                     const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
-                    const itemsLabel = serviceItemsLabel(order);
                     const workflowStatus = getWorkflowStatus(order);
                     const serviceTime = serviceTimeRange(order);
                     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
@@ -2031,7 +2030,6 @@ export function ServiceOrders() {
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
                             <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                            <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(order)] || "secondary"}>{itemsLabel}</Badge>
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
