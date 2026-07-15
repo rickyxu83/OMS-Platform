@@ -348,51 +348,31 @@ function shouldSkipAttrElement(element: Element | null) {
   return Boolean(element?.closest("script, style, code, pre, [data-no-i18n]"))
 }
 
-function translateTextNode(node: Text, enabled: boolean) {
+function localizedText(value: string, lang: AppLang) {
+  return lang === "zh-TW" ? toTraditional(value) : toSimplified(value)
+}
+
+function translateTextNode(node: Text, lang: AppLang) {
   const current = node.nodeValue ?? ""
   const hasStoredOriginal = textNodeOriginals.has(node)
   const storedOriginal = textNodeOriginals.get(node)
   const original = hasStoredOriginal ? storedOriginal ?? "" : current
-  if (!enabled) {
-    if (!hasStoredOriginal) return
-    const translatedOriginal = toTraditional(original)
-    if (current === translatedOriginal && current !== original) {
-      node.nodeValue = original
-    }
-    textNodeOriginals.delete(node)
-    return
-  }
   if (shouldSkipTextElement(node.parentElement)) return
+  const translated = localizedText(original, lang)
   if (hasStoredOriginal) {
-    const translatedStored = toTraditional(storedOriginal)
-    if (current === translatedStored) return
-    if (!hasHan(current)) return
+    if (current === translated) return
     textNodeOriginals.set(node, current)
-    const translatedCurrent = toTraditional(current)
-    if (current !== translatedCurrent) node.nodeValue = translatedCurrent
+    const nextTranslated = localizedText(current, lang)
+    if (current !== nextTranslated) node.nodeValue = nextTranslated
     return
   }
   if (!hasHan(original)) return
   textNodeOriginals.set(node, original)
-  const translated = toTraditional(original)
   if (current !== translated) node.nodeValue = translated
 }
 
-function translateElementAttrs(element: Element, enabled: boolean) {
+function translateElementAttrs(element: Element, lang: AppLang) {
   const originals = attrOriginals.get(element)
-  if (!enabled) {
-    if (!originals) return
-    for (const attr of displayAttrs) {
-      const current = element.getAttribute(attr)
-      const original = originals[attr] ?? ""
-      const translatedOriginal = toTraditional(original)
-      if (current === translatedOriginal && current !== original) {
-        element.setAttribute(attr, original)
-      }
-    }
-    attrOriginals.delete(element)
-    return
-  }
   if (shouldSkipAttrElement(element)) return
   const nextOriginals = originals ?? {}
   for (const attr of displayAttrs) {
@@ -401,51 +381,70 @@ function translateElementAttrs(element: Element, enabled: boolean) {
     const original = hasStoredOriginal ? nextOriginals[attr] ?? "" : current ?? ""
     if (!current) continue
     if (hasStoredOriginal) {
-      const translatedOriginal = toTraditional(original)
+      const translatedOriginal = localizedText(original, lang)
       if (current === translatedOriginal) continue
-      if (!hasHan(current)) continue
       nextOriginals[attr] = current
-      const translatedCurrent = toTraditional(current)
+      const translatedCurrent = localizedText(current, lang)
       if (current !== translatedCurrent) element.setAttribute(attr, translatedCurrent)
       continue
     }
     if (!hasHan(original)) continue
     nextOriginals[attr] = current
     attrOriginals.set(element, nextOriginals)
-    const translated = toTraditional(original)
+    const translated = localizedText(original, lang)
     if (current !== translated) element.setAttribute(attr, translated)
   }
 }
 
-function translateTree(root: ParentNode, enabled: boolean) {
+function translateTree(root: ParentNode, lang: AppLang) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let node = walker.nextNode()
   while (node) {
-    translateTextNode(node as Text, enabled)
+    translateTextNode(node as Text, lang)
     node = walker.nextNode()
   }
 
-  if (root instanceof Element) translateElementAttrs(root, enabled)
-  root.querySelectorAll?.("*").forEach((element) => translateElementAttrs(element, enabled))
+  if (root instanceof Element) translateElementAttrs(root, lang)
+  root.querySelectorAll?.("*").forEach((element) => translateElementAttrs(element, lang))
 }
 
-export function setupAdminDomTextI18n(enabled: boolean) {
-  translateTree(document.body, enabled)
-  if (!enabled) return undefined
+function restoreOriginalTree(root: ParentNode) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+  while (node) {
+    const original = textNodeOriginals.get(node as Text)
+    if (original !== undefined) (node as Text).nodeValue = original
+    textNodeOriginals.delete(node as Text)
+    node = walker.nextNode()
+  }
+  if (root instanceof Element) {
+    const originals = attrOriginals.get(root)
+    if (originals) Object.entries(originals).forEach(([attr, value]) => root.setAttribute(attr, value))
+    attrOriginals.delete(root)
+  }
+  root.querySelectorAll?.("*").forEach((element) => {
+    const originals = attrOriginals.get(element)
+    if (originals) Object.entries(originals).forEach(([attr, value]) => element.setAttribute(attr, value))
+    attrOriginals.delete(element)
+  })
+}
+
+export function setupAdminDomTextI18n(lang: AppLang) {
+  translateTree(document.body, lang)
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "characterData" && mutation.target instanceof Text) {
-        translateTextNode(mutation.target, true)
+        translateTextNode(mutation.target, lang)
         continue
       }
       if (mutation.type === "attributes" && mutation.target instanceof Element) {
-        translateElementAttrs(mutation.target, true)
+        translateElementAttrs(mutation.target, lang)
         continue
       }
       mutation.addedNodes.forEach((node) => {
-        if (node instanceof Text) translateTextNode(node, true)
-        if (node instanceof Element) translateTree(node, true)
+        if (node instanceof Text) translateTextNode(node, lang)
+        if (node instanceof Element) translateTree(node, lang)
       })
     }
   })
@@ -460,13 +459,12 @@ export function setupAdminDomTextI18n(enabled: boolean) {
 
   return () => {
     observer.disconnect()
-    translateTree(document.body, false)
+    restoreOriginalTree(document.body)
   }
 }
 
 export function useAdminDomTextI18n(lang: AppLang) {
   useEffect(() => {
-    const enabled = lang === "zh-TW"
-    return setupAdminDomTextI18n(enabled)
+    return setupAdminDomTextI18n(lang)
   }, [lang])
 }

@@ -5,7 +5,7 @@ const { query, transaction } = require('../../config/db')
 const env = require('../../config/env')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { buildOrderNo } = require('../../utils/order-no')
-const { buildLikeSearch, customerNameKey, toSimplified, toTraditional, toTraditionalDeep } = require('../../utils/chinese')
+const { buildLikeSearch, customerNameKey, toSimplified, toTraditional } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
@@ -1936,7 +1936,7 @@ async function timesheetMonthly(req, res) {
   const serviceItems = rows.map((row) => {
     const date = String(row.actual_start_at || row.planned_start_at || row.submitted_at || row.created_at).slice(0, 10)
     const [workNature, category] = timesheetType(row.service_type, row.service_mode)
-    return toTraditionalDeep({
+    return {
       source: 'service_order',
       serviceOrderId: row.id,
       orderNo: row.order_no,
@@ -1969,11 +1969,11 @@ async function timesheetMonthly(req, res) {
         }[row.result] || '已完成',
       workHours: Number(row.work_hours || 1),
       remark: row.order_no,
-    })
+    }
   })
   const manualItems = manualRows.map((row) => {
     const date = String(row.entry_date).slice(0, 10)
-    return toTraditionalDeep({
+    return {
       source: 'manual',
       manualEntryId: row.id,
       serviceOrderId: null,
@@ -1990,7 +1990,7 @@ async function timesheetMonthly(req, res) {
       salesperson: '',
       progress: row.progress || '已完成',
       remark: row.remark || '',
-    })
+    }
   })
   const items = [...serviceItems, ...manualItems].sort((left, right) => {
     const dateCompare = String(left.date).localeCompare(String(right.date))
