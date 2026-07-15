@@ -2143,7 +2143,7 @@ export function ServiceOrders() {
             const modeLabel = t.mode[detailOrder.serviceMode as keyof typeof t.mode] || detailOrder.serviceMode || "-";
             const priorityLabel = PRIORITY_LABELS[detailOrder.priority || ""] || detailOrder.priority || "-";
             const serviceTime = serviceTimeRange(detailOrder);
-            const orderFiles = detailOrder.files || [];
+            const orderFiles = (detailOrder.files || []).filter((file) => file.ownerType !== "signature");
             const photoAttachments = orderFiles.filter((file) => file.purpose === "site_photo");
             const inspectionDocuments = orderFiles.filter((file) => file.purpose === "inspection_document");
             const attachments = orderFiles.filter((file) => !["site_photo", "inspection_document"].includes(String(file.purpose || "")));

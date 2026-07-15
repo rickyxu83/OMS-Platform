@@ -2850,7 +2850,7 @@ async function loadDetailItem(orderId, user, options = {}) {
   const files = await query(
     `SELECT id, owner_type, owner_id, purpose, original_name, mime_type, size, uploaded_by, created_at
      FROM files
-     WHERE owner_type IN ('service_order', 'service_report', 'signature') AND owner_id = :id
+     WHERE owner_type IN ('service_order', 'service_report') AND owner_id = :id
      ORDER BY id ASC`,
     { id: orderId },
   )

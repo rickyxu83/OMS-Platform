@@ -66,7 +66,7 @@ interface Order {
     unit?: string;
     remark?: string;
   }>;
-  files?: Array<{ id?: string | number; purpose?: string; originalName?: string; size?: string | number }>;
+  files?: Array<{ id?: string | number; ownerType?: string; purpose?: string; originalName?: string; size?: string | number }>;
   engineerName?: string;
   engineers?: Array<{ id?: string | number; realName?: string; name?: string; username?: string }>;
   serviceType?: string;
@@ -579,7 +579,7 @@ function partsSummary(order: Order) {
 }
 
 function filesSummary(order: Order) {
-  const files = order.files || [];
+  const files = (order.files || []).filter((file) => file.ownerType !== "signature");
   if (!files.length) return "";
   return files.map((file) => file.originalName || `附件 #${file.id}`).join("\n");
 }

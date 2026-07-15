@@ -12,29 +12,29 @@ const badgeVariants = cva(
         default:
           "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+          "border-slate-600 bg-slate-700 text-white shadow-sm [a&]:hover:bg-slate-600",
         draft:
-          "border-slate-300 bg-slate-200 text-slate-700 [a&]:hover:bg-slate-200/90",
+          "border-slate-700 bg-slate-800 text-slate-100 shadow-sm [a&]:hover:bg-slate-700",
         destructive:
           "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
-          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+          "border-slate-600 bg-slate-700 text-white shadow-sm [a&]:hover:bg-slate-600",
         success:
-          "border-transparent bg-emerald-500 text-white shadow hover:bg-emerald-500/90",
+          "border-transparent bg-emerald-600 text-white shadow hover:bg-emerald-500",
         warning:
-          "border-transparent bg-amber-500 text-white shadow hover:bg-amber-500/90",
+          "border-transparent bg-amber-600 text-white shadow hover:bg-amber-500",
         info:
-          "border-transparent bg-sky-500 text-white shadow hover:bg-sky-500/90",
+          "border-transparent bg-sky-600 text-white shadow hover:bg-sky-500",
         purple:
-          "border-transparent bg-purple-500 text-white shadow hover:bg-purple-500/90",
+          "border-transparent bg-purple-600 text-white shadow hover:bg-purple-500",
         rose:
-          "border-transparent bg-rose-500 text-white shadow hover:bg-rose-500/90",
+          "border-transparent bg-rose-600 text-white shadow hover:bg-rose-500",
         cyan:
-          "border-transparent bg-cyan-500 text-white shadow hover:bg-cyan-500/90",
+          "border-transparent bg-cyan-600 text-white shadow hover:bg-cyan-500",
         teal:
-          "border-transparent bg-teal-500 text-white shadow hover:bg-teal-500/90",
+          "border-transparent bg-teal-600 text-white shadow hover:bg-teal-500",
         orange:
-          "border-transparent bg-orange-500 text-white shadow hover:bg-orange-500/90",
+          "border-transparent bg-orange-600 text-white shadow hover:bg-orange-500",
       },
     },
     defaultVariants: {
