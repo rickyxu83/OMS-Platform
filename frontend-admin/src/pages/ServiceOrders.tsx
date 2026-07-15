@@ -2166,12 +2166,11 @@ export function ServiceOrders() {
                   </div>
                 ) : null}
 
-                {(detailOrder.deviceModel || detailOrder.devicePn || detailOrder.deviceSerialNo || detailOrder.deviceRemark) ? (
+                {(detailOrder.deviceModel || detailOrder.deviceSerialNo || detailOrder.deviceRemark) ? (
                   <div>
                     <div className="text-xs text-muted-foreground">目标设备详情</div>
                     <div className="mt-2 grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
                       <DetailField label="型号 / 版本" value={detailOrder.deviceModel} />
-                      <DetailField label="料号 / PN" value={detailOrder.devicePn} />
                       <DetailField label="序列号 / SN" value={detailOrder.deviceSerialNo} />
                       <DetailField label="设备备注" value={detailOrder.deviceRemark} />
                     </div>
@@ -2187,7 +2186,6 @@ export function ServiceOrders() {
                           <div className="mb-2 text-sm font-medium">{compactText(device.name || device.model, `安装设备 ${index + 1}`)}</div>
                           <div className="grid gap-4 md:grid-cols-3">
                             <DetailField label="型号 / 版本" value={device.model} />
-                            <DetailField label="料号 / PN" value={device.pn} />
                             <DetailField label="序列号 / SN" value={device.serialNo} />
                             <DetailField label="备注" value={device.remark} />
                           </div>

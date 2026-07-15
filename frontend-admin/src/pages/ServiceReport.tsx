@@ -4715,7 +4715,6 @@ export function ServiceReport() {
                             const fields = [
                               { label: "设备名称", value: device.name },
                               { label: "设备型号", value: device.model },
-                              { label: "料号 / PN", value: device.pn },
                               { label: "序列号 / SN", value: device.serialNo },
                               { label: "备注", value: device.remark, className: "md:col-span-2" },
                             ].filter((field) => hasPreviewValue(field.value));
@@ -4745,7 +4744,6 @@ export function ServiceReport() {
                             const installedDeviceFields = [
                               { label: "设备名称", value: device.name },
                               { label: "型号 / 版本", value: device.model },
-                              { label: "料号 / PN", value: device.pn },
                               { label: "序列号 / SN", value: device.serialNo },
                               { label: "备注", value: device.remark, className: "md:col-span-2" },
                             ].filter((field) => hasPreviewValue(field.value));
