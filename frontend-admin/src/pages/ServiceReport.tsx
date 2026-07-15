@@ -828,6 +828,19 @@ function formatFileSize(value?: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function attachmentFileExtension(file: OrderFile) {
+  return String(file.originalName || "").split(".").pop()?.toLowerCase() || "";
+}
+
+function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | "text" | "unsupported" {
+  const mimeType = String(file.mimeType || blob?.type || "").toLowerCase();
+  const extension = attachmentFileExtension(file);
+  if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
+  if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
+  if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
+  return "unsupported";
+}
+
 function partActionFor(serviceMode: ServiceMode, serviceType: string, timesheetCategory = "") {
   if (serviceMode === "remote" && ["协调", "远程协调", "沟通协调"].includes(timesheetCategory)) return "replacement";
   if (serviceMode !== "onsite") return "general";
@@ -2154,6 +2167,47 @@ export function ServiceReport() {
   const [previewOrder, setPreviewOrder] = useState<ServiceOrder | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<OrderFile | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState("");
+  const [attachmentPreviewText, setAttachmentPreviewText] = useState("");
+  const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
+  const [attachmentPreviewError, setAttachmentPreviewError] = useState("");
+  const [attachmentThumbnailUrls, setAttachmentThumbnailUrls] = useState<Record<string, string>>({});
+  const attachmentPreviewUrlRef = useRef("");
+  const attachmentThumbnailUrlsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const photoFiles = (previewOrder?.files || []).filter((file) => file.purpose === "site_photo");
+    setAttachmentThumbnailUrls({});
+    attachmentThumbnailUrlsRef.current = {};
+    if (!photoFiles.length) return undefined;
+
+    void Promise.all(photoFiles.map(async (file) => {
+      try {
+        const blob = await api.download(`/files/${file.id}?mine=1`);
+        if (attachmentPreviewKind(file, blob) !== "image") return null;
+        return [String(file.id), URL.createObjectURL(blob)] as const;
+      } catch {
+        return null;
+      }
+    })).then((entries) => {
+      if (cancelled) {
+        entries.forEach((entry) => { if (entry) URL.revokeObjectURL(entry[1]); });
+        return;
+      }
+      const urls = Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
+      attachmentThumbnailUrlsRef.current = urls;
+      setAttachmentThumbnailUrls(urls);
+    });
+
+    return () => {
+      cancelled = true;
+      Object.values(attachmentThumbnailUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      attachmentThumbnailUrlsRef.current = {};
+      setAttachmentThumbnailUrls({});
+    };
+  }, [previewOrder]);
   const [form, setForm] = useState<ReportForm>(() => defaultForm(routeMode));
   const [createDrafts, setCreateDrafts] = useState<CreateDraftItem[]>([]);
   const [currentCreateDraftKey, setCurrentCreateDraftKey] = useState("");
@@ -3470,6 +3524,43 @@ export function ServiceReport() {
     }
   }
 
+  function clearAttachmentPreview() {
+    if (attachmentPreviewUrlRef.current) {
+      URL.revokeObjectURL(attachmentPreviewUrlRef.current);
+      attachmentPreviewUrlRef.current = "";
+    }
+    setAttachmentPreviewFile(null);
+    setAttachmentPreviewUrl("");
+    setAttachmentPreviewText("");
+    setAttachmentPreviewLoading(false);
+    setAttachmentPreviewError("");
+  }
+
+  async function openAttachmentPreview(file: OrderFile) {
+    if (!file.id) return;
+    clearAttachmentPreview();
+    setAttachmentPreviewFile(file);
+    setAttachmentPreviewLoading(true);
+    try {
+      const blob = await api.download(`/files/${file.id}?mine=1`);
+      const kind = attachmentPreviewKind(file, blob);
+      if (kind === "unsupported") {
+        throw new Error("当前文件类型暂不支持在线预览，请下载后查看");
+      }
+      if (kind === "text") {
+        setAttachmentPreviewText(await blob.text());
+      } else {
+        const url = URL.createObjectURL(blob);
+        attachmentPreviewUrlRef.current = url;
+        setAttachmentPreviewUrl(url);
+      }
+    } catch (err) {
+      setAttachmentPreviewError(err instanceof Error ? err.message : "附件预览失败");
+    } finally {
+      setAttachmentPreviewLoading(false);
+    }
+  }
+
   async function fetchServiceRecordPdf(order: ServiceOrder) {
     if (!order?.id) throw new Error("工单不存在");
     return api.download(`/service-orders/${order.id}/export-pdf?mine=1`);
@@ -4467,6 +4558,7 @@ export function ServiceReport() {
             setPreviewOrder(null);
             setPreviewError("");
             setPreviewLoading(false);
+            clearAttachmentPreview();
           }
         }}>
           <DialogContent
@@ -4505,6 +4597,9 @@ export function ServiceReport() {
                     .some((value) => String(value || "").trim())
                 ));
                 const fileRows = previewOrder.files || [];
+                const photoFiles = fileRows.filter((file) => file.purpose === "site_photo");
+                const documentFiles = fileRows.filter((file) => file.purpose === "inspection_document");
+                const otherFiles = fileRows.filter((file) => !["site_photo", "inspection_document"].includes(String(file.purpose || "")));
                 const workContent = previewOrder.report?.workContent
                   || (previewOrder.report?.workEntries || [])
                     .map((entry) => entry.workContent || entry.work_content || "")
@@ -4699,22 +4794,44 @@ export function ServiceReport() {
                     ) : null}
 
                     {fileRows.length ? (
-                      <div>
-                        <div className="mb-2 text-xs text-muted-foreground">附件</div>
-                        <div className="space-y-2">
-                          {fileRows.map((file) => (
-                            <div key={file.id} className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_150px_100px] md:items-center">
-                              <ReportPreviewField label="文件名" value={file.originalName || `文件 #${file.id}`} />
-                              <ReportPreviewField
-                                label="分类"
-                                value={file.purpose && ATTACHMENT_PURPOSES[file.purpose as AttachmentPurpose]
-                                  ? attachmentPurposeLabel(file.purpose as AttachmentPurpose)
-                                  : "附件"}
-                              />
-                              <ReportPreviewField label="大小" value={formatFileSize(file.size)} />
+                      <div className="space-y-5">
+                        {[
+                          { title: "现场照片", files: photoFiles, kind: "image" as const },
+                          { title: "维修文档", files: documentFiles, kind: "document" as const },
+                          { title: "附件", files: otherFiles, kind: "document" as const },
+                        ].filter((group) => group.files.length).map((group) => (
+                          <div key={group.title}>
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="text-xs text-muted-foreground">{group.title}</div>
+                              <div className="text-xs text-muted-foreground">{group.files.length} 个</div>
                             </div>
-                          ))}
-                        </div>
+                            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                              {group.files.map((file) => (
+                                <button
+                                  key={file.id}
+                                  type="button"
+                                  className="group flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 p-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                  onClick={() => openAttachmentPreview(file)}
+                                  title={`预览 ${file.originalName || `附件 #${file.id}`}`}
+                                >
+                                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-xs font-bold text-primary shadow-sm">
+                                    {group.kind === "image" && attachmentThumbnailUrls[String(file.id)] ? (
+                                      <img src={attachmentThumbnailUrls[String(file.id)]} alt="" className="h-full w-full object-cover" />
+                                    ) : group.kind === "image" ? <Camera className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm font-medium text-primary group-hover:underline">
+                                      {file.originalName || `附件 #${file.id}`}
+                                    </span>
+                                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                      {group.title} · {formatFileSize(file.size)}
+                                    </span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                   </div>
@@ -4735,6 +4852,62 @@ export function ServiceReport() {
                 <PenLine className="h-4 w-4" />
                 修改
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(attachmentPreviewFile)} onOpenChange={(open) => { if (!open) clearAttachmentPreview(); }}>
+          <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+            <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
+              <DialogTitle className="truncate">{attachmentPreviewFile?.originalName || "附件预览"}</DialogTitle>
+              <DialogDescription>
+                {attachmentPreviewFile
+                  ? `${attachmentPreviewFile.mimeType || "附件"} · ${formatFileSize(attachmentPreviewFile.size)}`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
+              {attachmentPreviewLoading ? (
+                <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载附件…
+                </div>
+              ) : attachmentPreviewError ? (
+                <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-destructive">
+                  {attachmentPreviewError}
+                </div>
+              ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "image" ? (
+                <div className="flex min-h-[360px] items-center justify-center rounded-lg bg-slate-950 p-3">
+                  <img src={attachmentPreviewUrl} alt={attachmentPreviewFile?.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
+                </div>
+              ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
+                <iframe
+                  title={attachmentPreviewFile?.originalName || "PDF 附件预览"}
+                  src={attachmentPreviewUrl}
+                  className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background"
+                />
+              ) : attachmentPreviewText ? (
+                <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">
+                  {attachmentPreviewText}
+                </pre>
+              ) : (
+                <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
+                  暂无可显示的附件内容
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
+              <Button variant="outline" onClick={clearAttachmentPreview}>取消预览</Button>
+              {attachmentPreviewFile ? (
+                <Button
+                  variant="outline"
+                  onClick={() => downloadInspectionDocument(attachmentPreviewFile)}
+                  disabled={downloadingFileId === attachmentPreviewFile.id}
+                >
+                  {downloadingFileId === attachmentPreviewFile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  下载文件
+                </Button>
+              ) : null}
             </DialogFooter>
           </DialogContent>
         </Dialog>
