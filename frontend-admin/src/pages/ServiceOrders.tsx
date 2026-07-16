@@ -154,6 +154,13 @@ function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | 
   if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
   return "unsupported";
 }
+function previewBlob(blob: Blob, kind: "image" | "pdf" | "text" | "unsupported") {
+  if (kind === "pdf" && blob.type.toLowerCase() !== "application/pdf") {
+    return new Blob([blob], { type: "application/pdf" });
+  }
+  return blob;
+}
+
 
 interface EngineerOption {
   id: string | number;
@@ -1257,7 +1264,7 @@ export function ServiceOrders() {
       if (kind === "text") {
         setFilePreviewText(await blob.text());
       } else {
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(previewBlob(blob, kind));
         filePreviewUrlRef.current = url;
         setFilePreviewUrl(url);
       }
@@ -2330,7 +2337,16 @@ export function ServiceOrders() {
                 {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
               </div>
             ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "pdf" ? (
-              <iframe title={filePreview.originalName || "PDF 附件预览"} src={filePreviewUrl} className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background" />
+              <object
+                data={filePreviewUrl}
+                type="application/pdf"
+                title={filePreview.originalName || "PDF 附件预览"}
+                className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background"
+              >
+                <div className="flex min-h-[360px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                  当前浏览器不支持内嵌 PDF 预览，请点击下方“下载文件”查看。
+                </div>
+              </object>
             ) : filePreviewText ? (
               <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">{filePreviewText}</pre>
             ) : (

@@ -846,6 +846,13 @@ function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | 
   if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
   return "unsupported";
 }
+function previewBlob(blob: Blob, kind: "image" | "pdf" | "text" | "unsupported") {
+  if (kind === "pdf" && blob.type.toLowerCase() !== "application/pdf") {
+    return new Blob([blob], { type: "application/pdf" });
+  }
+  return blob;
+}
+
 
 function partActionFor(serviceMode: ServiceMode, serviceType: string, timesheetCategory = "") {
   if (serviceMode === "remote" && ["协调", "远程协调", "沟通协调"].includes(timesheetCategory)) return "replacement";
@@ -3570,7 +3577,7 @@ export function ServiceReport() {
       if (kind === "text") {
         setAttachmentPreviewText(await blob.text());
       } else {
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(previewBlob(blob, kind));
         attachmentPreviewUrlRef.current = url;
         setAttachmentPreviewUrl(url);
       }
@@ -4911,11 +4918,16 @@ export function ServiceReport() {
                   {attachmentPreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchAttachmentPreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
                 </div>
               ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
-                <iframe
+                <object
+                  data={attachmentPreviewUrl}
+                  type="application/pdf"
                   title={attachmentPreviewFile?.originalName || "PDF 附件预览"}
-                  src={attachmentPreviewUrl}
                   className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background"
-                />
+                >
+                  <div className="flex min-h-[360px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                    当前浏览器不支持内嵌 PDF 预览，请点击下方“下载文件”查看。
+                  </div>
+                </object>
               ) : attachmentPreviewText ? (
                 <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">
                   {attachmentPreviewText}
