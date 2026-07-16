@@ -55,6 +55,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
+import { PdfPreview } from "@/components/PdfPreview";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
@@ -4918,16 +4919,10 @@ export function ServiceReport() {
                   {attachmentPreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchAttachmentPreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
                 </div>
               ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
-                <object
-                  data={attachmentPreviewUrl}
-                  type="application/pdf"
-                  title={attachmentPreviewFile?.originalName || "PDF 附件预览"}
-                  className="h-[68dvh] min-h-[360px] w-full rounded-lg border bg-background"
-                >
-                  <div className="flex min-h-[360px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                    当前浏览器不支持内嵌 PDF 预览，请点击下方“下载文件”查看。
-                  </div>
-                </object>
+                <PdfPreview
+                  src={attachmentPreviewUrl}
+                  title={attachmentPreviewFile.originalName || "PDF 附件预览"}
+                />
               ) : attachmentPreviewText ? (
                 <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">
                   {attachmentPreviewText}
