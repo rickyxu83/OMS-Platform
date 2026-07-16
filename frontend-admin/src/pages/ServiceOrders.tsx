@@ -994,6 +994,7 @@ export function ServiceOrders() {
   const [filePreview, setFilePreview] = useState<OrderFile | null>(null);
   const [filePreviewFiles, setFilePreviewFiles] = useState<OrderFile[]>([]);
   const [filePreviewUrl, setFilePreviewUrl] = useState("");
+  const [filePreviewPdfData, setFilePreviewPdfData] = useState<Uint8Array | null>(null);
   const [filePreviewText, setFilePreviewText] = useState("");
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [filePreviewError, setFilePreviewError] = useState("");
@@ -1247,6 +1248,7 @@ export function ServiceOrders() {
     setFilePreview(null);
     setFilePreviewFiles([]);
     setFilePreviewUrl("");
+    setFilePreviewPdfData(null);
     setFilePreviewText("");
     setFilePreviewLoading(false);
     setFilePreviewError("");
@@ -1264,8 +1266,10 @@ export function ServiceOrders() {
       if (kind === "unsupported") throw new Error("当前文件类型暂不支持在线预览，请下载后查看");
       if (kind === "text") {
         setFilePreviewText(await blob.text());
+      } else if (kind === "pdf") {
+        setFilePreviewPdfData(new Uint8Array(await previewBlob(blob, kind).arrayBuffer()));
       } else {
-        const url = URL.createObjectURL(previewBlob(blob, kind));
+        const url = URL.createObjectURL(blob);
         filePreviewUrlRef.current = url;
         setFilePreviewUrl(url);
       }
@@ -2337,8 +2341,8 @@ export function ServiceOrders() {
                 <img src={filePreviewUrl} alt={filePreview.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
                 {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
               </div>
-            ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "pdf" ? (
-              <PdfPreview src={filePreviewUrl} title={filePreview.originalName || "PDF 附件预览"} />
+            ) : filePreviewPdfData && filePreview && attachmentPreviewKind(filePreview) === "pdf" ? (
+              <PdfPreview data={filePreviewPdfData} title={filePreview.originalName || "PDF 附件预览"} />
             ) : filePreviewText ? (
               <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">{filePreviewText}</pre>
             ) : (

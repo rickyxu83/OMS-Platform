@@ -5,7 +5,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Button } from "@/components/ui/button";
 
 interface PdfPreviewProps {
-  src: string;
+  data: Uint8Array;
   title?: string;
 }
 
@@ -75,7 +75,7 @@ function PdfPage({ document, pageNumber, containerWidth, zoom }: PdfPageProps) {
   );
 }
 
-export function PdfPreview({ src, title = "PDF 附件预览" }: PdfPreviewProps) {
+export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -106,7 +106,7 @@ export function PdfPreview({ src, title = "PDF 附件预览" }: PdfPreviewProps)
     void import("pdfjs-dist").then((pdfjs) => {
       if (cancelled) return null;
       pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      loadingTask = pdfjs.getDocument({ url: src });
+      loadingTask = pdfjs.getDocument({ data });
       return loadingTask.promise;
     }).then((nextDocument) => {
       if (!nextDocument || cancelled) return;
@@ -122,7 +122,7 @@ export function PdfPreview({ src, title = "PDF 附件预览" }: PdfPreviewProps)
       cancelled = true;
       if (loadingTask) void loadingTask.destroy();
     };
-  }, [src]);
+  }, [data]);
 
   const pageNumbers = document ? Array.from({ length: document.numPages }, (_, index) => index + 1) : [];
 

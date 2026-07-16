@@ -2185,6 +2185,7 @@ export function ServiceReport() {
   const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<OrderFile | null>(null);
   const [attachmentPreviewFiles, setAttachmentPreviewFiles] = useState<OrderFile[]>([]);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState("");
+  const [attachmentPreviewPdfData, setAttachmentPreviewPdfData] = useState<Uint8Array | null>(null);
   const [attachmentPreviewText, setAttachmentPreviewText] = useState("");
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [attachmentPreviewError, setAttachmentPreviewError] = useState("");
@@ -3558,6 +3559,7 @@ export function ServiceReport() {
     setAttachmentPreviewFile(null);
     setAttachmentPreviewFiles([]);
     setAttachmentPreviewUrl("");
+    setAttachmentPreviewPdfData(null);
     setAttachmentPreviewText("");
     setAttachmentPreviewLoading(false);
     setAttachmentPreviewError("");
@@ -3577,8 +3579,10 @@ export function ServiceReport() {
       }
       if (kind === "text") {
         setAttachmentPreviewText(await blob.text());
+      } else if (kind === "pdf") {
+        setAttachmentPreviewPdfData(new Uint8Array(await previewBlob(blob, kind).arrayBuffer()));
       } else {
-        const url = URL.createObjectURL(previewBlob(blob, kind));
+        const url = URL.createObjectURL(blob);
         attachmentPreviewUrlRef.current = url;
         setAttachmentPreviewUrl(url);
       }
@@ -4918,9 +4922,9 @@ export function ServiceReport() {
                   <img src={attachmentPreviewUrl} alt={attachmentPreviewFile?.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
                   {attachmentPreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchAttachmentPreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
                 </div>
-              ) : attachmentPreviewUrl && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
+              ) : attachmentPreviewPdfData && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "pdf" ? (
                 <PdfPreview
-                  src={attachmentPreviewUrl}
+                  data={attachmentPreviewPdfData}
                   title={attachmentPreviewFile.originalName || "PDF 附件预览"}
                 />
               ) : attachmentPreviewText ? (
