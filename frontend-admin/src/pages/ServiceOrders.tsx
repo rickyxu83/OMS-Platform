@@ -2152,7 +2152,8 @@ export function ServiceOrders() {
             const orderFiles = (detailOrder.files || []).filter((file) => file.ownerType !== "signature");
             const photoAttachments = orderFiles.filter((file) => file.purpose === "site_photo");
             const inspectionDocuments = orderFiles.filter((file) => file.purpose === "inspection_document");
-            const attachments = orderFiles.filter((file) => !["site_photo", "inspection_document"].includes(String(file.purpose || "")));
+            const officeDocuments = orderFiles.filter((file) => file.purpose === "office_document");
+            const attachments = orderFiles.filter((file) => !["site_photo", "inspection_document", "office_document"].includes(String(file.purpose || "")));
             const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
             const workContent = displayReportWorkContent(detailOrder);
             const displayWorkContent = detailOrder.serviceMode === "office"
@@ -2160,6 +2161,7 @@ export function ServiceOrders() {
               : samePreviewText(detailOrder.issueDescription, workContent) ? "" : workContent;
             const serviceParts = displayServiceParts(detailOrder.parts);
             const installedDevices = detailOrder.installedDevices || [];
+            const hasOfficeMaterialsModule = (detailOrder.serviceModules || []).includes("office_materials");
             const resultText = serviceResultLabel(detailOrder.report?.result);
             const customerSignatureText = detailOrder.serviceMode === "onsite"
               ? detailOrder.customerSignatureRequest?.signedAt || detailOrder.customerSignatureRequest?.status === "signed"
@@ -2237,11 +2239,29 @@ export function ServiceOrders() {
                   </div>
                 ) : null}
 
+                {hasOfficeMaterialsModule && detailOrder.targetDevices?.length ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">关联设备</div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {detailOrder.targetDevices.map((device, index) => (
+                        <div key={device.id || index} className="rounded-md border bg-muted/30 p-3">
+                          <div className="text-sm font-medium">{device.name || device.model || `关联设备 ${index + 1}`}</div>
+                          <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
+                            <DetailField label="型号 / 版本" value={device.model} />
+                            <DetailField label="序列号 / SN" value={device.serialNo} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} markdown /> : null}
 
                 {[
                   { title: "现场照片", files: photoAttachments, image: true },
                   { title: "维修文档", files: inspectionDocuments, image: false },
+                  { title: "方案与资料附件", files: officeDocuments, image: false },
                   { title: "附件", files: attachments, image: false },
                 ].filter((group) => group.files.length).map((group) => (
                   <div key={group.title}>

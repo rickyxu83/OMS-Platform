@@ -63,11 +63,11 @@ import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 
 type ServiceMode = "onsite" | "remote" | "office";
-type AttachmentPurpose = "support_config" | "site_photo" | "screenshot_log" | "inspection_document";
+type AttachmentPurpose = "support_config" | "site_photo" | "screenshot_log" | "inspection_document" | "office_document";
 type CustomerSignatureMode = "onsite" | "electronic";
 type InstallDeviceInputMode = "manual" | "existing";
 type OperationOption = { value: string; label: string; description: string; descriptionItems?: string[]; icon: typeof Wrench };
-type ServiceModuleId = "install" | "repair" | "inspect" | "replacement";
+type ServiceModuleId = "install" | "repair" | "inspect" | "replacement" | "office_materials";
 type ServiceModuleOption = OperationOption & { value: ServiceModuleId };
 type BadgeVariant = "draft" | "secondary" | "purple" | "success" | "warning" | "destructive" | "info" | "outline";
 
@@ -417,6 +417,9 @@ const REMOTE_SERVICE_MODULE_OPTIONS: ServiceModuleOption[] = [
   { value: "repair", label: "远程技术支持", description: "记录远程连接、故障定位、配置调整与支持过程", descriptionItems: ["目标系统", "截图/日志"], icon: MonitorCog },
   { value: "replacement", label: "备件更换远程协助", description: "记录远程确认的备件更换过程", descriptionItems: ["备件明细", "截图/日志"], icon: Package },
 ];
+const OFFICE_SERVICE_MODULE_OPTIONS: ServiceModuleOption[] = [
+  { value: "office_materials", label: "方案与资料", description: "制作方案、配置文档、操作说明与交付资料", descriptionItems: ["关联设备", "上传文档"], icon: FileText },
+];
 const PART_ACTION_OPTIONS = [
   { value: "replacement", label: "备件更换" },
   { value: "installation", label: "硬件部件安装" },
@@ -427,6 +430,7 @@ const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; icon: type
   site_photo: { label: "现场照片", icon: Camera },
   screenshot_log: { label: "截图/日志文件", icon: Upload },
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
+  office_document: { label: "方案与资料附件", icon: FileText },
 };
 const REPORT_ORDER_LIST_WIDTH = "lg:min-w-[1180px]";
 const REPORT_ORDER_LIST_GRID = "lg:grid-cols-[minmax(180px,1fr)_minmax(150px,0.8fr)_minmax(220px,1.2fr)_minmax(120px,0.7fr)_160px_90px_176px]";
@@ -930,12 +934,13 @@ function serviceItemBadgeVariant(label: string, serviceType?: string): BadgeVari
 }
 
 function isServiceModuleId(value: unknown): value is ServiceModuleId {
-  return ["install", "repair", "inspect", "replacement"].includes(String(value));
+  return ["install", "repair", "inspect", "replacement", "office_materials"].includes(String(value));
 }
 
 function allowedServiceModules(mode: ServiceMode) {
   if (mode === "onsite") return ONSITE_SERVICE_MODULE_OPTIONS.map((option) => option.value);
   if (mode === "remote") return REMOTE_SERVICE_MODULE_OPTIONS.map((option) => option.value);
+  if (mode === "office") return OFFICE_SERVICE_MODULE_OPTIONS.map((option) => option.value);
   return [];
 }
 
@@ -2229,6 +2234,7 @@ export function ServiceReport() {
   const [supportConfigFiles, setSupportConfigFiles] = useState<File[]>([]);
   const [sitePhotoFiles, setSitePhotoFiles] = useState<File[]>([]);
   const [screenshotLogFiles, setScreenshotLogFiles] = useState<File[]>([]);
+  const [officeDocumentFiles, setOfficeDocumentFiles] = useState<File[]>([]);
   const [draggingAttachmentPurpose, setDraggingAttachmentPurpose] = useState<AttachmentPurpose | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
@@ -2314,7 +2320,7 @@ export function ServiceReport() {
   const hasServiceModule = (module: ServiceModuleId) => selectedServiceModules.includes(module);
   const isInstall = isOnsite && hasServiceModule("install");
   const isInspection = isOnsite && (hasServiceModule("inspect") || currentOrder?.serviceType === "inspect");
-  const moduleOptions = isOnsite ? ONSITE_SERVICE_MODULE_OPTIONS : isRemote ? REMOTE_SERVICE_MODULE_OPTIONS : [];
+  const moduleOptions = isOnsite ? ONSITE_SERVICE_MODULE_OPTIONS : isRemote ? REMOTE_SERVICE_MODULE_OPTIONS : OFFICE_SERVICE_MODULE_OPTIONS;
   const selectedCustomer = useMemo(() => (
     customers.find((customer) => String(customer.id) === form.customerId)
       || customers.find((customer) => customer.name && customer.name === form.customerName)
@@ -2355,10 +2361,11 @@ export function ServiceReport() {
   const generalParts = useMemo(() => activePartRows.filter((part) => !["replacement", "installation"].includes(part.actionType)), [activePartRows]);
   const isRepairModule = isOnsite && hasServiceModule("repair");
   const isRemoteSupportModule = isRemote && hasServiceModule("repair");
+  const hasOfficeMaterialsModule = isOffice && hasServiceModule("office_materials");
   const hasReplacementModule = hasServiceModule("replacement") || replacementParts.length > 0;
   const hasHardwareInstallDetails = isInstall || installationParts.length > 0;
-  const showAssetSection = isInstall || isRepairModule || isRemoteSupportModule || hasReplacementModule || generalParts.length > 0;
-  const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasReplacementModule;
+  const showAssetSection = isInstall || isRepairModule || isRemoteSupportModule || hasOfficeMaterialsModule || hasReplacementModule || generalParts.length > 0;
+  const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasOfficeMaterialsModule || hasReplacementModule;
   const showInlineInstallParts = isInstall;
   const showPartsModule = hasReplacementModule || generalParts.length > 0 || (!showInlineInstallParts && hasHardwareInstallDetails);
   const installDeviceRows = useMemo(() => (
@@ -2403,7 +2410,7 @@ export function ServiceReport() {
     : isOnsite
       ? isRepairModule ? "技术处理记录" : isInspection ? "巡检处理记录" : "现场处理记录"
       : isRemoteSupportModule ? "远程支持记录" : "处理记录";
-  const shouldShowAttachments = isInstall || isRepairModule || isRemoteSupportModule || isInspection || hasReplacementModule;
+  const shouldShowAttachments = isInstall || isRepairModule || isRemoteSupportModule || isInspection || hasOfficeMaterialsModule || hasReplacementModule;
   const workSectionStep = 3;
   const attachmentSectionStep = 4;
   const assetSectionStep = 5;
@@ -2413,6 +2420,7 @@ export function ServiceReport() {
     ...(isInspection ? (["inspection_document"] as AttachmentPurpose[]) : []),
     ...((isInstall || isInspection || (isOnsite && hasReplacementModule)) ? (["site_photo"] as AttachmentPurpose[]) : []),
     ...((isRepairModule || isRemoteSupportModule || hasReplacementModule) ? (["screenshot_log"] as AttachmentPurpose[]) : []),
+    ...(hasOfficeMaterialsModule ? (["office_document"] as AttachmentPurpose[]) : []),
   ];
   const engineerSummary = useMemo(() => {
     const names = engineers
@@ -2549,7 +2557,9 @@ export function ServiceReport() {
           setForm(normalizeLoadedForm({
             ...base,
             ...draftPayload,
-            ...(routeMode === "office" ? { timesheetCategory: base.timesheetCategory } : {}),
+            ...(routeMode === "office" && Array.isArray(draftPayload.serviceModules) && draftPayload.serviceModules.includes("office_materials")
+              ? { timesheetCategory: "方案与资料" }
+              : routeMode === "office" ? { timesheetCategory: base.timesheetCategory } : {}),
           }, routeMode));
           setEditDraftLoaded(true);
           setCurrentCreateDraftKey(String(draftData?.item?.draftKey || routeDraftKey || "").trim());
@@ -2562,6 +2572,7 @@ export function ServiceReport() {
       setSupportConfigFiles([]);
       setSitePhotoFiles([]);
       setScreenshotLogFiles([]);
+      setOfficeDocumentFiles([]);
       setDraftSavedAt("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
@@ -2921,7 +2932,11 @@ export function ServiceReport() {
       ? selectedServiceModules.filter((item) => item !== module)
       : [...selectedServiceModules, module];
     const serviceType = derivePrimaryServiceType(form.serviceMode, nextModules);
-    const timesheetCategory = isRemote ? deriveRemoteTimesheetCategory(nextModules) : form.timesheetCategory;
+    const timesheetCategory = isRemote
+      ? deriveRemoteTimesheetCategory(nextModules)
+      : isOffice && nextModules.includes("office_materials")
+        ? "方案与资料"
+        : form.timesheetCategory;
     const nextParts = module === "replacement" && !selectedServiceModules.includes("replacement") && !form.parts.some((part) => part.actionType === "replacement")
       ? [...form.parts, emptyPart("replacement", form.deviceId)]
       : form.parts;
@@ -3685,6 +3700,7 @@ export function ServiceReport() {
     if (purpose === "inspection_document") return inspectionFiles;
     if (purpose === "support_config") return supportConfigFiles;
     if (purpose === "site_photo") return sitePhotoFiles;
+    if (purpose === "office_document") return officeDocumentFiles;
     return screenshotLogFiles;
   }
 
@@ -3699,6 +3715,10 @@ export function ServiceReport() {
     }
     if (purpose === "site_photo") {
       setSitePhotoFiles(files);
+      return;
+    }
+    if (purpose === "office_document") {
+      setOfficeDocumentFiles(files);
       return;
     }
     setScreenshotLogFiles(files);
@@ -3856,7 +3876,7 @@ export function ServiceReport() {
         }
       });
     }
-    if (showTargetDeviceFields) {
+    if (showTargetDeviceFields && !hasOfficeMaterialsModule) {
       const maintenanceTargets = form.targetDevices.filter(targetDeviceHasContent);
       if (!maintenanceTargets.length) {
         missing.push(isRemote ? "远程目标设备" : "目标设备");
@@ -3976,6 +3996,7 @@ export function ServiceReport() {
       ["site_photo", sitePhotoFiles],
       ["screenshot_log", screenshotLogFiles],
       ["inspection_document", inspectionFiles],
+      ["office_document", officeDocumentFiles],
     ] as Array<[AttachmentPurpose, File[]]>).filter(([, files]) => files.length);
     if (!entries.length) return;
     for (const [, files] of entries) {
@@ -3999,6 +4020,7 @@ export function ServiceReport() {
       setSitePhotoFiles([]);
       setScreenshotLogFiles([]);
       setInspectionFiles([]);
+      setOfficeDocumentFiles([]);
     } finally {
       setUploadingFiles(false);
     }
@@ -5174,10 +5196,9 @@ export function ServiceReport() {
             </div>
           </ReportSection>
 
-          <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag={isOffice ? "内勤记录按内部支持登记" : "可选；按需选择对应字段"}>
+              <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag="可选；按需选择对应字段">
               <div className="space-y-4 p-3 sm:p-4">
-                {!isOffice ? (
-                  <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
                     {moduleOptions.map((option) => {
                       const Icon = option.icon;
                       const selected = selectedServiceModules.includes(option.value);
@@ -5219,8 +5240,7 @@ export function ServiceReport() {
                         </button>
                       );
                     })}
-                  </div>
-                ) : null}
+                </div>
 
                 <div className="grid gap-4">
                   <Field label={issueFieldLabel} required>
@@ -5278,7 +5298,7 @@ export function ServiceReport() {
 
             {showAssetSection ? (
               <ReportSection
-                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : showTargetDeviceFields ? "目标设备与备件信息" : "设备与备件信息"}
+                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : hasOfficeMaterialsModule ? "关联设备" : showTargetDeviceFields ? "目标设备与备件信息" : "设备与备件信息"}
                 icon={Wrench}
                 step={assetSectionStep}
                 tag={isRemote ? "目标设备与远程信息" : "根据已选模块填写"}
@@ -5292,8 +5312,8 @@ export function ServiceReport() {
                     <div className="space-y-3 rounded-lg border p-3">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : "目标设备"}</div>
-                          <div className="text-xs text-muted-foreground">输入设备型号，或选择下拉中的客户已有设备；新设备提交后会加入客户设备档案。</div>
+                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : hasOfficeMaterialsModule ? "关联设备" : "目标设备"}</div>
+                          <div className="text-xs text-muted-foreground">{hasOfficeMaterialsModule ? "可选择该客户已有的相关设备，也可以暂不关联。" : "输入设备型号，或选择下拉中的客户已有设备；新设备提交后会加入客户设备档案。"}</div>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={addTargetDeviceRow}>
                           <Plus className="h-4 w-4" />
@@ -5332,7 +5352,7 @@ export function ServiceReport() {
 
                               <div className={`grid gap-3 ${targetDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                                 <div className="relative space-y-2">
-                                  <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : "目标设备 / 设备型号"}</Label>
+                                  <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : hasOfficeMaterialsModule ? "关联设备 / 设备型号" : "目标设备 / 设备型号"}</Label>
                                   <Input
                                     value={targetDeviceValue(targetDevice)}
                                     placeholder="输入设备型号，或选择客户已有设备"

@@ -82,6 +82,7 @@ const engineerScopedRoles = new Set(ROLE_GROUPS.serviceOrderEngineer)
 const businessRoles = new Set(['sales', 'sales_supervisor'])
 const ONSITE_SERVICE_MODULES = new Set(['repair', 'install', 'inspect', 'replacement'])
 const REMOTE_SERVICE_MODULES = new Set(['repair', 'replacement'])
+const OFFICE_SERVICE_MODULES = new Set(['office_materials'])
 
 function isBusinessRole(user) {
   return businessRoles.has(user?.role)
@@ -254,7 +255,7 @@ function normalizeServiceModuleList(values, serviceMode = 'onsite') {
     ? REMOTE_SERVICE_MODULES
     : serviceMode === 'onsite'
       ? ONSITE_SERVICE_MODULES
-      : new Set()
+      : OFFICE_SERVICE_MODULES
   const modules = Array.isArray(values) ? values : []
   return [...new Set(modules.map((value) => String(value || '').trim()).filter((value) => allowed.has(value)))]
 }
