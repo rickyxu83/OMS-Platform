@@ -177,6 +177,33 @@ interface ImportUnmatchedCustomer {
   sns: string[];
 }
 
+interface ImportCustomerConfirmation {
+  inputCustomerName: string;
+  rowNumbers: number[];
+  suggestedCustomerId: string;
+  suggestedCustomerName: string;
+  matchType?: string;
+}
+
+function groupImportCustomerCorrections(items: ImportCustomerCorrection[] = []): ImportCustomerConfirmation[] {
+  const grouped = new Map<string, ImportCustomerConfirmation>();
+  for (const item of items) {
+    const inputCustomerName = String(item.inputCustomerName || "").trim();
+    const suggestedCustomerId = item.customerId === undefined || item.customerId === null ? "" : String(item.customerId);
+    if (!inputCustomerName || !suggestedCustomerId) continue;
+    const current = grouped.get(inputCustomerName) || {
+      inputCustomerName,
+      rowNumbers: [],
+      suggestedCustomerId,
+      suggestedCustomerName: item.customerName || `客户 #${suggestedCustomerId}`,
+      matchType: item.matchType,
+    };
+    if (item.rowNumber && !current.rowNumbers.includes(item.rowNumber)) current.rowNumbers.push(item.rowNumber);
+    grouped.set(inputCustomerName, current);
+  }
+  return [...grouped.values()];
+}
+
 interface ImportResult {
   created: number;
   failed: number;
@@ -972,7 +999,7 @@ async function downloadDeviceImportTemplate() {
   worksheet.mergeCells("A3:L3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
-  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；系统会给出纠正建议并要求确认。无法匹配时必须选择现有客户；客户不存在时请先新增。重复 SN 会自动跳过。";
+  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；系统会默认选中纠正建议并要求确认。无法匹配时请先在客户管理新增客户。重复 SN 会自动跳过。";
   [1, 2, 3].forEach((rowNumber) => {
     const row = worksheet.getRow(rowNumber);
     row.height = rowNumber === 1 ? 26 : 22;
@@ -1028,7 +1055,7 @@ async function downloadDeviceImportTemplate() {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
-        ? "必填项，建议填写系统内标准名称；纠正建议需确认，无法匹配时必须选择现有客户。"
+        ? "必填项，建议填写系统内标准名称；纠正建议需确认，无法匹配时请先新增客户。"
         : "必填项，不能为空。";
     }
   });
@@ -1054,7 +1081,7 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户名称", "必填", "建议填写系统内标准名称；纠正建议需确认，无法匹配时必须选择现有客户；客户不存在时请先新增。"],
+    ["客户名称", "必填", "建议填写系统内标准名称；系统建议会默认选中并等待确认；无法匹配时请先新增客户。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
@@ -1212,6 +1239,17 @@ export function Devices() {
   const [exporting, setExporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importCustomerMappings, setImportCustomerMappings] = useState<Record<string, string>>({});
+  const importCustomerConfirmations = useMemo(
+    () => groupImportCustomerCorrections(importResult?.customerCorrections),
+    [importResult?.customerCorrections],
+  );
+  const importCustomerOptions = useMemo(() => mergeCustomers(
+    customers,
+    importCustomerConfirmations.map((item) => ({
+      id: item.suggestedCustomerId,
+      name: item.suggestedCustomerName,
+    })),
+  ), [customers, importCustomerConfirmations]);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [maintenanceImportOpen, setMaintenanceImportOpen] = useState(false);
   const [maintenanceImportFile, setMaintenanceImportFile] = useState<File | null>(null);
@@ -2010,9 +2048,13 @@ export function Devices() {
       return;
     }
     const unmatchedCustomers = importResult?.unmatchedCustomers || [];
-    const missingCustomerMappings = unmatchedCustomers.filter((item) => !importCustomerMappings[item.inputCustomerName]);
-    if (mode === "confirm" && missingCustomerMappings.length) {
-      setError("请先为所有未匹配名称选择系统现有客户；客户不存在时，请先到客户管理新增后重新预览");
+    const missingSuggestedMappings = importCustomerConfirmations.filter((item) => !importCustomerMappings[item.inputCustomerName]);
+    if (mode === "confirm" && unmatchedCustomers.length) {
+      setError("存在系统中没有的客户，请先到客户管理新增客户，再重新上传预览");
+      return;
+    }
+    if (mode === "confirm" && missingSuggestedMappings.length) {
+      setError("请确认所有系统建议的客户");
       return;
     }
     setImporting(true);
@@ -2043,6 +2085,13 @@ export function Devices() {
         modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
       };
       setImportResult(result);
+      const suggestedMappings = Object.fromEntries(
+        groupImportCustomerCorrections(result.customerCorrections)
+          .map((item) => [item.inputCustomerName, item.suggestedCustomerId]),
+      );
+      if (Object.keys(suggestedMappings).length) {
+        setImportCustomerMappings((current) => ({ ...suggestedMappings, ...current }));
+      }
       if (!result.requiresImportConfirmation && !result.requiresModelConfirmation) await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "导入失败");
@@ -3417,7 +3466,7 @@ export function Devices() {
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
               只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
               客户名称建议填写系统内标准名称；系统会识别简称、设备说明和已确认的历史主体合并关系。
-              无法匹配的名称必须人工选择现有客户；客户不存在时，请先到客户管理新增。重复 SN 会自动跳过。
+              系统建议会默认选中，用户可改选其他现有客户；无法匹配时请先到客户管理新增客户。重复 SN 会自动跳过。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
@@ -3439,32 +3488,56 @@ export function Devices() {
                 {importResult.requiresImportConfirmation || importResult.requiresModelConfirmation ? (
                   <>
                     {importResult.unmatchedCustomers?.length ? (
-                      <div className="rounded-md border border-amber-300 bg-amber-50/80">
-                        <div className="border-b border-amber-200 px-3 py-2 text-sm font-medium text-amber-950">
-                          还有 {importResult.unmatchedCustomers.length} 个客户名称需要人工确认
+                      <div className="rounded-md border border-red-300 bg-red-50/80">
+                        <div className="border-b border-red-200 px-3 py-2 text-sm font-medium text-red-950">
+                          有 {importResult.unmatchedCustomers.length} 个客户在系统中不存在
                         </div>
-                        <div className="max-h-80 overflow-auto divide-y divide-amber-100">
+                        <div className="max-h-56 divide-y divide-red-100 overflow-auto">
                           {importResult.unmatchedCustomers.map((item) => (
-                            <div key={item.inputCustomerName} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[minmax(180px,1fr)_minmax(260px,1.25fr)] md:items-center">
+                            <div key={item.inputCustomerName} className="grid gap-1 px-3 py-2.5 text-sm md:grid-cols-[minmax(180px,1fr)_auto] md:items-center">
                               <div className="min-w-0">
                                 <div className="truncate font-medium text-slate-900" title={item.inputCustomerName}>{item.inputCustomerName}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">
+                                <div className="mt-0.5 text-xs text-muted-foreground">
                                   Excel 第 {item.rowNumbers.join("、")} 行，共 {item.rowNumbers.length} 台
                                 </div>
                               </div>
+                              <span className="text-xs font-medium text-red-700">客户不存在，请先添加客户</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t border-red-200 px-3 py-2 text-xs leading-5 text-red-900">
+                          请先到“客户管理”添加以上客户，再重新上传预览。存在未匹配客户时，系统不会导入任何设备。
+                        </div>
+                      </div>
+                    ) : null}
+                    {importCustomerConfirmations.length ? (
+                      <div className="rounded-md border border-sky-200 bg-sky-50/80">
+                        <div className="border-b border-sky-200 px-3 py-2 text-sm font-medium text-sky-900">
+                          请确认 {importCustomerConfirmations.length} 个客户名称纠正建议
+                        </div>
+                        <div className="max-h-72 divide-y divide-sky-100 overflow-auto">
+                          {importCustomerConfirmations.map((item) => (
+                            <div key={item.inputCustomerName} className="grid gap-2 px-3 py-2.5 text-sm md:grid-cols-[minmax(190px,1fr)_minmax(240px,1.15fr)] md:items-center">
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-slate-900" title={item.inputCustomerName}>{item.inputCustomerName}</div>
+                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                  Excel 第 {item.rowNumbers.join("、")} 行，共 {item.rowNumbers.length} 台
+                                  {item.matchType ? ` · ${item.matchType}` : ""}
+                                </div>
+                              </div>
                               <Select
-                                value={importCustomerMappings[item.inputCustomerName] || undefined}
+                                value={importCustomerMappings[item.inputCustomerName] || item.suggestedCustomerId}
                                 onValueChange={(customerId) => setImportCustomerMappings((current) => ({
                                   ...current,
                                   [item.inputCustomerName]: customerId,
                                 }))}
                               >
-                                <SelectTrigger className="bg-white">
-                                  <SelectValue placeholder="选择系统现有客户" />
+                                <SelectTrigger size="sm" className="bg-white text-xs">
+                                  <SelectValue placeholder="确认系统客户" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                  {customers.map((customer) => (
-                                    <SelectItem key={String(customer.id)} value={String(customer.id)}>
+                                <SelectContent className="max-h-56 w-[min(360px,calc(100vw-32px))]">
+                                  {importCustomerOptions.map((customer) => (
+                                    <SelectItem className="py-1 text-xs" key={String(customer.id)} value={String(customer.id)}>
                                       {customer.name || `客户 #${customer.id}`}
                                     </SelectItem>
                                   ))}
@@ -3473,29 +3546,8 @@ export function Devices() {
                             </div>
                           ))}
                         </div>
-                        <div className="border-t border-amber-200 px-3 py-2 text-xs leading-5 text-amber-950">
-                          必须全部选择后才能导入。如果列表中没有实际客户，请先到“客户管理”新增客户，再重新上传预览；系统不会在设备导入时自动创建客户。
-                        </div>
-                      </div>
-                    ) : null}
-                    {importResult.customerCorrections?.length ? (
-                      <div className="rounded-md border border-sky-200 bg-sky-50/80">
-                        <div className="border-b border-sky-200 px-3 py-2 text-sm font-medium text-sky-900">
-                          发现 {importResult.customerCorrections.length} 行客户名称纠正建议
-                        </div>
-                        <div className="max-h-64 overflow-auto divide-y divide-sky-100">
-                          {importResult.customerCorrections.map((item, index) => (
-                            <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
-                              <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
-                              <span className="truncate text-muted-foreground" title={item.inputCustomerName || ""}>原客户：{item.inputCustomerName || "-"}</span>
-                              <span className="truncate text-sky-900" title={item.customerName || ""}>
-                                系统客户：{item.customerName || "-"}{item.matchType ? `（${item.matchType}）` : ""}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
                         <div className="px-3 py-2 text-xs text-sky-900">
-                          确认后，以上行会绑定到系统现有客户；“历史客户主体合并”包含已撤销主体归并到现存客户的规则。
+                          已默认选中系统建议客户，可打开紧凑下拉菜单改选其他现有客户。确认后才会绑定；历史主体合并不会静默执行。
                         </div>
                       </div>
                     ) : null}
@@ -3519,7 +3571,7 @@ export function Devices() {
                       </div>
                     ) : null}
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      请核对自动纠正和人工选择。后端会重新解析文件并验证客户仍然存在；仍有未匹配客户时不会写入任何设备。
+                      请核对系统建议。后端会重新解析文件并验证客户仍然存在；客户不存在或仍未匹配时不会写入任何设备。
                     </div>
                   </>
                 ) : (
@@ -3582,7 +3634,8 @@ export function Devices() {
               disabled={
                 importing
                 || !importFile
-                || Boolean(importResult?.unmatchedCustomers?.some((item) => !importCustomerMappings[item.inputCustomerName]))
+                || Boolean(importResult?.unmatchedCustomers?.length)
+                || importCustomerConfirmations.some((item) => !importCustomerMappings[item.inputCustomerName])
               }
             >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}

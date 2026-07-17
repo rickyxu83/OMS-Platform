@@ -232,7 +232,7 @@ function resolveCustomerImportRows(rows, customers, customerMappings = new Map()
     }
 
     const matched = resolveCustomerImportName(row.customerName, customers)
-    if (matched.status !== 'unmatched') {
+    if (matched.status === 'exact') {
       resolved.push({
         row,
         customer: matched.customer,
@@ -243,16 +243,27 @@ function resolveCustomerImportRows(rows, customers, customerMappings = new Map()
     }
 
     const mappedCustomerId = customerMappings.get(customerNameKey(row.customerName))
-    if (!mappedCustomerId) {
-      unmatched.push(row)
+    if (mappedCustomerId) {
+      const customer = customerById.get(String(mappedCustomerId))
+      if (!customer) {
+        invalid.push({ row, reason: '人工选择的客户不存在或无权限' })
+        continue
+      }
+      resolved.push({ row, customer, status: 'corrected', matchType: '人工确认' })
       continue
     }
-    const customer = customerById.get(String(mappedCustomerId))
-    if (!customer) {
-      invalid.push({ row, reason: '人工选择的客户不存在或无权限' })
+
+    if (matched.status === 'corrected') {
+      resolved.push({
+        row,
+        customer: matched.customer,
+        status: matched.status,
+        matchType: matched.matchType,
+      })
       continue
     }
-    resolved.push({ row, customer, status: 'corrected', matchType: '人工确认' })
+
+    unmatched.push(row)
   }
 
   return {

@@ -54,6 +54,9 @@ const mergedNames = [
 for (const name of mergedNames) {
   const result = expectMatch(name, '镭亚电子（苏州）有限公司')
   assert.equal(result.matchType, '历史客户主体合并')
+  const plan = resolveCustomerImportRows([{ rowNumber: 4, customerName: name }], customers)
+  assert.equal(plan.requiresConfirmation, true, `${name} must wait for user confirmation`)
+  assert.equal(plan.resolved[0].matchType, '历史客户主体合并')
 }
 
 for (const name of ['精元电脑（吴江）', '敦阳上海办', '深圳太普', '继仪']) {
@@ -83,8 +86,16 @@ assert.equal(confirmedPlan.canImport, true)
 assert.equal(confirmedPlan.requiresConfirmation, true)
 assert.deepEqual(confirmedPlan.resolved.map((item) => item.matchType), ['人工确认', '人工确认'])
 
+const overriddenSuggestion = resolveCustomerImportRows(
+  [{ rowNumber: 7, customerName: '頎中科技（苏州）' }],
+  customers,
+  new Map([[customerNameKey('頎中科技（苏州）'), customers[1].id]]),
+)
+assert.equal(overriddenSuggestion.resolved[0].customer.id, customers[1].id)
+assert.equal(overriddenSuggestion.resolved[0].matchType, '人工确认')
+
 const staleMapping = resolveCustomerImportRows(
-  [{ rowNumber: 7, customerName: '不存在的客户' }],
+  [{ rowNumber: 8, customerName: '不存在的客户' }],
   customers,
   new Map([[customerNameKey('不存在的客户'), 999999]]),
 )
