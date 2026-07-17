@@ -210,6 +210,8 @@ function groupImportCustomerCorrections(items: ImportCustomerCorrection[] = []):
 
 interface ImportResult {
   created: number;
+  updated: number;
+  unchanged: number;
   failed: number;
   errors: ImportErrorRow[];
   remainingFileName?: string;
@@ -1005,7 +1007,7 @@ async function downloadDeviceImportTemplate() {
   worksheet.mergeCells("A3:L3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
-  worksheet.getCell("A3").value = "客户建议需确认；客户不存在或资料错误的行会跳过，不影响其他设备。导入后系统会下载仅保留未导入行和失败原因的文件，修正后可再次导入。";
+  worksheet.getCell("A3").value = "客户建议需确认；客户不存在或资料错误的行会跳过。SN 已存在时只补充库内空字段，不覆盖已有资料。导入后会下载仅保留失败行的文件。";
   [1, 2, 3].forEach((rowNumber) => {
     const row = worksheet.getRow(rowNumber);
     row.height = rowNumber === 1 ? 26 : 22;
@@ -1089,7 +1091,7 @@ async function downloadDeviceImportTemplate() {
   [
     ["客户名称", "必填", "建议填写系统内标准名称；建议匹配需确认。客户不存在时只跳过对应行，不影响其他设备。"],
     ["设备型号*", "必填", "不能为空。"],
-    ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
+    ["SN*", "必填", "不能为空；导入文件内重复时该行失败。系统内已存在时按 SN 匹配，只补充空字段，不覆盖已有资料；所属客户不一致时拒绝更新。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
     ["维保方名称", "有维保时选填", "下拉名单来自系统维保方目录；按名称和维保类型匹配已有维保方。"],
     ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
@@ -2151,6 +2153,8 @@ export function Devices() {
       const data = await api.postForm("/devices/import", formData);
       const result: ImportResult = {
         created: Number(data?.created || 0),
+        updated: Number(data?.updated || 0),
+        unchanged: Number(data?.unchanged || 0),
         failed: Number(data?.failed || 0),
         errors: Array.isArray(data?.errors) ? data.errors : [],
         requiresImportConfirmation: Boolean(data?.requiresImportConfirmation),
@@ -2183,12 +2187,13 @@ export function Devices() {
       }
       if (importFinished) {
         await load();
-        if (result.created && result.failed) {
-          toast.warning(`已导入 ${result.created} 台，另有 ${result.failed} 行未导入${result.remainingFileName ? "，已下载剩余设备文件" : ""}`);
-        } else if (result.created) {
-          toast.success(`成功导入 ${result.created} 台设备`);
+        const processed = result.created + result.updated + result.unchanged;
+        if (processed && result.failed) {
+          toast.warning(`新增 ${result.created} 台、补充 ${result.updated} 台、无需更新 ${result.unchanged} 台，另有 ${result.failed} 行未导入${result.remainingFileName ? "，已下载剩余设备文件" : ""}`);
+        } else if (processed) {
+          toast.success(`处理完成：新增 ${result.created} 台、补充 ${result.updated} 台、无需更新 ${result.unchanged} 台`);
         } else if (result.failed) {
-          toast.error(`没有设备导入成功，共 ${result.failed} 行需要修正`);
+          toast.error(`没有设备处理成功，共 ${result.failed} 行需要修正`);
         }
       }
     } catch (e) {
@@ -3564,7 +3569,7 @@ export function Devices() {
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
               只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
               客户名称建议填写系统内标准名称；系统会识别简称、设备说明和已确认的历史主体合并关系。
-              系统建议会默认选中，用户可改选其他现有客户；客户不存在或未确认的行会跳过，不影响其他设备。导入后会下载仅保留失败行的文件。
+              系统建议会默认选中，客户不存在或未确认的行会跳过。SN 已存在时会补充维保日期等空字段，但不会覆盖已有资料；所属客户不同则拒绝更新。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
@@ -3714,10 +3719,18 @@ export function Devices() {
                   </>
                 ) : (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                       <div className="rounded-md border bg-emerald-50 px-3 py-2">
-                        <div className="text-xs text-emerald-700">成功导入</div>
+                        <div className="text-xs text-emerald-700">新增设备</div>
                         <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                      </div>
+                      <div className="rounded-md border bg-sky-50 px-3 py-2">
+                        <div className="text-xs text-sky-700">补充更新</div>
+                        <div className="mt-1 text-xl font-semibold text-sky-800">{importResult.updated}</div>
+                      </div>
+                      <div className="rounded-md border bg-slate-50 px-3 py-2">
+                        <div className="text-xs text-slate-600">无需更新</div>
+                        <div className="mt-1 text-xl font-semibold text-slate-800">{importResult.unchanged}</div>
                       </div>
                       <div className="rounded-md border bg-red-50 px-3 py-2">
                         <div className="text-xs text-red-700">未导入行数</div>
@@ -3726,7 +3739,7 @@ export function Devices() {
                     </div>
                     {importResult.remainingFileName ? (
                       <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-                        已下载 <span className="font-medium">{importResult.remainingFileName}</span>。文件已删除成功导入的设备，仅保留未导入行并附带失败原因。
+                        已下载 <span className="font-medium">{importResult.remainingFileName}</span>。文件已删除新增、补充更新和无需更新的设备，仅保留未导入行并附带失败原因。
                       </div>
                     ) : null}
                   </div>

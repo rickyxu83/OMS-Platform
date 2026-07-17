@@ -22,6 +22,7 @@ const {
   customerImportRequiresPreview,
   unresolvedCustomerImportErrors,
 } = require('./customer-import-match')
+const { buildExistingDeviceImportPatch } = require('./device-import-merge')
 
 const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -328,7 +329,8 @@ function getImportText(row, headerMap, field) {
 }
 
 function parseImportRow(row, headerMap) {
-  const maintenanceType = normalizeImportMaintenanceType(getImportText(row, headerMap, 'maintenanceType'))
+  const maintenanceTypeText = getImportText(row, headerMap, 'maintenanceType')
+  const maintenanceType = normalizeImportMaintenanceType(maintenanceTypeText)
   return {
     rowNumber: row.number,
     customerId: normalizeImportId(getImportText(row, headerMap, 'customerId')),
@@ -340,6 +342,7 @@ function parseImportRow(row, headerMap) {
     mrNo: normalizeText(getImportText(row, headerMap, 'mrNo')),
     remark: normalizeText(getImportText(row, headerMap, 'remark')),
     maintenanceType,
+    maintenanceTypeProvided: Boolean(maintenanceTypeText),
     maintenancePartyId: normalizeImportId(getImportText(row, headerMap, 'maintenancePartyId')),
     maintenancePartyName: normalizeText(getImportText(row, headerMap, 'maintenancePartyName')),
     maintenanceStart: normalizeImportDate(headerMap.maintenanceStart ? row.getCell(headerMap.maintenanceStart) : null, '维保开始'),
@@ -487,6 +490,48 @@ function importRowError(row, message) {
     sn: row.serialNo || '',
     message,
   }
+}
+
+async function findExistingImportDevice(serialNo, user) {
+  const rows = await query(
+    `SELECT d.id, d.customer_id, d.name, d.pn, d.mr_no, d.remark, d.location,
+            d.maintenance_type, d.maintenance_party_id, d.maintenance_start, d.maintenance_end,
+            d.warranty_until, c.name AS customer_name, c.salesperson
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     WHERE d.serial_no = :serialNo
+     LIMIT 1`,
+    { serialNo },
+  )
+  const device = rows[0] || null
+  if (device) assertSalesCanAccessSalesperson(device.salesperson, user, forbidden)
+  return device
+}
+
+async function supplementExistingImportDevice(existing, row) {
+  const merge = buildExistingDeviceImportPatch(existing, row)
+  if (merge.shouldResolveMaintenanceParty) {
+    const maintenanceParty = await findImportMaintenanceParty({
+      ...row,
+      maintenanceType: merge.effectiveMaintenanceType,
+    })
+    if (maintenanceParty) merge.patch.maintenance_party_id = maintenanceParty.id
+  }
+  const entries = Object.entries(merge.patch)
+  if (!entries.length) return false
+  const allowedColumns = new Set([
+    'name', 'pn', 'mr_no', 'remark', 'location', 'maintenance_type', 'maintenance_party_id',
+    'maintenance_start', 'maintenance_end', 'warranty_until',
+  ])
+  const params = { id: existing.id }
+  const setClauses = entries.map(([column, value], index) => {
+    if (!allowedColumns.has(column)) throw new Error(`Unsupported device import field: ${column}`)
+    const key = `importMerge${index}`
+    params[key] = value
+    return `${column} = :${key}`
+  })
+  await query(`UPDATE devices SET ${setClauses.join(', ')} WHERE id = :id`, params)
+  return true
 }
 
 function isDuplicateEntryError(error) {
@@ -1465,6 +1510,8 @@ async function importDevices(req, res) {
       requiresImportConfirmation: true,
       requiresModelConfirmation: Boolean(modelCorrections.length),
       created: 0,
+      updated: 0,
+      unchanged: 0,
       failed: errors.length,
       errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
       customerCorrections,
@@ -1476,6 +1523,8 @@ async function importDevices(req, res) {
   }
 
   let created = 0
+  let updated = 0
+  let unchanged = 0
   for (const row of rows) {
     try {
       if (row.skipImport) continue
@@ -1488,11 +1537,16 @@ async function importDevices(req, res) {
       if (duplicateSnKeys.has(row.serialNo.toLowerCase())) {
         throw badRequest('导入文件内 SN 重复')
       }
-      const existing = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: row.serialNo })
-      if (existing[0]) {
-        throw badRequest('SN 已存在，已跳过')
-      }
       const customer = await findImportCustomer(row, req.user)
+      const existing = await findExistingImportDevice(row.serialNo, req.user)
+      if (existing) {
+        if (String(existing.customer_id) !== String(customer.id)) {
+          throw badRequest(`SN 已存在，但当前属于客户“${existing.customer_name}”，与 Excel 客户不一致`)
+        }
+        if (await supplementExistingImportDevice(existing, row)) updated += 1
+        else unchanged += 1
+        continue
+      }
       const maintenanceParty = await findImportMaintenanceParty(row)
       const result = await query(
         `INSERT INTO devices (
@@ -1527,6 +1581,8 @@ async function importDevices(req, res) {
 
   res.json({
     created,
+    updated,
+    unchanged,
     failed: errors.length,
     errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
   })
