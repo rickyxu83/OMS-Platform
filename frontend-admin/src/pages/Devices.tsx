@@ -177,6 +177,10 @@ interface ImportUnmatchedCustomer {
   sns: string[];
 }
 
+interface ImportSimilarCustomer extends ImportUnmatchedCustomer {
+  candidates: Array<{ id: string | number; name?: string }>;
+}
+
 interface ImportCustomerConfirmation {
   inputCustomerName: string;
   rowNumbers: number[];
@@ -208,9 +212,11 @@ interface ImportResult {
   created: number;
   failed: number;
   errors: ImportErrorRow[];
+  remainingFileName?: string;
   requiresImportConfirmation?: boolean;
   requiresModelConfirmation?: boolean;
   customerCorrections?: ImportCustomerCorrection[];
+  similarCustomers?: ImportSimilarCustomer[];
   unmatchedCustomers?: ImportUnmatchedCustomer[];
   modelCorrections?: ImportModelCorrection[];
 }
@@ -999,7 +1005,7 @@ async function downloadDeviceImportTemplate() {
   worksheet.mergeCells("A3:L3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
-  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；系统会默认选中纠正建议并要求确认。无法匹配时请先在客户管理新增客户。重复 SN 会自动跳过。";
+  worksheet.getCell("A3").value = "客户建议需确认；客户不存在或资料错误的行会跳过，不影响其他设备。导入后系统会下载仅保留未导入行和失败原因的文件，修正后可再次导入。";
   [1, 2, 3].forEach((rowNumber) => {
     const row = worksheet.getRow(rowNumber);
     row.height = rowNumber === 1 ? 26 : 22;
@@ -1055,7 +1061,7 @@ async function downloadDeviceImportTemplate() {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
-        ? "必填项，建议填写系统内标准名称；纠正建议需确认，无法匹配时请先新增客户。"
+        ? "必填项；纠正建议需确认。客户不存在时该行会跳过，请新增客户后使用剩余设备文件重新导入。"
         : "必填项，不能为空。";
     }
   });
@@ -1081,7 +1087,7 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户名称", "必填", "建议填写系统内标准名称；系统建议会默认选中并等待确认；无法匹配时请先新增客户。"],
+    ["客户名称", "必填", "建议填写系统内标准名称；建议匹配需确认。客户不存在时只跳过对应行，不影响其他设备。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
@@ -1101,6 +1107,85 @@ async function downloadDeviceImportTemplate() {
 
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "设备资产导入模板.xlsx");
+}
+
+function deviceImportHeaderKey(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/[\s*＊]/g, "");
+}
+
+function findDeviceImportHeaderRow(worksheet: any) {
+  for (let rowNumber = 1; rowNumber <= Math.min(20, worksheet.rowCount); rowNumber += 1) {
+    const keys = new Set<string>();
+    worksheet.getRow(rowNumber).eachCell((cell: any) => keys.add(deviceImportHeaderKey(cell.text || cell.value)));
+    const hasCustomer = [...keys].some((key) => ["客户名称", "客户名", "客户"].includes(key));
+    const hasModel = [...keys].some((key) => ["设备型号", "型号", "model"].includes(key));
+    const hasSerial = [...keys].some((key) => ["sn", "序列号", "设备序列号", "serialno"].includes(key));
+    if (hasCustomer && hasModel && hasSerial) return rowNumber;
+  }
+  return 0;
+}
+
+async function downloadRemainingDeviceImportFile(file: File, errors: ImportErrorRow[]) {
+  const failedByRow = new Map<number, string[]>();
+  for (const error of errors) {
+    const rowNumber = Number(error.rowNumber);
+    if (!Number.isInteger(rowNumber) || rowNumber <= 0) continue;
+    const messages = failedByRow.get(rowNumber) || [];
+    const message = String(error.message || "导入失败").trim();
+    if (message && !messages.includes(message)) messages.push(message);
+    failedByRow.set(rowNumber, messages);
+  }
+  if (!failedByRow.size) return "";
+
+  const [{ Workbook }, { saveAs }] = await Promise.all([
+    import("exceljs"),
+    import("file-saver"),
+  ]);
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await file.arrayBuffer());
+  const worksheet = workbook.getWorksheet("设备导入模板") || workbook.worksheets[0];
+  if (!worksheet) return "";
+  const headerRowNumber = findDeviceImportHeaderRow(worksheet);
+  if (!headerRowNumber) return "";
+
+  let failureColumn = 0;
+  worksheet.getRow(headerRowNumber).eachCell((cell: any, columnNumber: number) => {
+    if (deviceImportHeaderKey(cell.text || cell.value) === "导入失败原因") failureColumn = columnNumber;
+  });
+  if (!failureColumn) failureColumn = Math.max(worksheet.columnCount, 1) + 1;
+  const failureHeader = worksheet.getCell(headerRowNumber, failureColumn);
+  failureHeader.value = "导入失败原因";
+  failureHeader.font = { bold: true, color: { argb: "FF991B1B" } };
+  failureHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEE2E2" } };
+  failureHeader.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  worksheet.getColumn(failureColumn).width = 42;
+
+  for (const [rowNumber, messages] of failedByRow) {
+    if (rowNumber <= headerRowNumber || rowNumber > worksheet.rowCount) continue;
+    const cell = worksheet.getCell(rowNumber, failureColumn);
+    cell.value = messages.join("；");
+    cell.font = { color: { argb: "FFB91C1C" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF2F2" } };
+    cell.alignment = { vertical: "middle", wrapText: true };
+  }
+
+  for (let rowNumber = worksheet.rowCount; rowNumber > headerRowNumber; rowNumber -= 1) {
+    if (!failedByRow.has(rowNumber)) worksheet.spliceRows(rowNumber, 1);
+  }
+  if (worksheet.getCell("A3")) {
+    worksheet.getCell("A3").value = "本文件仅保留上次未导入的设备。请根据“导入失败原因”修正客户或其他资料后重新导入。";
+  }
+  worksheet.autoFilter = {
+    from: { row: headerRowNumber, column: 1 },
+    to: { row: headerRowNumber, column: failureColumn },
+  };
+  workbook.modified = new Date();
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const baseName = file.name.replace(/\.xlsx$/i, "") || "设备资产导入模板";
+  const fileName = `${baseName}-未导入设备.xlsx`;
+  saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), fileName);
+  return fileName;
 }
 
 async function exportDevicesToExcel(devices: Device[]) {
@@ -2047,16 +2132,6 @@ export function Devices() {
       setError("请选择要导入的 Excel 文件");
       return;
     }
-    const unmatchedCustomers = importResult?.unmatchedCustomers || [];
-    const missingSuggestedMappings = importCustomerConfirmations.filter((item) => !importCustomerMappings[item.inputCustomerName]);
-    if (mode === "confirm" && unmatchedCustomers.length) {
-      setError("存在系统中没有的客户，请先到客户管理新增客户，再重新上传预览");
-      return;
-    }
-    if (mode === "confirm" && missingSuggestedMappings.length) {
-      setError("请确认所有系统建议的客户");
-      return;
-    }
     setImporting(true);
     setError("");
     setImportResult(null);
@@ -2074,25 +2149,48 @@ export function Devices() {
         formData.append("skipModelCorrections", "1");
       }
       const data = await api.postForm("/devices/import", formData);
-      const result = {
+      const result: ImportResult = {
         created: Number(data?.created || 0),
         failed: Number(data?.failed || 0),
         errors: Array.isArray(data?.errors) ? data.errors : [],
         requiresImportConfirmation: Boolean(data?.requiresImportConfirmation),
         requiresModelConfirmation: Boolean(data?.requiresModelConfirmation),
         customerCorrections: Array.isArray(data?.customerCorrections) ? data.customerCorrections : [],
+        similarCustomers: Array.isArray(data?.similarCustomers) ? data.similarCustomers : [],
         unmatchedCustomers: Array.isArray(data?.unmatchedCustomers) ? data.unmatchedCustomers : [],
         modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
       };
+      const importFinished = !result.requiresImportConfirmation && !result.requiresModelConfirmation;
+      if (importFinished && result.errors.length) {
+        try {
+          result.remainingFileName = await downloadRemainingDeviceImportFile(importFile, result.errors);
+        } catch (downloadError) {
+          toast.error(downloadError instanceof Error
+            ? `设备已完成导入，但剩余设备文件生成失败：${downloadError.message}`
+            : "设备已完成导入，但剩余设备文件生成失败");
+        }
+      }
       setImportResult(result);
-      const suggestedMappings = Object.fromEntries(
-        groupImportCustomerCorrections(result.customerCorrections)
-          .map((item) => [item.inputCustomerName, item.suggestedCustomerId]),
-      );
+      const suggestedMappings = Object.fromEntries([
+        ...groupImportCustomerCorrections(result.customerCorrections)
+          .map((item) => [item.inputCustomerName, item.suggestedCustomerId] as const),
+        ...(result.similarCustomers || [])
+          .filter((item) => item.candidates.length === 1)
+          .map((item) => [item.inputCustomerName, String(item.candidates[0].id)] as const),
+      ]);
       if (Object.keys(suggestedMappings).length) {
         setImportCustomerMappings((current) => ({ ...suggestedMappings, ...current }));
       }
-      if (!result.requiresImportConfirmation && !result.requiresModelConfirmation) await load();
+      if (importFinished) {
+        await load();
+        if (result.created && result.failed) {
+          toast.warning(`已导入 ${result.created} 台，另有 ${result.failed} 行未导入${result.remainingFileName ? "，已下载剩余设备文件" : ""}`);
+        } else if (result.created) {
+          toast.success(`成功导入 ${result.created} 台设备`);
+        } else if (result.failed) {
+          toast.error(`没有设备导入成功，共 ${result.failed} 行需要修正`);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "导入失败");
     } finally {
@@ -3454,7 +3552,7 @@ export function Devices() {
           <DialogHeader>
             <DialogTitle>导入设备资产</DialogTitle>
             <DialogDescription>
-              上传按模板填写的 .xlsx 文件；所有客户确认存在后，才能继续导入。
+              上传按模板填写的 .xlsx 文件；可处理设备正常导入，失败行会保留到新的剩余设备文件。
             </DialogDescription>
           </DialogHeader>
           {error ? (
@@ -3466,7 +3564,7 @@ export function Devices() {
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
               只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
               客户名称建议填写系统内标准名称；系统会识别简称、设备说明和已确认的历史主体合并关系。
-              系统建议会默认选中，用户可改选其他现有客户；无法匹配时请先到客户管理新增客户。重复 SN 会自动跳过。
+              系统建议会默认选中，用户可改选其他现有客户；客户不存在或未确认的行会跳过，不影响其他设备。导入后会下载仅保留失败行的文件。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
@@ -3506,7 +3604,47 @@ export function Devices() {
                           ))}
                         </div>
                         <div className="border-t border-red-200 px-3 py-2 text-xs leading-5 text-red-900">
-                          请先到“客户管理”添加以上客户，再重新上传预览。存在未匹配客户时，系统不会导入任何设备。
+                          这些行会跳过，其他设备仍可导入。请先到“客户管理”添加客户，再使用导入后下载的剩余设备文件重试。
+                        </div>
+                      </div>
+                    ) : null}
+                    {importResult.similarCustomers?.length ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50/80">
+                        <div className="border-b border-amber-200 px-3 py-2 text-sm font-medium text-amber-950">
+                          发现 {importResult.similarCustomers.length} 个相似客户名称，请人工确认
+                        </div>
+                        <div className="max-h-72 divide-y divide-amber-100 overflow-auto">
+                          {importResult.similarCustomers.map((item) => (
+                            <div key={item.inputCustomerName} className="grid gap-2 px-3 py-2.5 text-sm md:grid-cols-[minmax(190px,1fr)_minmax(240px,1.15fr)] md:items-center">
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-slate-900" title={item.inputCustomerName}>{item.inputCustomerName}</div>
+                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                  Excel 第 {item.rowNumbers.join("、")} 行，共 {item.rowNumbers.length} 台
+                                </div>
+                              </div>
+                              <Select
+                                value={importCustomerMappings[item.inputCustomerName] || undefined}
+                                onValueChange={(customerId) => setImportCustomerMappings((current) => ({
+                                  ...current,
+                                  [item.inputCustomerName]: customerId,
+                                }))}
+                              >
+                                <SelectTrigger size="sm" className="bg-white text-xs">
+                                  <SelectValue placeholder="选择相似的系统客户" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-56 w-[min(360px,calc(100vw-32px))]">
+                                  {item.candidates.map((customer) => (
+                                    <SelectItem className="py-1 text-xs" key={String(customer.id)} value={String(customer.id)}>
+                                      {customer.name || `客户 #${customer.id}`}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t border-amber-200 px-3 py-2 text-xs leading-5 text-amber-950">
+                          地区、分支机构或简称存在差异，因此系统不会自动绑定。未选择的行会跳过，不影响其他设备导入。
                         </div>
                       </div>
                     ) : null}
@@ -3571,19 +3709,26 @@ export function Devices() {
                       </div>
                     ) : null}
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      请核对系统建议。后端会重新解析文件并验证客户仍然存在；客户不存在或仍未匹配时不会写入任何设备。
+                      请核对系统建议。后端会重新解析并逐行导入；客户不存在、相似客户未选择或其他校验失败时，只跳过对应设备。
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-md border bg-emerald-50 px-3 py-2">
-                      <div className="text-xs text-emerald-700">成功导入</div>
-                      <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-md border bg-emerald-50 px-3 py-2">
+                        <div className="text-xs text-emerald-700">成功导入</div>
+                        <div className="mt-1 text-xl font-semibold text-emerald-800">{importResult.created}</div>
+                      </div>
+                      <div className="rounded-md border bg-red-50 px-3 py-2">
+                        <div className="text-xs text-red-700">未导入行数</div>
+                        <div className="mt-1 text-xl font-semibold text-red-800">{importResult.failed}</div>
+                      </div>
                     </div>
-                    <div className="rounded-md border bg-red-50 px-3 py-2">
-                      <div className="text-xs text-red-700">失败行数</div>
-                      <div className="mt-1 text-xl font-semibold text-red-800">{importResult.failed}</div>
-                    </div>
+                    {importResult.remainingFileName ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                        已下载 <span className="font-medium">{importResult.remainingFileName}</span>。文件已删除成功导入的设备，仅保留未导入行并附带失败原因。
+                      </div>
+                    ) : null}
                   </div>
                 )}
                 {importResult.errors.length ? (
@@ -3609,6 +3754,7 @@ export function Devices() {
             </Button>
             {(importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation)
               && !importResult?.customerCorrections?.length
+              && !importResult?.similarCustomers?.length
               && !importResult?.unmatchedCustomers?.length ? (
               <Button variant="outline" onClick={() => submitImport("skip")} disabled={importing || !importFile}>
                 保留原型号导入
@@ -3631,15 +3777,10 @@ export function Devices() {
             </Button>
             <Button
               onClick={() => submitImport((importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "confirm" : "check")}
-              disabled={
-                importing
-                || !importFile
-                || Boolean(importResult?.unmatchedCustomers?.length)
-                || importCustomerConfirmations.some((item) => !importCustomerMappings[item.inputCustomerName])
-              }
+              disabled={importing || !importFile}
             >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-              {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认客户并导入" : "开始导入"}
+              {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认并导入可处理设备" : "开始导入"}
             </Button>
           </DialogFooter>
         </DialogContent>

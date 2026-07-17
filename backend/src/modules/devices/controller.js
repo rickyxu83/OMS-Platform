@@ -17,7 +17,11 @@ const {
   analyzeMaintenanceWorkbook,
   selectMaintenanceUpdates,
 } = require('./maintenance-import')
-const { resolveCustomerImportRows } = require('./customer-import-match')
+const {
+  resolveCustomerImportRows,
+  customerImportRequiresPreview,
+  unresolvedCustomerImportErrors,
+} = require('./customer-import-match')
 
 const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -420,6 +424,29 @@ function unresolvedImportCustomers(rows) {
     }
     current.rowNumbers.push(row.rowNumber)
     if (row.serialNo) current.sns.push(row.serialNo)
+    grouped.set(key, current)
+  }
+  return [...grouped.values()]
+}
+
+function similarImportCustomers(items) {
+  const grouped = new Map()
+  for (const item of items) {
+    const row = item.row
+    const key = customerNameKey(row.customerName)
+    const current = grouped.get(key) || {
+      inputCustomerName: row.customerName || '',
+      rowNumbers: [],
+      sns: [],
+      candidates: [],
+    }
+    current.rowNumbers.push(row.rowNumber)
+    if (row.serialNo) current.sns.push(row.serialNo)
+    const candidateById = new Map(current.candidates.map((customer) => [String(customer.id), customer]))
+    for (const customer of item.candidates || []) {
+      candidateById.set(String(customer.id), { id: customer.id, name: customer.name })
+    }
+    current.candidates = [...candidateById.values()]
     grouped.set(key, current)
   }
   return [...grouped.values()]
@@ -1378,7 +1405,14 @@ async function importDevices(req, res) {
     throw badRequest(`第 ${invalid.row.rowNumber} 行${invalid.reason}，请先维护客户资料后重新导入`)
   }
   const customerCorrections = []
+  const similarCustomers = similarImportCustomers(customerResolution.ambiguous)
   const unmatchedCustomerRows = customerResolution.unmatched
+  if (confirmImportCorrections) {
+    for (const unresolved of unresolvedCustomerImportErrors(customerResolution)) {
+      unresolved.row.skipImport = true
+      errors.push(importRowError(unresolved.row, unresolved.message))
+    }
+  }
   const modelCorrections = []
   const importModelMatchCache = new Map()
 
@@ -1422,11 +1456,9 @@ async function importDevices(req, res) {
   }
 
   const unmatchedCustomers = unresolvedImportCustomers(unmatchedCustomerRows)
-  const customerConfirmationRequired = customerResolution.requiresConfirmation
   const modelConfirmationRequired = Boolean(modelCorrections.length) && !skipModelCorrections
   if (
-    unmatchedCustomers.length
-    || (customerConfirmationRequired && !confirmImportCorrections)
+    customerImportRequiresPreview(customerResolution, confirmImportCorrections)
     || (modelConfirmationRequired && !confirmModelCorrections)
   ) {
     res.json({
@@ -1436,6 +1468,7 @@ async function importDevices(req, res) {
       failed: errors.length,
       errors: errors.sort((left, right) => left.rowNumber - right.rowNumber),
       customerCorrections,
+      similarCustomers,
       unmatchedCustomers,
       modelCorrections,
     })

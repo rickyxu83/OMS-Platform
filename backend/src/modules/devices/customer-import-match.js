@@ -12,6 +12,7 @@ const legalSuffixes = Object.freeze([
 ])
 
 const genericBusinessTerms = Object.freeze(['电子科技', '科技', '电子'])
+const candidateContextTerms = Object.freeze(['办事处', '办公室', '内勤', '备件', '厂区', '分厂', '办'])
 
 const locationAliases = Object.freeze([
   ['成都市', '成都'],
@@ -135,6 +136,44 @@ function locationsConflict(left, right) {
   return ![...left].some((location) => right.has(location))
 }
 
+function candidateProfile(value) {
+  const profile = companyProfile(value)
+  let core = profile.core
+  for (const term of candidateContextTerms) {
+    core = core.split(term).join('')
+  }
+  return { core, locations: profile.locations }
+}
+
+function similarCustomerCandidates(value, customers) {
+  const variants = annotationFreeVariants(value)
+  const ranked = []
+  customers.forEach((customer, index) => {
+    const candidate = candidateProfile(customer.name)
+    let score = 0
+    for (const variant of variants) {
+      const input = candidateProfile(variant)
+      if (input.core.length < 2 || candidate.core.length < 2) continue
+      let variantScore = 0
+      if (input.core === candidate.core) variantScore = 100
+      else {
+        const shorter = input.core.length <= candidate.core.length ? input.core : candidate.core
+        const longer = shorter === input.core ? candidate.core : input.core
+        if (shorter.length >= 3 && longer.includes(shorter)) variantScore = 75
+      }
+      if (!variantScore) continue
+      if ([...input.locations].some((location) => candidate.locations.has(location))) variantScore += 20
+      else if (locationsConflict(input.locations, candidate.locations)) variantScore -= 10
+      score = Math.max(score, variantScore)
+    }
+    if (score >= 65) ranked.push({ customer, score, index })
+  })
+  return ranked
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, 8)
+    .map((item) => item.customer)
+}
+
 function uniqueCustomer(matches) {
   const unique = [...new Map(matches.map((customer) => [String(customer.id), customer])).values()]
   return unique.length === 1 ? unique[0] : null
@@ -214,12 +253,36 @@ function resolveCustomerImportName(value, customers) {
     }
   }
 
+  const candidates = similarCustomerCandidates(inputCustomerName, customers)
+  if (candidates.length) {
+    return { status: 'ambiguous', inputCustomerName, candidates }
+  }
+
   return { status: 'unmatched', inputCustomerName }
+}
+
+function customerImportRequiresPreview(resolution, confirmed) {
+  if (confirmed) return false
+  return Boolean(resolution.requiresConfirmation || resolution.ambiguous.length || resolution.unmatched.length)
+}
+
+function unresolvedCustomerImportErrors(resolution) {
+  return [
+    ...resolution.ambiguous.map((item) => ({
+      row: item.row,
+      message: '发现相似客户但尚未确认，请选择对应客户后重新导入',
+    })),
+    ...resolution.unmatched.map((row) => ({
+      row,
+      message: '客户不存在，请先在客户管理新增后重新导入',
+    })),
+  ]
 }
 
 function resolveCustomerImportRows(rows, customers, customerMappings = new Map()) {
   const customerById = new Map(customers.map((customer) => [String(customer.id), customer]))
   const resolved = []
+  const ambiguous = []
   const unmatched = []
   const invalid = []
 
@@ -263,14 +326,20 @@ function resolveCustomerImportRows(rows, customers, customerMappings = new Map()
       continue
     }
 
+    if (matched.status === 'ambiguous') {
+      ambiguous.push({ row, candidates: matched.candidates })
+      continue
+    }
+
     unmatched.push(row)
   }
 
   return {
     resolved,
+    ambiguous,
     unmatched,
     invalid,
-    canImport: unmatched.length === 0 && invalid.length === 0,
+    canImport: ambiguous.length === 0 && unmatched.length === 0 && invalid.length === 0,
     requiresConfirmation: resolved.some((item) => item.status === 'corrected'),
   }
 }
@@ -279,5 +348,8 @@ module.exports = {
   annotationFreeVariants,
   companyProfile,
   resolveCustomerImportName,
+  similarCustomerCandidates,
   resolveCustomerImportRows,
+  customerImportRequiresPreview,
+  unresolvedCustomerImportErrors,
 }

@@ -3,6 +3,8 @@ const { customerNameKey } = require('../src/utils/chinese')
 const {
   resolveCustomerImportName,
   resolveCustomerImportRows,
+  customerImportRequiresPreview,
+  unresolvedCustomerImportErrors,
 } = require('../src/modules/devices/customer-import-match')
 
 const customerNames = [
@@ -18,6 +20,7 @@ const customerNames = [
   '镭亚电子（苏州）有限公司',
   '江西联茂电子科技有限公司',
   '李长荣(惠州)高新材料有限公司',
+  '敦阳科技（内勤）',
 ]
 
 const customers = customerNames.map((name, index) => ({
@@ -59,9 +62,23 @@ for (const name of mergedNames) {
   assert.equal(plan.resolved[0].matchType, '历史客户主体合并')
 }
 
-for (const name of ['精元电脑（吴江）', '敦阳上海办', '深圳太普', '继仪']) {
+const similarCases = [
+  ['精元电脑（吴江）', ['常熟精元电脑有限公司', '精元电脑(江苏)有限公司']],
+  ['敦阳上海办', ['敦阳科技（内勤）']],
+]
+for (const [name, expectedCandidates] of similarCases) {
   const result = resolveCustomerImportName(name, customers)
-  assert.equal(result.status, 'unmatched', `${name} must require manual confirmation`)
+  assert.equal(result.status, 'ambiguous', `${name} must show similar existing customers`)
+  assert.deepEqual(result.candidates.map((customer) => customer.name), expectedCandidates)
+  const plan = resolveCustomerImportRows([{ rowNumber: 5, customerName: name }], customers)
+  assert.equal(plan.canImport, false)
+  assert.equal(plan.ambiguous.length, 1)
+  assert.deepEqual(plan.ambiguous[0].candidates.map((customer) => customer.name), expectedCandidates)
+}
+
+for (const name of ['深圳太普', '继仪']) {
+  const result = resolveCustomerImportName(name, customers)
+  assert.equal(result.status, 'unmatched', `${name} must be treated as missing`)
 }
 
 const unmatchedRows = [
@@ -74,6 +91,21 @@ assert.deepEqual(blockedPlan.unmatched.map((row) => row.rowNumber), [5, 6])
 assert.equal(blockedPlan.invalid.length, 0)
 assert.equal(blockedPlan.canImport, false)
 assert.equal(blockedPlan.requiresConfirmation, false)
+assert.equal(customerImportRequiresPreview(blockedPlan, false), true)
+assert.equal(customerImportRequiresPreview(blockedPlan, true), false)
+assert.deepEqual(
+  unresolvedCustomerImportErrors(blockedPlan).map((item) => item.message),
+  ['客户不存在，请先在客户管理新增后重新导入', '客户不存在，请先在客户管理新增后重新导入'],
+)
+
+const similarFailurePlan = resolveCustomerImportRows(
+  [{ rowNumber: 7, customerName: '精元电脑（吴江）' }],
+  customers,
+)
+assert.deepEqual(unresolvedCustomerImportErrors(similarFailurePlan), [{
+  row: similarFailurePlan.ambiguous[0].row,
+  message: '发现相似客户但尚未确认，请选择对应客户后重新导入',
+}])
 
 const manualMappings = new Map([
   [customerNameKey('深圳太普'), customers[0].id],
@@ -84,6 +116,8 @@ assert.equal(confirmedPlan.unmatched.length, 0)
 assert.equal(confirmedPlan.invalid.length, 0)
 assert.equal(confirmedPlan.canImport, true)
 assert.equal(confirmedPlan.requiresConfirmation, true)
+assert.equal(customerImportRequiresPreview(confirmedPlan, false), true)
+assert.equal(customerImportRequiresPreview(confirmedPlan, true), false)
 assert.deepEqual(confirmedPlan.resolved.map((item) => item.matchType), ['人工确认', '人工确认'])
 
 const overriddenSuggestion = resolveCustomerImportRows(
