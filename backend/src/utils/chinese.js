@@ -35,6 +35,16 @@ function buildLikeSearch(value, prefix = 'likeKeyword') {
   return { variants, params, sql }
 }
 
+function buildLikeSearchTerms(value, prefix = 'likeTerm') {
+  const terms = String(value ?? '').trim().split(/\s+/).filter(Boolean)
+  const searches = terms.map((term, index) => buildLikeSearch(term, `${prefix}${index}Variant`))
+  const params = Object.assign({}, ...searches.map((search) => search.params))
+  const sql = (columns) => searches.length
+    ? searches.map((search) => `(${columns.map((column) => `(${search.sql(column)})`).join(' OR ')})`).join(' AND ')
+    : '1 = 0'
+  return { terms, params, sql }
+}
+
 function toTraditionalDeep(value) {
   if (Array.isArray(value)) return value.map(toTraditionalDeep)
   if (value && typeof value === 'object') {
@@ -68,4 +78,5 @@ module.exports = {
   customerNameKey,
   searchTextVariants,
   buildLikeSearch,
+  buildLikeSearchTerms,
 }
