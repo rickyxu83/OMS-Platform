@@ -221,8 +221,7 @@ function chooseDatePair(columns, matchedRowCount, requestedStart, requestedEnd) 
   return { selected, ambiguous }
 }
 
-function resultStatus(device, startDate, endDate, duplicate) {
-  if (duplicate) return { status: 'duplicate', message: '文件内序列号重复' }
+function resultStatus(device, startDate, endDate) {
   if (!startDate || !endDate) return { status: 'invalid', message: '服务开始或截止日期为空/无法识别' }
   if (startDate > endDate) return { status: 'invalid', message: '服务开始日期晚于截止日期' }
   if (['our_maintenance', 'none'].includes(device.maintenanceType)) {
@@ -232,6 +231,41 @@ function resultStatus(device, startDate, endDate, duplicate) {
     return { status: 'unchanged', message: '维保日期与系统一致' }
   }
   return { status: 'updatable', message: '可更新' }
+}
+
+function supersededServiceRows(matchedRows, worksheet, serialColumn, pair) {
+  const rowsBySerial = new Map()
+  for (const rowNumber of matchedRows) {
+    const key = serialKey(cellText(worksheet.getRow(rowNumber).getCell(serialColumn)))
+    if (!rowsBySerial.has(key)) rowsBySerial.set(key, [])
+    rowsBySerial.get(key).push({
+      rowNumber,
+      maintenanceStart: pair.start.dates.get(rowNumber) || null,
+      maintenanceEnd: pair.end.dates.get(rowNumber) || null,
+    })
+  }
+
+  const superseded = new Map()
+  for (const rows of rowsBySerial.values()) {
+    if (rows.length < 2) continue
+    const validRows = rows
+      .filter((row) => row.maintenanceStart && row.maintenanceEnd && row.maintenanceStart <= row.maintenanceEnd)
+      .sort((left, right) => (
+        right.maintenanceEnd.localeCompare(left.maintenanceEnd)
+        || right.maintenanceStart.localeCompare(left.maintenanceStart)
+        || left.rowNumber - right.rowNumber
+      ))
+    if (!validRows.length) continue
+    const selected = validRows[0]
+    for (const row of rows) {
+      if (row.rowNumber === selected.rowNumber) continue
+      superseded.set(row.rowNumber, {
+        status: 'superseded',
+        message: `同 SN 已采用第 ${selected.rowNumber} 行的较晚服务期`,
+      })
+    }
+  }
+  return superseded
 }
 
 async function loadWorkbook(buffer) {
@@ -290,17 +324,13 @@ async function analyzeMaintenanceWorkbook(buffer, options = {}) {
   const worksheet = serial.worksheet
   const firstDataRow = Math.min(...serial.matchedRows)
   const optionsForColumns = columnOptions(worksheet, firstDataRow)
-  const serialCounts = new Map()
-  for (const rowNumber of serial.matchedRows) {
-    const key = serialKey(cellText(worksheet.getRow(rowNumber).getCell(serial.column)))
-    serialCounts.set(key, (serialCounts.get(key) || 0) + 1)
-  }
+  const supersededRows = supersededServiceRows(serial.matchedRows, worksheet, serial.column, pair)
   const items = serial.matchedRows.map((rowNumber) => {
     const sn = cellText(worksheet.getRow(rowNumber).getCell(serial.column))
     const device = devicesBySerial.get(serialKey(sn))
     const maintenanceStart = pair.start.dates.get(rowNumber) || null
     const maintenanceEnd = pair.end.dates.get(rowNumber) || null
-    const outcome = resultStatus(device, maintenanceStart, maintenanceEnd, serialCounts.get(serialKey(sn)) > 1)
+    const outcome = supersededRows.get(rowNumber) || resultStatus(device, maintenanceStart, maintenanceEnd)
     return {
       rowNumber,
       deviceId: device.id,
@@ -350,6 +380,7 @@ async function analyzeMaintenanceWorkbook(buffer, options = {}) {
       unchanged: count('unchanged'),
       notFound: count('not_found'),
       conflicts: count('conflict'),
+      ignored: count('superseded'),
       invalid: count('invalid') + count('duplicate'),
     },
     items,

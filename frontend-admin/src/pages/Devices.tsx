@@ -198,7 +198,7 @@ interface MaintenanceImportItem {
   currentMaintenanceEnd?: string;
   maintenanceStart?: string;
   maintenanceEnd?: string;
-  status: "updatable" | "unchanged" | "not_found" | "conflict" | "invalid" | "duplicate";
+  status: "updatable" | "unchanged" | "not_found" | "conflict" | "invalid" | "duplicate" | "superseded";
   message?: string;
 }
 
@@ -224,6 +224,7 @@ interface MaintenanceImportPreview {
     unchanged: number;
     notFound: number;
     conflicts: number;
+    ignored: number;
     invalid: number;
   };
   items: MaintenanceImportItem[];
@@ -236,6 +237,7 @@ const MAINTENANCE_IMPORT_STATUS_LABELS: Record<MaintenanceImportItem["status"], 
   conflict: "类型冲突",
   invalid: "数据异常",
   duplicate: "SN 重复",
+  superseded: "较早服务期",
 };
 
 interface ModelNormalizationResult {
@@ -3276,13 +3278,14 @@ export function Devices() {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-7">
                   {[
                     ["总行数", maintenanceImportPreview.summary.total, "bg-slate-50 text-slate-800"],
                     ["可更新", maintenanceImportPreview.summary.updatable, "bg-emerald-50 text-emerald-800"],
                     ["无变化", maintenanceImportPreview.summary.unchanged, "bg-sky-50 text-sky-800"],
                     ["未找到", maintenanceImportPreview.summary.notFound, "bg-amber-50 text-amber-800"],
                     ["类型冲突", maintenanceImportPreview.summary.conflicts, "bg-violet-50 text-violet-800"],
+                    ["已忽略", maintenanceImportPreview.summary.ignored, "bg-slate-50 text-slate-700"],
                     ["数据异常", maintenanceImportPreview.summary.invalid, "bg-red-50 text-red-800"],
                   ].map(([label, value, color]) => (
                     <div key={String(label)} className={`rounded-md border px-3 py-2 ${color}`}>
@@ -3336,7 +3339,7 @@ export function Devices() {
                 </div>
 
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
-                  确认后仅更新已勾选的“可更新”设备，并将其标记为原厂维保；我方维保、无维保、重复 SN、异常行及未勾选设备不会被覆盖。
+                  同一 SN 存在多个服务期时，自动采用截止日期最晚的记录；截止日期相同则采用开始日期较晚的记录。确认后仅更新已勾选的“可更新”设备，并将其标记为原厂维保；我方维保、无维保、较早服务期、异常行及未勾选设备不会被覆盖。
                 </div>
               </>
             ) : null}
