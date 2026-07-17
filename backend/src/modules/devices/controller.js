@@ -15,6 +15,7 @@ const {
 const {
   MaintenanceImportError,
   analyzeMaintenanceWorkbook,
+  selectMaintenanceUpdates,
 } = require('./maintenance-import')
 
 const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance'])
@@ -1579,12 +1580,29 @@ async function previewMaintenanceImport(req, res) {
   res.json(await analyzeMaintenanceImportRequest(req))
 }
 
+function selectedMaintenanceImportDeviceIds(body = {}) {
+  if (body.selectedDeviceIds === undefined) return undefined
+  try {
+    const selected = JSON.parse(body.selectedDeviceIds)
+    if (!Array.isArray(selected) || selected.length > 1000) throw new Error('invalid selection')
+    return selected
+  } catch {
+    throw badRequest('所选设备参数无效，请重新预览')
+  }
+}
+
 async function applyMaintenanceImport(req, res) {
   const preview = await analyzeMaintenanceImportRequest(req)
   if (preview.requiresColumnConfirmation) {
     throw badRequest('自动识别存在多个可能的列，请确认序列号、服务开始和服务截止列后再更新')
   }
-  const updates = preview.items.filter((item) => item.status === 'updatable')
+  let updates
+  try {
+    updates = selectMaintenanceUpdates(preview.items, selectedMaintenanceImportDeviceIds(req.body))
+  } catch (error) {
+    if (error instanceof MaintenanceImportError) throw badRequest(error.message)
+    throw error
+  }
   await transaction(async (connection) => {
     for (const item of updates) {
       await connection.execute(

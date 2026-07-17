@@ -1209,7 +1209,12 @@ export function Devices() {
   const [maintenanceImportPreview, setMaintenanceImportPreview] = useState<MaintenanceImportPreview | null>(null);
   const [maintenanceImportColumns, setMaintenanceImportColumns] = useState({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
   const [maintenanceImportMappingDirty, setMaintenanceImportMappingDirty] = useState(false);
+  const [maintenanceImportSelectedIds, setMaintenanceImportSelectedIds] = useState<string[]>([]);
   const maintenanceImportFileInputRef = useRef<HTMLInputElement | null>(null);
+  const maintenanceImportUpdatableIds = useMemo(() => maintenanceImportPreview?.items
+    .filter((item) => item.status === "updatable" && item.deviceId !== undefined)
+    .map((item) => String(item.deviceId)) || [], [maintenanceImportPreview]);
+  const maintenanceImportSelectedIdSet = useMemo(() => new Set(maintenanceImportSelectedIds), [maintenanceImportSelectedIds]);
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
@@ -2031,11 +2036,12 @@ export function Devices() {
     setMaintenanceImportPreview(null);
     setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
     setMaintenanceImportMappingDirty(false);
+    setMaintenanceImportSelectedIds([]);
     if (maintenanceImportFileInputRef.current) maintenanceImportFileInputRef.current.value = "";
     setMaintenanceImportOpen(true);
   }
 
-  function maintenanceImportFormData(includeColumns: boolean) {
+  function maintenanceImportFormData(includeColumns: boolean, selectedDeviceIds?: string[]) {
     if (!maintenanceImportFile) return null;
     const formData = new FormData();
     formData.append("file", maintenanceImportFile);
@@ -2044,6 +2050,7 @@ export function Devices() {
       formData.append("maintenanceStartColumn", maintenanceImportColumns.maintenanceStart);
       formData.append("maintenanceEndColumn", maintenanceImportColumns.maintenanceEnd);
     }
+    if (selectedDeviceIds) formData.append("selectedDeviceIds", JSON.stringify(selectedDeviceIds));
     return formData;
   }
 
@@ -2064,6 +2071,9 @@ export function Devices() {
         maintenanceEnd: String(data.columns.maintenanceEnd),
       });
       setMaintenanceImportMappingDirty(false);
+      setMaintenanceImportSelectedIds(data.items
+        .filter((item) => item.status === "updatable" && item.deviceId !== undefined)
+        .map((item) => String(item.deviceId)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "维保文件识别失败");
     } finally {
@@ -2072,7 +2082,7 @@ export function Devices() {
   }
 
   async function applyMaintenanceImport() {
-    const formData = maintenanceImportFormData(true);
+    const formData = maintenanceImportFormData(true, maintenanceImportSelectedIds);
     if (!formData || !maintenanceImportPreview) return;
     setMaintenanceImporting(true);
     setError("");
@@ -3195,6 +3205,7 @@ export function Devices() {
             setMaintenanceImportPreview(null);
             setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
             setMaintenanceImportMappingDirty(false);
+            setMaintenanceImportSelectedIds([]);
             if (maintenanceImportFileInputRef.current) maintenanceImportFileInputRef.current.value = "";
           }
         }}
@@ -3224,6 +3235,7 @@ export function Devices() {
                   setMaintenanceImportPreview(null);
                   setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
                   setMaintenanceImportMappingDirty(false);
+                  setMaintenanceImportSelectedIds([]);
                 }}
               />
               <div className="text-xs text-muted-foreground">支持旧版 .xls 和新版 .xlsx；只更新系统中已存在的 SN，单次最多 1000 台，文件不超过 5MB。</div>
@@ -3280,10 +3292,33 @@ export function Devices() {
                 </div>
 
                 <div className="rounded-md border">
-                  <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">识别明细</div>
+                  <div className="flex items-center justify-between gap-3 border-b bg-muted/40 px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={maintenanceImportUpdatableIds.length > 0 && maintenanceImportSelectedIds.length === maintenanceImportUpdatableIds.length
+                          ? true
+                          : maintenanceImportSelectedIds.length > 0 ? "indeterminate" : false}
+                        disabled={!maintenanceImportUpdatableIds.length}
+                        onCheckedChange={(checked) => setMaintenanceImportSelectedIds(checked === true ? maintenanceImportUpdatableIds : [])}
+                      />
+                      <span className="font-medium">识别明细</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">已选择 {maintenanceImportSelectedIds.length} / {maintenanceImportUpdatableIds.length} 台可更新设备</span>
+                  </div>
                   <div className="max-h-72 overflow-auto divide-y">
                     {maintenanceImportPreview.items.map((item, index) => (
-                      <div key={`${item.rowNumber}-${item.serialNo || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[64px_120px_minmax(140px,1fr)_270px_90px] md:items-center">
+                      <div key={`${item.rowNumber}-${item.serialNo || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[32px_64px_120px_minmax(140px,1fr)_270px_90px] md:items-center">
+                        <Checkbox
+                          checked={item.deviceId !== undefined && maintenanceImportSelectedIdSet.has(String(item.deviceId))}
+                          disabled={item.status !== "updatable" || item.deviceId === undefined}
+                          onCheckedChange={(checked) => {
+                            if (item.deviceId === undefined) return;
+                            const id = String(item.deviceId);
+                            setMaintenanceImportSelectedIds((current) => checked === true
+                              ? [...new Set([...current, id])]
+                              : current.filter((selectedId) => selectedId !== id));
+                          }}
+                        />
                         <span>第 {item.rowNumber} 行</span>
                         <span className="truncate font-medium" title={item.serialNo || ""}>{item.serialNo || "-"}</span>
                         <span className="truncate text-muted-foreground" title={[item.customerName, item.model].filter(Boolean).join(" / ")}>{[item.customerName, item.model].filter(Boolean).join(" / ") || "-"}</span>
@@ -3300,7 +3335,7 @@ export function Devices() {
                 </div>
 
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
-                  确认后仅更新“可更新”行的维保开始、截止日期，并将其标记为原厂维保；我方维保、无维保、重复 SN 和异常行不会被覆盖。
+                  确认后仅更新已勾选的“可更新”设备，并将其标记为原厂维保；我方维保、无维保、重复 SN、异常行及未勾选设备不会被覆盖。
                 </div>
               </>
             ) : null}
@@ -3316,10 +3351,10 @@ export function Devices() {
             {maintenanceImportPreview ? (
               <Button
                 onClick={applyMaintenanceImport}
-                disabled={maintenanceImporting || maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation || !maintenanceImportPreview.summary.updatable}
+                disabled={maintenanceImporting || maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation || !maintenanceImportSelectedIds.length}
               >
                 {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-                确认更新 ({maintenanceImportPreview.summary.updatable})
+                确认更新 ({maintenanceImportSelectedIds.length})
               </Button>
             ) : (
               <Button onClick={() => previewMaintenanceImport(false)} disabled={maintenanceImporting || !maintenanceImportFile}>

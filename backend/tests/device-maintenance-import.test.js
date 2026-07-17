@@ -1,7 +1,13 @@
 const assert = require('assert')
 const ExcelJS = require('exceljs')
 const XLSX = require('xlsx')
-const { analyzeMaintenanceWorkbook, parseDateCell, serialKey } = require('../src/modules/devices/maintenance-import')
+const {
+  MaintenanceImportError,
+  analyzeMaintenanceWorkbook,
+  parseDateCell,
+  selectMaintenanceUpdates,
+  serialKey,
+} = require('../src/modules/devices/maintenance-import')
 
 async function workbookBuffer(rows) {
   const workbook = new ExcelJS.Workbook()
@@ -73,6 +79,16 @@ async function run() {
   assert.strictEqual(legacyPreview.summary.updatable, 1)
   assert.strictEqual(legacyPreview.items[0].maintenanceStart, '2025-05-01')
   assert.strictEqual(legacyPreview.items[0].maintenanceEnd, '2028-04-30')
+
+  const selectableItems = [
+    { deviceId: 1, status: 'updatable' },
+    { deviceId: 2, status: 'updatable' },
+    { deviceId: 3, status: 'conflict' },
+  ]
+  assert.deepStrictEqual(selectMaintenanceUpdates(selectableItems, ['2']).map((item) => item.deviceId), [2])
+  assert.deepStrictEqual(selectMaintenanceUpdates(selectableItems).map((item) => item.deviceId), [1, 2])
+  assert.throws(() => selectMaintenanceUpdates(selectableItems, []), MaintenanceImportError)
+  assert.throws(() => selectMaintenanceUpdates(selectableItems, ['3']), MaintenanceImportError)
 
   console.log('device maintenance import tests passed')
 }

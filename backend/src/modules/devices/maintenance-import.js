@@ -356,9 +356,24 @@ async function analyzeMaintenanceWorkbook(buffer, options = {}) {
   }
 }
 
+function selectMaintenanceUpdates(items, selectedDeviceIds) {
+  const updatable = items.filter((item) => item.status === 'updatable')
+  if (selectedDeviceIds === undefined) return updatable
+  if (!Array.isArray(selectedDeviceIds) || !selectedDeviceIds.length) {
+    throw new MaintenanceImportError('请至少选择一台要更新的设备')
+  }
+  const selected = new Set(selectedDeviceIds.map((id) => String(id)))
+  const available = new Set(updatable.map((item) => String(item.deviceId)))
+  if ([...selected].some((id) => !available.has(id))) {
+    throw new MaintenanceImportError('所选设备已不在当前可更新范围，请重新预览')
+  }
+  return updatable.filter((item) => selected.has(String(item.deviceId)))
+}
+
 module.exports = {
   MaintenanceImportError,
   analyzeMaintenanceWorkbook,
   parseDateCell,
+  selectMaintenanceUpdates,
   serialKey,
 }
