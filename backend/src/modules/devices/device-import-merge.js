@@ -15,8 +15,6 @@ function buildExistingDeviceImportPatch(existing, row) {
   fillBlank(patch, existing, 'mr_no', row.mrNo)
   fillBlank(patch, existing, 'remark', row.remark)
   fillBlank(patch, existing, 'location', row.location)
-  fillBlank(patch, existing, 'warranty_until', row.warrantyUntil)
-
   const existingMaintenanceType = String(existing.maintenance_type || 'pending_confirmation')
   if (
     existingMaintenanceType === 'pending_confirmation'

@@ -11,7 +11,6 @@ const emptyExisting = {
   maintenance_party_id: null,
   maintenance_start: null,
   maintenance_end: null,
-  warranty_until: null,
 }
 
 const supplement = buildExistingDeviceImportPatch(emptyExisting, {
@@ -25,7 +24,6 @@ const supplement = buildExistingDeviceImportPatch(emptyExisting, {
   maintenancePartyName: '原厂服务商',
   maintenanceStart: '2026-01-01',
   maintenanceEnd: '2026-12-31',
-  warrantyUntil: '2027-12-31',
 })
 assert.deepEqual(supplement.patch, {
   name: 'server-01',
@@ -36,7 +34,6 @@ assert.deepEqual(supplement.patch, {
   maintenance_type: 'original_manufacturer',
   maintenance_start: '2026-01-01',
   maintenance_end: '2026-12-31',
-  warranty_until: '2027-12-31',
 })
 assert.equal(supplement.effectiveMaintenanceType, 'original_manufacturer')
 assert.equal(supplement.shouldResolveMaintenanceParty, true)
@@ -55,7 +52,6 @@ const preserveExisting = buildExistingDeviceImportPatch({
   maintenanceTypeProvided: true,
   maintenanceStart: '2026-01-01',
   maintenanceEnd: '2026-12-31',
-  warrantyUntil: null,
 })
 assert.deepEqual(preserveExisting.patch, {})
 assert.equal(preserveExisting.effectiveMaintenanceType, 'original_manufacturer')
@@ -69,9 +65,8 @@ const noMaintenance = buildExistingDeviceImportPatch({
   maintenanceTypeProvided: true,
   maintenanceStart: '2026-01-01',
   maintenanceEnd: '2026-12-31',
-  warrantyUntil: '2027-12-31',
 })
-assert.deepEqual(noMaintenance.patch, { warranty_until: '2027-12-31' })
+assert.deepEqual(noMaintenance.patch, {})
 assert.equal(noMaintenance.effectiveMaintenanceType, 'none')
 assert.equal(noMaintenance.shouldResolveMaintenanceParty, false)
 

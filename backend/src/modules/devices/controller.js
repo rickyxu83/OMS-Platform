@@ -45,7 +45,6 @@ const importHeaderAliases = Object.freeze({
   maintenancePartyName: ['维保方名称', '维保方', 'maintenancepartyname', 'maintenance_party_name'],
   maintenanceStart: ['维保开始', '维保开始日期', 'maintenancestart', 'maintenance_start'],
   maintenanceEnd: ['维保截止', '维保结束', '维保截止日期', 'maintenanceend', 'maintenance_end'],
-  warrantyUntil: ['质保截止', '质保截止日期', 'warrantyuntil', 'warranty_until'],
   location: ['位置', '安装位置', 'location'],
   remark: ['备注', 'remark'],
 })
@@ -347,7 +346,6 @@ function parseImportRow(row, headerMap) {
     maintenancePartyName: normalizeText(getImportText(row, headerMap, 'maintenancePartyName')),
     maintenanceStart: normalizeImportDate(headerMap.maintenanceStart ? row.getCell(headerMap.maintenanceStart) : null, '维保开始'),
     maintenanceEnd: normalizeImportDate(headerMap.maintenanceEnd ? row.getCell(headerMap.maintenanceEnd) : null, '维保截止'),
-    warrantyUntil: normalizeImportDate(headerMap.warrantyUntil ? row.getCell(headerMap.warrantyUntil) : null, '质保截止'),
     location: normalizeText(getImportText(row, headerMap, 'location')),
   }
 }
@@ -496,7 +494,7 @@ async function findExistingImportDevice(serialNo, user) {
   const rows = await query(
     `SELECT d.id, d.customer_id, d.name, d.pn, d.mr_no, d.remark, d.location,
             d.maintenance_type, d.maintenance_party_id, d.maintenance_start, d.maintenance_end,
-            d.warranty_until, c.name AS customer_name, c.salesperson
+            c.name AS customer_name, c.salesperson
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      WHERE d.serial_no = :serialNo
@@ -521,7 +519,7 @@ async function supplementExistingImportDevice(existing, row) {
   if (!entries.length) return false
   const allowedColumns = new Set([
     'name', 'pn', 'mr_no', 'remark', 'location', 'maintenance_type', 'maintenance_party_id',
-    'maintenance_start', 'maintenance_end', 'warranty_until',
+    'maintenance_start', 'maintenance_end',
   ])
   const params = { id: existing.id }
   const setClauses = entries.map(([column, value], index) => {
@@ -1026,7 +1024,6 @@ function devicePayload(row) {
     maintenanceEnd: row.maintenance_end,
     installationSourceServiceOrderId: row.installation_source_service_order_id,
     location: row.location,
-    warrantyUntil: row.warranty_until,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -1285,7 +1282,7 @@ async function list(req, res) {
     `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
-            d.installation_source_service_order_id, d.location, d.warranty_until, d.created_at, d.updated_at
+            d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
@@ -1333,7 +1330,6 @@ async function create(req, res) {
     maintenanceStart,
     maintenanceEnd,
     location,
-    warrantyUntil,
   } = req.body || {}
   const normalizedModel = normalizeText(model)
   const normalizedSerialNo = normalizeText(serialNo)
@@ -1358,11 +1354,11 @@ async function create(req, res) {
   const result = await query(
     `INSERT INTO devices (
        customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
-       mr_no, maintenance_start, maintenance_end, location, warranty_until
+       mr_no, maintenance_start, maintenance_end, location
      )
      VALUES (
        :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
-       :mrNo, :maintenanceStart, :maintenanceEnd, :location, :warrantyUntil
+       :mrNo, :maintenanceStart, :maintenanceEnd, :location
      )`,
     {
       customerId,
@@ -1377,7 +1373,6 @@ async function create(req, res) {
       maintenanceStart: normalizeDate(maintenanceStart),
       maintenanceEnd: normalizeDate(maintenanceEnd),
       location: location || null,
-      warrantyUntil: warrantyUntil || null,
     },
   )
 
@@ -1551,11 +1546,11 @@ async function importDevices(req, res) {
       const result = await query(
         `INSERT INTO devices (
            customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
-           mr_no, maintenance_start, maintenance_end, location, warranty_until
+           mr_no, maintenance_start, maintenance_end, location
          )
          VALUES (
            :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
-           :mrNo, :maintenanceStart, :maintenanceEnd, :location, :warrantyUntil
+           :mrNo, :maintenanceStart, :maintenanceEnd, :location
          )`,
         {
           customerId: customer.id,
@@ -1570,7 +1565,6 @@ async function importDevices(req, res) {
           maintenanceStart: row.maintenanceStart,
           maintenanceEnd: row.maintenanceEnd,
           location: row.location,
-          warrantyUntil: row.warrantyUntil,
         },
       )
       if (result.insertId) created += 1
@@ -1762,7 +1756,7 @@ async function detail(req, res) {
     `SELECT d.id, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name, d.model, d.pn, d.serial_no, d.mr_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
-            d.installation_source_service_order_id, d.location, d.warranty_until, d.created_at, d.updated_at
+            d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
@@ -1861,10 +1855,6 @@ async function batchUpdate(req, res) {
     setClauses.push('maintenance_end = :maintenanceEnd')
     params.maintenanceEnd = normalizeDate(fields.maintenanceEnd)
   }
-  if (Object.prototype.hasOwnProperty.call(fields, 'warrantyUntil')) {
-    setClauses.push('warranty_until = :warrantyUntil')
-    params.warrantyUntil = normalizeDate(fields.warrantyUntil)
-  }
   if (Object.prototype.hasOwnProperty.call(fields, 'location')) {
     setClauses.push('location = :location')
     params.location = normalizeText(fields.location)
@@ -1920,7 +1910,6 @@ async function update(req, res) {
     maintenanceStart,
     maintenanceEnd,
     location,
-    warrantyUntil,
   } = req.body || {}
   const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
   const normalizedName = hasName ? normalizeText(name) : null
@@ -1975,8 +1964,7 @@ async function update(req, res) {
          maintenance_party_id = :maintenancePartyId,
          maintenance_start = :maintenanceStart,
          maintenance_end = :maintenanceEnd,
-         location = :location,
-         warranty_until = :warrantyUntil
+         location = :location
      WHERE id = :id`,
     {
       id: req.params.id,
@@ -1993,7 +1981,6 @@ async function update(req, res) {
       maintenanceStart: normalizeDate(maintenanceStart),
       maintenanceEnd: normalizeDate(maintenanceEnd),
       location: location || null,
-      warrantyUntil: warrantyUntil || null,
     },
   )
 

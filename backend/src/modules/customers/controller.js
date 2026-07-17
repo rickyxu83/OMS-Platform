@@ -1364,7 +1364,7 @@ async function devices(req, res) {
     `SELECT d.id, d.customer_id, d.name, d.model, d.pn, d.serial_no, d.remark, d.maintenance_type,
             d.maintenance_party_id, mp.name AS maintenance_party_name, mp.phone AS maintenance_party_phone,
             d.maintenance_start, d.maintenance_end, d.installation_source_service_order_id, d.location,
-            d.warranty_until, d.created_at, d.updated_at
+            d.created_at, d.updated_at
      FROM devices d
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
      WHERE d.customer_id = :customerId
@@ -1389,7 +1389,6 @@ async function devices(req, res) {
       maintenanceEnd: row.maintenance_end,
       installationSourceServiceOrderId: row.installation_source_service_order_id,
       location: row.location,
-      warrantyUntil: row.warranty_until,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),

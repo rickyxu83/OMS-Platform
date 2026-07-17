@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Copy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,6 @@ interface Device {
   status?: string;
   location?: string;
   remark?: string;
-  warrantyUntil?: string;
   createdAt?: string;
   updatedAt?: string;
   relatedServiceOrders?: DeviceRelatedServiceOrder[];
@@ -446,7 +445,6 @@ interface BatchEditForm {
   maintenancePartyId: string;
   maintenanceStart: string;
   maintenanceEnd: string;
-  warrantyUntil: string;
   mrNo: string;
   location: string;
   remark: string;
@@ -457,7 +455,6 @@ interface BatchEditToggles {
   maintenancePartyId: boolean;
   maintenanceStart: boolean;
   maintenanceEnd: boolean;
-  warrantyUntil: boolean;
   mrNo: boolean;
   location: boolean;
   remark: boolean;
@@ -469,7 +466,6 @@ function createEmptyBatchEditForm(): BatchEditForm {
     maintenancePartyId: "",
     maintenanceStart: "",
     maintenanceEnd: "",
-    warrantyUntil: "",
     mrNo: "",
     location: "",
     remark: "",
@@ -482,7 +478,6 @@ function createEmptyBatchEditToggles(): BatchEditToggles {
     maintenancePartyId: false,
     maintenanceStart: false,
     maintenanceEnd: false,
-    warrantyUntil: false,
     mrNo: false,
     location: false,
     remark: false,
@@ -505,6 +500,28 @@ function formatDate(value?: string) {
 function inputDate(value?: string) {
   if (!value) return "";
   return String(value).slice(0, 10);
+}
+
+async function copySerialNo(serialNo?: string) {
+  const value = String(serialNo || "").trim();
+  if (!value) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    toast.success("序列号已复制");
+  } catch {
+    toast.error("复制失败，请手动复制序列号");
+  }
 }
 
 function canonicalMaintenanceType(value?: string) {
@@ -998,13 +1015,12 @@ async function downloadDeviceImportTemplate() {
     { key: "maintenancePartyName", width: 24 },
     { key: "maintenanceStart", width: 14 },
     { key: "maintenanceEnd", width: 14 },
-    { key: "warrantyUntil", width: 14 },
     { key: "location", width: 24 },
     { key: "remark", width: 28 },
   ];
-  worksheet.mergeCells("A1:L1");
-  worksheet.mergeCells("A2:L2");
-  worksheet.mergeCells("A3:L3");
+  worksheet.mergeCells("A1:K1");
+  worksheet.mergeCells("A2:K2");
+  worksheet.mergeCells("A3:K3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
   worksheet.getCell("A3").value = "客户建议需确认；客户不存在或资料错误的行会跳过。SN 已存在时只补充库内空字段，不覆盖已有资料。导入后会下载仅保留失败行的文件。";
@@ -1033,7 +1049,6 @@ async function downloadDeviceImportTemplate() {
     "维保方名称",
     "维保开始",
     "维保截止",
-    "质保截止",
     "位置",
     "备注",
   ];
@@ -1047,7 +1062,6 @@ async function downloadDeviceImportTemplate() {
     maintenancePartyName: "示例维保方",
     maintenanceStart: "2026-01-01",
     maintenanceEnd: "2026-12-31",
-    warrantyUntil: "2026-12-31",
     location: "机房 A01",
     remark: "删除示例行后再导入",
   });
@@ -1094,8 +1108,7 @@ async function downloadDeviceImportTemplate() {
     ["SN*", "必填", "不能为空；导入文件内重复时该行失败。系统内已存在时按 SN 匹配，只补充空字段，不覆盖已有资料；所属客户不一致时拒绝更新。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
     ["维保方名称", "有维保时选填", "下拉名单来自系统维保方目录；按名称和维保类型匹配已有维保方。"],
-    ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒优先使用此字段。"],
-    ["质保截止", "选填", "设备原厂/供应商质保自然到期日；没有维保截止时作为展示兜底。"],
+    ["维保截止", "选填", "当前维保合同或服务责任的结束日期；到期提醒使用此字段。"],
     ["日期字段", "选填", "使用 YYYY-MM-DD 格式，例如 2026-12-31。"],
     ["填写建议", "说明", "只需先填客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后再在系统中批量补齐或修改。"],
   ].forEach(([field, required, description]) => help.addRow({ field, required, description }));
@@ -1212,7 +1225,6 @@ async function exportDevicesToExcel(devices: Device[]) {
     { header: "维保方名称", key: "maintenancePartyName", width: 24 },
     { header: "维保开始", key: "maintenanceStart", width: 14 },
     { header: "维保截止", key: "maintenanceEnd", width: 14 },
-    { header: "质保截止", key: "warrantyUntil", width: 14 },
     { header: "位置", key: "location", width: 24 },
     { header: "状态", key: "status", width: 12 },
     { header: "备注", key: "remark", width: 30 },
@@ -1232,7 +1244,6 @@ async function exportDevicesToExcel(devices: Device[]) {
       maintenancePartyName: device.maintenancePartyName || "",
       maintenanceStart: inputDate(device.maintenanceStart),
       maintenanceEnd: inputDate(device.maintenanceEnd),
-      warrantyUntil: inputDate(device.warrantyUntil),
       location: device.location || "",
       status: DEVICE_STATUS_LABELS[status] || status || "",
       remark: device.remark || "",
@@ -2370,7 +2381,6 @@ export function Devices() {
     }
     if (batchEditToggles.maintenanceStart) fields.maintenanceStart = batchEditForm.maintenanceStart || null;
     if (batchEditToggles.maintenanceEnd) fields.maintenanceEnd = batchEditForm.maintenanceEnd || null;
-    if (batchEditToggles.warrantyUntil) fields.warrantyUntil = batchEditForm.warrantyUntil || null;
     if (batchEditToggles.mrNo) fields.mrNo = batchEditForm.mrNo.trim() || null;
     if (batchEditToggles.location) fields.location = batchEditForm.location.trim() || null;
     if (batchEditToggles.remark) fields.remark = batchEditForm.remark.trim() || null;
@@ -2692,7 +2702,22 @@ export function Devices() {
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs text-muted-foreground md:hidden">SN</div>
-                        <div className="truncate text-sm" title={device.serialNo || "-"}>{device.serialNo || "-"}</div>
+                        {device.serialNo ? (
+                          <button
+                            type="button"
+                            className="group flex max-w-full items-center gap-1 truncate text-left text-sm hover:text-primary hover:underline"
+                            title={`点击复制：${device.serialNo}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void copySerialNo(device.serialNo);
+                            }}
+                          >
+                            <span className="truncate">{device.serialNo}</span>
+                            <Copy className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <div className="truncate text-sm">-</div>
+                        )}
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs text-muted-foreground md:hidden">MR单</div>
@@ -2802,7 +2827,19 @@ export function Devices() {
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">SN</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.serialNo || "-"}</div>
+                        {detailTarget.serialNo ? (
+                          <button
+                            type="button"
+                            className="group mt-1 flex max-w-full items-center gap-1 text-sm font-semibold text-slate-900 hover:text-primary hover:underline"
+                            title={`点击复制：${detailTarget.serialNo}`}
+                            onClick={() => void copySerialNo(detailTarget.serialNo)}
+                          >
+                            <span className="truncate">{detailTarget.serialNo}</span>
+                            <Copy className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <div className="mt-1 text-sm font-semibold text-slate-900">-</div>
+                        )}
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">MR单</div>
@@ -2857,10 +2894,6 @@ export function Devices() {
                           <div className="mt-1">
                             {formatDate(detailTarget.maintenanceStart)} 至 {formatDate(detailTarget.maintenanceEnd)}
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">质保截止</div>
-                          <div className="mt-1">{formatDate(detailTarget.warrantyUntil)}</div>
                         </div>
                       </div>
                     </div>
@@ -3908,22 +3941,6 @@ export function Devices() {
                   value={batchEditForm.maintenanceEnd}
                   onChange={(e) => setBatchEditForm((f) => ({ ...f, maintenanceEnd: e.target.value }))}
                   disabled={!batchEditToggles.maintenanceEnd}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-md border p-3">
-              <Checkbox
-                checked={batchEditToggles.warrantyUntil}
-                onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, warrantyUntil: v === true }))}
-              />
-              <div className="flex-1 space-y-1.5">
-                <Label>质保截止日期</Label>
-                <Input
-                  type="date"
-                  value={batchEditForm.warrantyUntil}
-                  onChange={(e) => setBatchEditForm((f) => ({ ...f, warrantyUntil: e.target.value }))}
-                  disabled={!batchEditToggles.warrantyUntil}
                 />
               </div>
             </div>

@@ -51,7 +51,6 @@ interface CustomerDevice {
   model?: string;
   serialNo?: string;
   maintenanceType?: string;
-  warrantyUntil?: string;
 }
 
 function customerDeviceLabel(device: CustomerDevice) {
