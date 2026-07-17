@@ -342,6 +342,12 @@ export function matchesSearchText(value: unknown, keyword: unknown) {
   )))
 }
 
+export function matchesSearchTerms(values: unknown[], keyword: unknown) {
+  const terms = String(keyword ?? "").trim().split(/\s+/).filter(Boolean)
+  if (!terms.length) return true
+  return terms.every((term) => values.some((value) => matchesSearchText(value, term)))
+}
+
 function hasHan(value: string) {
   return /[\p{Script=Han}]/u.test(value)
 }

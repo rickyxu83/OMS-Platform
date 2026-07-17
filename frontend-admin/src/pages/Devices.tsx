@@ -26,7 +26,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
+import { matchesSearchTerms, normalizeSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
 
 interface Device {
@@ -1384,9 +1384,10 @@ export function Devices() {
       if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
       if (!keyword) return true;
-      return [d.name, d.model, d.pn, d.serialNo, d.mrNo, d.customerName, d.maintenancePartyName]
-        .filter(Boolean)
-        .some((v) => matchesSearchText(v, keyword));
+      return matchesSearchTerms(
+        [d.name, d.model, d.pn, d.serialNo, d.mrNo, d.customerName, d.maintenancePartyName].filter(Boolean),
+        keyword,
+      );
     });
   }, [devices, maintenanceFilter, searchQuery, statusFilter]);
 
