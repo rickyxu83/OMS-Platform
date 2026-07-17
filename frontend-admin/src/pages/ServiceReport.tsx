@@ -3890,9 +3890,6 @@ export function ServiceReport() {
     }
     if (showTargetDeviceFields && !hasOfficeMaterialsModule) {
       const maintenanceTargets = form.targetDevices.filter(targetDeviceHasContent);
-      if (!maintenanceTargets.length) {
-        missing.push(isRemote ? "远程目标设备" : "目标设备");
-      }
       maintenanceTargets.forEach((device, index) => {
         const deviceLabelText = `${isRemote ? "远程目标设备" : "目标设备"} ${index + 1}`;
         if (device.inputMode === "existing") {
@@ -5309,10 +5306,10 @@ export function ServiceReport() {
 
             {showAssetSection ? (
               <ReportSection
-                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备" : hasOfficeMaterialsModule ? "关联设备" : showTargetDeviceFields ? "目标设备与备件信息" : "设备与备件信息"}
+                title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备（可选）" : hasOfficeMaterialsModule ? "关联设备" : showTargetDeviceFields ? "目标设备与备件信息（可选）" : "设备与备件信息"}
                 icon={Wrench}
                 step={assetSectionStep}
-                tag={isRemote ? "目标设备与远程信息" : "根据已选模块填写"}
+                tag={showTargetDeviceFields && !isInstall ? "按需记录处理对象" : "根据已选模块填写"}
                 action={detailCounters.length ? detailCounters.map((item) => <Badge key={item} variant="outline">{item}</Badge>) : null}
               >
                 <div className="space-y-4 p-4">
@@ -5323,8 +5320,8 @@ export function ServiceReport() {
                     <div className="space-y-3 rounded-lg border p-3">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium">{isRemote ? "远程目标设备" : hasOfficeMaterialsModule ? "关联设备" : "目标设备"}</div>
-                          <div className="text-xs text-muted-foreground">{hasOfficeMaterialsModule ? "可选择该客户已有的相关设备，也可以暂不关联。" : "输入设备型号，或选择下拉中的客户已有设备；新设备提交后会加入客户设备档案。"}</div>
+                          <div className="text-sm font-medium">{isRemote ? "远程目标设备（可选）" : hasOfficeMaterialsModule ? "关联设备（可选）" : "目标设备（可选）"}</div>
+                          <div className="text-xs text-muted-foreground">{hasOfficeMaterialsModule ? "可选择该客户已有的相关设备，也可以暂不关联。" : "无需关联设备也可以提交；如需记录处理对象，可选择客户已有设备或输入新设备。"}</div>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={addTargetDeviceRow}>
                           <Plus className="h-4 w-4" />
@@ -5454,7 +5451,7 @@ export function ServiceReport() {
                                   </>
                                 ) : (
                                   <>
-                                    <Field label="序列号 / SN" required>
+                                    <Field label="序列号 / SN">
                                       <Input value={targetDevice.serialNo} onChange={(event) => updateTargetDevice(targetDevice.id, { serialNo: event.target.value })} />
                                     </Field>
                                     <div className="md:col-span-2">
