@@ -171,6 +171,12 @@ interface ImportCustomerCorrection {
   matchType?: string;
 }
 
+interface ImportUnmatchedCustomer {
+  inputCustomerName: string;
+  rowNumbers: number[];
+  sns: string[];
+}
+
 interface ImportResult {
   created: number;
   failed: number;
@@ -178,6 +184,7 @@ interface ImportResult {
   requiresImportConfirmation?: boolean;
   requiresModelConfirmation?: boolean;
   customerCorrections?: ImportCustomerCorrection[];
+  unmatchedCustomers?: ImportUnmatchedCustomer[];
   modelCorrections?: ImportModelCorrection[];
 }
 
@@ -965,7 +972,7 @@ async function downloadDeviceImportTemplate() {
   worksheet.mergeCells("A3:L3");
   worksheet.getCell("A1").value = "设备资产导入提示";
   worksheet.getCell("A2").value = "只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。";
-  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正；重复 SN 会自动跳过。";
+  worksheet.getCell("A3").value = "客户名称建议填写系统内标准名称；系统会给出纠正建议并要求确认。无法匹配时必须选择现有客户；客户不存在时请先新增。重复 SN 会自动跳过。";
   [1, 2, 3].forEach((rowNumber) => {
     const row = worksheet.getRow(rowNumber);
     row.height = rowNumber === 1 ? 26 : 22;
@@ -1021,7 +1028,7 @@ async function downloadDeviceImportTemplate() {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     if (required) {
       cell.note = String(cell.value) === "客户名称"
-        ? "必填项，建议填写系统内标准名称；可唯一匹配时会提示确认纠正。"
+        ? "必填项，建议填写系统内标准名称；纠正建议需确认，无法匹配时必须选择现有客户。"
         : "必填项，不能为空。";
     }
   });
@@ -1047,7 +1054,7 @@ async function downloadDeviceImportTemplate() {
     { header: "说明", key: "description", width: 72 },
   ];
   [
-    ["客户名称", "必填", "建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正。"],
+    ["客户名称", "必填", "建议填写系统内标准名称；纠正建议需确认，无法匹配时必须选择现有客户；客户不存在时请先新增。"],
     ["设备型号*", "必填", "不能为空。"],
     ["SN*", "必填", "不能为空；导入文件内重复或系统内已存在时，该行失败并跳过。"],
     ["维保类型", "选填", "可填：待确认、无维保、原厂维保、我方维保；空值按待确认处理。"],
@@ -1204,6 +1211,7 @@ export function Devices() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importCustomerMappings, setImportCustomerMappings] = useState<Record<string, string>>({});
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [maintenanceImportOpen, setMaintenanceImportOpen] = useState(false);
   const [maintenanceImportFile, setMaintenanceImportFile] = useState<File | null>(null);
@@ -1991,6 +1999,7 @@ export function Devices() {
     setError("");
     setImportFile(null);
     setImportResult(null);
+    setImportCustomerMappings({});
     if (importFileInputRef.current) importFileInputRef.current.value = "";
     setImportOpen(true);
   }
@@ -2000,18 +2009,26 @@ export function Devices() {
       setError("请选择要导入的 Excel 文件");
       return;
     }
+    const unmatchedCustomers = importResult?.unmatchedCustomers || [];
+    const missingCustomerMappings = unmatchedCustomers.filter((item) => !importCustomerMappings[item.inputCustomerName]);
+    if (mode === "confirm" && missingCustomerMappings.length) {
+      setError("请先为所有未匹配名称选择系统现有客户；客户不存在时，请先到客户管理新增后重新预览");
+      return;
+    }
     setImporting(true);
     setError("");
     setImportResult(null);
     try {
       const formData = new FormData();
       formData.append("file", importFile);
+      if (Object.keys(importCustomerMappings).length) {
+        formData.append("customerMappings", JSON.stringify(importCustomerMappings));
+      }
       if (mode === "confirm") {
         formData.append("confirmImportCorrections", "1");
         formData.append("confirmModelCorrections", "1");
       }
       if (mode === "skip") {
-        formData.append("skipImportCorrections", "1");
         formData.append("skipModelCorrections", "1");
       }
       const data = await api.postForm("/devices/import", formData);
@@ -2022,6 +2039,7 @@ export function Devices() {
         requiresImportConfirmation: Boolean(data?.requiresImportConfirmation),
         requiresModelConfirmation: Boolean(data?.requiresModelConfirmation),
         customerCorrections: Array.isArray(data?.customerCorrections) ? data.customerCorrections : [],
+        unmatchedCustomers: Array.isArray(data?.unmatchedCustomers) ? data.unmatchedCustomers : [],
         modelCorrections: Array.isArray(data?.modelCorrections) ? data.modelCorrections : [],
       };
       setImportResult(result);
@@ -3378,15 +3396,16 @@ export function Devices() {
             setError("");
             setImportFile(null);
             setImportResult(null);
+            setImportCustomerMappings({});
             if (importFileInputRef.current) importFileInputRef.current.value = "";
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[780px]">
           <DialogHeader>
             <DialogTitle>导入设备资产</DialogTitle>
             <DialogDescription>
-              上传按模板填写的 .xlsx 文件；有效行会写入，失败行会返回原因。
+              上传按模板填写的 .xlsx 文件；所有客户确认存在后，才能继续导入。
             </DialogDescription>
           </DialogHeader>
           {error ? (
@@ -3397,7 +3416,8 @@ export function Devices() {
           <div className="space-y-4 py-2">
             <div className="rounded-md border bg-slate-50/70 p-3 text-sm leading-6 text-muted-foreground">
               只需先填写客户名称、设备型号和 SN 即可导入；其他资料可留空，导入后可在系统中批量补齐或修改。
-              客户名称建议填写系统内标准名称；如检测到可唯一匹配的名称，导入前会提示确认纠正；重复 SN 会自动跳过。
+              客户名称建议填写系统内标准名称；系统会识别简称、设备说明和已确认的历史主体合并关系。
+              无法匹配的名称必须人工选择现有客户；客户不存在时，请先到客户管理新增。重复 SN 会自动跳过。
             </div>
             <div className="space-y-2">
               <Label>Excel 文件 *</Label>
@@ -3408,6 +3428,7 @@ export function Devices() {
                 disabled={importing}
                 onChange={(event) => {
                   setImportResult(null);
+                  setImportCustomerMappings({});
                   setImportFile(event.target.files?.[0] || null);
                 }}
               />
@@ -3417,22 +3438,64 @@ export function Devices() {
               <div className="space-y-3">
                 {importResult.requiresImportConfirmation || importResult.requiresModelConfirmation ? (
                   <>
+                    {importResult.unmatchedCustomers?.length ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50/80">
+                        <div className="border-b border-amber-200 px-3 py-2 text-sm font-medium text-amber-950">
+                          还有 {importResult.unmatchedCustomers.length} 个客户名称需要人工确认
+                        </div>
+                        <div className="max-h-80 overflow-auto divide-y divide-amber-100">
+                          {importResult.unmatchedCustomers.map((item) => (
+                            <div key={item.inputCustomerName} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[minmax(180px,1fr)_minmax(260px,1.25fr)] md:items-center">
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-slate-900" title={item.inputCustomerName}>{item.inputCustomerName}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  Excel 第 {item.rowNumbers.join("、")} 行，共 {item.rowNumbers.length} 台
+                                </div>
+                              </div>
+                              <Select
+                                value={importCustomerMappings[item.inputCustomerName] || undefined}
+                                onValueChange={(customerId) => setImportCustomerMappings((current) => ({
+                                  ...current,
+                                  [item.inputCustomerName]: customerId,
+                                }))}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue placeholder="选择系统现有客户" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {customers.map((customer) => (
+                                    <SelectItem key={String(customer.id)} value={String(customer.id)}>
+                                      {customer.name || `客户 #${customer.id}`}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t border-amber-200 px-3 py-2 text-xs leading-5 text-amber-950">
+                          必须全部选择后才能导入。如果列表中没有实际客户，请先到“客户管理”新增客户，再重新上传预览；系统不会在设备导入时自动创建客户。
+                        </div>
+                      </div>
+                    ) : null}
                     {importResult.customerCorrections?.length ? (
                       <div className="rounded-md border border-sky-200 bg-sky-50/80">
                         <div className="border-b border-sky-200 px-3 py-2 text-sm font-medium text-sky-900">
-                          发现 {importResult.customerCorrections.length} 行客户名称可自动纠正
+                          发现 {importResult.customerCorrections.length} 行客户名称纠正建议
                         </div>
                         <div className="max-h-64 overflow-auto divide-y divide-sky-100">
                           {importResult.customerCorrections.map((item, index) => (
                             <div key={`${item.rowNumber}-${item.sn || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[88px_minmax(160px,0.85fr)_minmax(240px,1.4fr)] md:items-center">
                               <span className="font-medium text-slate-900">第 {item.rowNumber} 行</span>
                               <span className="truncate text-muted-foreground" title={item.inputCustomerName || ""}>原客户：{item.inputCustomerName || "-"}</span>
-                              <span className="truncate text-sky-900" title={item.customerName || ""}>系统客户：{item.customerName || "-"}</span>
+                              <span className="truncate text-sky-900" title={item.customerName || ""}>
+                                系统客户：{item.customerName || "-"}{item.matchType ? `（${item.matchType}）` : ""}
+                              </span>
                             </div>
                           ))}
                         </div>
                         <div className="px-3 py-2 text-xs text-sky-900">
-                          确认后，以上行会绑定到系统客户名称；未列出的行保持 Excel 原值。
+                          确认后，以上行会绑定到系统现有客户；“历史客户主体合并”包含已撤销主体归并到现存客户的规则。
                         </div>
                       </div>
                     ) : null}
@@ -3456,7 +3519,7 @@ export function Devices() {
                       </div>
                     ) : null}
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      请核对以上建议。确认后会应用这些纠正并继续导入；如按原内容导入，无法匹配客户名称的行仍会失败。
+                      请核对自动纠正和人工选择。后端会重新解析文件并验证客户仍然存在；仍有未匹配客户时不会写入任何设备。
                     </div>
                   </>
                 ) : (
@@ -3492,9 +3555,11 @@ export function Devices() {
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
               关闭
             </Button>
-            {importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation ? (
+            {(importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation)
+              && !importResult?.customerCorrections?.length
+              && !importResult?.unmatchedCustomers?.length ? (
               <Button variant="outline" onClick={() => submitImport("skip")} disabled={importing || !importFile}>
-                按原内容导入
+                保留原型号导入
               </Button>
             ) : null}
             <Button
@@ -3514,10 +3579,14 @@ export function Devices() {
             </Button>
             <Button
               onClick={() => submitImport((importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "confirm" : "check")}
-              disabled={importing || !importFile}
+              disabled={
+                importing
+                || !importFile
+                || Boolean(importResult?.unmatchedCustomers?.some((item) => !importCustomerMappings[item.inputCustomerName]))
+              }
             >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-              {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认纠正并导入" : "开始导入"}
+              {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认客户并导入" : "开始导入"}
             </Button>
           </DialogFooter>
         </DialogContent>
