@@ -181,6 +181,63 @@ interface ImportResult {
   modelCorrections?: ImportModelCorrection[];
 }
 
+interface MaintenanceImportColumn {
+  index: number;
+  letter: string;
+  header?: string;
+  label: string;
+}
+
+interface MaintenanceImportItem {
+  rowNumber: number;
+  deviceId?: string | number;
+  serialNo?: string;
+  customerName?: string;
+  model?: string;
+  currentMaintenanceStart?: string;
+  currentMaintenanceEnd?: string;
+  maintenanceStart?: string;
+  maintenanceEnd?: string;
+  status: "updatable" | "unchanged" | "not_found" | "conflict" | "invalid" | "duplicate";
+  message?: string;
+}
+
+interface MaintenanceImportPreview {
+  sheetName: string;
+  columns: {
+    serialNo: number;
+    maintenanceStart: number;
+    maintenanceEnd: number;
+  };
+  detected: {
+    serialNoMatches: number;
+    serialNoRatio: number;
+    dateCompleteRows: number;
+    dateCoverage: number;
+    dateOrderRatio: number;
+  };
+  columnOptions: MaintenanceImportColumn[];
+  requiresColumnConfirmation: boolean;
+  summary: {
+    total: number;
+    updatable: number;
+    unchanged: number;
+    notFound: number;
+    conflicts: number;
+    invalid: number;
+  };
+  items: MaintenanceImportItem[];
+}
+
+const MAINTENANCE_IMPORT_STATUS_LABELS: Record<MaintenanceImportItem["status"], string> = {
+  updatable: "可更新",
+  unchanged: "无变化",
+  not_found: "未找到",
+  conflict: "类型冲突",
+  invalid: "数据异常",
+  duplicate: "SN 重复",
+};
+
 interface ModelNormalizationResult {
   action?: string;
   canonicalModel?: string;
@@ -1146,6 +1203,13 @@ export function Devices() {
   const [exporting, setExporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [maintenanceImportOpen, setMaintenanceImportOpen] = useState(false);
+  const [maintenanceImportFile, setMaintenanceImportFile] = useState<File | null>(null);
+  const [maintenanceImporting, setMaintenanceImporting] = useState(false);
+  const [maintenanceImportPreview, setMaintenanceImportPreview] = useState<MaintenanceImportPreview | null>(null);
+  const [maintenanceImportColumns, setMaintenanceImportColumns] = useState({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
+  const [maintenanceImportMappingDirty, setMaintenanceImportMappingDirty] = useState(false);
+  const maintenanceImportFileInputRef = useRef<HTMLInputElement | null>(null);
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
@@ -1961,6 +2025,70 @@ export function Devices() {
     }
   }
 
+  function openMaintenanceImportDialog() {
+    setError("");
+    setMaintenanceImportFile(null);
+    setMaintenanceImportPreview(null);
+    setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
+    setMaintenanceImportMappingDirty(false);
+    if (maintenanceImportFileInputRef.current) maintenanceImportFileInputRef.current.value = "";
+    setMaintenanceImportOpen(true);
+  }
+
+  function maintenanceImportFormData(includeColumns: boolean) {
+    if (!maintenanceImportFile) return null;
+    const formData = new FormData();
+    formData.append("file", maintenanceImportFile);
+    if (includeColumns) {
+      formData.append("serialNoColumn", maintenanceImportColumns.serialNo);
+      formData.append("maintenanceStartColumn", maintenanceImportColumns.maintenanceStart);
+      formData.append("maintenanceEndColumn", maintenanceImportColumns.maintenanceEnd);
+    }
+    return formData;
+  }
+
+  async function previewMaintenanceImport(includeColumns = false) {
+    const formData = maintenanceImportFormData(includeColumns);
+    if (!formData) {
+      setError("请选择要导入的 Excel 文件");
+      return;
+    }
+    setMaintenanceImporting(true);
+    setError("");
+    try {
+      const data = await api.postForm("/devices/maintenance-import/preview", formData) as MaintenanceImportPreview;
+      setMaintenanceImportPreview(data);
+      setMaintenanceImportColumns({
+        serialNo: String(data.columns.serialNo),
+        maintenanceStart: String(data.columns.maintenanceStart),
+        maintenanceEnd: String(data.columns.maintenanceEnd),
+      });
+      setMaintenanceImportMappingDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "维保文件识别失败");
+    } finally {
+      setMaintenanceImporting(false);
+    }
+  }
+
+  async function applyMaintenanceImport() {
+    const formData = maintenanceImportFormData(true);
+    if (!formData || !maintenanceImportPreview) return;
+    setMaintenanceImporting(true);
+    setError("");
+    try {
+      const data = await api.postForm("/devices/maintenance-import/apply", formData);
+      const updated = Number(data?.updated || 0);
+      toast.success(`已更新 ${updated} 台设备的原厂维保日期`);
+      setMaintenanceImportOpen(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "维保日期更新失败");
+    } finally {
+      setMaintenanceImporting(false);
+    }
+  }
+
   function modelCompareTargetIds() {
     const source = selectedDeviceIds.length
       ? selectedDeviceIds
@@ -2095,28 +2223,38 @@ export function Devices() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          {canCreateDevices ? (
+          {canCreateDevices || canEditDevices ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing}>
-                  {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing || maintenanceImporting}>
+                  {importing || maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
                   批量导入
                   <ChevronDown className="w-4 h-4 ml-2" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
-                  <Download className="w-4 h-4 mr-2" />
-                  下载导入模板
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={openImportDialog}>
-                  <Upload className="w-4 h-4 mr-2" />
-                  上传已填模板
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={openBulkCreate}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  页面批量新增
-                </DropdownMenuItem>
+              <DropdownMenuContent align="end" className="w-52">
+                {canCreateDevices ? (
+                  <>
+                    <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
+                      <Download className="w-4 h-4 mr-2" />
+                      下载导入模板
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={openImportDialog}>
+                      <Upload className="w-4 h-4 mr-2" />
+                      上传已填模板
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={openBulkCreate}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      页面批量新增
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+                {canEditDevices ? (
+                  <DropdownMenuItem onSelect={openMaintenanceImportDialog}>
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    导入原厂维保日期
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
@@ -3043,6 +3181,152 @@ export function Devices() {
               {modelApplying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
               {modelApplying ? "纠正中…" : `应用纠正${modelCompareResult?.correctableCount ? ` (${modelCompareResult.correctableCount})` : ""}`}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={maintenanceImportOpen}
+        onOpenChange={(open) => {
+          setMaintenanceImportOpen(open);
+          if (!open) {
+            setError("");
+            setMaintenanceImportFile(null);
+            setMaintenanceImportPreview(null);
+            setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
+            setMaintenanceImportMappingDirty(false);
+            if (maintenanceImportFileInputRef.current) maintenanceImportFileInputRef.current.value = "";
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[920px]">
+          <DialogHeader>
+            <DialogTitle>导入原厂维保日期</DialogTitle>
+            <DialogDescription>
+              系统根据已有设备序列号反推 SN 列，再根据日期内容和前后关系识别服务开始、截止列。上传只生成预览，确认后才更新。
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 whitespace-pre-line">
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>厂商 Excel 文件 *</Label>
+              <Input
+                ref={maintenanceImportFileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                disabled={maintenanceImporting}
+                onChange={(event) => {
+                  setMaintenanceImportFile(event.target.files?.[0] || null);
+                  setMaintenanceImportPreview(null);
+                  setMaintenanceImportColumns({ serialNo: "", maintenanceStart: "", maintenanceEnd: "" });
+                  setMaintenanceImportMappingDirty(false);
+                }}
+              />
+              <div className="text-xs text-muted-foreground">只更新系统中已存在的 SN；单次最多 1000 台，文件不超过 5MB。</div>
+            </div>
+
+            {maintenanceImportPreview ? (
+              <>
+                <div className={`rounded-md border px-3 py-2 text-sm ${maintenanceImportPreview.requiresColumnConfirmation ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                  工作表“{maintenanceImportPreview.sheetName}”：SN 命中 {maintenanceImportPreview.detected.serialNoMatches} 行；
+                  日期完整 {maintenanceImportPreview.detected.dateCompleteRows} 行，其中 {Math.round(maintenanceImportPreview.detected.dateOrderRatio * 100)}% 满足开始不晚于截止。
+                  {maintenanceImportPreview.requiresColumnConfirmation ? " 检测到相近候选，请核对下方列并重新分析。" : " 自动识别结果可用于更新。"}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  {([
+                    ["serialNo", "序列号列"],
+                    ["maintenanceStart", "服务开始列"],
+                    ["maintenanceEnd", "服务截止列"],
+                  ] as const).map(([field, label]) => (
+                    <div className="space-y-1.5" key={field}>
+                      <Label>{label}</Label>
+                      <Select
+                        value={maintenanceImportColumns[field]}
+                        onValueChange={(value) => {
+                          setMaintenanceImportColumns((current) => ({ ...current, [field]: value }));
+                          setMaintenanceImportMappingDirty(true);
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder={`选择${label}`} /></SelectTrigger>
+                        <SelectContent>
+                          {maintenanceImportPreview.columnOptions.map((column) => (
+                            <SelectItem key={`${field}-${column.index}`} value={String(column.index)}>{column.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+                  {[
+                    ["总行数", maintenanceImportPreview.summary.total, "bg-slate-50 text-slate-800"],
+                    ["可更新", maintenanceImportPreview.summary.updatable, "bg-emerald-50 text-emerald-800"],
+                    ["无变化", maintenanceImportPreview.summary.unchanged, "bg-sky-50 text-sky-800"],
+                    ["未找到", maintenanceImportPreview.summary.notFound, "bg-amber-50 text-amber-800"],
+                    ["类型冲突", maintenanceImportPreview.summary.conflicts, "bg-violet-50 text-violet-800"],
+                    ["数据异常", maintenanceImportPreview.summary.invalid, "bg-red-50 text-red-800"],
+                  ].map(([label, value, color]) => (
+                    <div key={String(label)} className={`rounded-md border px-3 py-2 ${color}`}>
+                      <div className="text-xs">{label}</div>
+                      <div className="mt-1 text-lg font-semibold">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-md border">
+                  <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">识别明细</div>
+                  <div className="max-h-72 overflow-auto divide-y">
+                    {maintenanceImportPreview.items.map((item, index) => (
+                      <div key={`${item.rowNumber}-${item.serialNo || ""}-${index}`} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[64px_120px_minmax(140px,1fr)_270px_90px] md:items-center">
+                        <span>第 {item.rowNumber} 行</span>
+                        <span className="truncate font-medium" title={item.serialNo || ""}>{item.serialNo || "-"}</span>
+                        <span className="truncate text-muted-foreground" title={[item.customerName, item.model].filter(Boolean).join(" / ")}>{[item.customerName, item.model].filter(Boolean).join(" / ") || "-"}</span>
+                        <span className="text-xs text-muted-foreground">
+                          原 {item.currentMaintenanceStart || "-"} → {item.currentMaintenanceEnd || "-"}<br />
+                          新 {item.maintenanceStart || "-"} → {item.maintenanceEnd || "-"}
+                        </span>
+                        <span className={item.status === "updatable" ? "text-emerald-700" : item.status === "unchanged" ? "text-sky-700" : "text-amber-700"} title={item.message || ""}>
+                          {MAINTENANCE_IMPORT_STATUS_LABELS[item.status]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+                  确认后仅更新“可更新”行的维保开始、截止日期，并将其标记为原厂维保；我方维保、无维保、重复 SN 和异常行不会被覆盖。
+                </div>
+              </>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaintenanceImportOpen(false)} disabled={maintenanceImporting}>关闭</Button>
+            {maintenanceImportPreview ? (
+              <Button variant="outline" onClick={() => previewMaintenanceImport(true)} disabled={maintenanceImporting || !maintenanceImportFile}>
+                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                {maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation ? "按所选列重新分析" : "重新分析"}
+              </Button>
+            ) : null}
+            {maintenanceImportPreview ? (
+              <Button
+                onClick={applyMaintenanceImport}
+                disabled={maintenanceImporting || maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation || !maintenanceImportPreview.summary.updatable}
+              >
+                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                确认更新 ({maintenanceImportPreview.summary.updatable})
+              </Button>
+            ) : (
+              <Button onClick={() => previewMaintenanceImport(false)} disabled={maintenanceImporting || !maintenanceImportFile}>
+                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                自动识别并预览
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

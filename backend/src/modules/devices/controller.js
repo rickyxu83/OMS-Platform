@@ -12,6 +12,10 @@ const {
   normalizeDeviceModelForAsset,
   shouldReportNormalization,
 } = require('../device-model-catalog/asset-normalization')
+const {
+  MaintenanceImportError,
+  analyzeMaintenanceWorkbook,
+} = require('./maintenance-import')
 
 const maintenanceTypes = new Set(['pending_confirmation', 'none', 'original_manufacturer', 'our_maintenance'])
 let deviceIdentityColumnsReady = false
@@ -96,8 +100,8 @@ const rawUploadImportMiddleware = multer({
   limits: {
     fileSize: 5 * 1024 * 1024,
     files: 1,
-    fields: 2,
-    parts: 4,
+    fields: 6,
+    parts: 8,
   },
   fileFilter: importFileFilter,
 }).single('file')
@@ -1479,6 +1483,97 @@ async function importDevices(req, res) {
   })
 }
 
+function maintenanceImportColumns(body = {}) {
+  return {
+    serialNo: body.serialNoColumn,
+    maintenanceStart: body.maintenanceStartColumn,
+    maintenanceEnd: body.maintenanceEndColumn,
+  }
+}
+
+async function loadMaintenanceImportDevices(serials, user) {
+  const uniqueSerials = [...new Map(serials.map((serial) => [String(serial || '').trim().toUpperCase(), String(serial || '').trim()])).values()]
+    .filter(Boolean)
+  const devices = []
+  const chunkSize = 400
+  for (let offset = 0; offset < uniqueSerials.length; offset += chunkSize) {
+    const chunk = uniqueSerials.slice(offset, offset + chunkSize)
+    const params = {}
+    const placeholders = chunk.map((serialNo, index) => {
+      const key = `maintenanceImportSn${index}`
+      params[key] = serialNo
+      return `:${key}`
+    }).join(', ')
+    const salesScope = buildSalesCustomerScope(user, 'c', `maintenanceImportScope${offset}`)
+    const rows = await query(
+      `SELECT d.id, d.serial_no, d.model, d.maintenance_type, d.maintenance_start, d.maintenance_end,
+              c.name AS customer_name
+       FROM devices d
+       JOIN customers c ON c.id = d.customer_id
+       WHERE d.serial_no IN (${placeholders})
+         ${salesScope.sql}`,
+      { ...params, ...salesScope.params },
+    )
+    devices.push(...rows.map((row) => ({
+      id: row.id,
+      serialNo: row.serial_no,
+      model: row.model,
+      customerName: row.customer_name,
+      maintenanceType: row.maintenance_type,
+      maintenanceStart: row.maintenance_start,
+      maintenanceEnd: row.maintenance_end,
+    })))
+  }
+  return devices
+}
+
+async function analyzeMaintenanceImportRequest(req) {
+  if (!req.file?.buffer?.length) throw badRequest('导入文件不能为空')
+  try {
+    return await analyzeMaintenanceWorkbook(req.file.buffer, {
+      columns: maintenanceImportColumns(req.body),
+      loadDevicesBySerials: (serials) => loadMaintenanceImportDevices(serials, req.user),
+    })
+  } catch (error) {
+    if (error instanceof MaintenanceImportError) throw badRequest(error.message)
+    throw error
+  }
+}
+
+async function previewMaintenanceImport(req, res) {
+  res.json(await analyzeMaintenanceImportRequest(req))
+}
+
+async function applyMaintenanceImport(req, res) {
+  const preview = await analyzeMaintenanceImportRequest(req)
+  if (preview.requiresColumnConfirmation) {
+    throw badRequest('自动识别存在多个可能的列，请确认序列号、服务开始和服务截止列后再更新')
+  }
+  const updates = preview.items.filter((item) => item.status === 'updatable')
+  await transaction(async (connection) => {
+    for (const item of updates) {
+      await connection.execute(
+        `UPDATE devices
+         SET maintenance_type = 'original_manufacturer',
+             maintenance_start = :maintenanceStart,
+             maintenance_end = :maintenanceEnd
+         WHERE id = :id`,
+        {
+          id: item.deviceId,
+          maintenanceStart: item.maintenanceStart,
+          maintenanceEnd: item.maintenanceEnd,
+        },
+      )
+    }
+  })
+  req.body.importSummary = { ...preview.summary, updated: updates.length }
+  res.json({
+    updated: updates.length,
+    summary: { ...preview.summary, updated: updates.length },
+    items: preview.items,
+  })
+}
+
 async function previewModelNormalizations(req, res) {
   const ids = normalizeDeviceIds(req.body?.ids)
   const devices = await loadDevicesForModelNormalization(req, ids)
@@ -1836,6 +1931,8 @@ module.exports = {
   list,
   create,
   importDevices,
+  previewMaintenanceImport,
+  applyMaintenanceImport,
   previewModelNormalizations,
   applyModelNormalizations,
   modelNormalizationJob,
