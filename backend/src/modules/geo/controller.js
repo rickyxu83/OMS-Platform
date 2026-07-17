@@ -1,7 +1,7 @@
 const env = require('../../config/env')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
-const { buildLikeSearch } = require('../../utils/chinese')
+const { buildLikeSearch, customerNameKey } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../customers/internal')
@@ -388,4 +388,5 @@ async function geocodeAddress(req, res) {
 module.exports = {
   searchCompanies,
   geocodeAddress,
+  rankPoiResults,
 }
