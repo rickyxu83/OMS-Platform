@@ -1,5 +1,6 @@
 const assert = require('assert')
 const ExcelJS = require('exceljs')
+const XLSX = require('xlsx')
 const { analyzeMaintenanceWorkbook, parseDateCell, serialKey } = require('../src/modules/devices/maintenance-import')
 
 async function workbookBuffer(rows) {
@@ -55,6 +56,23 @@ async function run() {
     loadDevicesBySerials: async () => devices,
   })
   assert.strictEqual(manual.requiresColumnConfirmation, false)
+
+  const legacyWorkbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(legacyWorkbook, XLSX.utils.aoa_to_sheet([
+    ['旧格式厂商文件'],
+    ['资产', '机器编码', '服务起点', '服务终点'],
+    ['设备一', 'SN-A001', new Date(2025, 4, 1), new Date(2028, 3, 30)],
+  ]), 'Legacy Vendor')
+  const legacyBuffer = XLSX.write(legacyWorkbook, { type: 'buffer', bookType: 'biff8', cellDates: true })
+  assert.strictEqual(legacyBuffer.subarray(0, 8).toString('hex'), 'd0cf11e0a1b11ae1')
+  const legacyPreview = await analyzeMaintenanceWorkbook(legacyBuffer, {
+    loadDevicesBySerials: async () => devices,
+  })
+  assert.strictEqual(legacyPreview.sheetName, 'Legacy Vendor')
+  assert.deepStrictEqual(legacyPreview.columns, { serialNo: 2, maintenanceStart: 3, maintenanceEnd: 4 })
+  assert.strictEqual(legacyPreview.summary.updatable, 1)
+  assert.strictEqual(legacyPreview.items[0].maintenanceStart, '2025-05-01')
+  assert.strictEqual(legacyPreview.items[0].maintenanceEnd, '2028-04-30')
 
   console.log('device maintenance import tests passed')
 }

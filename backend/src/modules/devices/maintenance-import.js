@@ -1,4 +1,5 @@
 const ExcelJS = require('exceljs')
+const XLSX = require('xlsx')
 
 const MAX_DATA_ROWS = 1000
 const MAX_COLUMNS = 100
@@ -233,13 +234,46 @@ function resultStatus(device, startDate, endDate, duplicate) {
   return { status: 'updatable', message: '可更新' }
 }
 
-async function analyzeMaintenanceWorkbook(buffer, options = {}) {
+async function loadWorkbook(buffer) {
   const workbook = new ExcelJS.Workbook()
   try {
     await workbook.xlsx.load(buffer)
+    return workbook
   } catch {
-    throw new MaintenanceImportError('导入文件无法解析，请确认是有效的 .xlsx 文件')
+    // ExcelJS does not support the legacy BIFF .xls format; use SheetJS as its adapter.
   }
+
+  try {
+    const legacyWorkbook = XLSX.read(buffer, {
+      type: 'buffer',
+      cellDates: true,
+      cellText: false,
+      sheetRows: MAX_DATA_ROWS + 20,
+    })
+    for (const sheetName of legacyWorkbook.SheetNames) {
+      const source = legacyWorkbook.Sheets[sheetName]
+      const rows = XLSX.utils.sheet_to_json(source, {
+        header: 1,
+        raw: true,
+        defval: null,
+        blankrows: true,
+      })
+      const worksheet = workbook.addWorksheet(String(sheetName || 'Sheet').slice(0, 31))
+      rows.slice(0, MAX_DATA_ROWS + 20).forEach((values, rowIndex) => {
+        values.slice(0, MAX_COLUMNS).forEach((value, columnIndex) => {
+          if (value !== null && value !== undefined) worksheet.getRow(rowIndex + 1).getCell(columnIndex + 1).value = value
+        })
+      })
+    }
+    if (!workbook.worksheets.length) throw new Error('workbook has no worksheets')
+    return workbook
+  } catch {
+    throw new MaintenanceImportError('导入文件无法解析，请确认是有效的 .xls 或 .xlsx 文件')
+  }
+}
+
+async function analyzeMaintenanceWorkbook(buffer, options = {}) {
+  const workbook = await loadWorkbook(buffer)
   if (!workbook.worksheets.length) throw new MaintenanceImportError('导入文件没有工作表')
   const allValues = collectWorkbookValues(workbook)
   const devices = await options.loadDevicesBySerials(allValues)

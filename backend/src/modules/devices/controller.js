@@ -95,19 +95,46 @@ function importFileFilter(_req, file, cb) {
   cb(null, true)
 }
 
-const rawUploadImportMiddleware = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-    files: 1,
-    fields: 6,
-    parts: 8,
-  },
-  fileFilter: importFileFilter,
-}).single('file')
+function maintenanceImportFileFilter(_req, file, cb) {
+  const originalName = originalNameUtf8(file)
+  const extension = path.extname(originalName || file.originalname || '').toLowerCase()
+  const mimeType = String(file.mimetype || '').toLowerCase()
+  const allowedMimeTypes = new Set([
+    'application/octet-stream',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/x-excel',
+    'application/xls',
+  ])
+  if (!['.xls', '.xlsx'].includes(extension)) {
+    cb(badRequest('请上传 .xls 或 .xlsx 格式的导入文件'))
+    return
+  }
+  if (mimeType && !allowedMimeTypes.has(mimeType)) {
+    cb(badRequest('导入文件 MIME 类型不支持'))
+    return
+  }
+  cb(null, true)
+}
 
-function uploadImportMiddleware(req, res, next) {
-  rawUploadImportMiddleware(req, res, (error) => {
+function createImportUpload(fileFilter) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      files: 1,
+      fields: 6,
+      parts: 8,
+    },
+    fileFilter,
+  }).single('file')
+}
+
+const rawUploadImportMiddleware = createImportUpload(importFileFilter)
+const rawUploadMaintenanceImportMiddleware = createImportUpload(maintenanceImportFileFilter)
+
+function runImportUpload(rawMiddleware, req, res, next) {
+  rawMiddleware(req, res, (error) => {
     if (!error) {
       next()
       return
@@ -118,6 +145,14 @@ function uploadImportMiddleware(req, res, next) {
     }
     next(error)
   })
+}
+
+function uploadImportMiddleware(req, res, next) {
+  runImportUpload(rawUploadImportMiddleware, req, res, next)
+}
+
+function uploadMaintenanceImportMiddleware(req, res, next) {
+  runImportUpload(rawUploadMaintenanceImportMiddleware, req, res, next)
 }
 
 function maintenancePartyPayload(row) {
@@ -1928,6 +1963,7 @@ async function remove(req, res) {
 
 module.exports = {
   uploadImportMiddleware,
+  uploadMaintenanceImportMiddleware,
   list,
   create,
   importDevices,

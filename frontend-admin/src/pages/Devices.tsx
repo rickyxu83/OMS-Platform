@@ -3217,7 +3217,7 @@ export function Devices() {
               <Input
                 ref={maintenanceImportFileInputRef}
                 type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 disabled={maintenanceImporting}
                 onChange={(event) => {
                   setMaintenanceImportFile(event.target.files?.[0] || null);
@@ -3226,7 +3226,7 @@ export function Devices() {
                   setMaintenanceImportMappingDirty(false);
                 }}
               />
-              <div className="text-xs text-muted-foreground">只更新系统中已存在的 SN；单次最多 1000 台，文件不超过 5MB。</div>
+              <div className="text-xs text-muted-foreground">支持旧版 .xls 和新版 .xlsx；只更新系统中已存在的 SN，单次最多 1000 台，文件不超过 5MB。</div>
             </div>
 
             {maintenanceImportPreview ? (
