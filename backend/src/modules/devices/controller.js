@@ -1173,9 +1173,10 @@ async function loadDeviceDeleteSummary(deviceId, executeQuery = query) {
   return summary
 }
 
-async function loadRelatedServiceOrders(deviceId) {
+async function loadRelatedServiceOrders(deviceId, user = null) {
   await ensureDevicePartHistoryColumns()
   await ensureServiceOrderDevicesTable()
+  const salesScope = user ? buildSalesCustomerScope(user, 'c') : { sql: '', params: {} }
   const rows = await query(
     `SELECT related.*
      FROM (
@@ -1183,8 +1184,10 @@ async function loadRelatedServiceOrders(deviceId) {
               so.submitted_at, so.created_at, u.real_name AS engineer_name, u.username AS engineer_username,
               'service_order_device' AS relation_type
        FROM service_orders so
+       JOIN customers c ON c.id = so.customer_id
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        WHERE so.device_id = :deviceId
+       ${salesScope.sql}
 
        UNION
 
@@ -1193,8 +1196,10 @@ async function loadRelatedServiceOrders(deviceId) {
               'service_order_target_device' AS relation_type
        FROM service_order_devices sod
        JOIN service_orders so ON so.id = sod.service_order_id
+       JOIN customers c ON c.id = so.customer_id
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        WHERE sod.device_id = :deviceId
+       ${salesScope.sql}
 
        UNION
 
@@ -1203,8 +1208,10 @@ async function loadRelatedServiceOrders(deviceId) {
               'installation_source' AS relation_type
        FROM devices d
        JOIN service_orders so ON so.id = d.installation_source_service_order_id
+       JOIN customers c ON c.id = so.customer_id
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        WHERE d.id = :deviceId
+       ${salesScope.sql}
 
        UNION
 
@@ -1213,12 +1220,14 @@ async function loadRelatedServiceOrders(deviceId) {
               CONCAT('service_part:', COALESCE(sp.action_type, 'general')) AS relation_type
        FROM service_parts sp
        JOIN service_orders so ON so.id = sp.service_order_id
+       JOIN customers c ON c.id = so.customer_id
        LEFT JOIN users u ON u.id = so.assigned_engineer_id
        WHERE sp.device_id = :deviceId
+       ${salesScope.sql}
      ) related
      ORDER BY COALESCE(related.submitted_at, related.created_at) DESC, related.id DESC
      LIMIT 100`,
-    { deviceId },
+    { deviceId, ...salesScope.params },
   )
   const items = []
   const byId = new Map()
@@ -1248,6 +1257,38 @@ async function loadRelatedServiceOrders(deviceId) {
     items.push(item)
   }
   return items
+}
+
+async function loadRelatedOrderAttachments(orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+  const byOrderId = new Map()
+  if (!ids.length) return byOrderId
+  const placeholders = ids.map((_, index) => `:attachmentOrderId${index}`).join(', ')
+  const params = {}
+  ids.forEach((id, index) => { params[`attachmentOrderId${index}`] = id })
+  const rows = await query(
+    `SELECT f.id, f.purpose, f.original_name, f.mime_type, f.size, f.created_at,
+            CASE WHEN f.owner_type = 'service_report' THEN sr.service_order_id ELSE f.owner_id END AS service_order_id
+     FROM files f
+     LEFT JOIN service_reports sr ON f.owner_type = 'service_report' AND sr.id = f.owner_id
+     WHERE (f.owner_type = 'service_order' AND f.owner_id IN (${placeholders}))
+        OR (f.owner_type = 'service_report' AND sr.service_order_id IN (${placeholders}))
+     ORDER BY f.created_at DESC, f.id DESC`,
+    params,
+  )
+  for (const row of rows) {
+    const key = String(row.service_order_id)
+    if (!byOrderId.has(key)) byOrderId.set(key, [])
+    byOrderId.get(key).push({
+      id: row.id,
+      purpose: row.purpose,
+      originalName: row.original_name,
+      mimeType: row.mime_type,
+      size: row.size,
+      createdAt: row.created_at,
+    })
+  }
+  return byOrderId
 }
 
 async function duplicateSerialNoMessage(deviceId, serialNo) {
@@ -1786,10 +1827,16 @@ async function detail(req, res) {
     { id: req.params.id },
   )
 
+  const relatedServiceOrders = await loadRelatedServiceOrders(req.params.id, req.user)
+  const attachmentsByOrder = await loadRelatedOrderAttachments(relatedServiceOrders.map((order) => order.id))
+
   res.json({
     item: {
       ...devicePayload(rows[0]),
-      relatedServiceOrders: await loadRelatedServiceOrders(req.params.id),
+      relatedServiceOrders: relatedServiceOrders.map((order) => ({
+        ...order,
+        attachments: attachmentsByOrder.get(String(order.id)) || [],
+      })),
       partHistory: partRows.map((part) => ({
         id: part.id,
         serviceOrderId: part.service_order_id,

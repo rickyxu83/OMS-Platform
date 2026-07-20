@@ -738,6 +738,39 @@ export function Customers() {
     setSearchQuery(keyword);
   }, [searchParams]);
 
+  // 深链：/customers?customerId= 自动打开客户详情，关闭后清理参数
+  const detailFromParamRef = useRef(false);
+  useEffect(() => {
+    const customerId = searchParams.get("customerId");
+    if (!customerId) {
+      detailFromParamRef.current = false;
+      return;
+    }
+    if (detailTarget && String(detailTarget.id) === customerId) {
+      detailFromParamRef.current = true;
+      return;
+    }
+    const matched = customers.find((customer) => String(customer.id) === customerId);
+    if (matched) {
+      setDetailTarget(matched);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/customers/${customerId}`)
+      .then((data) => { if (!cancelled) setDetailTarget((data?.item || data) as Customer); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, customers, detailTarget]);
+
+  useEffect(() => {
+    if (detailTarget || !detailFromParamRef.current || !searchParams.has("customerId")) return;
+    detailFromParamRef.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete("customerId");
+    setSearchParams(next, { replace: true });
+  }, [detailTarget, searchParams, setSearchParams]);
+
   useEffect(() => {
     if (!dialogOpen || !showCandidates) return undefined;
 
@@ -1859,12 +1892,17 @@ export function Customers() {
                           </div>
                           <div className="mt-3 space-y-2">
                             {devices.length ? devices.slice(0, 8).map((device) => (
-                              <div key={device.id} className="rounded-md bg-slate-50 px-3 py-2">
+                              <Link
+                                key={device.id}
+                                to={`/devices?deviceId=${encodeURIComponent(String(device.id))}`}
+                                className="block rounded-md bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
+                                title="点击查看设备详情"
+                              >
                                 <div className="truncate text-sm font-medium">{customerDeviceLabel(device)}</div>
                                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                                   {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
                                 </div>
-                              </div>
+                              </Link>
                             )) : (
                               <div className="text-sm text-muted-foreground">{t.dialog.noDevices}</div>
                             )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ interface ServiceOrder {
   contactName?: string;
   contactPhone?: string;
   deviceName?: string;
+  deviceId?: string | number;
   deviceModel?: string;
   devicePn?: string;
   deviceSerialNo?: string;
@@ -942,6 +943,7 @@ function DetailBlock({ label, value, markdown = false }: { label: string; value?
 export function ServiceOrders() {
   const { lang } = useLanguage();
   const { user, hasPermission } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -2252,7 +2254,21 @@ export function ServiceOrders() {
                   <DetailField label={t.detail.contactName} value={detailOrder.contactName || t.detail.unnamedContact} />
                   <DetailField label="联系电话" value={detailOrder.contactPhone} />
                   <DetailField label="客户地址" value={detailOrder.customerAddress} />
-                  <DetailField label="设备" value={detailOrder.deviceName || "未指定设备"} />
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">设备</div>
+                    {detailOrder.deviceId ? (
+                      <button
+                        type="button"
+                        className="mt-1 block max-w-full truncate text-left text-sm leading-6 hover:text-primary hover:underline"
+                        title="点击查看设备详情"
+                        onClick={() => navigate(`/devices?deviceId=${detailOrder.deviceId}`)}
+                      >
+                        {detailOrder.deviceName || "未指定设备"}
+                      </button>
+                    ) : (
+                      <div className="mt-1 break-words text-sm leading-6">{detailOrder.deviceName || "未指定设备"}</div>
+                    )}
+                  </div>
                   <DetailField label={t.detail.engineer} value={engineerText(detailOrder, t.detail.unnamedEngineer)} />
                 </div>
 
