@@ -1334,7 +1334,7 @@ export function Devices() {
   const canSelectDevices = canManageDevices;
   const canViewOrderDetail = hasPermission("order.view");
   const relatedOrderHref = (orderId: string | number) => (
-    canViewOrderDetail ? `/service-orders?orderId=${orderId}` : `/service-report/${orderId}`
+    canViewOrderDetail ? `/service-orders?orderId=${orderId}` : `/service-report?preview=${orderId}`
   );
   const deviceTableGrid = canManageDevices ? DEVICE_TABLE_GRID : DEVICE_TABLE_READONLY_GRID;
   const deviceTableMinWidth = canManageDevices ? "min-w-[1262px]" : "min-w-[1092px]";

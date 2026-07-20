@@ -2165,7 +2165,7 @@ export function ServiceReport() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { lang } = useLanguage();
   const isNewRoute = location.pathname.endsWith("/new");
@@ -4055,6 +4055,30 @@ export function ServiceReport() {
     }
   }
 
+  function closePreviewOrder() {
+    setPreviewOrder(null);
+    if (searchParams.has("preview")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("preview");
+      setSearchParams(next, { replace: true });
+    }
+  }
+
+  // 深链：/service-report?preview=<id> 直接打开工单预览
+  const previewFromParamRef = useRef("");
+  useEffect(() => {
+    const previewId = searchParams.get("preview") || "";
+    if (!previewId) {
+      previewFromParamRef.current = "";
+      return;
+    }
+    if (previewFromParamRef.current === previewId) return;
+    if (previewOrder && String(previewOrder.id) === previewId) return;
+    previewFromParamRef.current = previewId;
+    void openPreviewOrder({ id: previewId } as ServiceOrder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   async function submit() {
     const missing = validateBeforeSubmit();
     if (missing.length) {
@@ -4595,7 +4619,7 @@ export function ServiceReport() {
 
         <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => {
           if (!open) {
-            setPreviewOrder(null);
+            closePreviewOrder();
             setPreviewError("");
             setPreviewLoading(false);
             clearAttachmentPreview();
@@ -4876,12 +4900,12 @@ export function ServiceReport() {
               })() : null}
             </div>
             <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
-              <Button variant="outline" onClick={() => setPreviewOrder(null)}>关闭</Button>
+              <Button variant="outline" onClick={closePreviewOrder}>关闭</Button>
               <Button
                 onClick={() => {
                   if (!previewOrder?.id) return;
                   const orderId = previewOrder.id;
-                  setPreviewOrder(null);
+                  closePreviewOrder();
                   navigate(`/service-report/${orderId}`);
                 }}
                 disabled={!previewOrder?.id}
