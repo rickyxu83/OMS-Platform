@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Search, Wrench, Loader2, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -286,6 +287,7 @@ export function MaintenanceParties() {
   const canDeleteParties = hasPermission("maintenance-party.delete");
   const canManageParties = canEditParties || canDeleteParties;
   const t = I18N[lang];
+  const [searchParams, setSearchParams] = useSearchParams();
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -304,6 +306,58 @@ export function MaintenanceParties() {
     officialWebsite: "",
     remark: "",
   });
+
+  // 深链：?partyId= 自动打开维保方详情，关闭后清理参数
+  const detailFromParamRef = useRef(false);
+  useEffect(() => {
+    const partyId = searchParams.get("partyId");
+    if (!partyId) {
+      detailFromParamRef.current = false;
+      if (detailTarget) setDetailTarget(null);
+      return;
+    }
+    if (detailTarget && String(detailTarget.id) === partyId) {
+      detailFromParamRef.current = true;
+      return;
+    }
+    const matched = parties.find((party) => String(party.id) === partyId);
+    if (matched) {
+      setDetailTarget(matched);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/maintenance-parties/${partyId}`)
+      .then((data) => { if (!cancelled) setDetailTarget((data?.item || data) as Party); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, parties, detailTarget]);
+
+  useEffect(() => {
+    if (detailTarget || !detailFromParamRef.current || !searchParams.has("partyId")) return;
+    detailFromParamRef.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete("partyId");
+    setSearchParams(next, { replace: true });
+  }, [detailTarget, searchParams, setSearchParams]);
+
+  function openPartyDetail(party: Party) {
+    setDetailTarget(party);
+    if (searchParams.get("partyId") !== String(party.id)) {
+      const next = new URLSearchParams(searchParams);
+      next.set("partyId", String(party.id));
+      setSearchParams(next);
+    }
+  }
+
+  function closePartyDetail() {
+    setDetailTarget(null);
+    if (searchParams.has("partyId")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("partyId");
+      setSearchParams(next, { replace: true });
+    }
+  }
 
   async function load(keyword = searchQuery, type = typeFilter) {
     setLoading(true);
@@ -528,7 +582,7 @@ export function MaintenanceParties() {
       for (const id of selectedPartyIds) {
         await api.delete(`/maintenance-parties/${id}`);
       }
-      if (detailTarget && selectedPartyIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      if (detailTarget && selectedPartyIds.includes(String(detailTarget.id))) closePartyDetail();
       setSelectedPartyIds([]);
       await load();
     } catch (e) {
@@ -697,12 +751,12 @@ export function MaintenanceParties() {
                           role="button"
                           tabIndex={0}
                           className="cursor-pointer"
-                          onClick={() => setDetailTarget(p)}
+                          onClick={() => openPartyDetail(p)}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return;
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              setDetailTarget(p);
+                              openPartyDetail(p);
                             }
                           }}
                         >
@@ -810,7 +864,7 @@ export function MaintenanceParties() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) closePartyDetail(); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[680px]">
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>{t.dialog.detailTitle}</DialogTitle>
@@ -890,13 +944,13 @@ export function MaintenanceParties() {
             );
           })() : null}
           <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
-            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+            <Button variant="outline" onClick={closePartyDetail}>
               {t.actions.close}
             </Button>
             {detailTarget && canEditParties ? (
               <Button onClick={() => {
                 const target = detailTarget;
-                setDetailTarget(null);
+                closePartyDetail();
                 openEdit(target);
               }}>
                 <Pencil className="w-4 h-4 mr-2" />

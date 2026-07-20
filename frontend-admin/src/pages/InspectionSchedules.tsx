@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,7 @@ function inputDate(value?: string) {
 
 export function InspectionSchedules() {
   const { hasPermission } = useAuth();
+  const navigate = useNavigate();
   const canManageSchedules = hasPermission("inspection.create", "inspection.edit", "inspection.delete", "inspection.generate");
   const [searchParams, setSearchParams] = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -145,6 +146,65 @@ export function InspectionSchedules() {
     active: true,
     remark: "",
   });
+
+  // 深链：?scheduleId= 自动打开计划详情，关闭后清理参数
+  const detailFromParamRef = useRef(false);
+  useEffect(() => {
+    const scheduleId = searchParams.get("scheduleId");
+    if (!scheduleId) {
+      detailFromParamRef.current = false;
+      if (detailTarget) setDetailTarget(null);
+      return;
+    }
+    if (detailTarget && String(detailTarget.id) === scheduleId) {
+      detailFromParamRef.current = true;
+      return;
+    }
+    const matched = schedules.find((schedule) => String(schedule.id) === scheduleId);
+    if (matched) {
+      setDetailTarget(matched);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/inspection-schedules/${scheduleId}`)
+      .then((data) => { if (!cancelled) setDetailTarget((data?.item || data) as Schedule); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, schedules, detailTarget]);
+
+  useEffect(() => {
+    if (detailTarget || !detailFromParamRef.current || !searchParams.has("scheduleId")) return;
+    detailFromParamRef.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete("scheduleId");
+    setSearchParams(next, { replace: true });
+  }, [detailTarget, searchParams, setSearchParams]);
+
+  // 打开详情时预热跳转目标页面的代码块
+  useEffect(() => {
+    if (!detailTarget?.id) return;
+    void import("@/pages/Devices");
+    void import("@/pages/Customers");
+  }, [detailTarget?.id]);
+
+  function openScheduleDetail(schedule: Schedule) {
+    setDetailTarget(schedule);
+    if (searchParams.get("scheduleId") !== String(schedule.id)) {
+      const next = new URLSearchParams(searchParams);
+      next.set("scheduleId", String(schedule.id));
+      setSearchParams(next);
+    }
+  }
+
+  function closeScheduleDetail() {
+    setDetailTarget(null);
+    if (searchParams.has("scheduleId")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("scheduleId");
+      setSearchParams(next, { replace: true });
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -692,7 +752,7 @@ export function InspectionSchedules() {
       for (const id of selectedScheduleIds) {
         await api.delete(`/inspection-schedules/${id}`);
       }
-      if (detailTarget && selectedScheduleIds.includes(String(detailTarget.id))) setDetailTarget(null);
+      if (detailTarget && selectedScheduleIds.includes(String(detailTarget.id))) closeScheduleDetail();
       setSelectedScheduleIds([]);
       await load();
     } catch (e) {
@@ -869,12 +929,12 @@ export function InspectionSchedules() {
                         ? "lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px]"
                         : "lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px]"
                     }`}
-                    onClick={() => setDetailTarget(s)}
+                    onClick={() => openScheduleDetail(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setDetailTarget(s);
+                        openScheduleDetail(s);
                       }
                     }}
                   >
@@ -966,7 +1026,7 @@ export function InspectionSchedules() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) closeScheduleDetail(); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
           <DialogHeader className="px-6 pt-6 pr-12">
             <DialogTitle>巡检计划详情</DialogTitle>
@@ -976,6 +1036,22 @@ export function InspectionSchedules() {
             const cadenceLabel = CADENCE_LABELS[detailTarget.cadence || ""] || detailTarget.cadence || "-";
             const deviceNames = detailTarget.deviceNames || [];
             const assignments = detailTarget.assignments || [];
+            const renderDeviceNames = (names: string[], ids?: number[]) => {
+              if (ids && ids.length > 0 && ids.length === names.length) {
+                return names.map((name, index) => (
+                  <button
+                    key={`${ids[index]}-${index}`}
+                    type="button"
+                    className="mr-1.5 text-left text-primary hover:underline"
+                    title="点击查看设备详情"
+                    onClick={() => navigate(`/devices?deviceId=${ids[index]}`)}
+                  >
+                    {name}
+                  </button>
+                ));
+              }
+              return <span>{names.join("、") || `${ids?.length || 0} 台设备`}</span>;
+            };
             return (
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
@@ -1017,11 +1093,24 @@ export function InspectionSchedules() {
                         {assignments.length ? assignments.map((assignment) => (
                           <div key={String(assignment.targetEngineerId)} className="rounded-md bg-slate-50 px-3 py-2">
                             <div className="text-sm font-semibold">{assignment.targetEngineerName || `工程师 #${assignment.targetEngineerId}`}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{assignment.deviceNames.join("、") || `${assignment.deviceIds.length} 台设备`}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{renderDeviceNames(assignment.deviceNames, assignment.deviceIds)}</div>
                           </div>
-                        )) : deviceNames.length ? deviceNames.map((name, index) => (
-                          <div key={`${name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium">{name}</div>
-                        )) : (
+                        )) : deviceNames.length ? deviceNames.map((name, index) => {
+                          const deviceId = detailTarget.deviceIds?.length === deviceNames.length ? detailTarget.deviceIds[index] : null;
+                          return deviceId ? (
+                            <button
+                              key={`${name}-${index}`}
+                              type="button"
+                              className="block w-full rounded-md bg-slate-50 px-3 py-2 text-left text-sm font-medium text-primary hover:underline"
+                              title="点击查看设备详情"
+                              onClick={() => navigate(`/devices?deviceId=${deviceId}`)}
+                            >
+                              {name}
+                            </button>
+                          ) : (
+                            <div key={`${name}-${index}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium">{name}</div>
+                          );
+                        }) : (
                           <div className="text-sm text-muted-foreground">暂无巡检分工</div>
                         )}
                       </div>
@@ -1029,6 +1118,21 @@ export function InspectionSchedules() {
                     <div className="rounded-lg border p-4">
                       <div className="text-sm font-medium">计划信息</div>
                       <div className="mt-3 grid gap-3 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">客户</div>
+                          {detailTarget.customerId ? (
+                            <button
+                              type="button"
+                              className="mt-1 text-left text-primary hover:underline"
+                              title="点击查看客户详情"
+                              onClick={() => navigate(`/customers?customerId=${detailTarget.customerId}`)}
+                            >
+                              {detailTarget.customerName || "-"}
+                            </button>
+                          ) : (
+                            <div className="mt-1">{detailTarget.customerName || "-"}</div>
+                          )}
+                        </div>
                         <div>
                           <div className="text-xs text-muted-foreground">结束日期</div>
                           <div className="mt-1">{formatDate(detailTarget.endDate)}</div>
@@ -1045,13 +1149,13 @@ export function InspectionSchedules() {
             );
           })() : null}
           <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
-            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+            <Button variant="outline" onClick={closeScheduleDetail}>
               关闭
             </Button>
             {detailTarget && canManageSchedules ? (
               <Button onClick={() => {
                 const target = detailTarget;
-                setDetailTarget(null);
+                closeScheduleDetail();
                 openEdit(target);
               }}>
                 <Pencil className="w-4 h-4 mr-2" />

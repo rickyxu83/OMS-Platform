@@ -3004,7 +3004,18 @@ export function Devices() {
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">维保方</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.maintenancePartyName || "-"}</div>
+                        {detailTarget.maintenancePartyId ? (
+                          <button
+                            type="button"
+                            className="mt-1 block max-w-full truncate text-sm font-semibold text-primary hover:underline"
+                            title="点击查看维保方详情"
+                            onClick={() => navigate(`/maintenance-parties?partyId=${detailTarget.maintenancePartyId}`)}
+                          >
+                            {detailTarget.maintenancePartyName || "-"}
+                          </button>
+                        ) : (
+                          <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.maintenancePartyName || "-"}</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3055,7 +3066,18 @@ export function Devices() {
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">维保方</div>
-                          <div className="mt-1">{detailTarget.maintenancePartyName || "-"}</div>
+                          {detailTarget.maintenancePartyId ? (
+                            <button
+                              type="button"
+                              className="mt-1 text-left text-primary hover:underline"
+                              title="点击查看维保方详情"
+                              onClick={() => navigate(`/maintenance-parties?partyId=${detailTarget.maintenancePartyId}`)}
+                            >
+                              {detailTarget.maintenancePartyName || "-"}
+                            </button>
+                          ) : (
+                            <div className="mt-1">{detailTarget.maintenancePartyName || "-"}</div>
+                          )}
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">维保周期</div>
