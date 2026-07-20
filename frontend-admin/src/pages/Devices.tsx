@@ -683,6 +683,24 @@ const ATTACHMENT_PURPOSE_LABELS: Record<string, string> = {
   screenshot_log: "截图日志",
 };
 
+const ATTACHMENT_FORMAT_LABELS: Record<string, string> = {
+  document: "文档",
+  image: "图片",
+  other: "其他",
+};
+
+function attachmentFormatOf(file: DeviceRelatedAttachment): "document" | "image" | "other" {
+  const mime = String(file.mimeType || "").toLowerCase();
+  const name = String(file.originalName || "").toLowerCase();
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|heic)$/.test(name)) return "image";
+  if (
+    mime.includes("pdf") || mime.includes("word") || mime.includes("excel") || mime.includes("spreadsheet")
+    || mime.includes("presentation") || mime.startsWith("text/")
+    || /\.(pdf|docx?|xlsx?|pptx?|txt|csv|md)$/.test(name)
+  ) return "document";
+  return "other";
+}
+
 function partQuantityText(item: DevicePartHistory) {
   const quantity = Number(item.quantity || 0);
   const text = Number.isFinite(quantity) && quantity > 0 ? String(quantity).replace(/\.00$/, "") : "";
@@ -1329,7 +1347,7 @@ export function Devices() {
   const [saving, setSaving] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [attachmentPurpose, setAttachmentPurpose] = useState("all");
+  const [attachmentFormat, setAttachmentFormat] = useState("all");
   const [attachmentKeyword, setAttachmentKeyword] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
@@ -2874,7 +2892,7 @@ export function Devices() {
               .map((order) => ({
                 order,
                 attachments: (Array.isArray(order.attachments) ? order.attachments : []).filter((file) => {
-                  if (attachmentPurpose !== "all" && (file.purpose || "general") !== attachmentPurpose) return false;
+                  if (attachmentFormat !== "all" && attachmentFormatOf(file) !== attachmentFormat) return false;
                   if (attachmentKeywordNormalized && !`${file.originalName || ""} ${order.orderNo || ""}`.toLowerCase().includes(attachmentKeywordNormalized)) return false;
                   return true;
                 }),
@@ -2905,14 +2923,14 @@ export function Devices() {
                     <button
                       key={file.id}
                       type="button"
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-white"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-primary/5"
                       onClick={(event) => {
                         event.stopPropagation();
                         void openAttachment(file);
                       }}
                     >
                       <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{file.originalName || `附件 #${file.id}`}</span>
+                      <span className="min-w-0 flex-1 truncate text-primary hover:underline">{file.originalName || `附件 #${file.id}`}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{ATTACHMENT_PURPOSE_LABELS[file.purpose || "general"] || "其他"}</span>
                     </button>
                   ))}
@@ -2961,12 +2979,11 @@ export function Devices() {
                         {detailTarget.serialNo ? (
                           <button
                             type="button"
-                            className="group mt-1 flex max-w-full items-center gap-1 text-sm font-semibold text-slate-900 hover:text-primary hover:underline"
-                            title={`点击复制：${detailTarget.serialNo}`}
+                            className="mt-1 block max-w-full truncate text-left text-sm font-semibold text-slate-900 transition-colors hover:text-primary hover:underline"
+                            title="点击复制序列号"
                             onClick={() => void copySerialNo(detailTarget.serialNo)}
                           >
-                            <span className="truncate">{detailTarget.serialNo}</span>
-                            <Copy className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
+                            {detailTarget.serialNo}
                           </button>
                         ) : (
                           <div className="mt-1 text-sm font-semibold text-slate-900">-</div>
@@ -2992,7 +3009,7 @@ export function Devices() {
                           {detailTarget.customerId ? (
                             <button
                               type="button"
-                              className="mt-1 text-left hover:text-primary hover:underline"
+                              className="mt-1 text-left text-primary hover:underline"
                               title="点击查看客户详情"
                               onClick={() => navigate(`/customers?customerId=${detailTarget.customerId}`)}
                             >
@@ -3059,17 +3076,15 @@ export function Devices() {
                     {hasAnyAttachments ? (
                       <div className="mt-3 space-y-3">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Select value={attachmentPurpose} onValueChange={setAttachmentPurpose}>
+                          <Select value={attachmentFormat} onValueChange={setAttachmentFormat}>
                             <SelectTrigger className="h-8 w-full sm:w-[140px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">全部类型</SelectItem>
-                              <SelectItem value="site_photo">现场照片</SelectItem>
-                              <SelectItem value="inspection_document">巡检文档</SelectItem>
-                              <SelectItem value="support_config">配置支持</SelectItem>
-                              <SelectItem value="screenshot_log">截图日志</SelectItem>
-                              <SelectItem value="general">其他</SelectItem>
+                              <SelectItem value="all">全部格式</SelectItem>
+                              <SelectItem value="document">文档</SelectItem>
+                              <SelectItem value="image">图片</SelectItem>
+                              <SelectItem value="other">其他</SelectItem>
                             </SelectContent>
                           </Select>
                           <Input
@@ -3091,14 +3106,16 @@ export function Devices() {
                     )}
                   </div>
 
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium">关联工单</div>
-                        <div className="mt-1 text-xs text-muted-foreground">引用这台设备的服务单、安装来源和部件记录</div>
+                  <details className="rounded-lg border p-4">
+                    <summary className="cursor-pointer list-none">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium">关联工单</div>
+                          <div className="mt-1 text-xs text-muted-foreground">引用这台设备的服务单、安装来源和部件记录</div>
+                        </div>
+                        <Badge variant="secondary">{relatedServiceOrders.length} 张</Badge>
                       </div>
-                      <Badge variant="secondary">{relatedServiceOrders.length} 张</Badge>
-                    </div>
+                    </summary>
                     {relatedServiceOrders.length ? (
                       <div className="mt-3 grid gap-3">
                         {relatedServiceOrders.map((order) => (
@@ -3106,7 +3123,7 @@ export function Devices() {
                             key={`${order.id}-${order.relationType || "order"}`}
                             role="button"
                             tabIndex={0}
-                            className="cursor-pointer rounded-md border bg-slate-50/60 p-3 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
+                            className="cursor-pointer rounded-md border bg-slate-50/60 p-3 transition-colors hover:bg-primary/5 hover:ring-1 hover:ring-primary/40"
                             title="点击查看工单详情"
                             onClick={() => navigate(relatedOrderHref(order.id))}
                             onKeyDown={(event) => {
@@ -3123,7 +3140,7 @@ export function Devices() {
                                     {orderStatusLabel(order.status)}
                                   </Badge>
                                   <Badge variant="outline">{orderRelationLabel(order.relationType)}</Badge>
-                                  <span className="font-medium text-slate-900">{order.orderNo || `工单 #${order.id}`}</span>
+                                  <span className="font-medium text-primary">{order.orderNo || `工单 #${order.id}`}</span>
                                 </div>
                                 <div className="mt-2 text-sm leading-6 text-muted-foreground">
                                   {serviceTypeLabel(order.serviceType)}
@@ -3145,7 +3162,7 @@ export function Devices() {
                         暂无关联工单
                       </div>
                     )}
-                  </div>
+                  </details>
 
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between gap-3">

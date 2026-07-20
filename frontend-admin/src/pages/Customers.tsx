@@ -1899,7 +1899,7 @@ export function Customers() {
                                 className="block rounded-md bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
                                 title="点击查看设备详情"
                               >
-                                <div className="truncate text-sm font-medium">{customerDeviceLabel(device)}</div>
+                                <div className="truncate text-sm font-medium text-primary">{customerDeviceLabel(device)}</div>
                                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                                   {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
                                 </div>
@@ -2001,7 +2001,7 @@ export function Customers() {
                               className="block rounded-md bg-slate-50 px-3 py-2.5 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
                             >
                               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                                <div className="break-all text-sm font-semibold leading-5 text-slate-900 hover:text-primary">{order.orderNo || `#${order.id}`}</div>
+                                <div className="break-all text-sm font-semibold leading-5 text-primary hover:underline">{order.orderNo || `#${order.id}`}</div>
                                 <Badge variant={ORDER_STATUS_VARIANT[status] || "secondary"}>
                                   {orderStatusLabel(order)}
                                 </Badge>

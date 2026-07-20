@@ -3,8 +3,8 @@ import { Toaster as Sonner, ToasterProps } from "sonner";
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme="light"
-      position="top-right"
+      theme="dark"
+      position="bottom-right"
       richColors
       closeButton
       className="toaster group"

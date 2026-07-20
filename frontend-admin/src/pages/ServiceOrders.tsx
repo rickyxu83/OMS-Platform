@@ -2259,7 +2259,7 @@ export function ServiceOrders() {
                     {detailOrder.deviceId ? (
                       <button
                         type="button"
-                        className="mt-1 block max-w-full truncate text-left text-sm leading-6 hover:text-primary hover:underline"
+                        className="mt-1 block max-w-full truncate text-left text-sm leading-6 text-primary hover:underline"
                         title="点击查看设备详情"
                         onClick={() => navigate(`/devices?deviceId=${detailOrder.deviceId}`)}
                       >
