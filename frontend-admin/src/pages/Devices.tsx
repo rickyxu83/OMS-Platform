@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Copy, Paperclip } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2795,15 +2795,14 @@ export function Devices() {
                         {device.serialNo ? (
                           <button
                             type="button"
-                            className="group flex max-w-full items-center gap-1 truncate text-left text-sm hover:text-primary hover:underline"
-                            title={`点击复制：${device.serialNo}`}
+                            className="block max-w-full truncate text-left text-sm transition-colors hover:text-primary hover:underline"
+                            title="点击复制序列号"
                             onClick={(event) => {
                               event.stopPropagation();
                               void copySerialNo(device.serialNo);
                             }}
                           >
-                            <span className="truncate">{device.serialNo}</span>
-                            <Copy className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
+                            {device.serialNo}
                           </button>
                         ) : (
                           <div className="truncate text-sm">-</div>
