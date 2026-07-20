@@ -1126,7 +1126,10 @@ export function ServiceOrders() {
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
-    if (!orderId) return;
+    if (!orderId) {
+      setDetailOrder((current) => (current ? null : current));
+      return;
+    }
     const matched = orders.find((order) => String(order.id) === orderId);
     if (matched && (!detailOrder || String(detailOrder.id) !== orderId)) {
       setDetailOrder(matched);
@@ -1337,6 +1340,15 @@ export function ServiceOrders() {
       setDetailOrder((data?.item || data) as ServiceOrder);
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.loadFailed);
+    }
+  }
+
+  function openOrderDetailFromList(order: ServiceOrder) {
+    void openDetailOrder(order);
+    if (searchParams.get("orderId") !== String(order.id)) {
+      const next = new URLSearchParams(searchParams);
+      next.set("orderId", String(order.id));
+      setSearchParams(next);
     }
   }
 
@@ -2027,12 +2039,12 @@ export function ServiceOrders() {
                         role="button"
                         tabIndex={0}
                         className="cursor-pointer"
-                        onClick={() => openDetailOrder(order)}
+                        onClick={() => openOrderDetailFromList(order)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            openDetailOrder(order);
+                            openOrderDetailFromList(order);
                           }
                         }}
                       >

@@ -744,6 +744,7 @@ export function Customers() {
     const customerId = searchParams.get("customerId");
     if (!customerId) {
       detailFromParamRef.current = false;
+      if (detailTarget) setDetailTarget(null);
       return;
     }
     if (detailTarget && String(detailTarget.id) === customerId) {
@@ -770,6 +771,22 @@ export function Customers() {
     next.delete("customerId");
     setSearchParams(next, { replace: true });
   }, [detailTarget, searchParams, setSearchParams]);
+
+  // 打开详情时预热跳转目标页面的代码块，减少跳转时的加载闪烁
+  useEffect(() => {
+    if (!detailTarget?.id) return;
+    void import("@/pages/Devices");
+    void import("@/pages/ServiceOrders");
+  }, [detailTarget?.id]);
+
+  function openCustomerDetail(customer: Customer) {
+    setDetailTarget(customer);
+    if (searchParams.get("customerId") !== String(customer.id)) {
+      const next = new URLSearchParams(searchParams);
+      next.set("customerId", String(customer.id));
+      setSearchParams(next);
+    }
+  }
 
   useEffect(() => {
     if (!dialogOpen || !showCandidates) return undefined;
@@ -1552,12 +1569,12 @@ export function Customers() {
                         role="button"
                         tabIndex={0}
                         className={`grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
-                        onClick={() => setDetailTarget(c)}
+                        onClick={() => openCustomerDetail(c)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            setDetailTarget(c);
+                            openCustomerDetail(c);
                           }
                         }}
                       >

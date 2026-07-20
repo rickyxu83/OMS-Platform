@@ -1819,6 +1819,7 @@ export function Devices() {
     const deviceId = searchParams.get("deviceId") || "";
     if (!deviceId) {
       deepLinkDeviceIdRef.current = "";
+      if (detailTarget) setDetailTarget(null);
       return;
     }
     if (deepLinkDeviceIdRef.current === deviceId) return;
@@ -1827,6 +1828,15 @@ export function Devices() {
     void openDetail({ id: deviceId } as Device);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  function openDeviceDetail(device: Device) {
+    void openDetail(device);
+    if (searchParams.get("deviceId") !== String(device.id)) {
+      const next = new URLSearchParams(searchParams);
+      next.set("deviceId", String(device.id));
+      setSearchParams(next);
+    }
+  }
 
   function closeDetail() {
     setDetailTarget(null);
@@ -2744,12 +2754,12 @@ export function Devices() {
                       role="button"
                       tabIndex={0}
                       className={`grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
-                      onClick={() => openDetail(device)}
+                      onClick={() => openDeviceDetail(device)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          openDetail(device);
+                          openDeviceDetail(device);
                         }
                       }}
                     >
