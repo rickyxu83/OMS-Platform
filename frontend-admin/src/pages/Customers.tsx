@@ -1786,6 +1786,7 @@ export function Customers() {
                 : "secondary";
             const inspectionPlanHref = `/inspection-schedules?customerId=${encodeURIComponent(String(detailTarget.id))}&keyword=${encodeURIComponent(detailTarget.name || "")}`;
             const serviceOrderHref = (order: CustomerOrder) => {
+              if (!hasPermission("order.view")) return `/service-report/${order.id}`;
               const params = new URLSearchParams({
                 customerId: String(detailTarget.id),
                 orderId: String(order.id),

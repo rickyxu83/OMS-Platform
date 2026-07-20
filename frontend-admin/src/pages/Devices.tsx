@@ -1314,6 +1314,10 @@ export function Devices() {
   const canDeleteDevices = hasPermission("device.delete");
   const canManageDevices = canEditDevices || canDeleteDevices;
   const canSelectDevices = canManageDevices;
+  const canViewOrderDetail = hasPermission("order.view");
+  const relatedOrderHref = (orderId: string | number) => (
+    canViewOrderDetail ? `/service-orders?orderId=${orderId}` : `/service-report/${orderId}`
+  );
   const deviceTableGrid = canManageDevices ? DEVICE_TABLE_GRID : DEVICE_TABLE_READONLY_GRID;
   const deviceTableMinWidth = canManageDevices ? "min-w-[1262px]" : "min-w-[1092px]";
   const [devices, setDevices] = useState<Device[]>([]);
@@ -2876,8 +2880,6 @@ export function Devices() {
                 }),
               }))
               .filter((group) => group.attachments.length > 0);
-            const installationAttachmentGroup = attachmentGroups.find((group) => String(group.order.relationType || "").includes("installation_source")) || null;
-            const otherAttachmentGroups = installationAttachmentGroup ? attachmentGroups.filter((group) => group !== installationAttachmentGroup) : attachmentGroups;
             const attachmentTotal = attachmentGroups.reduce((sum, group) => sum + group.attachments.length, 0);
             const hasAnyAttachments = relatedServiceOrders.some((order) => (order.attachments || []).length > 0);
             const renderAttachmentGroup = (group: { order: DeviceRelatedServiceOrder; attachments: DeviceRelatedAttachment[] }, expanded: boolean) => {
@@ -3049,6 +3051,49 @@ export function Devices() {
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
+                        <div className="text-sm font-medium">相关附件</div>
+                        <div className="mt-1 text-xs text-muted-foreground">来自关联工单的文件，按时间倒序，最新一组默认展开，安装来源工单带标记</div>
+                      </div>
+                      <Badge variant="secondary">{attachmentTotal} 个</Badge>
+                    </div>
+                    {hasAnyAttachments ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Select value={attachmentPurpose} onValueChange={setAttachmentPurpose}>
+                            <SelectTrigger className="h-8 w-full sm:w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">全部类型</SelectItem>
+                              <SelectItem value="site_photo">现场照片</SelectItem>
+                              <SelectItem value="inspection_document">巡检文档</SelectItem>
+                              <SelectItem value="support_config">配置支持</SelectItem>
+                              <SelectItem value="screenshot_log">截图日志</SelectItem>
+                              <SelectItem value="general">其他</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            className="h-8 sm:max-w-[220px]"
+                            placeholder="搜索文件名 / 工单号"
+                            value={attachmentKeyword}
+                            onChange={(event) => setAttachmentKeyword(event.target.value)}
+                          />
+                        </div>
+                        {attachmentGroups.map((group, index) => renderAttachmentGroup(group, index === 0))}
+                        {!attachmentGroups.length ? (
+                          <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">没有匹配的附件</div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                        暂无相关附件
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
                         <div className="text-sm font-medium">关联工单</div>
                         <div className="mt-1 text-xs text-muted-foreground">引用这台设备的服务单、安装来源和部件记录</div>
                       </div>
@@ -3063,11 +3108,11 @@ export function Devices() {
                             tabIndex={0}
                             className="cursor-pointer rounded-md border bg-slate-50/60 p-3 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
                             title="点击查看工单详情"
-                            onClick={() => navigate(`/service-orders?orderId=${order.id}`)}
+                            onClick={() => navigate(relatedOrderHref(order.id))}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                navigate(`/service-orders?orderId=${order.id}`);
+                                navigate(relatedOrderHref(order.id));
                               }
                             }}
                           >
@@ -3098,50 +3143,6 @@ export function Devices() {
                     ) : (
                       <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
                         暂无关联工单
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium">相关附件</div>
-                        <div className="mt-1 text-xs text-muted-foreground">来自关联工单的文件，安装来源工单置顶展开</div>
-                      </div>
-                      <Badge variant="secondary">{attachmentTotal} 个</Badge>
-                    </div>
-                    {hasAnyAttachments ? (
-                      <div className="mt-3 space-y-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Select value={attachmentPurpose} onValueChange={setAttachmentPurpose}>
-                            <SelectTrigger className="h-8 w-full sm:w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">全部类型</SelectItem>
-                              <SelectItem value="site_photo">现场照片</SelectItem>
-                              <SelectItem value="inspection_document">巡检文档</SelectItem>
-                              <SelectItem value="support_config">配置支持</SelectItem>
-                              <SelectItem value="screenshot_log">截图日志</SelectItem>
-                              <SelectItem value="general">其他</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            className="h-8 sm:max-w-[220px]"
-                            placeholder="搜索文件名 / 工单号"
-                            value={attachmentKeyword}
-                            onChange={(event) => setAttachmentKeyword(event.target.value)}
-                          />
-                        </div>
-                        {installationAttachmentGroup ? renderAttachmentGroup(installationAttachmentGroup, true) : null}
-                        {otherAttachmentGroups.map((group) => renderAttachmentGroup(group, false))}
-                        {!attachmentGroups.length ? (
-                          <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">没有匹配的附件</div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-                        暂无相关附件
                       </div>
                     )}
                   </div>
