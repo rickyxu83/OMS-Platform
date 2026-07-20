@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -660,9 +659,7 @@ export function Login() {
 
             <div className="mt-5 flex items-center justify-center gap-2 border-t border-white/60 pt-4">
               <span className="text-xs font-bold uppercase text-gray-400">{t.version}</span>
-              <Badge variant="outline" className="h-4 border-gray-300 px-1.5 py-0 font-mono text-xs opacity-50">
-                {appVersion}
-              </Badge>
+              <span className="font-mono text-xs text-gray-400">{appVersion}</span>
             </div>
           </div>
 

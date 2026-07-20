@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, KeyRound, LogOut, Save, Settings, Trash2, UserRound } from "lucide-react";
+import { Camera, CheckCircle2, KeyRound, LogOut, Save, Settings, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { SignatureCapture } from "@/components/SignatureCapture";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { getPreferredWorkspace, setPreferredWorkspace, workspaceLabel } from "@/config/app";
@@ -62,9 +63,11 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [engineerSignature, setEngineerSignature] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [savingSignature, setSavingSignature] = useState(false);
 
   const workspaces = useMemo(() => (
     Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
@@ -82,7 +85,8 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   useEffect(() => {
     if (!open) return;
     setLoginAlias(String(user?.loginAlias || ""));
-  }, [open, user?.loginAlias]);
+    setEngineerSignature(String(user?.engineerSignature || ""));
+  }, [open, user?.loginAlias, user?.engineerSignature]);
 
   async function saveProfile() {
     const normalizedAlias = loginAlias.trim();
@@ -167,9 +171,17 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     }
   }
 
-  function goEngineerSignature() {
-    onOpenChange(false);
-    window.location.assign(`${import.meta.env.BASE_URL}service-report`);
+  async function saveEngineerSignature() {
+    setSavingSignature(true);
+    try {
+      await api.put("/users/me", { engineerSignature });
+      await refreshUser();
+      toast.success(engineerSignature ? "工程师签名已保存" : "工程师签名已清除");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "签名保存失败");
+    } finally {
+      setSavingSignature(false);
+    }
   }
 
   return (
@@ -283,22 +295,21 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold">工程师签名</h3>
-                      <p className="text-xs text-muted-foreground">用于工单客户确认，建议在工单填写页用手写方式维护。</p>
+                      <p className="text-xs text-muted-foreground">用于服务记录中的工程师签字，可在此手写、更新或清除。</p>
                     </div>
-                    {user?.hasEngineerSignature ? (
-                      <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已维护</Badge>
+                    {engineerSignature ? (
+                      <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已填写</Badge>
                     ) : (
                       <Badge variant="warning">未维护</Badge>
                     )}
                   </div>
-                  {user?.engineerSignature ? (
-                    <div className="rounded-md border bg-white p-3">
-                      <img src={user.engineerSignature} alt="工程师签名" className="h-16 max-w-full object-contain" />
-                    </div>
-                  ) : null}
-                  <Button variant="outline" onClick={goEngineerSignature}>
-                    去工单填写页维护
-                  </Button>
+                  <SignatureCapture value={engineerSignature} onChange={setEngineerSignature} />
+                  <div className="flex justify-end">
+                    <Button onClick={saveEngineerSignature} disabled={savingSignature}>
+                      <Save className="h-4 w-4" />
+                      {savingSignature ? "保存中..." : "保存签名"}
+                    </Button>
+                  </div>
                 </section>
               </>
             ) : null}

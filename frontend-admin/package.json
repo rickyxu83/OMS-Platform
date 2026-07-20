@@ -1,7 +1,7 @@
 {
   "name": "oms-platform-admin",
   "private": true,
-  "version": "26.715.0190",
+  "version": "26.715.0192",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
