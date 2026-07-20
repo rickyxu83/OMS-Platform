@@ -2013,7 +2013,16 @@ async function timesheetMonthly(req, res) {
   }
 
   if (includeWorkSummary) {
-    response.workSummary = await generateTimesheetWorkSummary(response)
+    response.workSummary = await generateTimesheetWorkSummary({
+      ...response,
+      ...(filterEngineerId ? {
+        scope: {
+          type: 'engineer',
+          name: rows[0]?.engineer_name || manualRows[0]?.engineer_name || req.user.real_name || req.user.username || '',
+          description: '工程师工作月报',
+        },
+      } : {}),
+    })
   }
 
   res.json(response)
