@@ -103,8 +103,18 @@ interface WorkSummaryTheme {
   details?: string;
 }
 
+interface EngineerCustomerReport {
+  customerName?: string;
+  report?: string;
+}
+
 interface WorkSummaryResult {
+  reportFormat?: "engineer";
   executiveSummary?: string;
+  customerReports?: EngineerCustomerReport[];
+  internalWork?: string;
+  coordinationNeeds?: string[];
+  nextPlan?: string;
   keyThemes?: WorkSummaryTheme[];
   customerImpact?: string[];
   riskSignals?: string[];
@@ -162,6 +172,10 @@ function summaryList(items?: string[]) {
 
 function summaryThemes(items?: WorkSummaryTheme[]) {
   return Array.isArray(items) ? items.filter((item) => item.theme || item.details) : [];
+}
+
+function engineerCustomerReports(items?: EngineerCustomerReport[]) {
+  return Array.isArray(items) ? items.filter((item) => item.customerName || item.report) : [];
 }
 
 function parseWorkSummaryJson(value?: string): WorkSummaryResult | null {
@@ -944,53 +958,100 @@ export function Dashboard() {
                 {workSummary.reason || (lang === "zh-TW" ? "AI 營運總結暫不可用" : "AI 运营总结暂不可用")}
               </div>
             ) : (
-              <>
-                <p className="rounded-lg border bg-background px-4 py-3 leading-7">
-                  {textValue(displayWorkSummary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
-                </p>
-                {summaryThemes(displayWorkSummary.keyThemes).length > 0 && (
-                  <div>
-                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "重點主題" : "重点主题"}</div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {summaryThemes(displayWorkSummary.keyThemes).map((item, index) => (
-                        <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
-                          <div className="font-medium">{item.theme || (lang === "zh-TW" ? "未命名主題" : "未命名主题")}</div>
-                          <div className="mt-1 text-muted-foreground leading-6">
-                            {item.evidenceCount ? `${item.evidenceCount} ${lang === "zh-TW" ? "條相關記錄" : "条相关记录"}：` : ""}{item.details || "—"}
+              displayWorkSummary.reportFormat === "engineer" ? (
+                <>
+                  <section>
+                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "本期工作概況" : "本期工作概况"}</div>
+                    <p className="rounded-md border bg-background px-4 py-3 leading-7">
+                      {textValue(displayWorkSummary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
+                    </p>
+                  </section>
+                  {engineerCustomerReports(displayWorkSummary.customerReports).length > 0 && (
+                    <section>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "客戶工作情況" : "客户工作情况"}</div>
+                      <div className="divide-y rounded-md border bg-background">
+                        {engineerCustomerReports(displayWorkSummary.customerReports).map((item, index) => (
+                          <div key={`${item.customerName}-${index}`} className="px-4 py-3">
+                            <div className="font-medium">{item.customerName || (lang === "zh-TW" ? "未命名客戶" : "未命名客户")}</div>
+                            <p className="mt-1 whitespace-pre-wrap leading-7 text-muted-foreground">{item.report || "—"}</p>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {displayWorkSummary.internalWork && (
+                    <section>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "內部工作" : "内部工作"}</div>
+                      <p className="whitespace-pre-wrap leading-7 text-muted-foreground">{displayWorkSummary.internalWork}</p>
+                    </section>
+                  )}
+                  {summaryList(displayWorkSummary.coordinationNeeds).length > 0 && (
+                    <section>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "需要協調的事項" : "需要协调的事项"}</div>
+                      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                        {summaryList(displayWorkSummary.coordinationNeeds).map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                    </section>
+                  )}
+                  {displayWorkSummary.nextPlan && (
+                    <section>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "下一步計劃" : "下一步计划"}</div>
+                      <p className="whitespace-pre-wrap leading-7 text-muted-foreground">{displayWorkSummary.nextPlan}</p>
+                    </section>
+                  )}
+                  {displayWorkSummary.coverageNotes && (
+                    <div className="text-xs text-muted-foreground">{displayWorkSummary.coverageNotes}</div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="rounded-lg border bg-background px-4 py-3 leading-7">
+                    {textValue(displayWorkSummary.executiveSummary, lang === "zh-TW" ? "記錄未體現足夠的可總結內容。" : "记录未体现足够的可总结内容。")}
+                  </p>
+                  {summaryThemes(displayWorkSummary.keyThemes).length > 0 && (
+                    <div>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "重點主題" : "重点主题"}</div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {summaryThemes(displayWorkSummary.keyThemes).map((item, index) => (
+                          <div key={`${item.theme}-${index}`} className="rounded-lg border bg-background p-3">
+                            <div className="font-medium">{item.theme || (lang === "zh-TW" ? "未命名主題" : "未命名主题")}</div>
+                            <div className="mt-1 text-muted-foreground leading-6">
+                              {item.evidenceCount ? `${item.evidenceCount} ${lang === "zh-TW" ? "條相關記錄" : "条相关记录"}：` : ""}{item.details || "—"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {summaryList(displayWorkSummary.customerImpact).length > 0 && (
-                  <div>
-                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "客戶影響" : "客户影响"}</div>
-                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(displayWorkSummary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {summaryList(displayWorkSummary.riskSignals).length > 0 && (
-                  <div>
-                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "風險信號" : "风险信号"}</div>
-                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(displayWorkSummary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {summaryList(displayWorkSummary.followUpRecommendations).length > 0 && (
-                  <div>
-                    <div className="mb-2 font-medium">{lang === "zh-TW" ? "後續建議" : "后续建议"}</div>
-                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      {summaryList(displayWorkSummary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {displayWorkSummary.coverageNotes && (
-                  <div className="text-xs text-muted-foreground">{displayWorkSummary.coverageNotes}</div>
-                )}
-              </>
+                  )}
+                  {summaryList(displayWorkSummary.customerImpact).length > 0 && (
+                    <div>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "客戶影響" : "客户影响"}</div>
+                      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                        {summaryList(displayWorkSummary.customerImpact).map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {summaryList(displayWorkSummary.riskSignals).length > 0 && (
+                    <div>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "風險信號" : "风险信号"}</div>
+                      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                        {summaryList(displayWorkSummary.riskSignals).map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {summaryList(displayWorkSummary.followUpRecommendations).length > 0 && (
+                    <div>
+                      <div className="mb-2 font-medium">{lang === "zh-TW" ? "後續建議" : "后续建议"}</div>
+                      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                        {summaryList(displayWorkSummary.followUpRecommendations).map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {displayWorkSummary.coverageNotes && (
+                    <div className="text-xs text-muted-foreground">{displayWorkSummary.coverageNotes}</div>
+                  )}
+                </>
+              )
             )}
           </CardContent>
         </Card>

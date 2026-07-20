@@ -585,6 +585,32 @@ function summarySection(title, items = []) {
     </div>`
 }
 
+function engineerSummarySections(summary = {}) {
+  const customerReports = Array.isArray(summary.customerReports) ? summary.customerReports.filter((item) => item?.customerName || item?.report) : []
+  const coordinationNeeds = Array.isArray(summary.coordinationNeeds) ? summary.coordinationNeeds.filter(Boolean) : []
+  return `
+    ${customerReports.length ? `
+      <div style="margin-top:16px">
+        <div style="font-weight:700;margin-bottom:6px">客户工作情况</div>
+        ${customerReports.map((item) => `
+          <div style="padding:10px 0;border-top:1px solid #e2e8f0">
+            <div style="font-weight:700">${htmlEscape(item.customerName || '未命名客户')}</div>
+            <div style="margin-top:4px;color:#334155">${htmlEscape(item.report || '-')}</div>
+          </div>`).join('')}
+      </div>` : ''}
+    ${summary.internalWork ? `
+      <div style="margin-top:16px">
+        <div style="font-weight:700;margin-bottom:6px">内部工作</div>
+        <div style="color:#334155">${htmlEscape(summary.internalWork)}</div>
+      </div>` : ''}
+    ${summarySection('需要协调的事项', coordinationNeeds)}
+    ${summary.nextPlan ? `
+      <div style="margin-top:16px">
+        <div style="font-weight:700;margin-bottom:6px">下一步计划</div>
+        <div style="color:#334155">${htmlEscape(summary.nextPlan)}</div>
+      </div>` : ''}`
+}
+
 function monthlySummarySectionLabels(scopeType) {
   if (scopeType === 'sales') {
     return {
@@ -695,6 +721,14 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
     ? `<p style="margin:18px 0"><a href="${htmlEscape(dashboardUrl)}" style="${MAIL_BUTTON_STYLE}">查看 OMS 运营总览</a>${timesheetUrl ? ` <a href="${htmlEscape(timesheetUrl)}" style="display:inline-block;${MAIL_LINK_STYLE};padding:9px 10px">月报导出</a>` : ''}</p>`
     : ''
   const themeRows = Array.isArray(summary.keyThemes) ? summary.keyThemes.map((item) => `${item.theme || '主题'}：${item.details || ''}`) : []
+  const summarySections = summary.reportFormat === 'engineer'
+    ? engineerSummarySections(summary)
+    : [
+      summarySection(sectionLabels.themes, themeRows),
+      summarySection(sectionLabels.impact, summary.customerImpact),
+      summarySection(sectionLabels.risks, summary.riskSignals),
+      summarySection(sectionLabels.followUp, summary.followUpRecommendations),
+    ].join('')
   const subject = `${options.subjectPrefix || title}：${report.label || report.month || ''}${scopeName ? ` / ${scopeName}` : ''}`
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
@@ -717,10 +751,7 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
       <div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:13px;line-height:1.7">
         AI 免责说明：本摘要由系统基于 OMS 已记录数据自动整理，并由 AI 辅助生成，仅供内部管理参考；请以 OMS 原始工单、月报记录和人工判断为准。
       </div>
-      ${summarySection(sectionLabels.themes, themeRows)}
-      ${summarySection(sectionLabels.impact, summary.customerImpact)}
-      ${summarySection(sectionLabels.risks, summary.riskSignals)}
-      ${summarySection(sectionLabels.followUp, summary.followUpRecommendations)}
+      ${summarySections}
       ${summary.coverageNotes ? `<p style="margin-top:16px;color:#64748b;font-size:13px">${htmlEscape(summary.coverageNotes)}</p>` : ''}
       ${mailFooter()}
     </div>
