@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -959,6 +959,8 @@ export function ServiceOrders() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
@@ -1075,7 +1077,8 @@ export function ServiceOrders() {
     try {
       const range = normalizedDateRange(startDate, endDate);
       const params = new URLSearchParams({
-        pageSize: "50",
+        page: String(page),
+        pageSize: String(pageSize),
         sortBy: "createdAt",
         sortDir: "desc",
       });
@@ -1104,10 +1107,20 @@ export function ServiceOrders() {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
+  // 筛选条件变化时回到第 1 页；页码/每页数量变化时重新加载
+  const listFilterKey = [statusFilter, customerFilter, startDate, endDate, debouncedSearch].join("|");
+  const lastListFilterKeyRef = useRef(listFilterKey);
   useEffect(() => {
+    if (lastListFilterKeyRef.current !== listFilterKey) {
+      lastListFilterKeyRef.current = listFilterKey;
+      if (page !== 1) {
+        setPage(1);
+        return;
+      }
+    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
+  }, [listFilterKey, page, pageSize]);
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
@@ -1168,6 +1181,11 @@ export function ServiceOrders() {
 
   const initialLoading = loading && orders.length === 0;
   const refreshing = loading && orders.length > 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
@@ -2145,6 +2163,44 @@ export function ServiceOrders() {
                 )}
               </TableBody>
             </table>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-3 border-t pt-3 text-sm text-muted-foreground">
+            <span>共 {total} 条</span>
+            <span className="flex items-center gap-1">
+              <span>每页</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setPage(1);
+                }}
+                disabled={loading}
+              >
+                <SelectTrigger className="h-8 w-[92px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20 条</SelectItem>
+                  <SelectItem value="50">50 条</SelectItem>
+                  <SelectItem value="100">100 条</SelectItem>
+                </SelectContent>
+              </Select>
+            </span>
+            <span className="flex items-center gap-0.5">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage(1)} disabled={loading || page <= 1} aria-label="第一页">
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1} aria-label="上一页">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[52px] text-center">{page} / {totalPages}</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || page >= totalPages} aria-label="下一页">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage(totalPages)} disabled={loading || page >= totalPages} aria-label="最后一页">
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </span>
           </div>
         </CardContent>
       </Card>
