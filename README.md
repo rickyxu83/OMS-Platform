@@ -197,7 +197,7 @@ bash scripts/deploy-seed.sh
 
 | Role | Admin workspace |
 |---|---|
-| `engineer` | Uses only the service report entry; APIs are filtered to the current engineer |
+| `engineer` | Uses the service report entry; APIs are filtered to the current engineer. May delete own draft/assigned/rejected orders and void own submitted orders (intentional design) |
 | `engineering_supervisor` | Can use the service report entry; dispatch management can view all work orders |
 | `operations_director` | Can view all work orders |
 | `administrative_supervisor` | Read-only access to admin business data; cannot dispatch, approve, edit, delete, or change settings |
