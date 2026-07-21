@@ -8,6 +8,7 @@ const {
   assertSalesCanUseSalesperson,
   buildSalesCustomerScope,
 } = require('../../permissions/sales-scope')
+const { deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./internal')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
@@ -636,6 +637,7 @@ async function deleteServiceOrders(connection, orderIds) {
   await deleteFromOptionalTable(connection, `DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM self_report_drafts WHERE service_order_id IN (${list})`, params)
+  await deleteSalesNotificationsForOrderIds(connection, orderIds)
   const deletedFilePaths = await deleteFileRowsForOrderIds(connection, orderIds)
   await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${list})`, params)
@@ -668,16 +670,11 @@ async function forceDeleteCustomer(connection, customerId) {
     deletedFilePaths = await deleteServiceOrders(connection, orderIds)
   }
 
+  // inspection_schedules 无 device_id 列,设备归属客户,只按 customer_id 删除
+  await connection.execute('DELETE FROM inspection_schedules WHERE customer_id = :customerId', { customerId })
   if (deviceIds.length) {
     const deviceIdParams = idParams(deviceIds, 'deleteDeviceId')
-    await connection.execute(
-      `DELETE FROM inspection_schedules
-       WHERE customer_id = :customerId OR device_id IN (${deviceIdParams.placeholders.join(',')})`,
-      { customerId, ...deviceIdParams.params },
-    )
     await connection.execute(`DELETE FROM devices WHERE id IN (${deviceIdParams.placeholders.join(',')})`, deviceIdParams.params)
-  } else {
-    await connection.execute('DELETE FROM inspection_schedules WHERE customer_id = :customerId', { customerId })
   }
 
   await deleteCustomerContacts(connection, customerId)

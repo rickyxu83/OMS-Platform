@@ -27,7 +27,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { matchesSearchTerms, normalizeSearchText } from "@/lib/text-i18n";
+import { normalizeSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
 
 interface Device {
@@ -1568,19 +1568,16 @@ export function Devices() {
   }
 
   const filtered = useMemo(() => {
-    const keyword = searchQuery.trim();
+    // keyword 已发给后端搜索(字段集更全,含位置/备注),前端只做维保类型/状态过滤,
+    // 不再用更窄的字段集做本地关键词二次过滤
     return devices.filter((d) => {
       const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
       const status = d.status || "active";
       if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
-      if (!keyword) return true;
-      return matchesSearchTerms(
-        [d.name, d.model, d.pn, d.serialNo, d.mrNo, d.customerName, d.maintenancePartyName].filter(Boolean),
-        keyword,
-      );
+      return true;
     });
-  }, [devices, maintenanceFilter, searchQuery, statusFilter]);
+  }, [devices, maintenanceFilter, statusFilter]);
 
   const stats = useMemo(() => {
     const total = filtered.length;

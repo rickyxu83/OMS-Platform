@@ -8,7 +8,7 @@ const { buildOrderNo } = require('../../utils/order-no')
 const { buildLikeSearch, customerNameKey, toSimplified, toTraditional } = require('../../utils/chinese')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
-const { queueSalesServiceOrderNotification } = require('../../services/sales-notifications')
+const { queueSalesServiceOrderNotification, deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
@@ -1051,16 +1051,39 @@ async function saveSignatureFile(connection, orderId, dataUrl, userId) {
   return result.insertId
 }
 
-async function validateReusableSignatureFile(connection, fileId) {
+async function validateReusableSignatureFile(connection, fileId, { customerId, user } = {}) {
   const id = Number(fileId || 0)
   if (!id) return null
+  const params = { id, customerId: Number(customerId || 0) }
+  // 复用历史签名必须与最新签名拉取(latestCustomerSignature)同口径:
+  // 同客户,且工程师角色仅限本人参与过的工单,防止跨客户盗用手写签名
+  let engineerScopeSql = ''
+  if (user && engineerScopedRoles.has(user.role)) {
+    engineerScopeSql = `
+           AND (
+             so.assigned_engineer_id = :scopeEngineerId
+             OR EXISTS (
+               SELECT 1
+               FROM service_order_engineers soe
+               WHERE soe.service_order_id = so.id AND soe.engineer_id = :scopeEngineerId
+             )
+           )`
+    params.scopeEngineerId = user.id
+  }
   const [rows] = await connection.execute(
-    `SELECT id
-     FROM files
-     WHERE id = :id
-       AND owner_type = 'signature'
+    `SELECT f.id
+     FROM files f
+     WHERE f.id = :id
+       AND f.owner_type = 'signature'
+       AND EXISTS (
+         SELECT 1
+         FROM service_reports sr
+         JOIN service_orders so ON so.id = sr.service_order_id
+         WHERE sr.customer_signature_file_id = f.id
+           AND so.customer_id = :customerId${engineerScopeSql}
+       )
      LIMIT 1`,
-    { id },
+    params,
   )
   return rows[0] ? id : null
 }
@@ -2757,7 +2780,7 @@ async function createSelfReport(req, res) {
         : await saveWorkEntries(connection, orderResult.insertId, workEntries, workContent, req.user.id)
     const effectiveWorkContent = String(workContent || '').trim() || mergedWorkContent(savedWorkEntries, workContent)
 
-    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
+    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId, { customerId: effectiveCustomerId, user: req.user })
     if (customerSignatureFileId && !reusableSignatureFileId && !customerSignature) {
       throw badRequest('历史签名文件不存在，请重新签名')
     }
@@ -3867,7 +3890,7 @@ async function updateSelfReport(req, res) {
     await saveOrderTargetDevices(connection, req.params.id, effectiveTargetDeviceIds, effectiveCustomerId)
     await pruneWorkEntriesToEngineers(connection, req.params.id, normalizedEngineerIds)
 
-    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId)
+    const reusableSignatureFileId = await validateReusableSignatureFile(connection, customerSignatureFileId, { customerId: effectiveCustomerId, user: req.user })
     if (customerSignatureFileId && !reusableSignatureFileId && !customerSignature) {
       throw badRequest('历史签名文件不存在，请重新签名')
     }
@@ -4238,6 +4261,13 @@ async function cancelByEngineer(req, res) {
   res.status(204).end()
 }
 
+// 单删(remove)与批量删除(bulkDelete)共用的工单状态白名单
+function deletableOrderStatuses(role) {
+  const statuses = ['draft', 'assigned', 'rejected']
+  if (role === 'admin') statuses.push('cancelled')
+  return statuses
+}
+
 async function remove(req, res) {
   await prewarmServiceOrderSchema()
   const order = await getOrder(req.params.id)
@@ -4248,8 +4278,7 @@ async function remove(req, res) {
   if (req.user.role === 'assistant' && order.status !== 'draft') {
     throw badRequest('助理只能删除未派发的草稿工单')
   }
-  const canDeleteCancelledOrder = req.user.role === 'admin' && order.status === 'cancelled'
-  if (!['draft', 'assigned', 'rejected'].includes(order.status) && !canDeleteCancelledOrder) {
+  if (!deletableOrderStatuses(req.user.role).includes(order.status)) {
     if (order.status === 'cancelled') {
       throw badRequest('已作废工单仅管理员可以删除')
     }
@@ -4268,6 +4297,7 @@ async function remove(req, res) {
     await connection.execute('DELETE FROM service_order_devices WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_customer_signature_requests WHERE service_order_id = :id', { id: req.params.id })
+    await deleteSalesNotificationsForOrderIds(connection, [req.params.id])
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, [req.params.id])
     await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_engineers WHERE service_order_id = :id', { id: req.params.id })
@@ -4304,13 +4334,18 @@ async function bulkDelete(req, res) {
 
   const { params, placeholders } = idParams(ids, 'orderId')
   const rows = await query(
-    `SELECT id, order_no
+    `SELECT id, order_no, status
      FROM service_orders
      WHERE id IN (${placeholders})`,
     params,
   )
   if (!rows.length) {
     throw notFound('服务表不存在')
+  }
+  const allowedStatuses = deletableOrderStatuses(req.user.role)
+  const blockedOrders = rows.filter((row) => !allowedStatuses.includes(row.status))
+  if (blockedOrders.length) {
+    throw badRequest(`以下服务单状态不允许删除：${blockedOrders.map((row) => row.order_no).join('、')}`)
   }
   const foundIds = rows.map((row) => Number(row.id))
   const found = idParams(foundIds, 'orderId')
@@ -4323,6 +4358,7 @@ async function bulkDelete(req, res) {
     await connection.execute(`DELETE FROM service_order_devices WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${found.placeholders})`, found.params)
+    await deleteSalesNotificationsForOrderIds(connection, foundIds)
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
@@ -4371,4 +4407,7 @@ module.exports = {
   confirmInspectionOrder,
   update,
   bulkDelete,
+  // 仅供回归测试使用
+  deletableOrderStatuses,
+  validateReusableSignatureFile,
 }

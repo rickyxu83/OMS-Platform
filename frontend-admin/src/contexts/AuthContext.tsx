@@ -114,7 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshUser = useCallback(async () => {
-    const data = await api.get('/users/me')
+    // /users/me 不含 permissions/availableWorkspaces;/auth/me 的 publicUser 才返回完整会话字段
+    const data = await api.get('/auth/me')
     // 以服务端返回值优先(?? 保留服务端的空数组等合法值),本地旧值仅作缺省回退,
     // 否则权限调整后 refreshUser 永远刷不新
     const nextUser = {

@@ -106,6 +106,27 @@ async function queueSalesServiceOrderNotification(serviceOrderId, connection = n
   return { queued: true, serviceOrderId: id, delayMinutes }
 }
 
+// 删除工单前清理通知队列行(schema.sql 中该表有指向 service_orders 的外键,无 CASCADE);
+// 队列表为惰性建表,可能尚不存在,ER_NO_SUCH_TABLE 忽略。
+async function deleteSalesNotificationsForOrderIds(connection, orderIds) {
+  const ids = (Array.isArray(orderIds) ? orderIds : []).map((id) => Number(id)).filter(Boolean)
+  if (!ids.length) return
+  const params = {}
+  const placeholders = ids.map((id, index) => {
+    params[`orderId${index}`] = id
+    return `:orderId${index}`
+  })
+  try {
+    await executeWith(
+      connection,
+      `DELETE FROM service_order_sales_notifications WHERE service_order_id IN (${placeholders.join(',')})`,
+      params,
+    )
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') throw error
+  }
+}
+
 function compactText(value, maxLength = 600) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (text.length <= maxLength) return text
@@ -262,5 +283,6 @@ async function processDueSalesServiceOrderNotifications(limit = 20) {
 module.exports = {
   ensureSalesNotificationQueueTable,
   queueSalesServiceOrderNotification,
+  deleteSalesNotificationsForOrderIds,
   processDueSalesServiceOrderNotifications,
 }
