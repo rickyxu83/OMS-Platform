@@ -116,7 +116,7 @@ CREATE TABLE devices (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_devices_serial_no (serial_no),
-  UNIQUE KEY uk_devices_installation_source_service_order_id (installation_source_service_order_id),
+  KEY idx_devices_installation_source_service_order_id (installation_source_service_order_id),
   KEY idx_devices_customer_id (customer_id),
   KEY idx_devices_maintenance_type (maintenance_type),
   KEY idx_devices_maintenance_party_id (maintenance_party_id),

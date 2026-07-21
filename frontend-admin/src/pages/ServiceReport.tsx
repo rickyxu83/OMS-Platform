@@ -1488,7 +1488,15 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
 }
 
 function compactDraftLabel(form: Partial<ReportForm>) {
-  return [form.customerName, form.issueDescription, form.workContent].filter(Boolean).join(" · ").slice(0, 80) || "未填写内容的草稿";
+  const installedDevices = form.installDevices
+    ?.filter(installDeviceHasContent)
+    .map((device) => [device.model, device.serialNo].filter(Boolean).join(" / "))
+    .filter(Boolean)
+    .join("、");
+  return [form.customerName, installedDevices && `安装设备：${installedDevices}`, form.issueDescription, form.workContent]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 120) || "未填写内容的草稿";
 }
 
 function normalizeLoadedForm(value: Partial<ReportForm>, fallbackMode: ServiceMode): ReportForm {

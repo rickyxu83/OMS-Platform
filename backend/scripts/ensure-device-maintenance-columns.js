@@ -176,10 +176,13 @@ async function ensureDeviceColumns(connection) {
 }
 
 async function ensureDeviceIndexes(connection) {
-  if (!(await indexExists(connection, 'devices', 'uk_devices_installation_source_service_order_id'))) {
+  if (!(await indexExists(connection, 'devices', 'idx_devices_installation_source_service_order_id'))) {
     await connection.execute(
-      'ALTER TABLE devices ADD UNIQUE KEY uk_devices_installation_source_service_order_id (installation_source_service_order_id)',
+      'ALTER TABLE devices ADD KEY idx_devices_installation_source_service_order_id (installation_source_service_order_id)',
     )
+  }
+  if (await indexExists(connection, 'devices', 'uk_devices_installation_source_service_order_id')) {
+    await connection.execute('ALTER TABLE devices DROP INDEX uk_devices_installation_source_service_order_id')
   }
 
   if (!(await indexExists(connection, 'devices', 'idx_devices_maintenance_type'))) {

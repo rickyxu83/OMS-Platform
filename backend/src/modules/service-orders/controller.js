@@ -33,6 +33,7 @@ let servicePartsColumnsReady = false
 let serviceOrderDevicesTableReady = false
 let customerSignatureRequestsTableReady = false
 let deviceMaintenanceTypeEnumReady = false
+let installationSourceIndexReady = false
 
 const CUSTOMER_SIGNATURE_REQUEST_TTL_DAYS = 7
 const SIGNATURE_REQUEST_ACTIVE_STATUSES = new Set(['created', 'sent'])
@@ -723,6 +724,7 @@ async function prewarmServiceOrderSchema() {
   await ensureServicePartsColumns()
   await ensureServiceOrderDevicesTable()
   await ensureDeviceMaintenanceTypeEnum()
+  await ensureInstallationSourceIndex()
   await ensureCustomerSignatureRequestsTable()
   await ensureServiceReportWorkEntriesTable()
   await ensureSelfReportDraftsTable()
@@ -2180,6 +2182,24 @@ async function ensureDeviceMaintenanceTypeEnum(connection) {
   deviceMaintenanceTypeEnumReady = true
 }
 
+async function ensureInstallationSourceIndex() {
+  if (installationSourceIndexReady) return
+  const rows = await query(
+    `SELECT index_name, non_unique
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'devices'
+       AND column_name = 'installation_source_service_order_id'`,
+  )
+  if (!rows.some((row) => Number(row.non_unique) === 1)) {
+    await query('ALTER TABLE devices ADD KEY idx_devices_installation_source_service_order_id (installation_source_service_order_id)')
+  }
+  if (rows.some((row) => row.index_name === 'uk_devices_installation_source_service_order_id')) {
+    await query('ALTER TABLE devices DROP INDEX uk_devices_installation_source_service_order_id')
+  }
+  installationSourceIndexReady = true
+}
+
 async function resolveInstallDevices(connection, installDevices, { customerId, serviceOrderId = null, updateLegacyExisting = false } = {}) {
   await ensureDeviceMaintenanceTypeEnum(connection)
   const installDeviceIdMap = new Map()
@@ -2558,6 +2578,7 @@ async function createSelfReport(req, res) {
   await ensureServicePartsColumns()
   await ensureServiceOrderDevicesTable()
   await ensureDeviceMaintenanceTypeEnum()
+  await ensureInstallationSourceIndex()
   await ensureCustomerSignatureRequestsTable()
 
   const created = await transaction(async (connection) => {
@@ -3608,6 +3629,7 @@ async function updateSelfReport(req, res) {
   await ensureServicePartsColumns()
   await ensureServiceOrderDevicesTable()
   await ensureDeviceMaintenanceTypeEnum()
+  await ensureInstallationSourceIndex()
 
   await transaction(async (connection) => {
     await ensureSelfReportDraftsTable(connection)
