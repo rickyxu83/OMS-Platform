@@ -86,7 +86,7 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 
 | 角色 | 管理端 |
 |---|---|
-| `engineer`（工程师） | 仅使用工单填写入口，接口按本人过滤 |
+| `engineer`（工程师） | 使用工单填写入口，接口按本人过滤；可删除派给自己的 draft/assigned/rejected 工单、可作废本人已结案工单（产品裁决 2026-07-22：有意设计，勿当越权修复） |
 | `engineering_supervisor`（工程主管） | 可使用工单填写入口；派单管理可见全部工单 |
 | `operations_director`（运营负责人） | 可见全部工单 |
 | `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置 |

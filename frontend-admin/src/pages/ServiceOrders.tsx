@@ -36,8 +36,7 @@ import { PdfPreview } from "@/components/PdfPreview";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { serviceItemsBadgeColor, serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
-import { normalizeSearchText } from "@/lib/text-i18n";
+import { serviceItemsBadgeColor, serviceItemsLabel, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -441,22 +440,6 @@ const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "p
   warning: "warning",
   teal: "teal",
   secondary: "secondary",
-};
-
-const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
-  install: "安装 install",
-  repair: "技术处理 故障排查 配置修改 调整优化 排障 维修 repair",
-  maintain: "调优 保养 维护 maintain",
-  inspect: "巡检 巡检类 inspect",
-  training: "培训 training",
-  remote: "远程 远程支持 remote",
-  other: "其他 other",
-};
-
-const SERVICE_MODE_SEARCH_ALIASES: Record<string, string> = {
-  onsite: "现场 现场服务 onsite",
-  remote: "远程 远程服务 remote",
-  office: "内勤 内勤工作 office",
 };
 
 function formatDateTime(value?: string) {
@@ -884,15 +867,6 @@ function samePreviewText(a?: string, b?: string) {
   return Boolean(left && right && left === right);
 }
 
-function splitSearchTerms(value: string) {
-  return value
-    .trim()
-    .split(/[\s,，、]+/)
-    .map((term) => normalizeSearchText(term))
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
 function engineerText(order: ServiceOrder, fallback: string) {
   const names = (order.engineers || [])
     .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
@@ -1151,35 +1125,9 @@ export function ServiceOrders() {
     };
   }, [searchParams, orders, t.errors.loadFailed]);
 
-  const filteredOrders = useMemo(() => {
-    const terms = splitSearchTerms(debouncedSearch);
-    if (!terms.length) return orders;
-    return orders.filter((order) => {
-      const workflowStatus = getWorkflowStatus(order);
-      const searchText = [
-        displayId(order),
-        order.customerName,
-        order.customerAddress,
-        order.deviceName,
-        engineerText(order, ""),
-        order.issueDescription,
-        order.internalNote,
-        order.timesheetCategory,
-        order.timesheetSalesperson,
-        order.serviceType,
-        t.type[order.serviceType as keyof typeof t.type],
-        SERVICE_TYPE_SEARCH_ALIASES[order.serviceType || ""],
-        serviceItemsSearchText(order),
-        order.serviceMode,
-        t.mode[order.serviceMode as keyof typeof t.mode],
-        SERVICE_MODE_SEARCH_ALIASES[order.serviceMode || ""],
-        workflowStatus,
-        t.status[workflowStatus as keyof typeof t.status],
-      ].filter(Boolean).join(" ");
-      const normalizedSearchText = normalizeSearchText(searchText);
-      return terms.every((term) => normalizedSearchText.includes(term));
-    });
-  }, [orders, debouncedSearch, t.mode, t.status, t.type]);
+  // keyword 已随请求发给后端,且后端搜索字段集更全(含设备型号/序列号/派单工程师等),
+  // 前端不再做更窄的本地关键词二次过滤,避免把后端命中的记录滤掉
+  const filteredOrders = orders;
 
   const allFilteredOrdersSelected = filteredOrders.length > 0
     && filteredOrders.every((order) => selectedIds.some((id) => String(id) === String(order.id)));

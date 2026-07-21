@@ -198,7 +198,7 @@ bash scripts/deploy-seed.sh
 
 | 角色 | 管理端 |
 |---|---|
-| `engineer`（工程師） | 僅使用工單填寫入口，介面按本人過濾 |
+| `engineer`（工程師） | 使用工單填寫入口，介面按本人過濾；可刪除派給自己的 draft/assigned/rejected 工單、可作廢本人已結案工單（有意設計） |
 | `engineering_supervisor`（工程主管） | 可使用工單填寫入口；派單管理可見全部工單 |
 | `operations_director`（營運負責人） | 可見全部工單 |
 | `administrative_supervisor`（行政主管） | 管理端業務資料唯讀，不可派單、審批、編輯、刪除或改設定 |

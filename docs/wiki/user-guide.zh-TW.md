@@ -28,7 +28,7 @@ OMS Platform 是面向現場運維、售後服務、客戶資產和服務記錄�
 
 | 角色 | 管理端 |
 |---|---|
-| `engineer` | 僅使用工單填寫入口，介面按本人過濾 |
+| `engineer` | 使用工單填寫入口，介面按本人過濾；可刪除派給自己的 draft/assigned/rejected 工單、可作廢本人已結案工單（有意設計） |
 | `engineering_supervisor` | 可使用工單填寫入口；派單管理可見全部工單 |
 | `operations_director` | 按授權模組查看和管理全部工單 |
 | `administrative_supervisor` | 查看管理端業務資料，不可派單、審批、編輯、刪除或改系統設定 |
