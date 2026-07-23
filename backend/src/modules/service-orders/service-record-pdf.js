@@ -389,6 +389,10 @@ function textLines(doc, fonts, value, x, baselineY, { maxChars, maxWidth, maxLin
     if (!line) return
     text(doc, fonts, line, x, baselineY + index * lineHeight, { size, color })
   })
+  // 返回超出 maxLines 的剩余行（尾部空行剔除），供续页使用；调用方可忽略。
+  const rest = lines.slice(maxLines)
+  while (rest.length && !rest[rest.length - 1]) rest.pop()
+  return rest
 }
 
 function drawEngineerSignatures(doc, fonts, item, { x, y, width, height }) {
@@ -507,7 +511,7 @@ function drawSheet(doc, fonts, item, logoImage) {
   fillRect(doc, 196, recordBoxY, 10, recordBoxHeight, { fill: '#f8fafc' })
   text(doc, fonts, recordLabel, 88, recordBoxY + 36, { size: 15.5, color: '#0f172a' })
   recordGuideLines.forEach((offset) => strokeLine(doc, 226, recordBoxY + offset, 726, recordBoxY + offset, { stroke: '#e2e8f0', width: 1 }))
-  textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
+  const workLeftover = textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
   strokeLine(doc, 206, resultDividerY, 726, resultDividerY, { stroke: line, width: 1.4 })
   text(doc, fonts, resultLabel, 88, resultStatusY, { size: 14, color: primary })
   text(doc, fonts, resultStatus, 226, resultStatusY, { size: 15, color: '#0f172a' })
@@ -571,6 +575,8 @@ function drawSheet(doc, fonts, item, logoImage) {
   // 页脚
   text(doc, fonts, '• 说明：本 PDF 由技术服务电子化系统生成，供分享留底。', 78, footerY, { size: 13, color: '#334155' })
   text(doc, fonts, cleanText(item.orderNo || item.id || '', '-'), 750, footerY, { size: 12, color: '#64748b', anchor: 'end', boxWidth: 200 })
+
+  return workLeftover.length ? { title: `${recordLabel}（续）`, lines: workLeftover } : null
 }
 
 function drawOfficeSheet(doc, fonts, item, logoImage) {
@@ -633,7 +639,7 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
   text(doc, fonts, '工作内容', 88, 498, { size: 15.5, color: '#0f172a' })
   const workGuideLines = [76, 102, 128, 154, 180, 206, 232]
   workGuideLines.forEach((offset) => strokeLine(doc, 226, 462 + offset, 726, 462 + offset, { stroke: '#e2e8f0', width: 1 }))
-  textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
+  const workLeftover = textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
 
   strokeLine(doc, 206, 696, 726, 696, { stroke: line, width: 1.4 })
   text(doc, fonts, '工作结果', 88, 732, { size: 14, color: primary })
@@ -669,6 +675,8 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
 
   text(doc, fonts, '• 说明：本 PDF 由技术服务电子化系统生成，供内勤工作归档留底。', 78, 1082, { size: 13, color: '#334155' })
   text(doc, fonts, cleanText(item.orderNo || item.id || '', '-'), 750, 1082, { size: 12, color: '#64748b', anchor: 'end', boxWidth: 200 })
+
+  return workLeftover.length ? { title: '工作内容（续）', lines: workLeftover } : null
 }
 
 // 每个文档把 logo 只 openImage 一次，避免逐页重复嵌入(否则 80 页会塞 80 份 PNG)。
@@ -684,17 +692,34 @@ function openLogo(doc) {
 
 function drawServiceRecord(doc, fonts, item, logoImage) {
   if (isOfficeSheet(item)) {
-    drawOfficeSheet(doc, fonts, item, logoImage)
-    return
+    return drawOfficeSheet(doc, fonts, item, logoImage)
   }
-  drawSheet(doc, fonts, item, logoImage)
+  return drawSheet(doc, fonts, item, logoImage)
+}
+
+// 简化续页：纯文本版面，只画标题 + 剩余行，不带签名区/时间轴/表单框架。
+// 剩余行已在首页按 maxWidth 500 折行，宽度必然放得下，直接逐行画出。
+function drawContinuationPages(doc, fonts, item, continuation) {
+  if (!continuation || !continuation.lines.length) return
+  const perPage = 34 // (1050 - 150) / 26，下方页脚留白
+  for (let start = 0; start < continuation.lines.length; start += perPage) {
+    doc.addPage()
+    fillRect(doc, 0, 0, 794, 1123, { fill: '#ffffff' })
+    fillRect(doc, 30, 28, 734, 1067, { rx: 16, fill: '#ffffff', stroke: '#e2e8f0' })
+    text(doc, fonts, continuation.title, 68, 92, { size: 22, color: '#111827' })
+    text(doc, fonts, cleanText(item.orderNo || item.id || '', ''), 750, 92, { size: 14, color: '#64748b', anchor: 'end', boxWidth: 200 })
+    strokeLine(doc, 68, 122, 726, 122, { stroke: '#e2e8f0', width: 1 })
+    continuation.lines.slice(start, start + perPage).forEach((line, index) => {
+      if (line) text(doc, fonts, line, 92, 152 + index * 26, { size: 14, color: '#1f2937' })
+    })
+  }
 }
 
 function buildServiceRecordPdf(item) {
   const title = isOfficeSheet(item) ? '内勤工作记录' : '技术服务记录单'
   const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${item.orderNo || item.id || 'service-record'} ${title}` } })
   const fonts = registerFonts(doc)
-  drawServiceRecord(doc, fonts, item, openLogo(doc))
+  drawContinuationPages(doc, fonts, item, drawServiceRecord(doc, fonts, item, openLogo(doc)))
   doc.end()
   return doc
 }
@@ -707,7 +732,7 @@ function buildServiceRecordsPdf(items) {
   const logoImage = openLogo(doc)
   items.forEach((item, index) => {
     if (index > 0) doc.addPage()
-    drawServiceRecord(doc, fonts, item, logoImage)
+    drawContinuationPages(doc, fonts, item, drawServiceRecord(doc, fonts, item, logoImage))
   })
   doc.end()
   return doc
