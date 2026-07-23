@@ -328,12 +328,14 @@ function fitRecordLines(doc, fonts, value, { maxWidth, maxLines, lineHeight, siz
   return null
 }
 
-// 缩小档：横线格随实际行距重画（原档位横线只在默认版式使用）。
-function drawFittedLines(doc, fonts, fit, x, startY) {
+// 缩小档：横线格按实际行距重画并铺满整个内容区（直到 limitY），文字逐行压在格线上，
+// 与默认版式“固定方格纸”观感一致，避免文字行数少于格线或格线半截中断。
+function drawFittedLines(doc, fonts, fit, x, startY, limitY) {
+  for (let ruleY = startY + fit.size; ruleY <= limitY; ruleY += fit.lineHeight) {
+    strokeLine(doc, x, ruleY, 726, ruleY, { stroke: '#e2e8f0', width: 1 })
+  }
   fit.lines.forEach((line, index) => {
-    const baseline = startY + index * fit.lineHeight
-    strokeLine(doc, x, baseline + fit.size, 726, baseline + fit.size, { stroke: '#e2e8f0', width: 1 })
-    if (line) text(doc, fonts, line, x, baseline, { size: fit.size, color: '#1f2937' })
+    if (line) text(doc, fonts, line, x, startY + index * fit.lineHeight, { size: fit.size, color: '#1f2937' })
   })
 }
 
@@ -549,7 +551,7 @@ function drawSheet(doc, fonts, item, logoImage) {
     recordGuideLines.forEach((offset) => strokeLine(doc, 226, recordBoxY + offset, 726, recordBoxY + offset, { stroke: '#e2e8f0', width: 1 }))
     workLeftover = textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
   } else {
-    drawFittedLines(doc, fonts, workFit, 226, recordContentStartY)
+    drawFittedLines(doc, fonts, workFit, 226, recordContentStartY, resultDividerY - 6)
   }
   strokeLine(doc, 206, resultDividerY, 726, resultDividerY, { stroke: line, width: 1.4 })
   text(doc, fonts, resultLabel, 88, resultStatusY, { size: 14, color: primary })
@@ -686,7 +688,7 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
     workGuideLines.forEach((offset) => strokeLine(doc, 226, 462 + offset, 726, 462 + offset, { stroke: '#e2e8f0', width: 1 }))
     workLeftover = textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
   } else {
-    drawFittedLines(doc, fonts, workFit, 226, 522)
+    drawFittedLines(doc, fonts, workFit, 226, 522, 696 - 6)
   }
 
   strokeLine(doc, 206, 696, 726, 696, { stroke: line, width: 1.4 })
