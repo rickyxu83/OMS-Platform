@@ -87,6 +87,17 @@ function main() {
     assert.ok(!pageText(pages[0]).includes('（续）'), `${mode} 短内容不应出现续页标题`)
   }
 
+  // 中度超长（6 条约 12 版面行 > 8/7 上限）：缩小字号后仍应单页装下，不出续页
+  for (const mode of modes) {
+    const pages = renderWithCapture(() => buildServiceRecordPdf(makeOrder(mode, 'M', workLines('M', 6))))
+    assert.equal(pages.length, 1, `${mode} 中度超长应缩小字号放进首页，仍为 1 页`)
+    const all = pageText(pages[0])
+    assert.ok(!all.includes('（续）'), `${mode} 中度超长不应出现续页标题`)
+    for (const marker of markers('M', 6)) {
+      assert.ok(all.includes(marker), `${mode} 缩小后的首页应包含 ${marker}`)
+    }
+  }
+
   // 长内容：三个模板都必须首页不丢行 + 续页包含剩余全部标记行
   for (const mode of modes) {
     const pages = renderWithCapture(() => buildServiceRecordPdf(makeOrder(mode, 'L', workLines('L', 20))))

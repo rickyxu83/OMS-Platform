@@ -312,6 +312,31 @@ function drawSignatureImage(doc, dataUrl, x, y, width, height) {
   }
 }
 
+// 工作内容超出固定行数时，优先逐级缩小字号/行距把整个内容塞进首页内容区
+// （最后一行基线不超过 limitY）；降到最小档仍放不下才返回 null，由调用方回退续页。
+// 内容不超长时返回原字号，首页版式与改动前逐点一致。
+const FIT_SCALES = [0.85, 0.75, 0.65, 0.55]
+function fitRecordLines(doc, fonts, value, { maxWidth, maxLines, lineHeight, size, startY, limitY }) {
+  const lines = wrapTextLines(doc, fonts, value, maxWidth, size)
+  if (lines.length <= maxLines) return { lines, size, lineHeight, shrunk: false }
+  for (const scale of FIT_SCALES) {
+    const s = Math.round(size * scale * 10) / 10
+    const lh = Math.round(lineHeight * scale * 10) / 10
+    const scaled = wrapTextLines(doc, fonts, value, maxWidth, s)
+    if (startY + (scaled.length - 1) * lh <= limitY) return { lines: scaled, size: s, lineHeight: lh, shrunk: true }
+  }
+  return null
+}
+
+// 缩小档：横线格随实际行距重画（原档位横线只在默认版式使用）。
+function drawFittedLines(doc, fonts, fit, x, startY) {
+  fit.lines.forEach((line, index) => {
+    const baseline = startY + index * fit.lineHeight
+    strokeLine(doc, x, baseline + fit.size, 726, baseline + fit.size, { stroke: '#e2e8f0', width: 1 })
+    if (line) text(doc, fonts, line, x, baseline, { size: fit.size, color: '#1f2937' })
+  })
+}
+
 // ---------------------------------------------------------------------------
 // 下面的绘制以工程师端分享图(TaskShareView.vue 的 SVG)为标准，在 794×1123 的
 // 坐标系里 1:1 复刻，再通过全局缩放映射到 A4，保证两端版式一致。
@@ -377,14 +402,18 @@ function splitByPdfWidth(doc, fonts, value, maxWidth, size) {
   return chunks
 }
 
-function textLines(doc, fonts, value, x, baselineY, { maxChars, maxWidth, maxLines, lineHeight = 30, size = 16, color = '#1f2937' }) {
+function wrapTextLines(doc, fonts, value, width, size) {
   const lines = []
-  const width = maxWidth || maxChars * 12
   for (const rawLine of String(value || '').split(/\n/)) {
     const line = rawLine.trim()
     if (!line) lines.push('')
     else lines.push(...splitByPdfWidth(doc, fonts, line, width, size))
   }
+  return lines
+}
+
+function textLines(doc, fonts, value, x, baselineY, { maxChars, maxWidth, maxLines, lineHeight = 30, size = 16, color = '#1f2937' }) {
+  const lines = wrapTextLines(doc, fonts, value, maxWidth || maxChars * 12, size)
   lines.slice(0, maxLines).forEach((line, index) => {
     if (!line) return
     text(doc, fonts, line, x, baselineY + index * lineHeight, { size, color })
@@ -510,8 +539,18 @@ function drawSheet(doc, fonts, item, logoImage) {
   fillRect(doc, 68, recordBoxY, 138, recordBoxHeight, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
   fillRect(doc, 196, recordBoxY, 10, recordBoxHeight, { fill: '#f8fafc' })
   text(doc, fonts, recordLabel, 88, recordBoxY + 36, { size: 15.5, color: '#0f172a' })
-  recordGuideLines.forEach((offset) => strokeLine(doc, 226, recordBoxY + offset, 726, recordBoxY + offset, { stroke: '#e2e8f0', width: 1 }))
-  const workLeftover = textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
+  let workLeftover = []
+  const workFit = fitRecordLines(doc, fonts, workRecord, {
+    maxWidth: 500, maxLines: recordMaxLines, lineHeight: recordLineHeight, size: 16,
+    startY: recordContentStartY, limitY: resultDividerY - 6,
+  })
+  if (!workFit || !workFit.shrunk) {
+    // 默认版式（不超长，或超长到极致回退截断+续页）：横线格与字号原样，首页逐点不变
+    recordGuideLines.forEach((offset) => strokeLine(doc, 226, recordBoxY + offset, 726, recordBoxY + offset, { stroke: '#e2e8f0', width: 1 }))
+    workLeftover = textLines(doc, fonts, workRecord, 226, recordContentStartY, { maxWidth: 500, maxChars: 41, maxLines: recordMaxLines, lineHeight: recordLineHeight })
+  } else {
+    drawFittedLines(doc, fonts, workFit, 226, recordContentStartY)
+  }
   strokeLine(doc, 206, resultDividerY, 726, resultDividerY, { stroke: line, width: 1.4 })
   text(doc, fonts, resultLabel, 88, resultStatusY, { size: 14, color: primary })
   text(doc, fonts, resultStatus, 226, resultStatusY, { size: 15, color: '#0f172a' })
@@ -637,9 +676,18 @@ function drawOfficeSheet(doc, fonts, item, logoImage) {
   fillRect(doc, 68, 462, 138, 344, { rx: 12, fill: '#f8fafc', stroke: '#d6dee8' })
   fillRect(doc, 196, 462, 10, 344, { fill: '#f8fafc' })
   text(doc, fonts, '工作内容', 88, 498, { size: 15.5, color: '#0f172a' })
-  const workGuideLines = [76, 102, 128, 154, 180, 206, 232]
-  workGuideLines.forEach((offset) => strokeLine(doc, 226, 462 + offset, 726, 462 + offset, { stroke: '#e2e8f0', width: 1 }))
-  const workLeftover = textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
+  let workLeftover = []
+  const workFit = fitRecordLines(doc, fonts, workContent, {
+    maxWidth: 500, maxLines: 7, lineHeight: 26, size: 16,
+    startY: 522, limitY: 696 - 6,
+  })
+  if (!workFit || !workFit.shrunk) {
+    const workGuideLines = [76, 102, 128, 154, 180, 206, 232]
+    workGuideLines.forEach((offset) => strokeLine(doc, 226, 462 + offset, 726, 462 + offset, { stroke: '#e2e8f0', width: 1 }))
+    workLeftover = textLines(doc, fonts, workContent, 226, 522, { maxWidth: 500, maxChars: 41, maxLines: 7, lineHeight: 26 })
+  } else {
+    drawFittedLines(doc, fonts, workFit, 226, 522)
+  }
 
   strokeLine(doc, 206, 696, 726, 696, { stroke: line, width: 1.4 })
   text(doc, fonts, '工作结果', 88, 732, { size: 14, color: primary })
