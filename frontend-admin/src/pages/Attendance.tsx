@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -11,30 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { ServiceOrderDetailDialog } from "@/components/ServiceOrderDetailDialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type ServiceOrderDetailItem } from "@/lib/service-order-detail";
 import { api } from "@/services/api";
 
 type RequestType = "leave" | "overtime" | "comp_time";
 type AnnualLeavePeriod = "morning" | "afternoon" | "day";
 type AttendanceTab = "apply" | "records" | "report" | "employees" | "settings";
 
-interface ServiceOrderSummary {
-  id: number | string;
-  orderNo?: string | null;
-  customerName?: string | null;
-  contactName?: string | null;
-  contactPhone?: string | null;
-  deviceName?: string | null;
-  serviceMode?: string | null;
-  serviceType?: string | null;
-  issueDescription?: string | null;
+interface ServiceOrderSummary extends ServiceOrderDetailItem {
   serviceAt?: string | null;
-  departureAt?: string | null;
-  actualStartAt?: string | null;
-  actualEndAt?: string | null;
-  returnAt?: string | null;
-  reportedDepartureAt?: string | null;
-  reportedReturnAt?: string | null;
   unavailable?: boolean;
 }
 
@@ -564,8 +551,12 @@ export function Attendance() {
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [adjustDialog, setAdjustDialog] = useState<{ employee: EmployeeProfile; draft: AdjustDraft } | null>(null);
   const [adjustSaving, setAdjustSaving] = useState(false);
-  // 待审批列表点击工单号，直接在当前页弹出工单快照预览（数据来自申请自带快照，不再请求 /service-orders）。
+  // 点击工单号先显示申请快照，再加载完整工单详情；申请时的核心事实仍以快照为准。
   const [previewOrder, setPreviewOrder] = useState<ServiceOrderSummary | null>(null);
+  const [previewOrderLoading, setPreviewOrderLoading] = useState(false);
+  const [previewOrderError, setPreviewOrderError] = useState("");
+  const [previewOrderFileId, setPreviewOrderFileId] = useState<string | number | null>(null);
+  const previewOrderRequestRef = useRef(0);
   const [recordStatus, setRecordStatus] = useState("all");
   const [recordType, setRecordType] = useState("all");
   const [recordKeyword, setRecordKeyword] = useState("");
@@ -949,6 +940,49 @@ export function Attendance() {
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "证明预览失败");
+    }
+  }
+
+  async function openOrderPreview(snapshot: ServiceOrderSummary) {
+    const requestId = ++previewOrderRequestRef.current;
+    setPreviewOrder(snapshot);
+    setPreviewOrderLoading(true);
+    setPreviewOrderError("");
+    try {
+      const data = await api.get(`/service-orders/${snapshot.id}`);
+      if (previewOrderRequestRef.current !== requestId) return;
+      const detail = (data?.item || data) as ServiceOrderDetailItem;
+      setPreviewOrder(mergeServiceOrderApprovalDetail(snapshot, detail) as ServiceOrderSummary);
+    } catch (e) {
+      if (previewOrderRequestRef.current !== requestId) return;
+      const status = (e as Error & { status?: number }).status;
+      if (status !== 403) {
+        setPreviewOrderError(`${e instanceof Error ? e.message : "完整工单详情加载失败"}；当前显示申请提交时的工单快照。`);
+      }
+    } finally {
+      if (previewOrderRequestRef.current === requestId) setPreviewOrderLoading(false);
+    }
+  }
+
+  function closeOrderPreview() {
+    previewOrderRequestRef.current += 1;
+    setPreviewOrder(null);
+    setPreviewOrderLoading(false);
+    setPreviewOrderError("");
+    setPreviewOrderFileId(null);
+  }
+
+  async function downloadPreviewOrderFile(file: ServiceOrderDetailFile) {
+    if (!file.id || previewOrderFileId) return;
+    setPreviewOrderFileId(file.id);
+    try {
+      const blob = await api.download(`/files/${file.id}`);
+      const { saveAs } = await import("file-saver");
+      saveAs(blob, file.originalName || `attachment-${file.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "附件下载失败");
+    } finally {
+      setPreviewOrderFileId(null);
     }
   }
 
@@ -1677,7 +1711,7 @@ export function Attendance() {
               items={approvalTodos}
               loading={loading}
               onDownloadProof={previewProof}
-              onPreviewOrder={setPreviewOrder}
+              onPreviewOrder={openOrderPreview}
               emptyText="暂无待审批的申请"
               actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
@@ -1719,7 +1753,7 @@ export function Attendance() {
             items={mine}
             loading={loading}
             onDownloadProof={previewProof}
-            onPreviewOrder={setPreviewOrder}
+            onPreviewOrder={openOrderPreview}
             showEmployee={false}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
@@ -1756,7 +1790,7 @@ export function Attendance() {
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
-              onPreviewOrder={setPreviewOrder}
+              onPreviewOrder={openOrderPreview}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
               toolbar={(
                 <>
@@ -2149,7 +2183,15 @@ export function Attendance() {
         </div>
       ) : null}
 
-      <ServiceOrderPreviewDialog order={previewOrder} onClose={() => setPreviewOrder(null)} />
+      <ServiceOrderDetailDialog
+        order={previewOrder}
+        loading={previewOrderLoading}
+        error={previewOrderError}
+        downloadingFileId={previewOrderFileId}
+        onDownloadFile={downloadPreviewOrderFile}
+        onClose={closeOrderPreview}
+        summaryTypeLabel={previewOrder ? serviceOrderTypeLabel(previewOrder) : undefined}
+      />
 
       <Dialog open={Boolean(proofPreview)} onOpenChange={(open) => { if (!open) closeProofPreview(); }}>
         <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
@@ -2460,85 +2502,10 @@ function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrder
         <div className="min-w-0 break-words"><span className="font-medium text-foreground">类型：</span>{serviceOrderTypeLabel(order)}</div>
         <div className="min-w-0 break-words sm:col-span-2"><span className="font-medium text-foreground">问题：</span>{order.issueDescription || "-"}</div>
       </div>
-      {onPreview ? (
-        <button
-          type="button"
-          onClick={() => onPreview(order)}
-          className="mt-2 border-t pt-2 w-full text-left font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          查看工单详情
-        </button>
-      ) : null}
     </div>
   );
 }
 
-function PreviewField({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 break-words text-sm">{value || "-"}</div>
-    </div>
-  );
-}
-
-// 工单预览弹窗：只用申请里已带的工单快照渲染，不调 /service-orders/:id 接口——
-// 因为审批链里的行政主管没有 order.view 权限，走接口会 403。样式对齐工单处理页的详情弹窗
-// （顶部徽标 + 分组字段网格 + 问题区块 + 往返时间），但数据仅限快照字段。参见 docs/adr/0002。
-function ServiceOrderPreviewDialog({ order, onClose }: { order: ServiceOrderSummary | null; onClose: () => void }) {
-  const modeLabel = order ? (SERVICE_MODE_LABELS[order.serviceMode || ""] || order.serviceMode || "-") : "-";
-  const typeLabel = order ? (SERVICE_TYPE_LABELS[order.serviceType || ""] || order.serviceType || "-") : "-";
-  return (
-    <Dialog open={Boolean(order)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-[720px]">
-        <DialogHeader>
-          <DialogTitle>工单 {order?.orderNo || (order ? `#${order.id}` : "详情")}</DialogTitle>
-          <DialogDescription>{order ? `${order.customerName || "-"} · ${modeLabel} / ${typeLabel}` : ""}</DialogDescription>
-        </DialogHeader>
-        {order ? (
-          <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">{modeLabel}</Badge>
-              <Badge variant="outline">{typeLabel}</Badge>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <PreviewField label="客户" value={order.customerName} />
-              <PreviewField label="联系人" value={order.contactName} />
-              <PreviewField label="联系电话" value={order.contactPhone} />
-              <PreviewField label="设备" value={order.deviceName} />
-              <PreviewField label="服务日" value={formatDateTime(order.serviceAt || undefined)} />
-            </div>
-
-            <div>
-              <div className="text-xs text-muted-foreground">问题描述</div>
-              <div className="mt-1 rounded-md border bg-muted/30 p-3 text-sm break-words whitespace-pre-wrap">{order.issueDescription || "-"}</div>
-            </div>
-
-            <div>
-              <div className="text-xs text-muted-foreground">往返与作业时间（工单）</div>
-              <div className="mt-2 grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-2">
-                <PreviewField label="出发" value={formatDateTime(order.departureAt || undefined)} />
-                <PreviewField label="到达" value={formatDateTime(order.actualStartAt || undefined)} />
-                <PreviewField label="完成" value={formatDateTime(order.actualEndAt || undefined)} />
-                <PreviewField label="返回" value={formatDateTime(order.returnAt || undefined)} />
-                {order.reportedDepartureAt ? (
-                  <PreviewField label="自报出发" value={formatDateTime(order.reportedDepartureAt)} />
-                ) : null}
-                {order.reportedReturnAt ? (
-                  <PreviewField label="自报返回" value={formatDateTime(order.reportedReturnAt)} />
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function AttendanceMetric({ label, value, note, icon }: { label: string; value: string; note: string; icon: ReactNode }) {
   return (

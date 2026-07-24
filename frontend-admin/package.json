@@ -1,11 +1,12 @@
 {
   "name": "oms-platform-admin",
   "private": true,
-  "version": "26.724.4",
+  "version": "26.724.5",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "test": "node --test --experimental-strip-types tests/service-order-detail.test.ts",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

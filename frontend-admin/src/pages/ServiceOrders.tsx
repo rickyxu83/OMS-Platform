@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,12 +31,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { ServiceOrderDetailDialog } from "@/components/ServiceOrderDetailDialog";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { PdfPreview } from "@/components/PdfPreview";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { MarkdownContent } from "@/lib/markdown";
-import { serviceItemsBadgeColor, serviceItemsLabel, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
+import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel } from "@/lib/service-items";
+import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import { api } from "@/services/api";
 
 interface ServiceOrder {
@@ -52,7 +52,6 @@ interface ServiceOrder {
   contactName?: string;
   contactPhone?: string;
   deviceName?: string;
-  deviceId?: string | number;
   deviceModel?: string;
   devicePn?: string;
   deviceSerialNo?: string;
@@ -147,22 +146,6 @@ interface OrderFile {
   createdAt?: string;
 }
 
-function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | "text" | "unsupported" {
-  const mimeType = String(file.mimeType || blob?.type || "").toLowerCase();
-  const extension = String(file.originalName || "").split(".").pop()?.toLowerCase() || "";
-  if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
-  if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
-  if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
-  return "unsupported";
-}
-function previewBlob(blob: Blob, kind: "image" | "pdf" | "text" | "unsupported") {
-  if (kind === "pdf" && blob.type.toLowerCase() !== "application/pdf") {
-    return new Blob([blob], { type: "application/pdf" });
-  }
-  return blob;
-}
-
-
 interface EngineerOption {
   id: string | number;
   realName?: string;
@@ -187,7 +170,6 @@ interface CustomerSignatureRequest {
   id?: string | number;
   recipientEmail?: string;
   status?: string;
-  signedAt?: string;
   createdAt?: string;
 }
 
@@ -400,19 +382,19 @@ const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "s
   completed: "success",
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "secondary"> = {
-  install: "cyan",
-  repair: "orange",
+const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purple" | "secondary"> = {
+  install: "success",
+  repair: "warning",
   maintain: "info",
   inspect: "purple",
-  training: "warning",
+  training: "info",
   remote: "info",
   other: "secondary",
 };
 
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "indigo" | "warning" | "destructive"> = {
+const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
   low: "secondary",
-  normal: "indigo",
+  normal: "secondary",
   high: "warning",
   urgent: "destructive",
 };
@@ -426,20 +408,26 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 const PRIORITY_HELP = "优先级用于提示工程师和调度处理顺序：普通按常规安排，高和紧急需要优先关注；它不会改变工单状态，也不代表审批结果。";
 
-const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary"> = {
-  onsite: "teal",
+const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
+  onsite: "success",
   remote: "info",
   office: "purple",
 };
 
-const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "teal" | "secondary"> = {
-  cyan: "cyan",
-  orange: "orange",
-  info: "info",
-  purple: "purple",
-  warning: "warning",
-  teal: "teal",
-  secondary: "secondary",
+const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
+  install: "安装 install",
+  repair: "技术处理 故障排查 配置修改 调整优化 排障 维修 repair",
+  maintain: "调优 保养 维护 maintain",
+  inspect: "巡检 巡检类 inspect",
+  training: "培训 training",
+  remote: "远程 远程支持 remote",
+  other: "其他 other",
+};
+
+const SERVICE_MODE_SEARCH_ALIASES: Record<string, string> = {
+  onsite: "现场 现场服务 onsite",
+  remote: "远程 远程服务 remote",
+  office: "内勤 内勤工作 office",
 };
 
 function formatDateTime(value?: string) {
@@ -542,122 +530,8 @@ function orderMainContent(order: ServiceOrder, fallback = "-") {
   return compactText(order.issueDescription || order.displayTitle || order.deviceName, fallback);
 }
 
-function previewSummary(order: ServiceOrder, fallback = "") {
-  const text = orderMainContent(order, fallback);
-  return text.length > 90 ? `${text.slice(0, 90)}...` : text;
-}
 
-function isBusinessRole(role?: string) {
-  return role === "sales" || role === "sales_supervisor";
-}
 
-function isDunyangName(value?: string) {
-  return /敦[阳陽]/u.test(String(value || ""));
-}
-
-const COLLAB_ACK_MARKER = "⁣⁤⁣";
-const COMMON_WORK_LABELS = new Set(["共同内容", "共同处理", "公共内容"]);
-
-function stripCollaborativeAckMarker(value?: string) {
-  return String(value || "").split(COLLAB_ACK_MARKER).join("");
-}
-
-function normalizeWorkLabel(value?: string) {
-  return String(value || "").replace(/\s/g, "").trim();
-}
-
-function workContentLabels(order: ServiceOrder) {
-  const labels = new Set([...COMMON_WORK_LABELS, "工程师"]);
-  (order.engineers || []).forEach((engineer) => {
-    [engineer.realName, engineer.name, engineer.username].forEach((value) => {
-      const label = normalizeWorkLabel(value);
-      if (label) labels.add(label);
-    });
-  });
-  (order.report?.workEntries || []).forEach((entry) => {
-    [entry.engineerName, entry.engineer_name, entry.engineerUsername, entry.engineer_username].forEach((value) => {
-      const label = normalizeWorkLabel(value);
-      if (label) labels.add(label);
-    });
-  });
-  return labels;
-}
-
-function extractCommonWorkContent(value: string | undefined, labels: Set<string>) {
-  const lines = stripCollaborativeAckMarker(value).split(/\r?\n/);
-  const kept: string[] = [];
-  let collecting = false;
-  for (const line of lines) {
-    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/);
-    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : "";
-    if (headingMatch && COMMON_WORK_LABELS.has(label)) {
-      collecting = true;
-      if (headingMatch[2]) kept.push(headingMatch[2]);
-      continue;
-    }
-    if (headingMatch && collecting && labels.has(label)) collecting = false;
-    if (collecting) kept.push(line);
-  }
-  return kept.join("\n").trim();
-}
-
-function stripKnownWorkLabels(value: string | undefined, labels: Set<string>) {
-  const lines: string[] = [];
-  for (const line of stripCollaborativeAckMarker(value).split(/\r?\n/)) {
-    const headingMatch = line.match(/^\s*([^:：]{1,24})\s*[:：]\s*(.*)$/);
-    const label = headingMatch ? normalizeWorkLabel(headingMatch[1]) : "";
-    if (headingMatch && labels.has(label)) {
-      if (headingMatch[2]) lines.push(headingMatch[2]);
-      continue;
-    }
-    lines.push(line);
-  }
-  return lines.join("\n").trim();
-}
-
-function displayReportWorkContent(order: ServiceOrder) {
-  const labels = workContentLabels(order);
-  const common = extractCommonWorkContent(order.report?.workContent, labels);
-  const filled = (order.report?.workEntries || [])
-    .map((entry) => stripCollaborativeAckMarker(entry.workContent || entry.work_content).trim())
-    .filter(Boolean);
-  if (common || filled.length) return [common, ...filled].filter(Boolean).join("\n");
-  return stripKnownWorkLabels(order.report?.workContent, labels);
-}
-
-function serviceResultLabel(value?: string) {
-  if (value === "resolved") return "已完成";
-  if (value === "unresolved") return "未完成";
-  if (value === "follow_up_required") return "需后续跟进";
-  return value || "";
-}
-
-function servicePartActionLabel(value?: string) {
-  return serviceItemPartActionLabel(value);
-}
-
-function servicePartQuantity(part: ServicePart) {
-  const quantityText = String(part.quantity ?? "").trim();
-  const numeric = Number(quantityText);
-  const quantity = quantityText && Number.isFinite(numeric) ? String(numeric) : quantityText;
-  return [quantity, String(part.unit || "").trim()].filter(Boolean).join("");
-}
-
-function displayServiceParts(parts?: ServicePart[]) {
-  if (!Array.isArray(parts)) return "";
-  return parts
-    .map((part) => {
-      const details = [
-        part.deviceName || part.device_name ? `设备 ${part.deviceName || part.device_name}` : "",
-        part.partNo || part.part_no ? `PN ${part.partNo || part.part_no}` : "",
-        servicePartQuantity(part) ? `数量 ${servicePartQuantity(part)}` : "",
-        part.remark ? String(part.remark).trim() : "",
-      ].filter(Boolean);
-      return `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}${details.length ? `（${details.join("，")}）` : ""}`;
-    })
-    .filter(Boolean)
-    .join("\n");
-}
 
 function installedDeviceLabel(device: InstalledDevice | DeviceOption) {
   return [
@@ -835,36 +709,14 @@ function buildDeleteConfirmationMessage(orders: ServiceOrder[]) {
   return lines.join("\n");
 }
 
-function filePurposeLabel(value?: string) {
-  if (value === "inspection_document") return "巡检文档";
-  if (value === "support_config") return "配置与支持文件";
-  if (value === "site_photo") return "现场照片";
-  if (value === "screenshot_log") return "截图/日志文件";
-  return "附件";
-}
 
-function issuePreviewLabel(order: ServiceOrder) {
-  if (order.serviceMode === "office") return "内勤工作事项";
-  return "服务需求说明";
-}
-
-function workContentPreviewLabel(order: ServiceOrder) {
-  if (order.serviceMode === "office") return "工作内容";
-  const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
-  if (order.serviceMode === "onsite") {
-    if (modules.includes("repair")) return "技术处理记录";
-    if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
-    return "现场处理记录";
-  }
-  if (order.serviceMode === "remote" && modules.includes("repair")) return "远程支持记录";
-  return "处理记录";
-}
-
-function samePreviewText(a?: string, b?: string) {
-  const normalize = (value?: string) => String(value || "").replace(/\s+/g, " ").trim();
-  const left = normalize(a);
-  const right = normalize(b);
-  return Boolean(left && right && left === right);
+function splitSearchTerms(value: string) {
+  return value
+    .trim()
+    .split(/[\s,，、]+/)
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function engineerText(order: ServiceOrder, fallback: string) {
@@ -891,33 +743,10 @@ function serviceTimeRange(order: ServiceOrder) {
   };
 }
 
-function DetailField({ label, value, muted = false }: { label: string; value?: string; muted?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 break-words text-sm leading-6 ${muted ? "text-muted-foreground" : ""}`}>
-        {textValue(value)}
-      </div>
-    </div>
-  );
-}
-
-function DetailBlock({ label, value, markdown = false }: { label: string; value?: string; markdown?: boolean }) {
-  const displayValue = String(value || "").trim() || "-";
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6 ${markdown ? "" : "whitespace-pre-wrap"}`}>
-        {markdown && displayValue !== "-" ? <MarkdownContent content={displayValue} /> : displayValue}
-      </div>
-    </div>
-  );
-}
 
 export function ServiceOrders() {
   const { lang } = useLanguage();
-  const { user, hasPermission } = useAuth();
-  const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const t = I18N[lang];
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -935,8 +764,6 @@ export function ServiceOrders() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
@@ -969,51 +796,6 @@ export function ServiceOrders() {
   const [transitionForm, setTransitionForm] = useState({ status: "assigned", reason: "" });
   const [detailOrder, setDetailOrder] = useState<ServiceOrder | null>(null);
   const [downloadingFileId, setDownloadingFileId] = useState<string | number | null>(null);
-  const [filePreview, setFilePreview] = useState<OrderFile | null>(null);
-  const [filePreviewFiles, setFilePreviewFiles] = useState<OrderFile[]>([]);
-  const [filePreviewUrl, setFilePreviewUrl] = useState("");
-  const [filePreviewPdfData, setFilePreviewPdfData] = useState<Uint8Array | null>(null);
-  const [filePreviewText, setFilePreviewText] = useState("");
-  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
-  const [filePreviewError, setFilePreviewError] = useState("");
-  const [attachmentThumbnailUrls, setAttachmentThumbnailUrls] = useState<Record<string, string>>({});
-  const filePreviewUrlRef = useRef("");
-  const attachmentThumbnailUrlsRef = useRef<Record<string, string>>({});
-
-  useEffect(() => {
-    let cancelled = false;
-    const photoFiles = (detailOrder?.files || []).filter((file) => file.purpose === "site_photo");
-    setAttachmentThumbnailUrls({});
-    attachmentThumbnailUrlsRef.current = {};
-    if (!photoFiles.length) return undefined;
-
-    void Promise.all(photoFiles.map(async (file) => {
-      try {
-        const blob = await api.download(`/files/${file.id}`);
-        if (attachmentPreviewKind(file, blob) !== "image") return null;
-        return [String(file.id), URL.createObjectURL(blob)] as const;
-      } catch {
-        return null;
-      }
-    })).then((entries) => {
-      if (cancelled) {
-        entries.forEach((entry) => { if (entry) URL.revokeObjectURL(entry[1]); });
-        return;
-      }
-      const urls = Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
-      attachmentThumbnailUrlsRef.current = urls;
-      setAttachmentThumbnailUrls(urls);
-    });
-
-    return () => {
-      cancelled = true;
-      Object.values(attachmentThumbnailUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
-      attachmentThumbnailUrlsRef.current = {};
-      setAttachmentThumbnailUrls({});
-    };
-  }, [detailOrder]);
-  const userRole = String(user?.role || "");
-  const isBusinessUser = isBusinessRole(userRole);
   const canCreateOrders = hasPermission("order.create");
   const canEditOrders = hasPermission("order.edit");
   const canAssignOrders = hasPermission("order.assign");
@@ -1053,8 +835,7 @@ export function ServiceOrders() {
     try {
       const range = normalizedDateRange(startDate, endDate);
       const params = new URLSearchParams({
-        page: String(page),
-        pageSize: String(pageSize),
+        pageSize: "50",
         sortBy: "createdAt",
         sortDir: "desc",
       });
@@ -1083,27 +864,14 @@ export function ServiceOrders() {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  // 筛选条件变化时回到第 1 页；页码/每页数量变化时重新加载
-  const listFilterKey = [statusFilter, customerFilter, startDate, endDate, debouncedSearch].join("|");
-  const lastListFilterKeyRef = useRef(listFilterKey);
   useEffect(() => {
-    if (lastListFilterKeyRef.current !== listFilterKey) {
-      lastListFilterKeyRef.current = listFilterKey;
-      if (page !== 1) {
-        setPage(1);
-        return;
-      }
-    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listFilterKey, page, pageSize]);
+  }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
-    if (!orderId) {
-      setDetailOrder((current) => (current ? null : current));
-      return;
-    }
+    if (!orderId) return;
     const matched = orders.find((order) => String(order.id) === orderId);
     if (matched && (!detailOrder || String(detailOrder.id) !== orderId)) {
       setDetailOrder(matched);
@@ -1125,20 +893,40 @@ export function ServiceOrders() {
     };
   }, [searchParams, orders, t.errors.loadFailed]);
 
-  // keyword 已随请求发给后端,且后端搜索字段集更全(含设备型号/序列号/派单工程师等),
-  // 前端不再做更窄的本地关键词二次过滤,避免把后端命中的记录滤掉
-  const filteredOrders = orders;
+  const filteredOrders = useMemo(() => {
+    const terms = splitSearchTerms(debouncedSearch);
+    if (!terms.length) return orders;
+    return orders.filter((order) => {
+      const workflowStatus = getWorkflowStatus(order);
+      const searchText = [
+        displayId(order),
+        order.customerName,
+        order.customerAddress,
+        order.deviceName,
+        engineerText(order, ""),
+        order.issueDescription,
+        order.internalNote,
+        order.timesheetCategory,
+        order.timesheetSalesperson,
+        order.serviceType,
+        t.type[order.serviceType as keyof typeof t.type],
+        SERVICE_TYPE_SEARCH_ALIASES[order.serviceType || ""],
+        serviceItemsSearchText(order),
+        order.serviceMode,
+        t.mode[order.serviceMode as keyof typeof t.mode],
+        SERVICE_MODE_SEARCH_ALIASES[order.serviceMode || ""],
+        workflowStatus,
+        t.status[workflowStatus as keyof typeof t.status],
+      ].filter(Boolean).join(" ").toLowerCase();
+      return terms.every((term) => searchText.includes(term));
+    });
+  }, [orders, debouncedSearch, t.mode, t.status, t.type]);
 
   const allFilteredOrdersSelected = filteredOrders.length > 0
     && filteredOrders.every((order) => selectedIds.some((id) => String(id) === String(order.id)));
 
   const initialLoading = loading && orders.length === 0;
   const refreshing = loading && orders.length > 0;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
@@ -1202,60 +990,12 @@ export function ServiceOrders() {
 
   function closeDetailOrder() {
     setDetailOrder(null);
-    clearFilePreview();
     if (!searchParams.has("orderId")) return;
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("orderId");
       return next;
     });
-  }
-
-  function clearFilePreview() {
-    if (filePreviewUrlRef.current) {
-      URL.revokeObjectURL(filePreviewUrlRef.current);
-      filePreviewUrlRef.current = "";
-    }
-    setFilePreview(null);
-    setFilePreviewFiles([]);
-    setFilePreviewUrl("");
-    setFilePreviewPdfData(null);
-    setFilePreviewText("");
-    setFilePreviewLoading(false);
-    setFilePreviewError("");
-  }
-
-  async function openFilePreview(file: OrderFile, files: OrderFile[] = [file]) {
-    if (!file?.id) return;
-    clearFilePreview();
-    setFilePreview(file);
-    setFilePreviewFiles(files);
-    setFilePreviewLoading(true);
-    try {
-      const blob = await api.download(`/files/${file.id}`);
-      const kind = attachmentPreviewKind(file, blob);
-      if (kind === "unsupported") throw new Error("当前文件类型暂不支持在线预览，请下载后查看");
-      if (kind === "text") {
-        setFilePreviewText(await blob.text());
-      } else if (kind === "pdf") {
-        setFilePreviewPdfData(new Uint8Array(await previewBlob(blob, kind).arrayBuffer()));
-      } else {
-        const url = URL.createObjectURL(blob);
-        filePreviewUrlRef.current = url;
-        setFilePreviewUrl(url);
-      }
-    } catch (e) {
-      setFilePreviewError(e instanceof Error ? e.message : "附件预览失败");
-    } finally {
-      setFilePreviewLoading(false);
-    }
-  }
-
-  function switchFilePreview(delta: number) {
-    if (!filePreviewFiles.length || !filePreview) return;
-    const currentIndex = filePreviewFiles.findIndex((file) => String(file.id) === String(filePreview.id));
-    const nextIndex = (currentIndex + delta + filePreviewFiles.length) % filePreviewFiles.length;
-    void openFilePreview(filePreviewFiles[nextIndex], filePreviewFiles);
   }
 
   function toggleOrderSelection(orderId: string | number, checked: boolean | "indeterminate") {
@@ -1291,29 +1031,14 @@ export function ServiceOrders() {
     }
   }
 
-  function openOrderDetailFromList(order: ServiceOrder) {
-    void openDetailOrder(order);
-    if (searchParams.get("orderId") !== String(order.id)) {
-      const next = new URLSearchParams(searchParams);
-      next.set("orderId", String(order.id));
-      setSearchParams(next);
-    }
-  }
-
   async function downloadOrderFile(file: OrderFile) {
     if (!file?.id || downloadingFileId) return;
     setDownloadingFileId(file.id);
     setError("");
     try {
       const blob = await api.download(`/files/${file.id}`);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.originalName || `attachment-${file.id}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      const { saveAs } = await import("file-saver");
+      saveAs(blob, file.originalName || `attachment-${file.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "附件下载失败");
     } finally {
@@ -1479,8 +1204,8 @@ export function ServiceOrders() {
           createdAt: formatDateTime(order.createdAt),
           updatedAt: formatDateTime(order.updatedAt),
           issueDescription: compactText(order.issueDescription, ""),
-          workContent: displayReportWorkContent(order),
-          partRecords: displayServiceParts(order.parts),
+          workContent: displayServiceOrderWorkContent(order),
+          partRecords: displayServiceOrderParts(order.parts),
           internalNote: compactText(order.internalNote, ""),
         });
       });
@@ -1976,6 +1701,7 @@ export function ServiceOrders() {
                   filteredOrders.map((order) => {
                     const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                     const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
+                    const itemsLabel = serviceItemsLabel(order);
                     const workflowStatus = getWorkflowStatus(order);
                     const serviceTime = serviceTimeRange(order);
                     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
@@ -1987,12 +1713,12 @@ export function ServiceOrders() {
                         role="button"
                         tabIndex={0}
                         className="cursor-pointer"
-                        onClick={() => openOrderDetailFromList(order)}
+                        onClick={() => openDetailOrder(order)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            openOrderDetailFromList(order);
+                            openDetailOrder(order);
                           }
                         }}
                       >
@@ -2022,6 +1748,7 @@ export function ServiceOrders() {
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
                             <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
@@ -2126,267 +1853,18 @@ export function ServiceOrders() {
               </TableBody>
             </table>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-end gap-3 border-t pt-3 text-sm text-muted-foreground">
-            <span>共 {total} 条</span>
-            <span className="flex items-center gap-1">
-              <span>每页</span>
-              <Select
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  setPageSize(Number(value));
-                  setPage(1);
-                }}
-                disabled={loading}
-              >
-                <SelectTrigger className="h-8 w-[92px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="20">20 条</SelectItem>
-                  <SelectItem value="50">50 条</SelectItem>
-                  <SelectItem value="100">100 条</SelectItem>
-                </SelectContent>
-              </Select>
-            </span>
-            <span className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage(1)} disabled={loading || page <= 1} aria-label="第一页">
-                <ChevronsLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1} aria-label="上一页">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="min-w-[52px] text-center">{page} / {totalPages}</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || page >= totalPages} aria-label="下一页">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPage(totalPages)} disabled={loading || page >= totalPages} aria-label="最后一页">
-                <ChevronsRight className="h-4 w-4" />
-              </Button>
-            </span>
-          </div>
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => { if (!open) closeDetailOrder(); }}>
-        <DialogContent className="sm:max-w-[760px]">
-          <DialogHeader>
-            <DialogTitle>{detailOrder ? displayId(detailOrder) : "工单详情"}</DialogTitle>
-            <DialogDescription>
-              {detailOrder ? `${textValue(detailOrder.customerName)} · ${previewSummary(detailOrder)}` : ""}
-            </DialogDescription>
-          </DialogHeader>
-          {detailOrder && (() => {
-            const statusLabel = detailOrder.displayStatus || t.status[getWorkflowStatus(detailOrder) as keyof typeof t.status] || getWorkflowStatus(detailOrder) || "-";
-            const typeLabel = serviceItemsLabel(detailOrder);
-            const serviceTime = serviceTimeRange(detailOrder);
-            const orderFiles = (detailOrder.files || []).filter((file) => file.ownerType !== "signature");
-            const photoAttachments = orderFiles.filter((file) => file.purpose === "site_photo");
-            const inspectionDocuments = orderFiles.filter((file) => file.purpose === "inspection_document");
-            const officeDocuments = orderFiles.filter((file) => file.purpose === "office_document");
-            const attachments = orderFiles.filter((file) => !["site_photo", "inspection_document", "office_document"].includes(String(file.purpose || "")));
-            const showTimesheetSalesperson = !isBusinessUser || !isDunyangName(detailOrder.timesheetSalesperson);
-            const workContent = displayReportWorkContent(detailOrder);
-            const displayWorkContent = detailOrder.serviceMode === "office"
-              ? workContent
-              : samePreviewText(detailOrder.issueDescription, workContent) ? "" : workContent;
-            const serviceParts = displayServiceParts(detailOrder.parts);
-            const installedDevices = detailOrder.installedDevices || [];
-            const hasOfficeMaterialsModule = (detailOrder.serviceModules || []).includes("office_materials");
-            const resultText = serviceResultLabel(detailOrder.report?.result);
-            const customerSignatureText = detailOrder.serviceMode === "onsite"
-              ? detailOrder.customerSignatureRequest?.signedAt || detailOrder.customerSignatureRequest?.status === "signed"
-                ? "电子签署已完成"
-                : detailOrder.report?.customerSignature
-                  ? "已完成现场签名"
-                  : detailOrder.report?.customerSignatureFileId
-                    ? "已使用历史签名"
-                  : ""
-              : detailOrder.serviceMode === "remote" ? "远程服务无需客户手写签名" : "";
-            return (
-              <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(detailOrder)] || "secondary"}>{statusLabel}</Badge>
-                  <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(detailOrder)] || "secondary"}>{typeLabel}</Badge>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <DetailField label={t.detail.customerName} value={detailOrder.customerName} />
-                  <DetailField label={t.detail.contactName} value={detailOrder.contactName || t.detail.unnamedContact} />
-                  <DetailField label="联系电话" value={detailOrder.contactPhone} />
-                  <DetailField label="客户地址" value={detailOrder.customerAddress} />
-                  <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground">设备</div>
-                    {detailOrder.deviceId ? (
-                      <button
-                        type="button"
-                        className="mt-1 block max-w-full truncate text-left text-sm leading-6 text-primary hover:underline"
-                        title="点击查看设备详情"
-                        onClick={() => navigate(`/devices?deviceId=${detailOrder.deviceId}`)}
-                      >
-                        {detailOrder.deviceName || "未指定设备"}
-                      </button>
-                    ) : (
-                      <div className="mt-1 break-words text-sm leading-6">{detailOrder.deviceName || "未指定设备"}</div>
-                    )}
-                  </div>
-                  <DetailField label={t.detail.engineer} value={engineerText(detailOrder, t.detail.unnamedEngineer)} />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <DetailField label="服务时间" value={serviceTime.full} />
-                  <DetailField label="创建时间" value={formatDateTime(detailOrder.createdAt)} />
-                  <DetailField label="提交时间" value={formatDateTime(detailOrder.submittedAt)} />
-                  <DetailField label="完成/结束时间" value={formatDateTime(detailOrder.report?.actualEndAt)} />
-                  <DetailField label="更新时间" value={formatDateTime(detailOrder.updatedAt)} />
-                  {showTimesheetSalesperson ? <DetailField label="业务人员" value={detailOrder.timesheetSalesperson} /> : null}
-                </div>
-
-                <DetailBlock label={issuePreviewLabel(detailOrder)} value={detailOrder.issueDescription} markdown />
-                {displayWorkContent ? <DetailBlock label={workContentPreviewLabel(detailOrder)} value={displayWorkContent} markdown /> : null}
-                {resultText || detailOrder.report?.resultDescription || detailOrder.report?.customerConfirmName || customerSignatureText ? (
-                  <div className="grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
-                    {resultText ? <DetailField label="处理结果" value={resultText} /> : null}
-                    {detailOrder.report?.resultDescription ? <DetailField label="结果说明" value={detailOrder.report.resultDescription} /> : null}
-                    {detailOrder.report?.customerConfirmName || detailOrder.report?.customerName ? (
-                      <DetailField label="客户确认人" value={detailOrder.report?.customerConfirmName || detailOrder.report?.customerName} />
-                    ) : null}
-                    {customerSignatureText ? <DetailField label="客户签名" value={customerSignatureText} /> : null}
-                  </div>
-                ) : null}
-
-                {(detailOrder.deviceModel || detailOrder.deviceSerialNo || detailOrder.deviceRemark) ? (
-                  <div>
-                    <div className="text-xs text-muted-foreground">目标设备详情</div>
-                    <div className="mt-2 grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-3">
-                      <DetailField label="型号 / 版本" value={detailOrder.deviceModel} />
-                      <DetailField label="序列号 / SN" value={detailOrder.deviceSerialNo} />
-                      <DetailField label="设备备注" value={detailOrder.deviceRemark} />
-                    </div>
-                  </div>
-                ) : null}
-
-                {installedDevices.length ? (
-                  <div>
-                    <div className="text-xs text-muted-foreground">安装设备</div>
-                    <div className="mt-2 grid gap-2">
-                      {installedDevices.map((device, index) => (
-                        <div key={`${device.id || "installed"}-${index}`} className="rounded-md border bg-muted/30 p-3">
-                          <div className="mb-2 text-sm font-medium">{compactText(device.name || device.model, `安装设备 ${index + 1}`)}</div>
-                          <div className="grid gap-4 md:grid-cols-3">
-                            <DetailField label="型号 / 版本" value={device.model} />
-                            <DetailField label="序列号 / SN" value={device.serialNo} />
-                            <DetailField label="备注" value={device.remark} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {hasOfficeMaterialsModule && detailOrder.targetDevices?.length ? (
-                  <div>
-                    <div className="text-xs text-muted-foreground">关联设备</div>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2">
-                      {detailOrder.targetDevices.map((device, index) => (
-                        <div key={device.id || index} className="rounded-md border bg-muted/30 p-3">
-                          <div className="text-sm font-medium">{device.name || device.model || `关联设备 ${index + 1}`}</div>
-                          <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
-                            <DetailField label="型号 / 版本" value={device.model} />
-                            <DetailField label="序列号 / SN" value={device.serialNo} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {serviceParts ? <DetailBlock label="备件与硬件部件" value={serviceParts} markdown /> : null}
-
-                {[
-                  { title: "现场照片", files: photoAttachments, image: true },
-                  { title: "维修文档", files: inspectionDocuments, image: false },
-                  { title: "方案与资料附件", files: officeDocuments, image: false },
-                  { title: "附件", files: attachments, image: false },
-                ].filter((group) => group.files.length).map((group) => (
-                  <div key={group.title}>
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <span>{group.title}</span>
-                      <span>{group.files.length} 个</span>
-                    </div>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                      {group.files.map((file) => (
-                        <button
-                          key={file.id}
-                          type="button"
-                          className="group flex min-w-0 items-center gap-3 rounded-md border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-progress disabled:opacity-60"
-                          disabled={downloadingFileId === file.id}
-                          onClick={() => openFilePreview(file, group.image ? group.files : [file])}
-                          title={`预览 ${file.originalName || `附件 #${file.id}`}`}
-                        >
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-primary shadow-sm">
-                            {group.image && attachmentThumbnailUrls[String(file.id)] ? (
-                              <img src={attachmentThumbnailUrls[String(file.id)]} alt="" className="h-full w-full object-cover" />
-                            ) : group.image ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium text-primary group-hover:underline">{file.originalName || `附件 #${file.id}`}</span>
-                            <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-
-                {(detailOrder.reviewedAt || detailOrder.reviewComment) && (
-                  <div className="rounded-md border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground">审核信息</div>
-                    <div className="mt-1 text-sm leading-6">
-                      {formatDateTime(detailOrder.reviewedAt)}
-                      {detailOrder.reviewComment ? ` · ${compactText(detailOrder.reviewComment, "")}` : ""}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDetailOrder}>关闭</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(filePreview)} onOpenChange={(open) => { if (!open) clearFilePreview(); }}>
-        <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
-          <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
-            <DialogTitle className="truncate">{filePreview?.originalName || "附件预览"}</DialogTitle>
-            <DialogDescription>{filePreview ? `${filePreview.mimeType || "附件"} · ${formatFileSize(filePreview.size)}` : ""}</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
-            {filePreviewLoading ? (
-              <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在加载附件…</div>
-            ) : filePreviewError ? (
-              <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-destructive">{filePreviewError}</div>
-            ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "image" ? (
-              <div className="relative flex min-h-[360px] items-center justify-center rounded-lg bg-slate-950 p-3">
-                {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(-1)} aria-label="上一张图片"><ChevronLeft className="h-4 w-4" /></Button> : null}
-                <img src={filePreviewUrl} alt={filePreview.originalName || "附件"} className="max-h-[68dvh] max-w-full object-contain" />
-                {filePreviewFiles.length > 1 ? <Button variant="outline" size="icon" className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90" onClick={() => switchFilePreview(1)} aria-label="下一张图片"><ChevronRight className="h-4 w-4" /></Button> : null}
-              </div>
-            ) : filePreviewPdfData && filePreview && attachmentPreviewKind(filePreview) === "pdf" ? (
-              <PdfPreview data={filePreviewPdfData} title={filePreview.originalName || "PDF 附件预览"} />
-            ) : filePreviewText ? (
-              <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">{filePreviewText}</pre>
-            ) : (
-              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">暂无可显示的附件内容</div>
-            )}
-          </div>
-          <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
-            <Button variant="outline" onClick={clearFilePreview}>取消预览</Button>
-            {filePreview ? <Button variant="outline" onClick={() => downloadOrderFile(filePreview)} disabled={downloadingFileId === filePreview.id}>{downloadingFileId === filePreview.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}下载文件</Button> : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ServiceOrderDetailDialog
+        order={detailOrder}
+        downloadingFileId={downloadingFileId}
+        onDownloadFile={downloadOrderFile}
+        onClose={closeDetailOrder}
+        statusLabels={t.status}
+        modeLabels={t.mode}
+        detailLabels={t.detail}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
@@ -2432,9 +1910,9 @@ export function ServiceOrders() {
                 </SelectContent>
               </Select>
             </div>
-            {createForm.serviceMode === "onsite" ? (
-              <div className="space-y-2">
-                <Label>服务类型</Label>
+            <div className="space-y-2">
+              <Label>{createForm.serviceMode === "onsite" ? "服务类型" : "工时类别"}</Label>
+              {createForm.serviceMode === "onsite" ? (
                 <Select value={createForm.serviceType} onValueChange={(v) => setCreateForm({ ...createForm, serviceType: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2446,8 +1924,10 @@ export function ServiceOrders() {
                     <SelectItem value="other">其他</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            ) : null}
+              ) : (
+                <Input value={createForm.timesheetCategory} onChange={(e) => setCreateForm({ ...createForm, timesheetCategory: e.target.value })} placeholder={createForm.serviceMode === "remote" ? "排障 / 调配 / 协调 / 会议 / 其他" : "方案准备 / 文档整理 / 网络会议 / 培训学习 / 其他"} />
+              )}
+            </div>
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <Label>优先级</Label>
