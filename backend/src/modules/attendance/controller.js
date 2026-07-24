@@ -1566,15 +1566,97 @@ async function listOvertimeServiceOrders(req, res) {
   res.json({ items })
 }
 
+// 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
+function resolveSegmentResult(segmentKey, body) {
+  if (segmentKey === 'travel') return 'comp_time'
+  const overtimeResult = text(body?.overtimeResult)
+  if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
+  return overtimeResult
+}
+
+// 在同一事务里插入一条工单加班申请（含审批链）。已占用或无有效加班时长则跳过（返回 null）。
+// 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请；历史遗留的
+// travel_out/travel_back 申请仍按 travel 占用对待。参见 docs/adr/0002。
+async function insertServiceOrderOvertimeSegment(connection, {
+  employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId,
+}) {
+  const segment = segmentKey === 'travel'
+    ? travelOvertimeSegment(order, travelOverrides)
+    : workOvertimeSegment(order)
+  if (!segment) return null
+  if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
+  if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
+  const dayType = segment.dayType || overtimeDayType(segment.startAt)
+  const payMultiplier = overtimePayMultiplier(dayType, overtimeResult)
+
+  const [existingRows] = await connection.execute(
+    `SELECT id
+     FROM attendance_requests
+     WHERE source_type = 'service_order'
+       AND source_id = :serviceOrderId
+       AND (
+         source_detail = :segmentKey
+         OR (:segmentKey = 'work' AND source_detail IS NULL)
+         OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
+       )
+       AND submitted_by = :userId
+       AND status NOT IN ('rejected', 'withdrawn', 'voided')
+     LIMIT 1
+     FOR UPDATE`,
+    { serviceOrderId, segmentKey, userId },
+  )
+  if (existingRows[0]) return null
+
+  const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, employee.role)
+  const approvalSteps = buildApprovalSteps({
+    requestType: 'overtime',
+    workingDays: 0,
+    delegateEmployeeId: null,
+    approvalRoles,
+    workflowVersion: 3,
+  })
+  await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(approvalSteps), userId)
+  const status = requestStatusForStep(approvalSteps[0]?.stepType)
+  if (!status) throw badRequest('审批流程不能为空')
+  const [inserted] = await connection.execute(
+    `INSERT INTO attendance_requests
+       (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
+     VALUES
+       (3, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, NULL, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
+    {
+      employeeId: employee.id,
+      overtimeKind: segment.kind,
+      overtimeResult,
+      overtimeDayType: dayType,
+      overtimePayMultiplier: payMultiplier,
+      serviceOrderId,
+      sourceDetail: segment.key,
+      sourceSnapshot: JSON.stringify(snapshotWithReportedTravel(orderSnapshot, segmentKey, travelOverrides)),
+      startAt: segment.startAt.replace('T', ' '),
+      endAt: segment.endAt.replace('T', ' '),
+      hours: segment.hours,
+      reason: `工单申请：${order.order_no || serviceOrderId} / ${segment.label}`,
+      status,
+      submittedBy: userId,
+    },
+  )
+  await insertApprovalSteps(connection, inserted.insertId, approvalSteps)
+  return { id: inserted.insertId, status, segmentKey: segment.key, hours: segment.hours }
+}
+
+// 一个工单一把申请：路上 + 工作两段一起提交，后端各生成一条申请。
+// 已占用或无有效加班时长的时段自动跳过；两段都没生成才报错。
+// 兼容旧的单时段 body（只带一个 segmentKey）。参见 docs/adr/0002。
 async function createServiceOrderOvertimeRequest(req, res) {
   await ensureSchema()
   assertAttendanceApplicantRole(req.user.role)
   const serviceOrderId = Number(req.params.id)
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
-  const segmentKey = text(req.body?.segmentKey)
-  const overtimeResult = text(req.body?.overtimeResult)
-  if (!['travel', 'work'].includes(segmentKey)) throw badRequest('工单时段不正确')
-  if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
+
+  // 请求的时段集合：显式传单个 segmentKey 时只处理该段（向后兼容），否则默认两段都报。
+  const requestedKey = text(req.body?.segmentKey)
+  if (requestedKey && !['travel', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
+  const segmentKeys = requestedKey ? [requestedKey] : ['travel', 'work']
 
   const result = await transaction(async (connection) => {
     const employee = await currentEmployeeForConnection(connection, req.user.id)
@@ -1582,79 +1664,33 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const rows = await serviceOrderOvertimeRows(req.user.id, serviceOrderId, connection)
     const order = rows[0]
     if (!order) throw notFound('没有可申请的工单')
+    const orderSnapshot = serviceOrderSnapshot(order)
+    if (!orderSnapshot) throw notFound('没有可申请的工单')
 
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
-    let travelOverrides = {}
-    if (segmentKey === 'travel') {
-      travelOverrides = normalizeTravelOverrides(order, req.body)
-    }
-    const orderSnapshot = serviceOrderSnapshot(order)
-    if (!orderSnapshot) throw notFound('没有可申请的工单')
-    const segment = segmentKey === 'travel'
-      ? travelOvertimeSegment(order, travelOverrides)
-      : workOvertimeSegment(order)
-    if (!segment) throw badRequest('该工单时段不符合加班申请条件')
-    if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
-    if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
-    const dayType = segment.dayType || overtimeDayType(segment.startAt)
-    const payMultiplier = overtimePayMultiplier(dayType, overtimeResult)
+    const travelOverrides = segmentKeys.includes('travel')
+      ? normalizeTravelOverrides(order, req.body)
+      : {}
 
-    // 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请。
-    // 历史遗留的 travel_out/travel_back 申请仍按 travel 占用对待。
-    const [existingRows] = await connection.execute(
-      `SELECT id
-       FROM attendance_requests
-       WHERE source_type = 'service_order'
-         AND source_id = :serviceOrderId
-         AND (
-           source_detail = :segmentKey
-           OR (:segmentKey = 'work' AND source_detail IS NULL)
-           OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
-         )
-         AND submitted_by = :userId
-         AND status NOT IN ('rejected', 'withdrawn', 'voided')
-       LIMIT 1
-       FOR UPDATE`,
-      { serviceOrderId, segmentKey, userId: req.user.id },
-    )
-    if (existingRows[0]) throw badRequest('该工单时段已提交加班申请')
-
-    const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, employee.role)
-    const approvalSteps = buildApprovalSteps({
-      requestType: 'overtime',
-      workingDays: 0,
-      delegateEmployeeId: null,
-      approvalRoles,
-      workflowVersion: 3,
-    })
-    await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(approvalSteps), req.user.id)
-    const status = requestStatusForStep(approvalSteps[0]?.stepType)
-    if (!status) throw badRequest('审批流程不能为空')
-    const [inserted] = await connection.execute(
-      `INSERT INTO attendance_requests
-         (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
-       VALUES
-         (3, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, NULL, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
-      {
-        employeeId: employee.id,
-        overtimeKind: segment.kind,
-        overtimeResult,
-        overtimeDayType: dayType,
-        overtimePayMultiplier: payMultiplier,
+    const created = []
+    for (const segmentKey of segmentKeys) {
+      const overtimeResult = resolveSegmentResult(segmentKey, req.body)
+      const inserted = await insertServiceOrderOvertimeSegment(connection, {
+        employee,
+        order,
+        orderSnapshot,
         serviceOrderId,
-        sourceDetail: segment.key,
-        sourceSnapshot: JSON.stringify(snapshotWithReportedTravel(orderSnapshot, segmentKey, travelOverrides)),
-        startAt: segment.startAt.replace('T', ' '),
-        endAt: segment.endAt.replace('T', ' '),
-        hours: segment.hours,
-        reason: `工单申请：${order.order_no || serviceOrderId} / ${segment.label}`,
-        status,
-        submittedBy: req.user.id,
-      },
-    )
-    await insertApprovalSteps(connection, inserted.insertId, approvalSteps)
-    return { id: inserted.insertId, status }
+        segmentKey,
+        overtimeResult,
+        travelOverrides,
+        userId: req.user.id,
+      })
+      if (inserted) created.push(inserted)
+    }
+
+    if (!created.length) throw badRequest('该工单没有可申请的加班时段（可能已申请或无有效加班时长）')
+    return { created, id: created[0].id, status: created[0].status }
   })
 
   res.status(201).json(result)

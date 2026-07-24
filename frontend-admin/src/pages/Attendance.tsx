@@ -458,16 +458,6 @@ function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) 
   return hours > 0 ? hours : 0;
 }
 
-function overtimeSelection(items: OvertimeServiceOrder[], currentOrderId: string, currentSegmentKey: string) {
-  const order = items.find((item) => String(item.id) === currentOrderId) || items[0] || null;
-  const rows = overtimeRows(order);
-  const segment = rows.find((item) => item.key === currentSegmentKey) || rows[0] || null;
-  return {
-    orderId: order ? String(order.id) : "",
-    segmentKey: segment?.key || "",
-  };
-}
-
 function requestDetail(item: AttendanceRequest) {
   if (item.requestType === "leave") return LEAVE_TYPE_LABELS[item.leaveType || ""] || "-";
   if (item.requestType === "overtime") {
@@ -580,7 +570,6 @@ export function Attendance() {
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
-  const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
   // 路上时间可由工程师自报去程出发、回程返回（默认带工单值），只随本条申请提交。参见 docs/adr/0002。
   const [travelDepartureAt, setTravelDepartureAt] = useState("");
   const [travelReturnAt, setTravelReturnAt] = useState("");
@@ -690,10 +679,12 @@ export function Attendance() {
     try {
       const data = await api.get("/attendance/overtime/service-orders");
       const items = (data?.items || []) as OvertimeServiceOrder[];
-      const selection = overtimeSelection(items, selectedOvertimeOrderId, selectedSegmentKey);
+      // 保持已选工单；若不在新列表里则回落到第一个
+      const keepId = items.some((item) => String(item.id) === selectedOvertimeOrderId)
+        ? selectedOvertimeOrderId
+        : (items[0] ? String(items[0].id) : "");
       setOvertimeOrders(items);
-      setSelectedOvertimeOrderId(selection.orderId);
-      setSelectedSegmentKey(selection.segmentKey);
+      setSelectedOvertimeOrderId(keepId);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
     } finally {
@@ -784,29 +775,19 @@ export function Attendance() {
     () => overtimeOrders.find((item) => String(item.id) === selectedOvertimeOrderId) || null,
     [overtimeOrders, selectedOvertimeOrderId],
   );
+  // 一个工单一把申请：路上 + 工作两段都报，不再单选时段。后端各生成一条申请。参见 docs/adr/0002。
   const selectedOvertimeRows = useMemo(
     () => overtimeRows(selectedOvertimeOrder),
     [selectedOvertimeOrder],
   );
-  const selectedSegment = useMemo(
-    () => selectedOvertimeRows.find((item) => item.key === selectedSegmentKey) || null,
-    [selectedOvertimeRows, selectedSegmentKey],
+  const travelSegment = useMemo(
+    () => selectedOvertimeRows.find((item) => item.key === "travel") || null,
+    [selectedOvertimeRows],
   );
-
-  useEffect(() => {
-    if (!selectedOvertimeOrder) {
-      setSelectedSegmentKey("");
-      return;
-    }
-    const exists = selectedOvertimeRows.some((item) => item.key === selectedSegmentKey);
-    if (!exists) setSelectedSegmentKey(selectedOvertimeRows[0]?.key || "");
-  }, [selectedOvertimeOrder, selectedOvertimeRows, selectedSegmentKey]);
-
-  useEffect(() => {
-    if (selectedSegment?.kind === "travel" && form.overtimeResult !== "comp_time") {
-      setForm((current) => ({ ...current, overtimeResult: "comp_time" }));
-    }
-  }, [selectedSegment, form.overtimeResult]);
+  const workSegment = useMemo(
+    () => selectedOvertimeRows.find((item) => item.key === "work") || null,
+    [selectedOvertimeRows],
+  );
 
   // 切换工单时，去程/回程输入框回填工单默认时间，工程师可在此基础上改。参见 docs/adr/0002。
   useEffect(() => {
@@ -816,17 +797,17 @@ export function Attendance() {
 
   // 去程/回程改动后，前端按后端同样口径预览合并时长（提交后仍以后端核算为准）。
   const travelPreview = useMemo(() => {
-    if (!selectedOvertimeOrder) return null;
+    if (!selectedOvertimeOrder || !travelSegment) return null;
     const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
     const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
-    const dayType = selectedOvertimeRows.find((item) => item.key === "travel")?.dayType;
+    const dayType = travelSegment.dayType;
     const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
     const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
     return { hours: Math.round((outbound + back) * 100) / 100, dayType };
-  }, [selectedOvertimeOrder, selectedOvertimeRows, travelDepartureAt, travelReturnAt]);
+  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
 
   const travelInvalid = useMemo(() => {
-    if (selectedSegment?.kind !== "travel" || !selectedOvertimeOrder) return "";
+    if (!travelSegment || !selectedOvertimeOrder) return "";
     const arrival = parseLocalDateTime(selectedOvertimeOrder.actualStartAt);
     const finish = parseLocalDateTime(selectedOvertimeOrder.actualEndAt);
     const departure = parseLocalDateTime(travelDepartureAt);
@@ -834,7 +815,7 @@ export function Attendance() {
     if (departure && arrival && departure > arrival) return "去程出发时间不能晚于工单到达时间";
     if (back && finish && back < finish) return "回程返回时间不能早于工单完工时间";
     return "";
-  }, [selectedSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
+  }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
   function setAnnualDraft(patch: Partial<{
     annualStartDate: string;
@@ -871,19 +852,14 @@ export function Attendance() {
     setSubmitting(true);
     try {
       if (requestType === "overtime") {
-        if (!selectedOvertimeOrder || !selectedSegment) throw new Error("请选择工单和加班时段");
-        if (selectedSegment.kind === "travel" && travelInvalid) throw new Error(travelInvalid);
-        // 路上时间带上工程师自报的去程出发、回程返回（默认工单值）；工作段不传，锁死按工单。
-        const travelOverrides = selectedSegment.kind === "travel"
-          ? {
-              departureAt: travelDepartureAt ? travelDepartureAt.replace("T", " ") : undefined,
-              returnAt: travelReturnAt ? travelReturnAt.replace("T", " ") : undefined,
-            }
-          : {};
+        if (!selectedOvertimeOrder) throw new Error("请选择工单");
+        if (travelInvalid) throw new Error(travelInvalid);
+        // 一把提交路上 + 工作两段：不传 segmentKey，后端各生成一条申请。
+        // overtimeResult 只作用于工作段（路上固定转调休）；路上带上工程师自报的去程出发、回程返回（默认工单值）。
         await api.post(`/attendance/overtime/service-orders/${selectedOvertimeOrder.id}/apply`, {
-          segmentKey: selectedSegment.key,
-          overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
-          ...travelOverrides,
+          overtimeResult: form.overtimeResult,
+          departureAt: travelDepartureAt ? travelDepartureAt.replace("T", " ") : undefined,
+          returnAt: travelReturnAt ? travelReturnAt.replace("T", " ") : undefined,
         });
       } else {
         if (!form.delegateEmployeeId) throw new Error("请选择代理人");
@@ -915,7 +891,6 @@ export function Attendance() {
       setForm(createBlankForm());
       setProofFiles([]);
       setSelectedOvertimeOrderId("");
-      setSelectedSegmentKey("");
       setTravelDepartureAt("");
       setTravelReturnAt("");
       await load();
@@ -1293,11 +1268,7 @@ export function Attendance() {
                           <Label>工单</Label>
                           <Select
                             value={selectedOvertimeOrderId}
-                            onValueChange={(value) => {
-                              setSelectedOvertimeOrderId(value);
-                              const order = overtimeOrders.find((item) => String(item.id) === value);
-                              setSelectedSegmentKey(overtimeRows(order || null)[0]?.key || "");
-                            }}
+                            onValueChange={(value) => setSelectedOvertimeOrderId(value)}
                             disabled={overtimeLoading || overtimeOrders.length === 0}
                           >
                             <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
@@ -1311,23 +1282,21 @@ export function Attendance() {
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>加班结果</Label>
+                          <Label>工作时间加班结果</Label>
                           <Select
-                            value={selectedSegment?.kind === "travel" ? "comp_time" : form.overtimeResult}
+                            value={form.overtimeResult}
                             onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}
-                            disabled={!selectedSegment || selectedSegment.kind === "travel"}
+                            disabled={!workSegment}
                           >
                             <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="comp_time">转调休</SelectItem>
-                              {selectedSegment && selectedSegment.kind !== "travel" ? (
-                                <SelectItem value="pay">{overtimePayLabel(selectedSegment)}</SelectItem>
+                              {workSegment ? (
+                                <SelectItem value="pay">{overtimePayLabel(workSegment)}</SelectItem>
                               ) : null}
                             </SelectContent>
                           </Select>
-                          {selectedSegment?.kind === "travel" ? (
-                            <p className="text-xs text-muted-foreground">来回路上时间固定转调休</p>
-                          ) : null}
+                          <p className="text-xs text-muted-foreground">来回路上时间固定转调休，此处仅作用于实际工作时间</p>
                         </div>
                       </div>
 
@@ -1335,31 +1304,31 @@ export function Attendance() {
                         <>
                           <div className="space-y-2">
                             <Label>加班时段</Label>
+                            <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，各生成一条申请（无有效加班时长的时段自动跳过）</p>
                             <div className="grid gap-2 md:grid-cols-2">
                               {selectedOvertimeRows.map((segment) => {
-                                const active = selectedSegmentKey === segment.key;
+                                const isTravel = segment.kind === "travel";
+                                const segHours = isTravel ? (travelPreview?.hours ?? segment.hours) : segment.hours;
                                 return (
-                                  <button
+                                  <div
                                     key={segment.key}
-                                    type="button"
-                                    onClick={() => setSelectedSegmentKey(segment.key)}
-                                    className={`rounded-md border p-3 text-left text-sm transition ${
-                                      active ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "bg-background hover:bg-muted/40"
-                                    }`}
+                                    className="rounded-md border bg-background p-3 text-left text-sm"
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="font-medium">{segment.label}</span>
-                                      {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                                      <Check className="h-4 w-4 shrink-0 text-primary" />
                                     </div>
                                     <div className="mt-1 text-xs text-muted-foreground">
-                                      {formatDateTime(segment.startAt)} - {formatDateTime(segment.endAt)}
+                                      {isTravel
+                                        ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
+                                        : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
                                     </div>
                                     <div className="mt-0.5 text-xs text-muted-foreground">
-                                      {hours(segment.hours)} 小时
+                                      {hours(segHours)} 小时
                                       {segment.dayType ? ` · ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
-                                      {segment.kind === "travel" ? " · 固定转调休" : ""}
+                                      {isTravel ? " · 固定转调休" : ` · ${form.overtimeResult === "pay" ? overtimePayLabel(segment) : "转调休"}`}
                                     </div>
-                                  </button>
+                                  </div>
                                 );
                               })}
                               {selectedOvertimeRows.length === 0 ? (
@@ -1367,7 +1336,7 @@ export function Attendance() {
                               ) : null}
                             </div>
                           </div>
-                          {selectedSegment?.kind === "travel" ? (
+                          {travelSegment ? (
                             <div className="space-y-3 rounded-md border bg-muted/10 p-3">
                               <div className="flex items-center justify-between gap-2">
                                 <Label className="text-sm">去程/回程时间</Label>
@@ -1608,30 +1577,34 @@ export function Attendance() {
                             <span className="text-muted-foreground">客户</span>
                             <span className="font-medium">{selectedOvertimeOrder?.customerName || "-"}</span>
                           </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">申请时段</span>
-                            <span className="font-medium">{selectedSegment?.label || "未选择"}</span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">时间</span>
-                            <span className="font-medium">
-                              {selectedSegment?.kind === "travel"
-                                ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
-                                : selectedSegment ? formatDateTime(selectedSegment.startAt) + " - " + formatDateTime(selectedSegment.endAt) : "-"}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">核算结果</span>
-                            <span className="font-medium">
-                              {selectedSegment
-                                ? (selectedSegment.kind === "travel"
-                                  ? hours(travelPreview?.hours || 0) + " 小时 · 固定转调休"
-                                  : hours(selectedSegment.hours) + " 小时 · " + (
-                                    form.overtimeResult === "pay" ? overtimePayLabel(selectedSegment) : "转调休"
-                                  ))
-                                : "未选择"}
-                            </span>
-                          </div>
+                          {travelSegment ? (
+                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
+                              <span className="text-muted-foreground">来回路上</span>
+                              <span className="font-medium">
+                                {hours(travelPreview?.hours || 0)} 小时 · 固定转调休
+                                <span className="block text-xs text-muted-foreground">
+                                  {formatDateTime(travelDepartureAt) || "-"} 出发 / {formatDateTime(travelReturnAt) || "-"} 返回
+                                </span>
+                              </span>
+                            </div>
+                          ) : null}
+                          {workSegment ? (
+                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
+                              <span className="text-muted-foreground">实际工作</span>
+                              <span className="font-medium">
+                                {hours(workSegment.hours)} 小时 · {form.overtimeResult === "pay" ? overtimePayLabel(workSegment) : "转调休"}
+                                <span className="block text-xs text-muted-foreground">
+                                  {formatDateTime(workSegment.startAt)} - {formatDateTime(workSegment.endAt)}
+                                </span>
+                              </span>
+                            </div>
+                          ) : null}
+                          {!travelSegment && !workSegment ? (
+                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
+                              <span className="text-muted-foreground">时段</span>
+                              <span className="font-medium">未选择</span>
+                            </div>
+                          ) : null}
                         </>
                       ) : (
                         <>
@@ -1677,7 +1650,7 @@ export function Attendance() {
                     <Button
                       className="h-11 w-full"
                       onClick={submitRequest}
-                      disabled={submitting || (form.requestType === "overtime" && (!selectedSegment || Boolean(travelInvalid)))}
+                      disabled={submitting || (form.requestType === "overtime" && (!selectedOvertimeOrder || selectedOvertimeRows.length === 0 || Boolean(travelInvalid)))}
                     >
                       {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                       提交申请
