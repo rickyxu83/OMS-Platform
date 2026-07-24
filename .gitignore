@@ -37,6 +37,7 @@ prototypes/
 .claude/
 .agents/
 .codex/
+.omo/
 .opencode/
 conversation-*.txt
 tmp/
