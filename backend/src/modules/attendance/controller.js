@@ -1284,6 +1284,9 @@ function floorToHour(date) {
   return rounded
 }
 
+// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
+// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
+// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
@@ -1314,45 +1317,95 @@ function formatMysqlDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-function overtimeSegments(row, usedSegments = new Set()) {
-  const candidates = [
-    { key: 'travel_out', kind: 'travel', label: '路上时间（出发-到达）', start: row.departure_at, end: row.actual_start_at },
-    { key: 'work', kind: 'work', label: '实际工作时间', start: row.actual_start_at, end: row.actual_end_at },
-    { key: 'travel_back', kind: 'travel', label: '路上时间（完成-返回）', start: row.actual_end_at, end: row.return_at },
-  ]
-  return candidates
-    .map((segment) => {
-      const window = overtimeWindow(segment.start, segment.end)
-      if (!window || usedSegments.has(segment.key)) return null
-      return {
-        key: segment.key,
-        kind: segment.kind,
-        label: segment.label,
-        startAt: toIsoMinute(window.startAt),
-        endAt: toIsoMinute(window.endAt),
-        hours: window.hours,
-        dayType: window.dayType,
-        payMultiplier: overtimePayMultiplier(window.dayType, 'pay') || DEFAULT_PAY_MULTIPLIER,
-        allowedResults: segment.kind === 'travel' ? ['comp_time'] : ['comp_time', 'pay'],
-      }
-    })
-    .filter(Boolean)
+// 校验工程师自报的去程出发、回程返回时间：只防倒挂（出发 <= 工单到达、返回 >= 工单完工），
+// 时间本身须合法。未提供、或与工单值相同的，不写入 overrides——这样合并计算沿用工单值，
+// 快照也只在确有差异时留痕。参见 docs/adr/0002。
+function normalizeTravelOverrides(order, body) {
+  const overrides = {}
+  const departureInput = text(body?.departureAt)
+  if (departureInput) {
+    const departure = toDate(departureInput)
+    if (!departure) throw badRequest('去程出发时间格式不正确')
+    const arrival = toDate(order.actual_start_at)
+    if (arrival && departure > arrival) throw badRequest('去程出发时间不能晚于工单到达时间')
+    const value = formatMysqlDateTime(departure)
+    const orderDeparture = toDate(order.departure_at)
+    if (!orderDeparture || value !== formatMysqlDateTime(orderDeparture)) overrides.departureAt = value
+  }
+  const returnInput = text(body?.returnAt)
+  if (returnInput) {
+    const back = toDate(returnInput)
+    if (!back) throw badRequest('回程返回时间格式不正确')
+    const finish = toDate(order.actual_end_at)
+    if (finish && back < finish) throw badRequest('回程返回时间不能早于工单完工时间')
+    const value = formatMysqlDateTime(back)
+    const orderReturn = toDate(order.return_at)
+    if (!orderReturn || value !== formatMysqlDateTime(orderReturn)) overrides.returnAt = value
+  }
+  return overrides
 }
 
-function combineTravelSegments(segments) {
-  const items = segments.filter((item) => item.kind === 'travel')
-  if (!items.length) return null
+// 把工程师自报的原始去程出发、回程返回时间留痕进快照，供审批人对照“自报 vs 工单”。
+// 仅在路上时间且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
+function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
+  if (segmentKey !== 'travel') return snapshot
+  const next = { ...snapshot }
+  if (overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
+  if (overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
+  return next
+}
+
+// 路上时间合并成一条“来回路上实际时间”。去程出发、回程返回可由工程师自报覆盖
+// （overrides），到达/完工两个锚点始终取工单值。每一程各自过 overtimeWindow
+// （掐平日 18:00、整点取整），再把有效的时长相加。参见 docs/adr/0002。
+function travelOvertimeSegment(row, overrides = {}) {
+  const departureAt = overrides.departureAt || row.departure_at
+  const returnAt = overrides.returnAt || row.return_at
+  const legs = [
+    overtimeWindow(departureAt, row.actual_start_at), // 去程：出发 -> 到达
+    overtimeWindow(row.actual_end_at, returnAt), // 回程：完工 -> 返回
+  ].filter(Boolean)
+  if (!legs.length) return null
   return {
     key: 'travel',
     kind: 'travel',
     label: '来回路上实际时间',
-    startAt: items[0].startAt,
-    endAt: items[items.length - 1].endAt,
-    hours: Math.round(items.reduce((sum, item) => sum + Number(item.hours || 0), 0) * 100) / 100,
-    dayType: items.some((item) => item.dayType === 'legal_holiday') ? 'legal_holiday' : items[0].dayType,
+    startAt: toIsoMinute(legs[0].startAt),
+    endAt: toIsoMinute(legs[legs.length - 1].endAt),
+    hours: Math.round(legs.reduce((sum, leg) => sum + Number(leg.hours || 0), 0) * 100) / 100,
+    dayType: legs.some((leg) => leg.dayType === 'legal_holiday') ? 'legal_holiday' : legs[0].dayType,
     payMultiplier: null,
     allowedResults: ['comp_time'],
   }
+}
+
+function workOvertimeSegment(row) {
+  const window = overtimeWindow(row.actual_start_at, row.actual_end_at)
+  if (!window) return null
+  return {
+    key: 'work',
+    kind: 'work',
+    label: '实际工作时间',
+    startAt: toIsoMinute(window.startAt),
+    endAt: toIsoMinute(window.endAt),
+    hours: window.hours,
+    dayType: window.dayType,
+    payMultiplier: overtimePayMultiplier(window.dayType, 'pay') || DEFAULT_PAY_MULTIPLIER,
+    allowedResults: ['comp_time', 'pay'],
+  }
+}
+
+function overtimeSegments(row, usedSegments = new Set()) {
+  const segments = []
+  if (!usedSegments.has('travel')) {
+    const travel = travelOvertimeSegment(row)
+    if (travel) segments.push(travel)
+  }
+  if (!usedSegments.has('work')) {
+    const work = workOvertimeSegment(row)
+    if (work) segments.push(work)
+  }
+  return segments
 }
 
 function serviceOrderSnapshot(row) {
@@ -1388,9 +1441,10 @@ function parseServiceOrderSnapshot(value, expectedSourceId) {
     const stringFields = [
       'orderNo', 'customerName', 'contactName', 'contactPhone', 'deviceName', 'serviceMode', 'serviceType',
       'issueDescription', 'serviceAt', 'departureAt', 'actualStartAt', 'actualEndAt', 'returnAt',
+      'reportedDepartureAt', 'reportedReturnAt',
     ]
     if (stringFields.some((field) => parsed[field] != null && typeof parsed[field] !== 'string')) return null
-    return {
+    const result = {
       id,
       orderNo: nullableText(parsed.orderNo),
       customerName: nullableText(parsed.customerName),
@@ -1406,6 +1460,10 @@ function parseServiceOrderSnapshot(value, expectedSourceId) {
       actualEndAt: toIsoMinute(parsed.actualEndAt),
       returnAt: toIsoMinute(parsed.returnAt),
     }
+    // 工程师自报的路上时间只在覆盖时才写入，读回时同样按需附带，无覆盖则不出现。
+    if (parsed.reportedDepartureAt != null) result.reportedDepartureAt = toIsoMinute(parsed.reportedDepartureAt)
+    if (parsed.reportedReturnAt != null) result.reportedReturnAt = toIsoMinute(parsed.reportedReturnAt)
+    return result
   } catch {
     return null
   }
@@ -1480,15 +1538,13 @@ async function usedOvertimeSegments(orderIds, userId) {
        AND status NOT IN ('rejected', 'withdrawn', 'voided')`,
     { ...params, userId },
   )
+  // 时段只剩 work / travel 两类。历史遗留的 travel_out / travel_back 申请仍按
+  // travel 占用对待，避免老数据被重复申请。参见 docs/adr/0002。
   return rows.reduce((map, row) => {
     const key = Number(row.source_id)
     if (!map.has(key)) map.set(key, new Set())
     const detail = row.source_detail || 'work'
-    map.get(key).add(detail)
-    if (detail === 'travel') {
-      map.get(key).add('travel_out')
-      map.get(key).add('travel_back')
-    }
+    map.get(key).add(detail === 'travel_out' || detail === 'travel_back' ? 'travel' : detail)
     return map
   }, new Map())
 }
@@ -1517,7 +1573,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
   const segmentKey = text(req.body?.segmentKey)
   const overtimeResult = text(req.body?.overtimeResult)
-  if (!['travel', 'travel_out', 'work', 'travel_back'].includes(segmentKey)) throw badRequest('工单时段不正确')
+  if (!['travel', 'work'].includes(segmentKey)) throw badRequest('工单时段不正确')
   if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
 
   const result = await transaction(async (connection) => {
@@ -1526,18 +1582,26 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const rows = await serviceOrderOvertimeRows(req.user.id, serviceOrderId, connection)
     const order = rows[0]
     if (!order) throw notFound('没有可申请的工单')
+
+    // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
+    // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
+    let travelOverrides = {}
+    if (segmentKey === 'travel') {
+      travelOverrides = normalizeTravelOverrides(order, req.body)
+    }
     const orderSnapshot = serviceOrderSnapshot(order)
     if (!orderSnapshot) throw notFound('没有可申请的工单')
-    const segments = overtimeSegments(order)
     const segment = segmentKey === 'travel'
-      ? combineTravelSegments(segments)
-      : segments.find((item) => item.key === segmentKey)
+      ? travelOvertimeSegment(order, travelOverrides)
+      : workOvertimeSegment(order)
     if (!segment) throw badRequest('该工单时段不符合加班申请条件')
     if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
     if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
     const dayType = segment.dayType || overtimeDayType(segment.startAt)
     const payMultiplier = overtimePayMultiplier(dayType, overtimeResult)
 
+    // 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请。
+    // 历史遗留的 travel_out/travel_back 申请仍按 travel 占用对待。
     const [existingRows] = await connection.execute(
       `SELECT id
        FROM attendance_requests
@@ -1547,7 +1611,6 @@ async function createServiceOrderOvertimeRequest(req, res) {
            source_detail = :segmentKey
            OR (:segmentKey = 'work' AND source_detail IS NULL)
            OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
-           OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
          )
          AND submitted_by = :userId
          AND status NOT IN ('rejected', 'withdrawn', 'voided')
@@ -1581,7 +1644,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
         overtimePayMultiplier: payMultiplier,
         serviceOrderId,
         sourceDetail: segment.key,
-        sourceSnapshot: JSON.stringify(orderSnapshot),
+        sourceSnapshot: JSON.stringify(snapshotWithReportedTravel(orderSnapshot, segmentKey, travelOverrides)),
         startAt: segment.startAt.replace('T', ' '),
         endAt: segment.endAt.replace('T', ' '),
         hours: segment.hours,

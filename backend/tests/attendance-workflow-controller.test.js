@@ -800,6 +800,202 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     })
   }
 
+  // 路上时间：工程师自报去程出发/回程返回，合并成一条 travel 申请，原始时间留痕进快照
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88,
+      order_no: 'SO-20260713-088',
+      status: 'completed',
+      customer_name: '测试客户',
+      contact_name: '王小姐',
+      contact_phone: '13800000000',
+      device_name: 'PowerVault ME5 / SN-88',
+      service_mode: 'onsite',
+      service_type: 'repair',
+      issue_description: '存储控制器告警',
+      service_at: '2026-07-14 18:00:00',
+      departure_at: '2026-07-14 16:00:00',
+      actual_start_at: '2026-07-14 18:00:00',
+      actual_end_at: '2026-07-14 21:00:00',
+      return_at: '2026-07-14 22:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 902 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    // 自报去程 15:00 出发（早于工单 16:00），回程 23:00 返回（晚于工单 22:00）
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 15:00', returnAt: '2026-07-14 23:00' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    assert.equal(insert.params.overtimeKind, 'travel')
+    assert.equal(insert.params.sourceDetail, 'travel')
+    assert.equal(insert.params.overtimeResult, 'comp_time')
+    // 去程 15:00->18:00（掐 18:00 后为 15-18=3h... 平日 18:00 前不计），回程 21:00->23:00=2h
+    // 去程整段在 18:00 前，overtimeWindow 判定无有效加班；回程 21:00->23:00 计 2h
+    assert.equal(insert.params.hours, 2)
+    const snapshot = JSON.parse(insert.params.sourceSnapshot)
+    assert.equal(snapshot.reportedDepartureAt, '2026-07-14 15:00')
+    assert.equal(snapshot.reportedReturnAt, '2026-07-14 23:00')
+    // 工单原始时间不被覆盖
+    assert.equal(snapshot.departureAt, '2026-07-14 16:00')
+    assert.equal(snapshot.returnAt, '2026-07-14 22:00')
+  }
+
+  // 路上时间零差异：提交与工单相同的默认时间，不应写入 reported* 留痕（避免污染无差异快照）
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
+      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 23:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 903 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    // 提交与工单完全一致的默认时间
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 16:00', returnAt: '2026-07-14 23:00' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    const snapshot = JSON.parse(insert.params.sourceSnapshot)
+    assert.equal(Object.hasOwn(snapshot, 'reportedDepartureAt'), false)
+    assert.equal(Object.hasOwn(snapshot, 'reportedReturnAt'), false)
+  }
+
+  // 路上时间防倒挂：去程出发晚于工单到达 -> 400
+  {
+    const orderRow = {
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
+      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 19:00' },
+    }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.createServiceOrderOvertimeRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /去程出发时间不能晚于工单到达时间/)
+  }
+
+  // 路上时间防倒挂：回程返回早于工单完工 -> 400
+  {
+    const orderRow = {
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
+      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', returnAt: '2026-07-14 20:00' },
+    }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.createServiceOrderOvertimeRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /回程返回时间不能早于工单完工时间/)
+  }
+
+  // travel_out / travel_back 已退役：不再是合法 segmentKey -> 400
+  {
+    const { controller } = await loadController()
+    for (const segmentKey of ['travel_out', 'travel_back']) {
+      const req = {
+        user: { id: 42, role: 'engineer' },
+        params: { id: '88' },
+        body: { segmentKey, overtimeResult: 'comp_time' },
+      }
+      const res = createResponse()
+      let thrown = null
+      try {
+        await controller.createServiceOrderOvertimeRequest(req, res)
+      } catch (error) {
+        thrown = error
+      }
+      assert.equal(thrown?.status, 400)
+      assert.match(thrown?.message || '', /工单时段不正确/)
+    }
+  }
+
   {
     let fallbackQueries = 0
     const firstSnapshot = {

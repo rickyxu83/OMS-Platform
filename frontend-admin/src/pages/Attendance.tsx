@@ -33,6 +33,8 @@ interface ServiceOrderSummary {
   actualStartAt?: string | null;
   actualEndAt?: string | null;
   returnAt?: string | null;
+  reportedDepartureAt?: string | null;
+  reportedReturnAt?: string | null;
   unavailable?: boolean;
 }
 
@@ -411,28 +413,49 @@ function annualUsageDays(item?: { annualLeaveDays?: number; annualLeaveHours?: n
   return Number(item.annualLeaveHours || 0) / 8;
 }
 
-function combineTravelSegments(segments: OvertimeSegment[]) {
-  const items = segments.filter((item) => item.kind === "travel");
-  if (!items.length) return null;
-  return {
-    key: "travel",
-    kind: "travel" as const,
-    label: "来回路上实际时间",
-    startAt: items[0].startAt,
-    endAt: items[items.length - 1].endAt,
-    hours: items.reduce((sum, item) => sum + Number(item.hours || 0), 0),
-    allowedResults: ["comp_time"],
-  };
-}
-
+// 后端已把去程/回程合并成一条 travel 段返回（含 dayType），前端不再自行合并。
+// 时段顺序固定为 travel 在前、work 在后。参见 docs/adr/0002。
 function overtimeRows(order: OvertimeServiceOrder | null) {
   if (!order) return [];
-  const rows: OvertimeSegment[] = [];
-  const travel = combineTravelSegments(order.segments || []);
-  const work = (order.segments || []).find((item) => item.key === "work");
-  if (travel) rows.push(travel);
-  if (work) rows.push(work);
-  return rows;
+  return order.segments || [];
+}
+
+// datetime-local 输入用 "YYYY-MM-DDTHH:mm"，工单/后端时间用空格分隔，做一次转换。
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+  return String(value).replace(" ", "T").slice(0, 16);
+}
+
+function parseLocalDateTime(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(String(value).replace(" ", "T"));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+// 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（掐平日 18:00、整点取整）。
+// dayType 取所选 travel 段（同城往返为同一天，边界情况以提交后端核算为准）。
+function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
+  const start = parseLocalDateTime(startAt);
+  const end = parseLocalDateTime(endAt);
+  if (!start || !end || end <= start) return 0;
+  const fullDay = dayType === "legal_holiday" || dayType === "rest_day";
+  const endHour = end.getHours() + end.getMinutes() / 60;
+  if (!fullDay && endHour <= 18) return 0;
+  const overtimeStart = fullDay
+    ? start
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
+  const rawStart = start > overtimeStart ? start : overtimeStart;
+  const effStart = new Date(rawStart);
+  if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
+    effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
+  } else {
+    effStart.setMinutes(0, 0, 0);
+  }
+  const effEnd = new Date(end);
+  effEnd.setMinutes(0, 0, 0);
+  if (effEnd <= effStart) return 0;
+  const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
+  return hours > 0 ? hours : 0;
 }
 
 function overtimeSelection(items: OvertimeServiceOrder[], currentOrderId: string, currentSegmentKey: string) {
@@ -558,6 +581,9 @@ export function Attendance() {
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
   const [selectedSegmentKey, setSelectedSegmentKey] = useState("");
+  // 路上时间可由工程师自报去程出发、回程返回（默认带工单值），只随本条申请提交。参见 docs/adr/0002。
+  const [travelDepartureAt, setTravelDepartureAt] = useState("");
+  const [travelReturnAt, setTravelReturnAt] = useState("");
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
   const [reportExportOpen, setReportExportOpen] = useState(false);
@@ -782,6 +808,34 @@ export function Attendance() {
     }
   }, [selectedSegment, form.overtimeResult]);
 
+  // 切换工单时，去程/回程输入框回填工单默认时间，工程师可在此基础上改。参见 docs/adr/0002。
+  useEffect(() => {
+    setTravelDepartureAt(toDateTimeLocal(selectedOvertimeOrder?.departureAt));
+    setTravelReturnAt(toDateTimeLocal(selectedOvertimeOrder?.returnAt));
+  }, [selectedOvertimeOrderId, selectedOvertimeOrder?.departureAt, selectedOvertimeOrder?.returnAt]);
+
+  // 去程/回程改动后，前端按后端同样口径预览合并时长（提交后仍以后端核算为准）。
+  const travelPreview = useMemo(() => {
+    if (!selectedOvertimeOrder) return null;
+    const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
+    const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
+    const dayType = selectedOvertimeRows.find((item) => item.key === "travel")?.dayType;
+    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
+    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
+    return { hours: Math.round((outbound + back) * 100) / 100, dayType };
+  }, [selectedOvertimeOrder, selectedOvertimeRows, travelDepartureAt, travelReturnAt]);
+
+  const travelInvalid = useMemo(() => {
+    if (selectedSegment?.kind !== "travel" || !selectedOvertimeOrder) return "";
+    const arrival = parseLocalDateTime(selectedOvertimeOrder.actualStartAt);
+    const finish = parseLocalDateTime(selectedOvertimeOrder.actualEndAt);
+    const departure = parseLocalDateTime(travelDepartureAt);
+    const back = parseLocalDateTime(travelReturnAt);
+    if (departure && arrival && departure > arrival) return "去程出发时间不能晚于工单到达时间";
+    if (back && finish && back < finish) return "回程返回时间不能早于工单完工时间";
+    return "";
+  }, [selectedSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
+
   function setAnnualDraft(patch: Partial<{
     annualStartDate: string;
     annualEndDate: string;
@@ -818,9 +872,18 @@ export function Attendance() {
     try {
       if (requestType === "overtime") {
         if (!selectedOvertimeOrder || !selectedSegment) throw new Error("请选择工单和加班时段");
+        if (selectedSegment.kind === "travel" && travelInvalid) throw new Error(travelInvalid);
+        // 路上时间带上工程师自报的去程出发、回程返回（默认工单值）；工作段不传，锁死按工单。
+        const travelOverrides = selectedSegment.kind === "travel"
+          ? {
+              departureAt: travelDepartureAt ? travelDepartureAt.replace("T", " ") : undefined,
+              returnAt: travelReturnAt ? travelReturnAt.replace("T", " ") : undefined,
+            }
+          : {};
         await api.post(`/attendance/overtime/service-orders/${selectedOvertimeOrder.id}/apply`, {
           segmentKey: selectedSegment.key,
           overtimeResult: selectedSegment.kind === "travel" ? "comp_time" : form.overtimeResult,
+          ...travelOverrides,
         });
       } else {
         if (!form.delegateEmployeeId) throw new Error("请选择代理人");
@@ -853,6 +916,8 @@ export function Attendance() {
       setProofFiles([]);
       setSelectedOvertimeOrderId("");
       setSelectedSegmentKey("");
+      setTravelDepartureAt("");
+      setTravelReturnAt("");
       await load();
       if (requestType === "overtime") await loadOvertimeOrders();
     } catch (e) {
@@ -1302,6 +1367,45 @@ export function Attendance() {
                               ) : null}
                             </div>
                           </div>
+                          {selectedSegment?.kind === "travel" ? (
+                            <div className="space-y-3 rounded-md border bg-muted/10 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <Label className="text-sm">去程/回程时间</Label>
+                                <span className="text-xs text-muted-foreground">默认带入工单时间，可按本人实际往返修改</span>
+                              </div>
+                              <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-muted-foreground">去程出发</Label>
+                                  <Input
+                                    className="h-11"
+                                    type="datetime-local"
+                                    value={travelDepartureAt}
+                                    max={toDateTimeLocal(selectedOvertimeOrder.actualStartAt)}
+                                    onChange={(event) => setTravelDepartureAt(event.target.value)}
+                                  />
+                                  <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-muted-foreground">回程返回</Label>
+                                  <Input
+                                    className="h-11"
+                                    type="datetime-local"
+                                    value={travelReturnAt}
+                                    min={toDateTimeLocal(selectedOvertimeOrder.actualEndAt)}
+                                    onChange={(event) => setTravelReturnAt(event.target.value)}
+                                  />
+                                  <p className="text-xs text-muted-foreground">完工（工单）：{formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)}</p>
+                                </div>
+                              </div>
+                              {travelInvalid ? (
+                                <p className="text-xs text-destructive">{travelInvalid}</p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">
+                                  预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
                           <div className="rounded-md border bg-muted/10 p-3">
                             <div className="text-xs font-medium text-muted-foreground">工单信息</div>
                             <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
@@ -1511,18 +1615,20 @@ export function Attendance() {
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
                             <span className="text-muted-foreground">时间</span>
                             <span className="font-medium">
-                              {selectedSegment ? formatDateTime(selectedSegment.startAt) + " - " + formatDateTime(selectedSegment.endAt) : "-"}
+                              {selectedSegment?.kind === "travel"
+                                ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
+                                : selectedSegment ? formatDateTime(selectedSegment.startAt) + " - " + formatDateTime(selectedSegment.endAt) : "-"}
                             </span>
                           </div>
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
                             <span className="text-muted-foreground">核算结果</span>
                             <span className="font-medium">
                               {selectedSegment
-                                ? hours(selectedSegment.hours) + " 小时 · " + (
-                                  selectedSegment.kind === "travel"
-                                    ? "固定转调休"
-                                    : form.overtimeResult === "pay" ? overtimePayLabel(selectedSegment) : "转调休"
-                                )
+                                ? (selectedSegment.kind === "travel"
+                                  ? hours(travelPreview?.hours || 0) + " 小时 · 固定转调休"
+                                  : hours(selectedSegment.hours) + " 小时 · " + (
+                                    form.overtimeResult === "pay" ? overtimePayLabel(selectedSegment) : "转调休"
+                                  ))
                                 : "未选择"}
                             </span>
                           </div>
@@ -1571,7 +1677,7 @@ export function Attendance() {
                     <Button
                       className="h-11 w-full"
                       onClick={submitRequest}
-                      disabled={submitting || (form.requestType === "overtime" && !selectedSegment)}
+                      disabled={submitting || (form.requestType === "overtime" && (!selectedSegment || Boolean(travelInvalid)))}
                     >
                       {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                       提交申请
@@ -2375,6 +2481,12 @@ function ServiceOrderApprovalSummary({ order }: { order: ServiceOrderSummary }) 
           <div className="min-w-0 break-words"><span className="font-medium text-foreground">到达：</span>{formatDateTime(order.actualStartAt || undefined)}</div>
           <div className="min-w-0 break-words"><span className="font-medium text-foreground">完成：</span>{formatDateTime(order.actualEndAt || undefined)}</div>
           <div className="min-w-0 break-words"><span className="font-medium text-foreground">返回：</span>{formatDateTime(order.returnAt || undefined)}</div>
+          {order.reportedDepartureAt ? (
+            <div className="min-w-0 break-words"><span className="font-medium text-foreground">自报出发：</span>{formatDateTime(order.reportedDepartureAt)}</div>
+          ) : null}
+          {order.reportedReturnAt ? (
+            <div className="min-w-0 break-words"><span className="font-medium text-foreground">自报返回：</span>{formatDateTime(order.reportedReturnAt)}</div>
+          ) : null}
         </div>
       </details>
     </div>
