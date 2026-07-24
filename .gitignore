@@ -23,8 +23,13 @@ yarn-error.log*
 AGENTS.local.md
 docs/deploy.local.md
 docs/*.local.md
+docs/*.local.*
 scripts/deploy.local.env
 .env.deploy.local
+
+# Local prototypes / scratch (not for the repo)
+prototypes/
+**/prototypes/
 
 # Local automation and session artifacts
 .playwright-mcp/
