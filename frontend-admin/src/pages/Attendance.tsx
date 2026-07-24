@@ -2473,32 +2473,63 @@ function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrder
   );
 }
 
+function PreviewField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 break-words text-sm">{value || "-"}</div>
+    </div>
+  );
+}
+
+// 工单预览弹窗：只用申请里已带的工单快照渲染，不调 /service-orders/:id 接口——
+// 因为审批链里的行政主管没有 order.view 权限，走接口会 403。样式对齐工单处理页的详情弹窗
+// （顶部徽标 + 分组字段网格 + 问题区块 + 往返时间），但数据仅限快照字段。参见 docs/adr/0002。
 function ServiceOrderPreviewDialog({ order, onClose }: { order: ServiceOrderSummary | null; onClose: () => void }) {
+  const modeLabel = order ? (SERVICE_MODE_LABELS[order.serviceMode || ""] || order.serviceMode || "-") : "-";
+  const typeLabel = order ? (SERVICE_TYPE_LABELS[order.serviceType || ""] || order.serviceType || "-") : "-";
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-[640px]">
+      <DialogContent className="sm:max-w-[720px]">
         <DialogHeader>
           <DialogTitle>工单 {order?.orderNo || (order ? `#${order.id}` : "详情")}</DialogTitle>
-          <DialogDescription>{order ? `${order.customerName || "-"} · ${serviceOrderTypeLabel(order)}` : ""}</DialogDescription>
+          <DialogDescription>{order ? `${order.customerName || "-"} · ${modeLabel} / ${typeLabel}` : ""}</DialogDescription>
         </DialogHeader>
         {order ? (
-          <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">客户：</span>{order.customerName || "-"}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">设备：</span>{order.deviceName || "-"}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">联系人：</span>{order.contactName || "-"}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">电话：</span>{order.contactPhone || "-"}</div>
-            <div className="min-w-0 break-words sm:col-span-2"><span className="text-muted-foreground">问题：</span>{order.issueDescription || "-"}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">服务日：</span>{formatDateTime(order.serviceAt || undefined)}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">出发（工单）：</span>{formatDateTime(order.departureAt || undefined)}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">到达（工单）：</span>{formatDateTime(order.actualStartAt || undefined)}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">完成（工单）：</span>{formatDateTime(order.actualEndAt || undefined)}</div>
-            <div className="min-w-0 break-words"><span className="text-muted-foreground">返回（工单）：</span>{formatDateTime(order.returnAt || undefined)}</div>
-            {order.reportedDepartureAt ? (
-              <div className="min-w-0 break-words"><span className="text-muted-foreground">自报出发：</span>{formatDateTime(order.reportedDepartureAt)}</div>
-            ) : null}
-            {order.reportedReturnAt ? (
-              <div className="min-w-0 break-words"><span className="text-muted-foreground">自报返回：</span>{formatDateTime(order.reportedReturnAt)}</div>
-            ) : null}
+          <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">{modeLabel}</Badge>
+              <Badge variant="outline">{typeLabel}</Badge>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <PreviewField label="客户" value={order.customerName} />
+              <PreviewField label="联系人" value={order.contactName} />
+              <PreviewField label="联系电话" value={order.contactPhone} />
+              <PreviewField label="设备" value={order.deviceName} />
+              <PreviewField label="服务日" value={formatDateTime(order.serviceAt || undefined)} />
+            </div>
+
+            <div>
+              <div className="text-xs text-muted-foreground">问题描述</div>
+              <div className="mt-1 rounded-md border bg-muted/30 p-3 text-sm break-words whitespace-pre-wrap">{order.issueDescription || "-"}</div>
+            </div>
+
+            <div>
+              <div className="text-xs text-muted-foreground">往返与作业时间（工单）</div>
+              <div className="mt-2 grid gap-4 rounded-md border bg-muted/30 p-3 md:grid-cols-2">
+                <PreviewField label="出发" value={formatDateTime(order.departureAt || undefined)} />
+                <PreviewField label="到达" value={formatDateTime(order.actualStartAt || undefined)} />
+                <PreviewField label="完成" value={formatDateTime(order.actualEndAt || undefined)} />
+                <PreviewField label="返回" value={formatDateTime(order.returnAt || undefined)} />
+                {order.reportedDepartureAt ? (
+                  <PreviewField label="自报出发" value={formatDateTime(order.reportedDepartureAt)} />
+                ) : null}
+                {order.reportedReturnAt ? (
+                  <PreviewField label="自报返回" value={formatDateTime(order.reportedReturnAt)} />
+                ) : null}
+              </div>
+            </div>
           </div>
         ) : null}
         <DialogFooter>
