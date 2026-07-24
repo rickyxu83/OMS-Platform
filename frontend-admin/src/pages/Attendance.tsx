@@ -564,6 +564,8 @@ export function Attendance() {
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [adjustDialog, setAdjustDialog] = useState<{ employee: EmployeeProfile; draft: AdjustDraft } | null>(null);
   const [adjustSaving, setAdjustSaving] = useState(false);
+  // 待审批列表点击工单号，直接在当前页弹出工单快照预览（数据来自申请自带快照，不再请求 /service-orders）。
+  const [previewOrder, setPreviewOrder] = useState<ServiceOrderSummary | null>(null);
   const [recordStatus, setRecordStatus] = useState("all");
   const [recordType, setRecordType] = useState("all");
   const [recordKeyword, setRecordKeyword] = useState("");
@@ -1675,6 +1677,7 @@ export function Attendance() {
               items={approvalTodos}
               loading={loading}
               onDownloadProof={previewProof}
+              onPreviewOrder={setPreviewOrder}
               emptyText="暂无待审批的申请"
               actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
@@ -1716,6 +1719,7 @@ export function Attendance() {
             items={mine}
             loading={loading}
             onDownloadProof={previewProof}
+            onPreviewOrder={setPreviewOrder}
             showEmployee={false}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
@@ -1752,6 +1756,7 @@ export function Attendance() {
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
+              onPreviewOrder={setPreviewOrder}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
               toolbar={(
                 <>
@@ -2144,6 +2149,8 @@ export function Attendance() {
         </div>
       ) : null}
 
+      <ServiceOrderPreviewDialog order={previewOrder} onClose={() => setPreviewOrder(null)} />
+
       <Dialog open={Boolean(proofPreview)} onOpenChange={(open) => { if (!open) closeProofPreview(); }}>
         <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
           <DialogHeader className="border-b px-5 py-4">
@@ -2424,7 +2431,7 @@ function serviceOrderTypeLabel(order: ServiceOrderSummary) {
   return `${mode} / ${type}`;
 }
 
-function ServiceOrderApprovalSummary({ order }: { order: ServiceOrderSummary }) {
+function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrderSummary; onPreview?: (order: ServiceOrderSummary) => void }) {
   const orderLabel = order.orderNo || `#${order.id}`;
   if (order.unavailable) {
     return (
@@ -2436,33 +2443,69 @@ function ServiceOrderApprovalSummary({ order }: { order: ServiceOrderSummary }) 
   return (
     <div className="mt-2 min-w-0 rounded-md border bg-muted/10 p-3 text-xs">
       <div className="grid min-w-0 gap-x-4 gap-y-1 text-muted-foreground sm:grid-cols-2">
-        <div className="min-w-0 break-words"><span className="font-medium text-foreground">工单：</span>{orderLabel}</div>
+        <div className="min-w-0 break-words">
+          <span className="font-medium text-foreground">工单：</span>
+          {onPreview ? (
+            <button
+              type="button"
+              onClick={() => onPreview(order)}
+              className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {orderLabel}
+            </button>
+          ) : orderLabel}
+        </div>
         <div className="min-w-0 break-words"><span className="font-medium text-foreground">客户：</span>{order.customerName || "-"}</div>
         <div className="min-w-0 break-words"><span className="font-medium text-foreground">设备：</span>{order.deviceName || "-"}</div>
         <div className="min-w-0 break-words"><span className="font-medium text-foreground">类型：</span>{serviceOrderTypeLabel(order)}</div>
         <div className="min-w-0 break-words sm:col-span-2"><span className="font-medium text-foreground">问题：</span>{order.issueDescription || "-"}</div>
       </div>
-      <details className="mt-2 border-t pt-2">
-        <summary className="cursor-pointer select-none rounded-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          展开工单详情
-        </summary>
-        <div className="mt-2 grid min-w-0 gap-x-4 gap-y-1 text-muted-foreground sm:grid-cols-2">
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">联系人：</span>{order.contactName || "-"}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">电话：</span>{order.contactPhone || "-"}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">服务日：</span>{formatDateTime(order.serviceAt || undefined)}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">出发：</span>{formatDateTime(order.departureAt || undefined)}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">到达：</span>{formatDateTime(order.actualStartAt || undefined)}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">完成：</span>{formatDateTime(order.actualEndAt || undefined)}</div>
-          <div className="min-w-0 break-words"><span className="font-medium text-foreground">返回：</span>{formatDateTime(order.returnAt || undefined)}</div>
-          {order.reportedDepartureAt ? (
-            <div className="min-w-0 break-words"><span className="font-medium text-foreground">自报出发：</span>{formatDateTime(order.reportedDepartureAt)}</div>
-          ) : null}
-          {order.reportedReturnAt ? (
-            <div className="min-w-0 break-words"><span className="font-medium text-foreground">自报返回：</span>{formatDateTime(order.reportedReturnAt)}</div>
-          ) : null}
-        </div>
-      </details>
+      {onPreview ? (
+        <button
+          type="button"
+          onClick={() => onPreview(order)}
+          className="mt-2 border-t pt-2 w-full text-left font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          查看工单详情
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+function ServiceOrderPreviewDialog({ order, onClose }: { order: ServiceOrderSummary | null; onClose: () => void }) {
+  return (
+    <Dialog open={Boolean(order)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-[640px]">
+        <DialogHeader>
+          <DialogTitle>工单 {order?.orderNo || (order ? `#${order.id}` : "详情")}</DialogTitle>
+          <DialogDescription>{order ? `${order.customerName || "-"} · ${serviceOrderTypeLabel(order)}` : ""}</DialogDescription>
+        </DialogHeader>
+        {order ? (
+          <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">客户：</span>{order.customerName || "-"}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">设备：</span>{order.deviceName || "-"}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">联系人：</span>{order.contactName || "-"}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">电话：</span>{order.contactPhone || "-"}</div>
+            <div className="min-w-0 break-words sm:col-span-2"><span className="text-muted-foreground">问题：</span>{order.issueDescription || "-"}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">服务日：</span>{formatDateTime(order.serviceAt || undefined)}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">出发（工单）：</span>{formatDateTime(order.departureAt || undefined)}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">到达（工单）：</span>{formatDateTime(order.actualStartAt || undefined)}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">完成（工单）：</span>{formatDateTime(order.actualEndAt || undefined)}</div>
+            <div className="min-w-0 break-words"><span className="text-muted-foreground">返回（工单）：</span>{formatDateTime(order.returnAt || undefined)}</div>
+            {order.reportedDepartureAt ? (
+              <div className="min-w-0 break-words"><span className="text-muted-foreground">自报出发：</span>{formatDateTime(order.reportedDepartureAt)}</div>
+            ) : null}
+            {order.reportedReturnAt ? (
+              <div className="min-w-0 break-words"><span className="text-muted-foreground">自报返回：</span>{formatDateTime(order.reportedReturnAt)}</div>
+            ) : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>关闭</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2503,6 +2546,7 @@ function RequestList({
   emptyText = "暂无记录",
   toolbar,
   onDownloadProof,
+  onPreviewOrder,
 }: {
   title: string;
   description: string;
@@ -2513,6 +2557,7 @@ function RequestList({
   emptyText?: string;
   toolbar?: ReactNode;
   onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void;
+  onPreviewOrder?: (order: ServiceOrderSummary) => void;
 }) {
   const hasActions = typeof actions === "function";
   return (
@@ -2559,6 +2604,7 @@ function RequestList({
                       {item.requestType === "overtime" && item.sourceType === "service_order" ? (
                         <ServiceOrderApprovalSummary
                           order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
+                          onPreview={onPreviewOrder}
                         />
                       ) : null}
                       {item.delegateEmployeeName ? <div className="text-xs text-muted-foreground">代理人：{item.delegateEmployeeName}</div> : null}

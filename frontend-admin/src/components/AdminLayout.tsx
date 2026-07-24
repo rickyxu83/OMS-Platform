@@ -340,6 +340,30 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     && Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
 
+  // 考勤待审批数量：给左侧「考勤管理」入口显示徽标。口径与考勤页 approvalTodos 一致（后端接口保证）。
+  const canApproveAttendance = hasPermission(
+    "attendance.approve", "attendance.view", "attendance.manage",
+    "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve",
+  );
+  const [attendancePendingCount, setAttendancePendingCount] = useState(0);
+  useEffect(() => {
+    if (!canApproveAttendance) return;
+    let cancelled = false;
+    async function loadPendingCount() {
+      try {
+        const data = await api.get("/attendance/requests/pending-count");
+        if (!cancelled) setAttendancePendingCount(Number(data?.count || 0));
+      } catch {
+        // 徽标是辅助提示，拉取失败静默处理，不打断页面
+      }
+    }
+    loadPendingCount();
+    return () => {
+      cancelled = true;
+    };
+    // location.key 变化时重新拉取，保证审批后切换页面能刷新徽标
+  }, [canApproveAttendance, location.key]);
+
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (!content) return;
@@ -579,9 +603,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             <Icon className={`w-4 h-4 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
                             <span className="text-sm font-medium">{item.label}</span>
                           </div>
-                          {isActive && (
+                          {item.path === "attendance" && attendancePendingCount > 0 ? (
+                            <Badge className="h-5 min-w-5 justify-center px-1.5 text-xs">{attendancePendingCount}</Badge>
+                          ) : isActive ? (
                             <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}

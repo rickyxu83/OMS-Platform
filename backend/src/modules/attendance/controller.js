@@ -1874,6 +1874,37 @@ async function listRequests(req, res) {
   })) })
 }
 
+// 我的待审批数量：供导航栏徽标使用。口径与考勤页 approvalTodos 一致——
+// supervisor scope 的待办（已排除本人提交）+ 行政终审 pending_admin，两者按申请 ID 去重。
+async function pendingApprovalCount(req, res) {
+  await ensureSchema()
+  const employee = await currentEmployee(req.user.id)
+  const ids = new Set()
+
+  // supervisor 待办：与列表页 scope=supervisor + 前端 supervisorPending 状态过滤一致
+  const supervisorPendingStatuses = ['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp']
+  const supervisorScoped = listScopeSql('supervisor', req.user, employee)
+  const supervisorRows = await query(
+    `SELECT r.id
+     FROM attendance_requests r
+     JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     WHERE ${supervisorScoped.sql}
+       AND r.status IN (${supervisorPendingStatuses.map((status) => `'${status}'`).join(', ')})`,
+    supervisorScoped.params,
+  )
+  for (const row of supervisorRows) ids.add(Number(row.id))
+
+  // 行政终审：仅 attendance.admin.approve 可见 pending_admin
+  if (await hasPermission(req.user.role, 'attendance.admin.approve')) {
+    const adminRows = await query(
+      "SELECT id FROM attendance_requests WHERE status = 'pending_admin'",
+    )
+    for (const row of adminRows) ids.add(Number(row.id))
+  }
+
+  res.json({ count: ids.size })
+}
+
 async function requestForUpdate(connection, id) {
   const [rows] = await connection.execute(
     `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
@@ -2426,6 +2457,7 @@ module.exports = {
   listOvertimeServiceOrders,
   createServiceOrderOvertimeRequest,
   listRequests,
+  pendingApprovalCount,
   approveDelegate,
   approveSupervisor,
   approveHr,

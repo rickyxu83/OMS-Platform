@@ -1370,6 +1370,47 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.match(listQuery.sql, /r\.submitted_by <> :currentUserId/)
   }
 
+  // 待审批数量：supervisor 待办 + 行政 pending_admin，按申请 ID 去重
+  {
+    const { controller } = await loadController({
+      hasPermission: async (_role, key) => key === 'attendance.admin.approve',
+      queryHandler: async (sql) => {
+        // supervisor scope count 查询
+        if (/FROM attendance_requests r/.test(sql) && /r\.status IN \(/.test(sql) && !/FOR UPDATE/.test(sql)) {
+          return [{ id: 501 }, { id: 502 }]
+        }
+        // 行政 pending_admin count 查询（502 与 supervisor 重叠，应去重）
+        if (/WHERE status = 'pending_admin'/.test(sql)) {
+          return [{ id: 502 }, { id: 503 }]
+        }
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.pendingApprovalCount({ user: { id: 88, role: 'administrative_supervisor' } }, res)
+    // 501、502、503 去重后为 3
+    assert.equal(res.body.count, 3)
+  }
+
+  // 待审批数量：无行政权限时不计 pending_admin
+  {
+    const { controller } = await loadController({
+      hasPermission: async () => false,
+      queryHandler: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /r\.status IN \(/.test(sql) && !/FOR UPDATE/.test(sql)) {
+          return [{ id: 601 }]
+        }
+        if (/WHERE status = 'pending_admin'/.test(sql)) {
+          throw new Error('无行政权限不应查询 pending_admin')
+        }
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.pendingApprovalCount({ user: { id: 42, role: 'engineer' } }, res)
+    assert.equal(res.body.count, 1)
+  }
+
   {
     const executeCalls = []
     const { controller } = await loadController({
