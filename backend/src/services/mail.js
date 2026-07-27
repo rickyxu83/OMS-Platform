@@ -280,7 +280,7 @@ async function sendMaintenanceExpiryMail(devices = [], recipients = []) {
   return { sent: true, to, deviceCount: devices.length }
 }
 
-async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detailBaseUrl = '') {
+async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detailBaseUrl = '', options = {}) {
   const settings = await effectiveSettings()
   const mail = settings.mail
   if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
@@ -312,6 +312,9 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
     )
     .join('')
 
+  const audienceNote = options.audience === 'engineer'
+    ? '该提醒发送给设备安装工单的工程师，用于补齐所装设备的维保信息。系统每周一检查并提醒一次，相关信息补齐后将自动停止提醒。'
+    : '该提醒仅针对客户关联销售发送，用于补齐客户设备维保信息。系统每周一检查并提醒一次，相关信息补齐后将自动停止提醒。'
   const subject = `维保信息待完善提醒：${devices.length} 台客户设备需补齐维保资料`
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
@@ -333,7 +336,7 @@ async function sendNoMaintenanceDevicesMail(devices = [], recipients = [], detai
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:16px;color:#64748b;font-size:13px">该提醒仅针对客户关联销售发送，用于补齐客户设备维保信息。系统每周一检查并提醒一次，相关信息补齐后将自动停止提醒。</p>
+      <p style="margin-top:16px;color:#64748b;font-size:13px">${audienceNote}</p>
       ${mailFooter()}
     </div>
   `

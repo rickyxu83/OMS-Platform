@@ -624,6 +624,7 @@ function startScheduler() {
       const devices = await query(
         `SELECT d.id, d.name, d.model, d.serial_no, d.location,
                 d.maintenance_type, d.maintenance_start, d.maintenance_end,
+                d.installation_source_service_order_id,
                 c.name AS customer_name, c.salesperson
          FROM devices d
          JOIN customers c ON c.id = d.customer_id
@@ -636,8 +637,6 @@ function startScheduler() {
                AND d.maintenance_end IS NULL
              )
            )
-           AND c.salesperson IS NOT NULL
-           AND c.salesperson <> ''
          ORDER BY c.salesperson ASC, c.name ASC, d.model ASC, d.name ASC, d.id ASC`,
       )
       if (!devices.length) {
@@ -647,7 +646,8 @@ function startScheduler() {
 
       let sent = 0
       let skipped = 0
-      const salespersonNames = [...new Set(devices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
+      const salesDevices = devices.filter((device) => String(device.salesperson || '').trim())
+      const salespersonNames = [...new Set(salesDevices.map((d) => (d.salesperson || '').trim()).filter(Boolean))]
       const placeholders = salespersonNames.map((_, i) => `:sp${i}`).join(',')
       const params = {}
       salespersonNames.forEach((name, i) => { params[`sp${i}`] = name })
@@ -664,7 +664,7 @@ function startScheduler() {
 
       for (const salesperson of salespersonRows) {
         const names = new Set([salesperson.real_name, salesperson.username].map((value) => String(value || '').trim()).filter(Boolean))
-        const scopedDevices = devices.filter((device) => names.has(String(device.salesperson || '').trim()))
+        const scopedDevices = salesDevices.filter((device) => names.has(String(device.salesperson || '').trim()))
         if (!scopedDevices.length) continue
         const result = await sendNoMaintenanceDevicesMail(scopedDevices, [salesperson], nSettings.serviceOrderAdminBaseUrl)
         if (result?.skipped) {
@@ -677,6 +677,43 @@ function startScheduler() {
         } else {
           sent += 1
           console.log(`[scheduler] Incomplete maintenance device mail sent to ${salesperson.email}: ${result.deviceCount} devices`)
+        }
+      }
+      // 同步提醒创建设备的安装工单工程师:设备由哪张工单创建,就发给该工单的全部工程师
+      const sourceOrderIds = [...new Set(devices.map((d) => Number(d.installation_source_service_order_id)).filter(Boolean))]
+      if (sourceOrderIds.length) {
+        const orderPlaceholders = sourceOrderIds.map((_, i) => `:so${i}`).join(',')
+        const orderParams = {}
+        sourceOrderIds.forEach((id, i) => { orderParams[`so${i}`] = id })
+        const engineerRows = await query(
+          `SELECT soe.service_order_id, u.email
+           FROM service_order_engineers soe
+           JOIN users u ON u.id = soe.engineer_id
+           WHERE soe.service_order_id IN (${orderPlaceholders})
+             AND u.email IS NOT NULL AND u.email <> ''`,
+          orderParams,
+        )
+        const engineersByOrderId = new Map()
+        for (const row of engineerRows) {
+          const key = Number(row.service_order_id)
+          if (!engineersByOrderId.has(key)) engineersByOrderId.set(key, [])
+          engineersByOrderId.get(key).push({ email: row.email })
+        }
+        for (const [orderId, engineers] of engineersByOrderId) {
+          const engineerDevices = devices.filter((d) => Number(d.installation_source_service_order_id) === orderId)
+          if (!engineerDevices.length) continue
+          const result = await sendNoMaintenanceDevicesMail(engineerDevices, engineers, nSettings.serviceOrderAdminBaseUrl, { audience: 'engineer' })
+          if (result?.skipped) {
+            skipped += 1
+            console.warn('[scheduler] Incomplete maintenance device mail to engineers skipped', {
+              orderId,
+              reason: result.reason,
+              missing: result.missing,
+            })
+          } else {
+            sent += 1
+            console.log(`[scheduler] Incomplete maintenance device mail sent to ${engineers.length} engineer(s) of order ${orderId}: ${result.deviceCount} devices`)
+          }
         }
       }
       console.log(`[scheduler] Incomplete maintenance device notifications processed: sent=${sent}, skipped=${skipped}`)
