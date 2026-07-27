@@ -1415,9 +1415,32 @@ function payloadFromOrder(order: ServiceOrder): ReportForm {
       installDevicesFromParts.push(draft);
     });
   }
-  const installDevices = installDevicesFromParts.length
-    ? installDevicesFromParts
-    : order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
+  // 后端详情已返回本工单创建的安装设备,直接带出,避免编辑时丢数据/重复新建
+  const installedDeviceDrafts: InstallDeviceDraft[] = [];
+  if (isInstallOrder) {
+    (order.installedDevices || []).forEach((device) => {
+      const deviceId = String(device.id || "");
+      if (!deviceId || installDeviceDraftIdByDeviceId.has(deviceId)) return;
+      const draft = emptyInstallDevice({
+        inputMode: "existing",
+        deviceId,
+        model: device.model || "",
+        pn: device.pn || "",
+        serialNo: device.serialNo || "",
+        remark: device.remark || "",
+      });
+      installDeviceDraftIdByDeviceId.set(deviceId, draft.id);
+      installedDeviceDrafts.push(draft);
+    });
+  }
+  const installDevices = installedDeviceDrafts.length
+    ? [
+        ...installedDeviceDrafts,
+        ...installDevicesFromParts.filter((draft) => !installedDeviceDrafts.some((item) => item.deviceId === draft.deviceId)),
+      ]
+    : installDevicesFromParts.length
+      ? installDevicesFromParts
+      : order.deviceModel || order.devicePn || order.deviceSerialNo || order.deviceRemark
       ? [emptyInstallDevice({
           inputMode: order.deviceId ? "existing" : "manual",
           deviceId: order.deviceId ? String(order.deviceId) : "",

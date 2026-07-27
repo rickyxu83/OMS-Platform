@@ -2232,7 +2232,10 @@ async function resolveInstallDevices(connection, installDevices, { customerId, s
   for (const device of installDevices) {
     if (device.deviceId) {
       await assertDeviceBelongsToCustomer(connection, device.deviceId, customerId)
-      if (updateLegacyExisting && device.fromLegacy && (device.name || device.model || device.pn || device.serialNo || device.remark)) {
+      const hasFieldUpdates = Boolean(device.name || device.model || device.pn || device.serialNo || device.remark)
+      // 仅允许更新本工单自己创建的安装设备(或历史单设备字段),避免误改客户已有资产
+      const updatesOwnDevice = Boolean(updateLegacyExisting && serviceOrderId && !device.fromLegacy)
+      if (updateLegacyExisting && hasFieldUpdates && (device.fromLegacy || updatesOwnDevice)) {
         if (!device.model) throw badRequest('安装设备型号不能为空')
         await connection.execute(
           `UPDATE devices
@@ -2241,7 +2244,8 @@ async function resolveInstallDevices(connection, installDevices, { customerId, s
                pn = :devicePn,
                serial_no = :deviceSerialNo,
                remark = :deviceRemark
-           WHERE id = :deviceId`,
+           WHERE id = :deviceId
+             AND (:fromLegacy = 1 OR installation_source_service_order_id = :serviceOrderId)`,
           {
             deviceId: device.deviceId,
             deviceName: device.name || null,
@@ -2249,6 +2253,8 @@ async function resolveInstallDevices(connection, installDevices, { customerId, s
             devicePn: device.pn || null,
             deviceSerialNo: device.serialNo || null,
             deviceRemark: device.remark || null,
+            fromLegacy: device.fromLegacy ? 1 : 0,
+            serviceOrderId,
           },
         )
       }
@@ -3820,7 +3826,18 @@ async function updateSelfReport(req, res) {
           serviceOrderId: req.params.id,
           updateLegacyExisting: true,
         })
-      : { installDeviceIdMap: new Map(), primaryDeviceId: null }
+      : { installDeviceIdMap: new Map(), primaryDeviceId: null, resolvedDevices: [] }
+    if (shouldManageInstallDevice) {
+      // 编辑时被移出列表的安装设备:解除来源标记使其不再随工单带出,设备本体保留
+      const keptInstallDeviceIds = (installDeviceResolution.resolvedDevices || [])
+        .map((device) => Number(device.resolvedDeviceId))
+        .filter(Boolean)
+      const keptSql = keptInstallDeviceIds.length ? ` AND id NOT IN (${keptInstallDeviceIds.join(',')})` : ''
+      await connection.execute(
+        `UPDATE devices SET installation_source_service_order_id = NULL WHERE installation_source_service_order_id = :orderId${keptSql}`,
+        { orderId: req.params.id },
+      )
+    }
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
