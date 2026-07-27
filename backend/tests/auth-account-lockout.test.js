@@ -77,6 +77,7 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
     ensureUserLoginColumns: async () => undefined,
   })
   installMock(require.resolve('bcrypt'), {
+    hashSync: () => 'timing-guard-hash',
     compare: async (...args) => {
       compareCalls.push(args)
       return passwordOk

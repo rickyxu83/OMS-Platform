@@ -22,6 +22,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
