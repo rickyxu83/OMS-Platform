@@ -685,11 +685,18 @@ function startScheduler() {
         const orderPlaceholders = sourceOrderIds.map((_, i) => `:so${i}`).join(',')
         const orderParams = {}
         sourceOrderIds.forEach((id, i) => { orderParams[`so${i}`] = id })
+        // 工程师取工单协作表 + 历史工单的 assigned_engineer_id(老数据可能没有关联表记录)
         const engineerRows = await query(
           `SELECT soe.service_order_id, u.email
            FROM service_order_engineers soe
            JOIN users u ON u.id = soe.engineer_id
            WHERE soe.service_order_id IN (${orderPlaceholders})
+             AND u.email IS NOT NULL AND u.email <> ''
+           UNION
+           SELECT so.id, u.email
+           FROM service_orders so
+           JOIN users u ON u.id = so.assigned_engineer_id
+           WHERE so.id IN (${orderPlaceholders})
              AND u.email IS NOT NULL AND u.email <> ''`,
           orderParams,
         )
@@ -697,7 +704,8 @@ function startScheduler() {
         for (const row of engineerRows) {
           const key = Number(row.service_order_id)
           if (!engineersByOrderId.has(key)) engineersByOrderId.set(key, [])
-          engineersByOrderId.get(key).push({ email: row.email })
+          const list = engineersByOrderId.get(key)
+          if (!list.some((engineer) => engineer.email === row.email)) list.push({ email: row.email })
         }
         for (const [orderId, engineers] of engineersByOrderId) {
           const engineerDevices = devices.filter((d) => Number(d.installation_source_service_order_id) === orderId)
