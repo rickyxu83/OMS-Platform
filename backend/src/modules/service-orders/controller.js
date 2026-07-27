@@ -3827,17 +3827,12 @@ async function updateSelfReport(req, res) {
           updateLegacyExisting: true,
         })
       : { installDeviceIdMap: new Map(), primaryDeviceId: null, resolvedDevices: [] }
-    if (shouldManageInstallDevice) {
-      // 编辑时被移出列表的安装设备:解除来源标记使其不再随工单带出,设备本体保留
-      const keptInstallDeviceIds = (installDeviceResolution.resolvedDevices || [])
+    // 编辑时移出列表的设备在部件重存后统一清理(见 saveServiceParts 之后),这里先记录保留集合
+    const keptInstallDeviceIdSet = new Set(
+      (installDeviceResolution.resolvedDevices || [])
         .map((device) => Number(device.resolvedDeviceId))
-        .filter(Boolean)
-      const keptSql = keptInstallDeviceIds.length ? ` AND id NOT IN (${keptInstallDeviceIds.join(',')})` : ''
-      await connection.execute(
-        `UPDATE devices SET installation_source_service_order_id = NULL WHERE installation_source_service_order_id = :orderId${keptSql}`,
-        { orderId: req.params.id },
-      )
-    }
+        .filter(Boolean),
+    )
     let effectiveDeviceId = shouldManageInstallDevice
       ? installDeviceResolution.primaryDeviceId
       : (hasDeviceIdField ? Number(deviceId || 0) || null : order.device_id || null)
@@ -3956,6 +3951,48 @@ async function updateSelfReport(req, res) {
       customerId: effectiveCustomerId,
       ...partSaveOptions,
     })
+    if (shouldManageInstallDevice) {
+      // 编辑时移出列表的安装设备:未被其他单据引用的随工单删除,仍被引用的仅解除来源标记
+      const [sourcedRows] = await connection.execute(
+        'SELECT id FROM devices WHERE installation_source_service_order_id = :orderId',
+        { orderId: req.params.id },
+      )
+      const removedInstallDeviceIds = sourcedRows
+        .map((row) => Number(row.id))
+        .filter((id) => id && !keptInstallDeviceIdSet.has(id))
+      if (removedInstallDeviceIds.length) {
+        const removedParams = idParams(removedInstallDeviceIds, 'removedInstallDeviceId')
+        const [blockedRows] = await connection.execute(
+          `SELECT DISTINCT d.id
+           FROM devices d
+           WHERE d.id IN (${removedParams.placeholders})
+             AND (
+               EXISTS (SELECT 1 FROM service_orders so WHERE so.device_id = d.id AND so.id != :orderId)
+               OR EXISTS (SELECT 1 FROM service_parts sp WHERE sp.device_id = d.id)
+               OR EXISTS (SELECT 1 FROM service_order_devices sod WHERE sod.device_id = d.id AND sod.service_order_id != :orderId)
+               OR EXISTS (SELECT 1 FROM inspection_schedule_devices isd WHERE isd.device_id = d.id)
+             )`,
+          { ...removedParams.params, orderId: req.params.id },
+        )
+        const blockedInstallDeviceIds = new Set(blockedRows.map((row) => Number(row.id)).filter(Boolean))
+        const deletableInstallDeviceIds = removedInstallDeviceIds.filter((id) => !blockedInstallDeviceIds.has(id))
+        if (deletableInstallDeviceIds.length) {
+          const deletableParams = idParams(deletableInstallDeviceIds, 'deletableInstallDeviceId')
+          await connection.execute(
+            `DELETE FROM devices WHERE id IN (${deletableParams.placeholders})`,
+            deletableParams.params,
+          )
+        }
+        const unmarkInstallDeviceIds = removedInstallDeviceIds.filter((id) => blockedInstallDeviceIds.has(id))
+        if (unmarkInstallDeviceIds.length) {
+          const unmarkParams = idParams(unmarkInstallDeviceIds, 'unmarkInstallDeviceId')
+          await connection.execute(
+            `UPDATE devices SET installation_source_service_order_id = NULL WHERE id IN (${unmarkParams.placeholders})`,
+            unmarkParams.params,
+          )
+        }
+      }
+    }
 
     if (effectiveServiceMode !== 'office') {
       await recordCustomerContact(connection, effectiveCustomerId, contactName || customerConfirmName, contactPhone, req.user.id)
