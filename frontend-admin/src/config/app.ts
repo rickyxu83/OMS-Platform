@@ -3,7 +3,7 @@ export const APP_NAME_HANT = "OMS Platform 運維智管"
 export const APP_VERSION = (
   (import.meta as any).env.VITE_APP_VERSION
   || (import.meta as any).env.VITE_APP_BUILD_VERSION
-  || "26.727.1131"
+  || "26.0803.1603"
 )
 export const ADMIN_WORKSPACE_LABEL = "管理工作台"
 export const ADMIN_WORKSPACE_LABEL_HANT = "管理工作臺"

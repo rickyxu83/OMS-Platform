@@ -10,7 +10,6 @@ const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification, deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
-const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
@@ -3532,20 +3531,6 @@ async function deleteSelfReportDraft(req, res) {
   res.status(204).end()
 }
 
-async function aiSelfReportDraft(req, res) {
-  const result = await generateSelfReportAiDraft({
-    transcript: req.body?.transcript,
-    serviceMode: req.body?.serviceMode,
-    currentDraft: req.body?.currentDraft,
-    engineerId: req.user.id,
-  })
-  res.json(result)
-}
-
-async function aiSelfReportDraftStatus(_req, res) {
-  res.json({ item: await selfReportAiDraftStatus() })
-}
-
 async function updateSelfReport(req, res) {
   const order = await getOrder(req.params.id)
   if (!order) {
@@ -4440,8 +4425,6 @@ module.exports = {
   createTimesheetManualEntry,
   deleteTimesheetManualEntry,
   create,
-  aiSelfReportDraft,
-  aiSelfReportDraftStatus,
   createSelfReport,
   updateSelfReport,
   createCustomerSignatureRequest,

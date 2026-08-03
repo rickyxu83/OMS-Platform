@@ -19,7 +19,6 @@ import { toast } from "sonner";
 interface SettingsForm {
   ai: {
     workSummaryEnabled: boolean;
-    serviceDraftEnabled: boolean;
     provider: string;
     apiUrl: string;
     apiKey: string;
@@ -95,7 +94,6 @@ interface RecipientUser {
 const emptyForm: SettingsForm = {
   ai: {
     workSummaryEnabled: false,
-    serviceDraftEnabled: false,
     provider: "custom",
     apiUrl: "",
     apiKey: "",
@@ -472,7 +470,6 @@ export function SystemSettings() {
       setForm({
         ai: {
           workSummaryEnabled: toBool(item.ai?.workSummaryEnabled),
-          serviceDraftEnabled: toBool(item.ai?.serviceDraftEnabled),
           provider: item.ai?.provider || "custom",
           apiUrl: item.ai?.apiUrl || "",
           apiKey: item.ai?.apiKey || "",
@@ -542,7 +539,6 @@ export function SystemSettings() {
         ai: {
           ...form.ai,
           workSummaryEnabled: form.ai.workSummaryEnabled,
-          serviceDraftEnabled: form.ai.serviceDraftEnabled,
         },
         mail: {
           ...form.mail,
@@ -714,17 +710,6 @@ export function SystemSettings() {
                 <Switch
                   checked={form.ai.workSummaryEnabled}
                   onCheckedChange={(checked) => setForm({ ...form, ai: { ...form.ai, workSummaryEnabled: checked } })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <div className="font-medium">启用 AI 语音填单</div>
-                  <div className="text-sm text-muted-foreground">工程师端可用语音转写内容生成服务记录草稿。</div>
-                </div>
-                <Switch
-                  checked={form.ai.serviceDraftEnabled}
-                  onCheckedChange={(checked) => setForm({ ...form, ai: { ...form.ai, serviceDraftEnabled: checked } })}
                 />
               </div>
 
