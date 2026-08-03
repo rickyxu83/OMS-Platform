@@ -1190,6 +1190,7 @@ async function callProvider(payload, aiSettings) {
         ],
         stream: false,
         max_tokens: 1400,
+        ...(String(aiSettings.model || '').includes('deepseek') ? { thinking: { type: 'disabled' } } : {}),
       }),
     })
 

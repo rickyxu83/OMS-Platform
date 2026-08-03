@@ -359,6 +359,7 @@ async function callCompatibleProvider(payload, aiSettings) {
         ],
         stream: false,
         max_tokens: payload.scope?.type === 'engineer' ? 4000 : 3000,
+        ...(String(aiSettings.model || '').includes('deepseek') ? { thinking: { type: 'disabled' } } : {}),
       }),
     })
 

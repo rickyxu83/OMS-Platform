@@ -297,6 +297,7 @@ async function testAi(req, res) {
         ],
         stream: false,
         max_tokens: 32,
+        ...(String(ai.model || '').includes('deepseek') ? { thinking: { type: 'disabled' } } : {}),
       }),
     })
 
