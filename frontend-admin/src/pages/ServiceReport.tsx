@@ -3112,9 +3112,8 @@ export function ServiceReport() {
     const keyword = device.inputMode === "existing" ? "" : device.model;
     return selectedCustomerDevices
       .filter((item) => deviceMatchesKeyword(item, keyword))
-      .slice(0, 8);
+      .slice(0, 50);
   }
-
   function targetDeviceValue(device: TargetDeviceDraft) {
     if (device.inputMode === "existing" && device.deviceId) {
       const selectedDevice = selectedCustomerDevices.find((item) => String(item.id) === device.deviceId);
@@ -3130,9 +3129,8 @@ export function ServiceReport() {
         targetDevice.id !== device.id && targetDevice.deviceId === String(item.id)
       )))
       .filter((item) => deviceMatchesKeyword(item, keyword))
-      .slice(0, 8);
+      .slice(0, 50);
   }
-
   function patchTargetDevices(devices: TargetDeviceDraft[], patch: Partial<ReportForm> = {}) {
     const targetDeviceIds = devices
       .filter((device) => device.inputMode === "existing" && device.deviceId)
