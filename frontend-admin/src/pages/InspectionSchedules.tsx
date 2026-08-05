@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +43,6 @@ interface Schedule {
   nextRunAnchor?: string;
   endDate?: string;
   active?: boolean;
-  remark?: string;
 }
 
 interface Customer {
@@ -79,30 +77,24 @@ interface FloatingDropdownBox {
 
 const CADENCE_LABELS: Record<string, string> = {
   monthly: "每月",
-  bimonthly: "每两月",
   "bi-monthly": "每两月",
   quarterly: "每季度",
-  weekly: "每周",
 };
 
 const CADENCE_HELP = "巡检周期用于控制系统生成巡检工单的频率；系统会结合下次生成日期，按每月、每两月或每季度继续安排后续巡检。";
 
 const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary"> = {
   monthly: "info",
-  bimonthly: "purple",
   "bi-monthly": "purple",
   quarterly: "success",
-  weekly: "secondary",
 };
 
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
+function inputDate(value?: string) {
+  return String(value || "").slice(0, 10);
 }
 
-function inputDate(value?: string) {
-  if (!value) return "";
-  return String(value).slice(0, 10);
+function formatDate(value?: string) {
+  return inputDate(value) || "-";
 }
 
 export function InspectionSchedules() {
@@ -144,7 +136,6 @@ export function InspectionSchedules() {
     nextRunAnchor: "",
     endDate: "",
     active: true,
-    remark: "",
   });
 
   // 深链：?scheduleId= 自动打开计划详情，关闭后清理参数
@@ -467,7 +458,6 @@ export function InspectionSchedules() {
       nextRunAnchor: "",
       endDate: "",
       active: true,
-      remark: "",
     });
     setDialogOpen(true);
   }
@@ -491,7 +481,6 @@ export function InspectionSchedules() {
       nextRunAnchor: inputDate(schedule.nextRunAnchor),
       endDate: inputDate(schedule.endDate),
       active: Boolean(schedule.active),
-      remark: (schedule as { remark?: string }).remark || "",
     });
     setDialogOpen(true);
   }
@@ -565,9 +554,6 @@ export function InspectionSchedules() {
       const payload: Record<string, unknown> = {
         name: form.name.trim() || undefined,
         customerId: form.customerId,
-        deviceIds: form.deviceIds,
-        targetEngineerId: form.targetEngineerIds[0],
-        targetEngineerIds: form.targetEngineerIds,
         assignments: form.deviceIds.map((deviceId) => ({
           deviceId,
           targetEngineerId: form.deviceEngineerIds[String(deviceId)],
@@ -576,7 +562,6 @@ export function InspectionSchedules() {
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
         active: form.active,
-        remark: form.remark.trim() || undefined,
       };
       if (editingId) {
         await api.put(`/inspection-schedules/${editingId}`, payload);
@@ -1137,10 +1122,6 @@ export function InspectionSchedules() {
                           <div className="text-xs text-muted-foreground">结束日期</div>
                           <div className="mt-1">{formatDate(detailTarget.endDate)}</div>
                         </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">备注</div>
-                          <div className="mt-1 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2">{detailTarget.remark || "-"}</div>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -1375,15 +1356,6 @@ export function InspectionSchedules() {
                   onCheckedChange={(c) => setForm({ ...form, active: c })}
                 />
                 <Label htmlFor="schedule-active">启用此计划</Label>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>备注</Label>
-                <Textarea
-                  value={form.remark}
-                  onChange={(e) => setForm({ ...form, remark: e.target.value })}
-                  rows={2}
-                  placeholder="补充说明"
-                />
               </div>
             </div>
           </div>
