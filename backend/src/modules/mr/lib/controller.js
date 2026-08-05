@@ -5,6 +5,7 @@ const env = require('../../../config/env')
 const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
 const { parseWorkbook, sheetTotal } = require('./quotation-parser')
+const { mergeQuotations } = require('./quotation-merge')
 const {
   constants,
   STEP_ROLES,
@@ -101,11 +102,17 @@ async function ensureTables() {
       cost_incl_tax DECIMAL(14,2) NULL,
       tax_rate DECIMAL(5,2) NULL,
       purchase_order_no VARCHAR(255) NULL,
+      cost_source VARCHAR(255) NULL,
       PRIMARY KEY (id),
       KEY idx_mr_items_mr (mr_id),
       CONSTRAINT fk_mr_items_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const costSourceColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'cost_source' LIMIT 1`,
+  )
+  if (!costSourceColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN cost_source VARCHAR(255) NULL AFTER purchase_order_no')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_approvals (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -223,7 +230,7 @@ async function loadDetail(id, user) {
   await ensureTables()
   const order = await loadRawOrder(id)
   if (!canView(order, user)) throw forbidden('无权查看该 MR 单')
-  const [itemRows, approvalRows] = await Promise.all([
+  const [itemRows, approvalRows, fileRows] = await Promise.all([
     query('SELECT * FROM mr_items WHERE mr_id = :id ORDER BY row_no, id', { id }),
     query(
       `SELECT a.*, u.real_name AS approver_name, u.username AS approver_username
@@ -231,6 +238,11 @@ async function loadDetail(id, user) {
        LEFT JOIN users u ON u.id = a.approver_id
        WHERE a.mr_id = :id
        ORDER BY a.cycle, a.seq`,
+      { id },
+    ),
+    query(
+      `SELECT id, original_name, size, created_at
+       FROM files WHERE owner_type = 'mr_order' AND owner_id = :id ORDER BY id`,
       { id },
     ),
   ])
@@ -246,6 +258,7 @@ async function loadDetail(id, user) {
     totals: totals(merged, items),
     approvals,
     approvalHistory,
+    quotationFiles: fileRows.map((file) => ({ id: file.id, name: file.original_name, size: Number(file.size), createdAt: file.created_at })),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
       canEdit: canEdit(order, user),
@@ -310,10 +323,10 @@ async function replaceItems(connection, mrId, items) {
     await connection.execute(
       `INSERT INTO mr_items
         (mr_id, row_no, company_part_no, oem_spec, name, description, warranty_service,
-         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, purchase_order_no)
+         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, purchase_order_no, cost_source)
        VALUES
         (:mrId, :rowNo, :companyPartNo, :oemSpec, :name, :description, :warrantyService,
-         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :purchaseOrderNo)`,
+         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :purchaseOrderNo, :costSource)`,
       { mrId, ...item },
     )
   }
@@ -502,76 +515,125 @@ async function voidOrder(req, res) {
 
 async function remove(req, res) {
   await ensureTables()
+  let files = []
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     if (!canDelete(order, req.user)) throw forbidden('只能删除本人创建的草稿或被驳回单据')
+    const [rows] = await connection.execute(
+      `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
+      { ownerId: req.params.id },
+    )
+    files = rows
+    await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId: req.params.id })
     await connection.execute('DELETE FROM mr_orders WHERE id = :id', { id: req.params.id })
   })
+  await Promise.allSettled(files.map((file) => fs.promises.rm(file.storage_path, { force: true })))
   res.status(204).end()
 }
 
 const quotationUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
   fileFilter(_req, file, callback) {
     const extension = path.extname(file.originalname || '').toLowerCase()
     if (!['.xls', '.xlsx'].includes(extension)) return callback(badRequest('请上传 Excel 报价单（.xls 或 .xlsx）'))
     callback(null, true)
   },
-}).single('file')
+}).fields([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }])
 
 function originalNameUtf8(file) {
   return Buffer.from(file?.originalname || '', 'latin1').toString('utf8') || 'quotation.xlsx'
 }
 
+function uploadedFiles(req) {
+  return Object.values(req.files || {}).flat()
+}
+
 async function importQuotation(req, res) {
-  if (!req.file) throw badRequest('请选择报价单文件')
+  const uploads = uploadedFiles(req)
+  if (!uploads.length) throw badRequest('请选择报价单文件')
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
-  let sheets
+
+  let sources
   try {
-    sheets = parseWorkbook(req.file.buffer)
+    sources = uploads.map((file) => {
+      const sheets = parseWorkbook(file.buffer).map((sheet) => ({ ...sheet, total: sheetTotal(sheet) }))
+      if (!sheets.length) throw new Error(`${originalNameUtf8(file)} 未找到 Item / Part_no 格式的报价明细表`)
+      return { name: originalNameUtf8(file), sheets }
+    })
   } catch (error) {
     throw badRequest(`报价单解析失败：${error.message}`)
   }
-  if (!sheets.length) throw badRequest('未找到 Item / Part_no 格式的报价明细表')
-  const payload = { sheets: sheets.map((sheet) => ({ ...sheet, total: sheetTotal(sheet) })) }
+
+  const vendors = await query(
+    `SELECT name, official_website AS officialWebsite
+     FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
+  )
+  const merged = mergeQuotations(sources, vendors)
+  const salesSheet = sources[merged.salesSourceIndex]?.sheets[0]
+  const payload = {
+    ...merged,
+    metadata: salesSheet ? {
+      customer: salesSheet.customer,
+      attn: salesSheet.attn,
+      payment: salesSheet.payment,
+      delivery: salesSheet.delivery,
+      taxRate: salesSheet.tax_rate,
+    } : {},
+  }
+  if (uploads.length === 1) payload.warnings.unshift('只识别到一份报价单，已作为销售报价导入；成本请手工填写')
   if (String(req.body?.persist || '') !== '1') {
-    res.json({ file: null, ...payload })
+    res.json({ files: [], ...payload })
     return
   }
 
-  const originalName = originalNameUtf8(req.file)
-  const safeName = path.basename(originalName).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_')
-  const storagePath = path.join(quotationRoot, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`)
-  await fs.promises.writeFile(storagePath, req.file.buffer)
+  const stored = await Promise.all(uploads.map(async (file) => {
+    const originalName = originalNameUtf8(file)
+    const safeName = path.basename(originalName).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_')
+    const storagePath = path.join(quotationRoot, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`)
+    await fs.promises.writeFile(storagePath, file.buffer)
+    return { file, originalName, storagePath }
+  }))
+  let oldFiles = []
   try {
-    const fileId = await transaction(async (connection) => {
+    const savedFiles = await transaction(async (connection) => {
       const locked = await loadLockedOrder(connection, req.params.id)
       if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
-      const [result] = await connection.execute(
-        `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
-         VALUES ('mr_order', :ownerId, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
-        {
-          ownerId: req.params.id,
-          originalName,
-          storagePath,
-          mimeType: req.file.mimetype || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          size: req.file.size,
-          uploadedBy: req.user.id,
-        },
+      const [previous] = await connection.execute(
+        `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
+        { ownerId: req.params.id },
       )
+      oldFiles = previous
+      await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId: req.params.id })
+      const saved = []
+      for (const entry of stored) {
+        const [result] = await connection.execute(
+          `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
+           VALUES ('mr_order', :ownerId, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
+          {
+            ownerId: req.params.id,
+            originalName: entry.originalName,
+            storagePath: entry.storagePath,
+            mimeType: entry.file.mimetype || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: entry.file.size,
+            uploadedBy: req.user.id,
+          },
+        )
+        saved.push({ id: result.insertId, name: entry.originalName, size: entry.file.size })
+      }
       await connection.execute('UPDATE mr_orders SET quotation_file_id = :fileId, updated_by = :userId WHERE id = :id', {
-        fileId: result.insertId,
+        fileId: saved[merged.salesSourceIndex].id,
         userId: req.user.id,
         id: req.params.id,
       })
-      return result.insertId
+      return saved
     })
-    res.json({ file: { id: fileId, name: originalName }, ...payload })
+    await Promise.allSettled(oldFiles.map((file) => fs.promises.rm(file.storage_path, { force: true })))
+    res.json({ files: savedFiles, ...payload })
   } catch (error) {
-    await fs.promises.rm(storagePath, { force: true })
+    await Promise.all(stored.map((entry) => fs.promises.rm(entry.storagePath, { force: true })))
     throw error
   }
 }
@@ -579,11 +641,12 @@ async function importQuotation(req, res) {
 async function downloadQuotation(req, res) {
   const order = await loadRawOrder(req.params.id)
   if (!canView(order, req.user)) throw forbidden('无权下载该报价单')
-  if (!order.quotationFileId) throw notFound('该 MR 单未上传报价单')
+  const fileId = Number(req.query.fileId || order.quotationFileId)
+  if (!fileId) throw notFound('该 MR 单未上传报价单')
   const rows = await query(
     `SELECT storage_path, original_name FROM files
      WHERE id = :fileId AND owner_type = 'mr_order' AND owner_id = :ownerId LIMIT 1`,
-    { fileId: order.quotationFileId, ownerId: req.params.id },
+    { fileId, ownerId: req.params.id },
   )
   if (!rows[0] || !fs.existsSync(rows[0].storage_path)) throw notFound('报价单文件不存在')
   res.download(rows[0].storage_path, rows[0].original_name)

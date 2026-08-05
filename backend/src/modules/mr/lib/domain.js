@@ -67,6 +67,7 @@ function normalizeItem(item = {}, index = 0) {
     costInclTax: optionalNumber(item.costInclTax ?? item.cost_incl_tax),
     taxRate: taxRate(item.taxRate ?? item.tax_rate),
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
+    costSource: text(item.costSource ?? item.cost_source, 255),
   }
 }
 
@@ -87,7 +88,7 @@ function costExcludingTax(item) {
 }
 
 function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
-  const items = rawItems.slice(0, 20).map(normalizeItem).filter(itemHasContent)
+  const items = rawItems.slice(0, 200).map(normalizeItem).filter(itemHasContent)
   const mode = Number(pricingMode)
   const total = Number(totalExcludingTax)
 

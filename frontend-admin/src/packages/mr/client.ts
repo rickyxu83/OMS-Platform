@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import type { CustomerOption, MrConstants, MrOrder, ParsedQuotationSheet, UserOption } from './types'
+import type { CustomerOption, MrConstants, MrOrder, QuotationImportResult, UserOption, VendorOption } from './types'
 
 export async function listMr(params: { q?: string; status?: string } = {}) {
   const search = new URLSearchParams()
@@ -18,31 +18,33 @@ export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${i
 export const deleteMr = (id: string | number) => api.delete(`/mr/${id}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 
-export async function importQuotation(id: string | number, file: File, persist = false) {
+export async function importQuotations(id: string | number, files: File[], persist = false) {
   const body = new FormData()
-  body.set('file', file)
+  for (const file of files) body.append('files', file)
   if (persist) body.set('persist', '1')
-  return api.postForm(`/mr/${id}/import`, body) as Promise<{ file: { id: string | number; name: string } | null; sheets: ParsedQuotationSheet[] }>
+  return api.postForm(`/mr/${id}/import`, body) as Promise<QuotationImportResult>
 }
 
-export async function downloadQuotation(id: string | number) {
-  const blob = await api.download(`/mr/${id}/quotation`)
+export async function downloadQuotation(id: string | number, fileId: string | number, name: string) {
+  const blob = await api.download(`/mr/${id}/quotation?fileId=${fileId}`)
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = 'quotation.xlsx'
+  anchor.download = name
   anchor.click()
   URL.revokeObjectURL(url)
 }
 
 export async function loadMrReferences() {
-  const [customers, salespeople] = await Promise.all([
+  const [customers, salespeople, vendors] = await Promise.all([
     api.get('/customers?pageSize=200') as Promise<{ items?: CustomerOption[] }>,
     api.get('/users/salespeople') as Promise<{ items?: UserOption[] }>,
+    api.get('/maintenance-parties?partyType=original_manufacturer&limit=1000') as Promise<{ items?: VendorOption[] }>,
   ])
   return {
     customers: customers.items || [],
     salespeople: (salespeople.items || []).filter((user) => user.role === 'sales'),
+    vendors: vendors.items || [],
   }
 }
 

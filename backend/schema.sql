@@ -553,6 +553,7 @@ CREATE TABLE IF NOT EXISTS mr_items (
   cost_incl_tax DECIMAL(14,2) NULL,
   tax_rate DECIMAL(5,2) NULL,
   purchase_order_no VARCHAR(255) NULL,
+  cost_source VARCHAR(255) NULL,
   PRIMARY KEY (id),
   KEY idx_mr_items_mr (mr_id),
   CONSTRAINT fk_mr_items_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE

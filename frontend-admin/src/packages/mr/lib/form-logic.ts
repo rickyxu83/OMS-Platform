@@ -1,4 +1,4 @@
-import type { MrItem, MrOrder, ParsedQuotationSheet } from '../types'
+import type { MrItem, MrOrder } from '../types'
 
 export function blankItem(): MrItem {
   return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate: 13, warrantyService: '', installBy: '', purchaseOrderNo: '' }
@@ -22,11 +22,11 @@ function costExcludingTax(item: MrItem) {
 export function calculateForm(order: MrOrder): MrOrder {
   const mode = number(order.pricingMode)
   const total = number(order.totalExcludingTax)
-  let source = (order.items || []).slice(0, 20)
+  let source = (order.items || []).slice(0, 200)
   if (mode === 2) {
     source = source.slice(0, 2)
     if (source.length === 0) source = [blankItem()]
-    if (source.length === 1) source = [...source, { ...blankItem(), name: '技术服务', qty: 1, costInclTax: 0, taxRate: 6, vendor: '' }]
+    if (source.length === 1) source = [...source, { ...blankItem(), name: '技术服务', qty: 1, costInclTax: 0, taxRate: 6, vendor: '', installBy: (order.installOptions || []).filter((value) => value !== 'NO').join('、') }]
   }
   const costTotal = source.reduce((sum, item) => sum + (costExcludingTax(item) || 0), 0)
   const items = source.map((item, index) => {
@@ -57,23 +57,4 @@ export function calculateForm(order: MrOrder): MrOrder {
       marginRate: sales > 0 ? round((sales - costExcl) / sales * 100, 4) : null,
     },
   }
-}
-
-export function mapQuotation(sheet: ParsedQuotationSheet, priceTarget: 'unitPrice' | 'costInclTax'): MrItem[] {
-  const rate = sheet.tax_rate === 6 || sheet.tax_rate === 13 ? sheet.tax_rate : 13
-  return sheet.items.slice(0, 20).map((source) => {
-    const lines = String(source.description || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    const price = source.unit_price == null ? null : Number(source.unit_price)
-    const qty = source.qty || 1
-    return {
-      ...blankItem(),
-      oemSpec: source.part_no || '',
-      name: lines[0] || source.part_no || '',
-      description: source.description || '',
-      qty,
-      unitPrice: priceTarget === 'unitPrice' ? price : null,
-      costInclTax: priceTarget === 'costInclTax' && price !== null ? round(price * qty * (1 + rate / 100)) : null,
-      taxRate: rate,
-    }
-  })
 }

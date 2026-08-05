@@ -1,40 +1,42 @@
 import { useState } from 'react'
-import { FileSpreadsheet, Loader2 } from 'lucide-react'
+import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { importQuotation } from '../client'
-import type { MrItem, ParsedQuotationSheet } from '../types'
-import { mapQuotation } from './form-logic'
+import { downloadQuotation, importQuotations } from '../client'
+import type { QuotationFile, QuotationImportResult } from '../types'
+
+function money(value?: number | null) {
+  return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 export function QuotationImportDialog({
   orderId,
   open,
+  editable,
+  existingFiles,
   onOpenChange,
   onApply,
 }: {
   orderId: string | number
   open: boolean
+  editable: boolean
+  existingFiles: QuotationFile[]
   onOpenChange: (open: boolean) => void
-  onApply: (items: MrItem[], sheet: ParsedQuotationSheet, file: { id: string | number; name: string }) => void
+  onApply: (result: QuotationImportResult) => void
 }) {
-  const [file, setFile] = useState<File | null>(null)
-  const [sheets, setSheets] = useState<ParsedQuotationSheet[]>([])
-  const [sheetIndex, setSheetIndex] = useState('0')
-  const [priceTarget, setPriceTarget] = useState<'unitPrice' | 'costInclTax'>('costInclTax')
+  const [files, setFiles] = useState<File[]>([])
+  const [preview, setPreview] = useState<QuotationImportResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const selected = sheets[Number(sheetIndex)]
 
-  const parse = async () => {
-    if (!file) return
-    setLoading(true)
+  const parse = async (selected: File[]) => {
+    setFiles(selected)
+    setPreview(null)
     setError('')
+    if (!selected.length) return
+    setLoading(true)
     try {
-      const data = await importQuotation(orderId, file)
-      setSheets(data.sheets || [])
-      setSheetIndex('0')
+      setPreview(await importQuotations(orderId, selected))
     } catch (err) {
       setError((err as Error).message || '报价单解析失败')
     } finally {
@@ -43,67 +45,99 @@ export function QuotationImportDialog({
   }
 
   const apply = async () => {
-    if (!file || !selected) return
+    if (!files.length || !preview) return
     setLoading(true)
     setError('')
     try {
-      const data = await importQuotation(orderId, file, true)
-      const savedSheet = data.sheets.find((sheet) => sheet.title === selected.title) || data.sheets[Number(sheetIndex)]
-      if (!data.file || !savedSheet) throw new Error('报价单保存失败')
-      onApply(mapQuotation(savedSheet, priceTarget), savedSheet, data.file)
+      const saved = await importQuotations(orderId, files, true)
+      onApply(saved)
       onOpenChange(false)
+      setFiles([])
+      setPreview(null)
     } catch (err) {
       setError((err as Error).message || '报价单保存失败')
     } finally {
       setLoading(false)
     }
   }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>导入 Excel 报价单</DialogTitle>
-          <DialogDescription>支持含 Item / Part_no / Description / Qty / Unit Net Price 表头的 .xls 或 .xlsx。</DialogDescription>
+          <DialogTitle>报价文件与品项导入</DialogTitle>
+          <DialogDescription>同时选择客户报价和一份或多份厂商报价。系统按总额识别销售报价，以料号、原厂规格和描述匹配品项，并采用匹配到的最低进货价。</DialogDescription>
         </DialogHeader>
 
-        <label htmlFor="mr-quotation-file" className="text-sm font-medium">报价单文件</label>
-        <div className="flex flex-wrap items-center gap-2">
-          <input id="mr-quotation-file" type="file" accept=".xls,.xlsx" onChange={(event) => { setFile(event.target.files?.[0] || null); setSheets([]); setSheetIndex('0'); setError('') }} className="min-w-0 flex-1 text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" />
-          <Button onClick={parse} disabled={!file || loading}>
-            {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}
-            解析
-          </Button>
-        </div>
+        {existingFiles.length ? (
+          <section className="border-y py-3">
+            <div className="mb-2 text-sm font-medium">已留存原文件</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {existingFiles.map((file) => (
+                <button key={file.id} type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 items-center justify-between gap-3 border px-3 py-2 text-left hover:bg-muted">
+                  <span className="min-w-0 truncate text-sm">{file.name}</span>
+                  <Download className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {editable ? (
+          <label htmlFor="mr-quotation-files" className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed px-4 py-5 text-center hover:bg-muted/50">
+            {loading ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : <Upload className="size-6 text-muted-foreground" />}
+            <span className="text-sm font-medium">选择全部报价文件</span>
+            <span className="text-xs text-muted-foreground">支持 .xls / .xlsx，可一次多选，重新导入会替换上一批文件</span>
+            <input id="mr-quotation-files" type="file" accept=".xls,.xlsx" multiple className="sr-only" disabled={loading} onChange={(event) => void parse(Array.from(event.target.files || []))} />
+          </label>
+        ) : null}
+
+        {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份：{files.map((file) => file.name).join('、')}</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
-        {selected ? (
-          <>
-            <div className="grid gap-3 border-y py-3 sm:grid-cols-3">
-              <label className="space-y-1 text-sm"><span className="text-muted-foreground">工作表</span><Select value={sheetIndex} onValueChange={setSheetIndex}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{sheets.map((sheet, index) => <SelectItem key={`${sheet.title}-${index}`} value={String(index)}>{sheet.title}（{sheet.items.length} 项）</SelectItem>)}</SelectContent></Select></label>
-              <div className="text-sm"><div className="text-muted-foreground">报价客户 / 联系人</div><div className="mt-2 font-medium">{selected.customer || '-'} / {selected.attn || '-'}</div></div>
-              <div className="text-sm"><div className="text-muted-foreground">税率 / 报价合计</div><div className="mt-2 font-medium">{selected.tax_rate ? `${selected.tax_rate}%` : '-'} / ¥ {Number(selected.total || 0).toLocaleString('zh-CN')}</div></div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-medium">报价价格导入到</div>
-              <div className="inline-flex border p-1">
-                <Button type="button" size="sm" variant={priceTarget === 'costInclTax' ? 'default' : 'ghost'} onClick={() => setPriceTarget('costInclTax')}>成本含税</Button>
-                <Button type="button" size="sm" variant={priceTarget === 'unitPrice' ? 'default' : 'ghost'} onClick={() => setPriceTarget('unitPrice')}>销售单价</Button>
+        {preview ? (
+          <div className="space-y-5">
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">可返回重选文件；导入后仍可修改品项</span></div>
+              <div className="divide-y border">
+                {preview.sources.map((source) => (
+                  <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[110px_minmax(0,1fr)_130px_90px] sm:items-center">
+                    <span className={source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{source.role === 'sales' ? '销售报价' : '进货报价'}</span>
+                    <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div>{source.vendor ? <div className="text-xs text-muted-foreground">识别厂商：{source.vendor}</div> : null}</div>
+                    <div className="text-sm tabular-nums">¥ {money(source.total)}</div>
+                    <div className="text-sm text-muted-foreground">{source.itemCount} 项</div>
+                  </div>
+                ))}
               </div>
-            </div>
+            </section>
 
-            <div className="max-h-[360px] overflow-auto border">
-              <Table>
-                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>原厂规格</TableHead><TableHead>品名 / 描述</TableHead><TableHead className="text-right">数量</TableHead><TableHead className="text-right">价格</TableHead></TableRow></TableHeader>
-                <TableBody>{selected.items.map((item, index) => <TableRow key={`${item.item_no}-${index}`}><TableCell>{item.item_no || index + 1}</TableCell><TableCell>{item.part_no || '-'}</TableCell><TableCell className="max-w-md whitespace-pre-wrap">{item.description || '-'}</TableCell><TableCell className="text-right">{item.qty || 1}</TableCell><TableCell className="text-right">{Number(item.unit_price || 0).toLocaleString('zh-CN')}</TableCell></TableRow>)}</TableBody>
-              </Table>
-            </div>
-          </>
+            {preview.warnings.length ? (
+              <div className="border-l-4 border-amber-500 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                <div className="mb-1 flex items-center gap-2 font-medium"><AlertTriangle className="size-4" />需要人工核对</div>
+                {preview.warnings.map((warning) => <div key={warning}>· {warning}</div>)}
+              </div>
+            ) : null}
+
+            <section>
+              <h3 className="mb-2 text-sm font-medium">将导入的品项（{preview.items.length}）</h3>
+              <div className="max-h-[360px] divide-y overflow-y-auto border">
+                {preview.items.map((item, index) => (
+                  <div key={`${item.oemSpec}-${index}`} className="grid gap-2 px-3 py-3 lg:grid-cols-[36px_minmax(180px,1fr)_110px_120px_120px] lg:items-start">
+                    <span className="text-sm text-muted-foreground">{index + 1}</span>
+                    <div className="min-w-0"><div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div><div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div></div>
+                    <div className="text-sm">数量 {item.qty || 1}</div>
+                    <div className="text-sm tabular-nums">售价 ¥ {money(item.unitPrice)}</div>
+                    <div className="text-sm tabular-nums">成本 ¥ {item.costInclTax == null ? '-' : money(item.costInclTax)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button disabled={!selected || loading} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}导入 {selected?.items.length || 0} 项</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
+          {editable ? <Button disabled={!preview || loading} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {preview?.items.length || 0} 项</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
