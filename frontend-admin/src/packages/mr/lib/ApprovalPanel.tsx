@@ -20,14 +20,25 @@ const MARKERS: Record<StepState, { icon: typeof Check; dot: string; text: string
   waiting: { icon: Clock3, dot: 'bg-slate-200 text-slate-500', text: 'text-muted-foreground', label: '待流转' },
 }
 
-/**
- * Vertical approval timeline. Approve/reject buttons live in the summary rail
- * (see MrFormRail), so this panel is display-only.
- */
-export function ApprovalPanel({ order }: { order: MrOrder }) {
-  const approvals = order.approvals || []
+function projectedApprovals(order: MrOrder): MrApproval[] {
+  const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务']]
+  if ((order.installOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签单位'])
+  steps.push(['supervisor', '处级单位'])
+  const margin = order.totals?.marginRate
+  const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
+  if (Number(order.totals?.salesExcludingTax) > 750000 || lowMargin) steps.push(['vp', '副总经理'])
+  return steps.map(([stepKey, stepLabel], index) => ({ seq: index + 1, stepKey, stepLabel }))
+}
+
+/** Approval timeline: vertical in the wide rail, card grid in the main workbench. */
+export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; layout?: 'vertical' | 'horizontal' }) {
+  const savedApprovals = order.approvals || []
+  const approvals = savedApprovals.length || !['draft', 'rejected'].includes(String(order.status || 'draft'))
+    ? savedApprovals
+    : projectedApprovals(order)
   const currentCycle = approvals.reduce((max, approval) => Math.max(max, Number(approval.cycle) || 0), 0)
   const previous = (order.approvalHistory || []).filter((approval) => Number(approval.cycle) < currentCycle && approval.action !== 'skipped')
+  const horizontalColumns = approvals.length >= 5 ? 'xl:grid-cols-5' : approvals.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
 
   if (!approvals.length) {
     return (
@@ -39,21 +50,21 @@ export function ApprovalPanel({ order }: { order: MrOrder }) {
 
   return (
     <div className="space-y-4">
-      <ol className="relative space-y-1">
+      <ol className={layout === 'horizontal' ? `grid gap-3 md:grid-cols-2 ${horizontalColumns}` : 'relative space-y-1'}>
         {approvals.map((approval, index) => {
           const state = stepState(approval, order)
           const marker = MARKERS[state]
           const Icon = marker.icon
           const last = index === approvals.length - 1
           return (
-            <li key={approval.stepKey} className="flex gap-3">
-              <div className="flex flex-col items-center">
+            <li key={approval.stepKey} className={layout === 'horizontal' ? `min-w-0 rounded-lg border p-3 ${state === 'current' ? 'border-amber-300 bg-amber-50' : 'bg-card'}` : 'flex gap-3'}>
+              <div className={layout === 'horizontal' ? 'mb-2 flex items-center gap-2' : 'flex flex-col items-center'}>
                 <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${marker.dot}`}>
                   <Icon className="size-3.5" />
                 </span>
-                {!last ? <span className="w-px flex-1 bg-border" aria-hidden="true" /> : null}
+                {layout === 'vertical' && !last ? <span className="w-px flex-1 bg-border" aria-hidden="true" /> : null}
               </div>
-              <div className={`min-w-0 flex-1 ${last ? 'pb-0' : 'pb-4'} ${state === 'current' ? 'rounded-md bg-amber-50 px-2.5 py-1.5 -mt-1' : ''}`}>
+              <div className={layout === 'horizontal' ? 'min-w-0' : `min-w-0 flex-1 ${last ? 'pb-0' : 'pb-4'} ${state === 'current' ? 'rounded-md bg-amber-50 px-2.5 py-1.5 -mt-1' : ''}`}>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <span className="text-sm font-medium">{approval.stepLabel}</span>
                   <span className={`text-xs ${marker.text}`}>{marker.label}</span>
