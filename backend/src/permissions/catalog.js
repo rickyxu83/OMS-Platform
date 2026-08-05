@@ -53,6 +53,12 @@ const PERMISSION_ENTRIES = Object.freeze([
   ['audit-log.view', '查看审计日志', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.view', '查看系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.edit', '编辑系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
+  ['mr.view', '查看订购申请', ['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']],
+  ['mr.create', '创建订购申请', ['admin', 'assistant', 'sales']],
+  ['mr.edit', '编辑订购申请', ['admin', 'assistant', 'sales']],
+  ['mr.approve', '审批订购申请', ['admin', 'assistant', 'sales', 'engineering_supervisor', 'sales_supervisor', 'operations_director']],
+  ['mr.delete', '删除订购申请', ['admin', 'assistant', 'sales']],
+  ['mr.void', '作废订购申请', ['admin', 'assistant', 'sales', 'operations_director', 'sales_supervisor']],
 ])
 
 const PERMISSION_KEYS = Object.freeze(PERMISSION_ENTRIES.map(([key]) => key))

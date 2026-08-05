@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   ClipboardPenLine,
   FileText,
+  FileSignature,
   ClipboardCheck,
   Users,
   Server,
@@ -130,6 +131,7 @@ const STRINGS: Record<AppLang, {
       dashboard: "运营总览",
       "service-report": "工单填写",
       "service-orders": "工单处理",
+      mr: "订购申请（MR）",
       "inspection-schedules": "巡检计划",
       customers: "客户档案",
       devices: "设备资产",
@@ -190,6 +192,7 @@ const STRINGS: Record<AppLang, {
       dashboard: "運營總覽",
       "service-report": "工單填寫",
       "service-orders": "工單處理",
+      mr: "訂購申請（MR）",
       "inspection-schedules": "巡檢計畫",
       customers: "客戶檔案",
       devices: "設備資產",
@@ -226,6 +229,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     items: [
       { labelKey: "service-report", icon: ClipboardPenLine, path: "service-report", requiredPermissions: ["order.engineer.own"] },
       { labelKey: "service-orders", icon: FileText, path: "service-orders", requiredPermissions: ["order.view"] },
+      { labelKey: "mr", icon: FileSignature, path: "mr", requiredPermissions: ["mr.view"] },
       { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules", requiredPermissions: ["inspection.view"] },
     ],
   },
@@ -448,11 +452,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     .filter(Boolean) as NavItem[];
 
   const navigateTo = (path: string) => {
+    if (typeof window !== "undefined") {
+      const event = new CustomEvent("oms:before-navigate", { cancelable: true, detail: { path } });
+      if (!window.dispatchEvent(event)) return false;
+    }
     navigate(`/${path}`);
     setMobileNavVisible(true);
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setSidebarOpen(false);
     }
+    return true;
   };
 
   const logoutToLogin = () => {
