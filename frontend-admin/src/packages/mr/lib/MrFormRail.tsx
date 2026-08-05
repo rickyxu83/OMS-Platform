@@ -2,7 +2,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MrOrder } from '../types'
 import type { MrSection } from './form-sections'
-import { money, percent } from './mr-ui'
+import { money, percent, statusLabel } from './mr-ui'
 
 /**
  * Section list. `vertical` is the desktop rail; `horizontal` is the mobile chip
@@ -55,6 +55,28 @@ export function SectionNav({
         )
       })}
     </nav>
+  )
+}
+
+export function WorkbenchMetrics({ order }: { order: MrOrder }) {
+  const totals = order.totals || {}
+  const margin = totals.marginRate
+  const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
+  const metrics = [
+    ['销售未税', `¥ ${money(totals.salesExcludingTax)}`, false],
+    ['采购未税', `¥ ${money(totals.costExcludingTax)}`, false],
+    ['整单毛利', percent(margin), lowMargin],
+    ['签核状态', order.currentStepLabel || statusLabel(order.status), false],
+  ] as Array<[string, string, boolean]>
+  return (
+    <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+      {metrics.map(([label, value, warning]) => (
+        <div key={label} className="min-w-0 bg-card px-4 py-3 sm:px-5">
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className={`mt-1 truncate text-lg font-semibold tabular-nums ${warning ? 'text-red-600' : ''}`}>{value}</div>
+        </div>
+      ))}
+    </div>
   )
 }
 

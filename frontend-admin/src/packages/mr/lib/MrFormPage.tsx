@@ -24,7 +24,7 @@ import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResul
 import { ApprovalPanel } from './ApprovalPanel'
 import { calculateForm, normalizeCostTaxRates, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
-import { SectionNav, SummaryPanel } from './MrFormRail'
+import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
 import {
   BinaryChoice,
@@ -41,6 +41,7 @@ import {
 import { QuotationImportDialog } from './QuotationImportDialog'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
+const WORKBENCH_SECTIONS = [MR_SECTIONS[5], ...MR_SECTIONS.slice(0, 5), ...MR_SECTIONS.slice(6)]
 
 type ValidationError = { field?: string; message?: string }
 type Decision = 'reject' | 'void' | null
@@ -89,7 +90,7 @@ export function MrFormPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [decision, setDecision] = useState<Decision>(null)
   const [reason, setReason] = useState('')
-  const [activeSection, setActiveSection] = useState(MR_SECTIONS[0].id)
+  const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
   const loadSequence = useRef(0)
@@ -153,7 +154,7 @@ export function MrFormPage() {
   // Highlight the section nearest the top of the viewport.
   useEffect(() => {
     if (loading) return
-    const nodes = MR_SECTIONS
+    const nodes = WORKBENCH_SECTIONS
       .map(({ id: sectionId }) => document.getElementById(`mr-section-${sectionId}`))
       .filter((node): node is HTMLElement => Boolean(node))
     if (!nodes.length) return
@@ -337,6 +338,9 @@ export function MrFormPage() {
   const salesOwnerValue = calculated.salesOwnerId ? String(calculated.salesOwnerId) : 'none'
   const hasContract = Number(calculated.hasContract) === 1
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
+  const marginRate = calculated.totals?.marginRate
+  const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
+  const highValue = Number(calculated.totals?.salesExcludingTax) > 750000
   const sectionCounts = { items: calculated.items?.length || 0 }
 
   const summary = (layout: 'rail' | 'bar') => (
@@ -360,9 +364,9 @@ export function MrFormPage() {
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
             <div className="min-w-0">
-              <div className="truncate text-lg font-semibold">{calculated.customerName || `MR 草稿 #${calculated.id}`}</div>
+              <div className="truncate text-lg font-semibold">MR 交易工作台</div>
               <div className="truncate text-xs text-muted-foreground">
-                {calculated.customerCode || '-'} / {calculated.ctrlNo || '未填 Ctrl.NO'}
+                {calculated.customerName || `草稿 #${calculated.id}`} · {calculated.ctrlNo || '未填 Ctrl.NO'}
                 {dirty ? ' · 未保存' : ''}
               </div>
             </div>
@@ -388,7 +392,7 @@ export function MrFormPage() {
         </div>
         <div className="border-t lg:hidden">
           <SectionNav
-            sections={MR_SECTIONS}
+            sections={WORKBENCH_SECTIONS}
             activeId={activeSection}
             errorCounts={errorCounts}
             counts={sectionCounts}
@@ -398,22 +402,10 @@ export function MrFormPage() {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-[1700px] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="hidden lg:block">
-          <div className="sticky top-24 overflow-hidden rounded-xl border bg-card shadow-sm">
-            <SectionNav
-              sections={MR_SECTIONS}
-              activeId={activeSection}
-              errorCounts={errorCounts}
-              counts={sectionCounts}
-              orientation="vertical"
-              onNavigate={goToSection}
-            />
-            {summary('rail')}
-          </div>
-        </aside>
+      <div className="border-b"><WorkbenchMetrics order={calculated} /></div>
 
-        <div className="min-w-0 space-y-5 pb-24 lg:pb-6">
+      <div className="mx-auto grid max-w-[1700px] gap-6 px-4 py-5 sm:px-6 min-[1450px]:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-5 pb-24 lg:pb-6">
           {status === 'rejected' ? (
             <div className="rounded-xl border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
               <div className="font-medium">签核已驳回</div>
@@ -448,6 +440,49 @@ export function MrFormPage() {
               </ul>
             </div>
           ) : null}
+
+          <SectionCard
+            id="items"
+            title="品项明细"
+            icon={MR_SECTIONS[5].icon}
+            description={`共 ${calculated.items?.length || 0} 项`}
+            flash={flashSection === 'items'}
+            actions={editable || calculated.quotationFiles?.length ? (
+              <Button variant="outline" size="sm" disabled={editable && !itemSetupReady} title={!itemSetupReady ? '请先选择计价模式和发票别' : undefined} onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet className="mr-2 size-4" />报价导入
+              </Button>
+            ) : null}
+          >
+            {editable && !itemSetupReady ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <span>请先选择计价模式和发票别，再导入报价或添加品项。</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => goToSection('trade')}>设置计价与发票</Button>
+              </div>
+            ) : null}
+            <MrItemTable
+              order={calculated}
+              editable={editable && itemSetupReady}
+              vendors={vendors}
+              workOptions={constants.WORK_OPTIONS}
+              focusIndex={focusItemIndex}
+              onFocusHandled={() => setFocusItemIndex(null)}
+              onChange={(items: MrItem[]) => patch({ items })}
+            />
+            <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
+              {([
+                ['未税总计', `¥ ${money(calculated.totals?.salesExcludingTax)}`, false],
+                ['增值税', `¥ ${money(calculated.totals?.vat)}`, false],
+                ['含税合计', `¥ ${money(calculated.totals?.salesIncludingTax)}`, false],
+                ['COST 总计', `¥ ${money(calculated.totals?.costExcludingTax)}`, false],
+                ['毛利率', percent(calculated.totals?.marginRate), Number(calculated.totals?.marginRate) < 15],
+              ] as Array<[string, string, boolean]>).map(([label, value, warn]) => (
+                <div key={label} className="bg-card p-4">
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  <div className={`mt-1 text-xl font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
 
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -679,61 +714,39 @@ export function MrFormPage() {
             ) : null}
           </SectionCard>
 
-          <SectionCard
-            id="items"
-            title="品项明细"
-            icon={MR_SECTIONS[5].icon}
-            description={`共 ${calculated.items?.length || 0} 项`}
-            flash={flashSection === 'items'}
-            actions={editable || calculated.quotationFiles?.length ? (
-              <Button variant="outline" size="sm" disabled={editable && !itemSetupReady} title={!itemSetupReady ? '请先选择计价模式和发票别' : undefined} onClick={() => setImportOpen(true)}>
-                <FileSpreadsheet className="mr-2 size-4" />报价导入
-              </Button>
-            ) : null}
-          >
-            {editable && !itemSetupReady ? (
-              <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                请先在“交易设置”中选择计价模式和发票别，再导入报价或添加品项。
-              </div>
-            ) : null}
-            <MrItemTable
-              order={calculated}
-              editable={editable && itemSetupReady}
-              vendors={vendors}
-              workOptions={constants.WORK_OPTIONS}
-              focusIndex={focusItemIndex}
-              onFocusHandled={() => setFocusItemIndex(null)}
-              onChange={(items: MrItem[]) => patch({ items })}
-            />
-            <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
-              {([
-                ['未税总计', `¥ ${money(calculated.totals?.salesExcludingTax)}`, false],
-                ['增值税', `¥ ${money(calculated.totals?.vat)}`, false],
-                ['含税合计', `¥ ${money(calculated.totals?.salesIncludingTax)}`, false],
-                ['COST 总计', `¥ ${money(calculated.totals?.costExcludingTax)}`, false],
-                ['毛利率', percent(calculated.totals?.marginRate), Number(calculated.totals?.marginRate) < 15],
-              ] as Array<[string, string, boolean]>).map(([label, value, warn]) => (
-                <div key={label} className="bg-card p-4">
-                  <div className="text-xs text-muted-foreground">{label}</div>
-                  <div className={`mt-1 text-xl font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
           <SectionCard id="remark" title="备注" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
             {editable
               ? <Textarea rows={4} value={calculated.remark || ''} onChange={(e) => patch({ remark: e.target.value })} />
               : <div className="min-h-6 text-sm break-words whitespace-pre-wrap">{textValue(calculated.remark)}</div>}
           </SectionCard>
 
-          <SectionCard id="approval" title="电子签流转" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
-            <ApprovalPanel order={calculated} />
+          <SectionCard className="min-[1450px]:hidden" id="approval" title="电子签流转" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
+            <ApprovalPanel order={calculated} layout="horizontal" />
             {status === 'approved' ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核完成，可打印存档。</div>
             ) : null}
           </SectionCard>
         </div>
+
+        <aside className="hidden min-[1450px]:block">
+          <div className="sticky top-24 overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="border-b px-4 py-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-semibold">签核与风险</h2>
+                <StatusBadge status={status} />
+              </div>
+              {highValue || lowMargin ? (
+                <div className="mt-3 border-l-4 border-red-500 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                  {highValue ? '未税售价超过 75 万元；' : ''}
+                  {lowMargin ? `毛利率 ${percent(marginRate)} 低于 15%；` : ''}
+                  需要副总经理签核。
+                </div>
+              ) : null}
+            </div>
+            <div className="border-b p-4"><ApprovalPanel order={calculated} /></div>
+            {summary('rail')}
+          </div>
+        </aside>
       </div>
 
       <div className="sticky bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">

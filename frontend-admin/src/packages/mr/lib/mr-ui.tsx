@@ -60,6 +60,7 @@ export function SectionCard({
   description,
   actions,
   flash = false,
+  className = '',
   children,
 }: {
   id: string
@@ -68,13 +69,14 @@ export function SectionCard({
   description?: ReactNode
   actions?: ReactNode
   flash?: boolean
+  className?: string
   children: ReactNode
 }) {
   return (
     <section
       id={`mr-section-${id}`}
       aria-labelledby={`mr-section-${id}-title`}
-      className={`scroll-mt-24 rounded-xl border bg-card shadow-sm transition-shadow ${flash ? 'ring-2 ring-destructive' : ''}`}
+      className={`scroll-mt-24 rounded-xl border bg-card shadow-sm transition-shadow ${flash ? 'ring-2 ring-destructive' : ''} ${className}`}
     >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3.5 sm:px-5">
         <div className="min-w-0">
