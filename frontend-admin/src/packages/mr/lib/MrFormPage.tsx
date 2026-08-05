@@ -41,7 +41,7 @@ import {
 import { QuotationImportDialog } from './QuotationImportDialog'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
-const WORKBENCH_SECTIONS = [MR_SECTIONS[5], ...MR_SECTIONS.slice(0, 5), ...MR_SECTIONS.slice(6)]
+const WORKBENCH_SECTIONS = [MR_SECTIONS[1], MR_SECTIONS[5], MR_SECTIONS[0], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
 
 type ValidationError = { field?: string; message?: string }
 type Decision = 'reject' | 'void' | null
@@ -525,7 +525,7 @@ export function MrFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="先确定计价模式与发票别，随后才可导入或添加品项。" flash={flashSection === 'trade'}>
+          <SectionCard className="order-first" id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="先确定计价模式与发票别，随后才可导入或添加品项。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
                 <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
