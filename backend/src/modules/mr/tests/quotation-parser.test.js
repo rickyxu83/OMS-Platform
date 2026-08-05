@@ -38,4 +38,11 @@ assert.equal(merged.items[0].costInclTax, 113)
 assert.equal(merged.items[0].vendor, '厂商B')
 assert.equal(merged.items[0].costSource, '厂商B.xlsx')
 
+const unknownTax = mergeQuotations([
+  { name: '客户报价.xlsx', sheets: [{ ...parsed[0], total: 200 }] },
+  { name: '未标税率厂商.xlsx', sheets: [{ ...parsed[0], total: 100, tax_rate: null, items: [{ ...parsed[0].items[0], unit_price: 50, extended: 100 }] }] },
+], [])
+assert.equal(unknownTax.items[0].taxRate, 13)
+assert(unknownTax.warnings.some((warning) => warning.includes('未识别到明确成本税率')))
+
 console.log('mr quotation parser and merge OK')

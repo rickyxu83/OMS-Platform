@@ -72,6 +72,7 @@ export interface MrOrder {
   contractNo?: string | null
   fillDate?: string | null
   latestDeliveryDate?: string | null
+  deliveryLocation?: string | null
   shipmentNo?: string | null
   deliveryTerms?: string | null
   quotationFileId?: string | number | null

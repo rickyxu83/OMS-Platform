@@ -1,11 +1,12 @@
 {
   "name": "oms-platform-admin",
   "private": true,
-  "version": "26.0805.2233",
+  "version": "26.0806.0127",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "test:mr": "node --experimental-strip-types src/packages/mr/lib/form-logic.check.ts",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

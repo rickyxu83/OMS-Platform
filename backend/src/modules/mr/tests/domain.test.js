@@ -85,4 +85,29 @@ function validBody(overrides = {}) {
   assert.equal(items.length, 25)
 }
 
+{
+  const { order, items } = normalizeOrder(validBody({
+    invoiceType: '6%普通发票',
+    deliveryLocation: '宁波市测试路 1 号',
+    items: [{ name: '设备', qty: 1, unitPrice: 100, vendor: '厂商', costInclTax: 106, taxRate: 13 }],
+  }))
+  assert.equal(order.deliveryLocation, '宁波市测试路 1 号')
+  assert.equal(items[0].taxRate, 6)
+  assert.equal(items[0].costExcludingTax, 100)
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+}
+
+{
+  const { order, items } = normalizeOrder(validBody({
+    invoiceType: '13%增值税',
+    items: [
+      { name: '6%进货', qty: 1, unitPrice: 150, vendor: '厂商A', costInclTax: 106, taxRate: 6 },
+      { name: '13%进货', qty: 1, unitPrice: 150, vendor: '厂商B', costInclTax: 113, taxRate: 13 },
+    ],
+  }))
+  assert.deepStrictEqual(items.map((item) => item.taxRate), [6, 13])
+  assert.deepStrictEqual(items.map((item) => item.costExcludingTax), [100, 100])
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+}
+
 console.log('mr domain OK')

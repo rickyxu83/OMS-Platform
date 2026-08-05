@@ -515,6 +515,7 @@ CREATE TABLE IF NOT EXISTS mr_orders (
   contract_no VARCHAR(255) NULL,
   fill_date DATE NULL,
   latest_delivery_date DATE NULL,
+  delivery_location VARCHAR(500) NULL,
   shipment_no VARCHAR(255) NULL,
   delivery_terms VARCHAR(255) NULL,
   quotation_file_id BIGINT UNSIGNED NULL,

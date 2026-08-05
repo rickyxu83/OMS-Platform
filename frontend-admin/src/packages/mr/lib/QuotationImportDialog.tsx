@@ -13,6 +13,8 @@ export function QuotationImportDialog({
   orderId,
   open,
   editable,
+  invoiceType,
+  pricingMode,
   existingFiles,
   onOpenChange,
   onApply,
@@ -20,6 +22,8 @@ export function QuotationImportDialog({
   orderId: string | number
   open: boolean
   editable: boolean
+  invoiceType?: string | null
+  pricingMode?: number | null
   existingFiles: QuotationFile[]
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult) => void
@@ -28,6 +32,11 @@ export function QuotationImportDialog({
   const [preview, setPreview] = useState<QuotationImportResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const taxConflictCount = String(invoiceType || '').startsWith('6%')
+    ? (preview?.items || []).filter((item) => Number(item.taxRate) === 13).length
+    : 0
+  const ignoredSingleIntegrationItems = Number(pricingMode) === 2 ? Math.max(0, (preview?.items.length || 0) - 1) : 0
+  const appliedItemCount = preview ? (Number(pricingMode) === 2 ? 2 : preview.items.length) : 0
 
   const parse = async (selected: File[]) => {
     setFiles(selected)
@@ -111,15 +120,17 @@ export function QuotationImportDialog({
               </div>
             </section>
 
-            {preview.warnings.length ? (
+            {preview.warnings.length || taxConflictCount || ignoredSingleIntegrationItems ? (
               <div className="border-l-4 border-amber-500 bg-amber-50 px-3 py-3 text-sm text-amber-900">
                 <div className="mb-1 flex items-center gap-2 font-medium"><AlertTriangle className="size-4" />需要人工核对</div>
                 {preview.warnings.map((warning) => <div key={warning}>· {warning}</div>)}
+                {taxConflictCount ? <div>· 当前为 6% 销售发票，{taxConflictCount} 个品项导入时识别为 13% 成本税率；确认导入后将按规则改为 6%。</div> : null}
+                {ignoredSingleIntegrationItems ? <div>· 当前为单项系统集成，只导入第一项作为主项，另外 {ignoredSingleIntegrationItems} 项不会写入；系统会自动建立“技术服务”项。</div> : null}
               </div>
             ) : null}
 
             <section>
-              <h3 className="mb-2 text-sm font-medium">将导入的品项（{preview.items.length}）</h3>
+              <h3 className="mb-2 text-sm font-medium">报价识别品项（{preview.items.length}）</h3>
               <div className="max-h-[360px] divide-y overflow-y-auto border">
                 {preview.items.map((item, index) => (
                   <div key={`${item.oemSpec}-${index}`} className="grid gap-2 px-3 py-3 lg:grid-cols-[36px_minmax(180px,1fr)_110px_120px_120px] lg:items-start">
@@ -137,7 +148,7 @@ export function QuotationImportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-          {editable ? <Button disabled={!preview || loading} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {preview?.items.length || 0} 项</Button> : null}
+          {editable ? <Button disabled={!preview || loading} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 项</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

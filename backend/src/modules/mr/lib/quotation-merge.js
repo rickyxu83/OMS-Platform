@@ -45,6 +45,7 @@ function flattenedItems(source, sourceIndex, vendors) {
   const vendor = vendorName(source, vendors)
   return source.sheets.flatMap((sheet) => sheet.items.map((item) => ({
     ...item,
+    taxRateKnown: [6, 13].includes(Number(sheet.tax_rate)),
     taxRate: [6, 13].includes(Number(sheet.tax_rate)) ? Number(sheet.tax_rate) : 13,
     sourceIndex,
     sourceName: source.name,
@@ -75,6 +76,7 @@ function mergeQuotations(sources, vendors = []) {
 
   const salesItems = flattenedItems(sources[salesSourceIndex], salesSourceIndex, vendors)
   const warnings = []
+  const unknownTaxSources = new Set()
   const items = salesItems.slice(0, 200).map((sale, index) => {
     const candidates = itemKeys(sale).flatMap((key) => purchasesByKey.get(key) || [])
     const uniqueCandidates = [...new Map(candidates.map((item) => [`${item.sourceIndex}:${item.item_no}:${item.part_no}`, item])).values()]
@@ -83,6 +85,7 @@ function mergeQuotations(sources, vendors = []) {
     const salePrice = sale.unit_price == null ? null : number(sale.unit_price)
     const fields = descriptionFields(sale.description, sale.part_no)
     if (!purchase) warnings.push(`第 ${index + 1} 项“${fields.name || sale.part_no}”没有匹配到进货报价`)
+    else if (!purchase.taxRateKnown) unknownTaxSources.add(purchase.sourceName)
     return {
       companyPartNo: '',
       oemSpec: sale.part_no || '',
@@ -100,6 +103,7 @@ function mergeQuotations(sources, vendors = []) {
   })
 
   if (salesItems.length > 200) warnings.push(`销售报价有 ${salesItems.length} 项，MR 最多保留前 200 项`)
+  if (unknownTaxSources.size) warnings.push(`${[...unknownTaxSources].join('、')} 未识别到明确成本税率，暂按 13% 导入，请逐项核对 6%/13%`)
   const matchedPurchaseIndexes = new Set()
   for (const sale of salesItems) {
     for (const key of itemKeys(sale)) {

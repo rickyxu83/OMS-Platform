@@ -161,13 +161,18 @@ function normalizeOrder(body = {}) {
     contractNo: text(body.contractNo ?? body.contract_no, 255),
     fillDate: date(body.fillDate ?? body.fill_date),
     latestDeliveryDate: date(body.latestDeliveryDate ?? body.latest_delivery_date),
+    deliveryLocation: text(body.deliveryLocation ?? body.delivery_location, 500),
     shipmentNo: text(body.shipmentNo ?? body.shipment_no, 255),
     deliveryTerms: text(body.deliveryTerms ?? body.delivery_terms, 255),
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
     remark: text(body.remark, 10000),
   }
 
-  const items = calculateItems(pricingMode, rawTotal, body.items || [])
+  const bodyItems = Array.isArray(body.items) ? body.items : []
+  const rawItems = String(order.invoiceType || '').startsWith('6%')
+    ? bodyItems.map((item) => ({ ...item, taxRate: 6 }))
+    : bodyItems
+  const items = calculateItems(pricingMode, rawTotal, rawItems)
   if (pricingMode === 3) {
     order.totalExcludingTax = round(items.reduce((sum, item) => sum + (item.subtotal ?? 0), 0), 2)
   }
