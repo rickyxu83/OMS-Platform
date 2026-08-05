@@ -516,12 +516,22 @@ export function InspectionSchedules() {
         ? prev.targetEngineerIds.filter((id) => id !== engineerId)
         : [...prev.targetEngineerIds, engineerId];
       const replacementEngineerId = targetEngineerIds[0] || "";
-      const deviceEngineerIds = Object.fromEntries(Object.entries(prev.deviceEngineerIds).map(([deviceId, assignedEngineerId]) => [
-        deviceId,
-        removing && assignedEngineerId === engineerId ? replacementEngineerId : assignedEngineerId,
-      ]));
+      const deviceEngineerIds = Object.fromEntries(prev.deviceIds.map((deviceId) => {
+        const assignedEngineerId = prev.deviceEngineerIds[String(deviceId)] || "";
+        return [
+          String(deviceId),
+          removing && assignedEngineerId === engineerId ? replacementEngineerId : assignedEngineerId || replacementEngineerId,
+        ];
+      }));
       return { ...prev, targetEngineerIds, deviceEngineerIds };
     });
+  }
+
+  function assignAllSelectedDevices(targetEngineerId: string) {
+    setForm((prev) => ({
+      ...prev,
+      deviceEngineerIds: Object.fromEntries(prev.deviceIds.map((deviceId) => [String(deviceId), targetEngineerId])),
+    }));
   }
 
   async function submit() {
@@ -1242,11 +1252,25 @@ export function InspectionSchedules() {
                 )}
               </div>
               <div className="md:col-span-2 space-y-2">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <Label>巡检设备与分工（至少选一台）</Label>
                   {form.customerId && customerDevices.length > 0 && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
                       <span>已选 {selectedDeviceCount} 台</span>
+                      {selectedDeviceCount > 0 && selectedEngineers.length > 0 && (
+                        <Select value="" onValueChange={assignAllSelectedDevices}>
+                          <SelectTrigger className="h-8 w-[150px]" aria-label="批量指派工程师">
+                            <SelectValue placeholder="批量指派给..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedEngineers.map((engineer) => (
+                              <SelectItem key={engineer.id} value={String(engineer.id)}>
+                                {engineer.realName || engineer.username || `工程师 #${engineer.id}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Button type="button" variant="ghost" size="sm" onClick={selectAllCustomerDevices}>
                         全选
                       </Button>

@@ -46,6 +46,7 @@ interface SettingsForm {
     inspectionReminderRecipients: string;
     inspectionReminderSalesNotifyEnabled: boolean;
     inspectionScheduleDateMissingEnabled: boolean;
+    inspectionAutoGenerateEnabled: boolean;
     inspectionConfirmationEnabled: boolean;
     inspectionConfirmationRecipients: string;
     inspectionOverdueEnabled: boolean;
@@ -121,6 +122,7 @@ const emptyForm: SettingsForm = {
     inspectionReminderRecipients: "",
     inspectionReminderSalesNotifyEnabled: true,
     inspectionScheduleDateMissingEnabled: true,
+    inspectionAutoGenerateEnabled: true,
     inspectionConfirmationEnabled: true,
     inspectionConfirmationRecipients: "",
     inspectionOverdueEnabled: true,
@@ -497,6 +499,7 @@ export function SystemSettings() {
           inspectionReminderRecipients: n.inspectionReminderRecipients || "",
           inspectionReminderSalesNotifyEnabled: toBool(n.inspectionReminderSalesNotifyEnabled ?? true),
           inspectionScheduleDateMissingEnabled: toBool(n.inspectionScheduleDateMissingEnabled ?? true),
+          inspectionAutoGenerateEnabled: toBool(n.inspectionAutoGenerateEnabled ?? true),
           inspectionConfirmationEnabled: toBool(n.inspectionConfirmationEnabled ?? true),
           inspectionConfirmationRecipients: n.inspectionConfirmationRecipients || "",
           inspectionOverdueEnabled: toBool(n.inspectionOverdueEnabled ?? true),
@@ -1126,6 +1129,13 @@ export function SystemSettings() {
               </NotificationGroup>
 
               <NotificationGroup title="巡检" description="巡检计划、执行提醒、确认和逾期跟进集中放在这里。">
+                <NotificationRule
+                  title="自动生成巡检工单"
+                  description="每天 06:30 生成未来 14 天内的待确认巡检工单；确认后才会派给工程师。"
+                  checked={form.notification.inspectionAutoGenerateEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionAutoGenerateEnabled: c } })}
+                />
+
                 <NotificationRule
                   title="巡检执行提醒"
                   description="巡检计划执行前发送给工程师；可同步给客户销售和指定管理邮箱。"

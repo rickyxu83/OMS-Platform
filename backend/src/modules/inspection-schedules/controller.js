@@ -180,7 +180,10 @@ function toDateKey(value) {
 
 function shiftDateByMonths(dateKey, months) {
   const date = new Date(`${dateKey}T00:00:00Z`)
+  const day = date.getUTCDate()
   date.setUTCMonth(date.getUTCMonth() + months)
+  // 月末溢出（如 1/31 +1 月 → 3/3）：钳制回目标月最后一天
+  if (date.getUTCDate() !== day) date.setUTCDate(0)
   return fmtDateUTC(date)
 }
 
@@ -825,11 +828,8 @@ async function remove(req, res) {
   res.status(204).end()
 }
 
-async function generateDue(req, res) {
+async function generateDueOrders({ dueDate, limit = 50, updatedBy = null }) {
   await prewarmInspectionSchema()
-  const dueDate = normalizeDate(req.body?.dueDate || req.query?.dueDate || todayDateKey(), '生成截止日期')
-  const limit = Math.min(100, Math.max(1, Number(req.body?.limit || req.query?.limit || 50)))
-
   const rows = await query(
     `SELECT ${scheduleColumns}
      FROM inspection_schedules s
@@ -859,7 +859,7 @@ async function generateDue(req, res) {
         results.push(await createInspectionOrder(connection, schedule, occurrenceDate, assignment))
       }
       const nextState = nextAnchorAfterOccurrence(schedule, occurrenceDate)
-      await advanceSchedule(connection, schedule.id, nextState.nextRunAnchor, nextState.active, req.user.id)
+      await advanceSchedule(connection, schedule.id, nextState.nextRunAnchor, nextState.active, updatedBy)
       for (const result of results) {
         items.push({
           scheduleId: schedule.id,
@@ -878,18 +878,26 @@ async function generateDue(req, res) {
 
   createdOrderIds.forEach((orderId) => triggerInspectionConfirmationMail(orderId))
 
-  res.json({
+  return {
     dueDate,
     generated: items.filter((item) => item.created).length,
     skipped: items.filter((item) => !item.created).length,
     items,
-  })
+  }
+}
+
+async function generateDue(req, res) {
+  const dueDate = normalizeDate(req.body?.dueDate || req.query?.dueDate || todayDateKey(), '生成截止日期')
+  const limit = Math.min(100, Math.max(1, Number(req.body?.limit || req.query?.limit || 50)))
+  res.json(await generateDueOrders({ dueDate, limit, updatedBy: req.user.id }))
 }
 
 module.exports = {
   list,
   create,
   generateDue,
+  generateDueOrders,
+  shiftDateByMonths,
   detail,
   update,
   remove,
