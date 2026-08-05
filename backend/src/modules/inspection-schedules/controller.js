@@ -13,7 +13,7 @@ function deviceDisplaySql(alias = 'd') {
 }
 
 const scheduleColumns = `
-  s.id, s.name, s.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson,
+  s.id, s.name, s.remark, s.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson,
   s.target_engineer_id, u.real_name AS target_engineer_name, u.username AS target_engineer_username,
   s.cadence, s.next_run_anchor, s.active, s.end_date, s.next_order_status,
   s.created_by, creator.real_name AS created_by_name, s.updated_by, updater.real_name AS updated_by_name,
@@ -25,6 +25,7 @@ function schedulePayload(row, devices = [], assignments = []) {
   return {
     id: row.id,
     name: row.name,
+    remark: row.remark,
     customerId: row.customer_id,
     customerName: row.customer_name,
     targetEngineerId: firstAssignment?.targetEngineerId || row.target_engineer_id,
@@ -79,6 +80,7 @@ async function ensureInspectionSchedulesTable(connection = null) {
     `CREATE TABLE IF NOT EXISTS inspection_schedules (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       name VARCHAR(160) NULL,
+      remark VARCHAR(500) NULL,
       customer_id BIGINT UNSIGNED NOT NULL,
       target_engineer_id BIGINT UNSIGNED NOT NULL,
       cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,
@@ -97,16 +99,19 @@ async function ensureInspectionSchedulesTable(connection = null) {
       KEY idx_inspection_schedules_next_run (active, next_run_anchor)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  const [nameRows] = await execute(
+  const [columnRows] = await execute(
     `SELECT column_name AS columnName
      FROM information_schema.columns
      WHERE table_schema = DATABASE()
        AND table_name = 'inspection_schedules'
-       AND column_name = 'name'
-     LIMIT 1`,
+       AND column_name IN ('name', 'remark')`,
   )
-  if (!nameRows?.[0]) {
+  const existingColumns = new Set(columnRows.map((row) => row.columnName || row.column_name))
+  if (!existingColumns.has('name')) {
     await execute('ALTER TABLE inspection_schedules ADD COLUMN name VARCHAR(160) NULL AFTER id')
+  }
+  if (!existingColumns.has('remark')) {
+    await execute('ALTER TABLE inspection_schedules ADD COLUMN remark VARCHAR(500) NULL AFTER name')
   }
   inspectionSchedulesTableReady = true
 }
@@ -115,6 +120,13 @@ function normalizeScheduleName(value) {
   const text = String(value || '').trim()
   if (!text) return null
   if (text.length > 160) throw badRequest('计划名称不能超过 160 个字符')
+  return text
+}
+
+function normalizeRemark(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  if (text.length > 500) throw badRequest('备注不能超过 500 个字符')
   return text
 }
 
@@ -678,11 +690,12 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const { name = '', customerId, assignments, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const { name = '', remark = '', customerId, assignments, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
   if (!normalizedCustomerId) throw badRequest('客户不能为空')
   const normalizedAssignments = normalizeAssignments(assignments)
   const normalizedName = normalizeScheduleName(name)
+  const normalizedRemark = normalizeRemark(remark)
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
   const normalizedEndDate = normalizeDate(endDate, '结束日期', false)
@@ -699,15 +712,16 @@ async function create(req, res) {
     const legacyTargetEngineerId = engineerIds[0]
     const [result] = await connection.execute(
       `INSERT INTO inspection_schedules (
-        name, customer_id, target_engineer_id, cadence, next_run_anchor,
+        name, remark, customer_id, target_engineer_id, cadence, next_run_anchor,
         active, end_date, next_order_status, created_by
       )
       VALUES (
-        :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
+        :name, :remark, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
         :active, :endDate, 'pending_confirmation', :createdBy
       )`,
       {
         name: normalizedName,
+        remark: normalizedRemark,
         customerId: normalizedCustomerId,
         targetEngineerId: legacyTargetEngineerId,
         cadence: normalizedCadence,
@@ -754,6 +768,7 @@ async function update(req, res) {
   const normalizedNextRunAnchor = body.nextRunAnchor !== undefined ? normalizeDate(body.nextRunAnchor, '下次运行锚点') : existing.next_run_anchor
   const normalizedEndDate = body.endDate !== undefined ? normalizeDate(body.endDate, '结束日期', false) : existing.end_date
   const normalizedName = body.name !== undefined ? normalizeScheduleName(body.name) : existing.name
+  const normalizedRemark = body.remark !== undefined ? normalizeRemark(body.remark) : existing.remark
   if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
   const normalizedActive = normalizeActive(body.active, Boolean(existing.active))
 
@@ -764,6 +779,7 @@ async function update(req, res) {
     await connection.execute(
       `UPDATE inspection_schedules
        SET name = :name,
+           remark = :remark,
            customer_id = :customerId,
            target_engineer_id = :targetEngineerId,
            cadence = :cadence,
@@ -776,6 +792,7 @@ async function update(req, res) {
       {
         id: req.params.id,
         name: normalizedName,
+        remark: normalizedRemark,
         customerId: normalizedCustomerId,
         targetEngineerId: engineerIds[0],
         cadence: normalizedCadence,

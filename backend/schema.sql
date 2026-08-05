@@ -207,6 +207,7 @@ CREATE TABLE service_order_devices (
 CREATE TABLE inspection_schedules (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(160) NULL,
+  remark VARCHAR(500) NULL,
   customer_id BIGINT UNSIGNED NOT NULL,
   target_engineer_id BIGINT UNSIGNED NOT NULL,
   cadence ENUM('monthly', 'bi-monthly', 'quarterly') NOT NULL,

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ interface Schedule {
   nextRunAnchor?: string;
   endDate?: string;
   active?: boolean;
+  remark?: string;
 }
 
 interface Customer {
@@ -136,6 +138,7 @@ export function InspectionSchedules() {
     nextRunAnchor: "",
     endDate: "",
     active: true,
+    remark: "",
   });
 
   // 深链：?scheduleId= 自动打开计划详情，关闭后清理参数
@@ -458,6 +461,7 @@ export function InspectionSchedules() {
       nextRunAnchor: "",
       endDate: "",
       active: true,
+      remark: "",
     });
     setDialogOpen(true);
   }
@@ -481,6 +485,7 @@ export function InspectionSchedules() {
       nextRunAnchor: inputDate(schedule.nextRunAnchor),
       endDate: inputDate(schedule.endDate),
       active: Boolean(schedule.active),
+      remark: schedule.remark || "",
     });
     setDialogOpen(true);
   }
@@ -562,6 +567,7 @@ export function InspectionSchedules() {
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
         active: form.active,
+        remark: form.remark.trim() || null,
       };
       if (editingId) {
         await api.put(`/inspection-schedules/${editingId}`, payload);
@@ -1122,6 +1128,10 @@ export function InspectionSchedules() {
                           <div className="text-xs text-muted-foreground">结束日期</div>
                           <div className="mt-1">{formatDate(detailTarget.endDate)}</div>
                         </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">备注</div>
+                          <div className="mt-1 whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2">{detailTarget.remark || "-"}</div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1356,6 +1366,15 @@ export function InspectionSchedules() {
                   onCheckedChange={(c) => setForm({ ...form, active: c })}
                 />
                 <Label htmlFor="schedule-active">启用此计划</Label>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>备注</Label>
+                <Textarea
+                  value={form.remark}
+                  onChange={(e) => setForm({ ...form, remark: e.target.value })}
+                  rows={2}
+                  placeholder="补充说明"
+                />
               </div>
             </div>
           </div>
