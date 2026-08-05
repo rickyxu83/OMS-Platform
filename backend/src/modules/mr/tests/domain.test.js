@@ -79,4 +79,10 @@ function validBody(overrides = {}) {
   assert.deepStrictEqual(validateSubmission(order, items), [])
 }
 
+{
+  const manyItems = Array.from({ length: 25 }, (_, index) => ({ name: `设备 ${index + 1}`, qty: 1, unitPrice: 100, vendor: '厂商', costInclTax: 50, taxRate: 6 }))
+  const { items } = normalizeOrder(validBody({ items: manyItems }))
+  assert.equal(items.length, 25)
+}
+
 console.log('mr domain OK')

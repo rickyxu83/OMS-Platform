@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, FileSpreadsheet, Loader2, Printer, Save, Send, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, Loader2, Printer, Save, Send, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,6 @@ import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
-  downloadQuotation,
   getMr,
   getMrConstants,
   loadCustomer,
@@ -24,7 +23,7 @@ import {
   updateMr,
   voidMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, ParsedQuotationSheet, UserOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, UserOption, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
 import { calculateForm } from './form-logic'
 import { MrItemTable } from './MrItemTable'
@@ -57,6 +56,15 @@ function WorkOptions({ label, value, disabled, choices, onChange }: { label: str
   }
   return <Field label={label}><div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2 border px-3 py-2">{choices.map((choice) => <label key={choice} className="flex items-center gap-2 text-sm"><Checkbox checked={value.includes(choice)} disabled={disabled} onCheckedChange={(checked) => toggle(choice, Boolean(checked))} />{choice}</label>)}</div></Field>
 }
+function syncInstallOptions(items: MrItem[], previous: string[], next: string[]) {
+  const oldDefaults = new Set(previous.filter((value) => value !== 'NO'))
+  const newDefaults = next.filter((value) => value !== 'NO')
+  return items.map((item) => {
+    const existing = String(item.installBy || '').split(/[,，、]/).map((value) => value.trim()).filter(Boolean)
+    const manual = existing.filter((value) => !oldDefaults.has(value))
+    return { ...item, installBy: [...new Set([...newDefaults, ...manual])].join('、') }
+  })
+}
 
 function money(value?: number | null) {
   return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -85,6 +93,7 @@ export function MrFormPage() {
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [salespeople, setSalespeople] = useState<UserOption[]>([])
+  const [vendors, setVendors] = useState<VendorOption[]>([])
   const [contacts, setContacts] = useState<CustomerOption['contacts']>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -113,6 +122,7 @@ export function MrFormPage() {
       setConstants(optionData)
       setCustomers(references.customers)
       setSalespeople(references.salespeople)
+      setVendors(references.vendors)
       setContacts(customer?.contacts || [])
       setDirty(false)
     } catch (err) {
@@ -263,8 +273,7 @@ export function MrFormPage() {
           <Badge className={STATUS_CLASSES[status]}>{STATUS_LABELS[status] || status}</Badge>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {editable ? <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />导入报价单</Button> : null}
-          {calculated.quotationFileId ? <Button variant="outline" onClick={() => id && void downloadQuotation(id).catch((err) => setError((err as Error).message))}><Download className="mr-2 size-4" />原报价单</Button> : null}
+          {editable || calculated.quotationFiles?.length ? <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}</Button> : null}
           <Button variant="outline" onClick={() => dirty ? toast.error('请先保存草稿再打印') : navigateAway(`/mr/${id}/print`)}><Printer className="mr-2 size-4" />打印预览</Button>
           {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
           {editable ? <Button variant="outline" disabled={busy || !dirty} onClick={() => void save()}>{busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}保存草稿</Button> : null}
@@ -275,62 +284,96 @@ export function MrFormPage() {
       {status === 'rejected' ? <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800"><div className="font-medium">签核已驳回</div><div className="mt-1">{calculated.rejectReason || '请修改后重新提交，签核会从助理开始。'}</div></div> : null}
       {errors.length ? <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900"><div className="font-medium">规范检查未通过</div><ul className="mt-2 grid gap-1 sm:grid-cols-2">{errors.map((item, index) => <li key={`${item.field}-${index}`}>· {item.message || '字段不完整'}</li>)}</ul></div> : null}
 
-      <Section title="基本资料">
+      <Section title="客户与单号">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="填单日期"><Input type="date" value={calculated.fillDate || ''} disabled={!editable} onChange={(e) => patch({ fillDate: e.target.value })} /></Field>
-          <Field label="客户名称"><Select value={calculated.customerId ? String(calculated.customerId) : ''} disabled={!editable} onValueChange={chooseCustomer}><SelectTrigger><SelectValue placeholder="从客户档案选择" /></SelectTrigger><SelectContent>{customers.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.code ? `${item.code} · ` : ''}{item.name || item.id}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="客户名称" className="xl:col-span-2"><Select value={calculated.customerId ? String(calculated.customerId) : ''} disabled={!editable} onValueChange={chooseCustomer}><SelectTrigger><SelectValue placeholder="从客户档案选择" /></SelectTrigger><SelectContent>{customers.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.code ? `${item.code} · ` : ''}{item.name || item.id}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="客户联系人"><Select value={contactValue} disabled={!editable || !calculated.customerId} onValueChange={chooseContact}><SelectTrigger><SelectValue placeholder="选择联系人" /></SelectTrigger><SelectContent><SelectItem value="none">不关联联系人</SelectItem>{(contacts || []).filter((item) => item.id).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name || item.id}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="负责业务"><Select value={salesOwnerValue} disabled={!editable || user?.role === 'sales'} onValueChange={(value) => patch({ salesOwnerId: value === 'none' ? null : value })}><SelectTrigger><SelectValue placeholder="选择业务" /></SelectTrigger><SelectContent><SelectItem value="none">未指定</SelectItem>{salespeople.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.realName || item.username || item.id}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="客户 P/O"><Input value={calculated.customerPo || ''} disabled={!editable} onChange={(e) => patch({ customerPo: e.target.value })} /></Field>
           <Field label="Ctrl.NO"><Input value={calculated.ctrlNo || ''} disabled={!editable} onChange={(e) => patch({ ctrlNo: e.target.value })} /></Field>
+          <Field label="客户 P/O"><Input value={calculated.customerPo || ''} disabled={!editable} onChange={(e) => patch({ customerPo: e.target.value })} /></Field>
+          <Field label="填单日期"><Input type="date" value={calculated.fillDate || ''} disabled={!editable} onChange={(e) => patch({ fillDate: e.target.value })} /></Field>
           <Field label="最晚交货日"><Input type="date" value={calculated.latestDeliveryDate || ''} disabled={!editable} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} /></Field>
-          <Field label="合同号"><Input value={calculated.contractNo || ''} disabled={!editable} onChange={(e) => patch({ contractNo: e.target.value })} /></Field>
         </div>
       </Section>
 
-      <Section title="计价与合约">
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          <Field label="计价模式" className="xl:col-span-2"><div className="flex min-h-9 flex-wrap border p-1">{constants.pricingModes.map((mode) => <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} disabled={!editable} onClick={() => patch({ pricingMode: mode.value })}>{mode.label}</Button>)}</div></Field>
-          <Field label="发票别"><Select value={calculated.invoiceType || ''} disabled={!editable} onValueChange={(value) => patch({ invoiceType: value, items: (calculated.items || []).map((item) => ({ ...item, taxRate: value.startsWith('6%') ? 6 : item.taxRate })) })}><SelectTrigger><SelectValue placeholder="选择发票别" /></SelectTrigger><SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="未税总计"><Input type="number" min={0} step="0.01" value={calculated.totalExcludingTax ?? ''} disabled={!editable || Number(calculated.pricingMode) === 3} onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })} /></Field>
-          <Field label="是否签合约"><BinaryChoice value={calculated.hasContract} disabled={!editable} onChange={(value) => patch({ hasContract: value })} /></Field>
-          {Number(calculated.hasContract) === 1 ? <Field label="合约类型"><Select value={calculated.contractType || ''} disabled={!editable} onValueChange={(value) => patch({ contractType: value })}><SelectTrigger><SelectValue placeholder="选择合约类型" /></SelectTrigger><SelectContent>{constants.CONTRACT_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field> : null}
-          {Number(calculated.hasContract) === 1 ? <Field label="是否有罚则"><BinaryChoice value={calculated.hasPenalty} disabled={!editable} onChange={(value) => patch({ hasPenalty: value })} /></Field> : null}
-          {Number(calculated.hasContract) === 1 && Number(calculated.hasPenalty) === 1 ? <Field label="罚则内容" className="xl:col-span-2"><Input value={calculated.penaltyContent || ''} disabled={!editable} onChange={(e) => patch({ penaltyContent: e.target.value })} /></Field> : null}
+      <Section title="交易设置">
+        <div className="grid divide-y border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-medium">计价与发票</h3>
+            <Field label="计价模式"><div className="flex min-h-9 flex-wrap border p-1">{constants.pricingModes.map((mode) => <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} disabled={!editable} onClick={() => patch({ pricingMode: mode.value })}>{mode.label}</Button>)}</div></Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="发票别"><Select value={calculated.invoiceType || ''} disabled={!editable} onValueChange={(value) => patch({ invoiceType: value, items: (calculated.items || []).map((item) => ({ ...item, taxRate: value.startsWith('6%') ? 6 : item.taxRate })) })}><SelectTrigger><SelectValue placeholder="选择发票别" /></SelectTrigger><SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+              <Field label="未税总计"><Input type="number" min={0} step="0.01" value={calculated.totalExcludingTax ?? ''} disabled={!editable || Number(calculated.pricingMode) === 3} onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })} /></Field>
+            </div>
+          </div>
+          <div className="space-y-4 p-4">
+            <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium">合约</h3><BinaryChoice value={calculated.hasContract} disabled={!editable} onChange={(value) => patch({ hasContract: value })} /></div>
+            {Number(calculated.hasContract) === 1 ? <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="合同号"><Input value={calculated.contractNo || ''} disabled={!editable} onChange={(e) => patch({ contractNo: e.target.value })} /></Field>
+              <Field label="合约类型"><Select value={calculated.contractType || ''} disabled={!editable} onValueChange={(value) => patch({ contractType: value })}><SelectTrigger><SelectValue placeholder="选择合约类型" /></SelectTrigger><SelectContent>{constants.CONTRACT_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+              <Field label="是否有罚则"><BinaryChoice value={calculated.hasPenalty} disabled={!editable} onChange={(value) => patch({ hasPenalty: value })} /></Field>
+              {Number(calculated.hasPenalty) === 1 ? <Field label="罚则内容" className="sm:col-span-2"><Textarea rows={3} value={calculated.penaltyContent || ''} disabled={!editable} onChange={(e) => patch({ penaltyContent: e.target.value })} /></Field> : null}
+            </div> : <div className="text-sm text-muted-foreground">本单不签合约</div>}
+          </div>
         </div>
       </Section>
 
-      <Section title="开票、付款与联系人">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="发票处理"><Select value={calculated.invoiceProcess || ''} disabled={!editable} onValueChange={(value) => patch({ invoiceProcess: value })}><SelectTrigger><SelectValue placeholder="选择处理方式" /></SelectTrigger><SelectContent>{constants.INVOICE_PROCESSES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="开票内容"><Input value={calculated.billingContent || ''} disabled={!editable} onChange={(e) => patch({ billingContent: e.target.value })} /></Field>
-          <Field label="发票收件人"><Input value={calculated.invoiceRecipient || ''} disabled={!editable} onChange={(e) => patch({ invoiceRecipient: e.target.value })} /></Field>
-          <Field label="开票/收款"><Input value={calculated.billingTiming || ''} disabled={!editable} onChange={(e) => patch({ billingTiming: e.target.value })} /></Field>
-          <Field label="采购"><Input value={calculated.purchaser || ''} disabled={!editable} onChange={(e) => patch({ purchaser: e.target.value })} /></Field>
-          <Field label="采购 TEL"><Input value={calculated.purchaserTel || ''} disabled={!editable} onChange={(e) => patch({ purchaserTel: e.target.value })} /></Field>
-          <Field label="收件人"><Input value={calculated.recipient || ''} disabled={!editable} onChange={(e) => patch({ recipient: e.target.value })} /></Field>
-          <Field label="收件人 TEL"><Input value={calculated.recipientTel || ''} disabled={!editable} onChange={(e) => patch({ recipientTel: e.target.value })} /></Field>
-          <Field label="收件人 mail" className="xl:col-span-2"><Input type="email" value={calculated.recipientMail || ''} disabled={!editable} onChange={(e) => patch({ recipientMail: e.target.value })} /></Field>
-          <Field label="付款条件"><Select value={calculated.paymentTerms || ''} disabled={!editable} onValueChange={(value) => patch({ paymentTerms: value })}><SelectTrigger><SelectValue placeholder="选择付款条件" /></SelectTrigger><SelectContent>{constants.PAYMENT_TERMS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          {calculated.paymentTerms === '其他' ? <Field label="付款条件说明"><Input value={calculated.paymentOther || ''} disabled={!editable} onChange={(e) => patch({ paymentOther: e.target.value })} /></Field> : null}
+      <Section title="开票与付款">
+        <div className="grid divide-y border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-medium">开票</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="发票处理"><Select value={calculated.invoiceProcess || ''} disabled={!editable} onValueChange={(value) => patch({ invoiceProcess: value })}><SelectTrigger><SelectValue placeholder="选择处理方式" /></SelectTrigger><SelectContent>{constants.INVOICE_PROCESSES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+              <Field label="开票 / 收款"><Input value={calculated.billingTiming || ''} disabled={!editable} onChange={(e) => patch({ billingTiming: e.target.value })} /></Field>
+              <Field label="开票内容" className="sm:col-span-2"><Input value={calculated.billingContent || ''} disabled={!editable} onChange={(e) => patch({ billingContent: e.target.value })} /></Field>
+            </div>
+          </div>
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-medium">付款</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="付款条件"><Select value={calculated.paymentTerms || ''} disabled={!editable} onValueChange={(value) => patch({ paymentTerms: value })}><SelectTrigger><SelectValue placeholder="选择付款条件" /></SelectTrigger><SelectContent>{constants.PAYMENT_TERMS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+              {calculated.paymentTerms === '其他' ? <Field label="付款条件说明"><Input value={calculated.paymentOther || ''} disabled={!editable} onChange={(e) => patch({ paymentOther: e.target.value })} /></Field> : null}
+              <Field label="分批送机"><BinaryChoice value={calculated.splitDelivery} disabled={!editable} yes="可" no="否" onChange={(value) => patch({ splitDelivery: value })} /></Field>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="采购与收件联系人">
+        <div className="grid divide-y border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-medium">客户采购</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="采购人"><Input value={calculated.purchaser || ''} disabled={!editable} onChange={(e) => patch({ purchaser: e.target.value })} /></Field>
+              <Field label="采购电话"><Input value={calculated.purchaserTel || ''} disabled={!editable} onChange={(e) => patch({ purchaserTel: e.target.value })} /></Field>
+            </div>
+          </div>
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-medium">发票与收件</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="发票收件人"><Input value={calculated.invoiceRecipient || ''} disabled={!editable} onChange={(e) => patch({ invoiceRecipient: e.target.value })} /></Field>
+              <Field label="收件人"><Input value={calculated.recipient || ''} disabled={!editable} onChange={(e) => patch({ recipient: e.target.value })} /></Field>
+              <Field label="收件电话"><Input value={calculated.recipientTel || ''} disabled={!editable} onChange={(e) => patch({ recipientTel: e.target.value })} /></Field>
+              <Field label="收件邮箱"><Input type="email" value={calculated.recipientMail || ''} disabled={!editable} onChange={(e) => patch({ recipientMail: e.target.value })} /></Field>
+            </div>
+          </div>
         </div>
       </Section>
 
       <Section title="交付、验收与服务">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="分批送机"><BinaryChoice value={calculated.splitDelivery} disabled={!editable} yes="可" no="否" onChange={(value) => patch({ splitDelivery: value })} /></Field>
           <Field label="案分类"><Select value={calculated.caseCategory || ''} disabled={!editable} onValueChange={(value) => patch({ caseCategory: value })}><SelectTrigger><SelectValue placeholder="选择案分类" /></SelectTrigger><SelectContent>{constants.CASE_CATEGORIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="验收"><Select value={calculated.acceptance || ''} disabled={!editable} onValueChange={(value) => patch({ acceptance: value })}><SelectTrigger><SelectValue placeholder="选择验收条件" /></SelectTrigger><SelectContent>{constants.ACCEPTANCE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
           {calculated.acceptance === '其他' ? <Field label="验收说明"><Input value={calculated.acceptanceOther || ''} disabled={!editable} onChange={(e) => patch({ acceptanceOther: e.target.value })} /></Field> : null}
-          <WorkOptions label="装机" value={calculated.installOptions || []} choices={constants.WORK_OPTIONS} disabled={!editable} onChange={(value) => patch({ installOptions: value })} />
-          <WorkOptions label="维护" value={calculated.maintenanceOptions || []} choices={constants.WORK_OPTIONS} disabled={!editable} onChange={(value) => patch({ maintenanceOptions: value })} />
           <Field label="出货单号（不打印）"><Input value={calculated.shipmentNo || ''} disabled={!editable} onChange={(e) => patch({ shipmentNo: e.target.value })} /></Field>
           <Field label="交货期（不打印）"><Input value={calculated.deliveryTerms || ''} disabled={!editable} onChange={(e) => patch({ deliveryTerms: e.target.value })} /></Field>
+          <WorkOptions label="装机对象" value={calculated.installOptions || []} choices={constants.WORK_OPTIONS} disabled={!editable} onChange={(value) => patch({ installOptions: value, items: syncInstallOptions(calculated.items || [], calculated.installOptions || [], value) })} />
+          <WorkOptions label="维护对象" value={calculated.maintenanceOptions || []} choices={constants.WORK_OPTIONS} disabled={!editable} onChange={(value) => patch({ maintenanceOptions: value })} />
         </div>
       </Section>
 
-      <Section title={`品项明细（${calculated.items?.length || 0}/20）`}>
-        <MrItemTable order={calculated} editable={editable} onChange={(items: MrItem[]) => patch({ items })} />
+      <Section title={`品项明细（${calculated.items?.length || 0} 项）`}>
+        <MrItemTable order={calculated} editable={editable} vendors={vendors} workOptions={constants.WORK_OPTIONS} onChange={(items: MrItem[]) => patch({ items })} />
       </Section>
 
       <Section title="金额汇总">
@@ -350,10 +393,24 @@ export function MrFormPage() {
         {status === 'approved' ? <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核完成，可打印存档。</div> : null}
       </Section>
 
-      {id ? <QuotationImportDialog orderId={id} open={importOpen} onOpenChange={setImportOpen} onApply={(items: MrItem[], sheet: ParsedQuotationSheet, file) => {
-        patch({ items, quotationFileId: file.id, contactName: calculated.contactName || sheet.attn || '', paymentTerms: calculated.paymentTerms || paymentFromQuotation(sheet.payment) })
-        toast.success(`已导入 ${items.length} 个品项，请核对后保存`)
-      }} /> : null}
+      {id ? <QuotationImportDialog
+        orderId={id}
+        open={importOpen}
+        editable={editable}
+        existingFiles={calculated.quotationFiles || []}
+        onOpenChange={setImportOpen}
+        onApply={(result: QuotationImportResult) => {
+          const salesFile = result.files[result.salesSourceIndex]
+          patch({
+            items: syncInstallOptions(result.items, [], calculated.installOptions || []),
+            quotationFileId: salesFile?.id || null,
+            quotationFiles: result.files,
+            contactName: calculated.contactName || result.metadata?.attn || '',
+            paymentTerms: calculated.paymentTerms || paymentFromQuotation(result.metadata?.payment),
+          })
+          toast.success(`已导入 ${result.items.length} 个品项和 ${result.files.length} 份原文件`)
+        }}
+      /> : null}
 
       <Dialog open={Boolean(decision)} onOpenChange={(open) => { if (!open) setDecision(null) }}>
         <DialogContent>

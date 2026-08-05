@@ -17,6 +17,7 @@ export interface MrItem {
   costExcludingTax?: number | null
   taxRate?: number | null
   purchaseOrderNo?: string | null
+  costSource?: string | null
   marginRate?: number | null
 }
 
@@ -74,6 +75,7 @@ export interface MrOrder {
   shipmentNo?: string | null
   deliveryTerms?: string | null
   quotationFileId?: string | number | null
+  quotationFiles?: QuotationFile[]
   remark?: string | null
   rejectReason?: string | null
   voidReason?: string | null
@@ -129,6 +131,36 @@ export interface UserOption {
   realName?: string
   username?: string
   role?: string
+}
+export interface VendorOption {
+  id: string | number
+  name: string
+  officialWebsite?: string | null
+}
+
+export interface QuotationFile {
+  id: string | number
+  name: string
+  size?: number
+  createdAt?: string
+}
+
+export interface QuotationSource {
+  index: number
+  name: string
+  role: 'sales' | 'purchase'
+  total: number
+  itemCount: number
+  vendor?: string
+}
+
+export interface QuotationImportResult {
+  files: QuotationFile[]
+  sources: QuotationSource[]
+  salesSourceIndex: number
+  items: MrItem[]
+  warnings: string[]
+  metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null }
 }
 
 export interface ParsedQuotationSheet {
