@@ -14,6 +14,7 @@ const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) =
 const MrListPage = lazy(() => import("@/packages/mr/MrListPage").then((module) => ({ default: module.MrListPage })))
 const MrFormPage = lazy(() => import("@/packages/mr/MrFormPage").then((module) => ({ default: module.MrFormPage })))
 const MrPrintPage = lazy(() => import("@/packages/mr/MrPrintPage").then((module) => ({ default: module.MrPrintPage })))
+const MrPrototypePage = lazy(() => import("@/packages/mr/MrPrototypePage").then((module) => ({ default: module.MrPrototypePage })))
 const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
 const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
 const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default: module.Devices })))
@@ -166,6 +167,16 @@ export default function App() {
       <RouteErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {import.meta.env.DEV ? (
+            <Route
+              path="/mr/prototype"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <MrPrototypePage />
+                </Suspense>
+              }
+            />
+          ) : null}
           <Route
             path="/customer-signature/:token"
             element={

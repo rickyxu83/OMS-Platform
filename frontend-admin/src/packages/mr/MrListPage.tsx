@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FilePenLine, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { FilePenLine, LayoutTemplate, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -102,12 +102,15 @@ export function MrListPage() {
           <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
           <p className="mt-1 text-sm text-muted-foreground">填写、报价单导入、签核和打印存档</p>
         </div>
-        {hasPermission('mr.create') ? (
-          <Button onClick={createDraft} disabled={creating}>
-            {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
-            新建 MR
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {import.meta.env.DEV ? <Button variant="outline" onClick={() => navigate('/mr/prototype?variant=A')}><LayoutTemplate className="mr-2 size-4" />UI 方案</Button> : null}
+          {hasPermission('mr.create') ? (
+            <Button onClick={createDraft} disabled={creating}>
+              {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
+              新建 MR
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 border-y bg-background py-3">
