@@ -63,6 +63,7 @@ async function ensureTables() {
       contract_no VARCHAR(255) NULL,
       fill_date DATE NULL,
       latest_delivery_date DATE NULL,
+      delivery_location VARCHAR(500) NULL,
       shipment_no VARCHAR(255) NULL,
       delivery_terms VARCHAR(255) NULL,
       quotation_file_id BIGINT UNSIGNED NULL,
@@ -84,6 +85,11 @@ async function ensureTables() {
       KEY idx_mr_orders_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const deliveryLocationColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_orders' AND column_name = 'delivery_location' LIMIT 1`,
+  )
+  if (!deliveryLocationColumns[0]) await query('ALTER TABLE mr_orders ADD COLUMN delivery_location VARCHAR(500) NULL AFTER latest_delivery_date')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_items (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -306,7 +312,8 @@ const ORDER_COLUMNS = [
   ['paymentTerms', 'payment_terms'], ['paymentOther', 'payment_other'], ['splitDelivery', 'split_delivery'],
   ['acceptance', 'acceptance'], ['acceptanceOther', 'acceptance_other'], ['installOptions', 'install_options'],
   ['maintenanceOptions', 'maintenance_options'], ['contractNo', 'contract_no'], ['fillDate', 'fill_date'],
-  ['latestDeliveryDate', 'latest_delivery_date'], ['shipmentNo', 'shipment_no'], ['deliveryTerms', 'delivery_terms'],
+  ['latestDeliveryDate', 'latest_delivery_date'], ['deliveryLocation', 'delivery_location'],
+  ['shipmentNo', 'shipment_no'], ['deliveryTerms', 'delivery_terms'],
   ['remark', 'remark'],
 ]
 

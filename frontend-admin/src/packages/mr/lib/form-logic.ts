@@ -1,7 +1,34 @@
 import type { MrItem, MrOrder } from '../types'
 
-export function blankItem(): MrItem {
-  return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate: 13, warrantyService: '', installBy: '', purchaseOrderNo: '' }
+export function defaultCostTaxRate(invoiceType?: string | null) {
+  return String(invoiceType || '').startsWith('6%') ? 6 : 13
+}
+
+export function blankItem(taxRate = 13): MrItem {
+  return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate, warrantyService: '', installBy: '', purchaseOrderNo: '' }
+}
+
+export function normalizeCostTaxRates(items: MrItem[], invoiceType?: string | null) {
+  const forcedRate = String(invoiceType || '').startsWith('6%') ? 6 : null
+  return items.map((item) => ({ ...item, taxRate: forcedRate || ([6, 13].includes(Number(item.taxRate)) ? Number(item.taxRate) : 13) }))
+}
+
+export function singleIntegrationItems(items: MrItem[], invoiceType?: string | null, installOptions: string[] = []) {
+  const rate = defaultCostTaxRate(invoiceType)
+  const main = items[0] || blankItem(rate)
+  const candidate = items[1]
+  const isService = Boolean(candidate && `${candidate.name || ''}${candidate.description || ''}`.includes('服务'))
+  const service = {
+    ...(isService ? candidate : blankItem(rate)),
+    name: isService ? candidate.name || '技术服务' : '技术服务',
+    qty: 1,
+    unitPrice: null,
+    vendor: '',
+    costInclTax: 0,
+    taxRate: rate,
+    installBy: installOptions.filter((value) => value !== 'NO').join('、'),
+  }
+  return normalizeCostTaxRates([main, service], invoiceType)
 }
 
 function number(value: unknown) {
@@ -22,11 +49,11 @@ function costExcludingTax(item: MrItem) {
 export function calculateForm(order: MrOrder): MrOrder {
   const mode = number(order.pricingMode)
   const total = number(order.totalExcludingTax)
-  let source = (order.items || []).slice(0, 200)
+  let source: MrItem[] = normalizeCostTaxRates((order.items || []).slice(0, 200), order.invoiceType)
   if (mode === 2) {
     source = source.slice(0, 2)
-    if (source.length === 0) source = [blankItem()]
-    if (source.length === 1) source = [...source, { ...blankItem(), name: '技术服务', qty: 1, costInclTax: 0, taxRate: 6, vendor: '', installBy: (order.installOptions || []).filter((value) => value !== 'NO').join('、') }]
+    if (source.length === 0) source = [blankItem(defaultCostTaxRate(order.invoiceType))]
+    if (source.length === 1) source = [...source, { ...blankItem(defaultCostTaxRate(order.invoiceType)), name: '技术服务', qty: 1, costInclTax: 0, vendor: '', installBy: (order.installOptions || []).filter((value) => value !== 'NO').join('、') }]
   }
   const costTotal = source.reduce((sum, item) => sum + (costExcludingTax(item) || 0), 0)
   const items = source.map((item, index) => {

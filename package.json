@@ -5,7 +5,7 @@
     "typecheck": "cd frontend-admin && tsc --noEmit",
     "lint:boundaries": "depcruise backend/src frontend-admin/src",
     "check": "npm run typecheck && npm run lint:boundaries && npm --prefix backend run check",
-    "test": "npm run check && npm --prefix backend test"
+    "test": "npm run check && npm --prefix frontend-admin run test:mr && npm --prefix backend test"
   },
   "devDependencies": {
     "dependency-cruiser": "^18.1.1",

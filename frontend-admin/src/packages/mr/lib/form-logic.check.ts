@@ -1,0 +1,28 @@
+import { calculateForm, normalizeCostTaxRates, singleIntegrationItems } from './form-logic.ts'
+
+function assert(condition: unknown, message: string) {
+  if (!condition) throw new Error(message)
+}
+
+const mixed = normalizeCostTaxRates([{ taxRate: 6 }, { taxRate: 13 }], '13%增值税')
+assert(mixed[0].taxRate === 6 && mixed[1].taxRate === 13, '13%销售发票应保留逐项6%/13%成本税率')
+
+const forced = normalizeCostTaxRates([{ taxRate: 13 }, { taxRate: 6 }], '6%普通发票')
+assert(forced.every((item) => item.taxRate === 6), '6%销售发票应强制全部成本税率为6%')
+
+const single = singleIntegrationItems(
+  [{ name: '主设备', qty: 2, costInclTax: 113, taxRate: 13 }, { name: '不应保留的第二项' }, { name: '第三项' }],
+  '13%增值税',
+  ['敦阳'],
+)
+assert(single.length === 2, '单项系统集成应固定两项')
+assert(single[1].name === '技术服务' && single[1].qty === 1 && single[1].costInclTax === 0, '第二项应重建为技术服务')
+assert(single[1].installBy === '敦阳', '技术服务应继承装机对象')
+
+const integrated = calculateForm({ pricingMode: 1, totalExcludingTax: 300, invoiceType: '13%增值税', items: [
+  { name: 'A', qty: 1, costInclTax: 106, taxRate: 6 },
+  { name: 'B', qty: 1, costInclTax: 113, taxRate: 13 },
+] })
+assert(integrated.items?.[0].unitPrice === 150 && integrated.items?.[1].unitPrice === 150, '多项系统集成应按逐项未税成本分摊售价')
+
+console.log('mr form logic OK')

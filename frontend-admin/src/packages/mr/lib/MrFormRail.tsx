@@ -1,0 +1,141 @@
+import { AlertTriangle, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import type { MrOrder } from '../types'
+import type { MrSection } from './form-sections'
+import { money, percent } from './mr-ui'
+
+/**
+ * Section list. `vertical` is the desktop rail; `horizontal` is the mobile chip
+ * strip. Both show per-section counts of outstanding validation errors.
+ */
+export function SectionNav({
+  sections,
+  activeId,
+  errorCounts,
+  counts,
+  orientation,
+  onNavigate,
+}: {
+  sections: MrSection[]
+  activeId: string
+  errorCounts: Record<string, number>
+  counts: Record<string, number>
+  orientation: 'vertical' | 'horizontal'
+  onNavigate: (id: string) => void
+}) {
+  const vertical = orientation === 'vertical'
+  return (
+    <nav
+      aria-label="MR 分区导航"
+      className={vertical ? 'flex flex-col gap-0.5 p-2' : 'flex gap-1.5 overflow-x-auto px-4 py-2 sm:px-6'}
+    >
+      {sections.map(({ id, title, icon: Icon }) => {
+        const active = activeId === id
+        const errors = errorCounts[id] || 0
+        const count = counts[id]
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-current={active ? 'true' : undefined}
+            onClick={() => onNavigate(id)}
+            className={`flex shrink-0 items-center gap-2 rounded-md text-sm transition-colors ${
+              vertical ? 'w-full px-3 py-2 text-left' : 'whitespace-nowrap px-3 py-1.5'
+            } ${active ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+          >
+            <Icon className="size-4 shrink-0" />
+            <span className={vertical ? 'min-w-0 flex-1 truncate' : ''}>{title}</span>
+            {count === undefined ? null : <span className="shrink-0 text-xs tabular-nums opacity-70">{count}</span>}
+            {errors ? (
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-white tabular-nums">
+                {errors}
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+/**
+ * Live totals plus the approval action for whoever currently owns the step, so
+ * an approver never has to scroll to the bottom of the form.
+ */
+export function SummaryPanel({
+  order,
+  errorCount,
+  busy,
+  layout,
+  onApprove,
+  onReject,
+  onShowErrors,
+}: {
+  order: MrOrder
+  errorCount: number
+  busy: boolean
+  layout: 'rail' | 'bar'
+  onApprove: () => void
+  onReject: () => void
+  onShowErrors: () => void
+}) {
+  const totals = order.totals || {}
+  const margin = totals.marginRate
+  const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
+  const canApprove = Boolean(order.permissions?.canApprove)
+  const rail = layout === 'rail'
+
+  const rows: Array<[string, string, boolean]> = [
+    ['未税总计', `¥ ${money(totals.salesExcludingTax)}`, false],
+    ['增值税', `¥ ${money(totals.vat)}`, false],
+    ['含税合计', `¥ ${money(totals.salesIncludingTax)}`, false],
+    ['COST 总计', `¥ ${money(totals.costExcludingTax)}`, false],
+    ['毛利率', percent(margin), lowMargin],
+  ]
+
+  return (
+    <div className={rail ? 'space-y-3 border-t p-3' : 'flex items-center gap-3 overflow-x-auto px-4 py-2'}>
+      <dl className={rail ? 'space-y-1.5' : 'flex shrink-0 items-center gap-4'}>
+        {rows.map(([label, value, warn]) => (
+          <div key={label} className={rail ? 'flex items-baseline justify-between gap-2' : 'shrink-0'}>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className={`text-sm font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {lowMargin ? (
+        <p className={`flex items-start gap-1.5 text-xs text-amber-700 ${rail ? '' : 'hidden shrink-0 sm:flex'}`}>
+          <AlertTriangle className="mt-px size-3.5 shrink-0" />
+          毛利率低于 15%，需签核至副总经理。
+        </p>
+      ) : null}
+
+      {errorCount ? (
+        <button
+          type="button"
+          onClick={onShowErrors}
+          className={`flex items-center gap-1.5 text-xs font-medium text-destructive hover:underline ${rail ? 'w-full' : 'shrink-0'}`}
+        >
+          <AlertTriangle className="size-3.5" />
+          {errorCount} 项待补，点击查看
+        </button>
+      ) : null}
+
+      {order.currentStepLabel ? (
+        <div className={`text-xs text-muted-foreground ${rail ? 'border-t pt-3' : 'shrink-0 whitespace-nowrap'}`}>
+          当前签核步骤：<span className="font-medium text-foreground">{order.currentStepLabel}</span>
+        </div>
+      ) : null}
+
+      {canApprove ? (
+        <div className={rail ? 'flex flex-col gap-2' : 'ml-auto flex shrink-0 gap-2'}>
+          <Button size="sm" disabled={busy} onClick={onApprove}>
+            {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}同意签核
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={onReject}>驳回</Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
