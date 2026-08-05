@@ -172,7 +172,9 @@ export default function App() {
               path="/mr/prototype"
               element={
                 <Suspense fallback={<PageLoading />}>
-                  <MrPrototypePage />
+                  <AdminLayout>
+                    <MrPrototypePage />
+                  </AdminLayout>
                 </Suspense>
               }
             />
