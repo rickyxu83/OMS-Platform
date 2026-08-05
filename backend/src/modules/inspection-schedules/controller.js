@@ -37,15 +37,6 @@ function schedulePayload(row, devices = [], assignments = []) {
     active: Boolean(row.active),
     endDate: row.end_date,
     nextOrderStatus: row.next_order_status || 'pending_confirmation',
-    createsEngineerVisibleTaskOnSave: false,
-    generationSemantics: {
-      targetEngineerField: 'targetEngineerId',
-      visibleAssignmentField: 'assignedEngineerId',
-      createsServiceOrderOnSave: false,
-      createsEngineerVisibleTaskOnSave: false,
-      futureGeneratedOrderStatus: row.next_order_status || 'pending_confirmation',
-      confirmationRequiredBeforeEngineerVisibility: true,
-    },
     createdBy: row.created_by,
     createdByName: row.created_by_name,
     updatedBy: row.updated_by,
@@ -57,13 +48,13 @@ function schedulePayload(row, devices = [], assignments = []) {
 
 async function loadScheduleDevices(scheduleIds, connection = null) {
   if (!scheduleIds.length) return {}
-  const execute = connection ? connection.execute.bind(connection) : query
+  const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   const params = {}
   const placeholders = scheduleIds.map((id, i) => {
     params[`id${i}`] = id
     return `:id${i}`
   })
-  const rows = await execute(
+  const [rows] = await execute(
     `SELECT sd.schedule_id, sd.device_id,
             ${deviceDisplaySql('d')} AS device_name
      FROM inspection_schedule_devices sd
@@ -72,7 +63,7 @@ async function loadScheduleDevices(scheduleIds, connection = null) {
     params,
   )
   const result = {}
-  for (const row of (Array.isArray(rows) ? rows : rows[0] || [])) {
+  for (const row of rows) {
     const sid = row.schedule_id
     if (!result[sid]) result[sid] = []
     result[sid].push({ device_id: row.device_id, device_name: row.device_name || '' })
@@ -101,7 +92,6 @@ async function ensureInspectionSchedulesTable(connection = null) {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
-      UNIQUE KEY uk_schedule_engineer_cadence (customer_id, target_engineer_id, cadence, active_slot),
       KEY idx_inspection_schedules_customer_id (customer_id),
       KEY idx_inspection_schedules_engineer_active (target_engineer_id, active),
       KEY idx_inspection_schedules_next_run (active, next_run_anchor)
@@ -159,6 +149,13 @@ function cadenceMonths(cadence) {
   return 1
 }
 
+function fmtDateUTC(date) {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function toDateKey(value) {
   const text = String(value || '').trim()
   if (!text) throw badRequest('日期不能为空')
@@ -166,19 +163,13 @@ function toDateKey(value) {
   if (Number.isNaN(date.getTime())) {
     throw badRequest('日期格式不正确')
   }
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return fmtDateUTC(date)
 }
 
 function shiftDateByMonths(dateKey, months) {
   const date = new Date(`${dateKey}T00:00:00Z`)
   date.setUTCMonth(date.getUTCMonth() + months)
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return fmtDateUTC(date)
 }
 
 function toDateTimeValue(dateKey, timeText = '09:00:00') {
@@ -186,11 +177,7 @@ function toDateTimeValue(dateKey, timeText = '09:00:00') {
 }
 
 function todayDateKey() {
-  const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return fmtDateUTC(new Date(Date.now() + 8 * 60 * 60 * 1000))
 }
 
 async function ensureInspectionOrderColumns(connection = null) {
@@ -426,12 +413,6 @@ async function advanceSchedule(connection, scheduleId, nextRunAnchor, active, up
   )
 }
 
-function duplicateScheduleError(error) {
-  if (error?.code === 'ER_DUP_ENTRY' && String(error.message || '').includes('uk_schedule_engineer_cadence')) {
-    return badRequest('该客户、工程师和周期组合已存在启用中的巡检计划')
-  }
-  return null
-}
 
 let inspectionScheduleDevicesReady = false
 let inspectionScheduleAssignmentsReady = false
@@ -454,7 +435,7 @@ async function ensureInspectionScheduleDevicesTable(connection = null) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
 
-  if (inspectionScheduleDevicesReady === false) inspectionScheduleDevicesReady = true
+  inspectionScheduleDevicesReady = true
 }
 
 async function ensureInspectionScheduleAssignmentsTable(connection = null) {
@@ -616,23 +597,6 @@ async function assertActiveEngineer(connection, engineerId) {
   }
 }
 
-async function assertNoDuplicateActive(connection, { id = null, customerId, targetEngineerId, cadence, active }) {
-  if (!active) return
-  const [rows] = await connection.execute(
-    `SELECT id
-     FROM inspection_schedules
-     WHERE customer_id = :customerId
-       AND target_engineer_id = :targetEngineerId
-       AND cadence = :cadence
-       AND active = 1
-       AND (:id IS NULL OR id <> :id)
-     LIMIT 1`,
-    { id, customerId, targetEngineerId, cadence },
-  )
-  if (rows[0]) {
-    throw badRequest('该客户、工程师和周期组合已存在启用中的巡检计划')
-  }
-}
 
 async function loadSchedule(id) {
   await ensureInspectionScheduleDevicesTable()
@@ -655,9 +619,7 @@ async function loadSchedule(id) {
 }
 
 async function list(req, res) {
-  await ensureInspectionSchedulesTable()
-  await ensureInspectionScheduleDevicesTable()
-  await ensureInspectionScheduleAssignmentsTable()
+  await prewarmInspectionSchema()
   const { customerId = null, deviceId = null, targetEngineerId = null, cadence = '', active = '', page = '1', pageSize = '50' } = req.query
   const normalizedPage = Math.max(1, Number(page) || 1)
   const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 50))
@@ -716,13 +678,10 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const { name = '', customerId, deviceIds = [], targetEngineerId, assignments: rawAssignments, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
+  const { name = '', customerId, assignments, cadence, nextRunAnchor, active = true, endDate = null } = req.body || {}
   const normalizedCustomerId = Number(customerId || 0)
   if (!normalizedCustomerId) throw badRequest('客户不能为空')
-  const fallbackAssignments = Array.isArray(deviceIds)
-    ? deviceIds.map((deviceId) => ({ deviceId, targetEngineerId }))
-    : []
-  const normalizedAssignments = normalizeAssignments(rawAssignments || fallbackAssignments)
+  const normalizedAssignments = normalizeAssignments(assignments)
   const normalizedName = normalizeScheduleName(name)
   const normalizedCadence = normalizeCadence(cadence)
   const normalizedNextRunAnchor = normalizeDate(nextRunAnchor, '下次运行锚点')
@@ -732,57 +691,43 @@ async function create(req, res) {
   }
   const normalizedActive = normalizeActive(active, true)
 
-  let created
-  try {
-    await prewarmInspectionSchema()
-    created = await transaction(async (connection) => {
-      await ensureInspectionSchedulesTable(connection)
-      await ensureInspectionScheduleDevicesTable(connection)
-      await ensureInspectionScheduleAssignmentsTable(connection)
-      const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
-      for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
-      for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
-      const legacyTargetEngineerId = engineerIds[0]
-      const [result] = await connection.execute(
-        `INSERT INTO inspection_schedules (
-          name, customer_id, target_engineer_id, cadence, next_run_anchor,
-          active, end_date, next_order_status, created_by
-        )
-        VALUES (
-          :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
-          :active, :endDate, 'pending_confirmation', :createdBy
-        )`,
-        {
-          name: normalizedName,
-          customerId: normalizedCustomerId,
-          targetEngineerId: legacyTargetEngineerId,
-          cadence: normalizedCadence,
-          nextRunAnchor: normalizedNextRunAnchor,
-          active: normalizedActive ? 1 : 0,
-          endDate: normalizedEndDate,
-          createdBy: req.user.id,
-        },
+  await prewarmInspectionSchema()
+  const created = await transaction(async (connection) => {
+    const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
+    for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
+    for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
+    const legacyTargetEngineerId = engineerIds[0]
+    const [result] = await connection.execute(
+      `INSERT INTO inspection_schedules (
+        name, customer_id, target_engineer_id, cadence, next_run_anchor,
+        active, end_date, next_order_status, created_by
       )
-      const scheduleId = result.insertId
-      await replaceScheduleAssignments(connection, scheduleId, normalizedAssignments)
-      return { id: scheduleId }
-    })
-  } catch (error) {
-    throw duplicateScheduleError(error) || error
-  }
+      VALUES (
+        :name, :customerId, :targetEngineerId, :cadence, :nextRunAnchor,
+        :active, :endDate, 'pending_confirmation', :createdBy
+      )`,
+      {
+        name: normalizedName,
+        customerId: normalizedCustomerId,
+        targetEngineerId: legacyTargetEngineerId,
+        cadence: normalizedCadence,
+        nextRunAnchor: normalizedNextRunAnchor,
+        active: normalizedActive ? 1 : 0,
+        endDate: normalizedEndDate,
+        createdBy: req.user.id,
+      },
+    )
+    const scheduleId = result.insertId
+    await replaceScheduleAssignments(connection, scheduleId, normalizedAssignments)
+    return { id: scheduleId }
+  })
 
   const row = await loadSchedule(created.id)
   res.status(201).json({ item: schedulePayload(row, row._devices, row._assignments) })
 }
 
-async function createBulk(req, res) {
-  return create(req, res)
-}
-
 async function detail(req, res) {
-  await ensureInspectionSchedulesTable()
-  await ensureInspectionScheduleDevicesTable()
-  await ensureInspectionScheduleAssignmentsTable()
+  await prewarmInspectionSchema()
   const row = await loadSchedule(req.params.id)
   if (!row) {
     throw notFound('巡检计划不存在')
@@ -803,10 +748,7 @@ async function update(req, res) {
   if (!normalizedCustomerId) throw badRequest('客户不能为空')
   const existingAssignments = (existing._assignments || []).flatMap((group) =>
     group.deviceIds.map((deviceId) => ({ targetEngineerId: group.targetEngineerId, deviceId })))
-  const fallbackAssignments = Array.isArray(body.deviceIds)
-    ? body.deviceIds.map((deviceId) => ({ deviceId, targetEngineerId: body.targetEngineerId || body.targetEngineerIds?.[0] }))
-    : existingAssignments
-  const normalizedAssignments = normalizeAssignments(body.assignments || fallbackAssignments)
+  const normalizedAssignments = normalizeAssignments(body.assignments || existingAssignments)
 
   const normalizedCadence = body.cadence !== undefined ? normalizeCadence(body.cadence) : existing.cadence
   const normalizedNextRunAnchor = body.nextRunAnchor !== undefined ? normalizeDate(body.nextRunAnchor, '下次运行锚点') : existing.next_run_anchor
@@ -815,51 +757,43 @@ async function update(req, res) {
   if (normalizedEndDate && normalizedEndDate < normalizedNextRunAnchor) throw badRequest('结束日期不能早于下次运行锚点')
   const normalizedActive = normalizeActive(body.active, Boolean(existing.active))
 
-  try {
-    await transaction(async (connection) => {
-      await ensureInspectionSchedulesTable(connection)
-      await ensureInspectionScheduleDevicesTable(connection)
-      await ensureInspectionScheduleAssignmentsTable(connection)
-      const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
-      for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
-      for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
-      await connection.execute(
-        `UPDATE inspection_schedules
-         SET name = :name,
-             customer_id = :customerId,
-             target_engineer_id = :targetEngineerId,
-             cadence = :cadence,
-             next_run_anchor = :nextRunAnchor,
-             active = :active,
-             end_date = :endDate,
-             next_order_status = 'pending_confirmation',
-             updated_by = :updatedBy
-         WHERE id = :id`,
-        {
-          id: req.params.id,
-          name: normalizedName,
-          customerId: normalizedCustomerId,
-          targetEngineerId: engineerIds[0],
-          cadence: normalizedCadence,
-          nextRunAnchor: normalizedNextRunAnchor,
-          active: normalizedActive ? 1 : 0,
-          endDate: normalizedEndDate,
-          updatedBy: req.user.id,
-        },
-      )
-      await replaceScheduleAssignments(connection, req.params.id, normalizedAssignments)
-    })
-  } catch (error) {
-    throw duplicateScheduleError(error) || error
-  }
+  await transaction(async (connection) => {
+    const engineerIds = [...new Set(normalizedAssignments.map((item) => item.targetEngineerId))]
+    for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
+    for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
+    await connection.execute(
+      `UPDATE inspection_schedules
+       SET name = :name,
+           customer_id = :customerId,
+           target_engineer_id = :targetEngineerId,
+           cadence = :cadence,
+           next_run_anchor = :nextRunAnchor,
+           active = :active,
+           end_date = :endDate,
+           next_order_status = 'pending_confirmation',
+           updated_by = :updatedBy
+       WHERE id = :id`,
+      {
+        id: req.params.id,
+        name: normalizedName,
+        customerId: normalizedCustomerId,
+        targetEngineerId: engineerIds[0],
+        cadence: normalizedCadence,
+        nextRunAnchor: normalizedNextRunAnchor,
+        active: normalizedActive ? 1 : 0,
+        endDate: normalizedEndDate,
+        updatedBy: req.user.id,
+      },
+    )
+    await replaceScheduleAssignments(connection, req.params.id, normalizedAssignments)
+  })
 
   const row = await loadSchedule(req.params.id)
   res.json({ item: schedulePayload(row, row._devices, row._assignments) })
 }
 
 async function remove(req, res) {
-  await ensureInspectionSchedulesTable()
-  await ensureInspectionOrderColumns()
+  await prewarmInspectionSchema()
   const existing = await loadSchedule(req.params.id)
   if (!existing) {
     throw notFound('巡检计划不存在')
@@ -875,11 +809,7 @@ async function remove(req, res) {
 }
 
 async function generateDue(req, res) {
-  await ensureInspectionSchedulesTable()
-  await ensureInspectionScheduleDevicesTable()
-  await ensureInspectionScheduleAssignmentsTable()
-  await ensureInspectionOrderColumns()
-
+  await prewarmInspectionSchema()
   const dueDate = normalizeDate(req.body?.dueDate || req.query?.dueDate || todayDateKey(), '生成截止日期')
   const limit = Math.min(100, Math.max(1, Number(req.body?.limit || req.query?.limit || 50)))
 
@@ -904,11 +834,6 @@ async function generateDue(req, res) {
   const items = []
   const createdOrderIds = []
   await transaction(async (connection) => {
-    await ensureInspectionSchedulesTable(connection)
-    await ensureInspectionScheduleDevicesTable(connection)
-    await ensureInspectionScheduleAssignmentsTable(connection)
-    await ensureInspectionOrderColumns(connection)
-
     for (const schedule of rows) {
       const occurrenceDate = toDateKey(schedule.next_run_anchor)
       const assignments = assignmentMap[schedule.id] || []
@@ -947,7 +872,6 @@ async function generateDue(req, res) {
 module.exports = {
   list,
   create,
-  createBulk,
   generateDue,
   detail,
   update,
