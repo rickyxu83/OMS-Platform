@@ -483,7 +483,7 @@ export function MrFormPage() {
       <ErrorToast message={error} />
       <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
 
-      <div className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+      <div className="sticky top-14 z-20 border-b bg-background/95 backdrop-blur lg:top-16">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>

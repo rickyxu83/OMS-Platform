@@ -153,7 +153,7 @@ export function QuotationImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>报价来源与品项导入</DialogTitle>
           <DialogDescription>把客户报价或最终 PO 放入左侧，把所有供应商报价放入右侧。每个区域可以一次拖入多份文件，系统会继续自动识别并提示冲突。</DialogDescription>
@@ -195,7 +195,7 @@ export function QuotationImportDialog({
               ) : null}
               <div className="divide-y border">
                 {preview.sources.map((source) => (
-                  <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[110px_minmax(0,1fr)_130px_90px] sm:items-center">
+                  <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[120px_minmax(320px,1fr)_150px_80px] sm:items-center">
                     <span className={source.role === 'order' ? 'font-medium text-amber-700' : source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
                     <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div>{source.vendor ? <div className="text-xs text-muted-foreground">识别厂商：{source.vendor}</div> : null}</div>
                     <div className="text-sm tabular-nums">¥ {money(source.total)}</div>
@@ -216,10 +216,10 @@ export function QuotationImportDialog({
             ) : null}
 
             <section>
-              <h3 className="mb-2 text-sm font-medium">报价识别品项（{preview.items.length}）</h3>
+              <div className="mb-1 hidden border-x border-t bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid lg:grid-cols-[44px_minmax(360px,1fr)_100px_150px_150px] lg:gap-2"><span>#</span><span>品项 / 规格 / 描述</span><span>数量</span><span>未税售价</span><span>含税成本</span></div>
               <div className="max-h-[360px] divide-y overflow-y-auto border">
                 {preview.items.map((item, index) => (
-                  <div key={`${item.oemSpec}-${index}`} className="grid gap-2 px-3 py-3 lg:grid-cols-[36px_minmax(180px,1fr)_110px_120px_120px] lg:items-start">
+                  <div key={`${item.oemSpec}-${index}`} className="grid gap-2 px-3 py-3 lg:grid-cols-[44px_minmax(360px,1fr)_100px_150px_150px] lg:items-start">
                     <span className="text-sm text-muted-foreground">{index + 1}</span>
                     <div className="min-w-0"><div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div><div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div></div>
                     <div className="text-sm">数量 {item.qty || 1}</div>
