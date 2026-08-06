@@ -17,7 +17,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'identity',
     title: '客户与单号',
     icon: UserRound,
-    fields: ['customerId', 'customerName', 'customerContactId', 'salesOwnerId', 'ctrlNo', 'customerPo', 'fillDate', 'latestDeliveryDate'],
+    fields: ['customerId', 'customerName', 'customerContactId', 'salesOwnerId', 'ctrlNo', 'customerPo']
   },
   {
     id: 'trade',
@@ -29,7 +29,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'billing',
     title: '开票与付款',
     icon: ReceiptText,
-    fields: ['invoiceProcess', 'billingTiming', 'billingContent', 'paymentTerms', 'paymentOther', 'splitDelivery'],
+    fields: ['invoiceProcess', 'billingTiming', 'billingContent', 'paymentTerms', 'paymentOther']
   },
   {
     id: 'contacts',
@@ -42,7 +42,7 @@ export const MR_SECTIONS: MrSection[] = [
     title: '交付、验收与服务',
     icon: Truck,
     // The backend builds work-option errors as `${label}Options` with a Chinese label.
-    fields: ['acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options'],
+    fields: ['latestDeliveryDate', 'splitDelivery', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options']
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
   { id: 'remark', title: '备注', icon: StickyNote, fields: ['remark'] },

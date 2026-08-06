@@ -101,6 +101,7 @@ export function MrFormPage() {
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
+  const [contactOverridesOpen, setContactOverridesOpen] = useState(false)
   const loadSequence = useRef(0)
   const ignoreNextPop = useRef(false)
   const errorListRef = useRef<HTMLDivElement | null>(null)
@@ -229,7 +230,8 @@ export function MrFormPage() {
 
   const chooseCustomer = async (value: string) => {
     const customer = customers.find((item) => String(item.id) === value)
-    patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '' })
+    setContactOverridesOpen(false)
+    patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '', purchaser: '', purchaserTel: '', recipient: '', recipientTel: '', invoiceRecipient: '' })
     try {
       const detail = await loadCustomer(value)
       setContacts(detail.contacts || [])
@@ -239,16 +241,17 @@ export function MrFormPage() {
   }
 
   const chooseContact = (value: string) => {
+    setContactOverridesOpen(false)
     if (value === 'none') return patch({ customerContactId: null, contactName: '' })
     const contact = contacts?.find((item) => String(item.id) === value)
     patch({
       customerContactId: value,
       contactName: contact?.name || '',
-      purchaser: form?.purchaser || contact?.name || '',
-      purchaserTel: form?.purchaserTel || contact?.phone || '',
-      recipient: form?.recipient || contact?.name || '',
-      recipientTel: form?.recipientTel || contact?.phone || '',
-      invoiceRecipient: form?.invoiceRecipient || contact?.name || '',
+      purchaser: contact?.name || '',
+      purchaserTel: contact?.phone || '',
+      recipient: contact?.name || '',
+      recipientTel: contact?.phone || '',
+      invoiceRecipient: contact?.name || '',
     })
   }
   const patchContactField = (field: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
@@ -419,6 +422,13 @@ export function MrFormPage() {
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
   const highValue = Number(calculated.totals?.salesExcludingTax) > 750000
+  const primaryContact = calculated.contactName?.trim() || ''
+  const contactNeedsAttention = !primaryContact || !calculated.purchaser || !calculated.recipient || Boolean(
+  (calculated.purchaser && calculated.purchaser !== primaryContact)
+    || (calculated.recipient && calculated.recipient !== primaryContact)
+    || (calculated.invoiceRecipient && calculated.invoiceRecipient !== primaryContact)
+  )
+  const showContactOverrides = contactOverridesOpen || contactNeedsAttention
   const sectionCounts = { items: calculated.items?.length || 0 }
 
   const summary = (layout: 'rail' | 'bar') => (
@@ -666,10 +676,6 @@ export function MrFormPage() {
               <Field label="客户 P/O" editable={editable} readonlyText={textValue(calculated.customerPo)}>
                 <Input value={calculated.customerPo || ''} onChange={(e) => patch({ customerPo: e.target.value })} />
               </Field>
-              <Field label="填单日期" editable={false} readonlyText={status === 'draft' ? '提交时自动记录' : textValue(calculated.fillDate)} />
-              <Field label="最晚交货日" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
-                <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
-              </Field>
             </div>
           </SectionCard>
 
@@ -704,47 +710,65 @@ export function MrFormPage() {
                       <Input value={calculated.paymentOther || ''} onChange={(e) => patch({ paymentOther: e.target.value })} />
                     </Field>
                   ) : null}
-                  <Field label="分批送机" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '可', '否')}>
-                    <BinaryChoice value={calculated.splitDelivery} yes="可" no="否" onChange={(value) => patch({ splitDelivery: value })} />
-                  </Field>
                 </div>
               </SubPanel>
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="采购与收件联系人" icon={MR_SECTIONS[3].icon} flash={flashSection === 'contacts'}>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <SubPanel title="客户采购">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="采购人" editable={editable} readonlyText={textValue(calculated.purchaser)}>
-                    <Input list="mr-contact-options" value={calculated.purchaser || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('purchaser', e.target.value)} />
-                  </Field>
-                  <Field label="采购电话" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
-                    <Input value={calculated.purchaserTel || ''} onChange={(e) => patch({ purchaserTel: e.target.value })} />
-                  </Field>
+          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="默认使用客户联系人；只有采购、发票或收件对象不同时才需要展开。" flash={flashSection === 'contacts'}>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,1fr)]">
+              <Field label="客户联系人" editable={editable} readonlyText={textValue(calculated.contactName)}>
+                <Select value={contactValue} disabled={!calculated.customerId} onValueChange={chooseContact}>
+                  <SelectTrigger><SelectValue placeholder="选择客户联系人" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">暂不关联</SelectItem>
+                    {(contacts || []).filter((item) => item.id).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name || item.id}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <div className="flex min-h-9 flex-wrap items-end justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-3">
+                <div className="min-w-0 text-sm">
+                  <div className="font-medium">{primaryContact ? `默认联系人：${primaryContact}` : '尚未设置客户联系人'}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">采购、发票收件和收件默认沿用此联系人。</div>
                 </div>
-              </SubPanel>
-              <SubPanel title="发票与收件">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="发票收件人" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
-                    <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
-                  </Field>
-                  <Field label="收件人" editable={editable} readonlyText={textValue(calculated.recipient)}>
-                    <Input list="mr-contact-options" value={calculated.recipient || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('recipient', e.target.value)} />
-                  </Field>
-                  <Field label="收件电话" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
-                    <Input value={calculated.recipientTel || ''} onChange={(e) => patch({ recipientTel: e.target.value })} />
-                  </Field>
-                  <Field label="收件邮箱" editable={editable} readonlyText={textValue(calculated.recipientMail)}>
-                    <Input type="email" value={calculated.recipientMail || ''} onChange={(e) => patch({ recipientMail: e.target.value })} />
-                  </Field>
-                </div>
-              </SubPanel>
+                {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setContactOverridesOpen((value) => !value)}>{showContactOverrides ? '收起自定义' : '自定义联系人'}</Button> : null}
+              </div>
             </div>
+            {showContactOverrides ? (
+              <div className="mt-4 grid gap-4 rounded-lg border border-dashed p-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="md:col-span-2 xl:col-span-4 text-xs text-muted-foreground">仅在收件、采购或发票联系人与客户联系人不同时填写；从客户联系人列表选择后会自动带入电话。</div>
+                <Field label="采购人" editable={editable} readonlyText={textValue(calculated.purchaser)}>
+                  <Input list="mr-contact-options" value={calculated.purchaser || ''} placeholder="选择或手填" onChange={(e) => patchContactField('purchaser', e.target.value)} />
+                </Field>
+                <Field label="采购电话" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
+                  <Input value={calculated.purchaserTel || ''} onChange={(e) => patch({ purchaserTel: e.target.value })} />
+                </Field>
+                <Field label="发票收件人" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
+                  <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} placeholder="选择或手填" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
+                </Field>
+                <Field label="收件人" editable={editable} readonlyText={textValue(calculated.recipient)}>
+                  <Input list="mr-contact-options" value={calculated.recipient || ''} placeholder="选择或手填" onChange={(e) => patchContactField('recipient', e.target.value)} />
+                </Field>
+                <Field label="收件电话" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
+                  <Input value={calculated.recipientTel || ''} onChange={(e) => patch({ recipientTel: e.target.value })} />
+                </Field>
+                <Field label="收件邮箱" editable={editable} readonlyText={textValue(calculated.recipientMail)} className="md:col-span-2">
+                  <Input type="email" value={calculated.recipientMail || ''} onChange={(e) => patch({ recipientMail: e.target.value })} />
+                </Field>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">采购：{textValue(calculated.purchaser)} · 发票收件：{textValue(calculated.invoiceRecipient)} · 收件：{textValue(calculated.recipient)}</div>
+            )}
           </SectionCard>
 
           <SectionCard id="delivery" title="交付、验收与服务" icon={MR_SECTIONS[4].icon} flash={flashSection === 'delivery'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Field label="最晚交货日" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
+                <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
+              </Field>
+              <Field label="分批送机" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '可', '否')}>
+                <BinaryChoice value={calculated.splitDelivery} yes="可" no="否" onChange={(value) => patch({ splitDelivery: value })} />
+              </Field>
               <Field label="验收" editable={editable} readonlyText={textValue(calculated.acceptance)}>
                 <Select value={calculated.acceptance || ''} onValueChange={(value) => patch({ acceptance: value })}>
                   <SelectTrigger><SelectValue placeholder="选择验收条件" /></SelectTrigger>
