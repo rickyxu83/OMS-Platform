@@ -5,6 +5,42 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function cleanOcrLine(value) {
+  return String(value || '').replace(/[|{}\[\]()`]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function parseLooseItems(lines) {
+  const items = []
+  let pending = []
+  const summary = /(未税|未稅|含税|含稅|总计|總計|合计|合計|總價|总价|备注|備註|付款|交货|交貨|有效期限)/i
+  const fiveNumbers = /(?:^|\s)(\d+)\s+([\d,]+(?:\.\d+)?)\D+([\d,]+(?:\.\d+)?)\D+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s*$/
+  const threeNumbers = /(?:^|\s)(\d+)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s*$/
+  const flushPending = (fallback = '') => {
+    const value = cleanOcrLine([...pending, fallback].filter(Boolean).join(' '))
+    pending = []
+    return value
+  }
+
+  for (const rawLine of lines) {
+    const line = cleanOcrLine(rawLine)
+    if (!line || summary.test(line)) { pending = []; continue }
+    const match = line.match(fiveNumbers) || line.match(threeNumbers)
+    if (match) {
+      const prefix = cleanOcrLine(line.slice(0, match.index))
+      const description = cleanOcrLine(prefix || flushPending()) || '待人工核对品项'
+      const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
+      const unitPrice = number(match[2]) || 0
+      const extended = number(match[3]) || unitPrice * (number(match[1]) || 1)
+      items.push({ item_no: String(items.length + 1), part_no: partNo, description, qty: number(match[1]) || 1, unit_price: unitPrice, extended })
+      pending = []
+      continue
+    }
+    if (line.startsWith('*') || /\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/.test(line)) {
+      pending = [...pending.slice(-1), line]
+    }
+  }
+  return items
+}
 function parsePdfText(text) {
   const clean = String(text || '').replace(/\u00a0/g, ' ').trim()
   if (!clean) return { documentType: 'scanned_pdf', sheets: [], warnings: ['PDF 没有文字层，当前需要人工核对或 OCR 后再导入'] }
@@ -18,8 +54,9 @@ function parsePdfText(text) {
   const po = clean.match(/PO\s*NO\.?\)?[^A-Z0-9]{0,12}([A-Z0-9-]+)/i)?.[1] || clean.match(/(?:订购单号|訂購單號)[：:\s]*(\d+)/i)?.[1] || ''
   const payment = cleanSegment(clean.match(/(?:付款方式|Payment)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
   const delivery = cleanSegment(clean.match(/(?:交货地点|交貨地點|Ship To)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
-  const untaxedTotal = number(clean.match(/(?:未税金额|未稅金額)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
-  const totalAmount = number(clean.match(/(?:含税金额|含稅金額)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
+  const untaxedTotal = number(clean.match(/(?:未税总计|未稅總計|未税金额|未稅金額)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
+  const totalMatch = clean.match(/(?:含税金额|含稅金額|含税总计|含稅總計|含税合计|含稅合計|含稅\s*(?:\([^)]*\))?|含税\s*(?:\([^)]*\))?|总价|總價)[^\d]{0,40}(?:RMB|USD)?\s*([\d,]+(?:\.\d+)?)/i)
+  const totalAmount = number(totalMatch?.[1])
   const items = []
   const tableStart = flat.search(/(?:\bQTY\b|数量|數量).*?(?:\bAmount\b|金额|金額)/i)
   const tableText = tableStart >= 0 ? flat.slice(tableStart).split(/未税金额|未稅金額|含税金额|含稅金額/i)[0] : ''
@@ -36,6 +73,7 @@ function parsePdfText(text) {
       extended: number(match[7]) || 0,
     })
   }
+  if (!items.length) items.push(...parseLooseItems(lines))
   const sheet = {
     title: 'PDF',
     customer,
@@ -44,7 +82,7 @@ function parsePdfText(text) {
     delivery,
     notes: clean.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     tax_rate: taxRate,
-    tax_included: Boolean(totalAmount),
+    tax_included: Boolean(totalAmount && /含税|含稅/.test(clean)),
     untaxed_total: untaxedTotal,
     total_amount: totalAmount,
     discounted_total: null,
