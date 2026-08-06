@@ -5,7 +5,8 @@ const env = require('../../../config/env')
 const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
 const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
-const { parsePdf } = require('./quotation-pdf-parser')
+const { parsePdf, parsePdfText } = require('./quotation-pdf-parser')
+const { recognizePdf } = require('./ocr-client')
 const { mergeQuotations } = require('./quotation-merge')
 const {
   constants,
@@ -632,9 +633,20 @@ async function importQuotation(req, res) {
     sources = await Promise.all(uploads.map(async (file, index) => {
       const name = originalNameUtf8(file)
       const extension = path.extname(name).toLowerCase()
-      const parsed = extension === '.pdf'
+      let parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
+      if (parsed.documentType === 'scanned_pdf') {
+        try {
+          const ocr = await recognizePdf(file.buffer, name)
+          if (ocr?.text) {
+            const recognized = parsePdfText(ocr.text)
+            parsed = { ...recognized, warnings: [...(parsed.warnings || []), ...(recognized.warnings || []), `已通过 Linux OCR 识别 ${ocr.pages || 1} 页，请在预览中核对结果`] }
+          }
+        } catch (_error) {
+          parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'Linux OCR 暂时不可用，本次只保留内存中的识别结果，请人工确认'] }
+        }
+      }
       const sheets = parsed.sheets.map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       if (!sheets.length && parsed.documentType !== 'scanned_pdf') throw new Error(`${name} 未找到可识别的报价明细表`)
       const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
