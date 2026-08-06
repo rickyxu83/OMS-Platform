@@ -167,7 +167,10 @@ function normalizeOrder(body = {}) {
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
     remark: text(body.remark, 10000),
   }
-
+  order.hasContract = order.contractNo ? 1 : 0
+  order.contractType = null
+  order.hasPenalty = order.hasContract && order.penaltyContent ? 1 : 0
+  if (!order.hasContract) order.penaltyContent = null
   const bodyItems = Array.isArray(body.items) ? body.items : []
   const rawItems = String(order.invoiceType || '').startsWith('6%')
     ? bodyItems.map((item) => ({ ...item, taxRate: 6 }))
@@ -190,7 +193,6 @@ function validateSubmission(order, items) {
     if (value === null || value === undefined || value === '') errors.push({ field, message })
   }
 
-  requireValue('fillDate', order.fillDate, '请选择填单日期')
   requireValue('latestDeliveryDate', order.latestDeliveryDate, '请选择最晚交货日')
   requireValue('customerId', order.customerId, '请选择客户档案')
   requireValue('customerName', order.customerName, '请选择客户名称')
@@ -200,24 +202,14 @@ function validateSubmission(order, items) {
   requireValue('billingTiming', order.billingTiming, '请填写开票/收款时间')
   requireValue('invoiceType', order.invoiceType, '请选择发票别')
   requireValue('pricingMode', order.pricingMode, '请选择计价模式')
-  requireValue('hasContract', order.hasContract, '请选择是否签合约')
   requireValue('invoiceProcess', order.invoiceProcess, '请选择发票处理方式')
   requireValue('billingContent', order.billingContent, '请填写开票内容')
   requireValue('paymentTerms', order.paymentTerms, '请选择付款条件')
   requireValue('splitDelivery', order.splitDelivery, '请选择是否分批送机')
   requireValue('caseCategory', order.caseCategory, '请选择案分类')
   requireValue('acceptance', order.acceptance, '请选择验收条件')
-
   if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票别无效' })
   if (![1, 2, 3].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
-  if (order.hasContract === 1) {
-    requireValue('contractType', order.contractType, '请选择合约类型')
-    requireValue('hasPenalty', order.hasPenalty, '请选择是否有罚则')
-    if (order.hasPenalty === 1) requireValue('penaltyContent', order.penaltyContent, '请填写罚则内容')
-    if (order.contractType && !CONTRACT_TYPES.includes(order.contractType)) errors.push({ field: 'contractType', message: '合约类型无效' })
-    if (order.invoiceType === '6%服务发票' && order.contractType !== '维护/服务') errors.push({ field: 'contractType', message: '6%服务发票的合约类型应为维护/服务' })
-    if (order.invoiceType && order.invoiceType !== '6%服务发票' && order.contractType !== '买卖/维修') errors.push({ field: 'contractType', message: '该发票别的合约类型应为买卖/维修' })
-  }
   if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '发票处理方式无效' })
   if (order.paymentTerms && !PAYMENT_TERMS.includes(order.paymentTerms)) errors.push({ field: 'paymentTerms', message: '付款条件无效' })
   if (order.paymentTerms === '其他') requireValue('paymentOther', order.paymentOther, '请填写付款条件说明')

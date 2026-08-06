@@ -161,7 +161,7 @@ export interface QuotationImportResult {
   salesSourceIndex: number
   items: MrItem[]
   warnings: string[]
-  metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null }
+  metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null; matchedCustomer?: CustomerOption | null }
 }
 
 export interface ParsedQuotationSheet {

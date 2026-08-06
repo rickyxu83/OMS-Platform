@@ -23,7 +23,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'trade',
     title: '交易设置',
     icon: CircleDollarSign,
-    fields: ['pricingMode', 'invoiceType', 'totalExcludingTax', 'hasContract', 'contractNo', 'contractType', 'hasPenalty', 'penaltyContent'],
+    fields: ['pricingMode', 'invoiceType', 'totalExcludingTax', 'caseCategory', 'contractNo', 'penaltyContent'],
   },
   {
     id: 'billing',
@@ -42,7 +42,7 @@ export const MR_SECTIONS: MrSection[] = [
     title: '交付、验收与服务',
     icon: Truck,
     // The backend builds work-option errors as `${label}Options` with a Chinese label.
-    fields: ['caseCategory', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options'],
+    fields: ['acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options'],
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
   { id: 'remark', title: '备注', icon: StickyNote, fields: ['remark'] },

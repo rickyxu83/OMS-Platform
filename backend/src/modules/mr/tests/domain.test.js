@@ -33,10 +33,21 @@ function validBody(overrides = {}) {
   assert.equal(order.totalExcludingTax, 100)
   assert.equal(items[0].subtotal, 100)
 }
+{
+  const { order } = normalizeOrder(validBody({ hasContract: 1, contractNo: 'C-1', contractType: '维护/服务', hasPenalty: 0, penaltyContent: '逾期罚则' }))
+  assert.equal(order.hasContract, 1)
+  assert.equal(order.contractType, null)
+  assert.equal(order.hasPenalty, 1)
+
+  const { order: withoutContract } = normalizeOrder(validBody({ contractNo: null, penaltyContent: '不应保留' }))
+  assert.equal(withoutContract.hasContract, 0)
+  assert.equal(withoutContract.hasPenalty, 0)
+  assert.equal(withoutContract.penaltyContent, null)
+}
 
 {
-  const { order, items } = normalizeOrder(validBody({ fillDate: '2026-99-99' }))
-  assert(validateSubmission(order, items).some((error) => error.field === 'fillDate'))
+  const { order, items } = normalizeOrder(validBody({ fillDate: null }))
+  assert(!validateSubmission(order, items).some((error) => error.field === 'fillDate'))
 }
 
 {

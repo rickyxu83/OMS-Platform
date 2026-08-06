@@ -67,6 +67,14 @@ function paymentFromQuotation(text?: string) {
   return undefined
 }
 
+function normalizeLookup(value?: string | null) {
+  return String(value || '').toLowerCase().replace(/[\s（）()\-—_,，。]/g, '')
+}
+
+function contactByName(contacts: CustomerOption['contacts'], value?: string | null) {
+  const target = normalizeLookup(value)
+  return (contacts || []).find((contact) => target && normalizeLookup(contact.name) === target)
+}
 function validationDetails(error: unknown): ValidationError[] {
   const details = (error as Error & { details?: unknown })?.details
   return Array.isArray(details) ? details.filter((item): item is ValidationError => Boolean(item && typeof item === 'object')) : []
@@ -233,9 +241,79 @@ export function MrFormPage() {
   const chooseContact = (value: string) => {
     if (value === 'none') return patch({ customerContactId: null, contactName: '' })
     const contact = contacts?.find((item) => String(item.id) === value)
-    patch({ customerContactId: value, contactName: contact?.name || '' })
+    patch({
+      customerContactId: value,
+      contactName: contact?.name || '',
+      purchaser: form?.purchaser || contact?.name || '',
+      purchaserTel: form?.purchaserTel || contact?.phone || '',
+      recipient: form?.recipient || contact?.name || '',
+      recipientTel: form?.recipientTel || contact?.phone || '',
+      invoiceRecipient: form?.invoiceRecipient || contact?.name || '',
+    })
+  }
+  const patchContactField = (field: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
+    const contact = contactByName(contacts, value)
+    const next: Partial<MrOrder> = { [field]: value }
+    if (field === 'purchaser') next.purchaserTel = contact?.phone || ''
+    if (field === 'recipient') next.recipientTel = contact?.phone || ''
+    patch(next)
   }
 
+  const applyQuotationImport = async (result: QuotationImportResult) => {
+    const salesFile = result.files[result.salesSourceIndex]
+    const salesTotal = result.sources.find((source) => source.role === 'sales')?.total
+    const imported = normalizeCostTaxRates(result.items, calculated?.invoiceType)
+    const items = Number(calculated?.pricingMode) === 2
+      ? singleIntegrationItems(imported, calculated?.invoiceType, calculated?.installOptions || [])
+      : imported
+    const metadataCustomer = result.metadata?.customer?.trim() || ''
+    const matchedCustomer = !calculated?.customerId
+      ? result.metadata?.matchedCustomer || customers.find((customer) => [customer.name, customer.code].some((value) => normalizeLookup(value) === normalizeLookup(metadataCustomer)))
+      : undefined
+    let importedContacts = contacts || []
+    if (matchedCustomer) {
+      if (matchedCustomer.contacts?.length) {
+        importedContacts = matchedCustomer.contacts
+        setContacts(importedContacts)
+      } else {
+        try {
+          const detail = await loadCustomer(matchedCustomer.id)
+          importedContacts = detail.contacts || []
+          setContacts(importedContacts)
+        } catch (err) {
+          setError((err as Error).message || '客户联系人加载失败')
+        }
+      }
+    }
+    const importedContact = contactByName(importedContacts, result.metadata?.attn)
+    const nextCustomerId = calculated?.customerId || matchedCustomer?.id || null
+    const nextCustomerName = calculated?.customerId
+      ? calculated.customerName
+      : matchedCustomer?.name || metadataCustomer || calculated?.customerName || ''
+    const nextContactId = calculated?.customerContactId || importedContact?.id || null
+    const nextContactName = calculated?.customerContactId
+      ? calculated.contactName
+      : importedContact?.name || result.metadata?.attn || calculated?.contactName || ''
+    const importedContactName = importedContact?.name || result.metadata?.attn || ''
+    const importedContactPhone = importedContact?.phone || ''
+    patch({
+      items: syncInstallOptions(items, [], calculated?.installOptions || []),
+      totalExcludingTax: Number(calculated?.pricingMode) === 3 ? calculated?.totalExcludingTax : calculated?.totalExcludingTax || salesTotal || null,
+      quotationFileId: salesFile?.id || null,
+      quotationFiles: result.files,
+      customerId: nextCustomerId,
+      customerName: nextCustomerName,
+      customerContactId: nextContactId,
+      contactName: nextContactName,
+      purchaser: calculated?.purchaser || importedContactName,
+      purchaserTel: calculated?.purchaserTel || importedContactPhone,
+      recipient: calculated?.recipient || importedContactName,
+      recipientTel: calculated?.recipientTel || importedContactPhone,
+      invoiceRecipient: calculated?.invoiceRecipient || importedContactName,
+      paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
+    })
+    toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
+  }
   const save = async () => {
     if (!id || !calculated) return null
     setBusy(true)
@@ -336,7 +414,7 @@ export function MrFormPage() {
   const status = calculated.status || 'draft'
   const contactValue = calculated.customerContactId ? String(calculated.customerContactId) : 'none'
   const salesOwnerValue = calculated.salesOwnerId ? String(calculated.salesOwnerId) : 'none'
-  const hasContract = Number(calculated.hasContract) === 1
+  const hasContract = Boolean(calculated.contractNo?.trim())
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
@@ -358,6 +436,7 @@ export function MrFormPage() {
   return (
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
+      <datalist id="mr-contact-options">{(contacts || []).filter((contact) => contact.name).map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
 
       <div className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -441,6 +520,75 @@ export function MrFormPage() {
             </div>
           ) : null}
 
+          <SectionCard id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="先确定计价模式与发票别，随后才可导入或添加品项。" flash={flashSection === 'trade'}>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SubPanel title="计价与发票">
+                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
+                  <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
+                    {constants.pricingModes.map((mode) => (
+                      <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>
+                        {mode.label}
+                      </Button>
+                    ))}
+                  </div>
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="发票别" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
+                    <Select
+                      value={calculated.invoiceType || ''}
+                      onValueChange={changeInvoiceType}
+                    >
+                      <SelectTrigger><SelectValue placeholder="选择发票别" /></SelectTrigger>
+                      <SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={calculated.totalExcludingTax ?? ''}
+                      disabled={!calculated.pricingMode || Number(calculated.pricingMode) === 3}
+                      onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="案分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
+                    <Select value={calculated.caseCategory || ''} onValueChange={(value) => patch({ caseCategory: value })}>
+                      <SelectTrigger><SelectValue placeholder="选择案分类" /></SelectTrigger>
+                      <SelectContent>{constants.CASE_CATEGORIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+                {editable ? (
+                  <p className="text-xs text-muted-foreground">
+                    {!calculated.pricingMode
+                      ? '第一步：先选择计价模式；系统会据此决定未税总计和销售单价的填写方式。'
+                      : Number(calculated.pricingMode) === 1
+                        ? '先填未税总计，再录入各项成本；销售单价按未税 COST 占比自动分摊。'
+                        : Number(calculated.pricingMode) === 2
+                          ? '先填未税总计；品项固定为主项与技术服务，销售额按 99% / 1% 自动分配。'
+                          : '逐项填写未税销售单价，未税总计由品项售价自动汇总。'}
+                  </p>
+                ) : null}
+              </SubPanel>
+
+              <SubPanel title="合约">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="合同号（不填表示无合约）" editable={editable} readonlyText={textValue(calculated.contractNo)} className="sm:col-span-2">
+                    <Input value={calculated.contractNo || ''} placeholder="有合同再填写" onChange={(e) => patch({ contractNo: e.target.value, penaltyContent: e.target.value ? calculated.penaltyContent : '' })} />
+                  </Field>
+                  {hasContract ? (
+                    <Field label="罚则说明（选填）" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
+                      <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="有罚则时填写，没有可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
+                    </Field>
+                  ) : (
+                    <p className="text-sm text-muted-foreground sm:col-span-2">未填写合同号，按无合约处理。</p>
+                  )}
+                </div>
+              </SubPanel>
+            </div>
+          </SectionCard>
+
           <SectionCard
             id="items"
             title="品项明细"
@@ -501,104 +649,27 @@ export function MrFormPage() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="负责业务" editable={editable} readonlyText={textValue(calculated.salesOwnerName)}>
-                <Select value={salesOwnerValue} disabled={user?.role === 'sales'} onValueChange={(value) => patch({ salesOwnerId: value === 'none' ? null : value })}>
-                  <SelectTrigger><SelectValue placeholder="选择业务" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">未指定</SelectItem>
-                    {salespeople.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.realName || item.username || item.id}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </Field>
+              {['assistant', 'admin'].includes(user?.role || '') ? (
+                <Field label="业务归属（代建时）" editable={editable} readonlyText={textValue(calculated.salesOwnerName)}>
+                  <Select value={salesOwnerValue} onValueChange={(value) => patch({ salesOwnerId: value === 'none' ? null : value })}>
+                    <SelectTrigger><SelectValue placeholder="选择归属业务" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">未指定</SelectItem>
+                      {salespeople.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.realName || item.username || item.id}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
               </Field>
               <Field label="客户 P/O" editable={editable} readonlyText={textValue(calculated.customerPo)}>
                 <Input value={calculated.customerPo || ''} onChange={(e) => patch({ customerPo: e.target.value })} />
               </Field>
-              <Field label="填单日期" editable={editable} readonlyText={textValue(calculated.fillDate)}>
-                <Input type="date" value={calculated.fillDate || ''} onChange={(e) => patch({ fillDate: e.target.value })} />
-              </Field>
+              <Field label="填单日期" editable={false} readonlyText={status === 'draft' ? '提交时自动记录' : textValue(calculated.fillDate)} />
               <Field label="最晚交货日" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
                 <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
               </Field>
-            </div>
-          </SectionCard>
-
-          <SectionCard className="order-first" id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="先确定计价模式与发票别，随后才可导入或添加品项。" flash={flashSection === 'trade'}>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <SubPanel title="计价与发票">
-                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
-                  <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
-                    {constants.pricingModes.map((mode) => (
-                      <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>
-                        {mode.label}
-                      </Button>
-                    ))}
-                  </div>
-                </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="发票别" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
-                    <Select
-                      value={calculated.invoiceType || ''}
-                      onValueChange={changeInvoiceType}
-                    >
-                      <SelectTrigger><SelectValue placeholder="选择发票别" /></SelectTrigger>
-                      <SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={calculated.totalExcludingTax ?? ''}
-                      disabled={!calculated.pricingMode || Number(calculated.pricingMode) === 3}
-                      onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
-                    />
-                  </Field>
-                </div>
-                {editable ? (
-                  <p className="text-xs text-muted-foreground">
-                    {!calculated.pricingMode
-                      ? '第一步：先选择计价模式；系统会据此决定未税总计和销售单价的填写方式。'
-                      : Number(calculated.pricingMode) === 1
-                        ? '先填未税总计，再录入各项成本；销售单价按未税 COST 占比自动分摊。'
-                        : Number(calculated.pricingMode) === 2
-                          ? '先填未税总计；品项固定为主项与技术服务，销售额按 99% / 1% 自动分配。'
-                          : '逐项填写未税销售单价，未税总计由品项售价自动汇总。'}
-                  </p>
-                ) : null}
-              </SubPanel>
-
-              <SubPanel
-                title="合约"
-                actions={editable ? <BinaryChoice value={calculated.hasContract} onChange={(value) => patch({ hasContract: value })} /> : <span className="text-sm">{choiceValue(calculated.hasContract, '签合约', '不签合约')}</span>}
-              >
-                {hasContract ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="合同号" editable={editable} readonlyText={textValue(calculated.contractNo)}>
-                      <Input value={calculated.contractNo || ''} onChange={(e) => patch({ contractNo: e.target.value })} />
-                    </Field>
-                    <Field label="合约类型" editable={editable} readonlyText={textValue(calculated.contractType)}>
-                      <Select value={calculated.contractType || ''} onValueChange={(value) => patch({ contractType: value })}>
-                        <SelectTrigger><SelectValue placeholder="选择合约类型" /></SelectTrigger>
-                        <SelectContent>{constants.CONTRACT_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </Field>
-                    <Field label="是否有罚则" editable={editable} readonlyText={choiceValue(calculated.hasPenalty)}>
-                      <BinaryChoice value={calculated.hasPenalty} onChange={(value) => patch({ hasPenalty: value })} />
-                    </Field>
-                    {Number(calculated.hasPenalty) === 1 ? (
-                      <Field label="罚则内容" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
-                        <Textarea rows={3} value={calculated.penaltyContent || ''} onChange={(e) => patch({ penaltyContent: e.target.value })} />
-                      </Field>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground">本单不签合约</div>
-                )}
-              </SubPanel>
             </div>
           </SectionCard>
 
@@ -646,7 +717,7 @@ export function MrFormPage() {
               <SubPanel title="客户采购">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="采购人" editable={editable} readonlyText={textValue(calculated.purchaser)}>
-                    <Input value={calculated.purchaser || ''} onChange={(e) => patch({ purchaser: e.target.value })} />
+                    <Input list="mr-contact-options" value={calculated.purchaser || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('purchaser', e.target.value)} />
                   </Field>
                   <Field label="采购电话" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
                     <Input value={calculated.purchaserTel || ''} onChange={(e) => patch({ purchaserTel: e.target.value })} />
@@ -656,10 +727,10 @@ export function MrFormPage() {
               <SubPanel title="发票与收件">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="发票收件人" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
-                    <Input value={calculated.invoiceRecipient || ''} onChange={(e) => patch({ invoiceRecipient: e.target.value })} />
+                    <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
                   </Field>
                   <Field label="收件人" editable={editable} readonlyText={textValue(calculated.recipient)}>
-                    <Input value={calculated.recipient || ''} onChange={(e) => patch({ recipient: e.target.value })} />
+                    <Input list="mr-contact-options" value={calculated.recipient || ''} placeholder="从客户联系人选择或手填" onChange={(e) => patchContactField('recipient', e.target.value)} />
                   </Field>
                   <Field label="收件电话" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
                     <Input value={calculated.recipientTel || ''} onChange={(e) => patch({ recipientTel: e.target.value })} />
@@ -674,12 +745,6 @@ export function MrFormPage() {
 
           <SectionCard id="delivery" title="交付、验收与服务" icon={MR_SECTIONS[4].icon} flash={flashSection === 'delivery'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="案分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
-                <Select value={calculated.caseCategory || ''} onValueChange={(value) => patch({ caseCategory: value })}>
-                  <SelectTrigger><SelectValue placeholder="选择案分类" /></SelectTrigger>
-                  <SelectContent>{constants.CASE_CATEGORIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
               <Field label="验收" editable={editable} readonlyText={textValue(calculated.acceptance)}>
                 <Select value={calculated.acceptance || ''} onValueChange={(value) => patch({ acceptance: value })}>
                   <SelectTrigger><SelectValue placeholder="选择验收条件" /></SelectTrigger>
@@ -762,23 +827,7 @@ export function MrFormPage() {
           pricingMode={calculated.pricingMode}
           existingFiles={calculated.quotationFiles || []}
           onOpenChange={setImportOpen}
-          onApply={(result: QuotationImportResult) => {
-            const salesFile = result.files[result.salesSourceIndex]
-            const salesTotal = result.sources.find((source) => source.role === 'sales')?.total
-            const imported = normalizeCostTaxRates(result.items, calculated.invoiceType)
-            const items = Number(calculated.pricingMode) === 2
-              ? singleIntegrationItems(imported, calculated.invoiceType, calculated.installOptions || [])
-              : imported
-            patch({
-              items: syncInstallOptions(items, [], calculated.installOptions || []),
-              totalExcludingTax: Number(calculated.pricingMode) === 3 ? calculated.totalExcludingTax : calculated.totalExcludingTax || salesTotal || null,
-              quotationFileId: salesFile?.id || null,
-              quotationFiles: result.files,
-              contactName: calculated.contactName || result.metadata?.attn || '',
-              paymentTerms: calculated.paymentTerms || paymentFromQuotation(result.metadata?.payment),
-            })
-            toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件`)
-          }}
+          onApply={(result) => void applyQuotationImport(result)}
         />
       ) : null}
 
