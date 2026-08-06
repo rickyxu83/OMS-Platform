@@ -153,7 +153,7 @@ export function QuotationImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价来源与品项导入</DialogTitle>
           <DialogDescription>把客户报价或最终 PO 放入左侧，把所有供应商报价放入右侧。每个区域可以一次拖入多份文件，系统会继续自动识别并提示冲突。</DialogDescription>

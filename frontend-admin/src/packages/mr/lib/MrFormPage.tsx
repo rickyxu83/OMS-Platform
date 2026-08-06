@@ -41,7 +41,24 @@ import { QuotationImportDialog } from './QuotationImportDialog'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 const WORKBENCH_SECTIONS = [MR_SECTIONS[1], MR_SECTIONS[5], MR_SECTIONS[0], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
-
+function suggestPricingMode(result: QuotationImportResult) {
+  const itemText = (result.items || []).map((item) => `${item.name || ''} ${item.description || ''}`).join(' ')
+  const sourceText = (result.sources || []).map((source) => source.name).join(' ')
+  const deliveryText = result.metadata?.delivery || ''
+  const serviceSignal = /安装|装机|实施|部署|送达安装|维保|续保|保固|服务|support|warranty/i.test(`${itemText} ${sourceText} ${deliveryText}`)
+  const purchaseCount = (result.sources || []).filter((source) => source.role === 'purchase').length
+  if ((result.items || []).length === 1 && serviceSignal) return { mode: 2, reason: '单一主设备/服务，并识别到安装或服务内容' }
+  if ((result.items || []).length > 1 || purchaseCount > 1) return { mode: 1, reason: `识别到 ${result.items.length} 个品项或多份供应商成本来源` }
+  return { mode: 3, reason: '只有单一品项，未识别到整包集成或安装服务' }
+}
+function suggestInvoiceType(result: QuotationImportResult) {
+  const rate = Number(result.metadata?.taxRate)
+  if (rate === 6) {
+    const text = `${result.metadata?.delivery || ''} ${(result.items || []).map((item) => `${item.name || ''} ${item.description || ''}`).join(' ')}`
+    return /服务|维保|續保|续保|保固|support|warranty/i.test(text) ? '6%服务发票' : '6%普通发票'
+  }
+  return rate === 13 ? '13%普通发票' : ''
+}
 type ValidationError = { field?: string; message?: string }
 type Decision = 'reject' | 'void' | null
 
@@ -291,9 +308,12 @@ export function MrFormPage() {
   const applyQuotationImport = async (result: QuotationImportResult) => {
     const salesFile = result.files[result.salesSourceIndex]
     const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
-    const imported = normalizeCostTaxRates(result.items, calculated?.invoiceType)
-    const items = Number(calculated?.pricingMode) === 2
-      ? singleIntegrationItems(imported, calculated?.invoiceType, calculated?.installOptions || [])
+    const suggested = suggestPricingMode(result)
+    const importedMode = Number(calculated?.pricingMode) || suggested.mode
+    const importedInvoiceType = calculated?.invoiceType || suggestInvoiceType(result)
+    const imported = normalizeCostTaxRates(result.items, importedInvoiceType)
+    const items = importedMode === 2
+      ? singleIntegrationItems(imported, importedInvoiceType, calculated?.installOptions || [])
       : imported
     const metadataCustomer = result.metadata?.customer?.trim() || ''
     const matchedCustomer = !calculated?.customerId
@@ -328,9 +348,10 @@ export function MrFormPage() {
     const importedContactName = importedContact?.name || result.metadata?.attn || ''
     const importedContactPhone = importedContact?.phone || ''
     patch({
+      pricingMode: importedMode,
+      invoiceType: importedInvoiceType || calculated?.invoiceType || '',
       items: syncInstallOptions(items, [], calculated?.installOptions || []),
-      totalExcludingTax: Number(calculated?.pricingMode) === 3 ? calculated?.totalExcludingTax : calculated?.totalExcludingTax || salesTotal || null,
-      quotationFileId: salesFile?.id || null,
+      totalExcludingTax: importedMode === 3 ? calculated?.totalExcludingTax : calculated?.totalExcludingTax || salesTotal || null,
       quotationFiles: result.files,
       customerId: nextCustomerId,
       customerName: nextCustomerName,
@@ -346,7 +367,7 @@ export function MrFormPage() {
       invoiceRecipient: calculated?.invoiceRecipient || importedContactName,
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
-    toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
+    toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件，建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
   }
   const save = async () => {
     if (!id || !calculated) return null
@@ -483,7 +504,7 @@ export function MrFormPage() {
       <ErrorToast message={error} />
       <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
 
-      <div className="sticky top-14 z-20 border-b bg-background/95 backdrop-blur lg:top-16">
+      <div className="border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
@@ -498,7 +519,7 @@ export function MrFormPage() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {editable || calculated.quotationFiles?.length ? (
-              <Button variant="outline" disabled={editable && !itemSetupReady} title={!itemSetupReady ? '请先选择计价模式和发票别' : undefined} onClick={() => setImportOpen(true)}>
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
                 <FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}
               </Button>
             ) : null}
@@ -565,7 +586,7 @@ export function MrFormPage() {
             </div>
           ) : null}
 
-          <SectionCard id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="先确定计价模式与发票别，随后才可导入或添加品项。" flash={flashSection === 'trade'}>
+          <SectionCard id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="可先导入报价自动建议计价模式；手工填写时再在此设置。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
                 <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
@@ -607,7 +628,7 @@ export function MrFormPage() {
                 {editable ? (
                   <p className="text-xs text-muted-foreground">
                     {!calculated.pricingMode
-                      ? '第一步：先选择计价模式；系统会据此决定未税总计和销售单价的填写方式。'
+                      ? '可先导入报价，系统会根据品项、服务内容和供应商来源建议计价模式；手工填写时再手动选择。'
                       : Number(calculated.pricingMode) === 1
                         ? '先填未税总计，再录入各项成本；销售单价按未税 COST 占比自动分摊。'
                         : Number(calculated.pricingMode) === 2
@@ -639,16 +660,15 @@ export function MrFormPage() {
             title="品项明细"
             icon={MR_SECTIONS[5].icon}
             description={`共 ${calculated.items?.length || 0} 项`}
-            flash={flashSection === 'items'}
-            actions={editable || calculated.quotationFiles?.length ? (
-              <Button variant="outline" size="sm" disabled={editable && !itemSetupReady} title={!itemSetupReady ? '请先选择计价模式和发票别' : undefined} onClick={() => setImportOpen(true)}>
+          actions={editable || calculated.quotationFiles?.length ? (
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                 <FileSpreadsheet className="mr-2 size-4" />报价导入
               </Button>
             ) : null}
           >
             {editable && !itemSetupReady ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <span>请先选择计价模式和发票别，再导入报价或添加品项。</span>
+                <span>{calculated.quotationFiles?.length ? '报价已导入，请补充或确认发票别后编辑品项。' : '可先导入报价自动建议计价模式；手工添加品项前请先设置计价模式和发票别。'}</span>
                 <Button type="button" size="sm" variant="outline" onClick={() => goToSection('trade')}>设置计价与发票</Button>
               </div>
             ) : null}
@@ -872,7 +892,7 @@ export function MrFormPage() {
         <QuotationImportDialog
           orderId={id}
           open={importOpen}
-          editable={editable && itemSetupReady}
+          editable={editable}
           invoiceType={calculated.invoiceType}
           pricingMode={calculated.pricingMode}
           existingFiles={calculated.quotationFiles || []}
