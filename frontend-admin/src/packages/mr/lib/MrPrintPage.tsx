@@ -1,12 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Loader2, Printer } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { getMr } from '../client'
-import type { MrApproval, MrOrder } from '../types'
+import type { MrApproval, MrItem, MrOrder } from '../types'
 
 const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
+const SIGNATURE_ROLES = [
+  ['assistant', '助理'],
+  ['sales', '业务'],
+  ['engineering', '工程会签'],
+  ['supervisor', '处级单位'],
+  ['vp', '副总经理'],
+] as const
 
 function text(value: unknown) {
   return value === null || value === undefined || value === '' ? '-' : String(value)
@@ -15,6 +22,11 @@ function text(value: unknown) {
 function money(value: unknown) {
   const amount = Number(value)
   return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
+}
+
+function percent(value: unknown) {
+  const amount = Number(value)
+  return value === null || value === undefined || !Number.isFinite(amount) ? '-' : `${amount.toFixed(2)}%`
 }
 
 function choice(value: number | boolean | null | undefined, yes = '是', no = '否') {
@@ -31,9 +43,73 @@ function signature(approvals: MrApproval[], key: string) {
   return approvals.find((approval) => approval.stepKey === key)
 }
 
+function Fact({ label, value, wide = false }: { label: string; value: ReactNode; wide?: boolean }) {
+  return (
+    <div className={`mr-fact ${wide ? 'mr-fact-wide' : ''}`}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+}
+
+function SectionTitle({ index, title, note }: { index: string; title: string; note?: string }) {
+  return (
+    <div className="mr-section-title">
+      <div className="mr-section-title-main">
+        <span className="mr-section-index">{index}</span>
+        <h2>{title}</h2>
+      </div>
+      {note ? <span className="mr-section-note">{note}</span> : null}
+    </div>
+  )
+}
+
 function SignatureBlock({ label, approval }: { label: string; approval?: MrApproval }) {
   const approved = approval?.action === 'approve'
-  return <div className="mr-signature"><div className="mr-signature-label">{label}</div><div className="mr-signature-value">{approved ? approval.approverName || '已签核' : approval ? '待签核' : '不适用'}</div><div className="mr-signature-time">{approved ? decidedAt(approval.decidedAt) : ''}</div></div>
+  const rejected = approval?.action === 'reject'
+  const skipped = approval?.action === 'skipped'
+  const status = approved ? '已签核' : rejected ? '已驳回' : skipped ? '已跳过' : approval ? '待签核' : '不适用'
+  return (
+    <div className={`mr-signature-card ${approved ? 'is-approved' : ''} ${rejected ? 'is-rejected' : ''}`}>
+      <div className="mr-signature-role">{label}</div>
+      <div className="mr-signature-status">{status}</div>
+      <div className="mr-signature-person">{approved ? approval?.approverName || '已签核' : rejected ? approval?.approverName || '已驳回' : '—'}</div>
+      <div className="mr-signature-time">{approved || rejected ? decidedAt(approval?.decidedAt) : ''}</div>
+    </div>
+  )
+}
+
+function ItemDescription({ item }: { item: MrItem }) {
+  return (
+    <div className="mr-item-description">
+      <strong>{text(item.name)}</strong>
+      {item.oemSpec ? <span className="mr-item-subline">原厂规格：{item.oemSpec}</span> : null}
+      {item.description ? <span className="mr-item-subline mr-item-longtext">{item.description}</span> : null}
+      <span className="mr-item-meta">
+        {item.companyPartNo ? `公司料号 ${item.companyPartNo}` : null}
+        {item.warrantyService ? `保固/服务 ${item.warrantyService}` : null}
+        {item.installBy ? `装机 ${item.installBy}` : null}
+      </span>
+    </div>
+  )
+}
+
+function ItemRow({ item, index }: { item: MrItem; index: number }) {
+  return (
+    <tr>
+      <td className="mr-num">{index + 1}</td>
+      <td><ItemDescription item={item} /></td>
+      <td className="mr-num">{text(item.qty)}</td>
+      <td className="mr-num">{money(item.unitPrice)}</td>
+      <td className="mr-num mr-emphasis">{money(item.subtotal)}</td>
+      <td>{text(item.vendor)}</td>
+      <td className="mr-num">{money(item.costInclTax)}</td>
+      <td className="mr-num">{item.taxRate ? `${item.taxRate}%` : '-'}</td>
+      <td className="mr-num">{money(item.costExcludingTax)}</td>
+      <td className={`mr-num ${Number(item.marginRate) < 15 ? 'mr-warning' : ''}`}>{percent(item.marginRate)}</td>
+      <td>{text(item.purchaseOrderNo)}</td>
+    </tr>
+  )
 }
 
 export function MrPrintPage() {
@@ -64,75 +140,304 @@ export function MrPrintPage() {
   if (!order && !error) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin" /></div>
   if (!order) return <div className="p-8 text-destructive">{error}</div>
 
+  const status = order.status || 'draft'
+  const statusLabel = STATUS[status] || status
+  const marginRate = order.totals?.marginRate
+  const risk = Number(order.totals?.salesExcludingTax) > 750000 || (marginRate !== null && marginRate !== undefined && Number(marginRate) < 15)
+
   return (
-    <div className="p-4 sm:p-6">
+    <div className="mr-print-page">
       <style>{`
-        .mr-print-root { color: #111827; background: white; font-family: Arial, "Microsoft YaHei", sans-serif; }
-        .mr-print-root table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .mr-print-root th, .mr-print-root td { border: 1px solid #cbd5e1; padding: 4px 5px; vertical-align: middle; overflow-wrap: anywhere; }
-        .mr-print-root th { background: #ede9fe; font-weight: 700; }
-        .mr-meta th { width: 9%; text-align: left; background: #f5f3ff; }
-        .mr-meta td { width: 16%; }
-        .mr-items { margin-top: 8px; font-size: 8px; }
-        .mr-items th { text-align: center; }
-        .mr-items td.num { text-align: right; font-variant-numeric: tabular-nums; }
-        .mr-signatures { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
-        .mr-signature { min-height: 54px; border-bottom: 1px solid #111827; position: relative; padding: 3px 4px; }
-        .mr-signature-label { font-size: 9px; font-weight: 700; }
-        .mr-signature-value { margin-top: 8px; text-align: center; font-size: 11px; font-weight: 700; }
-        .mr-signature-time { text-align: center; font-size: 7px; color: #475569; }
+        .mr-print-page {
+          min-height: 100vh;
+          padding: 24px;
+          color: #18212b;
+          background: #eef1f4;
+          font-family: Arial, "Microsoft YaHei", sans-serif;
+        }
+        .mr-print-page * { box-sizing: border-box; }
+        .mr-print-toolbar {
+          display: flex;
+          max-width: 1440px;
+          margin: 0 auto 16px;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .mr-print-toolbar-title { color: #66717d; font-size: 12px; letter-spacing: .04em; }
+        .mr-print-actions { display: flex; gap: 8px; }
+        .mr-document {
+          max-width: 1440px;
+          margin: 0 auto;
+          padding: 34px 38px 30px;
+          background: #fff;
+          border: 1px solid #d8dee5;
+          border-radius: 4px;
+          box-shadow: 0 12px 30px rgba(28, 38, 48, .08);
+        }
+        .mr-document-header {
+          display: grid;
+          grid-template-columns: minmax(240px, 1fr) auto minmax(220px, 1fr);
+          align-items: center;
+          gap: 24px;
+          padding-bottom: 22px;
+          border-bottom: 2px solid #18212b;
+        }
+        .mr-brand { display: flex; align-items: center; gap: 12px; }
+        .mr-brand img { width: 44px; height: 44px; object-fit: contain; }
+        .mr-brand-en { color: #66717d; font-size: 10px; letter-spacing: .08em; }
+        .mr-brand-cn { margin-top: 3px; font-size: 17px; font-weight: 800; letter-spacing: .05em; }
+        .mr-document-title { text-align: center; }
+        .mr-document-title h1 { margin: 0; font-size: 25px; letter-spacing: .12em; }
+        .mr-document-title p { margin: 7px 0 0; color: #66717d; font-size: 11px; }
+        .mr-document-ref { text-align: right; color: #66717d; font-size: 11px; line-height: 1.7; }
+        .mr-document-ref strong { display: block; color: #18212b; font-size: 15px; }
+        .mr-status {
+          display: inline-flex;
+          margin-top: 5px;
+          padding: 3px 9px;
+          border: 1px solid #66717d;
+          border-radius: 999px;
+          color: #18212b;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .mr-status-approved { border-color: #1f6b45; color: #1f6b45; }
+        .mr-status-rejected, .mr-status-voided { border-color: #9b2c2c; color: #9b2c2c; }
+        .mr-review-notice {
+          margin-top: 16px;
+          padding: 10px 14px;
+          border-left: 4px solid #66717d;
+          background: #f4f6f8;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .mr-summary {
+          display: grid;
+          grid-template-columns: 1.6fr 1.2fr 1fr 1fr 1fr;
+          margin-top: 18px;
+          border: 1px solid #cbd3db;
+          background: #f8fafb;
+        }
+        .mr-summary-cell { min-width: 0; padding: 13px 15px; border-right: 1px solid #d8dee5; }
+        .mr-summary-cell:last-child { border-right: 0; }
+        .mr-summary-label { color: #66717d; font-size: 10px; }
+        .mr-summary-value { margin-top: 5px; overflow-wrap: anywhere; font-size: 16px; font-weight: 800; }
+        .mr-summary-value.small { font-size: 13px; }
+        .mr-section { margin-top: 24px; }
+        .mr-section-title {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #18212b;
+        }
+        .mr-section-title-main { display: flex; align-items: baseline; gap: 10px; }
+        .mr-section-index { color: #66717d; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+        .mr-section-title h2 { margin: 0; font-size: 15px; letter-spacing: .04em; }
+        .mr-section-note { color: #66717d; font-size: 10px; }
+        .mr-facts {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 0;
+          border-left: 1px solid #d8dee5;
+          border-bottom: 1px solid #d8dee5;
+        }
+        .mr-fact { min-width: 0; min-height: 54px; padding: 10px 12px; border-right: 1px solid #d8dee5; border-top: 1px solid #d8dee5; }
+        .mr-fact-wide { grid-column: span 2; }
+        .mr-fact dt { color: #66717d; font-size: 10px; }
+        .mr-fact dd { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; line-height: 1.5; }
+        .mr-fact dd strong { font-size: 13px; }
+        .mr-items-wrap { overflow-x: auto; border: 1px solid #bcc6cf; }
+        .mr-items-table { width: 100%; min-width: 1080px; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
+        .mr-items-table th, .mr-items-table td { padding: 8px 7px; border-right: 1px solid #d8dee5; border-bottom: 1px solid #d8dee5; vertical-align: top; overflow-wrap: anywhere; }
+        .mr-items-table th { color: #fff; background: #27343f; font-size: 10px; font-weight: 700; text-align: left; }
+        .mr-items-table th:last-child, .mr-items-table td:last-child { border-right: 0; }
+        .mr-items-table tbody tr:nth-child(even) { background: #fafbfc; }
+        .mr-items-table th:nth-child(1) { width: 3%; text-align: center; }
+        .mr-items-table th:nth-child(2) { width: 31%; }
+        .mr-items-table th:nth-child(3) { width: 5%; text-align: right; }
+        .mr-items-table th:nth-child(4), .mr-items-table th:nth-child(5), .mr-items-table th:nth-child(7), .mr-items-table th:nth-child(9) { width: 9%; text-align: right; }
+        .mr-items-table th:nth-child(6) { width: 9%; }
+        .mr-items-table th:nth-child(8) { width: 5%; text-align: right; }
+        .mr-items-table th:nth-child(10) { width: 7%; text-align: right; }
+        .mr-items-table th:nth-child(11) { width: 10%; }
+        .mr-num { text-align: right; font-variant-numeric: tabular-nums; }
+        .mr-item-description { line-height: 1.45; }
+        .mr-item-description strong { display: block; font-size: 11px; }
+        .mr-item-subline { display: block; color: #4d5a66; }
+        .mr-item-longtext { margin-top: 3px; }
+        .mr-item-meta { display: block; margin-top: 6px; color: #66717d; font-size: 9px; }
+        .mr-item-meta:not(:empty) { word-spacing: 10px; }
+        .mr-emphasis { font-weight: 800; }
+        .mr-warning { color: #9b2c2c; font-weight: 800; }
+        .mr-totals { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 10px; border: 1px solid #bcc6cf; }
+        .mr-total { padding: 11px 13px; border-right: 1px solid #d8dee5; }
+        .mr-total:last-child { border-right: 0; }
+        .mr-total-label { color: #66717d; font-size: 10px; }
+        .mr-total-value { margin-top: 4px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .mr-total-risk .mr-total-value { color: #9b2c2c; }
+        .mr-approval-section { break-inside: avoid; page-break-inside: avoid; }
+        .mr-approval-note { margin: 12px 0 0; color: #66717d; font-size: 10px; }
+        .mr-signature-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 12px; }
+        .mr-signature-card { min-height: 96px; padding: 11px 12px; border: 1px solid #bcc6cf; background: #fafbfc; }
+        .mr-signature-role { font-size: 11px; font-weight: 800; }
+        .mr-signature-status { margin-top: 8px; color: #66717d; font-size: 10px; }
+        .mr-signature-card.is-approved .mr-signature-status { color: #1f6b45; font-weight: 700; }
+        .mr-signature-card.is-rejected .mr-signature-status { color: #9b2c2c; font-weight: 700; }
+        .mr-signature-person { min-height: 22px; margin-top: 7px; font-size: 12px; font-weight: 700; }
+        .mr-signature-time { color: #66717d; font-size: 9px; }
+        .mr-document-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 9px; border-top: 1px solid #d8dee5; color: #66717d; font-size: 9px; }
+        @media (max-width: 900px) {
+          .mr-print-page { padding: 10px; }
+          .mr-document { padding: 22px 18px; }
+          .mr-document-header { grid-template-columns: 1fr; gap: 14px; }
+          .mr-document-title, .mr-document-ref { text-align: left; }
+          .mr-summary { grid-template-columns: repeat(2, 1fr); }
+          .mr-summary-cell:nth-child(2n) { border-right: 0; }
+          .mr-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .mr-fact-wide { grid-column: span 2; }
+          .mr-totals { grid-template-columns: repeat(2, 1fr); }
+          .mr-total:nth-child(2n) { border-right: 0; }
+          .mr-signature-grid { grid-template-columns: repeat(2, 1fr); }
+        }
         @media print {
-          @page { size: A4 landscape; margin: 8mm; }
+          @page { size: A4 landscape; margin: 9mm; }
           body * { visibility: hidden !important; }
-          .mr-print-root, .mr-print-root * { visibility: visible !important; }
-          .mr-print-root { position: absolute; inset: 0; width: 100%; padding: 0 !important; box-shadow: none !important; }
+          .mr-print-page, .mr-print-page * { visibility: visible !important; }
+          .mr-print-page { position: absolute; inset: 0; min-height: auto; padding: 0 !important; background: #fff !important; }
           .mr-print-toolbar { display: none !important; }
-          .mr-items thead { display: table-header-group; }
-          .mr-items tr { break-inside: avoid; }
+          .mr-document { max-width: none; padding: 0; border: 0; box-shadow: none; }
+          .mr-document-header { padding-bottom: 14px; }
+          .mr-summary, .mr-fact, .mr-total, .mr-signature-card { background: #fff !important; }
+          .mr-status, .mr-status-approved, .mr-status-rejected, .mr-status-voided, .mr-signature-status, .mr-total-risk .mr-total-value, .mr-warning { color: #111 !important; border-color: #111 !important; }
+          .mr-items-wrap { overflow: visible; }
+          .mr-items-table { min-width: 0; font-size: 8.5px; }
+          .mr-items-table th, .mr-items-table td { padding: 5px 4px; }
+          .mr-items-table th { color: #111 !important; background: #eee !important; }
+          .mr-items-table thead { display: table-header-group; }
+          .mr-items-table tr { break-inside: avoid; page-break-inside: avoid; }
+          .mr-section { break-inside: auto; }
+          .mr-approval-section { break-inside: avoid; page-break-inside: avoid; }
+          .mr-document-footer { margin-top: 12px; }
         }
       `}</style>
 
-      <div className="mr-print-toolbar mx-auto mb-4 flex max-w-[1400px] items-center justify-between gap-3">
-        <Button variant="outline" onClick={() => navigate(`/mr/${id}`)}><ArrowLeft className="mr-2 size-4" />返回 MR</Button>
-        <Button onClick={() => window.print()}><Printer className="mr-2 size-4" />打印 / 存为 PDF</Button>
+      <div className="mr-print-toolbar">
+        <span className="mr-print-toolbar-title">MR 审批文件 / 打印预览</span>
+        <div className="mr-print-actions">
+          <Button variant="outline" onClick={() => navigate(`/mr/${id}`)}><ArrowLeft className="mr-2 size-4" />返回 MR</Button>
+          <Button onClick={() => window.print()}><Printer className="mr-2 size-4" />打印 / 存为 PDF</Button>
+        </div>
       </div>
 
-      <article className="mr-print-root mx-auto max-w-[1400px] bg-white p-5 shadow-sm">
-        <header className="mb-3 flex items-start justify-between border-b-2 border-violet-700 pb-3">
-          <div className="flex items-center gap-3"><img src={logo} alt="" className="size-11 object-contain" /><div><div className="text-xs font-semibold">Stark / NingBo Technology Inc.</div><div className="text-lg font-bold">敦阳（宁波）科技有限公司</div></div></div>
-          <div className="text-right"><h1 className="text-2xl font-bold">客户订购申请单（MR）</h1><div className="mt-1 text-xs">{order.fileName} · {STATUS[order.status || 'draft'] || order.status}</div></div>
+      <article className="mr-document">
+        <header className="mr-document-header">
+          <div className="mr-brand">
+            <img src={logo} alt="" />
+            <div><div className="mr-brand-en">STARK / NINGBO TECHNOLOGY INC.</div><div className="mr-brand-cn">敦阳（宁波）科技有限公司</div></div>
+          </div>
+          <div className="mr-document-title">
+            <h1>客户订购申请单</h1>
+            <p>Material Requisition · MR</p>
+          </div>
+          <div className="mr-document-ref">
+            <strong>{order.fileName || `MR-${order.id}`}</strong>
+            <span>文档状态</span><br />
+            <span className={`mr-status mr-status-${status}`}>{statusLabel}</span>
+          </div>
         </header>
 
-        {order.status !== 'approved' ? <div className="mb-2 border border-amber-400 bg-amber-50 py-1 text-center text-xs font-bold text-amber-800">{STATUS[order.status || 'draft']}版本，仅供预览</div> : null}
+        {status !== 'approved' ? <div className="mr-review-notice">{statusLabel}版本，仅供审批预览；以最终签核结果为准。</div> : null}
 
-        <table className="mr-meta text-[9px]">
-          <tbody>
-            <tr><th>填单日期</th><td>{text(order.fillDate)}</td><th>客户 P/O</th><td>{text(order.customerPo)}</td><th>Ctrl.NO</th><td>{text(order.ctrlNo)}</td><th>最晚交货日</th><td>{text(order.latestDeliveryDate)}</td></tr>
-            <tr><th>客户名称</th><td colSpan={3}>{text(order.customerName)}</td><th>联系人</th><td>{text(order.contactName)}</td><th>负责业务</th><td>{text(order.salesOwnerName)}</td></tr>
-            <tr><th>发票别</th><td>{text(order.invoiceType)}</td><th>计价模式</th><td>{PRICING[Number(order.pricingMode)] || '-'}</td><th>未税总计</th><td>{money(order.totalExcludingTax)}</td><th>合同号</th><td>{text(order.contractNo)}</td></tr>
-            {order.penaltyContent ? <tr><th>罚则说明</th><td colSpan={7}>{text(order.penaltyContent)}</td></tr> : null}
-            <tr><th>发票处理</th><td>{text(order.invoiceProcess)}</td><th>开票内容</th><td>{text(order.billingContent)}</td><th>发票收件人</th><td>{text(order.invoiceRecipient)}</td><th>开票/收款</th><td>{text(order.billingTiming)}</td></tr>
-            <tr><th>采购 / TEL</th><td>{text(order.purchaser)} / {text(order.purchaserTel)}</td><th>收件人 / TEL</th><td>{text(order.recipient)} / {text(order.recipientTel)}</td><th>mail</th><td>{text(order.recipientMail)}</td><th>付款条件</th><td>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms)}</td></tr>
-            <tr><th>分批送机</th><td>{choice(order.splitDelivery, '可', '否')}</td><th>案分类</th><td>{text(order.caseCategory)}</td><th>验收</th><td>{text(order.acceptance === '其他' ? order.acceptanceOther : order.acceptance)}</td><th>装机 / 维护</th><td>{install} / {maintenance}</td></tr>
-            <tr><th>送机地点</th><td colSpan={7}>{text(order.deliveryLocation)}</td></tr>
-          </tbody>
-        </table>
+        <section className="mr-summary" aria-label="审批摘要">
+          <div className="mr-summary-cell"><div className="mr-summary-label">客户</div><div className="mr-summary-value small">{text(order.customerName)}</div></div>
+          <div className="mr-summary-cell"><div className="mr-summary-label">负责业务</div><div className="mr-summary-value small">{text(order.salesOwnerName)}</div></div>
+          <div className="mr-summary-cell"><div className="mr-summary-label">未税售价</div><div className="mr-summary-value">¥ {money(order.totals?.salesExcludingTax)}</div></div>
+          <div className={`mr-summary-cell ${risk ? 'mr-total-risk' : ''}`}><div className="mr-summary-label">整单毛利率</div><div className="mr-summary-value">{percent(marginRate)}</div></div>
+          <div className="mr-summary-cell"><div className="mr-summary-label">计价模式</div><div className="mr-summary-value small">{PRICING[Number(order.pricingMode)] || '-'}</div></div>
+        </section>
 
-        <table className="mr-items">
-          <thead><tr><th className="w-[3%]">#</th><th className="w-[5%]">毛利</th><th className="w-[7%]">公司料号</th><th className="w-[8%]">原厂规格</th><th className="w-[14%]">品名 / 描述</th><th className="w-[6%]">保固/服务</th><th className="w-[5%]">装机</th><th className="w-[4%]">Qty</th><th className="w-[7%]">单价</th><th className="w-[7%]">售价小计</th><th className="w-[6%]">厂商</th><th className="w-[7%]">COST</th><th className="w-[7%]">成本含税</th><th className="w-[4%]">税率</th><th className="w-[10%]">采购单号</th></tr></thead>
-          <tbody>{(order.items || []).map((item, index) => <tr key={item.id || index}><td className="num">{index + 1}</td><td className="num">{item.marginRate == null ? '-' : `${Number(item.marginRate).toFixed(2)}%`}</td><td>{text(item.companyPartNo)}</td><td>{text(item.oemSpec)}</td><td><strong>{text(item.name)}</strong>{item.description ? <div>{item.description}</div> : null}</td><td>{text(item.warrantyService)}</td><td>{text(item.installBy)}</td><td className="num">{text(item.qty)}</td><td className="num">{money(item.unitPrice)}</td><td className="num">{money(item.subtotal)}</td><td>{text(item.vendor)}</td><td className="num">{money(item.costExcludingTax)}</td><td className="num">{money(item.costInclTax)}</td><td className="num">{item.taxRate ? `${item.taxRate}%` : '-'}</td><td>{text(item.purchaseOrderNo)}</td></tr>)}</tbody>
-        </table>
+        <section className="mr-section">
+          <SectionTitle index="01" title="基本资料" note="客户与订单识别信息" />
+          <dl className="mr-facts">
+            <Fact label="客户名称" value={<strong>{text(order.customerName)}</strong>} wide />
+            <Fact label="客户联系人" value={text(order.contactName)} />
+            <Fact label="Ctrl.NO" value={text(order.ctrlNo)} />
+            <Fact label="客户 P/O" value={text(order.customerPo)} />
+            <Fact label="填单日期" value={text(order.fillDate)} />
+            <Fact label="最晚交货日" value={text(order.latestDeliveryDate)} />
+            <Fact label="案分类" value={text(order.caseCategory)} />
+          </dl>
+        </section>
 
-        <table className="mt-2 text-[9px]"><tbody><tr><th>未税总计</th><td className="text-right">{money(order.totals?.salesExcludingTax)}</td><th>增值税</th><td className="text-right">{money(order.totals?.vat)}</td><th>含税合计</th><td className="text-right">{money(order.totals?.salesIncludingTax)}</td><th>COST 总计</th><td className="text-right">{money(order.totals?.costExcludingTax)}</td><th>毛利率</th><td className="text-right">{Number(order.totals?.marginRate || 0).toFixed(2)}%</td></tr>{order.remark ? <tr><th>备注</th><td colSpan={9}>{order.remark}</td></tr> : null}</tbody></table>
+        <section className="mr-section">
+          <SectionTitle index="02" title="交易与履约条件" note="计价、开票、合同与交付" />
+          <dl className="mr-facts">
+            <Fact label="发票别" value={text(order.invoiceType)} />
+            <Fact label="计价模式" value={PRICING[Number(order.pricingMode)] || '-'} />
+            <Fact label="未税总计" value={`¥ ${money(order.totalExcludingTax)}`} />
+            <Fact label="合同号" value={text(order.contractNo)} />
+            <Fact label="发票处理" value={text(order.invoiceProcess)} />
+            <Fact label="开票内容" value={text(order.billingContent)} />
+            <Fact label="开票 / 收款" value={text(order.billingTiming)} />
+            <Fact label="付款条件" value={text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms)} />
+            <Fact label="分批送机" value={choice(order.splitDelivery, '可', '否')} />
+            <Fact label="验收方式" value={text(order.acceptance === '其他' ? order.acceptanceOther : order.acceptance)} />
+            {order.penaltyContent ? <Fact label="罚则说明" value={text(order.penaltyContent)} wide /> : null}
+            <Fact label="送机地点" value={text(order.deliveryLocation)} wide />
+            <Fact label="装机对象" value={install} wide />
+            <Fact label="维护对象" value={maintenance} wide />
+          </dl>
+        </section>
 
-        <div className="mr-signatures">
-          <SignatureBlock label="副总经理" approval={signature(approvals, 'vp')} />
-          <SignatureBlock label="工程会签单位" approval={signature(approvals, 'engineering')} />
-          <SignatureBlock label="处级单位" approval={signature(approvals, 'supervisor')} />
-          <SignatureBlock label="助理" approval={signature(approvals, 'assistant')} />
-          <SignatureBlock label="业务" approval={signature(approvals, 'sales')} />
-        </div>
-        <footer className="mt-3 flex justify-between border-t pt-2 text-[8px] text-slate-500"><span>注：售价大于人民币 75 万，或利润低于 15%，签核至副总。</span><span>YW-009-070402</span></footer>
+        <section className="mr-section">
+          <SectionTitle index="03" title="联系人资料" note="采购、发票与收件" />
+          <dl className="mr-facts">
+            <Fact label="采购人" value={text(order.purchaser)} />
+            <Fact label="采购电话" value={text(order.purchaserTel)} />
+            <Fact label="发票收件人" value={text(order.invoiceRecipient)} />
+            <Fact label="收件人" value={text(order.recipient)} />
+            <Fact label="收件电话" value={text(order.recipientTel)} />
+            <Fact label="收件邮箱" value={text(order.recipientMail)} wide />
+          </dl>
+        </section>
+
+        <section className="mr-section">
+          <SectionTitle index="04" title="品项与金额" note={`${order.items?.length || 0} 项 · 长描述按原文换行`} />
+          <div className="mr-items-wrap">
+            <table className="mr-items-table">
+              <thead><tr><th>#</th><th>品项 / 规格 / 说明</th><th>Qty</th><th>销售单价</th><th>售价小计</th><th>厂商</th><th>成本含税</th><th>税率</th><th>未税成本</th><th>毛利率</th><th>采购单号</th></tr></thead>
+              <tbody>{(order.items || []).map((item, index) => <ItemRow key={item.id || index} item={item} index={index} />)}</tbody>
+            </table>
+          </div>
+          <div className="mr-totals">
+            <div className="mr-total"><div className="mr-total-label">未税售价</div><div className="mr-total-value">¥ {money(order.totals?.salesExcludingTax)}</div></div>
+            <div className="mr-total"><div className="mr-total-label">销售税额</div><div className="mr-total-value">¥ {money(order.totals?.vat)}</div></div>
+            <div className="mr-total"><div className="mr-total-label">含税合计</div><div className="mr-total-value">¥ {money(order.totals?.salesIncludingTax)}</div></div>
+            <div className="mr-total"><div className="mr-total-label">采购成本（未税）</div><div className="mr-total-value">¥ {money(order.totals?.costExcludingTax)}</div></div>
+            <div className={`mr-total ${risk ? 'mr-total-risk' : ''}`}><div className="mr-total-label">整单毛利率</div><div className="mr-total-value">{percent(marginRate)}</div></div>
+          </div>
+        </section>
+
+        {order.remark ? (
+          <section className="mr-section">
+            <SectionTitle index="05" title="补充说明" />
+            <dl className="mr-facts"><Fact label="备注" value={text(order.remark)} wide /></dl>
+          </section>
+        ) : null}
+
+        <section className="mr-section mr-approval-section">
+          <SectionTitle index={order.remark ? '06' : '05'} title="会签流转" note="审批结果与时间记录" />
+          {status === 'rejected' && order.rejectReason ? <div className="mr-review-notice">驳回原因：{order.rejectReason}</div> : null}
+          <div className="mr-signature-grid">
+            {SIGNATURE_ROLES.map(([key, label]) => <SignatureBlock key={key} label={label} approval={signature(approvals, key)} />)}
+          </div>
+          <p className="mr-approval-note">签核条件：未税售价超过人民币 75 万元，或整单毛利率低于 15% 时，追加副总经理签核；装机对象包含“敦阳”时，追加工程会签。</p>
+        </section>
+
+        <footer className="mr-document-footer"><span>MR / 审批文件</span><span>打印内容来自当前 MR 数据 · 黑白打印适配</span></footer>
       </article>
     </div>
   )
