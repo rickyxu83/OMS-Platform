@@ -305,11 +305,11 @@ export function MrFormPage() {
     patch(next)
   }
 
-  const applyQuotationImport = async (result: QuotationImportResult) => {
+  const applyQuotationImport = async (result: QuotationImportResult, selectedMode?: number) => {
     const salesFile = result.files[result.salesSourceIndex]
     const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
     const suggested = suggestPricingMode(result)
-    const importedMode = Number(calculated?.pricingMode) || suggested.mode
+    const importedMode = Number(selectedMode) || Number(calculated?.pricingMode) || suggested.mode
     const importedInvoiceType = calculated?.invoiceType || suggestInvoiceType(result)
     const imported = normalizeCostTaxRates(result.items, importedInvoiceType)
     const items = importedMode === 2
@@ -897,7 +897,7 @@ export function MrFormPage() {
           pricingMode={calculated.pricingMode}
           existingFiles={calculated.quotationFiles || []}
           onOpenChange={setImportOpen}
-          onApply={(result) => void applyQuotationImport(result)}
+          onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
         />
       ) : null}
 

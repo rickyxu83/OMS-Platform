@@ -2,6 +2,7 @@ import { useState, type DragEvent } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadQuotation, importQuotations } from '../client'
 import type { QuotationFile, QuotationImportResult, QuotationSource } from '../types'
 
@@ -94,20 +95,22 @@ export function QuotationImportDialog({
   pricingMode?: number | null
   existingFiles: QuotationFile[]
   onOpenChange: (open: boolean) => void
-  onApply: (result: QuotationImportResult) => void
+  onApply: (result: QuotationImportResult, pricingMode: number) => void
 }) {
   const [salesFiles, setSalesFiles] = useState<File[]>([])
   const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
+  const [selectedPricingMode, setSelectedPricingMode] = useState(String(pricingMode || ''))
   const [preview, setPreview] = useState<QuotationImportResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
+  const effectivePricingMode = Number(selectedPricingMode || pricingMode) || 0
   const taxConflictCount = String(invoiceType || '').startsWith('6%')
     ? (preview?.items || []).filter((item) => Number(item.taxRate) === 13).length
     : 0
-  const ignoredSingleIntegrationItems = Number(pricingMode) === 2 ? Math.max(0, (preview?.items.length || 0) - 1) : 0
-  const appliedItemCount = preview ? (Number(pricingMode) === 2 ? 2 : preview.items.length) : 0
+  const ignoredSingleIntegrationItems = effectivePricingMode === 2 ? Math.max(0, (preview?.items.length || 0) - 1) : 0
+  const appliedItemCount = preview ? (effectivePricingMode === 2 ? 2 : preview.items.length) : 0
 
   const parse = async (nextSales: File[], nextPurchase: File[]) => {
     const nextFiles = [...nextSales, ...nextPurchase]
@@ -139,7 +142,7 @@ export function QuotationImportDialog({
     setError('')
     try {
       const saved = await importQuotations(orderId, files, true, roles)
-      onApply(saved)
+      onApply(saved, effectivePricingMode)
       onOpenChange(false)
       setSalesFiles([])
       setPurchaseFiles([])
@@ -174,10 +177,27 @@ export function QuotationImportDialog({
         ) : null}
 
         {editable ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <FileDropZone title="客户报价 / 最终 PO" hint="售出来源：用于确定客户、销售总额、PO、交货和付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
-            <FileDropZone title="供应商报价 / 进货订单" hint="成本来源：可放入多家供应商报价，系统按品项匹配最低成本" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
-          </div>
+          <>
+            <section className="border bg-muted/20 p-4">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:items-center">
+                <div><div className="text-sm font-medium">先选择计价模式</div><div className="mt-1 text-xs text-muted-foreground">系统会按这里选择的规则生成导入品项和销售单价。</div></div>
+                <Select value={selectedPricingMode} onValueChange={setSelectedPricingMode}>
+                  <SelectTrigger><SelectValue placeholder="选择计价模式" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">多项系统集成</SelectItem>
+                    <SelectItem value="2">单项系统集成</SelectItem>
+                    <SelectItem value="3">开明细</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </section>
+            {selectedPricingMode ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <FileDropZone title="客户报价 / 最终 PO" hint="售出来源：用于确定客户、销售总额、PO、交货和付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
+                <FileDropZone title="供应商报价 / 进货订单" hint="成本来源：可放入多家供应商报价，系统按品项匹配最低成本" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+              </div>
+            ) : <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">请先选择计价模式，再上传报价文件。</div>}
+          </>
         ) : null}
 
         {loading ? <div role="status" className="flex items-center gap-3 border bg-muted/30 px-4 py-3 text-sm"><Loader2 className="size-5 shrink-0 animate-spin text-primary" /><div><div className="font-medium">{preview ? '正在保存导入结果…' : '正在识别报价文件…'}</div><div className="text-xs text-muted-foreground">{preview ? '正在保存原始文件和品项，请稍候' : '正在解析表格、确认来源角色并匹配品项'}</div></div></div> : null}
