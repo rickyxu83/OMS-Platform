@@ -4,7 +4,8 @@ const multer = require('multer')
 const env = require('../../../config/env')
 const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
-const { parseWorkbook, sheetTotal } = require('./quotation-parser')
+const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
+const { parsePdf } = require('./quotation-pdf-parser')
 const { mergeQuotations } = require('./quotation-merge')
 const {
   constants,
@@ -571,9 +572,9 @@ const quotationUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 10 },
   fileFilter(_req, file, callback) {
     const extension = path.extname(file.originalname || '').toLowerCase()
-    if (!['.xls', '.xlsx'].includes(extension)) return callback(badRequest('请上传 Excel 报价单（.xls 或 .xlsx）'))
+    if (!['.xls', '.xlsx', '.pdf'].includes(extension)) return callback(badRequest('请上传 Excel 或 PDF 报价/订单文件（.xls、.xlsx、.pdf）'))
     callback(null, true)
-  },
+  }
 }).fields([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }])
 
 function originalNameUtf8(file) {
@@ -586,18 +587,23 @@ function uploadedFiles(req) {
 
 async function importQuotation(req, res) {
   const uploads = uploadedFiles(req)
-  if (!uploads.length) throw badRequest('请选择报价单文件')
+  if (!uploads.length) throw badRequest('请选择报价单或订单文件')
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
 
   let sources
   try {
-    sources = uploads.map((file) => {
-      const sheets = parseWorkbook(file.buffer).map((sheet) => ({ ...sheet, total: sheetTotal(sheet) }))
-      if (!sheets.length) throw new Error(`${originalNameUtf8(file)} 未找到 Item / Part_no 格式的报价明细表`)
-      return { name: originalNameUtf8(file), sheets }
-    })
+    sources = await Promise.all(uploads.map(async (file) => {
+      const name = originalNameUtf8(file)
+      const extension = path.extname(name).toLowerCase()
+      const parsed = extension === '.pdf'
+        ? await parsePdf(file.buffer, name)
+        : parseWorkbookWithMetadata(file.buffer, name)
+      const sheets = parsed.sheets.map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
+      if (!sheets.length && parsed.documentType !== 'scanned_pdf') throw new Error(`${name} 未找到可识别的报价明细表`)
+      return { name, sheets, documentType: parsed.documentType, warnings: parsed.warnings || [] }
+    }))
   } catch (error) {
     throw badRequest(`报价单解析失败：${error.message}`)
   }
@@ -607,8 +613,10 @@ async function importQuotation(req, res) {
      FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
   )
   const merged = mergeQuotations(sources, vendors)
-  const salesSheet = sources[merged.salesSourceIndex]?.sheets[0]
-  const customerName = String(salesSheet?.customer || '').trim()
+  const sourceIndex = merged.salesSourceIndex >= 0 ? merged.salesSourceIndex : merged.orderSourceIndex
+  const primarySheet = sourceIndex >= 0 ? sources[sourceIndex]?.sheets[0] : null
+  const orderSheet = merged.orderSourceIndex >= 0 ? sources[merged.orderSourceIndex]?.sheets[0] : null
+  const customerName = String(primarySheet?.customer || orderSheet?.customer || '').replace(/^客户名称[：:]?\s*/i, '').trim()
   const matchedCustomer = customerName ? (await query(
     'SELECT id, code, name FROM customers WHERE name = :customer OR code = :customer LIMIT 1',
     { customer: customerName },
@@ -619,16 +627,19 @@ async function importQuotation(req, res) {
   ) : []
   const payload = {
     ...merged,
-    metadata: salesSheet ? {
-      customer: salesSheet.customer,
-      attn: salesSheet.attn,
-      payment: salesSheet.payment,
-      delivery: salesSheet.delivery,
-      taxRate: salesSheet.tax_rate,
+    metadata: primarySheet ? {
+      customer: primarySheet?.customer || orderSheet?.customer,
+      attn: primarySheet?.attn || orderSheet?.attn,
+      payment: primarySheet?.payment || orderSheet?.payment,
+      delivery: primarySheet?.delivery || orderSheet?.delivery,
+      taxRate: primarySheet?.tax_rate ?? orderSheet?.tax_rate ?? null,
+      customerPo: orderSheet?.po_no || primarySheet?.po_no || '',
+      latestDeliveryDate: orderSheet?.latest_delivery_date || primarySheet?.latest_delivery_date || '',
+      deliveryLocation: orderSheet?.delivery || primarySheet?.delivery || '',
       matchedCustomer: matchedCustomer ? { ...camelizeRow(matchedCustomer), contacts: matchedContacts.map(camelizeRow) } : null,
     } : {},
   }
-  if (uploads.length === 1) payload.warnings.unshift('只识别到一份报价单，已作为销售报价导入；成本请手工填写')
+  if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认客户报价、厂商报价或最终 PO 角色')
   if (String(req.body?.persist || '') !== '1') {
     res.json({ files: [], ...payload })
     return
@@ -661,7 +672,7 @@ async function importQuotation(req, res) {
             ownerId: req.params.id,
             originalName: entry.originalName,
             storagePath: entry.storagePath,
-            mimeType: entry.file.mimetype || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mimeType: entry.file.mimetype || (path.extname(entry.originalName).toLowerCase() === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
             size: entry.file.size,
             uploadedBy: req.user.id,
           },
@@ -669,7 +680,7 @@ async function importQuotation(req, res) {
         saved.push({ id: result.insertId, name: entry.originalName, size: entry.file.size })
       }
       await connection.execute('UPDATE mr_orders SET quotation_file_id = :fileId, updated_by = :userId WHERE id = :id', {
-        fileId: saved[merged.salesSourceIndex].id,
+        fileId: saved[Math.max(0, sourceIndex)]?.id || null,
         userId: req.user.id,
         id: req.params.id,
       })

@@ -154,19 +154,22 @@ export interface QuotationFile {
 export interface QuotationSource {
   index: number
   name: string
-  role: 'sales' | 'purchase'
+  role: 'sales' | 'purchase' | 'order'
   total: number
   itemCount: number
   vendor?: string
+  documentType?: string
 }
 
 export interface QuotationImportResult {
   files: QuotationFile[]
   sources: QuotationSource[]
   salesSourceIndex: number
+  orderSourceIndex?: number
+  salesTotalExcludingTax?: number | null
   items: MrItem[]
   warnings: string[]
-  metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null; matchedCustomer?: CustomerOption | null }
+  metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null; customerPo?: string; latestDeliveryDate?: string; deliveryLocation?: string; matchedCustomer?: CustomerOption | null }
 }
 
 export interface ParsedQuotationSheet {
