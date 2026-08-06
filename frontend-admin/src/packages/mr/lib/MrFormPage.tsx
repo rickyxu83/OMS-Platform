@@ -500,7 +500,18 @@ export function MrFormPage() {
     setFlashSection(section)
   }
 
-  if (loading || !calculated || !constants) {
+  if (loading) {
+    return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+  }
+  if (error && (!calculated || !constants)) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-xl flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="text-sm text-destructive">{error}</div>
+        <div className="flex gap-2"><Button variant="outline" onClick={() => navigateAway('/mr')}>返回 MR 列表</Button><Button onClick={() => void load()}>重试</Button></div>
+      </div>
+    )
+  }
+  if (!calculated || !constants) {
     return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
   }
 
