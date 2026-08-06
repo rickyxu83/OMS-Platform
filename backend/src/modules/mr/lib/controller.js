@@ -439,7 +439,7 @@ async function submit(req, res) {
       )
     }
     await connection.execute(
-      `UPDATE mr_orders SET status = 'in_review', submitted_at = NOW(), approved_at = NULL,
+      `UPDATE mr_orders SET status = 'in_review', submitted_at = NOW(), fill_date = CURDATE(), approved_at = NULL,
        rejected_at = NULL, reject_reason = NULL, updated_by = :userId WHERE id = :id`,
       { id: req.params.id, userId: req.user.id },
     )
@@ -580,6 +580,15 @@ async function importQuotation(req, res) {
   )
   const merged = mergeQuotations(sources, vendors)
   const salesSheet = sources[merged.salesSourceIndex]?.sheets[0]
+  const customerName = String(salesSheet?.customer || '').trim()
+  const matchedCustomer = customerName ? (await query(
+    'SELECT id, code, name FROM customers WHERE name = :customer OR code = :customer LIMIT 1',
+    { customer: customerName },
+  ))[0] : null
+  const matchedContacts = matchedCustomer ? await query(
+    'SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId ORDER BY use_count DESC, last_used_at DESC, id DESC',
+    { customerId: matchedCustomer.id },
+  ) : []
   const payload = {
     ...merged,
     metadata: salesSheet ? {
@@ -588,6 +597,7 @@ async function importQuotation(req, res) {
       payment: salesSheet.payment,
       delivery: salesSheet.delivery,
       taxRate: salesSheet.tax_rate,
+      matchedCustomer: matchedCustomer ? { ...camelizeRow(matchedCustomer), contacts: matchedContacts.map(camelizeRow) } : null,
     } : {},
   }
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份报价单，已作为销售报价导入；成本请手工填写')

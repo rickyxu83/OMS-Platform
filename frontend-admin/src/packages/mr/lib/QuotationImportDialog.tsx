@@ -108,6 +108,16 @@ export function QuotationImportDialog({
           <div className="space-y-5">
             <section>
               <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">可返回重选文件；导入后仍可修改品项</span></div>
+              {preview.metadata?.matchedCustomer ? (
+                <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  已匹配客户档案：{preview.metadata.matchedCustomer.code ? `${preview.metadata.matchedCustomer.code} · ` : ''}{preview.metadata.matchedCustomer.name}
+                  {preview.metadata.matchedCustomer.contacts?.length ? `（${preview.metadata.matchedCustomer.contacts.length} 位联系人）` : ''}
+                </div>
+              ) : preview.metadata?.customer ? (
+                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  报价客户“{preview.metadata.customer}”未匹配到客户档案，导入后请手工选择。
+                </div>
+              ) : null}
               <div className="divide-y border">
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[110px_minmax(0,1fr)_130px_90px] sm:items-center">

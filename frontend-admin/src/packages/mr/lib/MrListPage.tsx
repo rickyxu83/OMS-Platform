@@ -72,7 +72,6 @@ export function MrListPage() {
     setCreating(true)
     try {
       const draft = await createMr({
-        fillDate: new Date().toISOString().slice(0, 10),
         salesOwnerId: user?.role === 'sales' ? user.id : undefined,
       })
       navigate(`/mr/${draft.id}`)
