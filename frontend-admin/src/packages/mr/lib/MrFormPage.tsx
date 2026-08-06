@@ -481,7 +481,6 @@ export function MrFormPage() {
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
   const deliveryLocations = Array.from(new Set([selectedCustomer?.mapAddress, selectedCustomer?.address, selectedCustomer?.mapPoiName].filter((value): value is string => Boolean(value))))
   const deliveryChoice = deliveryLocations.includes(calculated.deliveryLocation || '') ? calculated.deliveryLocation || '' : 'custom'
-  const hasContract = Boolean(calculated.contractNo?.trim())
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
@@ -610,7 +609,7 @@ export function MrFormPage() {
                       <SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
-                  <Field label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
+                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
                     <Input
                       type="number"
                       min={0}
@@ -643,15 +642,11 @@ export function MrFormPage() {
               <SubPanel title="合约">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="合同号（不填表示无合约）" editable={editable} readonlyText={textValue(calculated.contractNo)} className="sm:col-span-2">
-                    <Input value={calculated.contractNo || ''} placeholder="有合同再填写" onChange={(e) => patch({ contractNo: e.target.value, penaltyContent: e.target.value ? calculated.penaltyContent : '' })} />
+                    <Input value={calculated.contractNo || ''} placeholder="有合同再填写" onChange={(e) => patch({ contractNo: e.target.value })} />
                   </Field>
-                  {hasContract ? (
-                    <Field label="罚则说明（选填）" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
-                      <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="有罚则时填写，没有可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
-                    </Field>
-                  ) : (
-                    <p className="text-sm text-muted-foreground sm:col-span-2">未填写合同号，按无合约处理。</p>
-                  )}
+                  <Field label="罚则说明（选填）" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
+                    <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="有罚则时填写，没有可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
+                  </Field>
                 </div>
               </SubPanel>
             </div>
@@ -740,7 +735,7 @@ export function MrFormPage() {
                     </Select>
                   </Field>
                   {calculated.paymentTerms === '其他' ? (
-                    <Field label="付款条件说明" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
+                    <Field required={calculated.paymentTerms === '其他'} label="付款条件说明" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
                       <Input value={calculated.paymentOther || ''} onChange={(e) => patch({ paymentOther: e.target.value })} />
                     </Field>
                   ) : null}
@@ -756,12 +751,12 @@ export function MrFormPage() {
                   <div>联系人角色</div><div>姓名</div><div>电话</div>
                 </div>
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">采购联系人</div>
+                  <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
                   <Input list="mr-contact-options" value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patchContactField('purchaser', e.target.value)} />
                   <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">货物收件人</div>
+                  <div className="font-medium">货物收件人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
                   <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收件人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
                   <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
                 </div>
@@ -789,7 +784,7 @@ export function MrFormPage() {
                 </Select>
               </Field>
               {calculated.acceptance === '其他' ? (
-                <Field label="验收说明" editable={editable} readonlyText={textValue(calculated.acceptanceOther)}>
+                <Field required={calculated.acceptance === '其他'} label="验收说明" editable={editable} readonlyText={textValue(calculated.acceptanceOther)}>
                   <Input value={calculated.acceptanceOther || ''} onChange={(e) => patch({ acceptanceOther: e.target.value })} />
                 </Field>
               ) : null}

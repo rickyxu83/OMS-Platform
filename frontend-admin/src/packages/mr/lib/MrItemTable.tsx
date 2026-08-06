@@ -304,17 +304,17 @@ function ItemEditorPanel({
 
           <SubPanel title="采购">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="厂商" editable={editable} readonlyText={textValue(item.vendor)}>
+              <Field required={!serviceRow} label="厂商" editable={editable} readonlyText={textValue(item.vendor)}>
                 <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从维保方目录选择或输入完整名称" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
                 {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="mt-1 block text-xs text-emerald-700">已关联 OMS 维保方目录</span> : null}
               </Field>
               <Field label="采购单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
                 <Input value={item.purchaseOrderNo || ''} onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />
               </Field>
-              <Field label="成本含税（整行）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
+              <Field required={!serviceRow} label="成本含税（整行）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field label="成本税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
+              <Field required={!serviceRow} label="成本税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
                 <Select value={String(item.taxRate || '')} disabled={serviceRow} onValueChange={(value) => onChange({ taxRate: Number(value) })}>
                   <SelectTrigger><SelectValue placeholder="税率" /></SelectTrigger>
                   <SelectContent>{allowedTaxRates.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}</SelectContent>
