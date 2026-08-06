@@ -525,7 +525,7 @@ export function MrFormPage() {
                 <FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => dirty ? toast.error('请先保存草稿再打印') : navigateAway(`/mr/${id}/print`)}>
+            <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
             <Printer className="mr-2 size-4" />{status === 'in_review' ? '查看审批文档' : '打印预览'}
             </Button>
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
