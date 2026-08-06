@@ -69,6 +69,19 @@ function findHeaderSpec(ws) {
   const maxCol = Math.min(range.e.c + 1, 80)
   let best = null
   for (let row = 1; row <= maxRow; row += 1) {
+    const values = Array.from({ length: maxCol }, (_, index) => ws[XLSX.utils.encode_cell({ r: row - 1, c: index })]?.v)
+    const labels = values.map(normalizeLabel)
+    const configColumn = labels.findIndex((value) => value === normalizeLabel('配置'))
+    const nameColumn = labels.findIndex((value) => value === normalizeLabel('名称'))
+    if (configColumn >= 0 && nameColumn >= 0 && labels.some((value) => value === normalizeLabel('数量'))) {
+      const nextRow = row + 2
+      if (nextRow <= maxRow) {
+        const nextLabels = Array.from({ length: maxCol }, (_, index) => normalizeLabel(ws[XLSX.utils.encode_cell({ r: nextRow - 1, c: index })]?.v))
+        if (nextLabels.includes(normalizeLabel('参数')) || nextLabels.includes(normalizeLabel('总价'))) {
+          return { row: nextRow, columns: { group: nameColumn + 1, part: nameColumn + 2, description: configColumn + 1, qty: labels.findIndex((value) => value === normalizeLabel('数量')) + 1, unit: labels.findIndex((value) => value === normalizeLabel('单价')) + 1, extended: labels.findIndex((value) => value === normalizeLabel('小计')) + 1 || labels.findIndex((value) => value === normalizeLabel('总价')) + 1 }, aggregate: true, score: 6 }
+        }
+      }
+    }
     const columns = {}
     for (let col = 1; col <= maxCol; col += 1) {
       const value = ws[XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })]?.v
@@ -76,9 +89,7 @@ function findHeaderSpec(ws) {
         if (columns[key] === undefined && headerMatches(value, aliases)) columns[key] = col
       }
     }
-    const score = ['description', 'qty', 'unit'].filter((key) => columns[key] !== undefined).length
-      + (columns.extended === undefined ? 0 : 1)
-      + (columns.part === undefined ? 0 : 1)
+    const score = ['description', 'qty', 'unit'].filter((key) => columns[key] !== undefined).length + (columns.extended === undefined ? 0 : 1) + (columns.part === undefined ? 0 : 1)
     if (score >= 3 && (!best || score > best.score)) best = { row, columns, score }
   }
   return best
@@ -119,8 +130,9 @@ function scanFinancials(reader, maxRow, maxCol) {
     if (!rowText) continue
     texts.push(rowText)
     if (/(含税|含稅|含\s*\d+%\s*(?:服务|服務)?发票|含\s*\d+%\s*(?:服務)?發票|with\s*\d*%?\s*vat|vat\d+)/i.test(rowText)) taxIncluded = true
-    const percent = rowText.match(/(\d+(?:\.\d+)?)\s*%/)
-    const vatSuffix = rowText.match(/vat\s*(\d+(?:\.\d+)?)/i)
+    const taxContext = /(税|稅|vat|发票|發票)/i.test(rowText)
+    const percent = taxContext ? rowText.match(/(\d+(?:\.\d+)?)\s*%/) : null
+    const vatSuffix = taxContext ? rowText.match(/vat\s*(\d+(?:\.\d+)?)/i) : null
     const rate = percent?.[1] || vatSuffix?.[1]
     if (rate) taxRate = Number(rate) <= 1 ? Number(rate) * 100 : Number(rate)
     for (let index = 0; index < rowValues.length - 1; index += 1) {
@@ -156,27 +168,60 @@ function parseSheet(ws) {
   const maxRow = range.e.r + 1
   const maxCol = range.e.c + 1
   const items = []
+  let current = null
   let lastItemRow = header.row
+  const addComponent = (item, group, part, description, qty) => {
+    const text = [group, part, description].map(cellText).filter(Boolean).join('：')
+    if (!text || qty === null) return
+    item.components = item.components || []
+    item.components.push({ group: cellText(group), part: cellText(part), description: cellText(description), qty })
+  }
+  const flush = () => {
+    if (!current) return
+    if (current.components?.length) {
+      const componentLines = current.components.slice(1).map((component) => {
+        const label = [component.group, component.part, component.description].filter(Boolean).join(' / ')
+        return `${label} × ${component.qty}`
+      })
+      current.description = [current.description, ...componentLines].filter(Boolean).join('\n')
+    }
+    items.push(current)
+    current = null
+  }
   for (let row = header.row + 1; row <= maxRow; row += 1) {
+    const group = header.columns.group ? reader.text(row, header.columns.group) : ''
     const description = reader.text(row, header.columns.description)
     const part = header.columns.part ? reader.text(row, header.columns.part) : ''
     const qty = toFloat(rawValue(ws, row, header.columns.qty))
     const unitPrice = toFloat(rawValue(ws, row, header.columns.unit))
     const extended = header.columns.extended ? toFloat(rawValue(ws, row, header.columns.extended)) : null
-    const rowText = [description, part, reader.text(row, header.columns.item)].join(' ')
-    if (/(小计|小計|合计|合計|subtotal|total|税金|稅金|優惠|优惠)/i.test(rowText) && unitPrice === null) continue
-    if (unitPrice === null || (!description && !part) || qty === null) continue
-    lastItemRow = row
-    const fields = descriptionFields(description, part)
-    items.push({
-      item_no: header.columns.item ? reader.text(row, header.columns.item) : String(items.length + 1),
-      part_no: part,
-      description: fields.description || fields.name,
-      qty,
-      unit_price: unitPrice,
-      extended: extended === null ? unitPrice * qty : extended,
-    })
+    const rowText = [group, description, part, reader.text(row, header.columns.item)].join(' ')
+    if (/(小计|小計|合计|合計|subtotal|total|税金|稅金|優惠|优惠|未税|未稅|含税|含稅)/i.test(rowText) && unitPrice === null) continue
+    if (unitPrice !== null && qty !== null && (description || part || group)) {
+      flush()
+      const aggregateTitle = header.aggregate ? reader.text(header.row - 1, 1) : ''
+      const itemName = aggregateTitle || group || part || description
+      const fields = descriptionFields(description || part || group, part || group)
+      current = {
+        item_no: header.columns.item ? reader.text(row, header.columns.item) : String(items.length + 1),
+        part_no: header.aggregate ? group || part : part || group,
+        name: itemName,
+        description: fields.description || fields.name,
+        qty,
+        unit_price: unitPrice,
+        extended: extended === null ? unitPrice * qty : extended,
+        components: [],
+      }
+      addComponent(current, group, part, description, qty)
+      lastItemRow = row
+      continue
+    }
+    if (current && qty !== null && (description || part || group)) {
+      addComponent(current, group, part, description, qty)
+      lastItemRow = row
+    }
   }
+  flush()
   const financials = scanFinancials(reader, maxRow, maxCol)
   const beforeText = []
   for (let row = 1; row < header.row; row += 1) {

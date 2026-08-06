@@ -18,8 +18,14 @@ function itemKeys(item) {
   const part = normalized(item.part_no)
   const descriptionText = String(item.description || '')
   const description = normalized(descriptionText)
-  const name = normalized(descriptionText.split(/\r?\n/)[0])
+  const name = normalized(item.name || descriptionText.split(/\r?\n/)[0])
   const keys = [part && `part:${part}`, description && `desc:${description}`, name && `name:${name}`].filter(Boolean)
+  for (const component of item.components || []) {
+    const componentText = normalized([component.group, component.part, component.description].filter(Boolean).join(' '))
+    if (componentText) keys.push(`component:${componentText}`)
+    const componentDescription = normalized(component.description)
+    if (componentDescription) keys.push(`component-desc:${componentDescription}`)
+  }
   if (description.includes('forticare') || description.includes('续保') || description.includes('維保')) keys.push('service:' + description.replace(/\d+/g, ''))
   return keys
 }
@@ -150,7 +156,7 @@ function mergeQuotations(inputSources, vendors = []) {
         for (const candidate of purchasesByKey.get(key) || []) matchedPurchaseIndexes.add(`${candidate.sourceIndex}:${candidate.item_no}:${candidate.part_no}:${candidate.description}`)
       }
     }
-    const fields = descriptionFields(sale.description, sale.part_no)
+    const fields = { ...descriptionFields(sale.description, sale.part_no), name: sale.name || descriptionFields(sale.description, sale.part_no).name }
     if (!purchase) warnings.push(`“${fields.name || sale.part_no}”没有匹配到进货报价`)
     else if (!purchase.taxRateKnown) unknownTaxSources.add(purchase.sourceName)
     items.push({
@@ -167,13 +173,13 @@ function mergeQuotations(inputSources, vendors = []) {
       purchaseOrderNo: '',
       costSource: purchase?.sourceName || '',
       salesSource: sale.sourceName,
+      components: sale.components || [],
     })
   }
-
   for (const purchase of purchaseItems) {
     const key = `${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`
     if (matchedPurchaseIndexes.has(key)) continue
-    const fields = descriptionFields(purchase.description, purchase.part_no)
+    const fields = { ...descriptionFields(purchase.description, purchase.part_no), name: purchase.name || descriptionFields(purchase.description, purchase.part_no).name }
     items.push({
       companyPartNo: '',
       oemSpec: purchase.part_no || '',
@@ -188,8 +194,8 @@ function mergeQuotations(inputSources, vendors = []) {
       purchaseOrderNo: '',
       costSource: purchase.sourceName,
       salesSource: '',
+      components: purchase.components || [],
     })
-    warnings.push(`进货报价“${fields.name || purchase.part_no}”未在客户报价中出现，已作为待确认品项加入预览`)
   }
 
   const salesTotalExcludingTax = sourceSalesTotalExcludingTax(sources[orderSourceIndex >= 0 ? orderSourceIndex : effectiveSalesSourceIndex])

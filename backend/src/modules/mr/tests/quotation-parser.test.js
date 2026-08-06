@@ -75,3 +75,29 @@ const multiplePurchase = mergeQuotations([
 ], [])
 assert.deepStrictEqual(multiplePurchase.sources.map((source) => source.role), ['sales', 'purchase', 'purchase'])
 assert(multiplePurchase.warnings.some((warning) => warning.includes('其余 1 份未明确来源文件按进货报价处理')))
+
+const bundledSheet = XLSX.utils.aoa_to_sheet([
+  ['上海石洛信息科技有限公司'],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  ['名称', '型号', '配置', '数量', '单价', '小计'],
+  ['IBM TS4300 StorageWorks Tape Drivers（光纤）'],
+  ['型号', '参数', '', '数量', '单价', '总价'],
+  ['TS4300主机', '笼子', 'IBM TS4300 3U Tape Library-Base Unit', 1, 315000, 315000],
+  ['', '半高驱动器', 'LTO 8 HH Fibre Channel Drive', 2, null, null],
+  ['', '导轨', 'Rack Mount Kit TS4300', 1, null, null],
+])
+bundledSheet['!merges'] = [{ s: { r: 8, c: 0 }, e: { r: 8, c: 5 } }]
+const bundledBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(bundledBook, bundledSheet, 'SPIL')
+const bundledParsed = parseWorkbook(XLSX.write(bundledBook, { type: 'buffer', bookType: 'xlsx' }))[0]
+assert.equal(bundledParsed.items.length, 1)
+assert.equal(bundledParsed.items[0].name, 'IBM TS4300 StorageWorks Tape Drivers（光纤）')
+assert.equal(bundledParsed.items[0].unit_price, 315000)
+assert(bundledParsed.items[0].description.includes('LTO 8 HH Fibre Channel Drive'))
+assert.equal(bundledParsed.items[0].components.length, 3)
+console.log('quotation parser bundled-device tests passed')
