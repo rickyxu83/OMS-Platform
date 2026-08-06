@@ -5,12 +5,14 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_PAGES = 10
 TIMEOUT_SECONDS = 120
+OCR_LOCK = threading.Lock()
 
 
 def run(command, timeout=TIMEOUT_SECONDS):
@@ -69,7 +71,9 @@ class Handler(BaseHTTPRequestHandler):
             data = field.file.read()
             if not data or len(data) > MAX_BYTES:
                 raise ValueError('文件大小超过限制')
-            self.send_json(200, ocr_pdf(data))
+            with OCR_LOCK:
+                result = ocr_pdf(data)
+            self.send_json(200, result)
         except subprocess.TimeoutExpired:
             self.send_json(504, {'error': 'OCR 处理超时'})
         except Exception as error:
