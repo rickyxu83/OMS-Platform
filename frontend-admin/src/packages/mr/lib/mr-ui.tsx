@@ -53,6 +53,26 @@ export function choiceValue(value?: number | boolean | null, yes = '是', no = '
   return '-'
 }
 
+const REQUIRED_FIELD_LABELS = new Set([
+  '计价模式',
+  '发票别',
+  '案分类',
+  '客户名称',
+  '发票处理',
+  '开票内容',
+  '开票 / 收款',
+  '付款条件',
+  '最晚交货日',
+  '验收',
+  '装机对象',
+  '维护对象',
+  '品名/品名描述',
+  '数量',
+  '销售单价',
+  '厂商',
+  '成本含税（整行）',
+  '成本税率',
+  ])
 export function SectionCard({
   id,
   title,
@@ -93,7 +113,6 @@ export function SectionCard({
   )
 }
 
-/** Sub-grouping inside a SectionCard (e.g. 计价与发票 / 合约 side by side). */
 export function SubPanel({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="min-w-0 space-y-4 rounded-lg border bg-muted/20 p-4">
@@ -106,35 +125,34 @@ export function SubPanel({ title, actions, children }: { title: string; actions?
   )
 }
 
-/**
- * One labelled field. When `editable` is false the label/value pair renders as
- * plain text (`readonlyText`, falling back to `children`) instead of a disabled
- * control, so approved orders read like a document rather than a greyed-out form.
- */
 export function Field({
   label,
   children,
   readonlyText,
   editable = true,
+  required,
   className = '',
 }: {
   label: string
   children?: ReactNode
   readonlyText?: ReactNode
   editable?: boolean
+  required?: boolean
   className?: string
 }) {
+  const showRequired = required ?? REQUIRED_FIELD_LABELS.has(label)
+  const labelContent = <>{label}{showRequired ? <span className="ml-0.5 text-red-600" aria-hidden="true">*</span> : null}</>
   if (!editable) {
     return (
       <div className={`min-w-0 space-y-1 ${className}`}>
-        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="text-xs text-muted-foreground">{labelContent}</div>
         <div className="min-h-6 text-sm break-words whitespace-pre-wrap">{readonlyText ?? children}</div>
       </div>
     )
   }
   return (
     <div role="group" aria-label={label} className={`min-w-0 space-y-1.5 ${className}`}>
-      <Label>{label}</Label>
+      <Label>{labelContent}</Label>
       {children}
     </div>
   )
@@ -166,6 +184,7 @@ export function WorkOptions({
   label,
   value,
   editable = true,
+  required,
   choices,
   onChange,
   className = '',
@@ -173,6 +192,7 @@ export function WorkOptions({
   label: string
   value: string[]
   editable?: boolean
+  required?: boolean
   choices: string[]
   onChange: (value: string[]) => void
   className?: string
@@ -184,7 +204,7 @@ export function WorkOptions({
     onChange([...new Set(value.filter((item) => item !== 'NO').concat(choice))])
   }
   return (
-    <Field label={label} editable={editable} readonlyText={value.join('、') || '-'} className={className}>
+    <Field label={label} required={required} editable={editable} readonlyText={value.join('、') || '-'} className={className}>
       <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-background px-3 py-2">
         {choices.map((choice) => (
           <label key={choice} className="flex items-center gap-2 text-sm">
