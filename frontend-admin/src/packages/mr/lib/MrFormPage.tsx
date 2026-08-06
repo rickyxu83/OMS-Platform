@@ -290,7 +290,7 @@ export function MrFormPage() {
 
   const applyQuotationImport = async (result: QuotationImportResult) => {
     const salesFile = result.files[result.salesSourceIndex]
-    const salesTotal = result.sources.find((source) => source.role === 'sales')?.total
+    const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
     const imported = normalizeCostTaxRates(result.items, calculated?.invoiceType)
     const items = Number(calculated?.pricingMode) === 2
       ? singleIntegrationItems(imported, calculated?.invoiceType, calculated?.installOptions || [])
@@ -334,6 +334,9 @@ export function MrFormPage() {
       quotationFiles: result.files,
       customerId: nextCustomerId,
       customerName: nextCustomerName,
+      customerPo: calculated?.customerPo || result.metadata?.customerPo || '',
+      latestDeliveryDate: calculated?.latestDeliveryDate || result.metadata?.latestDeliveryDate || '',
+      deliveryLocation: calculated?.deliveryLocation || result.metadata?.deliveryLocation || '',
       customerContactId: nextContactId,
       contactName: nextContactName,
       purchaser: calculated?.purchaser || importedContactName,

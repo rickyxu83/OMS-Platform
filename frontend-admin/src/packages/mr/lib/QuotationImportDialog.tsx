@@ -3,12 +3,13 @@ import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload } from 'lucid
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { downloadQuotation, importQuotations } from '../client'
-import type { QuotationFile, QuotationImportResult } from '../types'
-
+import type { QuotationFile, QuotationImportResult, QuotationSource } from '../types'
 function money(value?: number | null) {
   return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-
+function sourceLabel(role: QuotationSource['role']) {
+  return role === 'order' ? '最终 PO' : role === 'sales' ? '客户销售报价' : '厂商进货报价'
+}
 export function QuotationImportDialog({
   orderId,
   open,
@@ -75,7 +76,7 @@ export function QuotationImportDialog({
       <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>报价文件与品项导入</DialogTitle>
-          <DialogDescription>同时选择客户报价和一份或多份厂商报价。系统按总额识别销售报价，以料号、原厂规格和描述匹配品项，并采用匹配到的最低进货价。</DialogDescription>
+            <DialogDescription>一次选择客户报价、厂商报价和最终 PO。系统会按文件内容识别来源，最终 PO 覆盖销售总额，缺少成本或扫描 PDF 会明确提示人工核对。</DialogDescription>
         </DialogHeader>
 
         {existingFiles.length ? (
@@ -96,8 +97,8 @@ export function QuotationImportDialog({
           <label htmlFor="mr-quotation-files" className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed px-4 py-5 text-center hover:bg-muted/50">
             {loading ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : <Upload className="size-6 text-muted-foreground" />}
             <span className="text-sm font-medium">选择全部报价文件</span>
-            <span className="text-xs text-muted-foreground">支持 .xls / .xlsx，可一次多选，重新导入会替换上一批文件</span>
-            <input id="mr-quotation-files" type="file" accept=".xls,.xlsx" multiple className="sr-only" disabled={loading} onChange={(event) => void parse(Array.from(event.target.files || []))} />
+            <span className="text-xs text-muted-foreground">支持 .xls / .xlsx / .pdf，可一次多选，重新导入会替换上一批文件</span>
+            <input id="mr-quotation-files" type="file" accept=".xls,.xlsx,.pdf" multiple className="sr-only" disabled={loading} onChange={(event) => void parse(Array.from(event.target.files || []))} />
           </label>
         ) : null}
 
@@ -121,13 +122,14 @@ export function QuotationImportDialog({
               <div className="divide-y border">
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[110px_minmax(0,1fr)_130px_90px] sm:items-center">
-                    <span className={source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{source.role === 'sales' ? '销售报价' : '进货报价'}</span>
+                    <span className={source.role === 'order' ? 'font-medium text-amber-700' : source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
                     <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div>{source.vendor ? <div className="text-xs text-muted-foreground">识别厂商：{source.vendor}</div> : null}</div>
                     <div className="text-sm tabular-nums">¥ {money(source.total)}</div>
                     <div className="text-sm text-muted-foreground">{source.itemCount} 项</div>
                   </div>
                 ))}
               </div>
+              {preview.salesTotalExcludingTax != null ? <div className="mt-3 grid gap-2 border bg-muted/30 px-3 py-3 text-sm sm:grid-cols-2"><div><span className="text-muted-foreground">最终采用未税销售额：</span><strong className="tabular-nums">¥ {money(preview.salesTotalExcludingTax)}</strong></div><div><span className="text-muted-foreground">来源：</span>{preview.orderSourceIndex != null && preview.orderSourceIndex >= 0 ? '最终 PO 优先' : '客户销售报价'}</div></div> : null}
             </section>
 
             {preview.warnings.length || taxConflictCount || ignoredSingleIntegrationItems ? (
