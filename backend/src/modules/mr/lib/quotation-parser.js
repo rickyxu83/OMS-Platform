@@ -186,6 +186,10 @@ function parseSheet(ws) {
     }
   }
   const allText = [...beforeText, ...financials.notes]
+  const vendor = allText.find((value) => {
+    const candidate = String(value || '').trim()
+    return candidate && /(?:有限公司|有限责任公司|股份有限公司|公司)$/.test(candidate) && !/(客户|供应商|报价单|报价方|敬启者|敬啟者)/.test(candidate)
+  }) || ''
   const findLine = (labels) => allText.find((value) => labels.some((label) => {
     const source = normalizeLabel(value)
     const target = normalizeLabel(label)
@@ -216,6 +220,7 @@ function parseSheet(ws) {
     customer: findCellValue(['to:', 'to：', '客户名称', '客戶名稱', '購貨單位', '购货单位']) || findValue(['to:', 'to：', '客户名称', '客戶名稱', '購貨單位', '购货单位']),
     attn: findCellValue(['attn:', 'attn：', '联系人', '聯絡人']) || findValue(['attn:', 'attn：', '联系人', '聯絡人']),
     seller: { from: findCellValue(['from:', 'from：', '供应商', '供應商', '供方']) || findValue(['from:', 'from：', '供应商', '供應商', '供方']) },
+    vendor,
     payment: findLine(['付款方式', '付款條件', '付款条件', '帳期', '账期']),
     delivery: findLine(['交货期限', '交貨期限', '交期', '到货', '到貨']),
     notes: allText,

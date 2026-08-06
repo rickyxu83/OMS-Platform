@@ -103,7 +103,7 @@ export function MrItemTable({
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-16 px-3 py-2 text-left font-medium">选择 / #</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">品名 / 原厂规格</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium">品名/品名描述</th>
                 <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
                 <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价</th>
                 <th scope="col" className="w-36 px-3 py-2 text-right font-medium">售价小计</th>
@@ -128,9 +128,8 @@ export function MrItemTable({
                         aria-label={`编辑第 ${index + 1} 项`}
                         aria-pressed={selected}
                       >
-                        <span className="block truncate font-medium">{item.name || '未填写品名'}</span>
-                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.oemSpec || '原厂规格未填'}</span>
-                        {item.description ? <span className="mt-1 block line-clamp-2 text-xs leading-5 text-muted-foreground">{item.description}</span> : null}
+                        <span className="block break-words font-medium">{item.description || item.name || '未填写品名/品名描述'}</span>
+                        <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '原厂规格未填'}</span>
                       </button>
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
@@ -230,8 +229,8 @@ function ItemEditorPanel({
       <div className="space-y-4">
         <SubPanel title="品项资料">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="品名" editable={editable} readonlyText={textValue(item.name)} className="md:col-span-2">
-              <Textarea rows={2} value={item.name || ''} onChange={(event) => onChange({ name: event.target.value })} disabled={serviceRow} />
+            <Field label="品名/品名描述" editable={editable} readonlyText={textValue(item.description || item.name)} className="md:col-span-2 xl:col-span-4">
+              <Textarea rows={5} value={item.description || item.name || ''} disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
             </Field>
             <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)} className="md:col-span-2">
               <Textarea rows={2} value={item.oemSpec || ''} onChange={(event) => onChange({ oemSpec: event.target.value })} />
@@ -266,7 +265,8 @@ function ItemEditorPanel({
           <SubPanel title="采购">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="厂商" editable={editable} readonlyText={textValue(item.vendor)}>
-                <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从厂商库选择或输入" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
+                <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从维保方目录选择或输入完整名称" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
+                {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="mt-1 block text-xs text-emerald-700">已关联 OMS 维保方目录</span> : null}
               </Field>
               <Field label="采购单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
                 <Input value={item.purchaseOrderNo || ''} onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />

@@ -429,6 +429,21 @@ async function update(req, res) {
   res.json(await loadDetail(req.params.id, req.user))
 }
 
+async function ensureMrVendors(connection, items = []) {
+  const names = [...new Set(items.map((item) => String(item.vendor || '').trim()).filter(Boolean))]
+  for (const name of names) {
+    const [rows] = await connection.execute(
+      "SELECT id FROM maintenance_parties WHERE party_type = 'original_manufacturer' AND name = :name LIMIT 1",
+      { name },
+    )
+    if (rows[0]) continue
+    await connection.execute(
+      `INSERT INTO maintenance_parties (party_type, name) VALUES ('original_manufacturer', :name)`,
+      { name },
+    )
+  }
+}
+
 async function submit(req, res) {
   await ensureTables()
   await transaction(async (connection) => {
@@ -437,6 +452,7 @@ async function submit(req, res) {
     const detailValue = await loadCalculatedOrder(connection, locked)
     const errors = validateSubmission(detailValue, detailValue.items)
     if (errors.length) throw badRequest('规范检查未通过', errors)
+    await ensureMrVendors(connection, detailValue.items)
     const steps = computeApprovalSteps(detailValue, detailValue.items)
     const [cycleRows] = await connection.execute('SELECT COALESCE(MAX(cycle), 0) + 1 AS next_cycle FROM mr_approvals WHERE mr_id = :id', { id: req.params.id })
     const cycle = Number(cycleRows[0].next_cycle)
@@ -475,6 +491,7 @@ async function decide(req, res, action) {
       const detailValue = await loadCalculatedOrder(connection, order)
       const errors = validateSubmission(detailValue, detailValue.items)
       if (errors.length) throw badRequest('助理补充后仍有未完成内容', errors)
+      await ensureMrVendors(connection, detailValue.items)
       const nextSteps = computeApprovalSteps(detailValue, detailValue.items)
       const cycle = steps[0].cycle
       await connection.execute('DELETE FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle', { id: req.params.id, cycle })
