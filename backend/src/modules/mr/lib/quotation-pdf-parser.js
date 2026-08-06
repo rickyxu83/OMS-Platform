@@ -27,7 +27,8 @@ function parseLooseItems(lines) {
     const match = line.match(fiveNumbers) || line.match(threeNumbers)
     if (match) {
       const prefix = cleanOcrLine(line.slice(0, match.index))
-      const description = cleanOcrLine(prefix || flushPending()) || '待人工核对品项'
+      const rawDescription = /^\d+\s/.test(prefix) ? flushPending(prefix) : prefix || flushPending()
+      const description = cleanOcrLine(rawDescription.replace(/^\d+\s+/, '')) || '待人工核对品项'
       const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
       const unitPrice = number(match[2]) || 0
       const extended = number(match[3]) || unitPrice * (number(match[1]) || 1)
@@ -92,6 +93,8 @@ function parsePdfText(text) {
   }
   const warnings = []
   if (!items.length) warnings.push('PDF 已提取文字，但没有识别到标准品项行，请人工核对')
+  const itemTotal = items.reduce((sum, item) => sum + (item.extended || 0), 0)
+  if (untaxedTotal !== null && items.length && Math.abs(itemTotal - untaxedTotal) > 0.01) warnings.push(`识别品项未税金额合计 ${itemTotal.toLocaleString('zh-CN')} 与文件未税总计 ${untaxedTotal.toLocaleString('zh-CN')} 不一致，请人工核对`)
   if (order && po) sheet.documentType = 'customer_order'
   return { documentType: order ? 'customer_order' : 'purchase_quote', sheets: [sheet], warnings }
 }
