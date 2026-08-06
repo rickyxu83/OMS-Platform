@@ -235,9 +235,6 @@ function ItemEditorPanel({
             <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)} className="md:col-span-2">
               <Textarea rows={2} value={item.oemSpec || ''} onChange={(event) => onChange({ oemSpec: event.target.value })} />
             </Field>
-            <Field label="品名描述" editable={editable} readonlyText={textValue(item.description)} className="md:col-span-2 xl:col-span-4">
-              <Textarea rows={5} value={item.description || ''} onChange={(event) => onChange({ description: event.target.value })} />
-            </Field>
             <Field label="公司料号" editable={editable} readonlyText={textValue(item.companyPartNo)}>
               <Input value={item.companyPartNo || ''} onChange={(event) => onChange({ companyPartNo: event.target.value })} />
             </Field>

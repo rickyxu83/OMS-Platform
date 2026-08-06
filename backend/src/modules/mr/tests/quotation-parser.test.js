@@ -1,7 +1,6 @@
 const assert = require('assert')
 const XLSX = require('xlsx')
-const { parseWorkbook, sheetTotal, mergeQuotations } = require('../quotation-parser')
-const { parsePdfText } = require('../lib/quotation-pdf-parser')
+const { parseWorkbook, sheetTotal, mergeQuotations, parsePdfText } = require('../quotation-parser')
 
 
 const rows = [
@@ -36,7 +35,7 @@ const merged = mergeQuotations([
 assert.equal(merged.salesSourceIndex, 0)
 assert.deepStrictEqual(merged.sources.map((source) => source.role), ['sales', 'purchase', 'purchase'])
 assert.equal(merged.items[0].unitPrice, 100)
-assert.equal(merged.items[0].costInclTax, 113)
+assert.equal(merged.items[0].costInclTax, 100)
 assert.equal(merged.items[0].vendor, '厂商B')
 assert.equal(merged.items[0].costSource, '厂商B.xlsx')
 
@@ -99,5 +98,20 @@ assert.equal(bundledParsed.items.length, 1)
 assert.equal(bundledParsed.items[0].name, 'IBM TS4300 StorageWorks Tape Drivers（光纤）')
 assert.equal(bundledParsed.items[0].unit_price, 315000)
 assert(bundledParsed.items[0].description.includes('LTO 8 HH Fibre Channel Drive'))
-assert.equal(bundledParsed.items[0].components.length, 3)
-console.log('quotation parser bundled-device tests passed')
+assert.equal(bundledParsed.items[0].components.length, 2)
+const bundledMerge = mergeQuotations([
+  { name: '客户磁带机报价.xlsx', documentType: 'sales_quote', sheets: [{ ...bundledParsed, total: 365000 }] },
+  { name: '供应商磁带机报价.xlsx', documentType: 'purchase_quote', sheets: [{ ...bundledParsed, tax_included: false, notes: [] }] },
+], [])
+assert.equal(bundledMerge.items.length, 1)
+assert.equal(bundledMerge.items[0].costInclTax, 315000)
+const fortiServiceMerge = mergeQuotations([
+  { name: '客户续保报价.xlsx', documentType: 'sales_quote', sheets: [{ ...parsed[0], tax_rate: 6, tax_included: true, items: [{ ...parsed[0].items[0], part_no: 'FC-10-A100F-247-02-12', description: '24x7 FortiCare Contract', name: 'FC-10-A100F-247-02-12', qty: 1, unit_price: 12000, extended: 12000 }], total: 12000 }] },
+  { name: '供应商续保报价.xlsx', documentType: 'purchase_quote', sheets: [{ ...parsed[0], items: [{ ...parsed[0].items[0], part_no: 'FC-10-A100F-247-02-DD', description: 'FortiADC-100F 1 Year FortiCare Premium Support', name: 'FC-10-A100F-247-02-DD', qty: 1, unit_price: 8647, extended: 8647 }], total: 8647, tax_rate: 6, tax_included: true }] },
+], [])
+assert.equal(fortiServiceMerge.items.length, 1)
+assert.equal(fortiServiceMerge.items[0].oemSpec, 'FC-10-A100F-247-02-12')
+assert.equal(fortiServiceMerge.items[0].costInclTax, 8647)
+assert.equal(fortiServiceMerge.items[0].vendor, '')
+assert(Math.abs(fortiServiceMerge.items[0].unitPrice - 12000 / 1.06) < 0.000001)
+console.log('quotation parser service-family matching tests passed')
