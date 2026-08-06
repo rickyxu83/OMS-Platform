@@ -1,5 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -99,31 +99,17 @@ export function MrItemTable({
       {editable ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{editMode ? '编辑模式：可直接修改每个品项的常用字段；勾选多行可批量复制。' : '选择一行后在下方编辑；或打开编辑模式同时修改多项。'}</p>
+            <p className="text-xs text-muted-foreground">{editMode ? '编辑模式：左侧勾选目标品项，右侧批量操作台统一应用字段。' : '选择一行后在下方编辑；或打开编辑模式进行多项操作。'}</p>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">已选 {selectedRows.size} 项</span>
               <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedIndex(null) }}><Pencil className="mr-2 size-4" />{editMode ? '完成编辑' : '编辑模式'}</Button>
             </div>
           </div>
-          {editMode && selectedRows.size ? (
-            <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:grid-cols-[180px_1fr] md:items-center">
-              <label className="text-sm font-medium" htmlFor="mr-batch-source">复制来源</label>
-              <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
-                <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
-                <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
-              </Select>
-              <div className="flex flex-wrap gap-x-4 gap-y-2 md:col-span-2">
-                {([['vendor', '厂商'], ['purchaseOrderNo', '采购单号'], ['warrantyService', '保固/服务'], ['installBy', '明细装机']] as const).map(([field, label]) => (
-                  <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
-                ))}
-              </div>
-              <Button type="button" size="sm" className="md:col-span-2 md:justify-self-end" onClick={applyBatch}>应用到已选品项</Button>
-            </div>
-          ) : null}
         </>
       ) : null}
 
-      <div className="overflow-hidden rounded-lg border">
+      <div className={editMode ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]' : ''}>
+        <div className="overflow-hidden rounded-lg border">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] table-fixed text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
@@ -170,33 +156,35 @@ export function MrItemTable({
                             <Trash2 className="size-4 text-destructive" />
                           </Button>
                         ) : null}
-                        <Button type="button" variant={selected ? 'secondary' : 'ghost'} size="icon" title="编辑品项" onClick={() => setSelectedIndex(index)}>
-                          <Pencil className="size-4" />
-                        </Button>
+                        {!editMode ? <Button type="button" variant={selected ? 'secondary' : 'ghost'} size="icon" title="编辑品项" onClick={() => setSelectedIndex(index)}><Pencil className="size-4" /></Button> : null}
                       </div>
                     </td>
                   </tr>
-                  {editMode ? (
-                    <tr className="bg-muted/10">
-                      <td colSpan={7} className="px-3 pb-4">
-                        <div className="grid gap-3 pt-1 md:grid-cols-2 xl:grid-cols-6">
-                          <label className="xl:col-span-2"><span className="mb-1 block text-xs font-medium text-muted-foreground">品名/品名描述</span><Textarea rows={2} value={item.description || item.name || ''} onChange={(event) => { const value = event.target.value; setItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} /></label>
-                          <label className="xl:col-span-2"><span className="mb-1 block text-xs font-medium text-muted-foreground">原厂规格</span><Input value={item.oemSpec || ''} onChange={(event) => setItem(index, { oemSpec: event.target.value })} /></label>
-                          <label><span className="mb-1 block text-xs font-medium text-muted-foreground">数量</span><Input type="number" min={1} step={1} value={numberValue(item.qty)} onChange={(event) => setItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} /></label>
-                          <label><span className="mb-1 block text-xs font-medium text-muted-foreground">厂商</span><Input list="mr-vendor-options" value={item.vendor || ''} onChange={(event) => setItem(index, { vendor: event.target.value })} /></label>
-                          <label><span className="mb-1 block text-xs font-medium text-muted-foreground">采购单号</span><Input value={item.purchaseOrderNo || ''} onChange={(event) => setItem(index, { purchaseOrderNo: event.target.value })} /></label>
-                          <label><span className="mb-1 block text-xs font-medium text-muted-foreground">保固/服务</span><Input value={item.warrantyService || ''} onChange={(event) => setItem(index, { warrantyService: event.target.value })} /></label>
-                          <label className="xl:col-span-2"><span className="mb-1 block text-xs font-medium text-muted-foreground">明细装机</span><Input value={item.installBy || ''} onChange={(event) => setItem(index, { installBy: event.target.value })} /></label>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
                   </>
                 )
               })}
             </tbody>
           </table>
         </div>
+      </div>
+      {editMode ? (
+        <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-24">
+          <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量操作台</h3></div>
+          <p className="mb-3 text-sm text-muted-foreground">已选 {selectedRows.size} 项。选择一项作为模板，再选择要复制的字段。</p>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>
+          <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
+            <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
+            <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
+          </Select>
+          <div className="my-4 space-y-3 border-y py-4">
+            <p className="text-xs text-muted-foreground">只复制重复资料，不覆盖数量、售价和采购成本。</p>
+            {([['vendor', '厂商'], ['purchaseOrderNo', '采购单号'], ['warrantyService', '保固/服务'], ['installBy', '明细装机']] as const).map(([field, label]) => (
+              <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
+            ))}
+          </div>
+          <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用到已选品项</Button>
+        </aside>
+      ) : null}
       </div>
 
       {selectedItem && selectedIndex !== null && !editMode ? (
