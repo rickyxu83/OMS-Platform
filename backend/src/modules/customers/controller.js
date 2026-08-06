@@ -1392,6 +1392,32 @@ async function devices(req, res) {
   })
 }
 
+async function createContact(req, res) {
+  const customerId = Number(req.params.id)
+  const name = String(req.body?.name || '').trim()
+  const phone = normalizePhoneNumber(req.body?.phone) || null
+  if (!customerId || !name) throw badRequest('联系人姓名不能为空')
+  const contact = await transaction(async (connection) => {
+    const [customers] = await connection.execute('SELECT id FROM customers WHERE id = :id LIMIT 1', { id: customerId })
+    if (!customers[0]) throw notFound('客户不存在')
+    const [existing] = await connection.execute(
+      'SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId AND name = :name AND (phone <=> :phone) LIMIT 1',
+      { customerId, name, phone },
+    )
+    if (existing[0]) {
+      await connection.execute('UPDATE customer_contacts SET use_count = use_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = :id', { id: existing[0].id })
+      return existing[0]
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO customer_contacts (customer_id, name, phone, use_count, last_used_at)
+       VALUES (:customerId, :name, :phone, 1, CURRENT_TIMESTAMP)`,
+      { customerId, name, phone },
+    )
+    return { id: result.insertId, name, phone }
+  })
+  res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null })
+}
+
 module.exports = {
   list,
   create,
@@ -1402,4 +1428,5 @@ module.exports = {
   merge,
   devices,
   nextCustomerCode,
+  createContact,
 }
