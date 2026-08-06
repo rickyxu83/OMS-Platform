@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, Printer, Save, Send, ShieldCheck, UserPlus } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, Printer, Save, Send, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,7 +10,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { ErrorToast } from '@/components/ErrorToast'
 import {
   approveMr,
-  createCustomerContact,
   getMr,
   getMrConstants,
   loadCustomer,
@@ -116,11 +115,6 @@ export function MrFormPage() {
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
-  const [contactOverridesOpen, setContactOverridesOpen] = useState(false)
-  const [newContactOpen, setNewContactOpen] = useState(false)
-  const [newContactTarget, setNewContactTarget] = useState<'purchaser' | 'recipient' | 'invoiceRecipient'>('purchaser')
-  const [newContactName, setNewContactName] = useState('')
-  const [newContactPhone, setNewContactPhone] = useState('')
   const loadSequence = useRef(0)
   const ignoreNextPop = useRef(false)
   const errorListRef = useRef<HTMLDivElement | null>(null)
@@ -263,8 +257,7 @@ export function MrFormPage() {
 
   const chooseCustomer = async (value: string) => {
     const customer = customers.find((item) => String(item.id) === value)
-    setContactOverridesOpen(false)
-    patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '', purchaser: '', purchaserTel: '', recipient: '', recipientTel: '', invoiceRecipient: '' })
+    patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '', purchaser: '', purchaserTel: '', recipient: '', recipientTel: '', recipientMail: '', invoiceRecipient: '' })
     try {
       const detail = await loadCustomer(value)
       const defaultContact = contactByName(detail.contacts, detail.contactName) || detail.contacts?.[0]
@@ -284,24 +277,17 @@ export function MrFormPage() {
       setError((err as Error).message || '联系人加载失败')
     }
   }
-
-  const chooseContact = (value: string) => {
-    setContactOverridesOpen(false)
-    if (value === 'none') {
-      setContactOverridesOpen(true)
-      return patch({ customerContactId: null, contactName: '' })
+  const handleCustomerInput = (value: string) => {
+    const customer = customers.find((item) => normalizeLookup(item.name) === normalizeLookup(value) || normalizeLookup(item.code) === normalizeLookup(value))
+    if (customer?.id) {
+      void chooseCustomer(String(customer.id))
+      return
     }
-    const contact = contacts?.find((item) => String(item.id) === value)
-    patch({
-      customerContactId: value,
-      contactName: contact?.name || '',
-      purchaser: contact?.name || '',
-      purchaserTel: contact?.phone || '',
-      recipient: contact?.name || '',
-      recipientTel: contact?.phone || '',
-      invoiceRecipient: contact?.name || '',
-    })
+    patch({ customerId: null, customerCode: '', customerName: value, customerContactId: null, contactName: '' })
+    setContacts([])
   }
+
+
   const patchContactField = (field: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
     const contact = contactByName(contacts, value)
     const next: Partial<MrOrder> = { [field]: value }
@@ -309,39 +295,12 @@ export function MrFormPage() {
     if (field === 'recipient') next.recipientTel = contact?.phone || ''
     patch(next)
   }
-  const openNewContact = (target: 'purchaser' | 'recipient' | 'invoiceRecipient') => {
-    if (!calculated?.customerId) { toast.error('请先选择客户'); return }
-    setNewContactTarget(target)
-    setNewContactName('')
-    setNewContactPhone('')
-    setNewContactOpen(true)
+  const patchContactPhoneField = (field: 'purchaserTel' | 'recipientTel', value: string) => {
+    const contact = (contacts || []).find((item) => item.phone && item.phone === value)
+    if (field === 'purchaserTel') patch({ purchaserTel: value, ...(contact?.name ? { purchaser: contact.name } : {}) })
+    if (field === 'recipientTel') patch({ recipientTel: value, ...(contact?.name ? { recipient: contact.name } : {}) })
   }
-  const chooseRoleContact = (target: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
-    if (value === 'none') return
-    const contact = contacts?.find((item) => String(item.id) === value)
-    if (!contact) return
-    if (target === 'purchaser') patch({ purchaser: contact.name || '', purchaserTel: contact.phone || '' })
-    if (target === 'recipient') patch({ recipient: contact.name || '', recipientTel: contact.phone || '' })
-    if (target === 'invoiceRecipient') patch({ invoiceRecipient: contact.name || '' })
-  }
-  const createContact = async () => {
-    if (!calculated?.customerId || !newContactName.trim()) { toast.error('请填写联系人姓名'); return }
-    setBusy(true)
-    try {
-      const contact = await createCustomerContact(calculated.customerId, { name: newContactName.trim(), phone: newContactPhone.trim() })
-      const nextContact = { id: contact.id, name: contact.name, phone: contact.phone || '' }
-      setContacts((current) => [nextContact, ...(current || []).filter((item) => String(item.id) !== String(nextContact.id))])
-      if (newContactTarget === 'purchaser') patch({ purchaser: nextContact.name, purchaserTel: nextContact.phone })
-      if (newContactTarget === 'recipient') patch({ recipient: nextContact.name, recipientTel: nextContact.phone })
-      if (newContactTarget === 'invoiceRecipient') patch({ invoiceRecipient: nextContact.name })
-      setNewContactOpen(false)
-      toast.success('联系人已关联到客户档案')
-    } catch (err) {
-      setError((err as Error).message || '联系人创建失败')
-    } finally {
-      setBusy(false)
-    }
-  }
+
 
   const applyQuotationImport = async (result: QuotationImportResult, selectedMode?: number) => {
     const salesFile = result.files[result.salesSourceIndex]
@@ -406,6 +365,7 @@ export function MrFormPage() {
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
     toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件，建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
+    if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未在客户库里找到，已先填入名称，请确认或手动关联`)
   }
   const save = async () => {
     if (!id || !calculated) return null
@@ -516,13 +476,8 @@ export function MrFormPage() {
   }
 
   const status = calculated.status || 'draft'
-  const contactValue = calculated.customerContactId ? String(calculated.customerContactId) : 'none'
   const contactCandidates = (contacts || []).filter((item) => item.id && item.name)
   const contactChoices = Array.from(new Map([...contactCandidates.slice(0, 3), ...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId))].map((item) => [String(item.id), item])).values())
-  const contactIdFor = (name?: string | null) => {
-    const contact = contactChoices.find((item) => normalizeLookup(item.name) === normalizeLookup(name))
-    return contact?.id ? String(contact.id) : ''
-  }
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
   const deliveryLocations = Array.from(new Set([selectedCustomer?.mapAddress, selectedCustomer?.address, selectedCustomer?.mapPoiName].filter((value): value is string => Boolean(value))))
   const deliveryChoice = deliveryLocations.includes(calculated.deliveryLocation || '') ? calculated.deliveryLocation || '' : 'custom'
@@ -531,15 +486,7 @@ export function MrFormPage() {
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
   const highValue = Number(calculated.totals?.salesExcludingTax) > 750000
-  const primaryContact = calculated.contactName?.trim() || ''
-  const contactNeedsAttention = !primaryContact || !calculated.purchaser || !calculated.recipient || Boolean(
-  (calculated.purchaser && calculated.purchaser !== primaryContact)
-    || (calculated.recipient && calculated.recipient !== primaryContact)
-    || (calculated.invoiceRecipient && calculated.invoiceRecipient !== primaryContact)
-  )
-  const showContactOverrides = contactOverridesOpen || contactNeedsAttention
   const sectionCounts = { items: calculated.items?.length || 0 }
-
   const summary = (layout: 'rail' | 'bar') => (
     <SummaryPanel
       order={calculated}
@@ -555,7 +502,9 @@ export function MrFormPage() {
   return (
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
+      <datalist id="mr-customer-options">{customers.map((customer) => <option key={customer.id} value={customer.name || ''}>{customer.code || ''}</option>)}</datalist>
       <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
+      <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
 
       <div className="border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -753,10 +702,7 @@ export function MrFormPage() {
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <Select value={calculated.customerId ? String(calculated.customerId) : ''} onValueChange={chooseCustomer}>
-                  <SelectTrigger><SelectValue placeholder="从客户档案选择" /></SelectTrigger>
-                  <SelectContent>{customers.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.code ? `${item.code} · ` : ''}{item.name || item.id}</SelectItem>)}</SelectContent>
-                </Select>
+                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索客户或手动填写" onChange={(e) => handleCustomerInput(e.target.value)} />
               </Field>
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
@@ -803,44 +749,28 @@ export function MrFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="三个联系人角色均可关联当前客户档案，也可以手工填写或新建联系人。" flash={flashSection === 'contacts'}>
+          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="姓名和电话可直接手工填写；输入客户档案中的姓名或电话时会自动带出另一项。" flash={flashSection === 'contacts'}>
             <div className="overflow-x-auto border">
-              <div className="min-w-[760px]">
-                <div className="grid grid-cols-[160px_minmax(220px,1fr)_180px_100px] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
-                  <div>联系人角色</div><div>客户档案联系人</div><div>姓名</div><div>电话</div>
+              <div className="min-w-[620px]">
+                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
+                  <div>联系人角色</div><div>姓名</div><div>电话</div>
                 </div>
-                <div className="grid grid-cols-[160px_minmax(220px,1fr)_180px_100px] items-center gap-3 border-b px-4 py-4">
+                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">采购联系人</div>
-                  <Select value={contactIdFor(calculated.purchaser)} disabled={!calculated.customerId || !editable} onValueChange={(value) => chooseRoleContact('purchaser', value)}>
-                    <SelectTrigger><SelectValue placeholder="选择客户联系人" /></SelectTrigger>
-                    <SelectContent>{contactChoices.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patch({ purchaser: e.target.value })} />
-                  <Input value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patch({ purchaserTel: e.target.value })} />
+                  <Input list="mr-contact-options" value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patchContactField('purchaser', e.target.value)} />
+                  <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
                 </div>
-                <div className="grid grid-cols-[160px_minmax(220px,1fr)_180px_100px] items-center gap-3 border-b px-4 py-4">
+                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">货物收件人</div>
-                  <Select value={contactIdFor(calculated.recipient)} disabled={!calculated.customerId || !editable} onValueChange={(value) => chooseRoleContact('recipient', value)}>
-                    <SelectTrigger><SelectValue placeholder="选择客户联系人" /></SelectTrigger>
-                    <SelectContent>{contactChoices.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input value={calculated.recipient || ''} readOnly={!editable} placeholder="收件人姓名" onChange={(e) => patch({ recipient: e.target.value })} />
-                  <Input value={calculated.recipientTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patch({ recipientTel: e.target.value })} />
+                  <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收件人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
+                  <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
                 </div>
-                <div className="grid grid-cols-[160px_minmax(220px,1fr)_180px_100px] items-center gap-3 px-4 py-4">
+                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
-                  <Select value={contactIdFor(calculated.invoiceRecipient)} disabled={!calculated.customerId || !editable} onValueChange={(value) => chooseRoleContact('invoiceRecipient', value)}>
-                    <SelectTrigger><SelectValue placeholder="选择客户联系人" /></SelectTrigger>
-                    <SelectContent>{contactChoices.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input value={calculated.invoiceRecipient || ''} readOnly={!editable} placeholder="发票收件人姓名" onChange={(e) => patch({ invoiceRecipient: e.target.value })} />
-                  <div className="text-xs text-muted-foreground">无需电话</div>
+                  <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} readOnly={!editable} placeholder="发票收件人姓名" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
+                  <div className="text-xs text-muted-foreground">不需要电话</div>
                 </div>
               </div>
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <Field label="收件邮箱" editable={editable} readonlyText={textValue(calculated.recipientMail)}><Input type="email" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="货物收件邮箱" onChange={(e) => patch({ recipientMail: e.target.value })} /></Field>
-              {editable ? <Button type="button" variant="outline" className="self-end" onClick={() => openNewContact('recipient')}><UserPlus className="mr-2 size-4" />新建联系人</Button> : null}
             </div>
           </SectionCard>
 
@@ -948,22 +878,6 @@ export function MrFormPage() {
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
         />
       ) : null}
-      <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建客户联系人</DialogTitle>
-            <DialogDescription>联系人会保存到当前客户档案，并自动带入{newContactTarget === 'purchaser' ? '采购联系人' : newContactTarget === 'recipient' ? '货物收件人' : '发票收件人'}。</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <Field label="联系人姓名"><Input value={newContactName} onChange={(e) => setNewContactName(e.target.value)} placeholder="请输入姓名" /></Field>
-            <Field label="电话"><Input value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder="请输入联系电话" /></Field>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewContactOpen(false)}>取消</Button>
-            <Button disabled={busy || !newContactName.trim()} onClick={() => void createContact()}><UserPlus className="mr-2 size-4" />保存联系人</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(decision)} onOpenChange={(open) => { if (!open) setDecision(null) }}>
         <DialogContent>
