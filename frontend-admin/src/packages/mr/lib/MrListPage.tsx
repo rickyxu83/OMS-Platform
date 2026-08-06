@@ -40,7 +40,7 @@ function shortDate(value?: string | null) {
 
 export function MrListPage() {
   const navigate = useNavigate()
-  const { user, hasPermission } = useAuth()
+  const { hasPermission } = useAuth()
   const [items, setItems] = useState<MrOrder[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
@@ -71,9 +71,7 @@ export function MrListPage() {
   const createDraft = async () => {
     setCreating(true)
     try {
-      const draft = await createMr({
-        salesOwnerId: user?.role === 'sales' ? user.id : undefined,
-      })
+      const draft = await createMr({})
       navigate(`/mr/${draft.id}`)
     } catch (err) {
       setError((err as Error).message || '创建失败')
@@ -131,7 +129,6 @@ export function MrListPage() {
           <TableHeader>
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
-              <TableHead>负责业务</TableHead>
               <TableHead>计价模式</TableHead>
               <TableHead className="text-right">未税总计</TableHead>
               <TableHead>状态</TableHead>
@@ -140,11 +137,11 @@ export function MrListPage() {
               <TableHead className="w-[104px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={8} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
-            ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="h-40 text-center text-muted-foreground">没有符合条件的 MR 单</TableCell></TableRow>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={7} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
+              ) : items.length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="h-40 text-center text-muted-foreground">没有符合条件的 MR 单</TableCell></TableRow>
             ) : items.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
               return (
@@ -155,7 +152,6 @@ export function MrListPage() {
                       <span className="block text-xs text-muted-foreground">{order.customerCode || '-'} / {order.ctrlNo || '未填 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
-                  <TableCell>{order.salesOwnerName || '-'}</TableCell>
                   <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge></TableCell>

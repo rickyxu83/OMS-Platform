@@ -42,6 +42,8 @@ export interface MrOrder {
   salesOwnerName?: string | null
   customerName?: string | null
   customerCode?: string | null
+  customerAddress?: string | null
+  customerMapAddress?: string | null
   contactName?: string | null
   caseCategory?: string | null
   customerPo?: string | null
@@ -124,6 +126,9 @@ export interface CustomerOption {
   name?: string
   contactName?: string
   contactPhone?: string
+  address?: string
+  mapAddress?: string
+  mapPoiName?: string
   contacts?: Array<{ id?: string | number; name?: string; phone?: string }>
 }
 

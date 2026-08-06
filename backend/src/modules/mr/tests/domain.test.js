@@ -121,4 +121,8 @@ function validBody(overrides = {}) {
   assert.deepStrictEqual(validateSubmission(order, items), [])
 }
 
+{
+  const { order, items } = normalizeOrder(validBody({ salesOwnerId: null }))
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+}
 console.log('mr domain OK')

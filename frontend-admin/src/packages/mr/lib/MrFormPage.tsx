@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ErrorToast } from '@/components/ErrorToast'
-import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
   getMr,
@@ -20,7 +19,7 @@ import {
   updateMr,
   voidMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, UserOption, VendorOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
 import { calculateForm, normalizeCostTaxRates, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
@@ -83,11 +82,9 @@ function validationDetails(error: unknown): ValidationError[] {
 export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
   const [form, setForm] = useState<MrOrder | null>(null)
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
-  const [salespeople, setSalespeople] = useState<UserOption[]>([])
   const [vendors, setVendors] = useState<VendorOption[]>([])
   const [contacts, setContacts] = useState<CustomerOption['contacts']>([])
   const [loading, setLoading] = useState(true)
@@ -117,11 +114,25 @@ export function MrFormPage() {
     try {
       const [order, optionData, references] = await Promise.all([getMr(id), getMrConstants(), loadMrReferences()])
       const customer = order.customerId ? await loadCustomer(order.customerId) : null
+      const customerContacts = customer?.contacts || []
+      const defaultContact = (order.customerContactId ? customerContacts.find((item) => String(item.id) === String(order.customerContactId)) : undefined)
+        || contactByName(customerContacts, order.contactName || order.purchaser || order.recipient || customer?.contactName)
+        || contactByName(customerContacts, customer?.contactName)
+        || customerContacts[0]
+      const hydratedOrder = !order.customerContactId && defaultContact ? {
+        ...order,
+        customerContactId: defaultContact.id || null,
+        contactName: defaultContact.name || order.contactName || '',
+        purchaser: order.purchaser || defaultContact.name || '',
+        purchaserTel: order.purchaserTel || defaultContact.phone || '',
+        recipient: order.recipient || defaultContact.name || '',
+        recipientTel: order.recipientTel || defaultContact.phone || '',
+        invoiceRecipient: order.invoiceRecipient || defaultContact.name || '',
+      } : order
       if (sequence !== loadSequence.current) return
-      setForm(order)
+      setForm(hydratedOrder)
       setConstants(optionData)
       setCustomers(references.customers)
-      setSalespeople(references.salespeople)
       setVendors(references.vendors)
       setContacts(customer?.contacts || [])
       setDirty(false)
@@ -234,7 +245,19 @@ export function MrFormPage() {
     patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '', purchaser: '', purchaserTel: '', recipient: '', recipientTel: '', invoiceRecipient: '' })
     try {
       const detail = await loadCustomer(value)
+      const defaultContact = contactByName(detail.contacts, detail.contactName) || detail.contacts?.[0]
       setContacts(detail.contacts || [])
+      if (defaultContact) {
+        patch({
+          customerContactId: defaultContact.id || null,
+          contactName: defaultContact.name || '',
+          purchaser: defaultContact.name || '',
+          purchaserTel: defaultContact.phone || '',
+          recipient: defaultContact.name || '',
+          recipientTel: defaultContact.phone || '',
+          invoiceRecipient: defaultContact.name || '',
+        })
+      }
     } catch (err) {
       setError((err as Error).message || '联系人加载失败')
     }
@@ -242,7 +265,10 @@ export function MrFormPage() {
 
   const chooseContact = (value: string) => {
     setContactOverridesOpen(false)
-    if (value === 'none') return patch({ customerContactId: null, contactName: '' })
+    if (value === 'none') {
+      setContactOverridesOpen(true)
+      return patch({ customerContactId: null, contactName: '' })
+    }
     const contact = contacts?.find((item) => String(item.id) === value)
     patch({
       customerContactId: value,
@@ -289,6 +315,8 @@ export function MrFormPage() {
       }
     }
     const importedContact = contactByName(importedContacts, result.metadata?.attn)
+      || contactByName(importedContacts, matchedCustomer?.contactName)
+      || importedContacts[0]
     const nextCustomerId = calculated?.customerId || matchedCustomer?.id || null
     const nextCustomerName = calculated?.customerId
       ? calculated.customerName
@@ -416,7 +444,11 @@ export function MrFormPage() {
 
   const status = calculated.status || 'draft'
   const contactValue = calculated.customerContactId ? String(calculated.customerContactId) : 'none'
-  const salesOwnerValue = calculated.salesOwnerId ? String(calculated.salesOwnerId) : 'none'
+  const contactCandidates = (contacts || []).filter((item) => item.id && item.name)
+  const contactChoices = Array.from(new Map([...contactCandidates.slice(0, 3), ...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId))].map((item) => [String(item.id), item])).values())
+  const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
+  const deliveryLocations = Array.from(new Set([selectedCustomer?.mapAddress, selectedCustomer?.address, selectedCustomer?.mapPoiName].filter((value): value is string => Boolean(value))))
+  const deliveryChoice = deliveryLocations.includes(calculated.deliveryLocation || '') ? calculated.deliveryLocation || '' : 'custom'
   const hasContract = Boolean(calculated.contractNo?.trim())
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
   const marginRate = calculated.totals?.marginRate
@@ -446,7 +478,7 @@ export function MrFormPage() {
   return (
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
-      <datalist id="mr-contact-options">{(contacts || []).filter((contact) => contact.name).map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
+      <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
 
       <div className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -468,7 +500,7 @@ export function MrFormPage() {
               </Button>
             ) : null}
             <Button variant="outline" onClick={() => dirty ? toast.error('请先保存草稿再打印') : navigateAway(`/mr/${id}/print`)}>
-              <Printer className="mr-2 size-4" />打印预览
+            <Printer className="mr-2 size-4" />{status === 'in_review' ? '查看审批文档' : '打印预览'}
             </Button>
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
             {editable ? (
@@ -650,26 +682,6 @@ export function MrFormPage() {
                   <SelectContent>{customers.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.code ? `${item.code} · ` : ''}{item.name || item.id}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="客户联系人" editable={editable} readonlyText={textValue(calculated.contactName)}>
-                <Select value={contactValue} disabled={!calculated.customerId} onValueChange={chooseContact}>
-                  <SelectTrigger><SelectValue placeholder="选择联系人" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">不关联联系人</SelectItem>
-                    {(contacts || []).filter((item) => item.id).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name || item.id}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </Field>
-              {['assistant', 'admin'].includes(user?.role || '') ? (
-                <Field label="业务归属（代建时）" editable={editable} readonlyText={textValue(calculated.salesOwnerName)}>
-                  <Select value={salesOwnerValue} onValueChange={(value) => patch({ salesOwnerId: value === 'none' ? null : value })}>
-                    <SelectTrigger><SelectValue placeholder="选择归属业务" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">未指定</SelectItem>
-                      {salespeople.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.realName || item.username || item.id}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              ) : null}
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
               </Field>
@@ -715,14 +727,14 @@ export function MrFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="默认使用客户联系人；只有采购、发票或收件对象不同时才需要展开。" flash={flashSection === 'contacts'}>
+          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="默认使用客户联系人；下拉显示最常用的 3 位，其他历史联系人可手工填写。" flash={flashSection === 'contacts'}>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,1fr)]">
               <Field label="客户联系人" editable={editable} readonlyText={textValue(calculated.contactName)}>
                 <Select value={contactValue} disabled={!calculated.customerId} onValueChange={chooseContact}>
                   <SelectTrigger><SelectValue placeholder="选择客户联系人" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">暂不关联</SelectItem>
-                    {(contacts || []).filter((item) => item.id).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name || item.id}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}
+                    <SelectItem value="none">未关联档案（手工填写）</SelectItem>
+                    {contactChoices.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name || item.id}{item.phone ? ` · ${item.phone}` : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
@@ -781,7 +793,18 @@ export function MrFormPage() {
                 </Field>
               ) : null}
               <Field label="送机地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
-                <Textarea rows={2} value={calculated.deliveryLocation || ''} onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                <div className="space-y-2">
+                  {deliveryLocations.length ? (
+                    <Select value={deliveryChoice} onValueChange={(value) => { if (value !== 'custom') patch({ deliveryLocation: value }) }}>
+                      <SelectTrigger><SelectValue placeholder="选择客户地址" /></SelectTrigger>
+                      <SelectContent>
+                        {deliveryLocations.map((location) => <SelectItem key={location} value={location}>{location}</SelectItem>)}
+                        <SelectItem value="custom">手工填写其他地点</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="可从客户地址选择，也可手工填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                </div>
               </Field>
               <WorkOptions
                 label="装机对象"

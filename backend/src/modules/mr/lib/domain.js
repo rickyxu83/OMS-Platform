@@ -196,7 +196,6 @@ function validateSubmission(order, items) {
   requireValue('latestDeliveryDate', order.latestDeliveryDate, '请选择最晚交货日')
   requireValue('customerId', order.customerId, '请选择客户档案')
   requireValue('customerName', order.customerName, '请选择客户名称')
-  requireValue('salesOwnerId', order.salesOwnerId, '请选择负责业务')
   requireValue('purchaser', order.purchaser, '请填写采购联系人')
   requireValue('recipient', order.recipient, '请填写收件人')
   requireValue('billingTiming', order.billingTiming, '请填写开票/收款时间')

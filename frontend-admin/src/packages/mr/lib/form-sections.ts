@@ -17,7 +17,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'identity',
     title: '客户与单号',
     icon: UserRound,
-    fields: ['customerId', 'customerName', 'customerContactId', 'salesOwnerId', 'ctrlNo', 'customerPo']
+    fields: ['customerId', 'customerName', 'customerContactId', 'ctrlNo', 'customerPo']
   },
   {
     id: 'trade',
@@ -33,7 +33,7 @@ export const MR_SECTIONS: MrSection[] = [
   },
   {
     id: 'contacts',
-    title: '采购与收件联系人',
+    title: '联系人',
     icon: ClipboardCheck,
     fields: ['purchaser', 'purchaserTel', 'invoiceRecipient', 'recipient', 'recipientTel', 'recipientMail'],
   },

@@ -353,7 +353,7 @@ export function MrPrintPage() {
 
         <section className="mr-summary" aria-label="审批摘要">
           <div className="mr-summary-cell"><div className="mr-summary-label">客户</div><div className="mr-summary-value small">{text(order.customerName)}</div></div>
-          <div className="mr-summary-cell"><div className="mr-summary-label">负责业务</div><div className="mr-summary-value small">{text(order.salesOwnerName)}</div></div>
+          <div className="mr-summary-cell"><div className="mr-summary-label">创建人</div><div className="mr-summary-value small">{text(order.createdByName)}</div></div>
           <div className="mr-summary-cell"><div className="mr-summary-label">未税售价</div><div className="mr-summary-value">¥ {money(order.totals?.salesExcludingTax)}</div></div>
           <div className={`mr-summary-cell ${risk ? 'mr-total-risk' : ''}`}><div className="mr-summary-label">整单毛利率</div><div className="mr-summary-value">{percent(marginRate)}</div></div>
           <div className="mr-summary-cell"><div className="mr-summary-label">计价模式</div><div className="mr-summary-value small">{PRICING[Number(order.pricingMode)] || '-'}</div></div>
