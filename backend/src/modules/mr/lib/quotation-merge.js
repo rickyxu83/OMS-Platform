@@ -26,7 +26,12 @@ function itemKeys(item) {
     const componentDescription = normalized(component.description)
     if (componentDescription) keys.push(`component-desc:${componentDescription}`)
   }
-  if (description.includes('forticare') || description.includes('续保') || description.includes('維保')) keys.push('service:' + description.replace(/\d+/g, ''))
+  const serviceLike = description.includes('forticare') || description.includes('续保') || description.includes('維保') || description.includes('forti') || /^fc[-_]/i.test(String(item.part_no || ''))
+  if (serviceLike) {
+    keys.push('service:' + description.replace(/\d+/g, ''))
+    const servicePart = String(item.part_no || '').split(/[-_]/).filter(Boolean)
+    if (servicePart.length >= 3) keys.push(`service-part-family:${normalized(servicePart.slice(0, -1).join('-'))}`)
+  }
   return keys
 }
 
@@ -44,9 +49,12 @@ function sourceTaxRate(source) {
 }
 
 function sourceTaxIncluded(source) {
-  return Boolean(firstSheet(source).tax_included)
+  const sheet = firstSheet(source)
+  if (sheet.tax_included) return true
+  const text = Array.isArray(sheet.notes) ? sheet.notes.join(' ') : String(sheet.notes || '')
+  if (/(未税|未稅|不含税|不含稅|untaxed)/i.test(text)) return false
+  return source.role === 'purchase'
 }
-
 function sourceSalesTotalExcludingTax(source) {
   const sheet = firstSheet(source)
   const rate = sourceTaxRate(source)

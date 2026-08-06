@@ -179,11 +179,11 @@ function parseSheet(ws) {
   const flush = () => {
     if (!current) return
     if (current.components?.length) {
-      const componentLines = current.components.slice(1).map((component) => {
-        const label = [component.group, component.part, component.description].filter(Boolean).join(' / ')
-        return `${label} × ${component.qty}`
+      const componentLines = current.components.map((component) => {
+        const label = component.description || component.part || component.group
+        return `- ${label} × ${component.qty}`
       })
-      current.description = [current.description, ...componentLines].filter(Boolean).join('\n')
+      current.description = `${current.name || current.description}：\n${componentLines.join('\n')}`
     }
     items.push(current)
     current = null
@@ -212,7 +212,6 @@ function parseSheet(ws) {
         extended: extended === null ? unitPrice * qty : extended,
         components: [],
       }
-      addComponent(current, group, part, description, qty)
       lastItemRow = row
       continue
     }
