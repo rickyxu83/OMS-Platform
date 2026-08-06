@@ -50,3 +50,4 @@ export async function loadMrReferences() {
 }
 
 export const loadCustomer = (id: string | number) => api.get(`/customers/${id}`) as Promise<CustomerOption>
+export const createCustomerContact = (customerId: string | number, body: { name: string; phone?: string }) => api.post(`/customers/${customerId}/contacts`, body) as Promise<{ id: string | number; name: string; phone?: string | null }>

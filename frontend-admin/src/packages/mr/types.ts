@@ -129,7 +129,7 @@ export interface CustomerOption {
   address?: string
   mapAddress?: string
   mapPoiName?: string
-  contacts?: Array<{ id?: string | number; name?: string; phone?: string }>
+  contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>
 }
 
 export interface UserOption {
