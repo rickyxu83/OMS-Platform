@@ -44,10 +44,17 @@ export function MrItemTable({
   const mode = Number(order.pricingMode || 0)
   const allowedTaxRates = String(order.invoiceType || '').startsWith('6%') ? [6] : [6, 13]
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [batchSourceIndex, setBatchSourceIndex] = useState(0)
+  const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
   useEffect(() => {
     setSelectedIndex((current) => current !== null && current < items.length ? current : null)
   }, [items.length])
+  useEffect(() => {
+    setSelectedRows((current) => new Set([...current].filter((index) => index < items.length)))
+    setBatchSourceIndex((current) => Math.min(current, Math.max(items.length - 1, 0)))
+  }, [items.length])
+
 
   useEffect(() => {
     if (focusIndex === null || focusIndex === undefined) return
@@ -59,8 +66,18 @@ export function MrItemTable({
   const remove = (index: number) => {
     onChange(items.filter((_, itemIndex) => itemIndex !== index))
     setSelectedIndex((current) => current === index ? null : current !== null && current > index ? current - 1 : current)
+    setSelectedRows((current) => new Set([...current].filter((itemIndex) => itemIndex !== index).map((itemIndex) => itemIndex > index ? itemIndex - 1 : itemIndex)))
   }
-
+  const applyBatch = () => {
+    const source = items[batchSourceIndex]
+    if (!source || !selectedRows.size) return
+    const patch: Partial<MrItem> = {}
+    if (batchFields.vendor) patch.vendor = source.vendor
+    if (batchFields.purchaseOrderNo) patch.purchaseOrderNo = source.purchaseOrderNo
+    if (batchFields.warrantyService) patch.warrantyService = source.warrantyService
+    if (batchFields.installBy) patch.installBy = source.installBy
+    onChange(items.map((item, index) => selectedRows.has(index) && index !== batchSourceIndex ? { ...item, ...patch } : item))
+  }
   if (!items.length) {
     return (
       <div className="space-y-3">
@@ -78,19 +95,14 @@ export function MrItemTable({
     <div className="space-y-3">
       <datalist id="mr-vendor-options">{vendors.map((vendor) => <option key={vendor.id} value={vendor.name} />)}</datalist>
 
-      {editable ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">选择一行后在下方编辑；长描述不会撑开其它品项。</p>
-          <span className="text-xs text-muted-foreground">{selectedIndex === null ? '尚未选择品项' : `正在编辑第 ${selectedIndex + 1} 项`}</span>
-        </div>
-      ) : null}
+      {editable ? <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">选择一行后在下方编辑；勾选多行可批量复制重复字段。</p><span className="text-xs text-muted-foreground">已选 {selectedRows.size} 项</span></div> : null}
 
       <div className="overflow-hidden rounded-lg border">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] table-fixed text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>
-                <th scope="col" className="w-10 px-3 py-2 text-left font-medium">#</th>
+                <th scope="col" className="w-16 px-3 py-2 text-left font-medium">选择 / #</th>
                 <th scope="col" className="px-3 py-2 text-left font-medium">品名 / 原厂规格</th>
                 <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
                 <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价</th>
@@ -105,7 +117,9 @@ export function MrItemTable({
                 const selected = selectedIndex === index
                 return (
                   <tr key={item.id || `row-${index}`} className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''}`}>
-                    <td className="px-3 py-3 text-muted-foreground tabular-nums">{index + 1}</td>
+                    <td className="px-3 py-3 text-muted-foreground tabular-nums">
+                      <div className="flex items-center gap-2"><Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); if (checked) next.add(index); else next.delete(index); return next })} />{index + 1}</div>
+                    </td>
                     <td className="min-w-0 px-3 py-3">
                       <button
                         type="button"

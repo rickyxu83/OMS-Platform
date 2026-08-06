@@ -169,10 +169,12 @@ function orderPayload(row) {
 }
 
 function canView(order, user) {
-  return user.role !== 'sales' || Number(order.salesOwnerId) === Number(user.id) || user.role === APPROVE_ANY_ROLE
+  return user.role !== 'sales' || order.currentStepKey === 'sales' || Number(order.salesOwnerId) === Number(user.id) || user.role === APPROVE_ANY_ROLE
 }
 
+
 function canEdit(order, user) {
+  if (user.role === 'assistant' && order.status === 'in_review' && order.currentStepKey === 'assistant') return true
   if (!EDITABLE_STATUSES.has(order.status)) return false
   if (user.role === 'admin' || user.role === 'assistant') return true
   return user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)
@@ -194,7 +196,7 @@ function canApprove(order, user) {
   if (user.role === APPROVE_ANY_ROLE) return true
   const requiredRole = STEP_ROLES[order.currentStepKey]
   if (user.role !== requiredRole) return false
-  return order.currentStepKey !== 'sales' || Number(order.salesOwnerId) === Number(user.id)
+  return true
 }
 
 async function loadRawOrder(id) {
@@ -223,7 +225,13 @@ async function loadRawOrder(id) {
 async function loadLockedOrder(connection, id) {
   const [rows] = await connection.execute('SELECT * FROM mr_orders WHERE id = :id LIMIT 1 FOR UPDATE', { id })
   if (!rows[0]) throw notFound('MR 单不存在')
-  return orderPayload(rows[0])
+  const [pending] = await connection.execute(
+    `SELECT step_key AS current_step_key, step_label AS current_step_label
+     FROM mr_approvals WHERE mr_id = :id AND action IS NULL
+     ORDER BY cycle DESC, seq LIMIT 1`,
+    { id },
+  )
+  return orderPayload({ ...rows[0], ...(pending[0] || {}) })
 }
 
 async function loadCalculatedOrder(connection, order) {
@@ -344,7 +352,7 @@ async function list(req, res) {
   const where = []
   const params = {}
   if (req.user.role === 'sales') {
-    where.push('o.sales_owner_id = :userId')
+    where.push("(o.sales_owner_id = :userId OR pending.step_key = 'sales')")
     params.userId = req.user.id
   }
   const status = String(req.query.status || '').trim()
@@ -453,7 +461,7 @@ async function decide(req, res, action) {
   await ensureTables()
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    const [steps] = await connection.execute(
+    let [steps] = await connection.execute(
       `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
        ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
       { id: req.params.id },
@@ -462,6 +470,26 @@ async function decide(req, res, action) {
     order.currentStepKey = steps[0].step_key
     order.currentStepLabel = steps[0].step_label
     if (!canApprove(order, req.user)) throw forbidden('当前签核步骤不属于你')
+    if (action === 'approve' && order.currentStepKey === 'assistant') {
+      const detailValue = await loadCalculatedOrder(connection, order)
+      const errors = validateSubmission(detailValue, detailValue.items)
+      if (errors.length) throw badRequest('助理补充后仍有未完成内容', errors)
+      const nextSteps = computeApprovalSteps(detailValue, detailValue.items)
+      const cycle = steps[0].cycle
+      await connection.execute('DELETE FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle', { id: req.params.id, cycle })
+      for (const step of nextSteps) {
+        await connection.execute(
+          `INSERT INTO mr_approvals (mr_id, cycle, seq, step_key, step_label)
+           VALUES (:mrId, :cycle, :seq, :key, :label)`,
+          { mrId: req.params.id, cycle, ...step },
+        )
+      }
+      ;[steps] = await connection.execute(
+        `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
+         ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
+        { id: req.params.id },
+      )
+    }
     await connection.execute(
       `UPDATE mr_approvals SET approver_id = :userId, action = :action, reason = :reason, decided_at = NOW()
        WHERE id = :stepId`,
