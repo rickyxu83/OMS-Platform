@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Loader2, Printer } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { getMr } from '../client'
 import type { MrApproval, MrItem, MrOrder } from '../types'
@@ -87,7 +87,6 @@ function ItemDescription({ item }: { item: MrItem }) {
       {item.description ? <span className="mr-item-subline mr-item-longtext">{item.description}</span> : null}
       <span className="mr-item-meta">
         {item.companyPartNo ? `公司料号 ${item.companyPartNo}` : null}
-        {item.warrantyService ? `保固/服务 ${item.warrantyService}` : null}
         {item.installBy ? `装机 ${item.installBy}` : null}
       </span>
     </div>
@@ -103,8 +102,8 @@ function ItemRow({ item, index }: { item: MrItem; index: number }) {
       <td className="mr-num">{money(item.unitPrice)}</td>
       <td className="mr-num mr-emphasis">{money(item.subtotal)}</td>
       <td>{text(item.vendor)}</td>
+      <td>{text(item.warrantyService)}</td>
       <td className="mr-num">{money(item.costInclTax)}</td>
-      <td className="mr-num">{item.taxRate ? `${item.taxRate}%` : '-'}</td>
       <td className="mr-num">{money(item.costExcludingTax)}</td>
       <td className={`mr-num ${Number(item.marginRate) < 15 ? 'mr-warning' : ''}`}>{percent(item.marginRate)}</td>
       <td>{text(item.purchaseOrderNo)}</td>
@@ -114,17 +113,19 @@ function ItemRow({ item, index }: { item: MrItem; index: number }) {
 
 export function MrPrintPage() {
   const { id } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
-  const [order, setOrder] = useState<MrOrder | null>(null)
+  const previewOrder = (location.state as { previewOrder?: MrOrder } | null)?.previewOrder || null
+  const [order, setOrder] = useState<MrOrder | null>(previewOrder)
   const [error, setError] = useState('')
   const logo = `${import.meta.env.BASE_URL}dunyang-mark.png`
 
   useEffect(() => {
-    if (!id) return
+    if (!id || previewOrder) return
     let active = true
     getMr(id).then((value) => { if (active) setOrder(value) }).catch((err) => { if (active) setError((err as Error).message || '加载失败') })
     return () => { active = false }
-  }, [id])
+  }, [id, previewOrder])
 
   useEffect(() => {
     if (!order) return
@@ -256,13 +257,13 @@ export function MrPrintPage() {
         .mr-items-table th:last-child, .mr-items-table td:last-child { border-right: 0; }
         .mr-items-table tbody tr:nth-child(even) { background: #fafbfc; }
         .mr-items-table th:nth-child(1) { width: 3%; text-align: center; }
-        .mr-items-table th:nth-child(2) { width: 31%; }
+        .mr-items-table th:nth-child(2) { width: 27%; }
         .mr-items-table th:nth-child(3) { width: 5%; text-align: right; }
-        .mr-items-table th:nth-child(4), .mr-items-table th:nth-child(5), .mr-items-table th:nth-child(7), .mr-items-table th:nth-child(9) { width: 9%; text-align: right; }
-        .mr-items-table th:nth-child(6) { width: 9%; }
-        .mr-items-table th:nth-child(8) { width: 5%; text-align: right; }
-        .mr-items-table th:nth-child(10) { width: 7%; text-align: right; }
-        .mr-items-table th:nth-child(11) { width: 10%; }
+        .mr-items-table th:nth-child(4), .mr-items-table th:nth-child(5), .mr-items-table th:nth-child(7), .mr-items-table th:nth-child(8), .mr-items-table th:nth-child(10) { width: 8%; text-align: right; }
+        .mr-items-table th:nth-child(6) { width: 8%; }
+        .mr-items-table th:nth-child(9) { width: 5%; text-align: right; }
+        .mr-items-table th:nth-child(11) { width: 7%; text-align: right; }
+        .mr-items-table th:nth-child(12) { width: 8%; }
         .mr-num { text-align: right; font-variant-numeric: tabular-nums; }
         .mr-item-description { line-height: 1.45; }
         .mr-item-description strong { display: block; font-size: 11px; }
@@ -400,7 +401,6 @@ export function MrPrintPage() {
             <Fact label="发票收件人" value={text(order.invoiceRecipient)} />
             <Fact label="收件人" value={text(order.recipient)} />
             <Fact label="收件电话" value={text(order.recipientTel)} />
-            <Fact label="收件邮箱" value={text(order.recipientMail)} wide />
           </dl>
         </section>
 
@@ -408,7 +408,7 @@ export function MrPrintPage() {
           <SectionTitle index="04" title="品项与金额" note={`${order.items?.length || 0} 项 · 长描述按原文换行`} />
           <div className="mr-items-wrap">
             <table className="mr-items-table">
-              <thead><tr><th>#</th><th>品项 / 规格 / 说明</th><th>Qty</th><th>销售单价</th><th>售价小计</th><th>厂商</th><th>成本含税</th><th>税率</th><th>未税成本</th><th>毛利率</th><th>采购单号</th></tr></thead>
+              <thead><tr><th>#</th><th>品项 / 规格 / 说明</th><th>Qty</th><th>销售单价</th><th>售价小计</th><th>厂商</th><th>保固/服务</th><th>成本含税</th><th>税率</th><th>未税成本</th><th>毛利率</th><th>采购单号</th></tr></thead>
               <tbody>{(order.items || []).map((item, index) => <ItemRow key={item.id || index} item={item} index={index} />)}</tbody>
             </table>
           </div>

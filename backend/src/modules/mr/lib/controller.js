@@ -469,6 +469,7 @@ async function submit(req, res) {
       { id: req.params.id, userId: req.user.id },
     )
   })
+  await removeStoredQuotationFiles(req.params.id)
   res.json(await loadDetail(req.params.id, req.user))
 }
 
@@ -601,6 +602,16 @@ function originalNameUtf8(file) {
 function uploadedFiles(req) {
   return Object.values(req.files || {}).flat()
 }
+async function removeStoredQuotationFiles(ownerId) {
+  const rows = await query(
+    `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId`,
+    { ownerId },
+  )
+  if (!rows.length) return
+  await query('DELETE FROM files WHERE owner_type = \'mr_order\' AND owner_id = :ownerId', { ownerId })
+  await query('UPDATE mr_orders SET quotation_file_id = NULL WHERE id = :ownerId', { ownerId })
+  await Promise.allSettled(rows.map((file) => fs.promises.rm(file.storage_path, { force: true })))
+}
 
 async function importQuotation(req, res) {
   const uploads = uploadedFiles(req)
@@ -666,58 +677,8 @@ async function importQuotation(req, res) {
     } : {},
   }
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认客户报价、厂商报价或最终 PO 角色')
-  if (String(req.body?.persist || '') !== '1') {
-    res.json({ files: [], ...payload })
-    return
-  }
-
-  const stored = await Promise.all(uploads.map(async (file) => {
-    const originalName = originalNameUtf8(file)
-    const safeName = path.basename(originalName).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_')
-    const storagePath = path.join(quotationRoot, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`)
-    await fs.promises.writeFile(storagePath, file.buffer)
-    return { file, originalName, storagePath }
-  }))
-  let oldFiles = []
-  try {
-    const savedFiles = await transaction(async (connection) => {
-      const locked = await loadLockedOrder(connection, req.params.id)
-      if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
-      const [previous] = await connection.execute(
-        `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
-        { ownerId: req.params.id },
-      )
-      oldFiles = previous
-      await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId: req.params.id })
-      const saved = []
-      for (const entry of stored) {
-        const [result] = await connection.execute(
-          `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
-           VALUES ('mr_order', :ownerId, :originalName, :storagePath, :mimeType, :size, :uploadedBy)`,
-          {
-            ownerId: req.params.id,
-            originalName: entry.originalName,
-            storagePath: entry.storagePath,
-            mimeType: entry.file.mimetype || (path.extname(entry.originalName).toLowerCase() === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
-            size: entry.file.size,
-            uploadedBy: req.user.id,
-          },
-        )
-        saved.push({ id: result.insertId, name: entry.originalName, size: entry.file.size })
-      }
-      await connection.execute('UPDATE mr_orders SET quotation_file_id = :fileId, updated_by = :userId WHERE id = :id', {
-        fileId: saved[Math.max(0, sourceIndex)]?.id || null,
-        userId: req.user.id,
-        id: req.params.id,
-      })
-      return saved
-    })
-    await Promise.allSettled(oldFiles.map((file) => fs.promises.rm(file.storage_path, { force: true })))
-    res.json({ files: savedFiles, ...payload })
-  } catch (error) {
-    await Promise.all(stored.map((entry) => fs.promises.rm(entry.storagePath, { force: true })))
-    throw error
-  }
+  if (String(req.body?.cleanupStoredFiles || '') === '1') await removeStoredQuotationFiles(req.params.id)
+  res.json({ files: [], ...payload })
 }
 
 async function downloadQuotation(req, res) {

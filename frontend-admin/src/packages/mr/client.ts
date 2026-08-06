@@ -18,11 +18,12 @@ export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${i
 export const deleteMr = (id: string | number) => api.delete(`/mr/${id}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 
-export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>) {
+export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false) {
   const body = new FormData()
   for (const file of files) body.append('files', file)
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
   if (persist) body.set('persist', '1')
+  if (cleanupStoredFiles) body.set('cleanupStoredFiles', '1')
   return api.postForm(`/mr/${id}/import`, body) as Promise<QuotationImportResult>
 }
 

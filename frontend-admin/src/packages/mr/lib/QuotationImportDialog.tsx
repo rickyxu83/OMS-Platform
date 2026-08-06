@@ -154,7 +154,7 @@ export function QuotationImportDialog({
     setLoading(true)
     setError('')
     try {
-      const saved = await importQuotations(orderId, files, true, roles)
+      const saved = await importQuotations(orderId, files, false, roles, true)
       onApply(saved, effectivePricingMode)
       onOpenChange(false)
       setSalesFiles([])
