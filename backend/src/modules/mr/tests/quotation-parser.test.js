@@ -68,4 +68,10 @@ assert.equal(pdf.sheets[0].untaxed_total, 63000)
 assert.equal(pdf.sheets[0].items.length, 1)
 const missingCost = mergeQuotations([{ name: '客户报价.xlsx', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] }], [])
 assert.equal(missingCost.items[0].unitPrice, null)
-assert(missingCost.warnings.some((warning) => warning.includes('缺少成本')))
+const multiplePurchase = mergeQuotations([
+  { name: '客户报价.xlsx', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
+  { name: '厂商甲报价.xlsx', documentType: 'unknown', sheets: [{ ...parsed[0], total: 900, items: [{ ...parsed[0].items[0], unit_price: 90, extended: 180 }] }] },
+  { name: '厂商乙报价.xlsx', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 100, items: [{ ...parsed[0].items[0], unit_price: 50, extended: 100 }] }] },
+], [])
+assert.deepStrictEqual(multiplePurchase.sources.map((source) => source.role), ['sales', 'purchase', 'purchase'])
+assert(multiplePurchase.warnings.some((warning) => warning.includes('其余 1 份未明确来源文件按进货报价处理')))

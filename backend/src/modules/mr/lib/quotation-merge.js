@@ -73,8 +73,11 @@ function vendorName(source, vendors) {
 
 function sourceRole(source, index, sources) {
   if (source.documentType === 'customer_order') return 'order'
-  if (source.documentType === 'sales_quote') return 'sales'
+  if (source.requestedRole === 'sales') return 'sales'
+  if (source.requestedRole === 'purchase') return 'purchase'
   if (source.documentType === 'purchase_quote') return 'purchase'
+  const explicitSalesIndex = sources.findIndex((candidate) => candidate.documentType === 'sales_quote')
+  if (explicitSalesIndex >= 0) return index === explicitSalesIndex ? 'sales' : 'purchase'
   const totals = sources.map(sourceTotal)
   const best = totals.reduce((winner, total, sourceIndex) => total > totals[winner] ? sourceIndex : winner, 0)
   return index === best ? 'sales' : 'purchase'
@@ -130,7 +133,13 @@ function mergeQuotations(inputSources, vendors = []) {
   }
   const salesSource = sources[effectiveSalesSourceIndex]
   const salesItems = flattenedItems(salesSource, effectiveSalesSourceIndex, vendors)
-  const warnings = [...sources.flatMap((source) => source.warnings || [])]
+  const explicitSalesCount = inputSources.filter((source) => source.documentType === 'sales_quote').length
+  const unknownSourceCount = inputSources.filter((source) => !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
+  const roleWarnings = []
+  if (explicitSalesCount > 1) roleWarnings.push(`识别到 ${explicitSalesCount} 份客户销售报价，已采用第一份，其余按进货来源处理，请核对文件角色`)
+  else if (explicitSalesCount === 1 && unknownSourceCount) roleWarnings.push(`已识别客户销售报价，其余 ${unknownSourceCount} 份未明确来源文件按进货报价处理`)
+  else if (explicitSalesCount === 0 && unknownSourceCount) roleWarnings.push('未明确识别到客户销售报价，已按报价总额最高的文件作为销售报价，请核对文件角色')
+  const warnings = [...sources.flatMap((source) => source.warnings || []), ...roleWarnings]
   const unknownTaxSources = new Set()
   const matchedPurchaseIndexes = new Set()
   const items = []

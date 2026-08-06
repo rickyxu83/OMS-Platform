@@ -593,8 +593,15 @@ async function importQuotation(req, res) {
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
 
   let sources
+  let requestedRoles = []
   try {
-    sources = await Promise.all(uploads.map(async (file) => {
+    requestedRoles = JSON.parse(String(req.body?.sourceRoles || '[]'))
+    if (!Array.isArray(requestedRoles)) requestedRoles = []
+  } catch (_error) {
+    requestedRoles = []
+  }
+  try {
+    sources = await Promise.all(uploads.map(async (file, index) => {
       const name = originalNameUtf8(file)
       const extension = path.extname(name).toLowerCase()
       const parsed = extension === '.pdf'
@@ -602,7 +609,9 @@ async function importQuotation(req, res) {
         : parseWorkbookWithMetadata(file.buffer, name)
       const sheets = parsed.sheets.map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       if (!sheets.length && parsed.documentType !== 'scanned_pdf') throw new Error(`${name} 未找到可识别的报价明细表`)
-      return { name, sheets, documentType: parsed.documentType, warnings: parsed.warnings || [] }
+      const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
+      const documentType = parsed.documentType === 'customer_order' ? 'customer_order' : requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : parsed.documentType
+      return { name, sheets, documentType, requestedRole, warnings: parsed.warnings || [] }
     }))
   } catch (error) {
     throw badRequest(`报价单解析失败：${error.message}`)
