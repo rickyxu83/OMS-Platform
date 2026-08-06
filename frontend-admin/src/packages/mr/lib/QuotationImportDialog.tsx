@@ -1,10 +1,11 @@
-import { useState, type DragEvent } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadQuotation, importQuotations } from '../client'
-import type { QuotationFile, QuotationImportResult, QuotationSource } from '../types'
+import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource } from '../types'
+import { calculateForm } from './form-logic'
 
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
 type UploadRole = 'sales' | 'purchase'
@@ -106,11 +107,23 @@ export function QuotationImportDialog({
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(selectedPricingMode || pricingMode) || 0
+  const previewItems = useMemo(() => {
+    if (!preview || !effectivePricingMode) return preview?.items || []
+    const salesTotal = preview.salesTotalExcludingTax ?? preview.sources.find((source) => source.role === 'sales' || source.role === 'order')?.total ?? null
+    return calculateForm({
+      ...preview,
+      pricingMode: effectivePricingMode,
+      invoiceType: invoiceType || '',
+      totalExcludingTax: salesTotal,
+      items: preview.items,
+      installOptions: [],
+    }).items || []
+  }, [preview, effectivePricingMode, invoiceType])
   const taxConflictCount = String(invoiceType || '').startsWith('6%')
-    ? (preview?.items || []).filter((item) => Number(item.taxRate) === 13).length
+    ? previewItems.filter((item) => Number(item.taxRate) === 13).length
     : 0
-  const ignoredSingleIntegrationItems = effectivePricingMode === 2 ? Math.max(0, (preview?.items.length || 0) - 1) : 0
-  const appliedItemCount = preview ? (effectivePricingMode === 2 ? 2 : preview.items.length) : 0
+  const ignoredSingleIntegrationItems = effectivePricingMode === 2 ? Math.max(0, previewItems.length - 2) : 0
+  const appliedItemCount = preview ? previewItems.length : 0
 
   const parse = async (nextSales: File[], nextPurchase: File[]) => {
     const nextFiles = [...nextSales, ...nextPurchase]
@@ -236,9 +249,10 @@ export function QuotationImportDialog({
             ) : null}
 
             <section>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium">报价识别品项（{previewItems.length}）</h3><span className="text-xs text-muted-foreground">已按当前计价模式预览，切换模式会实时重算</span></div>
               <div className="mb-1 hidden border-x border-t bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid lg:grid-cols-[44px_minmax(360px,1fr)_100px_150px_150px] lg:gap-2"><span>#</span><span>品项 / 规格 / 描述</span><span>数量</span><span>未税售价</span><span>含税成本</span></div>
               <div className="max-h-[360px] divide-y overflow-y-auto border">
-                {preview.items.map((item, index) => (
+                {previewItems.map((item, index) => (
                   <div key={`${item.oemSpec}-${index}`} className="grid gap-2 px-3 py-3 lg:grid-cols-[44px_minmax(360px,1fr)_100px_150px_150px] lg:items-start">
                     <span className="text-sm text-muted-foreground">{index + 1}</span>
                     <div className="min-w-0"><div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div><div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div></div>
