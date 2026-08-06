@@ -1,15 +1,82 @@
-import { useState } from 'react'
-import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
+import { useState, type DragEvent } from 'react'
+import { AlertTriangle, Download, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { downloadQuotation, importQuotations } from '../client'
 import type { QuotationFile, QuotationImportResult, QuotationSource } from '../types'
+
+const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
+type UploadRole = 'sales' | 'purchase'
+
 function money(value?: number | null) {
   return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+
 function sourceLabel(role: QuotationSource['role']) {
-  return role === 'order' ? '最终 PO' : role === 'sales' ? '客户销售报价' : '厂商进货报价'
+  return role === 'order' ? '最终 PO' : role === 'sales' ? '客户报价' : '供应商报价'
 }
+
+function acceptedFiles(files: File[]) {
+  return files.filter((file) => ACCEPTED_EXTENSIONS.includes(`.${file.name.split('.').pop()?.toLowerCase() || ''}`))
+}
+
+function FileDropZone({
+  title,
+  hint,
+  files,
+  onFiles,
+}: {
+  title: string
+  hint: string
+  files: File[]
+  onFiles: (files: File[]) => void
+}) {
+  const [dragging, setDragging] = useState(false)
+  const receive = (incoming: File[]) => {
+    const next = acceptedFiles(incoming)
+    if (next.length) onFiles([...files, ...next])
+  }
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+    setDragging(false)
+    receive(Array.from(event.dataTransfer.files))
+  }
+  return (
+    <label
+      htmlFor={`mr-${title}`}
+      onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      className={`flex min-h-36 cursor-pointer flex-col justify-center gap-2 border p-4 transition-colors ${dragging ? 'border-primary bg-primary/5' : 'border-dashed hover:bg-muted/50'}`}
+    >
+      <div className="flex items-center gap-2">
+        <Upload className="size-5 text-primary" />
+        <span className="font-medium">{title}</span>
+      </div>
+      <span className="text-xs text-muted-foreground">{hint}</span>
+      <span className="text-xs text-muted-foreground">支持 .xls / .xlsx / .pdf，可拖入多份文件</span>
+      <input id={`mr-${title}`} type="file" accept={ACCEPTED_EXTENSIONS.join(',')} multiple className="sr-only" onChange={(event) => receive(Array.from(event.target.files || []))} />
+      {files.length ? (
+        <div className="mt-1 space-y-1">
+          {files.map((file, index) => (
+            <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 border bg-background px-2 py-1 text-xs">
+              <span className="min-w-0 truncate">{file.name}</span>
+              <button
+                type="button"
+                aria-label={`移除 ${file.name}`}
+                className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
+                onClick={(event) => { event.preventDefault(); onFiles(files.filter((_, fileIndex) => fileIndex !== index)) }}
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </label>
+  )
+}
+
 export function QuotationImportDialog({
   orderId,
   open,
@@ -29,24 +96,28 @@ export function QuotationImportDialog({
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult) => void
 }) {
-  const [files, setFiles] = useState<File[]>([])
+  const [salesFiles, setSalesFiles] = useState<File[]>([])
+  const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<QuotationImportResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const files = [...salesFiles, ...purchaseFiles]
+  const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const taxConflictCount = String(invoiceType || '').startsWith('6%')
     ? (preview?.items || []).filter((item) => Number(item.taxRate) === 13).length
     : 0
   const ignoredSingleIntegrationItems = Number(pricingMode) === 2 ? Math.max(0, (preview?.items.length || 0) - 1) : 0
   const appliedItemCount = preview ? (Number(pricingMode) === 2 ? 2 : preview.items.length) : 0
 
-  const parse = async (selected: File[]) => {
-    setFiles(selected)
+  const parse = async (nextSales: File[], nextPurchase: File[]) => {
+    const nextFiles = [...nextSales, ...nextPurchase]
+    const nextRoles: UploadRole[] = [...nextSales.map(() => 'sales' as const), ...nextPurchase.map(() => 'purchase' as const)]
     setPreview(null)
     setError('')
-    if (!selected.length) return
+    if (!nextFiles.length) return
     setLoading(true)
     try {
-      setPreview(await importQuotations(orderId, selected))
+      setPreview(await importQuotations(orderId, nextFiles, false, nextRoles))
     } catch (err) {
       setError((err as Error).message || '报价单解析失败')
     } finally {
@@ -54,15 +125,24 @@ export function QuotationImportDialog({
     }
   }
 
+  const updateFiles = (role: UploadRole, next: File[]) => {
+    const nextSales = role === 'sales' ? next : salesFiles
+    const nextPurchase = role === 'purchase' ? next : purchaseFiles
+    if (role === 'sales') setSalesFiles(next)
+    else setPurchaseFiles(next)
+    void parse(nextSales, nextPurchase)
+  }
+
   const apply = async () => {
     if (!files.length || !preview) return
     setLoading(true)
     setError('')
     try {
-      const saved = await importQuotations(orderId, files, true)
+      const saved = await importQuotations(orderId, files, true, roles)
       onApply(saved)
       onOpenChange(false)
-      setFiles([])
+      setSalesFiles([])
+      setPurchaseFiles([])
       setPreview(null)
     } catch (err) {
       setError((err as Error).message || '报价单保存失败')
@@ -75,8 +155,8 @@ export function QuotationImportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>报价文件与品项导入</DialogTitle>
-            <DialogDescription>一次选择客户报价、厂商报价和最终 PO。系统会按文件内容识别来源，最终 PO 覆盖销售总额，缺少成本或扫描 PDF 会明确提示人工核对。</DialogDescription>
+          <DialogTitle>报价来源与品项导入</DialogTitle>
+          <DialogDescription>把客户报价或最终 PO 放入左侧，把所有供应商报价放入右侧。每个区域可以一次拖入多份文件，系统会继续自动识别并提示冲突。</DialogDescription>
         </DialogHeader>
 
         {existingFiles.length ? (
@@ -94,30 +174,24 @@ export function QuotationImportDialog({
         ) : null}
 
         {editable ? (
-          <label htmlFor="mr-quotation-files" className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed px-4 py-5 text-center hover:bg-muted/50">
-            {loading ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : <Upload className="size-6 text-muted-foreground" />}
-            <span className="text-sm font-medium">选择全部报价文件</span>
-            <span className="text-xs text-muted-foreground">支持 .xls / .xlsx / .pdf，可一次多选，重新导入会替换上一批文件</span>
-            <input id="mr-quotation-files" type="file" accept=".xls,.xlsx,.pdf" multiple className="sr-only" disabled={loading} onChange={(event) => void parse(Array.from(event.target.files || []))} />
-          </label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <FileDropZone title="客户报价 / 最终 PO" hint="售出来源：用于确定客户、销售总额、PO、交货和付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
+            <FileDropZone title="供应商报价 / 进货订单" hint="成本来源：可放入多家供应商报价，系统按品项匹配最低成本" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+          </div>
         ) : null}
 
-        {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份：{files.map((file) => file.name).join('、')}</div> : null}
+        {loading ? <div role="status" className="flex items-center gap-3 border bg-muted/30 px-4 py-3 text-sm"><Loader2 className="size-5 shrink-0 animate-spin text-primary" /><div><div className="font-medium">{preview ? '正在保存导入结果…' : '正在识别报价文件…'}</div><div className="text-xs text-muted-foreground">{preview ? '正在保存原始文件和品项，请稍候' : '正在解析表格、确认来源角色并匹配品项'}</div></div></div> : null}
+        {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件：客户/PO {salesFiles.length} 份，供应商 {purchaseFiles.length} 份</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
         {preview ? (
           <div className="space-y-5">
             <section>
-              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">可返回重选文件；导入后仍可修改品项</span></div>
+              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">来源分组优先；识别结果仍会提示异常</span></div>
               {preview.metadata?.matchedCustomer ? (
-                <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                  已匹配客户档案：{preview.metadata.matchedCustomer.code ? `${preview.metadata.matchedCustomer.code} · ` : ''}{preview.metadata.matchedCustomer.name}
-                  {preview.metadata.matchedCustomer.contacts?.length ? `（${preview.metadata.matchedCustomer.contacts.length} 位联系人）` : ''}
-                </div>
+                <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">已匹配客户档案：{preview.metadata.matchedCustomer.code ? `${preview.metadata.matchedCustomer.code} · ` : ''}{preview.metadata.matchedCustomer.name}{preview.metadata.matchedCustomer.contacts?.length ? `（${preview.metadata.matchedCustomer.contacts.length} 位联系人）` : ''}</div>
               ) : preview.metadata?.customer ? (
-                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  报价客户“{preview.metadata.customer}”未匹配到客户档案，导入后请手工选择。
-                </div>
+                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">报价客户“{preview.metadata.customer}”未匹配到客户档案，导入后请手工选择。</div>
               ) : null}
               <div className="divide-y border">
                 {preview.sources.map((source) => (
@@ -129,7 +203,7 @@ export function QuotationImportDialog({
                   </div>
                 ))}
               </div>
-              {preview.salesTotalExcludingTax != null ? <div className="mt-3 grid gap-2 border bg-muted/30 px-3 py-3 text-sm sm:grid-cols-2"><div><span className="text-muted-foreground">最终采用未税销售额：</span><strong className="tabular-nums">¥ {money(preview.salesTotalExcludingTax)}</strong></div><div><span className="text-muted-foreground">来源：</span>{preview.orderSourceIndex != null && preview.orderSourceIndex >= 0 ? '最终 PO 优先' : '客户销售报价'}</div></div> : null}
+              {preview.salesTotalExcludingTax != null ? <div className="mt-3 grid gap-2 border bg-muted/30 px-3 py-3 text-sm sm:grid-cols-2"><div><span className="text-muted-foreground">最终采用未税销售额：</span><strong className="tabular-nums">¥ {money(preview.salesTotalExcludingTax)}</strong></div><div><span className="text-muted-foreground">来源：</span>{preview.orderSourceIndex != null && preview.orderSourceIndex >= 0 ? '最终 PO 优先' : '客户报价'}</div></div> : null}
             </section>
 
             {preview.warnings.length || taxConflictCount || ignoredSingleIntegrationItems ? (
@@ -149,8 +223,8 @@ export function QuotationImportDialog({
                     <span className="text-sm text-muted-foreground">{index + 1}</span>
                     <div className="min-w-0"><div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div><div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div></div>
                     <div className="text-sm">数量 {item.qty || 1}</div>
-                    <div className="text-sm tabular-nums">售价 ¥ {money(item.unitPrice)}</div>
-                    <div className="text-sm tabular-nums">成本 ¥ {item.costInclTax == null ? '-' : money(item.costInclTax)}</div>
+                    <div className="text-sm tabular-nums">售价 {item.unitPrice == null ? '-' : `¥ ${money(item.unitPrice)}`}</div>
+                    <div className="text-sm tabular-nums">成本 {item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}</div>
                   </div>
                 ))}
               </div>
