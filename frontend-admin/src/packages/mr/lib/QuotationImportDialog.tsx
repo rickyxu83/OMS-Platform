@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { downloadQuotation, importQuotations } from '../client'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource } from '../types'
-import { calculateForm } from './form-logic'
+import { calculateForm, quotationDetailItems } from './form-logic'
 
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
 type UploadRole = 'sales' | 'purchase'
@@ -131,7 +131,7 @@ export function QuotationImportDialog({
       pricingMode: effectivePricingMode,
       invoiceType: invoiceType || '',
       totalExcludingTax: salesTotal,
-      items: effectivePricingMode === 3 && draftItems.length ? draftItems.map((item) => ({ ...item, unitPrice: item.quotedUnitPrice ?? item.unitPrice ?? null })) : draftItems,
+      items: effectivePricingMode === 3 ? quotationDetailItems(draftItems) : draftItems,
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])
@@ -263,6 +263,7 @@ export function QuotationImportDialog({
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] sm:items-center sm:gap-3">
                     <span className={source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
+                    <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div><div className="text-xs text-muted-foreground">文件仅用于本次识别，不会保存</div></div>
                     <div className="min-w-0">
                       {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别，手工填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>

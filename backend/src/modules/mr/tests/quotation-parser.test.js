@@ -1,6 +1,6 @@
 const assert = require('assert')
 const XLSX = require('xlsx')
-const { parseWorkbook, sheetTotal, mergeQuotations, parsePdfText } = require('../quotation-parser')
+const { parseWorkbook, parseWorkbookWithMetadata, sheetTotal, mergeQuotations, parsePdfText } = require('../quotation-parser')
 
 
 const rows = [
@@ -16,8 +16,9 @@ const sheet = XLSX.utils.aoa_to_sheet(rows)
 sheet['!merges'] = [{ s: { r: 3, c: 4 }, e: { r: 4, c: 4 } }]
 const workbook = XLSX.utils.book_new()
 XLSX.utils.book_append_sheet(workbook, sheet, '报价')
-const parsed = parseWorkbook(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
-
+const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+const parsed = parseWorkbook(workbookBuffer)
+assert.equal(parseWorkbookWithMetadata(workbookBuffer, '客户PO.xlsx').documentType, 'sales_quote')
 assert.equal(parsed.length, 1)
 assert.equal(parsed[0].customer, '测试客户')
 assert.equal(parsed[0].attn, '测试联系人')

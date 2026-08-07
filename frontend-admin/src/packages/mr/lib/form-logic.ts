@@ -13,6 +13,10 @@ export function normalizeCostTaxRates(items: MrItem[], invoiceType?: string | nu
   return items.map((item) => ({ ...item, taxRate: forcedRate || ([6, 13].includes(Number(item.taxRate)) ? Number(item.taxRate) : 13) }))
 }
 
+export function quotationDetailItems(items: MrItem[]) {
+  return items.map((item) => ({ ...item, unitPrice: item.quotedUnitPrice ?? item.unitPrice ?? null }))
+}
+
 export function singleIntegrationItems(items: MrItem[], invoiceType?: string | null, installOptions: string[] = []) {
   const rate = defaultCostTaxRate(invoiceType)
   const main = items[0] || blankItem(rate)

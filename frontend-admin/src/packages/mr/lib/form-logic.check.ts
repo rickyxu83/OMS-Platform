@@ -1,4 +1,4 @@
-import { calculateForm, normalizeCostTaxRates, singleIntegrationItems } from './form-logic.ts'
+import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic.ts'
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message)
@@ -25,4 +25,10 @@ const integrated = calculateForm({ pricingMode: 1, totalExcludingTax: 300, invoi
 ] })
 assert(integrated.items?.[0].unitPrice === 150 && integrated.items?.[1].unitPrice === 150, '多项系统集成应按逐项未税成本分摊售价')
 
+const detailed = quotationDetailItems([
+  { name: '有报价明细', unitPrice: 150, quotedUnitPrice: 120 },
+  { name: '只有整包总额', unitPrice: 180, quotedUnitPrice: null },
+])
+assert(detailed[0].unitPrice === 120, '开明细应恢复销售报价原始单价')
+assert(detailed[1].unitPrice === 180, '没有报价原价时应保留系统分摊价')
 console.log('mr form logic OK')
