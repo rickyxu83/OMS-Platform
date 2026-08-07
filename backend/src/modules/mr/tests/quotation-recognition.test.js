@@ -80,7 +80,7 @@ async function main() {
       transaction: async (callback) => callback({ execute: async () => [[]] }),
     },
   }
-  const { importQuotation } = require('../lib/controller')
+  const { importQuotation } = require('../controller')
   const upload = (buffer, name) => ({ buffer, originalname: Buffer.from(name, 'utf8').toString('latin1'), size: buffer.length })
   const request = {
     params: { id: '32' },
