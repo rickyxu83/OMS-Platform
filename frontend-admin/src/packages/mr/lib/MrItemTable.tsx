@@ -63,7 +63,7 @@ export function MrItemTable({
     onFocusHandled?.()
   }, [focusIndex, onFocusHandled])
 
-  const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item))
+  const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(mode === 3 && patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
   const remove = (index: number) => {
     onChange(items.filter((_, itemIndex) => itemIndex !== index))
     setSelectedIndex((current) => current === index ? null : current !== null && current > index ? current - 1 : current)

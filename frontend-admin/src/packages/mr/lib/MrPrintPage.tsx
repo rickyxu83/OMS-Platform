@@ -83,12 +83,7 @@ function ItemDescription({ item }: { item: MrItem }) {
   return (
     <div className="mr-item-description">
       <strong>{text(item.name)}</strong>
-      {item.oemSpec ? <span className="mr-item-subline">原厂规格：{item.oemSpec}</span> : null}
       {item.description ? <span className="mr-item-subline mr-item-longtext">{item.description}</span> : null}
-      <span className="mr-item-meta">
-        {item.companyPartNo ? `公司料号 ${item.companyPartNo}` : null}
-        {item.installBy ? `装机 ${item.installBy}` : null}
-      </span>
     </div>
   )
 }
@@ -97,15 +92,17 @@ function ItemRow({ item, index }: { item: MrItem; index: number }) {
   return (
     <tr>
       <td className="mr-num">{index + 1}</td>
+      <td>{text(item.companyPartNo)}</td>
+      <td>{text(item.oemSpec)}</td>
       <td><ItemDescription item={item} /></td>
+      <td>{text(item.warrantyService)}</td>
+      <td>{text(item.installBy)}</td>
       <td className="mr-num">{text(item.qty)}</td>
       <td className="mr-num">{money(item.unitPrice)}</td>
       <td className="mr-num mr-emphasis">{money(item.subtotal)}</td>
       <td>{text(item.vendor)}</td>
-      <td>{text(item.warrantyService)}</td>
-      <td className="mr-num">{money(item.costInclTax)}</td>
       <td className="mr-num">{money(item.costExcludingTax)}</td>
-      <td className={`mr-num ${Number(item.marginRate) < 15 ? 'mr-warning' : ''}`}>{percent(item.marginRate)}</td>
+      <td className="mr-num">{money(item.costInclTax)}</td>
       <td>{text(item.purchaseOrderNo)}</td>
     </tr>
   )
@@ -144,8 +141,11 @@ export function MrPrintPage() {
   const status = order.status || 'draft'
   const statusLabel = STATUS[status] || status
   const marginRate = order.totals?.marginRate
+  const salesExcludingTax = Number(order.totals?.salesExcludingTax)
+  const costExcludingTax = Number(order.totals?.costExcludingTax)
+  const grossProfit = Number.isFinite(salesExcludingTax) && Number.isFinite(costExcludingTax) ? salesExcludingTax - costExcludingTax : null
+  const contractDetail = [order.contractType, order.contractNo].filter(Boolean).join(' / ')
   const risk = Number(order.totals?.salesExcludingTax) > 750000 || (marginRate !== null && marginRate !== undefined && Number(marginRate) < 15)
-
   return (
     <div className="mr-print-page">
       <style>{`
@@ -257,13 +257,15 @@ export function MrPrintPage() {
         .mr-items-table th:last-child, .mr-items-table td:last-child { border-right: 0; }
         .mr-items-table tbody tr:nth-child(even) { background: #fafbfc; }
         .mr-items-table th:nth-child(1) { width: 3%; text-align: center; }
-        .mr-items-table th:nth-child(2) { width: 27%; }
-        .mr-items-table th:nth-child(3) { width: 5%; text-align: right; }
-        .mr-items-table th:nth-child(4), .mr-items-table th:nth-child(5), .mr-items-table th:nth-child(7), .mr-items-table th:nth-child(8), .mr-items-table th:nth-child(10) { width: 8%; text-align: right; }
-        .mr-items-table th:nth-child(6) { width: 8%; }
-        .mr-items-table th:nth-child(9) { width: 5%; text-align: right; }
-        .mr-items-table th:nth-child(11) { width: 7%; text-align: right; }
-        .mr-items-table th:nth-child(12) { width: 8%; }
+        .mr-items-table th:nth-child(2) { width: 8%; }
+        .mr-items-table th:nth-child(3) { width: 9%; }
+        .mr-items-table th:nth-child(4) { width: 15%; }
+        .mr-items-table th:nth-child(5) { width: 9%; }
+        .mr-items-table th:nth-child(6) { width: 6%; }
+        .mr-items-table th:nth-child(7) { width: 4%; text-align: right; }
+        .mr-items-table th:nth-child(8), .mr-items-table th:nth-child(9), .mr-items-table th:nth-child(11), .mr-items-table th:nth-child(12) { width: 8%; text-align: right; }
+        .mr-items-table th:nth-child(10) { width: 7%; }
+        .mr-items-table th:nth-child(13) { width: 6%; }
         .mr-num { text-align: right; font-variant-numeric: tabular-nums; }
         .mr-item-description { line-height: 1.45; }
         .mr-item-description strong { display: block; font-size: 11px; }
@@ -273,7 +275,7 @@ export function MrPrintPage() {
         .mr-item-meta:not(:empty) { word-spacing: 10px; }
         .mr-emphasis { font-weight: 800; }
         .mr-warning { color: #9b2c2c; font-weight: 800; }
-        .mr-totals { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 10px; border: 1px solid #bcc6cf; }
+        .mr-totals { display: grid; grid-template-columns: repeat(7, 1fr); margin-top: 10px; border: 1px solid #bcc6cf; }
         .mr-total { padding: 11px 13px; border-right: 1px solid #d8dee5; }
         .mr-total:last-child { border-right: 0; }
         .mr-total-label { color: #66717d; font-size: 10px; }
@@ -379,14 +381,14 @@ export function MrPrintPage() {
             <Fact label="发票别" value={text(order.invoiceType)} />
             <Fact label="计价模式" value={PRICING[Number(order.pricingMode)] || '-'} />
             <Fact label="未税总计" value={`¥ ${money(order.totalExcludingTax)}`} />
-            <Fact label="合同号" value={text(order.contractNo)} />
+            {contractDetail ? <Fact label="合同" value={contractDetail} /> : null}
             <Fact label="发票处理" value={text(order.invoiceProcess)} />
             <Fact label="开票内容" value={text(order.billingContent)} />
             <Fact label="开票 / 收款" value={text(order.billingTiming)} />
             <Fact label="付款条件" value={text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms)} />
             <Fact label="分批送机" value={choice(order.splitDelivery, '可', '否')} />
             <Fact label="验收方式" value={text(order.acceptance === '其他' ? order.acceptanceOther : order.acceptance)} />
-            {order.penaltyContent ? <Fact label="罚则说明" value={text(order.penaltyContent)} wide /> : null}
+            {order.penaltyContent ? <Fact label="罚则" value={text(order.penaltyContent)} wide /> : null}
             <Fact label="送机地点" value={text(order.deliveryLocation)} wide />
             <Fact label="装机对象" value={install} wide />
             <Fact label="维护对象" value={maintenance} wide />
@@ -401,6 +403,7 @@ export function MrPrintPage() {
             <Fact label="发票收件人" value={text(order.invoiceRecipient)} />
             <Fact label="收件人" value={text(order.recipient)} />
             <Fact label="收件电话" value={text(order.recipientTel)} />
+            <Fact label="收件人邮箱" value={text(order.recipientMail)} wide />
           </dl>
         </section>
 
@@ -408,7 +411,7 @@ export function MrPrintPage() {
           <SectionTitle index="04" title="品项与金额" note={`${order.items?.length || 0} 项 · 长描述按原文换行`} />
           <div className="mr-items-wrap">
             <table className="mr-items-table">
-              <thead><tr><th>#</th><th>品项 / 规格 / 说明</th><th>Qty</th><th>销售单价</th><th>售价小计</th><th>厂商</th><th>保固/服务</th><th>成本含税</th><th>税率</th><th>未税成本</th><th>毛利率</th><th>采购单号</th></tr></thead>
+              <thead><tr><th>项目</th><th>公司料号</th><th>原厂规格</th><th>品名 / 描述</th><th>保固服务</th><th>装机</th><th>数量</th><th>单价</th><th>销售小计</th><th>厂商</th><th>Cost</th><th>成本含税</th><th>采购单号</th></tr></thead>
               <tbody>{(order.items || []).map((item, index) => <ItemRow key={item.id || index} item={item} index={index} />)}</tbody>
             </table>
           </div>
@@ -417,6 +420,8 @@ export function MrPrintPage() {
             <div className="mr-total"><div className="mr-total-label">销售税额</div><div className="mr-total-value">¥ {money(order.totals?.vat)}</div></div>
             <div className="mr-total"><div className="mr-total-label">含税合计</div><div className="mr-total-value">¥ {money(order.totals?.salesIncludingTax)}</div></div>
             <div className="mr-total"><div className="mr-total-label">采购成本（未税）</div><div className="mr-total-value">¥ {money(order.totals?.costExcludingTax)}</div></div>
+            <div className="mr-total"><div className="mr-total-label">采购成本（含税）</div><div className="mr-total-value">¥ {money(order.totals?.costIncludingTax)}</div></div>
+            <div className="mr-total"><div className="mr-total-label">毛利</div><div className="mr-total-value">{grossProfit === null ? '-' : `¥ ${money(grossProfit)}`}</div></div>
             <div className={`mr-total ${risk ? 'mr-total-risk' : ''}`}><div className="mr-total-label">整单毛利率</div><div className="mr-total-value">{percent(marginRate)}</div></div>
           </div>
         </section>

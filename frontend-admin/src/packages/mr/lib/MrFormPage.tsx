@@ -226,16 +226,19 @@ export function MrFormPage() {
     const currentItems = calculated.items || []
     const warnings: string[] = []
     if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
-      warnings.push('开明细中的手填销售单价会改为系统自动计算。')
+      warnings.push('开明细中的逐项销售单价会按系统集成规则重算。')
     }
     const secondIsService = Boolean(currentItems[1] && `${currentItems[1].name || ''}${currentItems[1].description || ''}`.includes('服务'))
     if (nextMode === 2 && (currentItems.length > 2 || (currentItems.length === 2 && !secondIsService))) {
       warnings.push('单项系统集成只保留第一项作为主项，并重建第二项“技术服务”；其余品项会删除。')
     }
+    if (currentMode === 1 && nextMode === 3) {
+      const quotedCount = currentItems.filter((item) => item.quotedUnitPrice != null).length
+      warnings.push(quotedCount ? `将恢复 ${quotedCount} 项销售报价原始单价，其余项目保留当前系统分摊价并待人工确认。` : '销售报价没有逐项单价，将保留当前系统分摊价并转为逐项确认。')
+    }
     if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确定切换计价模式吗？`)) return
-
     if (nextMode === 3) {
-      patch({ pricingMode: 3, items: currentItems.map((item) => ({ ...item, unitPrice: item.unitPrice ?? null })) })
+      patch({ pricingMode: 3, items: currentItems.map((item) => ({ ...item, unitPrice: currentMode === 1 ? item.quotedUnitPrice ?? item.unitPrice ?? null : item.unitPrice ?? null })) })
       return
     }
     if (nextMode === 2) {

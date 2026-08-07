@@ -11,6 +11,7 @@ export interface MrItem {
   installBy?: string | null
   qty?: number | null
   unitPrice?: number | null
+  quotedUnitPrice?: number | null
   subtotal?: number | null
   vendor?: string | null
   costInclTax?: number | null
@@ -154,8 +155,8 @@ export interface QuotationFile {
 export interface QuotationSource {
   index: number
   name: string
-  role: 'sales' | 'purchase' | 'order'
-  total: number
+  role: 'sales' | 'purchase'
+  total: number,
   itemCount: number
   vendor?: string
   documentType?: string

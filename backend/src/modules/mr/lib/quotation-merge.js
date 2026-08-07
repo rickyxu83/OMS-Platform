@@ -62,10 +62,6 @@ function sourceTaxIncluded(source) {
 function sourceSalesTotalExcludingTax(source) {
   const sheet = firstSheet(source)
   const rate = sourceTaxRate(source)
-  if (source.documentType === 'customer_order') {
-    if (sheet.untaxed_total !== null && sheet.untaxed_total !== undefined) return number(sheet.untaxed_total)
-    if (sheet.total_amount !== null && sheet.total_amount !== undefined) return number(sheet.total_amount) / (1 + rate / 100)
-  }
   if (sheet.discounted_total !== null && sheet.discounted_total !== undefined) {
     return sourceTaxIncluded(source) ? number(sheet.discounted_total) / (1 + rate / 100) : number(sheet.discounted_total)
   }
@@ -92,8 +88,8 @@ function vendorName(source, vendors) {
 function sourceRole(source, index, sources) {
   if (source.requestedRole === 'sales') return 'sales'
   if (source.requestedRole === 'purchase') return 'purchase'
-  if (source.documentType === 'customer_order') return 'order'
   if (source.documentType === 'purchase_quote') return 'purchase'
+  if (source.documentType === 'customer_order') return 'sales'
   const explicitSalesIndex = sources.findIndex((candidate) => candidate.documentType === 'sales_quote')
   if (explicitSalesIndex >= 0) return index === explicitSalesIndex ? 'sales' : 'purchase'
   const totals = sources.map(sourceTotal)
@@ -134,11 +130,9 @@ function pickPurchase(candidates) {
 }
 
 function mergeQuotations(inputSources, vendors = []) {
-  if (!inputSources.length) return { sources: [], items: [], warnings: [], salesSourceIndex: -1, orderSourceIndex: -1, salesTotalExcludingTax: null }
+  if (!inputSources.length) return { sources: [], items: [], warnings: [], salesSourceIndex: -1, salesTotalExcludingTax: null }
   const sources = inputSources.map((source, index) => ({ ...source, role: sourceRole(source, index, inputSources) }))
-  const orderSourceIndex = sources.findIndex((source) => source.role === 'order')
   const salesSourceIndex = sources.findIndex((source) => source.role === 'sales')
-  const effectiveSalesSourceIndex = salesSourceIndex >= 0 ? salesSourceIndex : orderSourceIndex >= 0 ? orderSourceIndex : -1
   const purchaseSources = sources.filter((source) => source.role === 'purchase')
   const purchaseItems = purchaseSources.flatMap((source) => flattenedItems(source, sources.indexOf(source), vendors))
   const purchasesByKey = new Map()
@@ -149,15 +143,15 @@ function mergeQuotations(inputSources, vendors = []) {
       purchasesByKey.set(key, values)
     }
   }
-  const salesSource = effectiveSalesSourceIndex >= 0 ? sources[effectiveSalesSourceIndex] : null
-  const salesItems = salesSource ? flattenedItems(salesSource, effectiveSalesSourceIndex, vendors) : []
+  const salesSource = salesSourceIndex >= 0 ? sources[salesSourceIndex] : null
+  const salesItems = salesSource ? flattenedItems(salesSource, salesSourceIndex, vendors) : []
   const explicitSalesCount = sources.filter((source) => source.role === 'sales').length
   const unknownSourceCount = sources.filter((source) => !source.requestedRole && !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
   const roleWarnings = []
-  if (salesSourceIndex < 0 && orderSourceIndex < 0) roleWarnings.push('当前仅识别到进货来源，未提供客户报价或最终 PO，销售金额需在后续补充')
-  if (explicitSalesCount > 1) roleWarnings.push(`识别到 ${explicitSalesCount} 份客户销售报价，已采用第一份，其余按进货来源处理，请核对文件角色`)
-  else if (explicitSalesCount === 1 && unknownSourceCount) roleWarnings.push(`已识别客户销售报价，其余 ${unknownSourceCount} 份未明确来源文件按进货报价处理`)
-  else if (explicitSalesCount === 0 && unknownSourceCount) roleWarnings.push('未明确识别到客户销售报价，已按报价总额最高的文件作为销售报价，请核对文件角色')
+  if (salesSourceIndex < 0) roleWarnings.push('当前仅识别到供应商报价，未提供销售报价，销售金额需在后续补充')
+  if (explicitSalesCount > 1) roleWarnings.push(`识别到 ${explicitSalesCount} 份销售报价，已采用第一份，其余按供应商报价处理，请核对文件角色`)
+  else if (explicitSalesCount === 1 && unknownSourceCount) roleWarnings.push(`已识别销售报价，其余 ${unknownSourceCount} 份未明确来源文件按供应商报价处理`)
+  else if (explicitSalesCount === 0 && unknownSourceCount) roleWarnings.push('未明确识别到销售报价，已按报价总额最高的文件作为销售报价，请核对文件角色')
   const warnings = [...sources.flatMap((source) => source.warnings || []), ...roleWarnings]
   const unknownTaxSources = new Set()
   const matchedPurchaseIndexes = new Set()
@@ -181,7 +175,8 @@ function mergeQuotations(inputSources, vendors = []) {
       warrantyService: '',
       installBy: '',
       qty: number(sale.qty) || 1,
-      unitPrice: null,
+    unitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
+    quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
       vendor: purchase?.vendor || '',
       costInclTax: purchase ? round(costInclTax(purchase)) : null,
       taxRate: purchase?.taxRate || 13,
@@ -194,31 +189,10 @@ function mergeQuotations(inputSources, vendors = []) {
   for (const purchase of purchaseItems) {
     const key = `${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`
     if (matchedPurchaseIndexes.has(key)) continue
-    const fields = { ...descriptionFields(purchase.description, purchase.part_no), name: purchase.name || descriptionFields(purchase.description, purchase.part_no).name }
-    items.push({
-      companyPartNo: '',
-      oemSpec: purchase.part_no || '',
-      ...fields,
-      warrantyService: '',
-      installBy: '',
-      qty: number(purchase.qty) || 1,
-      unitPrice: null,
-      vendor: purchase.vendor || '',
-      costInclTax: round(costInclTax(purchase)),
-      taxRate: purchase.taxRate || 13,
-      purchaseOrderNo: '',
-      costSource: purchase.sourceName,
-      salesSource: '',
-      components: purchase.components || [],
-    })
+    warnings.push(`供应商报价品项“${purchase.name || purchase.part_no || purchase.description}”未匹配到销售报价，未导入为 MR 品项`)
   }
-
-  const salesTotalExcludingTax = effectiveSalesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[effectiveSalesSourceIndex]) : null
-  const orderTotal = orderSourceIndex >= 0 ? sourceTotal(sources[orderSourceIndex]) : null
+  const salesTotalExcludingTax = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
   const quoteTotal = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
-  if (orderSourceIndex >= 0 && salesSourceIndex >= 0 && Math.abs(number(orderTotal) - number(sourceTotal(sources[salesSourceIndex]))) > 0.01) {
-    warnings.push(`最终 PO 金额 ${round(orderTotal)} 覆盖客户报价金额 ${round(sourceTotal(sources[salesSourceIndex]))}`)
-  }
   if (unknownTaxSources.size) warnings.push(`${[...unknownTaxSources].join('、')} 未识别到明确成本税率，暂按 13% 导入，请逐项核对`)
 
   const totalCost = items.reduce((sum, item) => sum + (item.costInclTax === null ? 0 : item.costInclTax / (1 + item.taxRate / 100)), 0)
@@ -229,7 +203,7 @@ function mergeQuotations(inputSources, vendors = []) {
       const cost = item.costInclTax / (1 + item.taxRate / 100)
       item.unitPrice = round((cost / totalCost * salesTotalExcludingTax) / Math.max(item.qty, 1), 6)
     }
-  } else if (salesSourceIndex >= 0 && orderSourceIndex < 0 && !missingCost.length) {
+  } else if (salesSourceIndex >= 0 && !missingCost.length) {
     const taxRate = sourceTaxRate(sources[salesSourceIndex])
     const taxIncluded = sourceTaxIncluded(sources[salesSourceIndex])
     for (const item of items.slice(0, salesItems.length)) {
@@ -237,10 +211,8 @@ function mergeQuotations(inputSources, vendors = []) {
       if (sale?.unit_price !== null && sale?.unit_price !== undefined) item.unitPrice = round(number(sale.unit_price) / (taxIncluded ? 1 + taxRate / 100 : 1), 6)
     }
   }
-
   return {
-    salesSourceIndex: effectiveSalesSourceIndex,
-    orderSourceIndex,
+    salesSourceIndex,
     salesTotalExcludingTax,
     sources: sources.map((source, index) => ({
       index,
