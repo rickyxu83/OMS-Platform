@@ -50,12 +50,12 @@ function rangeSize(ws) {
 }
 
 const HEADER_ALIASES = {
-  item: ['item', '序号', '编号', '項次', '项次', '項目'],
+  item: ['item', 'no', '序号', '编号', '項次', '项次', '項目'],
   part: ['partno', 'partnumber', '产品编码', '产品編碼', '产品编号', '型号', '機型', '机型', '产品型号', '產品編號'],
   description: ['description', 'product', '产品描述', '產品描述', '产品名称', '项目名称及说明', '品名', '描述', '项目', '項目名稱及說明', '產品', '產品名稱'],
   qty: ['qty', "q'ty", 'quantity', '数量', '總數', '总数', '采购量', '採購量', '數量'],
-  unit: ['unitnetprice', 'unitprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价'],
-  extended: ['extendednetprice', 'extendedprice', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
+  unit: ['unitnetprice', 'unitprice', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价'],
+  extended: ['extendednetprice', 'extendedprice', 'totalsellingprice', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
 }
 
 function headerMatches(value, aliases) {
@@ -83,6 +83,12 @@ function findHeaderSpec(ws) {
       }
     }
     const columns = {}
+    const productColumn = labels.findIndex((value) => value === normalizeLabel('product'))
+    const descriptionColumn = labels.findIndex((value) => value === normalizeLabel('description'))
+    if (productColumn >= 0 && descriptionColumn >= 0) {
+      columns.part = productColumn + 1
+      columns.description = descriptionColumn + 1
+    }
     for (let col = 1; col <= maxCol; col += 1) {
       const value = ws[XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })]?.v
       for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
@@ -129,12 +135,15 @@ function scanFinancials(reader, maxRow, maxCol) {
     const rowText = rowValues.map((item) => item.text).join(' | ')
     if (!rowText) continue
     texts.push(rowText)
-    if (/(含税|含稅|含\s*\d+%\s*(?:服务|服務)?发票|含\s*\d+%\s*(?:服務)?發票|with\s*\d*%?\s*vat|vat\d+)/i.test(rowText)) taxIncluded = true
+    if (/(含税|含稅|含\s*\d+%\s*(?:服务|服務)?发票|含\s*\d+%\s*(?:服務)?發票|with\s*\d*%?\s*vat|includ\w*\s+\d*%?\s*vat|vat\d+)/i.test(rowText)) taxIncluded = true
     const taxContext = /(税|稅|vat|发票|發票)/i.test(rowText)
     const percent = taxContext ? rowText.match(/(\d+(?:\.\d+)?)\s*%/) : null
     const vatSuffix = taxContext ? rowText.match(/vat\s*(\d+(?:\.\d+)?)/i) : null
     const rate = percent?.[1] || vatSuffix?.[1]
-    if (rate) taxRate = Number(rate) <= 1 ? Number(rate) * 100 : Number(rate)
+    if (rate) {
+      const parsedRate = Number(rate) <= 1 ? Number(rate) * 100 : Number(rate)
+      if ([6, 13].includes(parsedRate)) taxRate = parsedRate
+    }
     for (let index = 0; index < rowValues.length - 1; index += 1) {
       if (/(税点|稅點)/.test(rowValues[index].text)) {
         const adjacent = toFloat(rowValues[index + 1].value)

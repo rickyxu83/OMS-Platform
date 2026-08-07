@@ -55,6 +55,7 @@ const workstationMerge = mergeQuotations([
 ], [])
 assert.equal(workstationMerge.items[0].costInclTax, null)
 assert.equal(workstationMerge.items[0].taxRate, 13)
+assert.equal(workstationMerge.items[0].quotedUnitPrice, 11500)
 assert.equal(workstationMerge.items[0].matchCandidates.length, 1)
 assert.equal(workstationMerge.items[0].matchCandidates[0].costInclTax, 11000)
 assert.equal(workstationMerge.sources[0].taxIncluded, true)
@@ -78,6 +79,53 @@ const ambiguousWorkstations = mergeQuotations([
   { name: '供应商组合报价.xlsx', requestedRole: 'purchase', sheets: [{ items: [workstationPurchase, { ...workstationPurchase, item_no: '2', description: '另一款工作站配置' }], total: 22000, tax_rate: 13, tax_included: true }] },
 ], [])
 assert.equal(ambiguousWorkstations.items[0].costInclTax, null)
+
+const salesOnlySheet = XLSX.utils.aoa_to_sheet([
+  ['Item', 'Part_no', 'Description', 'Qty', 'Unit Net Price', 'Extended Net price'],
+  ['1', '日志管理系统', 'NP-CLD-RECEIVER-CN N-Receiver platform', 2, 130000, 260000],
+  ['人民币未税总计', null, null, null, null, 260000],
+  ['(13%)增值税', null, null, null, null, 33800],
+  ['人民币含税总计', null, null, null, null, 293800],
+  ['付款方式：交货80%，发票开立后90天'],
+])
+const salesOnlyBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(salesOnlyBook, salesOnlySheet, '销售报价')
+const salesOnlyParsed = parseWorkbook(XLSX.write(salesOnlyBook, { type: 'buffer', bookType: 'xlsx' }))[0]
+assert.equal(salesOnlyParsed.tax_rate, 13)
+assert.equal(salesOnlyParsed.untaxed_total, 260000)
+
+const sellingPriceSheet = XLSX.utils.aoa_to_sheet([
+  ['No', 'Product', 'Description', 'Qty', 'Unit Selling Price', 'Total Selling Price'],
+  ['1', 'NP-CLD-RECEIVER-CN', 'N-Receiver platform', 2, 137817, 275634],
+  [null, null, 'Sub Total :-', null, null, 275634],
+  [null, null, 'Price quoted include 13% VAT.'],
+])
+const sellingPriceBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(sellingPriceBook, sellingPriceSheet, '供应商报价')
+const sellingPriceParsed = parseWorkbook(XLSX.write(sellingPriceBook, { type: 'buffer', bookType: 'xlsx' }))[0]
+assert.equal(sellingPriceParsed.items.length, 1)
+assert.equal(sellingPriceParsed.items[0].part_no, 'NP-CLD-RECEIVER-CN')
+assert.equal(sellingPriceParsed.items[0].description, 'N-Receiver platform')
+assert.equal(sellingPriceParsed.items[0].unit_price, 137817)
+assert.equal(sellingPriceParsed.tax_rate, 13)
+assert.equal(sellingPriceParsed.tax_included, true)
+
+const salesWithPurchase = mergeQuotations([
+  { name: '销售报价.xls', requestedRole: 'sales', sheets: [{ ...salesOnlyParsed, total: 293800 }] },
+  { name: '供应商报价.xlsx', requestedRole: 'purchase', sheets: [{ ...sellingPriceParsed, total: 275634 }] },
+], [])
+assert.equal(salesWithPurchase.items[0].quotedUnitPrice, 130000)
+assert.equal(salesWithPurchase.items[0].matchCandidates[0].costInclTax, 275634)
+
+const failedPurchaseFallback = mergeQuotations([
+  { name: '销售报价.xls', requestedRole: 'sales', sheets: [{ ...salesOnlyParsed, total: 293800 }] },
+  { name: '无法识别.xlsx', requestedRole: 'purchase', sheets: [], warnings: ['无法识别.xlsx 未找到可识别的报价明细表'] },
+], [])
+assert.equal(failedPurchaseFallback.items.length, 1)
+assert.equal(failedPurchaseFallback.items[0].quotedUnitPrice, 130000)
+assert.equal(failedPurchaseFallback.sources[1].taxIncluded, null)
+assert(failedPurchaseFallback.warnings.some((warning) => warning.includes('未找到可识别')))
+assert(!failedPurchaseFallback.warnings.some((warning) => warning.includes('没有匹配到进货报价')))
 
 const varied = XLSX.utils.aoa_to_sheet([
   ['客户名称：上海禾新医院有限公司'],

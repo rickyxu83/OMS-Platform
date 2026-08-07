@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { downloadQuotation, importQuotations } from '../client'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource } from '../types'
-import { calculateForm, quotationDetailItems } from './form-logic'
+import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
 type UploadRole = 'sales' | 'purchase'
@@ -191,7 +191,11 @@ export function QuotationImportDialog({
   const patchSourceVendor = (sourceIndex: number, vendor: string) => {
     setSourceVendors((current) => ({ ...current, [sourceIndex]: vendor }))
     const sourceName = preview?.sources.find((source) => source.index === sourceIndex)?.name
-    if (sourceName) setDraftItems((current) => current.map((item) => item.costSource === sourceName ? { ...item, vendor } : item))
+    if (sourceName) setDraftItems((current) => current.map((item) => ({
+      ...item,
+      ...(item.costSource === sourceName ? { vendor } : {}),
+      matchCandidates: item.matchCandidates?.map((candidate) => candidate.costSource === sourceName ? { ...candidate, vendor } : candidate),
+    })))
   }
   const applyBatch = () => {
     const source = previewItems[batchSourceIndex]
@@ -329,7 +333,7 @@ export function QuotationImportDialog({
                     </div>
                     <div className="text-sm tabular-nums">
                       <div>¥ {money(source.total)}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{source.taxIncluded ? '含税' : '未税'}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{source.taxIncluded === null || source.taxIncluded === undefined ? '口径未识别' : source.taxIncluded ? '含税' : '未税'}</div>
                     </div>
                     <div className="text-sm text-muted-foreground">{source.itemCount} 项</div>
                   </div>
@@ -378,7 +382,13 @@ export function QuotationImportDialog({
                               {item.matchCandidates.map((candidate, candidateIndex) => (
                                 <div key={`${candidate.costSource}-${candidateIndex}`} className="flex flex-wrap items-center justify-between gap-2 border-t border-blue-200 pt-2 text-xs text-blue-900">
                                   <span>{candidate.vendor || '供应商未识别'} · {candidate.description} · ¥ {money(candidate.costInclTax)} · 相似度 {candidate.score}%</span>
-                                  <Button type="button" size="sm" variant="outline" onClick={() => patchItem(index, { vendor: candidate.vendor, costInclTax: candidate.costInclTax, taxRate: candidate.taxRate, costSource: candidate.costSource, matchCandidates: [] })}>采用候选成本</Button>
+                                  <div className="flex items-center gap-2">
+                                    <Select value={candidate.taxRate ? String(candidate.taxRate) : ''} onValueChange={(value) => patchItem(index, { matchCandidates: item.matchCandidates?.map((entry, entryIndex) => entryIndex === candidateIndex ? { ...entry, taxRate: Number(value) } : entry) })}>
+                                      <SelectTrigger className="h-8 w-28 bg-background"><SelectValue placeholder="选择税率" /></SelectTrigger>
+                                      <SelectContent><SelectItem value="6">成本税率 6%</SelectItem><SelectItem value="13">成本税率 13%</SelectItem></SelectContent>
+                                    </Select>
+                                    <Button type="button" size="sm" variant="outline" disabled={!candidate.taxRate} onClick={() => { if (!candidate.taxRate) return; patchItem(index, { vendor: candidate.vendor, costInclTax: candidate.costInclTax, taxRate: candidate.taxRate, costSource: candidate.costSource, matchCandidates: [] }) }}>采用候选成本</Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -400,12 +410,12 @@ export function QuotationImportDialog({
                         </div>
                         <div className={item.reviewFields?.includes('qty') ? 'text-sm font-medium text-amber-700' : 'text-sm'}>数量 {item.qty || 1}</div>
                         <div className={item.reviewFields?.includes('unitPrice') ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
-                          <div>销售小计（未税） {amount(item.subtotal)}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">含税 {amount(includingTax(item.subtotal, invoiceTaxRate))}</div>
+                          <div>销售小计（未税） {amount(salesSubtotal(item))}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">含税 {amount(includingTax(salesSubtotal(item), invoiceTaxRate))}</div>
                         </div>
                         <div className={item.costReviewFields?.length ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
-                          <div>成本（含税） {amount(item.costInclTax)}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">Cost 未税 {amount(excludingTax(item))}</div>
+                          <div>Cost（未税） {amount(excludingTax(item))}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">含税成本 {amount(item.costInclTax)}</div>
                         </div>
                       </div>
                     )}

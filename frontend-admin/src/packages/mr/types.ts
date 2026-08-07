@@ -26,7 +26,7 @@ export interface MrItem {
   validationMessages?: string[]
   costConfidence?: Record<string, number> | null
   costReviewFields?: string[]
-  matchCandidates?: Array<{ description: string; vendor: string; costInclTax: number; taxRate: number; costSource: string; score: number }>
+  matchCandidates?: Array<{ description: string; vendor: string; costInclTax: number; taxRate: number | null; costSource: string; score: number }>
 }
 
 export interface MrApproval {
@@ -167,7 +167,7 @@ export interface QuotationSource {
   itemCount: number
   vendor?: string
   documentType?: string
-  taxIncluded?: boolean
+  taxIncluded?: boolean | null
   taxRate?: number | null
   confidence?: number | null
   reviewCount?: number

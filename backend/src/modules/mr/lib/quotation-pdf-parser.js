@@ -210,6 +210,19 @@ function layoutSummaryAmount(layout, labelPattern) {
   return null
 }
 
+function layoutRepeatedTaxedTotal(layout) {
+  for (const page of layout?.pages || []) {
+    for (const line of page.lines || []) {
+      const text = cleanOcrLine(line.text).replace(/\s+/g, '')
+      if (!/含[税稅]/.test(text) || /(不含|单价|單價|报价|報價|优惠|優惠|最低)/.test(text)) continue
+      const values = (line.words || []).map(numericWord).filter((value) => value !== null && value >= 100)
+      const repeated = values.filter((value, index) => values.indexOf(value) !== index)
+      if (repeated.length) return Math.max(...repeated)
+    }
+  }
+  return null
+}
+
 function parsePdfText(text, layout = null) {
   const clean = String(text || '').replace(/\u00a0/g, ' ').trim()
   if (!clean) return { documentType: 'scanned_pdf', sheets: [], warnings: ['PDF 没有文字层，当前需要人工核对或 OCR 后再导入'] }
@@ -230,8 +243,8 @@ function parsePdfText(text, layout = null) {
   const currencyAmounts = [...clean.matchAll(/(?:¥|RMB|USD)\s*([\d,]+(?:\.\d+)?)/gi)].map((match) => number(match[1])).filter((value) => value !== null)
   if (/(?:人民币|人民幣)未税总计|sub\s*total/i.test(compact) && currencyAmounts.length >= 2) untaxedTotal = currencyAmounts.length >= 3 ? currencyAmounts[currencyAmounts.length - 3] : currencyAmounts[0]
   if (/(?:人民币|人民幣)含税总计|grand\s*total/i.test(compact) && currencyAmounts.length) totalAmount = currencyAmounts[currencyAmounts.length - 1]
-  const layoutUntaxedTotal = layoutSummaryAmount(layout, /未[税稅]/)
-  const layoutTaxedTotal = layoutSummaryAmount(layout, /含[税稅]/)
+  const layoutUntaxedTotal = layoutSummaryAmount(layout, /未[税稅](?:总计|總計|金额|金額|合计|合計)/)
+  const layoutTaxedTotal = layoutSummaryAmount(layout, /含[税稅](?:总计|總計|金额|金額|合计|合計)/) ?? layoutRepeatedTaxedTotal(layout)
   if (layoutUntaxedTotal !== null) untaxedTotal = layoutUntaxedTotal
   if (layoutTaxedTotal !== null) totalAmount = layoutTaxedTotal
   if (![6, 13].includes(Number(taxRate)) && untaxedTotal > 0 && totalAmount > untaxedTotal) {
@@ -279,6 +292,7 @@ function parsePdfText(text, layout = null) {
     warnings.push(`文件总额 ${totalAmount.toLocaleString('zh-CN')} 小于品项金额，已忽略该低置信度总额`)
     totalAmount = null
   }
+  const taxIncluded = !/(不含税|不含稅|未税|未稅)/i.test(compact) && /含税|含稅|增值税|增值稅|inclusive/i.test(compact)
   const sheet = {
     title: 'PDF',
     customer,
@@ -287,7 +301,7 @@ function parsePdfText(text, layout = null) {
     delivery,
     notes: clean.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     tax_rate: taxRate,
-    tax_included: /含税|含稅|增值税|增值稅|inclusive/i.test(compact),
+    tax_included: taxIncluded,
     untaxed_total: untaxedTotal,
     total_amount: totalAmount,
     discounted_total: null,

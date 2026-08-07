@@ -53,12 +53,51 @@ async function main() {
   const purchaseItem = { item_no: '1', part_no: '', name: 'FortiGate 60F 防火墙授权续保', description: 'FortiGate 60F 防火墙授权续保', qty: 1, unit_price: 60, extended: 60 }
   const merged = mergeQuotations([
     { name: '销售.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [salesItem], total: 100, tax_rate: 13, tax_included: false }] },
-    { name: '供应商.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [purchaseItem], total: 60, tax_rate: 13, tax_included: true }] },
+    { name: '供应商.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [purchaseItem], total: 60, tax_rate: null, tax_included: true }] },
   ], [])
   assert.equal(merged.items[0].costInclTax, null)
   assert.equal(merged.items[0].matchCandidates.length, 1)
   assert.equal(merged.items[0].matchCandidates[0].costInclTax, 60)
   assert(merged.warnings.some((warning) => warning.includes('未自动采用')))
+
+  const batchSalesBook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(batchSalesBook, XLSX.utils.aoa_to_sheet([
+    ['Item', 'Part_no', 'Description', 'Qty', 'Unit Net Price', 'Extended Net price'],
+    ['1', '日志管理系统', 'NP-CLD-RECEIVER-CN N-Receiver platform', 2, 130000, 260000],
+    ['人民币未税总计', null, null, null, null, 260000],
+    ['(13%)增值税', null, null, null, null, 33800],
+    ['人民币含税总计', null, null, null, null, 293800],
+  ]), '销售报价')
+  const invalidPurchaseBook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(invalidPurchaseBook, XLSX.utils.aoa_to_sheet([['这不是报价明细']]), 'Sheet1')
+  const dbPath = require.resolve('../../../config/db')
+  require.cache[dbPath] = {
+    id: dbPath,
+    filename: dbPath,
+    loaded: true,
+    exports: {
+      query: async (sql) => /FROM mr_orders o/.test(sql) ? [{ id: 32, status: 'draft', created_by: 1, sales_owner_id: 1, pricing_mode: 1 }] : [],
+      transaction: async (callback) => callback({ execute: async () => [[]] }),
+    },
+  }
+  const { importQuotation } = require('../lib/controller')
+  const upload = (buffer, name) => ({ buffer, originalname: Buffer.from(name, 'utf8').toString('latin1'), size: buffer.length })
+  const request = {
+    params: { id: '32' },
+    user: { id: 1, role: 'admin' },
+    body: { sourceRoles: JSON.stringify(['sales', 'purchase']) },
+    files: { files: [
+      upload(XLSX.write(batchSalesBook, { type: 'buffer', bookType: 'xlsx' }), '销售报价.xlsx'),
+      upload(XLSX.write(invalidPurchaseBook, { type: 'buffer', bookType: 'xlsx' }), '无法识别.xlsx'),
+    ] },
+  }
+  let importPayload
+  await importQuotation(request, { json(value) { importPayload = value } })
+  assert.equal(importPayload.items.length, 1)
+  assert.equal(importPayload.items[0].quotedUnitPrice * importPayload.items[0].qty, 260000)
+  assert.equal(importPayload.sources[1].itemCount, 0)
+  assert.equal(importPayload.sources[1].taxIncluded, null)
+  assert(importPayload.warnings.some((warning) => warning.includes('无法识别.xlsx') && warning.includes('已保留其他来源')))
   console.log('quotation recognition tests passed')
 }
 
