@@ -17,6 +17,12 @@ export function quotationDetailItems(items: MrItem[]) {
   return items.map((item) => ({ ...item, unitPrice: item.quotedUnitPrice ?? item.unitPrice ?? null }))
 }
 
+export function salesSubtotal(item: MrItem) {
+  if (item.subtotal !== null && item.subtotal !== undefined) return Number(item.subtotal)
+  if (item.quotedUnitPrice === null || item.quotedUnitPrice === undefined) return null
+  return round(number(item.qty) * number(item.quotedUnitPrice))
+}
+
 export function singleIntegrationItems(items: MrItem[], invoiceType?: string | null, installOptions: string[] = []) {
   const rate = defaultCostTaxRate(invoiceType)
   const main = items[0] || blankItem(rate)

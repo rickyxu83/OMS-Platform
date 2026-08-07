@@ -59,6 +59,16 @@ function sourceTaxIncluded(source) {
   if (/(未税|未稅|不含税|不含稅|untaxed)/i.test(text)) return false
   return source.role === 'purchase'
 }
+
+function sourceItemPricesTaxIncluded(source) {
+  const sheet = firstSheet(source)
+  const itemTotal = (sheet.items || []).reduce((sum, item) => sum + number(item.extended ?? number(item.unit_price) * (number(item.qty) || 1)), 0)
+  const approximately = (expected) => expected !== null && expected !== undefined && Math.abs(itemTotal - number(expected)) <= Math.max(1, number(expected) * 0.005)
+  if (approximately(sheet.untaxed_total)) return false
+  if (approximately(sheet.discounted_total ?? sheet.total_amount)) return true
+  return sourceTaxIncluded(source)
+}
+
 function sourceSalesTotalExcludingTax(source) {
   const sheet = firstSheet(source)
   const rate = sourceTaxRate(source)
@@ -226,8 +236,9 @@ function mergeQuotations(inputSources, vendors = []) {
       }
     }
     const fields = { ...descriptionFields(sale.description, sale.part_no), name: sale.name || descriptionFields(sale.description, sale.part_no).name }
-    if (!purchase) warnings.push(`“${fields.name || sale.part_no}”没有匹配到进货报价`)
-    else if (!purchase.taxRateKnown) unknownTaxSources.add(purchase.sourceName)
+    if (!purchase) {
+      if (purchaseItems.length) warnings.push(`“${fields.name || sale.part_no}”没有匹配到进货报价`)
+    } else if (!purchase.taxRateKnown) unknownTaxSources.add(purchase.sourceName)
     items.push({
       companyPartNo: '',
       oemSpec: sale.part_no || '',
@@ -236,7 +247,7 @@ function mergeQuotations(inputSources, vendors = []) {
       installBy: '',
       qty: number(sale.qty) || 1,
       unitPrice: null,
-    quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
+      quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceItemPricesTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
       vendor: purchase?.vendor || '',
       costInclTax: purchase ? round(costInclTax(purchase)) : null,
       taxRate: purchase?.taxRate || 13,
@@ -254,7 +265,7 @@ function mergeQuotations(inputSources, vendors = []) {
         description: match.purchase.name || match.purchase.part_no || match.purchase.description,
         vendor: match.purchase.vendor || '',
         costInclTax: round(costInclTax(match.purchase)),
-        taxRate: match.purchase.taxRate || 13,
+        taxRate: match.purchase.taxRateKnown ? match.purchase.taxRate : null,
         costSource: match.purchase.sourceName || '',
         score: round(match.score * 100),
       })).sort((left, right) => left.costInclTax - right.costInclTax),
@@ -296,8 +307,8 @@ function mergeQuotations(inputSources, vendors = []) {
       itemCount: source.sheets.reduce((sum, sheet) => sum + sheet.items.length, 0),
       vendor: source.role === 'purchase' ? vendorName(source, vendors) : '',
       documentType: source.documentType || 'unknown',
-      taxIncluded: sourceTaxIncluded(source),
-      taxRate: sourceTaxRate(source),
+      taxIncluded: source.sheets.length ? sourceTaxIncluded(source) : null,
+      taxRate: source.sheets.length ? sourceTaxRate(source) : null,
       ...sourceRecognition(source),
     })),
     items,
