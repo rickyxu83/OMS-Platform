@@ -45,18 +45,28 @@ function parseLooseItems(lines) {
 
 function parsePriceTailItems(lines) {
   const items = []
+  let pending = []
   const priceTail = /(?:¥|RMB|USD)?\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s*[A-Za-z]+)?\s+(?:¥|RMB|USD)?\s*([\d,]+(?:\.\d+)?)\s*(?:\s+(?:保固至|保固|有效期)[\s\S]*)?(?:\s+\d[\d.\s/-]*)?$/i
+  const summary = /(总计|總計|合计|合計|grand\s*total|sub\s*total|税额|稅額|备注|備註|有效期限|人民币|QUOTATION|Item\s+Part)/i
   for (const rawLine of lines) {
     const line = cleanOcrLine(rawLine)
-    if (!line || /(总计|總計|合计|合計|grand\s*total|sub\s*total|税额|稅額|备注|備註|有效期限)/i.test(line)) continue
+    if (!line) continue
     const match = line.match(priceTail)
-    if (!match) continue
-    const beforePrices = cleanOcrLine(line.slice(0, match.index))
-    const qtyMatch = beforePrices.match(/^\s*\d+\s*[:：|.]\s*(\d+)/)
-    const qty = number(qtyMatch?.[1] || 1) || 1
-    const description = cleanOcrLine(beforePrices.replace(/^\s*\d+\s*[:：|.]\s*/, '').replace(/^\s*\d+\s+/, '').replace(/\s+\d+\s*$/, '')) || '待人工核对品项'
-    const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
-    items.push({ item_no: String(items.length + 1), part_no: partNo, description, qty, unit_price: number(match[1]) || 0, extended: number(match[2]) || 0 })
+    if (match && !summary.test(line)) {
+      const beforePrices = cleanOcrLine(line.slice(0, match.index))
+      const qtyMatch = beforePrices.match(/^\s*\d+\s*[:：|.]\s*(\d+)/)
+      const rowQty = beforePrices.match(/^\s*(\d+)\s*$/)
+      const qty = number(qtyMatch?.[1] || rowQty?.[1] || 1) || 1
+      const rowDescription = beforePrices.replace(/^\s*\d+\s*[:：|.]\s*/, '').replace(/^\s*\d+\s+/, '').replace(/\s+\d+\s*$/, '')
+      const pendingDescription = pending.filter((value) => !/(日期|秘书|報價日期|报价日期|Item\s+Part|公司地址|报价单号|報價單號)/i.test(value)).join(' ')
+      const description = cleanOcrLine((/^\d+[\s|.:：]*$/.test(beforePrices) ? pendingDescription : rowDescription) || pendingDescription) || '待人工核对品项'
+      const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
+      items.push({ item_no: String(items.length + 1), part_no: partNo, description, qty, unit_price: number(match[1]) || 0, extended: number(match[2]) || 0 })
+      pending = []
+      continue
+    }
+    if (summary.test(line) || /^[-\d\s.]+$/.test(line)) continue
+    if (/[A-Za-z\u3400-\u9fff]/.test(line)) pending = [...pending.slice(-5), line]
   }
   return items
 }
@@ -73,9 +83,12 @@ function parsePdfText(text) {
   const po = clean.match(/PO\s*NO\.?\)?[^A-Z0-9]{0,12}([A-Z0-9-]+)/i)?.[1] || clean.match(/(?:订购单号|訂購單號)[：:\s]*(\d+)/i)?.[1] || ''
   const payment = cleanSegment(clean.match(/(?:付款方式|Payment)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
   const delivery = cleanSegment(clean.match(/(?:交货地点|交貨地點|Ship To)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
-  const untaxedTotal = number(clean.match(/(?:未税总计|未稅總計|未税金额|未稅金額|sub\s*total)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
+  let untaxedTotal = number(clean.match(/(?:未税总计|未稅總計|未税金额|未稅金額|sub\s*total)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
   const totalMatch = clean.match(/(?:含税金额|含稅金額|含税总计|含稅總計|含税合计|含稅合計|含稅\s*(?:\([^)]*\))?|含税\s*(?:\([^)]*\))?|总价|總價|grand\s*total)[^\d]{0,40}(?:RMB|USD)?\s*([\d,]+(?:\.\d+)?)/i)
-  const totalAmount = number(totalMatch?.[1])
+  let totalAmount = number(totalMatch?.[1])
+  const currencyAmounts = [...clean.matchAll(/(?:¥|RMB|USD)\s*([\d,]+(?:\.\d+)?)/gi)].map((match) => number(match[1])).filter((value) => value !== null)
+  if (/人民币未税总计|sub\s*total/i.test(clean) && currencyAmounts.length >= 2) untaxedTotal = currencyAmounts.length >= 3 ? currencyAmounts[currencyAmounts.length - 3] : currencyAmounts[0]
+  if (/人民币含税总计|grand\s*total/i.test(clean) && currencyAmounts.length) totalAmount = currencyAmounts[currencyAmounts.length - 1]
   const items = []
   const tableStart = flat.search(/(?:\bQTY\b|数量|數量).*?(?:\bAmount\b|金额|金額)/i)
   const tableText = tableStart >= 0 ? flat.slice(tableStart).split(/未税金额|未稅金額|含税金额|含稅金額/i)[0] : ''
