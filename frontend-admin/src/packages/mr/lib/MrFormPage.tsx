@@ -700,7 +700,7 @@ export function MrFormPage() {
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索客户或手动填写" onChange={(e) => handleCustomerInput(e.target.value)} />
+                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索已有客户；无匹配时提交自动建档" onChange={(e) => handleCustomerInput(e.target.value)} />
               </Field>
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
