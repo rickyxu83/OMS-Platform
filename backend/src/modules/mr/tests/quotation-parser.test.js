@@ -74,6 +74,11 @@ const multiplePurchase = mergeQuotations([
 ], [])
 assert.deepStrictEqual(multiplePurchase.sources.map((source) => source.role), ['sales', 'purchase', 'purchase'])
 assert(multiplePurchase.warnings.some((warning) => warning.includes('其余 1 份未明确来源文件按进货报价处理')))
+const groupedPurchase = mergeQuotations([{ name: '自动误判为PO的供应商报价.xls', documentType: 'customer_order', requestedRole: 'purchase', sheets: [{ ...parsed[0], total: 0, items: [{ ...parsed[0].items[0], unit_price: 25990, extended: 25990 }] }] }], [])
+assert.equal(groupedPurchase.sources[0].role, 'purchase')
+assert.equal(groupedPurchase.sources[0].total, 25990)
+assert.equal(groupedPurchase.salesSourceIndex, -1)
+assert.equal(groupedPurchase.items[0].costInclTax, 25990)
 
 const bundledSheet = XLSX.utils.aoa_to_sheet([
   ['上海石洛信息科技有限公司'],

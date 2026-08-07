@@ -42,6 +42,24 @@ function parseLooseItems(lines) {
   }
   return items
 }
+
+function parsePriceTailItems(lines) {
+  const items = []
+  const priceTail = /(?:¥|RMB|USD)?\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s*[A-Za-z]+)?\s+(?:¥|RMB|USD)?\s*([\d,]+(?:\.\d+)?)\s*(?:\s+(?:保固至|保固|有效期)[\s\S]*)?(?:\s+\d[\d.\s/-]*)?$/i
+  for (const rawLine of lines) {
+    const line = cleanOcrLine(rawLine)
+    if (!line || /(总计|總計|合计|合計|grand\s*total|sub\s*total|税额|稅額|备注|備註|有效期限)/i.test(line)) continue
+    const match = line.match(priceTail)
+    if (!match) continue
+    const beforePrices = cleanOcrLine(line.slice(0, match.index))
+    const qtyMatch = beforePrices.match(/^\s*\d+\s*[:：|.]\s*(\d+)/)
+    const qty = number(qtyMatch?.[1] || 1) || 1
+    const description = cleanOcrLine(beforePrices.replace(/^\s*\d+\s*[:：|.]\s*/, '').replace(/^\s*\d+\s+/, '').replace(/\s+\d+\s*$/, '')) || '待人工核对品项'
+    const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
+    items.push({ item_no: String(items.length + 1), part_no: partNo, description, qty, unit_price: number(match[1]) || 0, extended: number(match[2]) || 0 })
+  }
+  return items
+}
 function parsePdfText(text) {
   const clean = String(text || '').replace(/\u00a0/g, ' ').trim()
   if (!clean) return { documentType: 'scanned_pdf', sheets: [], warnings: ['PDF 没有文字层，当前需要人工核对或 OCR 后再导入'] }
@@ -55,8 +73,8 @@ function parsePdfText(text) {
   const po = clean.match(/PO\s*NO\.?\)?[^A-Z0-9]{0,12}([A-Z0-9-]+)/i)?.[1] || clean.match(/(?:订购单号|訂購單號)[：:\s]*(\d+)/i)?.[1] || ''
   const payment = cleanSegment(clean.match(/(?:付款方式|Payment)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
   const delivery = cleanSegment(clean.match(/(?:交货地点|交貨地點|Ship To)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
-  const untaxedTotal = number(clean.match(/(?:未税总计|未稅總計|未税金额|未稅金額)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
-  const totalMatch = clean.match(/(?:含税金额|含稅金額|含税总计|含稅總計|含税合计|含稅合計|含稅\s*(?:\([^)]*\))?|含税\s*(?:\([^)]*\))?|总价|總價)[^\d]{0,40}(?:RMB|USD)?\s*([\d,]+(?:\.\d+)?)/i)
+  const untaxedTotal = number(clean.match(/(?:未税总计|未稅總計|未税金额|未稅金額|sub\s*total)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i)?.[1])
+  const totalMatch = clean.match(/(?:含税金额|含稅金額|含税总计|含稅總計|含税合计|含稅合計|含稅\s*(?:\([^)]*\))?|含税\s*(?:\([^)]*\))?|总价|總價|grand\s*total)[^\d]{0,40}(?:RMB|USD)?\s*([\d,]+(?:\.\d+)?)/i)
   const totalAmount = number(totalMatch?.[1])
   const items = []
   const tableStart = flat.search(/(?:\bQTY\b|数量|數量).*?(?:\bAmount\b|金额|金額)/i)
@@ -74,7 +92,7 @@ function parsePdfText(text) {
       extended: number(match[7]) || 0,
     })
   }
-  if (!items.length) items.push(...parseLooseItems(lines))
+  if (!items.length) items.push(...parsePriceTailItems(lines))
   const sheet = {
     title: 'PDF',
     customer,
@@ -83,7 +101,7 @@ function parsePdfText(text) {
     delivery,
     notes: clean.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     tax_rate: taxRate,
-    tax_included: Boolean(totalAmount && /含税|含稅/.test(clean)),
+    tax_included: Boolean(totalAmount && /含税|含稅|增值税|增值稅|inclusive/i.test(clean)),
     untaxed_total: untaxedTotal,
     total_amount: totalAmount,
     discounted_total: null,
