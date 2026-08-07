@@ -56,12 +56,22 @@ export function MrItemTable({
     setBatchSourceIndex((current) => Math.min(current, Math.max(items.length - 1, 0)))
   }, [items.length])
 
-
   useEffect(() => {
     if (focusIndex === null || focusIndex === undefined) return
+    setEditMode(true)
     setSelectedIndex(focusIndex)
     onFocusHandled?.()
   }, [focusIndex, onFocusHandled])
+
+  const enterEditMode = () => {
+    setEditMode(true)
+    setSelectedIndex((current) => current ?? (items.length ? 0 : null))
+  }
+  const leaveEditMode = () => {
+    setEditMode(false)
+    setSelectedIndex(null)
+    setSelectedRows(new Set())
+  }
 
   const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(mode === 3 && patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
   const remove = (index: number) => {
@@ -85,109 +95,126 @@ export function MrItemTable({
         <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
           尚未填写品项{editable ? '，可从报价文件导入或手动添加。' : '。'}
         </div>
-        {editable && mode !== 2 ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
+        {editable && mode !== 2 ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
+              {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
+              {editMode ? '完成编辑' : '编辑模式'}
+            </Button>
+            {editMode ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
+          </div>
+        ) : null}
       </div>
     )
   }
 
   const selectedItem = selectedIndex === null ? null : items[selectedIndex]
+  const rowSelectionEnabled = !editable || editMode
 
   return (
     <div className="space-y-3">
       <datalist id="mr-vendor-options">{vendors.map((vendor) => <option key={vendor.id} value={vendor.name} />)}</datalist>
 
       {editable ? (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{editMode ? '编辑模式：左侧勾选目标品项，右侧批量操作台统一应用字段。' : '选择一行后在下方编辑；或打开编辑模式进行多项操作。'}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">已选 {selectedRows.size} 项</span>
-              <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedIndex(null) }}><Pencil className="mr-2 size-4" />{editMode ? '完成编辑' : '编辑模式'}</Button>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">{editMode ? '点击品项编辑完整资料；勾选框只用于批量复制。' : '当前为浏览模式，进入编辑模式后可修改品项。'}</p>
+          <div className="flex items-center gap-2">
+            {editMode ? <span className="text-xs text-muted-foreground">已勾选 {selectedRows.size} 项</span> : null}
+            <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
+              {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
+              {editMode ? '完成编辑' : '编辑模式'}
+            </Button>
           </div>
-        </>
-      ) : null}
-
-      <div className={editMode ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]' : ''}>
-        <div className="overflow-hidden rounded-lg border">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th scope="col" className="w-16 px-3 py-2 text-left font-medium">选择 / #</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">品名/品名描述</th>
-                <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
-                <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价</th>
-                <th scope="col" className="w-36 px-3 py-2 text-right font-medium">售价小计</th>
-                <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
-                <th scope="col" className="w-24 px-3 py-2 text-right font-medium">编辑</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {items.map((item, index) => {
-                const low = isLowMargin(item)
-                const selected = selectedIndex === index
-                return (
-                  <>
-                    <tr key={item.id || `row-${index}`} className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''}`}>
-                    <td className="px-3 py-3 text-muted-foreground tabular-nums">
-                      <div className="flex items-center gap-2"><Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); if (checked) next.add(index); else next.delete(index); return next })} />{index + 1}</div>
-                    </td>
-                    <td className="min-w-0 px-3 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedIndex(index)}
-                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label={`编辑第 ${index + 1} 项`}
-                        aria-pressed={selected}
-                      >
-                        <span className="block break-words font-medium">{item.description || item.name || '未填写品名/品名描述'}</span>
-                        <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '原厂规格未填'}</span>
-                      </button>
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
-                    <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end gap-1">
-                        {editable && mode !== 2 ? (
-                          <Button type="button" variant="ghost" size="icon" title="删除品项" onClick={() => remove(index)}>
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        ) : null}
-                        {!editMode ? <Button type="button" variant={selected ? 'secondary' : 'ghost'} size="icon" title="编辑品项" onClick={() => setSelectedIndex(index)}><Pencil className="size-4" /></Button> : null}
-                      </div>
-                    </td>
-                  </tr>
-                  </>
-                )
-              })}
-            </tbody>
-          </table>
         </div>
-      </div>
-      {editMode ? (
-        <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-24">
-          <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量操作台</h3></div>
-          <p className="mb-3 text-sm text-muted-foreground">已选 {selectedRows.size} 项。选择一项作为模板，再选择要复制的字段。</p>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>
-          <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
-            <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
-            <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
-          </Select>
-          <div className="my-4 space-y-3 border-y py-4">
-            <p className="text-xs text-muted-foreground">只复制重复资料，不覆盖数量、售价和采购成本。</p>
-            {([['vendor', '厂商'], ['purchaseOrderNo', '采购单号'], ['warrantyService', '保固/服务'], ['installBy', '明细装机']] as const).map(([field, label]) => (
-              <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
-            ))}
-          </div>
-          <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用到已选品项</Button>
-        </aside>
       ) : null}
+
+      <div className={editable && editMode ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]' : ''}>
+        <div className="overflow-hidden rounded-lg border">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] table-fixed text-sm">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable && editMode ? '选择 / #' : '#'}</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium">品名/品名描述</th>
+                  <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
+                  <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价</th>
+                  <th scope="col" className="w-36 px-3 py-2 text-right font-medium">售价小计</th>
+                  <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {items.map((item, index) => {
+                  const low = isLowMargin(item)
+                  const selected = selectedIndex === index
+                  return (
+                    <tr
+                      key={item.id || `row-${index}`}
+                      onClick={rowSelectionEnabled ? () => setSelectedIndex(index) : undefined}
+                      className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''} ${rowSelectionEnabled ? 'cursor-pointer' : ''}`}
+                    >
+                      <td className="px-3 py-3 text-muted-foreground tabular-nums">
+                        {editable && editMode ? (
+                          <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              aria-label={`选择第 ${index + 1} 项用于批量操作`}
+                              checked={selectedRows.has(index)}
+                              onCheckedChange={(checked) => setSelectedRows((current) => {
+                                const next = new Set(current)
+                                if (checked) next.add(index)
+                                else next.delete(index)
+                                return next
+                              })}
+                            />
+                            {index + 1}
+                          </div>
+                        ) : index + 1}
+                      </td>
+                      <td className="min-w-0 px-3 py-3">
+                        <button
+                          type="button"
+                          disabled={!rowSelectionEnabled}
+                          onClick={(event) => { event.stopPropagation(); setSelectedIndex(index) }}
+                          className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                          aria-label={`${editable ? '编辑' : '查看'}第 ${index + 1} 项`}
+                          aria-pressed={rowSelectionEnabled ? selected : undefined}
+                        >
+                          <span className="block break-words font-medium">{item.description || item.name || '未填写品名/品名描述'}</span>
+                          <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '原厂规格未填'}</span>
+                        </button>
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
+                      <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {editable && editMode ? (
+          <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-24">
+            <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量操作台</h3></div>
+            <p className="mb-3 text-sm text-muted-foreground">已选 {selectedRows.size} 项。选择一项作为模板，再选择要复制的字段。</p>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>
+            <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
+              <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
+              <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
+            </Select>
+            <div className="my-4 space-y-3 border-y py-4">
+              <p className="text-xs text-muted-foreground">只复制重复资料，不覆盖数量、售价和采购成本。</p>
+              {([['vendor', '厂商'], ['purchaseOrderNo', '采购单号'], ['warrantyService', '保固/服务'], ['installBy', '明细装机']] as const).map(([field, label]) => (
+                <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
+              ))}
+            </div>
+            <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用到已选品项</Button>
+          </aside>
+        ) : null}
       </div>
 
-      {selectedItem && selectedIndex !== null && !editMode ? (
+      {selectedItem && selectedIndex !== null && rowSelectionEnabled ? (
         <ItemEditorPanel
           item={selectedItem}
           index={selectedIndex}
@@ -197,15 +224,16 @@ export function MrItemTable({
           workOptions={workOptions}
           allowedTaxRates={allowedTaxRates}
           onClose={() => setSelectedIndex(null)}
+          onRemove={editable && mode !== 2 ? () => remove(selectedIndex) : undefined}
           onChange={(patch) => setItem(selectedIndex, patch)}
         />
-      ) : editMode ? null : (
+      ) : editable && editMode ? (
         <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
           选择品项后，完整编辑面板会显示在这里。
         </div>
-      )}
+      ) : null}
 
-      {editable && mode !== 2 ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
+      {editable && editMode && mode !== 2 ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
     </div>
   )
 }
@@ -219,6 +247,7 @@ function ItemEditorPanel({
   workOptions,
   allowedTaxRates,
   onClose,
+  onRemove,
   onChange,
 }: {
   item: MrItem
@@ -229,6 +258,7 @@ function ItemEditorPanel({
   workOptions: string[]
   allowedTaxRates: number[]
   onClose: () => void
+  onRemove?: () => void
   onChange: (patch: Partial<MrItem>) => void
 }) {
   const serviceRow = mode === 2 && index === 1
@@ -252,9 +282,16 @@ function ItemEditorPanel({
           <div className="text-xs font-medium uppercase tracking-wide text-primary">编辑品项 {index + 1}</div>
           <div className="mt-1 text-sm text-muted-foreground">完整内容在此编辑，关闭后品项表只保留摘要。</div>
         </div>
-        <Button type="button" variant="ghost" size="icon" title="关闭编辑面板" onClick={onClose}>
-          <X className="size-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onRemove ? (
+            <Button type="button" variant="ghost" size="icon" title="删除品项" onClick={onRemove}>
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="icon" title="关闭编辑面板" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-4">
