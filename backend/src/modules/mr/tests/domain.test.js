@@ -1,5 +1,5 @@
 const assert = require('assert')
-const { normalizeOrder, validateSubmission, computeApprovalSteps } = require('../domain')
+const { normalizeOrder, validateSubmission, totals, computeApprovalSteps } = require('../domain')
 
 function validBody(overrides = {}) {
   return {
@@ -125,4 +125,38 @@ function validBody(overrides = {}) {
   const { order, items } = normalizeOrder(validBody({ salesOwnerId: null }))
   assert.deepStrictEqual(validateSubmission(order, items), [])
 }
+{
+  const { order, items } = normalizeOrder(validBody({
+    pricingMode: 1,
+    totalExcludingTax: 450000,
+    items: [
+      { name: 'A', qty: 2, quotedUnitPrice: 130000, vendor: '安稳特', costInclTax: 275634, taxRate: 13 },
+      { name: 'B', qty: 1, quotedUnitPrice: 75000, vendor: '安稳特', costInclTax: 73512, taxRate: 13 },
+      { name: 'C', qty: 1, quotedUnitPrice: 55000, vendor: '安稳特', costInclTax: 40836, taxRate: 13 },
+      { name: 'D', qty: 3, quotedUnitPrice: 20000, vendor: '安稳特', costInclTax: 45900, taxRate: 13 },
+    ],
+  }))
+  assert.deepStrictEqual(items.map((item) => item.unitPrice), [130000, 75000, 55000, 20000])
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+}
+
+{
+  const { items } = normalizeOrder(validBody({
+    pricingMode: 1,
+    totalExcludingTax: 450000,
+    items: [
+      { name: 'A', qty: 2, vendor: '安稳特', costInclTax: 275634, taxRate: 13 },
+      { name: 'B', qty: 1, vendor: '安稳特', costInclTax: 73512, taxRate: 13 },
+      { name: 'C', qty: 1, vendor: '安稳特', costInclTax: 40836, taxRate: 13 },
+      { name: 'D', qty: 3, vendor: '安稳特', costInclTax: 45900, taxRate: 13 },
+    ],
+  }))
+  assert.equal(Math.round(items.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100, 450000)
+}
+
+{
+  const { order, items } = normalizeOrder(validBody({ items: [{ name: '待补成本', qty: 1, unitPrice: 100, vendor: '待补', costInclTax: null, taxRate: 13 }] }))
+  assert.deepStrictEqual(totals(order, items), { salesExcludingTax: 100, vat: 13, salesIncludingTax: 113, costExcludingTax: null, costIncludingTax: null, marginRate: null })
+}
+
 console.log('mr domain OK')

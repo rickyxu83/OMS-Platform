@@ -97,16 +97,27 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
     items.push(normalizeItem({ name: '技术服务', qty: 1, costInclTax: 0, taxRate: 6 }, 1))
   }
 
-  const totalCost = items.reduce((sum, item) => sum + (costExcludingTax(item) ?? 0), 0)
+  const costs = items.map(costExcludingTax)
+  const totalCost = costs.reduce((sum, cost) => sum + (cost ?? 0), 0)
+  const preserveQuotedPrices = mode === 1 && items.length > 0 && items.every((item) => item.quotedUnitPrice !== null)
+  const completeCosts = costs.every((cost) => cost !== null)
+  const lastAllocationIndex = items.reduce((last, item, index) => Number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  let allocatedSales = 0
   return items.map((item, index) => {
     const qty = Number(item.qty)
+    const cost = costs[index]
     let unitPrice = item.unitPrice
+    let subtotal = null
     if (Number.isFinite(qty) && qty > 0 && Number.isFinite(total) && total >= 0) {
-      if (mode === 1 && totalCost > 0) unitPrice = (costExcludingTax(item) ?? 0) / totalCost * total / qty
+      if (preserveQuotedPrices) unitPrice = Number(item.quotedUnitPrice)
+      else if (mode === 1 && completeCosts && totalCost > 0) {
+        subtotal = index === lastAllocationIndex ? round(total - allocatedSales, 2) : round((cost ?? 0) / totalCost * total, 2)
+        allocatedSales += subtotal
+        unitPrice = subtotal / qty
+      }
       if (mode === 2 && index < 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
     }
-    const subtotal = Number.isFinite(qty) && Number.isFinite(unitPrice) ? qty * unitPrice : null
-    const cost = costExcludingTax(item)
+    if (subtotal === null) subtotal = Number.isFinite(qty) && Number.isFinite(unitPrice) ? qty * unitPrice : null
     const marginRate = subtotal > 0 && cost !== null ? (subtotal - cost) / subtotal * 100 : null
     return {
       ...item,
@@ -240,8 +251,8 @@ function validateSubmission(order, items) {
 
   if (order.pricingMode === 1 && items.length) {
     const margins = items.map((item) => item.marginRate).filter((value) => value !== null)
-    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成需要完整填写每项成本，才能分摊售价' })
-    else if (Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '多项系统集成各品项毛利率必须一致' })
+    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成需要完整填写每项成本，才能计算毛利' })
+    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按成本分摊的多项系统集成各品项毛利率必须一致' })
   }
 
   if (order.pricingMode === 2) {
@@ -257,15 +268,16 @@ function totals(order, items) {
   const sales = items.reduce((sum, item) => sum + (item.subtotal ?? 0), 0)
   const costExcl = items.reduce((sum, item) => sum + (item.costExcludingTax ?? 0), 0)
   const costIncl = items.reduce((sum, item) => sum + (item.costInclTax ?? 0), 0)
+  const completeCosts = items.every((item) => item.costInclTax !== null && item.costExcludingTax !== null)
   const taxRateValue = order.invoiceType?.startsWith('13%') ? 13 : 6
   const vat = sales * taxRateValue / 100
-  const marginRate = sales > 0 ? (sales - costExcl) / sales * 100 : null
+  const marginRate = completeCosts && sales > 0 ? (sales - costExcl) / sales * 100 : null
   return {
     salesExcludingTax: round(sales, 2),
     vat: round(vat, 2),
     salesIncludingTax: round(sales + vat, 2),
-    costExcludingTax: round(costExcl, 2),
-    costIncludingTax: round(costIncl, 2),
+    costExcludingTax: completeCosts ? round(costExcl, 2) : null,
+    costIncludingTax: completeCosts ? round(costIncl, 2) : null,
     marginRate: marginRate === null ? null : round(marginRate, 4),
   }
 }
