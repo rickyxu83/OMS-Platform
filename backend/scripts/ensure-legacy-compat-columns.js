@@ -1,5 +1,3 @@
-const { pool } = require('../src/config/db')
-
 async function columnExists(connection, tableName, columnName) {
   const [rows] = await connection.execute(
     `SELECT 1
@@ -24,6 +22,45 @@ async function dropColumnIfEmpty(connection, tableName, columnName, valuePredica
     throw new Error(`${tableName}.${columnName} still contains data`)
   }
   await connection.execute(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`)
+  return true
+}
+
+async function dropRedundantWorkHoursColumn(connection) {
+  if (!(await columnExists(connection, 'service_reports', 'work_hours'))) return false
+  const [rows] = await connection.execute(
+    `SELECT COUNT(*) AS workHourRows,
+            SUM(actual_start_at IS NOT NULL
+                AND actual_end_at IS NOT NULL
+                AND ABS(work_hours - ROUND(TIMESTAMPDIFF(MINUTE, actual_start_at, actual_end_at) / 60, 2)) <= 0.01) AS representedRows
+     FROM service_reports
+     WHERE work_hours IS NOT NULL`,
+  )
+  const workHourRows = Number(rows[0]?.workHourRows || 0)
+  const representedRows = Number(rows[0]?.representedRows || 0)
+  if (workHourRows !== representedRows) {
+    throw new Error(`service_reports.work_hours contains ${workHourRows - representedRows} value(s) not represented by actual timestamps`)
+  }
+  await connection.execute('ALTER TABLE service_reports DROP COLUMN work_hours')
+  return true
+}
+
+async function dropRedundantFaultSummaryColumn(connection) {
+  if (!(await columnExists(connection, 'service_reports', 'fault_summary'))) return false
+  const [rows] = await connection.execute(
+    `SELECT COUNT(*) AS faultSummaryRows,
+            SUM(so.id IS NOT NULL
+                AND INSTR(TRIM(COALESCE(so.issue_description, '')), TRIM(sr.fault_summary)) > 0) AS representedRows
+     FROM service_reports sr
+     LEFT JOIN service_orders so ON so.id = sr.service_order_id
+     WHERE sr.fault_summary IS NOT NULL
+       AND TRIM(sr.fault_summary) <> ''`,
+  )
+  const faultSummaryRows = Number(rows[0]?.faultSummaryRows || 0)
+  const representedRows = Number(rows[0]?.representedRows || 0)
+  if (faultSummaryRows !== representedRows) {
+    throw new Error(`service_reports.fault_summary contains ${faultSummaryRows - representedRows} value(s) not represented by issue descriptions`)
+  }
+  await connection.execute('ALTER TABLE service_reports DROP COLUMN fault_summary')
   return true
 }
 
@@ -83,6 +120,7 @@ async function migrateInspectionScheduleDeviceColumn(connection) {
 }
 
 async function main() {
+  const { pool } = require('../src/config/db')
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
@@ -90,10 +128,10 @@ async function main() {
     if (await dropColumnIfEmpty(connection, 'service_reports', 'customer_signature', "customer_signature IS NOT NULL AND customer_signature <> ''")) {
       dropped.push('service_reports.customer_signature')
     }
-    if (await dropColumnIfEmpty(connection, 'service_reports', 'work_hours', 'work_hours IS NOT NULL')) {
+    if (await dropRedundantWorkHoursColumn(connection)) {
       dropped.push('service_reports.work_hours')
     }
-    if (await dropColumnIfEmpty(connection, 'service_reports', 'fault_summary', "fault_summary IS NOT NULL AND TRIM(fault_summary) <> ''")) {
+    if (await dropRedundantFaultSummaryColumn(connection)) {
       dropped.push('service_reports.fault_summary')
     }
     if (await migrateInspectionScheduleDeviceColumn(connection)) {
@@ -110,7 +148,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message)
-  process.exit(1)
-})
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exit(1)
+  })
+}
+
+module.exports = { dropRedundantFaultSummaryColumn, dropRedundantWorkHoursColumn }
