@@ -124,6 +124,16 @@ function costInclTax(item) {
   return item.taxIncluded ? extended : extended * (1 + number(item.taxRate) / 100)
 }
 
+function sourceRecognition(source) {
+  const items = source.sheets.flatMap((sheet) => sheet.items || [])
+  const confidences = items.map((item) => Number(item.confidence?.overall)).filter(Number.isFinite)
+  return {
+    confidence: confidences.length ? round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length) : null,
+    reviewCount: items.filter((item) => item.review_fields?.length).length,
+    method: source.sheets.map((sheet) => sheet.recognition_method).find(Boolean) || '',
+  }
+}
+
 function pickPurchase(candidates) {
   return [...new Map(candidates.map((item) => [`${item.sourceIndex}:${item.item_no}:${item.part_no}:${item.description}`, item])).values()]
     .sort((left, right) => costInclTax(left) / Math.max(number(left.qty), 1) - costInclTax(right) / Math.max(number(right.qty), 1))[0]
@@ -207,13 +217,10 @@ function mergeQuotations(inputSources, vendors = []) {
   for (const sale of salesItems) {
     const exactCandidates = itemKeys(sale).flatMap((key) => purchasesByKey.get(key) || [])
     const fuzzy = exactCandidates.length ? [] : conservativeCandidates(sale, purchaseItems)
-    const candidates = exactCandidates.length ? exactCandidates : fuzzy.map((match) => match.purchase)
-    const purchase = pickPurchase(candidates)
-    const selectedFuzzy = fuzzy.find((match) => match.purchase === purchase)
-    if (selectedFuzzy) warnings.push(`“${sale.name || sale.part_no || sale.description}”与“${selectedFuzzy.purchase.name || selectedFuzzy.purchase.part_no || selectedFuzzy.purchase.description}”为候选匹配（${Math.round(selectedFuzzy.score * 100)}%），请核对`)
+    const purchase = pickPurchase(exactCandidates)
+    if (fuzzy.length) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
     if (purchase) {
       matchedPurchaseIndexes.add(`${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`)
-      for (const match of fuzzy) matchedPurchaseIndexes.add(`${match.purchase.sourceIndex}:${match.purchase.item_no}:${match.purchase.part_no}:${match.purchase.description}`)
       for (const key of itemKeys(sale)) {
         for (const candidate of purchasesByKey.get(key) || []) matchedPurchaseIndexes.add(`${candidate.sourceIndex}:${candidate.item_no}:${candidate.part_no}:${candidate.description}`)
       }
@@ -237,6 +244,20 @@ function mergeQuotations(inputSources, vendors = []) {
       costSource: purchase?.sourceName || '',
       salesSource: sale.sourceName,
       components: sale.components || [],
+      recognitionMethod: sale.recognition_method || '',
+      confidence: sale.confidence || null,
+      reviewFields: sale.review_fields || [],
+      validationMessages: sale.validation_messages || [],
+      costConfidence: purchase?.confidence || null,
+      costReviewFields: purchase?.review_fields || [],
+      matchCandidates: fuzzy.map((match) => ({
+        description: match.purchase.name || match.purchase.part_no || match.purchase.description,
+        vendor: match.purchase.vendor || '',
+        costInclTax: round(costInclTax(match.purchase)),
+        taxRate: match.purchase.taxRate || 13,
+        costSource: match.purchase.sourceName || '',
+        score: round(match.score * 100),
+      })).sort((left, right) => left.costInclTax - right.costInclTax),
     })
   }
   for (const purchase of purchaseItems) {
@@ -277,6 +298,7 @@ function mergeQuotations(inputSources, vendors = []) {
       documentType: source.documentType || 'unknown',
       taxIncluded: sourceTaxIncluded(source),
       taxRate: sourceTaxRate(source),
+      ...sourceRecognition(source),
     })),
     items,
     warnings,

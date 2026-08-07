@@ -35,6 +35,26 @@ function sourceLabel(role: QuotationSource['role']) {
   return role === 'sales' ? '销售报价' : '供应商报价'
 }
 
+function recognitionMethodLabel(method?: string) {
+  return method === 'excel_cells' ? 'Excel 单元格' : method === 'ocr_layout' ? 'OCR 坐标' : method === 'pdf_text' ? 'PDF 文字层' : '自动识别'
+}
+
+function confidenceLabel(confidence?: number | null, reviewCount = 0) {
+  if (reviewCount > 0 || confidence == null || confidence < 70) return '需要核对'
+  if (confidence < 90) return '中等置信度'
+  return '高置信度'
+}
+
+function confidenceClass(confidence?: number | null, reviewCount = 0) {
+  if (reviewCount > 0 || confidence == null || confidence < 70) return 'border-amber-300 bg-amber-50 text-amber-800'
+  if (confidence < 90) return 'border-blue-200 bg-blue-50 text-blue-700'
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+}
+
+function reviewFieldLabel(field: string) {
+  return ({ description: '品名/描述', qty: '数量', unitPrice: '单价', extended: '小计' } as Record<string, string>)[field] || field
+}
+
 function acceptedFiles(files: File[]) {
   return files.filter((file) => ACCEPTED_EXTENSIONS.includes(`.${file.name.split('.').pop()?.toLowerCase() || ''}`))
 }
@@ -150,7 +170,24 @@ export function QuotationImportDialog({
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])
-  const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
+  const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => {
+    if (itemIndex !== index) return item
+    const reviewed = new Set(item.reviewFields || [])
+    if (patch.name !== undefined || patch.description !== undefined) reviewed.delete('description')
+    if (patch.qty !== undefined) reviewed.delete('qty')
+    if (patch.unitPrice !== undefined || patch.quotedUnitPrice !== undefined) reviewed.delete('unitPrice')
+    if (patch.costInclTax !== undefined) reviewed.delete('extended')
+    const changedRecognitionField = ['name', 'description', 'qty', 'unitPrice', 'quotedUnitPrice', 'costInclTax'].some((field) => field in patch)
+    return {
+      ...item,
+      ...patch,
+      ...(patch.unitPrice !== undefined ? { quotedUnitPrice: patch.unitPrice } : {}),
+      reviewFields: [...reviewed],
+      validationMessages: changedRecognitionField ? [] : item.validationMessages,
+      confidence: changedRecognitionField ? { ...(item.confidence || {}), overall: reviewed.size ? Number(item.confidence?.overall || 70) : 100 } : item.confidence,
+      costReviewFields: patch.costInclTax !== undefined ? [] : item.costReviewFields,
+    }
+  }))
   const patchSourceVendor = (sourceIndex: number, vendor: string) => {
     setSourceVendors((current) => ({ ...current, [sourceIndex]: vendor }))
     const sourceName = preview?.sources.find((source) => source.index === sourceIndex)?.name
@@ -278,7 +315,15 @@ export function QuotationImportDialog({
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] sm:items-center sm:gap-3">
                     <span className={source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
-                    <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div><div className="text-xs text-muted-foreground">文件仅用于本次识别，不会保存</div></div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium" title={source.name}>{source.name}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{recognitionMethodLabel(source.method)}</span>
+                        <span className={`border px-1.5 py-0.5 ${confidenceClass(source.confidence, source.reviewCount)}`}>{confidenceLabel(source.confidence, source.reviewCount)}{source.confidence != null ? ` ${Math.round(source.confidence)}%` : ''}</span>
+                        {source.reviewCount ? <span>{source.reviewCount} 项待核对</span> : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">文件仅用于本次识别，不会保存</div>
+                    </div>
                     <div className="min-w-0">
                       {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别，手工填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>
@@ -317,35 +362,48 @@ export function QuotationImportDialog({
                       <div className="flex gap-3">
                         <div className="flex shrink-0 items-start gap-2 pt-2"><Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); checked ? next.add(index) : next.delete(index); return next })} /><span className="text-sm text-muted-foreground">{index + 1}</span></div>
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                          <Textarea className="md:col-span-2 xl:col-span-2" rows={2} value={item.description || item.name || ''} aria-label={`第 ${index + 1} 项品名/品名描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+                          <Textarea className={`md:col-span-2 xl:col-span-2 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} aria-label={`第 ${index + 1} 项品名/品名描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+                          <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={1} step={1} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
+                          <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="识别销售单价" aria-label={`第 ${index + 1} 项销售单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
+                          <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="成本含税" aria-label={`第 ${index + 1} 项成本含税`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input value={item.oemSpec || ''} placeholder="原厂规格" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
                           <Input value={item.vendor || ''} placeholder="厂商" aria-label={`第 ${index + 1} 项厂商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
                           <Input value={item.purchaseOrderNo || ''} placeholder="采购单号" aria-label={`第 ${index + 1} 项采购单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
                           <Input value={item.warrantyService || ''} placeholder="保固/服务" aria-label={`第 ${index + 1} 项保固/服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
-                          <Input value={item.installBy || ''} placeholder="明细装机" aria-label={`第 ${index + 1} 项明细装机`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
-                          <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                            <span>数量 {item.qty || 1}</span>
-                            <span>销售小计（未税） {amount(item.subtotal)}</span>
-                            <span>销售含税 {amount(includingTax(item.subtotal, invoiceTaxRate))}</span>
-                            <span>成本（含税） {amount(item.costInclTax)}</span>
-                            <span>Cost 未税 {amount(excludingTax(item))}</span>
-                          </div>
+                          <Input className="md:col-span-2" value={item.installBy || ''} placeholder="明细装机" aria-label={`第 ${index + 1} 项明细装机`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
+                          {(item.reviewFields?.length || item.validationMessages?.length) ? <div className="md:col-span-2 xl:col-span-4 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">需要核对：{item.validationMessages?.join('；') || item.reviewFields?.map(reviewFieldLabel).join('、')}</div> : null}
+                          {item.matchCandidates?.length ? (
+                            <div className="space-y-2 md:col-span-2 xl:col-span-4 rounded border border-blue-200 bg-blue-50 p-3">
+                              <div className="text-xs font-medium text-blue-900">供应商候选（未自动采用）</div>
+                              {item.matchCandidates.map((candidate, candidateIndex) => (
+                                <div key={`${candidate.costSource}-${candidateIndex}`} className="flex flex-wrap items-center justify-between gap-2 border-t border-blue-200 pt-2 text-xs text-blue-900">
+                                  <span>{candidate.vendor || '供应商未识别'} · {candidate.description} · ¥ {money(candidate.costInclTax)} · 相似度 {candidate.score}%</span>
+                                  <Button type="button" size="sm" variant="outline" onClick={() => patchItem(index, { vendor: candidate.vendor, costInclTax: candidate.costInclTax, taxRate: candidate.taxRate, costSource: candidate.costSource, matchCandidates: [] })}>采用候选成本</Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ) : (
                       <div className="grid gap-2 lg:grid-cols-[44px_minmax(320px,1fr)_90px_190px_190px] lg:items-start">
                         <span className="text-sm text-muted-foreground">{index + 1}</span>
                         <div className="min-w-0">
-                          <div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</span>
+                            {item.confidence ? <span className={`border px-1.5 py-0.5 text-xs ${confidenceClass(item.confidence.overall, item.reviewFields?.length || 0)}`}>{confidenceLabel(item.confidence.overall, item.reviewFields?.length || 0)} {Math.round(item.confidence.overall || 0)}%</span> : null}
+                          </div>
                           <div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div>
                           <div className="mt-1 text-xs text-muted-foreground">厂商：{item.vendor || '-'} · 保固/服务：{item.warrantyService || '-'}</div>
+                          {item.reviewFields?.length ? <div className="mt-1 text-xs text-amber-700">待核对：{item.reviewFields.map(reviewFieldLabel).join('、')}</div> : null}
+                          {item.matchCandidates?.length ? <div className="mt-1 text-xs text-blue-700">有 {item.matchCandidates.length} 个供应商成本候选，进入校对编辑后确认</div> : null}
                         </div>
-                        <div className="text-sm">数量 {item.qty || 1}</div>
-                        <div className="text-sm tabular-nums">
+                        <div className={item.reviewFields?.includes('qty') ? 'text-sm font-medium text-amber-700' : 'text-sm'}>数量 {item.qty || 1}</div>
+                        <div className={item.reviewFields?.includes('unitPrice') ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
                           <div>销售小计（未税） {amount(item.subtotal)}</div>
                           <div className="mt-1 text-xs text-muted-foreground">含税 {amount(includingTax(item.subtotal, invoiceTaxRate))}</div>
                         </div>
-                        <div className="text-sm tabular-nums">
+                        <div className={item.costReviewFields?.length ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
                           <div>成本（含税） {amount(item.costInclTax)}</div>
                           <div className="mt-1 text-xs text-muted-foreground">Cost 未税 {amount(excludingTax(item))}</div>
                         </div>

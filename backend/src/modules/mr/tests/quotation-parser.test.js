@@ -53,21 +53,25 @@ const workstationMerge = mergeQuotations([
   { name: '客户PO.pdf', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [workstationPurchase], total: 11000, tax_rate: 13, tax_included: true }] },
 ], [])
-assert.equal(workstationMerge.items[0].costInclTax, 11000)
+assert.equal(workstationMerge.items[0].costInclTax, null)
 assert.equal(workstationMerge.items[0].taxRate, 13)
+assert.equal(workstationMerge.items[0].matchCandidates.length, 1)
+assert.equal(workstationMerge.items[0].matchCandidates[0].costInclTax, 11000)
 assert.equal(workstationMerge.sources[0].taxIncluded, true)
 assert.equal(workstationMerge.sources[1].taxIncluded, true)
-assert(workstationMerge.warnings.some((warning) => warning.includes('候选匹配')))
-assert(!workstationMerge.warnings.some((warning) => warning.includes('缺少成本')))
+assert(workstationMerge.warnings.some((warning) => warning.includes('未自动采用')))
+assert(workstationMerge.warnings.some((warning) => warning.includes('缺少成本')))
 
 const multipleWorkstationQuotes = mergeQuotations([
   { name: '客户PO.pdf', requestedRole: 'sales', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
   { name: '供应商甲.xlsx', requestedRole: 'purchase', sheets: [{ items: [workstationPurchase], total: 11000, tax_rate: 13, tax_included: true }] },
   { name: '供应商乙.xlsx', requestedRole: 'purchase', sheets: [{ items: [{ ...workstationPurchase, unit_price: 10500, extended: 10500 }], total: 10500, tax_rate: 13, tax_included: true }] },
 ], [])
-assert.equal(multipleWorkstationQuotes.items[0].costInclTax, 10500)
-assert.equal(multipleWorkstationQuotes.items[0].costSource, '供应商乙.xlsx')
-assert(!multipleWorkstationQuotes.warnings.some((warning) => warning.includes('未匹配到销售报价')))
+assert.equal(multipleWorkstationQuotes.items[0].costInclTax, null)
+assert.equal(multipleWorkstationQuotes.items[0].matchCandidates.length, 2)
+assert.equal(multipleWorkstationQuotes.items[0].matchCandidates[0].costInclTax, 10500)
+assert.equal(multipleWorkstationQuotes.items[0].matchCandidates[0].costSource, '供应商乙.xlsx')
+assert(multipleWorkstationQuotes.warnings.some((warning) => warning.includes('未自动采用')))
 
 const ambiguousWorkstations = mergeQuotations([
   { name: '客户PO.pdf', requestedRole: 'sales', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
@@ -154,5 +158,17 @@ assert.equal(ocrParsed.sheets[0].items.length, 3)
 assert.equal(ocrParsed.sheets[0].items[0].part_no, 'FortiGate-121G')
 assert.equal(ocrParsed.sheets[0].items[2].name, undefined)
 assert.equal(ocrParsed.sheets[0].items[2].unit_price, 10200)
+const layoutParsed = parsePdfText('品名 数量 单价 金额\nFG-100F 2 21,500 43,000\n未税总计 43,000', { pages: [{ page: 1, width: 1000, height: 1400, lines: [
+  { top: 100, left: 20, text: '品名 数量 单价 金额', words: [{ text: '品名', left: 30, width: 80, confidence: 95 }, { text: '数量', left: 500, width: 60, confidence: 96 }, { text: '单价', left: 650, width: 60, confidence: 94 }, { text: '金额', left: 830, width: 60, confidence: 93 }] },
+  { top: 150, left: 20, text: 'FG-100F 2 21,500 43,000', words: [{ text: 'FG-100F', left: 30, width: 150, confidence: 91 }, { text: '2', left: 510, width: 20, confidence: 92 }, { text: '21,500', left: 650, width: 90, confidence: 90 }, { text: '43,000', left: 830, width: 90, confidence: 89 }] },
+  { top: 220, left: 20, text: '未税总计 43,000', words: [{ text: '未税总计', left: 650, width: 100, confidence: 94 }, { text: '43,000', left: 830, width: 90, confidence: 95 }] },
+] }] })
+assert.equal(layoutParsed.sheets[0].items.length, 1)
+assert.equal(layoutParsed.sheets[0].items[0].description, 'FG-100F')
+assert.equal(layoutParsed.sheets[0].items[0].qty, 2)
+assert.equal(layoutParsed.sheets[0].items[0].unit_price, 21500)
+assert.equal(layoutParsed.sheets[0].items[0].extended, 43000)
+assert.equal(layoutParsed.sheets[0].items[0].confidence.overall, 89)
+assert.deepStrictEqual(layoutParsed.sheets[0].items[0].review_fields, [])
 assert.equal(ocrParsed.sheets[0].tax_included, false)
 console.log('quotation parser OCR loose-row tests passed')
