@@ -56,7 +56,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   onOpenChange: (open: boolean) => void;
   roleLabel: string;
 }) {
-  const { user, logout, refreshUser, hasPermission } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loginAlias, setLoginAlias] = useState("");
   const [preferredWorkspace, setPreferredWorkspaceState] = useState("");
@@ -72,7 +72,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   const workspaces = useMemo(() => (
     Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
   ), [user?.availableWorkspaces]);
-  const canMaintainEngineerSignature = hasPermission("order.engineer.own");
+  const canMaintainEngineerSignature = Boolean(user);
   const passwordRuleState = passwordRules.map((rule) => ({ ...rule, passed: rule.test(newPassword) }));
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     try {
       await api.put("/users/me", { engineerSignature });
       await refreshUser();
-      toast.success(engineerSignature ? "工程师签名已保存" : "工程师签名已清除");
+      toast.success(engineerSignature ? "签名已保存" : "签名已清除");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "签名保存失败");
     } finally {
@@ -294,8 +294,8 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                 <section className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold">工程师签名</h3>
-                      <p className="text-xs text-muted-foreground">用于服务记录中的工程师签字，可在此手写、更新或清除。</p>
+                      <h3 className="text-sm font-semibold">手写签名</h3>
+                      <p className="text-xs text-muted-foreground">用于系统中需要本人签署的记录，可在此手写、更新或清除。</p>
                     </div>
                     {engineerSignature ? (
                       <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已填写</Badge>
