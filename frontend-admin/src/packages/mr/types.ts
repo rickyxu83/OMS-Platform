@@ -104,8 +104,8 @@ export interface MrOrder {
     salesExcludingTax?: number
     vat?: number
     salesIncludingTax?: number
-    costExcludingTax?: number
-    costIncludingTax?: number
+    costExcludingTax?: number | null
+    costIncludingTax?: number | null
     marginRate?: number | null
   }
   fileName?: string

@@ -92,7 +92,7 @@ function vendorName(source, vendors) {
     const website = String(vendor.officialWebsite || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
     return website && evidence.includes(normalized(website))
   })
-  return sourceVendor || match?.name || ''
+  return match?.name || sourceVendor || ''
 }
 
 function sourceRole(source, index, sources) {
@@ -127,6 +127,11 @@ function descriptionFields(value, fallback) {
   const description = String(value || '').trim()
   const lines = description.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   return { name: lines[0] || fallback || '', description }
+}
+function looksLikePartNumber(value) {
+  const token = String(value || '').trim().replace(/[,:;，；]+$/, '')
+  const hyphens = (token.match(/-/g) || []).length
+  return /^[A-Z0-9][A-Z0-9+._/-]*$/i.test(token) && hyphens >= 1 && (hyphens >= 2 || /\d/.test(token))
 }
 
 function costInclTax(item) {
@@ -227,21 +232,36 @@ function mergeQuotations(inputSources, vendors = []) {
   for (const sale of salesItems) {
     const exactCandidates = itemKeys(sale).flatMap((key) => purchasesByKey.get(key) || [])
     const fuzzy = exactCandidates.length ? [] : conservativeCandidates(sale, purchaseItems)
-    const purchase = pickPurchase(exactCandidates)
-    if (fuzzy.length) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
+    const fuzzyPurchase = fuzzy[0]?.purchase
+    const fuzzyKey = fuzzyPurchase ? `${fuzzyPurchase.sourceIndex}:${fuzzyPurchase.item_no}:${fuzzyPurchase.part_no}:${fuzzyPurchase.description}` : ''
+    const autoFuzzy = purchaseSources.length === 1 && fuzzy.length === 1 && fuzzy[0].score >= 0.9
+      && number(sale.qty) > 0 && number(sale.qty) === number(fuzzyPurchase.qty) && fuzzyPurchase.taxRateKnown
+      && !matchedPurchaseIndexes.has(fuzzyKey) ? fuzzy[0] : null
+    const purchase = pickPurchase(exactCandidates) || autoFuzzy?.purchase
+    if (fuzzy.length && !autoFuzzy) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
     if (purchase) {
       matchedPurchaseIndexes.add(`${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`)
       for (const key of itemKeys(sale)) {
         for (const candidate of purchasesByKey.get(key) || []) matchedPurchaseIndexes.add(`${candidate.sourceIndex}:${candidate.item_no}:${candidate.part_no}:${candidate.description}`)
       }
     }
-    const fields = { ...descriptionFields(sale.description, sale.part_no), name: sale.name || descriptionFields(sale.description, sale.part_no).name }
+    const parsedFields = descriptionFields(sale.description, sale.part_no)
+    const genericSaleName = !looksLikePartNumber(sale.part_no) && normalized(sale.name) === normalized(sale.part_no)
+    const fields = { ...parsedFields, name: genericSaleName ? parsedFields.name : sale.name || parsedFields.name }
+    const inferredOemSpec = Boolean(purchase && !looksLikePartNumber(sale.part_no) && looksLikePartNumber(purchase.part_no))
+    const reviewFields = new Set(sale.review_fields || [])
+    const validationMessages = [...(sale.validation_messages || [])]
+    if (inferredOemSpec) {
+      reviewFields.add('oemSpec')
+      validationMessages.push('原厂规格由供应商报价推断，请核对')
+      warnings.push(`“${fields.name}”的原厂规格已根据供应商报价推断为 ${purchase.part_no}，请核对`)
+    }
     if (!purchase) {
       if (purchaseItems.length) warnings.push(`“${fields.name || sale.part_no}”没有匹配到进货报价`)
     } else if (!purchase.taxRateKnown) unknownTaxSources.add(purchase.sourceName)
     items.push({
       companyPartNo: '',
-      oemSpec: sale.part_no || '',
+      oemSpec: inferredOemSpec ? purchase.part_no : sale.part_no || '',
       ...fields,
       warrantyService: '',
       installBy: '',
@@ -257,11 +277,11 @@ function mergeQuotations(inputSources, vendors = []) {
       components: sale.components || [],
       recognitionMethod: sale.recognition_method || '',
       confidence: sale.confidence || null,
-      reviewFields: sale.review_fields || [],
-      validationMessages: sale.validation_messages || [],
+      reviewFields: [...reviewFields],
+      validationMessages,
       costConfidence: purchase?.confidence || null,
       costReviewFields: purchase?.review_fields || [],
-      matchCandidates: fuzzy.map((match) => ({
+      matchCandidates: (autoFuzzy ? [] : fuzzy).map((match) => ({
         description: match.purchase.name || match.purchase.part_no || match.purchase.description,
         vendor: match.purchase.vendor || '',
         costInclTax: round(costInclTax(match.purchase)),
@@ -283,18 +303,16 @@ function mergeQuotations(inputSources, vendors = []) {
   const totalCost = items.reduce((sum, item) => sum + (item.costInclTax === null ? 0 : item.costInclTax / (1 + item.taxRate / 100)), 0)
   const missingCost = items.filter((item) => item.costInclTax === null)
   if (missingCost.length) warnings.push(`有 ${missingCost.length} 个品项缺少成本，暂不计算完整毛利；请补充厂商报价`)
-  if (salesTotalExcludingTax !== null && totalCost > 0 && !missingCost.length) {
+  const preserveQuotedPrices = items.length > 0 && items.every((item) => item.quotedUnitPrice !== null)
+  if (preserveQuotedPrices) {
+    for (const item of items) item.unitPrice = item.quotedUnitPrice
+  } else if (salesTotalExcludingTax !== null && totalCost > 0 && !missingCost.length) {
     for (const item of items) {
       const cost = item.costInclTax / (1 + item.taxRate / 100)
       item.unitPrice = round((cost / totalCost * salesTotalExcludingTax) / Math.max(item.qty, 1), 6)
     }
-  } else if (salesSourceIndex >= 0 && !missingCost.length) {
-    const taxRate = sourceTaxRate(sources[salesSourceIndex])
-    const taxIncluded = sourceTaxIncluded(sources[salesSourceIndex])
-    for (const item of items.slice(0, salesItems.length)) {
-      const sale = salesItems.find((candidate) => candidate.sourceName === item.salesSource && candidate.part_no === item.oemSpec && candidate.description === item.description)
-      if (sale?.unit_price !== null && sale?.unit_price !== undefined) item.unitPrice = round(number(sale.unit_price) / (taxIncluded ? 1 + taxRate / 100 : 1), 6)
-    }
+  } else {
+    for (const item of items) if (item.quotedUnitPrice !== null) item.unitPrice = item.quotedUnitPrice
   }
   return {
     salesSourceIndex,

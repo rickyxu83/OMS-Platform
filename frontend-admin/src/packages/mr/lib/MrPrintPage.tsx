@@ -9,7 +9,7 @@ const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中'
 const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
 
 function text(value: unknown) { return value === null || value === undefined || value === '' ? '-' : String(value) }
-function money(value: unknown) { const amount = Number(value); return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-' }
+function money(value: unknown) { if (value === null || value === undefined || value === '') return '-'; const amount = Number(value); return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-' }
 function percent(value: unknown) { const amount = Number(value); return value === null || value === undefined || !Number.isFinite(amount) ? '-' : `${amount.toFixed(2)}%` }
 function decidedAt(value?: string | null) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function approval(approvals: MrApproval[], key: string) { return approvals.find((item) => item.stepKey === key) }
@@ -46,8 +46,8 @@ export function MrPrintPage() {
   if (!order && !error) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin" /></div>
   if (!order) return <div className="p-8 text-destructive">{error}</div>
   const totals = order.totals || {}
-  const sales = Number(totals.salesExcludingTax)
-  const cost = Number(totals.costExcludingTax)
+  const sales = totals.salesExcludingTax === null || totals.salesExcludingTax === undefined ? NaN : Number(totals.salesExcludingTax)
+  const cost = totals.costExcludingTax === null || totals.costExcludingTax === undefined ? NaN : Number(totals.costExcludingTax)
   const grossProfit = Number.isFinite(sales) && Number.isFinite(cost) ? sales - cost : null
   const contractDetail = [order.contractType, order.contractNo].filter(Boolean).join(' / ')
   const status = order.status || 'draft'

@@ -65,20 +65,32 @@ export function calculateForm(order: MrOrder): MrOrder {
     if (source.length === 0) source = [blankItem(defaultCostTaxRate(order.invoiceType))]
     if (source.length === 1) source = [...source, { ...blankItem(defaultCostTaxRate(order.invoiceType)), name: '技术服务', qty: 1, costInclTax: 0, vendor: '', installBy: (order.installOptions || []).filter((value) => value !== 'NO').join('、') }]
   }
-  const costTotal = source.reduce((sum, item) => sum + (costExcludingTax(item) || 0), 0)
+  const costs = source.map(costExcludingTax)
+  const costTotal = costs.reduce<number>((sum, cost) => sum + (cost || 0), 0)
+  const preserveQuotedPrices = mode === 1 && source.length > 0 && source.every((item) => item.quotedUnitPrice !== null && item.quotedUnitPrice !== undefined)
+  const completeCosts = costs.every((cost) => cost !== null)
+  const lastAllocationIndex = source.reduce((last, item, index) => number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  let allocatedSales = 0
   const items = source.map((item, index) => {
     const qty = Math.max(0, number(item.qty))
+    const cost = costs[index]
     let unitPrice = item.unitPrice == null ? null : number(item.unitPrice)
-    if (qty > 0 && mode === 1 && costTotal > 0) unitPrice = (costExcludingTax(item) || 0) / costTotal * total / qty
+    let subtotal: number | null = null
+    if (qty > 0 && preserveQuotedPrices) unitPrice = number(item.quotedUnitPrice)
+    else if (qty > 0 && mode === 1 && completeCosts && costTotal > 0) {
+      subtotal = index === lastAllocationIndex ? round(total - allocatedSales) : round((cost || 0) / costTotal * total)
+      allocatedSales += subtotal
+      unitPrice = subtotal / qty
+    }
     if (qty > 0 && mode === 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
-    const subtotal = unitPrice === null ? null : round(qty * unitPrice)
-    const cost = costExcludingTax(item)
+    if (subtotal === null) subtotal = unitPrice === null ? null : round(qty * unitPrice)
     const marginRate = subtotal && cost !== null ? round((subtotal - cost) / subtotal * 100, 4) : null
     return { ...item, rowNo: index + 1, unitPrice: unitPrice === null ? null : round(unitPrice, 6), subtotal, costExcludingTax: cost === null ? null : round(cost), marginRate }
   })
   const sales = items.reduce((sum, item) => sum + number(item.subtotal), 0)
   const costExcl = items.reduce((sum, item) => sum + number(item.costExcludingTax), 0)
   const costIncl = items.reduce((sum, item) => sum + number(item.costInclTax), 0)
+  const completeCostTotals = items.every((item) => item.costInclTax !== null && item.costInclTax !== undefined && item.costExcludingTax !== null && item.costExcludingTax !== undefined)
   const salesTotal = mode === 3 ? round(sales) : order.totalExcludingTax
   const tax = String(order.invoiceType || '').startsWith('13%') ? 13 : 6
   return {
@@ -89,9 +101,9 @@ export function calculateForm(order: MrOrder): MrOrder {
       salesExcludingTax: round(sales),
       vat: round(sales * tax / 100),
       salesIncludingTax: round(sales * (1 + tax / 100)),
-      costExcludingTax: round(costExcl),
-      costIncludingTax: round(costIncl),
-      marginRate: sales > 0 ? round((sales - costExcl) / sales * 100, 4) : null,
+      costExcludingTax: completeCostTotals ? round(costExcl) : null,
+      costIncludingTax: completeCostTotals ? round(costIncl) : null,
+      marginRate: completeCostTotals && sales > 0 ? round((sales - costExcl) / sales * 100, 4) : null,
     },
   }
 }

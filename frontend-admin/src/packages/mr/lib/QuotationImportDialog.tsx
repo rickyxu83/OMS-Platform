@@ -51,8 +51,13 @@ function confidenceClass(confidence?: number | null, reviewCount = 0) {
   return 'border-emerald-200 bg-emerald-50 text-emerald-700'
 }
 
+function confidenceText(confidence?: number | null, reviewCount = 0) {
+  const label = confidenceLabel(confidence, reviewCount)
+  return reviewCount > 0 || confidence == null ? label : `${label} ${Math.round(confidence)}%`
+}
+
 function reviewFieldLabel(field: string) {
-  return ({ description: '品名/描述', qty: '数量', unitPrice: '单价', extended: '小计' } as Record<string, string>)[field] || field
+  return ({ description: '品名/描述', oemSpec: '原厂规格（供应商推断）', qty: '数量', unitPrice: '单价', extended: '小计' } as Record<string, string>)[field] || field
 }
 
 function acceptedFiles(files: File[]) {
@@ -323,7 +328,7 @@ export function QuotationImportDialog({
                       <div className="truncate text-sm font-medium" title={source.name}>{source.name}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{recognitionMethodLabel(source.method)}</span>
-                        <span className={`border px-1.5 py-0.5 ${confidenceClass(source.confidence, source.reviewCount)}`}>{confidenceLabel(source.confidence, source.reviewCount)}{source.confidence != null ? ` ${Math.round(source.confidence)}%` : ''}</span>
+                        <span className={`border px-1.5 py-0.5 ${confidenceClass(source.confidence, source.reviewCount)}`}>字段提取：{confidenceText(source.confidence, source.reviewCount)}</span>
                         {source.reviewCount ? <span>{source.reviewCount} 项待核对</span> : null}
                       </div>
                       <div className="text-xs text-muted-foreground">文件仅用于本次识别，不会保存</div>
@@ -401,7 +406,7 @@ export function QuotationImportDialog({
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</span>
-                            {item.confidence ? <span className={`border px-1.5 py-0.5 text-xs ${confidenceClass(item.confidence.overall, item.reviewFields?.length || 0)}`}>{confidenceLabel(item.confidence.overall, item.reviewFields?.length || 0)} {Math.round(item.confidence.overall || 0)}%</span> : null}
+                            {item.confidence ? <span className={`border px-1.5 py-0.5 text-xs ${confidenceClass(item.confidence.overall, item.reviewFields?.length || 0)}`}>{confidenceText(item.confidence.overall, item.reviewFields?.length || 0)}</span> : null}
                           </div>
                           <div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div>
                           <div className="mt-1 text-xs text-muted-foreground">厂商：{item.vendor || '-'} · 保固/服务：{item.warrantyService || '-'}</div>

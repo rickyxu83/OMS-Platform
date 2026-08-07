@@ -35,7 +35,8 @@ export function StatusBadge({ status, className = '' }: { status?: MrStatus | st
 }
 
 export function money(value?: number | null) {
-  return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (value === null || value === undefined) return '-'
+  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /** Rendered as "-" when empty, so read-only cards never show a blank line. */

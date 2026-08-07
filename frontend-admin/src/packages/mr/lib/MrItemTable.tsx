@@ -324,7 +324,8 @@ function ItemEditorPanel({
               <Field label="售价小计" editable={false} readonlyText={`¥ ${money(item.subtotal)}`} />
               <Field label="毛利率" editable={false} readonlyText={<span className={low ? 'text-red-600' : ''}>{percent(item.marginRate)}</span>} />
             </div>
-            {editable && mode !== 3 ? <p className="text-xs text-muted-foreground">系统集成模式的单价由未税总计按成本分摊自动计算。</p> : null}
+            {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成优先保留销售报价逐项价；没有逐项价时才按成本分摊。</p> : null}
+            {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成按主项 99%、技术服务 1% 自动拆分。</p> : null}
           </SubPanel>
 
           <SubPanel title="采购">

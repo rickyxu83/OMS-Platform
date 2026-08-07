@@ -160,6 +160,15 @@ function scanFinancials(reader, maxRow, maxCol) {
   return { notes: texts, taxRate, taxIncluded, untaxedTotal, discountedTotal, total }
 }
 
+function looksLikePartNumber(value) {
+  const token = cellText(value).replace(/[,:;，；]+$/, '')
+  const hyphens = (token.match(/-/g) || []).length
+  return /^[A-Z0-9][A-Z0-9+._/-]*$/i.test(token) && hyphens >= 1 && (hyphens >= 2 || /\d/.test(token))
+}
+function partNumberFromDescription(value) {
+  const token = cellText(value).split(/\s+/)[0]?.replace(/[,:;，；]+$/, '') || ''
+  return looksLikePartNumber(token) ? token : ''
+}
 function descriptionFields(value, fallback = '') {
   const description = cellText(value)
   const lines = description.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
@@ -209,11 +218,14 @@ function parseSheet(ws) {
     if (unitPrice !== null && qty !== null && (description || part || group)) {
       flush()
       const aggregateTitle = header.aggregate ? reader.text(header.row - 1, 1) : ''
-      const itemName = aggregateTitle || group || part || description
+      const listedPart = header.aggregate ? group || part : part || group
+      const inferredPart = header.aggregate ? '' : partNumberFromDescription(description)
+      const resolvedPart = looksLikePartNumber(listedPart) ? listedPart : inferredPart || listedPart
       const fields = descriptionFields(description || part || group, part || group)
+      const itemName = aggregateTitle || inferredPart || (looksLikePartNumber(listedPart) ? listedPart : fields.name)
       current = {
         item_no: header.columns.item ? reader.text(row, header.columns.item) : String(items.length + 1),
-        part_no: header.aggregate ? group || part : part || group,
+        part_no: resolvedPart,
         name: itemName,
         description: fields.description || fields.name,
         qty,
@@ -246,6 +258,7 @@ function parseSheet(ws) {
   const findLine = (labels) => allText.find((value) => labels.some((label) => {
     const source = normalizeLabel(value)
     const target = normalizeLabel(label)
+    if (target === 'to') return source === target || /^\s*to\s*[:：]/i.test(String(value))
     return source === target || source.startsWith(target)
   })) || ''
   const valueAfterLabel = (line) => line.replace(/^[^:：]*[:：]\s*/, '').trim()
@@ -294,7 +307,7 @@ function classifyWorkbook(sheets, fileName = '') {
   if (/(purchase\s*order|订购单|訂購單|po\s*no|采购订单|採購訂單)/i.test(normalized)) return 'sales_quote'
   if (sheets.some((sheet) => sheet.customer && !/(dunyang|敦阳|敦陽|stark|敦阳上海|敦陽上海)/i.test(sheet.customer))) return 'sales_quote'
   if (/(购货单位|購貨單位|购买单位|客户名称[：:]敦阳|客戶名稱[：:]敦陽|to:\s*stark|to：stark|to:\s*敦阳|to：敦陽)/i.test(normalized)) return 'purchase_quote'
-  if (/(dunyang|敦阳|敦陽)/i.test(fileName)) return 'purchase_quote'
+  if (/(stark|dunyang|敦阳|敦陽)/i.test(fileName)) return 'purchase_quote'
   return 'unknown'
 }
 

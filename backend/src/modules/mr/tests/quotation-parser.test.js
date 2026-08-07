@@ -53,15 +53,14 @@ const workstationMerge = mergeQuotations([
   { name: '客户PO.pdf', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [workstationPurchase], total: 11000, tax_rate: 13, tax_included: true }] },
 ], [])
-assert.equal(workstationMerge.items[0].costInclTax, null)
+assert.equal(workstationMerge.items[0].costInclTax, 11000)
 assert.equal(workstationMerge.items[0].taxRate, 13)
 assert.equal(workstationMerge.items[0].quotedUnitPrice, 11500)
-assert.equal(workstationMerge.items[0].matchCandidates.length, 1)
-assert.equal(workstationMerge.items[0].matchCandidates[0].costInclTax, 11000)
+assert.equal(workstationMerge.items[0].unitPrice, 11500)
+assert.equal(workstationMerge.items[0].matchCandidates.length, 0)
 assert.equal(workstationMerge.sources[0].taxIncluded, true)
 assert.equal(workstationMerge.sources[1].taxIncluded, true)
-assert(workstationMerge.warnings.some((warning) => warning.includes('未自动采用')))
-assert(workstationMerge.warnings.some((warning) => warning.includes('缺少成本')))
+assert(!workstationMerge.warnings.some((warning) => warning.includes('未自动采用') || warning.includes('缺少成本')))
 
 const multipleWorkstationQuotes = mergeQuotations([
   { name: '客户PO.pdf', requestedRole: 'sales', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
@@ -115,7 +114,55 @@ const salesWithPurchase = mergeQuotations([
   { name: '供应商报价.xlsx', requestedRole: 'purchase', sheets: [{ ...sellingPriceParsed, total: 275634 }] },
 ], [])
 assert.equal(salesWithPurchase.items[0].quotedUnitPrice, 130000)
-assert.equal(salesWithPurchase.items[0].matchCandidates[0].costInclTax, 275634)
+assert.equal(salesWithPurchase.items[0].costInclTax, 275634)
+assert.equal(salesWithPurchase.items[0].unitPrice, 130000)
+assert.equal(salesWithPurchase.items[0].matchCandidates.length, 0)
+
+const groupedSalesSheet = XLSX.utils.aoa_to_sheet([
+  ['TO:', '矽品科技（苏州）有限公司'],
+  ['Item', 'Part_no', 'Description', 'Qty', 'Unit Net Price', 'Extended Net price'],
+  ['1', '網路監聽設備-日誌管理系統', 'NP-CLD-RECEIVER-CN\nN-Receiver platform', 2, 130000, 260000],
+  ['2', null, 'NP-RPT-CN-Probe-2Port-SR\nFlow and DNS/HTTP data export', 1, 75000, 75000],
+  ['3', null, 'NP-CLD-E-REC-CN\nExternal-Receiver platform', 1, 55000, 55000],
+  ['4', null, 'One-Day Professional Service (原廠專業服務)\n原厂工程师到厂安装设定服务', 3, 20000, 60000],
+  ['人民币未税总计', null, null, null, null, 450000],
+  ['(13%)增值税', null, null, null, null, 58500],
+  ['人民币含税总计', null, null, null, null, 508500],
+])
+groupedSalesSheet['!merges'] = [{ s: { r: 2, c: 1 }, e: { r: 5, c: 1 } }]
+const groupedSalesBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(groupedSalesBook, groupedSalesSheet, '销售报价')
+const groupedSales = parseWorkbookWithMetadata(XLSX.write(groupedSalesBook, { type: 'buffer', bookType: 'xlsx' }), '敦阳销售报价.xls')
+assert.deepStrictEqual(groupedSales.sheets[0].items.slice(0, 3).map((item) => item.part_no), ['NP-CLD-RECEIVER-CN', 'NP-RPT-CN-Probe-2Port-SR', 'NP-CLD-E-REC-CN'])
+
+const npartnerSheet = XLSX.utils.aoa_to_sheet([
+  ['M.Tech (Shanghai) Co., Ltd. 安稳特科技(上海)有限公司'],
+  ['Company :'],
+  ['No', 'Product', 'Description', 'Qty', 'Unit Selling Price', 'Total Selling Price'],
+  ['1', 'NP-CLD-RECEIVER-CN', 'N-Receiver platform', 2, 137817, 275634],
+  ['2', 'NP-RPT-CN-Probe-2Port-SR', 'Flow and DNS/HTTP data export', 1, 73512, 73512],
+  ['3', 'NP-CLD-E-REC-CN', 'External-Receiver platform', 1, 40836, 40836],
+  ['4', 'NP-CN-PS-I', 'One-Day Professional Service (原廠專業服務)', 3, 15300, 45900],
+  [null, null, 'Price quoted include 13% VAT.'],
+  ['TOTAL', null, null, null, null, 435882],
+])
+const npartnerBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(npartnerBook, npartnerSheet, 'NPartner')
+const npartner = parseWorkbookWithMetadata(XLSX.write(npartnerBook, { type: 'buffer', bookType: 'xlsx' }), 'Stark 矽品科技蘇州 NPartner E-Quote.xlsx')
+assert.equal(npartner.sheets[0].customer, '')
+assert.equal(npartner.documentType, 'purchase_quote')
+
+const adoptedBatch = mergeQuotations([
+  { name: '敦阳销售报价.xls', ...groupedSales },
+  { name: 'Stark 矽品科技蘇州 NPartner E-Quote.xlsx', ...npartner },
+], [{ name: '安稳特', officialWebsite: '' }])
+assert.deepStrictEqual(adoptedBatch.items.map((item) => item.oemSpec), ['NP-CLD-RECEIVER-CN', 'NP-RPT-CN-Probe-2Port-SR', 'NP-CLD-E-REC-CN', 'NP-CN-PS-I'])
+assert.deepStrictEqual(adoptedBatch.items.map((item) => item.quotedUnitPrice), [130000, 75000, 55000, 20000])
+assert.deepStrictEqual(adoptedBatch.items.map((item) => item.unitPrice), [130000, 75000, 55000, 20000])
+assert.deepStrictEqual(adoptedBatch.items.map((item) => item.costInclTax), [275634, 73512, 40836, 45900])
+assert(adoptedBatch.items.every((item) => item.vendor === '安稳特'))
+assert(adoptedBatch.items[3].reviewFields.includes('oemSpec'))
+assert(!adoptedBatch.warnings.some((warning) => warning.includes('缺少成本')))
 
 const failedPurchaseFallback = mergeQuotations([
   { name: '销售报价.xls', requestedRole: 'sales', sheets: [{ ...salesOnlyParsed, total: 293800 }] },
@@ -147,7 +194,8 @@ assert.equal(pdf.sheets[0].po_no, '40119508')
 assert.equal(pdf.sheets[0].untaxed_total, 63000)
 assert.equal(pdf.sheets[0].items.length, 1)
 const missingCost = mergeQuotations([{ name: '客户报价.xlsx', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] }], [])
-assert.equal(missingCost.items[0].unitPrice, null)
+assert.equal(missingCost.items[0].unitPrice, 100)
+assert.equal(missingCost.items[0].costInclTax, null)
 const multiplePurchase = mergeQuotations([
   { name: '客户报价.xlsx', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
   { name: '厂商甲报价.xlsx', documentType: 'unknown', sheets: [{ ...parsed[0], total: 900, items: [{ ...parsed[0].items[0], unit_price: 90, extended: 180 }] }] },

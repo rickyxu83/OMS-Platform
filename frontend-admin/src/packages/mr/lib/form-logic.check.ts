@@ -43,4 +43,25 @@ const detailed = quotationDetailItems([
 ])
 assert(detailed[0].unitPrice === 120, '开明细应恢复销售报价原始单价')
 assert(detailed[1].unitPrice === 180, '没有报价原价时应保留系统分摊价')
+
+const adopted = calculateForm({ pricingMode: 1, totalExcludingTax: 450000, invoiceType: '13%增值税', items: [
+  { name: 'A', qty: 2, quotedUnitPrice: 130000, costInclTax: 275634, taxRate: 13 },
+  { name: 'B', qty: 1, quotedUnitPrice: 75000, costInclTax: 73512, taxRate: 13 },
+  { name: 'C', qty: 1, quotedUnitPrice: 55000, costInclTax: 40836, taxRate: 13 },
+  { name: 'D', qty: 3, quotedUnitPrice: 20000, costInclTax: 45900, taxRate: 13 },
+  ] })
+assert(JSON.stringify(adopted.items?.map((item) => item.unitPrice)) === JSON.stringify([130000, 75000, 55000, 20000]), '多项系统集成应保留完整销售报价逐项价')
+assert(adopted.totals?.salesExcludingTax === 450000 && adopted.totals?.marginRate === 14.2808, '采用销售逐项价后汇总应与真实MR一致')
+
+const allocated = calculateForm({ pricingMode: 1, totalExcludingTax: 450000, invoiceType: '13%增值税', items: [
+  { name: 'A', qty: 2, costInclTax: 275634, taxRate: 13 },
+  { name: 'B', qty: 1, costInclTax: 73512, taxRate: 13 },
+  { name: 'C', qty: 1, costInclTax: 40836, taxRate: 13 },
+  { name: 'D', qty: 3, costInclTax: 45900, taxRate: 13 },
+  ] })
+assert(allocated.totals?.salesExcludingTax === 450000, '按成本分摊时最后一项应吸收分币尾差')
+const incomplete = calculateForm({ pricingMode: 1, totalExcludingTax: 100, invoiceType: '13%增值税', items: [
+  { name: '待补成本', qty: 1, quotedUnitPrice: 100, costInclTax: null, taxRate: 13 },
+  ] })
+assert(incomplete.totals?.costExcludingTax === null && incomplete.totals?.costIncludingTax === null && incomplete.totals?.marginRate === null, '成本不完整时汇总不得显示为0或计算毛利')
 console.log('mr form logic OK')
