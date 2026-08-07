@@ -75,10 +75,12 @@ function sourceSalesTotalExcludingTax(source) {
 }
 
 function vendorName(source, vendors) {
-  const sourceVendor = source.sheets.map((sheet) => String(sheet.vendor || '').trim()).find(Boolean) || ''
+  const isOwnCompany = (value) => /(敦阳|敦陽|stark|dunyang)/i.test(String(value || ''))
+  const sourceVendor = source.sheets.map((sheet) => String(sheet.vendor || '').trim()).find((value) => value && !isOwnCompany(value)) || ''
   const filename = normalized(path.basename(source.name, path.extname(source.name)))
   const evidence = normalized([source.name, sourceVendor, ...source.sheets.flatMap((sheet) => [sheet.seller?.from, ...(sheet.notes || [])])].join(' '))
   const match = vendors.find((vendor) => {
+    if (isOwnCompany(vendor.name)) return false
     const name = normalized(vendor.name)
     if (name && (evidence.includes(name) || filename.includes(name))) return true
     const website = String(vendor.officialWebsite || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
