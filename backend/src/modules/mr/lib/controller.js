@@ -16,6 +16,7 @@ const {
   totals,
   computeApprovalSteps,
 } = require('../domain')
+const { resolveSubmissionCustomer } = require('../customer-resolution')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
 const APPROVE_ANY_ROLE = 'admin'
@@ -457,6 +458,7 @@ async function submit(req, res) {
     const locked = await loadLockedOrder(connection, req.params.id)
     if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许提交该 MR 单')
     const detailValue = await loadCalculatedOrder(connection, locked)
+    await resolveSubmissionCustomer(connection, detailValue, req.user)
     const errors = validateSubmission(detailValue, detailValue.items)
     if (errors.length) throw badRequest('规范检查未通过', errors)
     await ensureMrVendors(connection, detailValue.items)
