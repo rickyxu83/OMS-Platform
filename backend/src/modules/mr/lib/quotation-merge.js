@@ -129,6 +129,53 @@ function pickPurchase(candidates) {
     .sort((left, right) => costInclTax(left) / Math.max(number(left.qty), 1) - costInclTax(right) / Math.max(number(right.qty), 1))[0]
 }
 
+function bigrams(value) {
+  const text = normalized(value)
+  if (text.length < 2) return new Set(text ? [text] : [])
+  return new Set(Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2)))
+}
+
+function textSimilarity(left, right) {
+  const leftText = normalized(left)
+  const rightText = normalized(right)
+  if (!leftText || !rightText) return 0
+  if (leftText === rightText) return 1
+  const shorter = leftText.length <= rightText.length ? leftText : rightText
+  const longer = leftText.length > rightText.length ? leftText : rightText
+  if (shorter.length >= 3 && longer.includes(shorter)) return 0.9
+  const a = bigrams(leftText)
+  const b = bigrams(rightText)
+  const intersection = [...a].filter((value) => b.has(value)).length
+  return intersection / (a.size + b.size - intersection)
+}
+
+function itemSimilarity(left, right) {
+  const leftFields = [left.part_no, left.name, left.description].filter(Boolean)
+  const rightFields = [right.part_no, right.name, right.description].filter(Boolean)
+  const fieldScores = leftFields.flatMap((leftField) => rightFields.map((rightField) => textSimilarity(leftField, rightField)))
+  return Math.max(0, textSimilarity(leftFields.join(' '), rightFields.join(' ')), ...fieldScores)
+}
+
+function conservativeCandidates(sale, purchases) {
+  const bySource = new Map()
+  for (const purchase of purchases) {
+    const values = bySource.get(purchase.sourceIndex) || []
+    values.push(purchase)
+    bySource.set(purchase.sourceIndex, values)
+  }
+  const matches = []
+  for (const sourceItems of bySource.values()) {
+    const ranked = sourceItems.map((purchase) => ({
+      purchase,
+      score: itemSimilarity(sale, purchase),
+    })).sort((left, right) => right.score - left.score)
+    const best = ranked[0]
+    const second = ranked[1]
+    if (best && best.score >= 0.72 && (!second || best.score - second.score >= 0.12)) matches.push(best)
+  }
+  return matches
+}
+
 function mergeQuotations(inputSources, vendors = []) {
   if (!inputSources.length) return { sources: [], items: [], warnings: [], salesSourceIndex: -1, salesTotalExcludingTax: null }
   const sources = inputSources.map((source, index) => ({ ...source, role: sourceRole(source, index, inputSources) }))
@@ -158,9 +205,15 @@ function mergeQuotations(inputSources, vendors = []) {
   const items = []
 
   for (const sale of salesItems) {
-    const candidates = itemKeys(sale).flatMap((key) => purchasesByKey.get(key) || [])
+    const exactCandidates = itemKeys(sale).flatMap((key) => purchasesByKey.get(key) || [])
+    const fuzzy = exactCandidates.length ? [] : conservativeCandidates(sale, purchaseItems)
+    const candidates = exactCandidates.length ? exactCandidates : fuzzy.map((match) => match.purchase)
     const purchase = pickPurchase(candidates)
+    const selectedFuzzy = fuzzy.find((match) => match.purchase === purchase)
+    if (selectedFuzzy) warnings.push(`“${sale.name || sale.part_no || sale.description}”与“${selectedFuzzy.purchase.name || selectedFuzzy.purchase.part_no || selectedFuzzy.purchase.description}”为候选匹配（${Math.round(selectedFuzzy.score * 100)}%），请核对`)
     if (purchase) {
+      matchedPurchaseIndexes.add(`${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`)
+      for (const match of fuzzy) matchedPurchaseIndexes.add(`${match.purchase.sourceIndex}:${match.purchase.item_no}:${match.purchase.part_no}:${match.purchase.description}`)
       for (const key of itemKeys(sale)) {
         for (const candidate of purchasesByKey.get(key) || []) matchedPurchaseIndexes.add(`${candidate.sourceIndex}:${candidate.item_no}:${candidate.part_no}:${candidate.description}`)
       }
@@ -222,6 +275,8 @@ function mergeQuotations(inputSources, vendors = []) {
       itemCount: source.sheets.reduce((sum, sheet) => sum + sheet.items.length, 0),
       vendor: source.role === 'purchase' ? vendorName(source, vendors) : '',
       documentType: source.documentType || 'unknown',
+      taxIncluded: sourceTaxIncluded(source),
+      taxRate: sourceTaxRate(source),
     })),
     items,
     warnings,

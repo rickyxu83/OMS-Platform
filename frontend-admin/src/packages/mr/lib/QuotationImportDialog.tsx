@@ -17,6 +17,20 @@ function money(value?: number | null) {
   return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function amount(value?: number | null) {
+  return value === null || value === undefined ? '-' : `¥ ${money(value)}`
+}
+
+function includingTax(value: number | null | undefined, taxRate: number) {
+  return value === null || value === undefined ? null : Number(value) * (1 + taxRate / 100)
+}
+
+function excludingTax(item: MrItem) {
+  if (item.costExcludingTax !== null && item.costExcludingTax !== undefined) return item.costExcludingTax
+  if (item.costInclTax === null || item.costInclTax === undefined || item.taxRate === null || item.taxRate === undefined) return null
+  return Number(item.costInclTax) / (1 + Number(item.taxRate) / 100)
+}
+
 function sourceLabel(role: QuotationSource['role']) {
   return role === 'sales' ? '销售报价' : '供应商报价'
 }
@@ -116,6 +130,7 @@ export function QuotationImportDialog({
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(selectedPricingMode || pricingMode) || 0
+  const invoiceTaxRate = String(invoiceType || '').startsWith('13%') ? 13 : 6
   useEffect(() => {
     setDraftItems(preview?.items || [])
     setSourceVendors(Object.fromEntries((preview?.sources || []).map((source) => [source.index, source.vendor || ''])))
@@ -258,7 +273,7 @@ export function QuotationImportDialog({
               ) : preview.metadata?.customer ? (
                 <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">报价客户“{preview.metadata.customer}”未匹配到客户档案，导入后请手工选择。</div>
               ) : null}
-              <div className="hidden border-x border-t bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid lg:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] lg:gap-3"><span>来源角色</span><span>文件</span><span>识别供应商</span><span>总额</span><span>品项</span></div>
+              <div className="hidden border-x border-t bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid lg:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] lg:gap-3"><span>来源角色</span><span>文件</span><span>识别供应商</span><span>识别总额</span><span>品项</span></div>
               <div className="divide-y border">
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] sm:items-center sm:gap-3">
@@ -267,7 +282,10 @@ export function QuotationImportDialog({
                     <div className="min-w-0">
                       {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别，手工填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>
-                    <div className="text-sm tabular-nums">¥ {money(source.total)}</div>
+                    <div className="text-sm tabular-nums">
+                      <div>¥ {money(source.total)}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{source.taxIncluded ? '含税' : '未税'}</div>
+                    </div>
                     <div className="text-sm text-muted-foreground">{source.itemCount} 项</div>
                   </div>
                 ))}
@@ -283,7 +301,7 @@ export function QuotationImportDialog({
             ) : null}
 
             <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">报价识别品项（{previewItems.length}）</h3><span className="text-xs text-muted-foreground">已按当前计价模式预览，切换模式会实时重算</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对编辑'}</Button></div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">报价识别品项（{previewItems.length}）</h3><span className="text-xs text-muted-foreground">销售行级金额和 Cost 按最终 MR 显示未税口径，同时列出含税金额供核对</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对编辑'}</Button></div>
               {editMode && selectedRows.size ? (
                 <div className="mb-3 grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[180px_1fr] md:items-center">
                   <label className="text-sm font-medium" htmlFor="quotation-batch-source">复制来源</label>
@@ -305,11 +323,33 @@ export function QuotationImportDialog({
                           <Input value={item.purchaseOrderNo || ''} placeholder="采购单号" aria-label={`第 ${index + 1} 项采购单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
                           <Input value={item.warrantyService || ''} placeholder="保固/服务" aria-label={`第 ${index + 1} 项保固/服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
                           <Input value={item.installBy || ''} placeholder="明细装机" aria-label={`第 ${index + 1} 项明细装机`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground"><span>数量 {item.qty || 1}</span><span>售价 {item.unitPrice == null ? '-' : `¥ ${money(item.unitPrice)}`}</span><span>成本 {item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}</span></div>
+                          <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+                            <span>数量 {item.qty || 1}</span>
+                            <span>销售小计（未税） {amount(item.subtotal)}</span>
+                            <span>销售含税 {amount(includingTax(item.subtotal, invoiceTaxRate))}</span>
+                            <span>成本（含税） {amount(item.costInclTax)}</span>
+                            <span>Cost 未税 {amount(excludingTax(item))}</span>
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="grid gap-2 lg:grid-cols-[44px_minmax(360px,1fr)_100px_150px_150px] lg:items-start"><span className="text-sm text-muted-foreground">{index + 1}</span><div className="min-w-0"><div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div><div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div><div className="mt-1 text-xs text-muted-foreground">厂商：{item.vendor || '-'} · 保固/服务：{item.warrantyService || '-'}</div></div><div className="text-sm">数量 {item.qty || 1}</div><div className="text-sm tabular-nums">售价 {item.unitPrice == null ? '-' : `¥ ${money(item.unitPrice)}`}</div><div className="text-sm tabular-nums">成本 {item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}</div></div>
+                      <div className="grid gap-2 lg:grid-cols-[44px_minmax(320px,1fr)_90px_190px_190px] lg:items-start">
+                        <span className="text-sm text-muted-foreground">{index + 1}</span>
+                        <div className="min-w-0">
+                          <div className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</div>
+                          <div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">厂商：{item.vendor || '-'} · 保固/服务：{item.warrantyService || '-'}</div>
+                        </div>
+                        <div className="text-sm">数量 {item.qty || 1}</div>
+                        <div className="text-sm tabular-nums">
+                          <div>销售小计（未税） {amount(item.subtotal)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">含税 {amount(includingTax(item.subtotal, invoiceTaxRate))}</div>
+                        </div>
+                        <div className="text-sm tabular-nums">
+                          <div>成本（含税） {amount(item.costInclTax)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">Cost 未税 {amount(excludingTax(item))}</div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 ))}
