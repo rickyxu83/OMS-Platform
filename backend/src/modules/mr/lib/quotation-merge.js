@@ -175,7 +175,7 @@ function mergeQuotations(inputSources, vendors = []) {
       warrantyService: '',
       installBy: '',
       qty: number(sale.qty) || 1,
-    unitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
+      unitPrice: null,
     quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
       vendor: purchase?.vendor || '',
       costInclTax: purchase ? round(costInclTax(purchase)) : null,

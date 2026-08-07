@@ -61,7 +61,7 @@ assert.equal(variedParsed.items[0].part_no, 'WS-C4506-E')
 assert.equal(variedParsed.tax_rate, 6)
 assert.equal(variedParsed.tax_included, true)
 const pdf = parsePdfText('京隆科技(蘇州)有限公司 [机密 Secret]\n订购单号(PO NO.): 40119508\n税率(Tax): VAT13\n付款方式(Payment): 月结90天(月底)\n交货地点(Ship To): 苏州市吴中区星通街13号\n项次 料号 品名规格 单位 交货日 单价 数量 金额 1 接入层交换机 SET 2026/07/31 12,600 5 63,000\n未税金额(Amount): RMB 63,000\n含税金额(Total): RMB 71,190')
-assert.equal(pdf.documentType, 'customer_order')
+assert.equal(pdf.documentType, 'sales_quote')
 assert.equal(pdf.sheets[0].po_no, '40119508')
 assert.equal(pdf.sheets[0].untaxed_total, 63000)
 assert.equal(pdf.sheets[0].items.length, 1)
@@ -73,12 +73,13 @@ const multiplePurchase = mergeQuotations([
   { name: '厂商乙报价.xlsx', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 100, items: [{ ...parsed[0].items[0], unit_price: 50, extended: 100 }] }] },
 ], [])
 assert.deepStrictEqual(multiplePurchase.sources.map((source) => source.role), ['sales', 'purchase', 'purchase'])
-assert(multiplePurchase.warnings.some((warning) => warning.includes('其余 1 份未明确来源文件按进货报价处理')))
+assert(multiplePurchase.warnings.some((warning) => warning.includes('其余 1 份未明确来源文件按供应商报价处理')))
 const groupedPurchase = mergeQuotations([{ name: '自动误判为PO的供应商报价.xls', documentType: 'customer_order', requestedRole: 'purchase', sheets: [{ ...parsed[0], total: 0, items: [{ ...parsed[0].items[0], unit_price: 25990, extended: 25990 }] }] }], [])
 assert.equal(groupedPurchase.sources[0].role, 'purchase')
 assert.equal(groupedPurchase.sources[0].total, 25990)
 assert.equal(groupedPurchase.salesSourceIndex, -1)
-assert.equal(groupedPurchase.items[0].costInclTax, 25990)
+assert.equal(groupedPurchase.items.length, 0)
+assert(groupedPurchase.warnings.some((warning) => warning.includes('未导入为 MR 品项')))
 
 const bundledSheet = XLSX.utils.aoa_to_sheet([
   ['上海石洛信息科技有限公司'],

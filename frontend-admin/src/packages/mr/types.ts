@@ -156,7 +156,7 @@ export interface QuotationSource {
   index: number
   name: string
   role: 'sales' | 'purchase'
-  total: number,
+  total: number
   itemCount: number
   vendor?: string
   documentType?: string
@@ -166,7 +166,6 @@ export interface QuotationImportResult {
   files: QuotationFile[]
   sources: QuotationSource[]
   salesSourceIndex: number
-  orderSourceIndex?: number
   salesTotalExcludingTax?: number | null
   items: MrItem[]
   warnings: string[]
