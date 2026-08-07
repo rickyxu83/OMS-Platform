@@ -36,7 +36,11 @@ function itemKeys(item) {
 }
 
 function sourceTotal(source) {
-  return source.sheets.reduce((sum, sheet) => sum + number(sheet.total ?? sheet.discounted_total ?? sheet.total_amount ?? sheet.untaxed_total), 0)
+  return source.sheets.reduce((sum, sheet) => {
+    const declared = sheet.total ?? sheet.discounted_total ?? sheet.total_amount ?? sheet.untaxed_total
+    const itemTotal = (sheet.items || []).reduce((itemSum, item) => itemSum + number(item.extended ?? number(item.unit_price) * (number(item.qty) || 1)), 0)
+    return sum + (number(declared) > 0 ? number(declared) : itemTotal)
+  }, 0)
 }
 
 function firstSheet(source) {
@@ -84,9 +88,9 @@ function vendorName(source, vendors) {
 }
 
 function sourceRole(source, index, sources) {
-  if (source.documentType === 'customer_order') return 'order'
   if (source.requestedRole === 'sales') return 'sales'
   if (source.requestedRole === 'purchase') return 'purchase'
+  if (source.documentType === 'customer_order') return 'order'
   if (source.documentType === 'purchase_quote') return 'purchase'
   const explicitSalesIndex = sources.findIndex((candidate) => candidate.documentType === 'sales_quote')
   if (explicitSalesIndex >= 0) return index === explicitSalesIndex ? 'sales' : 'purchase'
@@ -132,7 +136,7 @@ function mergeQuotations(inputSources, vendors = []) {
   const sources = inputSources.map((source, index) => ({ ...source, role: sourceRole(source, index, inputSources) }))
   const orderSourceIndex = sources.findIndex((source) => source.role === 'order')
   const salesSourceIndex = sources.findIndex((source) => source.role === 'sales')
-  const effectiveSalesSourceIndex = salesSourceIndex >= 0 ? salesSourceIndex : orderSourceIndex >= 0 ? orderSourceIndex : 0
+  const effectiveSalesSourceIndex = salesSourceIndex >= 0 ? salesSourceIndex : orderSourceIndex >= 0 ? orderSourceIndex : -1
   const purchaseSources = sources.filter((source) => source.role === 'purchase')
   const purchaseItems = purchaseSources.flatMap((source) => flattenedItems(source, sources.indexOf(source), vendors))
   const purchasesByKey = new Map()
@@ -143,11 +147,12 @@ function mergeQuotations(inputSources, vendors = []) {
       purchasesByKey.set(key, values)
     }
   }
-  const salesSource = sources[effectiveSalesSourceIndex]
-  const salesItems = flattenedItems(salesSource, effectiveSalesSourceIndex, vendors)
-  const explicitSalesCount = inputSources.filter((source) => source.documentType === 'sales_quote').length
-  const unknownSourceCount = inputSources.filter((source) => !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
+  const salesSource = effectiveSalesSourceIndex >= 0 ? sources[effectiveSalesSourceIndex] : null
+  const salesItems = salesSource ? flattenedItems(salesSource, effectiveSalesSourceIndex, vendors) : []
+  const explicitSalesCount = sources.filter((source) => source.role === 'sales').length
+  const unknownSourceCount = sources.filter((source) => !source.requestedRole && !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
   const roleWarnings = []
+  if (salesSourceIndex < 0 && orderSourceIndex < 0) roleWarnings.push('当前仅识别到进货来源，未提供客户报价或最终 PO，销售金额需在后续补充')
   if (explicitSalesCount > 1) roleWarnings.push(`识别到 ${explicitSalesCount} 份客户销售报价，已采用第一份，其余按进货来源处理，请核对文件角色`)
   else if (explicitSalesCount === 1 && unknownSourceCount) roleWarnings.push(`已识别客户销售报价，其余 ${unknownSourceCount} 份未明确来源文件按进货报价处理`)
   else if (explicitSalesCount === 0 && unknownSourceCount) roleWarnings.push('未明确识别到客户销售报价，已按报价总额最高的文件作为销售报价，请核对文件角色')
@@ -206,7 +211,7 @@ function mergeQuotations(inputSources, vendors = []) {
     })
   }
 
-  const salesTotalExcludingTax = sourceSalesTotalExcludingTax(sources[orderSourceIndex >= 0 ? orderSourceIndex : effectiveSalesSourceIndex])
+  const salesTotalExcludingTax = effectiveSalesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[effectiveSalesSourceIndex]) : null
   const orderTotal = orderSourceIndex >= 0 ? sourceTotal(sources[orderSourceIndex]) : null
   const quoteTotal = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
   if (orderSourceIndex >= 0 && salesSourceIndex >= 0 && Math.abs(number(orderTotal) - number(sourceTotal(sources[salesSourceIndex]))) > 0.01) {
