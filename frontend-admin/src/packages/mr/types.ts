@@ -160,6 +160,8 @@ export interface QuotationSource {
   itemCount: number
   vendor?: string
   documentType?: string
+  taxIncluded?: boolean
+  taxRate?: number | null
 }
 
 export interface QuotationImportResult {

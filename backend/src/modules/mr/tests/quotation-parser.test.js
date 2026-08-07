@@ -47,6 +47,34 @@ const unknownTax = mergeQuotations([
 assert.equal(unknownTax.items[0].taxRate, 13)
 assert(unknownTax.warnings.some((warning) => warning.includes('未识别到明确成本税率')))
 
+const workstationSale = { item_no: '1', part_no: '', description: 'HP Z2工作站', qty: 1, unit_price: 11500, extended: 11500 }
+const workstationPurchase = { item_no: '1', part_no: '工作站', name: '工作站', description: 'Z2 SFF G1i U5-235 vPro/32GB/1TB SSD/3年上门', qty: 1, unit_price: 11000, extended: 11000 }
+const workstationMerge = mergeQuotations([
+  { name: '客户PO.pdf', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
+  { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [workstationPurchase], total: 11000, tax_rate: 13, tax_included: true }] },
+], [])
+assert.equal(workstationMerge.items[0].costInclTax, 11000)
+assert.equal(workstationMerge.items[0].taxRate, 13)
+assert.equal(workstationMerge.sources[0].taxIncluded, true)
+assert.equal(workstationMerge.sources[1].taxIncluded, true)
+assert(workstationMerge.warnings.some((warning) => warning.includes('候选匹配')))
+assert(!workstationMerge.warnings.some((warning) => warning.includes('缺少成本')))
+
+const multipleWorkstationQuotes = mergeQuotations([
+  { name: '客户PO.pdf', requestedRole: 'sales', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
+  { name: '供应商甲.xlsx', requestedRole: 'purchase', sheets: [{ items: [workstationPurchase], total: 11000, tax_rate: 13, tax_included: true }] },
+  { name: '供应商乙.xlsx', requestedRole: 'purchase', sheets: [{ items: [{ ...workstationPurchase, unit_price: 10500, extended: 10500 }], total: 10500, tax_rate: 13, tax_included: true }] },
+], [])
+assert.equal(multipleWorkstationQuotes.items[0].costInclTax, 10500)
+assert.equal(multipleWorkstationQuotes.items[0].costSource, '供应商乙.xlsx')
+assert(!multipleWorkstationQuotes.warnings.some((warning) => warning.includes('未匹配到销售报价')))
+
+const ambiguousWorkstations = mergeQuotations([
+  { name: '客户PO.pdf', requestedRole: 'sales', sheets: [{ items: [workstationSale], total: 12995, untaxed_total: 11500, tax_rate: 13, tax_included: true }] },
+  { name: '供应商组合报价.xlsx', requestedRole: 'purchase', sheets: [{ items: [workstationPurchase, { ...workstationPurchase, item_no: '2', description: '另一款工作站配置' }], total: 22000, tax_rate: 13, tax_included: true }] },
+], [])
+assert.equal(ambiguousWorkstations.items[0].costInclTax, null)
+
 const varied = XLSX.utils.aoa_to_sheet([
   ['客户名称：上海禾新医院有限公司'],
   ['项目', '产品编码', '产品描述', '数量', '单价', '金额'],

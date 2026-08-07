@@ -25,6 +25,16 @@ const integrated = calculateForm({ pricingMode: 1, totalExcludingTax: 300, invoi
 ] })
 assert(integrated.items?.[0].unitPrice === 150 && integrated.items?.[1].unitPrice === 150, '多项系统集成应按逐项未税成本分摊售价')
 
+const workstation = calculateForm({
+  pricingMode: 2,
+  totalExcludingTax: 11500,
+  invoiceType: '13%增值税',
+  items: singleIntegrationItems([{ name: 'HP Z2工作站', qty: 1, costInclTax: 11000, taxRate: 13 }], '13%增值税'),
+})
+assert(workstation.items?.[0].unitPrice === 11385 && workstation.items?.[1].unitPrice === 115, '单项系统集成应按99%/1%拆分未税销售额')
+assert(workstation.items?.[0].costExcludingTax === 9734.51, '含税成本11000按13%应换算为未税Cost 9734.51')
+assert(workstation.totals?.salesIncludingTax === 12995 && workstation.totals?.costIncludingTax === 11000, '含税销售与含税成本应和来源报价总额一致')
+
 const detailed = quotationDetailItems([
   { name: '有报价明细', unitPrice: 150, quotedUnitPrice: 120 },
   { name: '只有整包总额', unitPrice: 180, quotedUnitPrice: null },
