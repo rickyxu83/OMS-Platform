@@ -1,6 +1,9 @@
 import { api } from '@/services/api'
 import type { CustomerOption, MrConstants, MrOrder, QuotationImportResult, UserOption, VendorOption } from './types'
 
+function pathId(id: string | number) {
+  return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
+}
 export async function listMr(params: { q?: string; status?: string } = {}) {
   const search = new URLSearchParams()
   if (params.q) search.set('q', params.q)
@@ -8,14 +11,14 @@ export async function listMr(params: { q?: string; status?: string } = {}) {
   return api.get(`/mr${search.size ? `?${search}` : ''}`) as Promise<{ items: MrOrder[] }>
 }
 
-export const getMr = (id: string | number) => api.get(`/mr/${id}`) as Promise<MrOrder>
+export const getMr = (id: string | number) => api.get(`/mr/${pathId(id)}`) as Promise<MrOrder>
 export const createMr = (body: Partial<MrOrder> = {}) => api.post('/mr', body) as Promise<MrOrder>
-export const updateMr = (id: string | number, body: Partial<MrOrder>) => api.put(`/mr/${id}`, body) as Promise<MrOrder>
-export const submitMr = (id: string | number) => api.post(`/mr/${id}/submit`) as Promise<MrOrder>
-export const approveMr = (id: string | number) => api.post(`/mr/${id}/approve`) as Promise<MrOrder>
-export const rejectMr = (id: string | number, reason: string) => api.post(`/mr/${id}/reject`, { reason }) as Promise<MrOrder>
-export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${id}/void`, { reason }) as Promise<MrOrder>
-export const deleteMr = (id: string | number) => api.delete(`/mr/${id}`)
+export const updateMr = (id: string | number, body: Partial<MrOrder>) => api.put(`/mr/${pathId(id)}`, body) as Promise<MrOrder>
+export const submitMr = (id: string | number) => api.post(`/mr/${pathId(id)}/submit`) as Promise<MrOrder>
+export const approveMr = (id: string | number) => api.post(`/mr/${pathId(id)}/approve`) as Promise<MrOrder>
+export const rejectMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/reject`, { reason }) as Promise<MrOrder>
+export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/void`, { reason }) as Promise<MrOrder>
+export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 
 export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false) {
@@ -24,11 +27,11 @@ export async function importQuotations(id: string | number, files: File[], persi
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
   if (persist) body.set('persist', '1')
   if (cleanupStoredFiles) body.set('cleanupStoredFiles', '1')
-  return api.postForm(`/mr/${id}/import`, body) as Promise<QuotationImportResult>
+  return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }
 
 export async function downloadQuotation(id: string | number, fileId: string | number, name: string) {
-  const blob = await api.download(`/mr/${id}/quotation?fileId=${fileId}`)
+  const blob = await api.download(`/mr/${pathId(id)}/quotation?fileId=${fileId}`)
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -50,5 +53,5 @@ export async function loadMrReferences() {
   }
 }
 
-export const loadCustomer = (id: string | number) => api.get(`/customers/${id}`) as Promise<CustomerOption>
-export const createCustomerContact = (customerId: string | number, body: { name: string; phone?: string }) => api.post(`/customers/${customerId}/contacts`, body) as Promise<{ id: string | number; name: string; phone?: string | null }>
+export const loadCustomer = (id: string | number) => api.get(`/customers/${pathId(id)}`) as Promise<CustomerOption>
+export const createCustomerContact = (customerId: string | number, body: { name: string; phone?: string }) => api.post(`/customers/${pathId(customerId)}/contacts`, body) as Promise<{ id: string | number; name: string; phone?: string | null }>

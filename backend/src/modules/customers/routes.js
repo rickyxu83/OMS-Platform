@@ -12,5 +12,6 @@ router.put('/:id', requirePermission('customer.edit'), controller.update)
 router.delete('/:id', requirePermission('customer.delete'), controller.remove)
 router.post('/:id/merge', requirePermission('customer.merge'), controller.merge)
 router.get('/:id/devices', requirePermission('customer.view', 'device.view'), controller.devices)
+router.get('/:id', requirePermission('customer.view'), controller.detail)
 
 module.exports = router
