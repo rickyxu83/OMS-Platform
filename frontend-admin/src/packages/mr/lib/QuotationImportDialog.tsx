@@ -18,7 +18,7 @@ function money(value?: number | null) {
 }
 
 function sourceLabel(role: QuotationSource['role']) {
-  return role === 'order' ? '最终 PO' : role === 'sales' ? '客户报价' : '供应商报价'
+  return role === 'sales' ? '销售报价' : '供应商报价'
 }
 
 function acceptedFiles(files: File[]) {
@@ -125,17 +125,17 @@ export function QuotationImportDialog({
   }, [preview])
   const previewItems = useMemo(() => {
     if (!preview || !effectivePricingMode) return draftItems
-    const salesTotal = preview.salesTotalExcludingTax ?? preview.sources.find((source) => source.role === 'sales' || source.role === 'order')?.total ?? null
+    const salesTotal = preview.salesTotalExcludingTax ?? preview.sources.find((source) => source.role === 'sales')?.total ?? null
     return calculateForm({
       ...preview,
       pricingMode: effectivePricingMode,
       invoiceType: invoiceType || '',
       totalExcludingTax: salesTotal,
-      items: draftItems,
+      items: effectivePricingMode === 3 && draftItems.length ? draftItems.map((item) => ({ ...item, unitPrice: item.quotedUnitPrice ?? item.unitPrice ?? null })) : draftItems,
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])
-  const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item))
+  const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
   const patchSourceVendor = (sourceIndex: number, vendor: string) => {
     setSourceVendors((current) => ({ ...current, [sourceIndex]: vendor }))
     const sourceName = preview?.sources.find((source) => source.index === sourceIndex)?.name
@@ -204,7 +204,7 @@ export function QuotationImportDialog({
       <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价来源与品项导入</DialogTitle>
-          <DialogDescription>把客户报价或最终 PO 放入左侧，把所有供应商报价放入右侧。每个区域可以一次拖入多份文件，系统会继续自动识别并提示冲突。</DialogDescription>
+          <DialogDescription>把销售报价放入左侧，把所有供应商报价放入右侧。销售报价是最终提供给客户、作为客户 PO 依据的销售内容；供应商报价用于匹配采购成本。</DialogDescription>
         </DialogHeader>
 
         {existingFiles.length ? (
@@ -238,7 +238,7 @@ export function QuotationImportDialog({
             </section>
             {selectedPricingMode ? (
               <div className="grid gap-3 md:grid-cols-2">
-                <FileDropZone title="客户报价 / 最终 PO" hint="售出来源：用于确定客户、销售总额、PO、交货和付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
+                <FileDropZone title="销售报价" hint="售出来源：用于确定客户、销售总额、PO、交货和付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
                 <FileDropZone title="供应商报价 / 进货订单" hint="成本来源：可放入多家供应商报价，系统按品项匹配最低成本" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
               </div>
             ) : <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">请先选择计价模式，再上传报价文件。</div>}
@@ -246,7 +246,7 @@ export function QuotationImportDialog({
         ) : null}
 
         {loading ? <div role="status" className="flex items-center gap-3 border bg-muted/30 px-4 py-3 text-sm"><Loader2 className="size-5 shrink-0 animate-spin text-primary" /><div><div className="font-medium">{preview ? '正在确认导入结果…' : '正在识别报价文件…'}</div><div className="text-xs text-muted-foreground">{preview ? '正在清理历史附件并整理当前品项，请稍候' : '正在解析表格、确认来源角色并匹配品项'}</div></div></div> : null}
-        {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件：客户/PO {salesFiles.length} 份，供应商 {purchaseFiles.length} 份</div> : null}
+        {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件：销售报价 {salesFiles.length} 份，供应商报价 {purchaseFiles.length} 份</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
         {preview ? (
@@ -262,8 +262,7 @@ export function QuotationImportDialog({
               <div className="divide-y border">
                 {preview.sources.map((source) => (
                   <div key={`${source.index}-${source.name}`} className="grid gap-2 px-3 py-3 sm:grid-cols-[120px_minmax(240px,1fr)_minmax(220px,280px)_150px_80px] sm:items-center sm:gap-3">
-                    <span className={source.role === 'order' ? 'font-medium text-amber-700' : source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
-                    <div className="min-w-0"><div className="truncate text-sm font-medium" title={source.name}>{source.name}</div><div className="text-xs text-muted-foreground">文件仅用于本次识别，不会保存</div></div>
+                    <span className={source.role === 'sales' ? 'font-medium text-emerald-700' : 'font-medium text-blue-700'}>{sourceLabel(source.role)}</span>
                     <div className="min-w-0">
                       {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别，手工填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>

@@ -126,8 +126,8 @@ function parsePdfText(text) {
   if (!items.length) warnings.push('PDF 已提取文字，但没有识别到标准品项行，请人工核对')
   const itemTotal = items.reduce((sum, item) => sum + (item.extended || 0), 0)
   if (untaxedTotal !== null && items.length && Math.abs(itemTotal - untaxedTotal) > 0.01) warnings.push(`识别品项未税金额合计 ${itemTotal.toLocaleString('zh-CN')} 与文件未税总计 ${untaxedTotal.toLocaleString('zh-CN')} 不一致，请人工核对`)
-  if (order && po) sheet.documentType = 'customer_order'
-  return { documentType: order ? 'customer_order' : 'purchase_quote', sheets: [sheet], warnings }
+  if (order && po) sheet.documentType = 'sales_quote'
+  return { documentType: order ? 'sales_quote' : 'purchase_quote', sheets: [sheet], warnings }
 }
 
 async function parsePdf(buffer) {

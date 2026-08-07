@@ -66,6 +66,7 @@ function normalizeItem(item = {}, index = 0) {
     vendor: text(item.vendor, 255),
     costInclTax: optionalNumber(item.costInclTax ?? item.cost_incl_tax),
     taxRate: taxRate(item.taxRate ?? item.tax_rate),
+    quotedUnitPrice: optionalNumber(item.quotedUnitPrice ?? item.quoted_unit_price),
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
     costSource: text(item.costSource ?? item.cost_source, 255),
   }

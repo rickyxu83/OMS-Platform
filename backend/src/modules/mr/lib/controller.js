@@ -109,6 +109,7 @@ async function ensureTables() {
       vendor VARCHAR(255) NULL,
       cost_incl_tax DECIMAL(14,2) NULL,
       tax_rate DECIMAL(5,2) NULL,
+      quoted_unit_price DECIMAL(14,6) NULL,
       purchase_order_no VARCHAR(255) NULL,
       cost_source VARCHAR(255) NULL,
       PRIMARY KEY (id),
@@ -116,6 +117,11 @@ async function ensureTables() {
       CONSTRAINT fk_mr_items_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const quotedUnitPriceColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'quoted_unit_price' LIMIT 1`,
+  )
+  if (!quotedUnitPriceColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN quoted_unit_price DECIMAL(14,6) NULL AFTER tax_rate')
   const costSourceColumns = await query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'cost_source' LIMIT 1`,
@@ -340,11 +346,11 @@ async function replaceItems(connection, mrId, items) {
     await connection.execute(
       `INSERT INTO mr_items
         (mr_id, row_no, company_part_no, oem_spec, name, description, warranty_service,
-         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, purchase_order_no, cost_source)
+         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, quoted_unit_price, purchase_order_no, cost_source)
        VALUES
         (:mrId, :rowNo, :companyPartNo, :oemSpec, :name, :description, :warrantyService,
-         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :purchaseOrderNo, :costSource)`,
-      { mrId, ...item },
+         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :quotedUnitPrice, :purchaseOrderNo, :costSource)`,
+      { mrId, ...item }
     )
   }
 }
@@ -650,7 +656,7 @@ async function importQuotation(req, res) {
       const sheets = parsed.sheets.map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       if (!sheets.length && parsed.documentType !== 'scanned_pdf') throw new Error(`${name} 未找到可识别的报价明细表`)
       const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
-      const documentType = parsed.documentType === 'customer_order' ? 'customer_order' : requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : parsed.documentType
+      const documentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : parsed.documentType
       return { name, sheets, documentType, requestedRole, warnings: parsed.warnings || [] }
     }))
   } catch (error) {
@@ -662,10 +668,9 @@ async function importQuotation(req, res) {
      FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
   )
   const merged = mergeQuotations(sources, vendors)
-  const sourceIndex = merged.salesSourceIndex >= 0 ? merged.salesSourceIndex : merged.orderSourceIndex
+  const sourceIndex = merged.salesSourceIndex
   const primarySheet = sourceIndex >= 0 ? sources[sourceIndex]?.sheets[0] : null
-  const orderSheet = merged.orderSourceIndex >= 0 ? sources[merged.orderSourceIndex]?.sheets[0] : null
-  const customerName = String(primarySheet?.customer || orderSheet?.customer || '').replace(/^客户名称[：:]?\s*/i, '').trim()
+  const customerName = String(primarySheet?.customer || '').replace(/^客户名称[：:]?\s*/i, '').trim()
   const matchedCustomer = customerName ? (await query(
     'SELECT id, code, name FROM customers WHERE name = :customer OR code = :customer LIMIT 1',
     { customer: customerName },
@@ -677,18 +682,18 @@ async function importQuotation(req, res) {
   const payload = {
     ...merged,
     metadata: primarySheet ? {
-      customer: primarySheet?.customer || orderSheet?.customer,
-      attn: primarySheet?.attn || orderSheet?.attn,
-      payment: primarySheet?.payment || orderSheet?.payment,
-      delivery: primarySheet?.delivery || orderSheet?.delivery,
-      taxRate: primarySheet?.tax_rate ?? orderSheet?.tax_rate ?? null,
-      customerPo: orderSheet?.po_no || primarySheet?.po_no || '',
-      latestDeliveryDate: orderSheet?.latest_delivery_date || primarySheet?.latest_delivery_date || '',
-      deliveryLocation: orderSheet?.delivery || primarySheet?.delivery || '',
+      customer: primarySheet?.customer,
+      attn: primarySheet?.attn,
+      payment: primarySheet?.payment,
+      delivery: primarySheet?.delivery,
+      taxRate: primarySheet?.tax_rate ?? null,
+      customerPo: primarySheet?.po_no || '',
+      latestDeliveryDate: primarySheet?.latest_delivery_date || '',
+      deliveryLocation: primarySheet?.delivery || '',
       matchedCustomer: matchedCustomer ? { ...camelizeRow(matchedCustomer), contacts: matchedContacts.map(camelizeRow) } : null,
     } : {},
   }
-  if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认客户报价、厂商报价或最终 PO 角色')
+  if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认销售报价或供应商报价角色')
   if (String(req.body?.cleanupStoredFiles || '') === '1') await removeStoredQuotationFiles(req.params.id)
   res.json({ files: [], ...payload })
 }
