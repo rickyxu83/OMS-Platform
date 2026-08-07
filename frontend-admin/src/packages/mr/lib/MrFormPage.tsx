@@ -21,7 +21,7 @@ import {
 } from '../client'
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
-import { calculateForm, normalizeCostTaxRates, singleIntegrationItems } from './form-logic'
+import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
@@ -238,7 +238,7 @@ export function MrFormPage() {
     }
     if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确定切换计价模式吗？`)) return
     if (nextMode === 3) {
-      patch({ pricingMode: 3, items: currentItems.map((item) => ({ ...item, unitPrice: currentMode === 1 ? item.quotedUnitPrice ?? item.unitPrice ?? null : item.unitPrice ?? null })) })
+      patch({ pricingMode: 3, items: currentMode === 1 ? quotationDetailItems(currentItems) : currentItems })
       return
     }
     if (nextMode === 2) {

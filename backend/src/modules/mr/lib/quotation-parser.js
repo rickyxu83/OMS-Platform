@@ -282,7 +282,7 @@ function parseSheet(ws) {
 function classifyWorkbook(sheets, fileName = '') {
   const text = sheets.flatMap((sheet) => [sheet.customer, sheet.attn, sheet.payment, sheet.delivery, ...(sheet.notes || [])]).join(' ')
   const normalized = `${fileName} ${text}`.toLowerCase()
-  if (/(purchase\s*order|订购单|訂購單|po\s*no|采购订单|採購訂單)/i.test(normalized)) return 'sales'
+  if (/(purchase\s*order|订购单|訂購單|po\s*no|采购订单|採購訂單)/i.test(normalized)) return 'sales_quote'
   if (sheets.some((sheet) => sheet.customer && !/(dunyang|敦阳|敦陽|stark|敦阳上海|敦陽上海)/i.test(sheet.customer))) return 'sales_quote'
   if (/(购货单位|購貨單位|购买单位|客户名称[：:]敦阳|客戶名稱[：:]敦陽|to:\s*stark|to：stark|to:\s*敦阳|to：敦陽)/i.test(normalized)) return 'purchase_quote'
   if (/(dunyang|敦阳|敦陽)/i.test(fileName)) return 'purchase_quote'
