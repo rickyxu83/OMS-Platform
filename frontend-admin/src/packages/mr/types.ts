@@ -20,6 +20,13 @@ export interface MrItem {
   purchaseOrderNo?: string | null
   costSource?: string | null
   marginRate?: number | null
+  recognitionMethod?: string
+  confidence?: Record<string, number> | null
+  reviewFields?: string[]
+  validationMessages?: string[]
+  costConfidence?: Record<string, number> | null
+  costReviewFields?: string[]
+  matchCandidates?: Array<{ description: string; vendor: string; costInclTax: number; taxRate: number; costSource: string; score: number }>
 }
 
 export interface MrApproval {
@@ -162,6 +169,9 @@ export interface QuotationSource {
   documentType?: string
   taxIncluded?: boolean
   taxRate?: number | null
+  confidence?: number | null
+  reviewCount?: number
+  method?: string
 }
 
 export interface QuotationImportResult {

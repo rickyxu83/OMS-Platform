@@ -7,6 +7,9 @@ const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
 const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
 const { parsePdf, parsePdfText } = require('./quotation-pdf-parser')
 const { recognizePdf } = require('./ocr-client')
+const { extractWorkbookImages, companyCandidates } = require('./workbook-images')
+const { validateParsedQuotation } = require('./quotation-validation')
+const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const {
   constants,
@@ -641,6 +644,8 @@ async function importQuotation(req, res) {
     sources = await Promise.all(uploads.map(async (file, index) => {
       const name = originalNameUtf8(file)
       const extension = path.extname(name).toLowerCase()
+      const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
+      let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
       let parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
@@ -648,18 +653,44 @@ async function importQuotation(req, res) {
         try {
           const ocr = await recognizePdf(file.buffer, name)
           if (ocr?.text) {
-            const recognized = parsePdfText(ocr.text)
+            recognitionMethod = 'ocr_layout'
+            const recognized = parsePdfText(ocr.text, ocr.layout)
             parsed = { ...recognized, warnings: [...(parsed.warnings || []), ...(recognized.warnings || []), `已通过 Linux OCR 识别 ${ocr.pages || 1} 页，请在预览中核对结果`] }
           }
         } catch (_error) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'Linux OCR 暂时不可用，本次只保留内存中的识别结果，请人工确认'] }
         }
       }
+      const hasExternalVendor = parsed.sheets.some((sheet) => sheet.vendor && !/(敦阳|敦陽|stark|dunyang)/i.test(String(sheet.vendor)))
+      if (requestedRole === 'purchase' && !hasExternalVendor && ['.xls', '.xlsx'].includes(extension)) {
+        try {
+          const images = await extractWorkbookImages(file.buffer, extension)
+          const imageTexts = []
+          const candidates = []
+          for (const [imageIndex, image] of images.slice(0, 3).entries()) {
+            const ocr = await recognizePdf(image.buffer, `${name}-image-${imageIndex + 1}.${image.extension}`)
+            if (!ocr?.text) continue
+            imageTexts.push(ocr.text)
+            candidates.push(...companyCandidates(ocr.text))
+          }
+          if (images.length) {
+            const vendor = candidates[0] || ''
+            parsed = {
+              ...parsed,
+              sheets: parsed.sheets.map((sheet) => ({ ...sheet, vendor: sheet.vendor && !/(敦阳|敦陽|stark|dunyang)/i.test(String(sheet.vendor)) ? sheet.vendor : vendor, notes: [...(Array.isArray(sheet.notes) ? sheet.notes : sheet.notes ? [sheet.notes] : []), ...imageTexts] })),
+              warnings: [...(parsed.warnings || []), vendor ? `已从工作簿图片识别供应商：${vendor}` : '工作簿包含图片，但未能可靠识别供应商，请人工填写'],
+            }
+          }
+        } catch (_error) {
+          parsed = { ...parsed, warnings: [...(parsed.warnings || []), '工作簿图片识别失败，供应商请人工核对'] }
+        }
+      }
+      parsed = applyQuotationLayoutRule(parsed, name, requestedRole)
+      parsed = validateParsedQuotation(parsed, recognitionMethod)
       const sheets = parsed.sheets.map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       if (!sheets.length && parsed.documentType !== 'scanned_pdf') throw new Error(`${name} 未找到可识别的报价明细表`)
-      const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
       const documentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : parsed.documentType
-      return { name, sheets, documentType, requestedRole, warnings: parsed.warnings || [] }
+      return { name, sheets, documentType, requestedRole, warnings: parsed.warnings || [], reviewCount: parsed.reviewCount || 0 }
     }))
   } catch (error) {
     throw badRequest(`报价单解析失败：${error.message}`)
