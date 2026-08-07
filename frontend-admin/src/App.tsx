@@ -254,9 +254,11 @@ export default function App() {
           <Route
             path="/mr/:id/print"
             element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
-                <MrPrintPage />
-              </ProtectedAdminPage>
+              <ProtectedRoute allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                <Suspense fallback={<PageLoading />}>
+                  <MrPrintPage />
+                </Suspense>
+              </ProtectedRoute>
             }
           />
           <Route
