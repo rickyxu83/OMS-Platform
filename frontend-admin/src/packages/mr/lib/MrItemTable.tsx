@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { Check, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -108,7 +108,6 @@ export function MrItemTable({
     )
   }
 
-  const selectedItem = selectedIndex === null ? null : items[selectedIndex]
   const rowSelectionEnabled = !editable || editMode
 
   return (
@@ -147,8 +146,8 @@ export function MrItemTable({
                   const low = isLowMargin(item)
                   const selected = selectedIndex === index
                   return (
-                    <tr
-                      key={item.id || `row-${index}`}
+                    <Fragment key={item.id || `row-${index}`}>
+                      <tr
                       onClick={rowSelectionEnabled ? () => setSelectedIndex(index) : undefined}
                       className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''} ${rowSelectionEnabled ? 'cursor-pointer' : ''}`}
                     >
@@ -186,7 +185,26 @@ export function MrItemTable({
                       <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
                       <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
-                    </tr>
+                      </tr>
+                      {selected && rowSelectionEnabled ? (
+                        <tr className="bg-background">
+                          <td colSpan={6} className="p-3 sm:p-4">
+                            <ItemEditorPanel
+                              item={item}
+                              index={index}
+                              editable={editable}
+                              mode={mode}
+                              vendors={vendors}
+                              workOptions={workOptions}
+                              allowedTaxRates={allowedTaxRates}
+                              onClose={() => setSelectedIndex(null)}
+                              onRemove={editable && mode !== 2 ? () => remove(index) : undefined}
+                              onChange={(patch) => setItem(index, patch)}
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -213,25 +231,6 @@ export function MrItemTable({
           </aside>
         ) : null}
       </div>
-
-      {selectedItem && selectedIndex !== null && rowSelectionEnabled ? (
-        <ItemEditorPanel
-          item={selectedItem}
-          index={selectedIndex}
-          editable={editable}
-          mode={mode}
-          vendors={vendors}
-          workOptions={workOptions}
-          allowedTaxRates={allowedTaxRates}
-          onClose={() => setSelectedIndex(null)}
-          onRemove={editable && mode !== 2 ? () => remove(selectedIndex) : undefined}
-          onChange={(patch) => setItem(selectedIndex, patch)}
-        />
-      ) : editable && editMode ? (
-        <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-          选择品项后，完整编辑面板会显示在这里。
-        </div>
-      ) : null}
 
       {editable && editMode && mode !== 2 ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
     </div>
