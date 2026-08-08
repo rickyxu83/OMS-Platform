@@ -136,6 +136,7 @@ async function main() {
   assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF')
   assert(pdf.length > 1000)
   assert(pdf.includes(Buffer.from('/Subtype /Image')), 'MR PDF 应嵌入审批人的手写签名')
+  assert.strictEqual((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1, '正式 MR 不应追加原始文字附录')
 
   console.log('mr workflow and PDF tests passed')
 }
