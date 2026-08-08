@@ -8,6 +8,8 @@ import type { MrApproval, MrItem, MrOrder } from '../types'
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
 const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
+// 页眉、订货条与汇总已展示的字段，不再重复进订购与交付资料区
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '客户 P/O', '发票别', '开票内容', '付款条件', '未税总计', '最晚交货日', '送机地点'])
 
 function hasValue(value: unknown) {
   if (Array.isArray(value)) return value.length > 0
@@ -132,7 +134,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '备注', raw: order.remark, value: text(order.remark, emptyText) },
     ...(order.rejectReason ? [{ label: '驳回原因', raw: order.rejectReason, value: order.rejectReason }] : []),
     ...(order.voidReason ? [{ label: '作废原因', raw: order.voidReason, value: order.voidReason }] : []),
-  ].filter((fact) => !formal || hasValue(fact.raw))
+  ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms === '其他'))
   const totalFacts = [
     { label: '未税售价', raw: totals.salesExcludingTax, value: moneyText(totals.salesExcludingTax, emptyText) },
     { label: '销售税额', raw: totals.vat, value: moneyText(totals.vat, emptyText) },

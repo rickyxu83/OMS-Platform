@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 2
+const PDF_FORMAT_VERSION = 3
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -159,6 +159,8 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
+const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '负责业务', 'Ctrl.NO', '未税总计', '最晚交货日'])
+
 function detailEntries(order, includeVoidReason = true) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
   const files = Array.isArray(order.quotationFiles || order.quotation_files) ? (order.quotationFiles || order.quotation_files).map((file) => file.name).filter(hasValue).join('、') : ''
@@ -200,7 +202,7 @@ function detailEntries(order, includeVoidReason = true) {
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ]
-  return entries.filter(([, content]) => hasValue(content))
+  return entries.filter(([label, content]) => hasValue(content) && !HEADER_DUPLICATES.has(label))
 }
 
 function details(doc, fonts, order, y, includeVoidReason = true) {
