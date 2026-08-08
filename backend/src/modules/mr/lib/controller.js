@@ -35,6 +35,7 @@ const {
 const { mrDocument } = require('./archive')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
+const SALES_ROLES = new Set(['sales', 'sales_supervisor'])
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const quotationRoot = path.join(uploadRoot, 'mr-quotations')
 fs.mkdirSync(quotationRoot, { recursive: true })
@@ -212,7 +213,7 @@ function orderPayload(row) {
 function canView(order, user) {
   if (user.role === 'admin') return true
   if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
-  if (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)) return true
+  if (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)) return true
   if (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)) return true
   return Boolean(order.approvalParticipant)
 }
@@ -225,9 +226,9 @@ function canEdit(order, user) {
   if (user.role === 'admin') return true
   if (order.status === 'rejected') {
     if (order.returnTarget === 'assistant') return user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)
-    return user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)
+    return SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)
   }
-  return (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id))
+  return (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id))
     || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
 }
 
@@ -239,15 +240,20 @@ function canDelete(order, user) {
 function canVoid(order, user) {
   if (order.status !== 'approved') return false
   if (['admin', 'operations_director', 'sales_supervisor'].includes(user.role)) return true
-  return (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id))
+  return (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id))
     || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
 }
 
 function canApprove(order, user) {
-  return order.status === 'in_review'
-    && Boolean(order.currentStepKey)
-    && STEP_ROLES[order.currentStepKey] === user.role
-    && Number(order.currentAssigneeUserId) === Number(user.id)
+  if (order.status !== 'in_review' || !order.currentStepKey || Number(order.currentAssigneeUserId) !== Number(user.id)) return false
+  if (order.currentStepKey === 'sales') return SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)
+  return STEP_ROLES[order.currentStepKey] === user.role
+}
+
+function canWithdraw(order, user) {
+  return SALES_ROLES.has(user.role)
+    && order.status === 'in_review'
+    && Number(order.salesOwnerId) === Number(user.id)
 }
 
 async function loadRawOrder(id, user = null) {
@@ -375,13 +381,13 @@ async function loadDetail(id, user) {
       canDelete: canDelete(order, user),
       canVoid: canVoid(order, user),
       canApprove: canApprove(order, user),
-      canWithdraw: user.role === 'sales' && order.status === 'in_review' && Number(order.salesOwnerId) === Number(user.id),
+      canWithdraw: canWithdraw(order, user),
     },
   }
 }
 
 async function resolveReferences(order, user) {
-  if (user.role === 'sales') order.salesOwnerId = Number(user.id)
+  if (SALES_ROLES.has(user.role)) order.salesOwnerId = Number(user.id)
   if (order.customerId) {
     const customers = await query('SELECT id, name FROM customers WHERE id = :id LIMIT 1', { id: order.customerId })
     if (!customers[0]) throw badRequest('客户档案不存在')
@@ -397,7 +403,7 @@ async function resolveReferences(order, user) {
   }
   if (order.salesOwnerId) {
     const users = await query(
-      "SELECT id FROM users WHERE id = :id AND role = 'sales' AND status = 'active' LIMIT 1",
+      "SELECT id FROM users WHERE id = :id AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1",
       { id: order.salesOwnerId },
     )
     if (!users[0]) throw badRequest('负责业务不存在或已停用')
@@ -406,12 +412,12 @@ async function resolveReferences(order, user) {
 }
 
 async function assertCreateOwner(order, user) {
-  if (['admin', 'sales'].includes(user.role)) return
-  if (user.role !== 'assistant') throw forbidden('只有业务或其对应助理可以创建 MR 单')
+  if (user.role === 'admin' || SALES_ROLES.has(user.role)) return
+  if (user.role !== 'assistant') throw forbidden('只有业务、业务主管或其对应助理可以创建 MR 单')
   if (!order.salesOwnerId) throw badRequest('助理代建 MR 时请选择负责业务')
   const rows = await query(
     `SELECT assistant_user_id FROM users
-     WHERE id = :salesId AND role = 'sales' AND status = 'active' LIMIT 1`,
+     WHERE id = :salesId AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1`,
     { salesId: order.salesOwnerId },
   )
   if (Number(rows[0]?.assistant_user_id) !== Number(user.id)) throw forbidden('只能为由你负责的业务代建 MR 单')
@@ -463,6 +469,12 @@ async function list(req, res) {
   if (req.user.role === 'sales') {
     where.push('o.sales_owner_id = :userId')
     params.userId = req.user.id
+  } else if (req.user.role === 'sales_supervisor') {
+    where.push(`(o.sales_owner_id = :userId OR EXISTS (
+      SELECT 1 FROM mr_approvals visible
+      WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId)
+    ))`)
+    params.userId = req.user.id
   } else if (req.user.role === 'assistant') {
     where.push(`(sales.assistant_user_id = :userId OR EXISTS (
       SELECT 1 FROM mr_approvals visible
@@ -509,7 +521,7 @@ async function list(req, res) {
   )
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: req.user.role === 'sales' && order.status === 'in_review' && Number(order.salesOwnerId) === Number(req.user.id) } }
+    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: canWithdraw(order, req.user) } }
   }) })
 }
 
@@ -680,12 +692,14 @@ async function decide(req, res, action) {
     }
     await connection.execute(
       `UPDATE mr_approvals SET approver_id = :userId, approver_name_snapshot = :approverName,
-              approver_role_snapshot = :approverRole, action = :action, reason = :reason, decided_at = NOW()
+              approver_role_snapshot = :approverRole, approver_signature_snapshot = :approverSignature,
+              action = :action, reason = :reason, decided_at = NOW()
        WHERE id = :stepId`,
       {
         userId: req.user.id,
         approverName: req.user.real_name || req.user.username,
         approverRole: req.user.role,
+        approverSignature: action === 'approve' ? req.user.engineer_signature || null : null,
         action,
         reason: reason || null,
         stepId: current.id,
@@ -806,7 +820,7 @@ async function withdraw(req, res) {
   await ensureTables()
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (req.user.role !== 'sales' || order.status !== 'in_review' || Number(order.salesOwnerId) !== Number(req.user.id)) {
+    if (!canWithdraw(order, req.user)) {
       throw forbidden('只有负责业务可以撤回签核中的 MR 单')
     }
     const [pending] = await connection.execute(

@@ -584,6 +584,7 @@ CREATE TABLE IF NOT EXISTS mr_approvals (
   approver_id BIGINT UNSIGNED NULL,
   approver_name_snapshot VARCHAR(64) NULL,
   approver_role_snapshot VARCHAR(32) NULL,
+  approver_signature_snapshot LONGTEXT NULL,
   action VARCHAR(16) NULL,
   reason VARCHAR(500) NULL,
   decided_at DATETIME NULL,
