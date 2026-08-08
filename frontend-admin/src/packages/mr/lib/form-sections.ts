@@ -69,5 +69,10 @@ export function sectionOfField(field?: string) {
 }
 
 export function scrollToSection(id: string) {
-  document.getElementById(`mr-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const target = document.getElementById(`mr-section-${id}`)
+  if (!target) return
+  // 粘性头部高度随按钮换行变化，按实际高度留出滚动余量，避免跳转后分区顶部被遮住
+  const header = document.querySelector('[data-mr-sticky-header]')
+  target.style.scrollMarginTop = `${header ? header.getBoundingClientRect().height + 12 : 128}px`
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
