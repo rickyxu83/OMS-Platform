@@ -119,12 +119,13 @@ function itemRowHeight(doc, fonts, item, index, columns) {
   return Math.max(30, ...columns.map((column) => doc.heightOfString(value(column.content(item, index)), { width: column.width - 6, lineGap: 1 }) + 10))
 }
 
-function itemRow(doc, fonts, item, index, columns, y) {
-  const rowHeight = itemRowHeight(doc, fonts, item, index, columns)
+function itemRow(doc, fonts, item, index, columns, y, maxHeight = Infinity) {
+  const rowHeight = Math.min(itemRowHeight(doc, fonts, item, index, columns), maxHeight)
   let x = PAGE.margin
   columns.forEach((column) => {
     doc.rect(x, y, column.width, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
-    text(doc, fonts, column.content(item, index), x + 3, y + 5, { size: 7, width: column.width - 6, height: rowHeight - 8, align: column.align, lineGap: 1 })
+    // ponytail: 超长内容按单元格截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
+    text(doc, fonts, column.content(item, index), x + 3, y + 5, { size: 7, width: column.width - 6, height: rowHeight - 8, align: column.align, lineGap: 1, ellipsis: true })
     x += column.width
   })
   return y + rowHeight
@@ -158,7 +159,7 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-function detailEntries(order) {
+function detailEntries(order, includeVoidReason = true) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
   const files = Array.isArray(order.quotationFiles || order.quotation_files) ? (order.quotationFiles || order.quotation_files).map((file) => file.name).filter(hasValue).join('、') : ''
   const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
@@ -197,18 +198,18 @@ function detailEntries(order) {
     ['交货条款', orderField(order, 'deliveryTerms', 'delivery_terms')],
     ['报价附件', files],
     ['备注', order.remark],
-    ['作废原因', orderField(order, 'voidReason', 'void_reason')],
+    ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ]
   return entries.filter(([, content]) => hasValue(content))
 }
 
-function details(doc, fonts, order, y) {
+function details(doc, fonts, order, y, includeVoidReason = true) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
   const columns = 4
   const colWidth = width / columns
   const bottom = PAGE.height - 32
-  const entries = detailEntries(order)
+  const entries = detailEntries(order, includeVoidReason)
   const drawTitle = () => {
     text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: PURPLE })
     y += 15
@@ -217,18 +218,20 @@ function details(doc, fonts, order, y) {
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
     doc.font(fonts.regular).fontSize(7)
-    const rowHeight = Math.max(27, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 12, lineGap: 1 }) + 15))
-    if (y + rowHeight > bottom) {
+    const rawHeight = Math.max(27, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 12, lineGap: 1 }) + 15))
+    if (y + rawHeight > bottom) {
       doc.addPage()
       y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
       drawTitle()
     }
+    const rowHeight = Math.min(rawHeight, Math.max(27, bottom - y))
     row.forEach(([label, content], index) => {
       const x = left + index * colWidth
       const rowY = y
       doc.rect(x, rowY, colWidth, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
       text(doc, fonts, label, x + 6, rowY + 4, { size: 6.5, color: MUTED, width: colWidth - 12 })
-      text(doc, fonts, content, x + 6, rowY + 14, { size: 7, width: colWidth - 12, height: rowHeight - 17, lineGap: 1 })
+      // ponytail: 超长内容截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
+      text(doc, fonts, content, x + 6, rowY + 14, { size: 7, width: colWidth - 12, height: rowHeight - 17, lineGap: 1, ellipsis: true })
     })
     y += rowHeight
   }
@@ -312,14 +315,14 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
       doc.addPage()
       y = itemHeader(doc, fonts, columns, header(doc, fonts, order, '客户订购申请单 · 明细续页'))
     }
-    y = itemRow(doc, fonts, item, index, columns, y)
+    y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
   if (y + 45 > bottom) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 审批存档')
   }
   y = totals(doc, fonts, order, items, y + 5)
-  y = details(doc, fonts, order, y)
+  y = details(doc, fonts, order, y, Boolean(watermarkLabel))
   if (approvalRows.length) {
     const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
     if (y + approvalSpace > bottom) {

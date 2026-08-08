@@ -97,6 +97,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     : String(order.versionNo || order.currentVersion?.versionNo || 0)
   const facts = [
     { label: '客户名称', raw: order.customerName, value: text(order.customerName, emptyText) },
+    { label: '客户联系人', raw: order.contactName, value: text(order.contactName, emptyText) },
     { label: 'Ctrl.NO', raw: order.ctrlNo, value: text(order.ctrlNo, emptyText) },
     { label: '客户 P/O', raw: order.customerPo, value: text(order.customerPo, emptyText) },
     { label: '负责业务', raw: order.salesOwnerName, value: text(order.salesOwnerName, emptyText) },

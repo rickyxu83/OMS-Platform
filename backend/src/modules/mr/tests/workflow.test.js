@@ -18,10 +18,10 @@ function assistantRow(overrides = {}) {
   }
 }
 
-function pdfBuffer(order, approvals) {
+function pdfBuffer(order, approvals, options) {
   return new Promise((resolve, reject) => {
     const chunks = []
-    const doc = buildMrPdf(order, approvals)
+    const doc = buildMrPdf(order, approvals, options)
     doc.on('data', (chunk) => chunks.push(chunk))
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', reject)
@@ -154,6 +154,29 @@ async function main() {
   assert(!extracted.text.includes('客户 P/O'), '正式 PDF 不应显示空白客户 P/O')
   assert(!extracted.text.includes('采购单号 / 来源'), '正式 PDF 不应显示全为空的采购列')
   assert(!extracted.text.includes('未设置手写签名'), '正式 PDF 不应显示空白签名占位')
+
+  const longPdf = await pdfBuffer({
+    id: 2,
+    versionNo: 1,
+    customerName: '乙客户',
+    ctrlNo: 'MR-002',
+    remark: '备注'.repeat(5000),
+    items: [{ name: '设备', description: '描述'.repeat(2000), qty: 1, unitPrice: 100, subtotal: 100 }],
+  }, [])
+  assert.strictEqual(longPdf.subarray(0, 4).toString(), '%PDF', '超长内容 PDF 应能正常生成')
+  assert((longPdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length <= 4, '超长内容应被截断而不是无限分页')
+
+  const voidedOrder = { id: 3, versionNo: 2, customerName: '丙客户', ctrlNo: 'MR-003', voidReason: '审批后作废原因', items: [{ name: '设备', qty: 1, unitPrice: 100, subtotal: 100 }] }
+  const approvedRebuild = await pdfBuffer(voidedOrder, [])
+  const approvedParser = new PDFParse({ data: approvedRebuild })
+  const approvedText = await approvedParser.getText()
+  await approvedParser.destroy()
+  assert(!approvedText.text.includes('审批后作废原因'), '重建原审批 PDF 不得带入作废原因')
+  const voidedPdf = await pdfBuffer(voidedOrder, [], { watermarkLabel: '已作废 · 审批后作废原因' })
+  const voidedParser = new PDFParse({ data: voidedPdf })
+  const voidedText = await voidedParser.getText()
+  await voidedParser.destroy()
+  assert(voidedText.text.includes('审批后作废原因'), '作废 PDF 应保留作废原因')
 
   console.log('mr workflow and PDF tests passed')
 }
