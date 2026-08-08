@@ -641,6 +641,7 @@ export function MrFormPage() {
           />
           </div>
         ) : null}
+        {!documentMode ? <div className="border-t"><WorkbenchMetrics order={calculated} /></div> : null}
       </div>
 
       {documentMode ? (
@@ -676,8 +677,6 @@ export function MrFormPage() {
         </div>
       ) : (
         <>
-          <div className="border-b"><WorkbenchMetrics order={calculated} /></div>
-
       <div className="mx-auto grid max-w-[1700px] gap-6 px-4 py-5 sm:px-6 min-[1450px]:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-5 pb-24 lg:pb-6">
           {status === 'rejected' ? (
@@ -965,7 +964,7 @@ export function MrFormPage() {
         </div>
 
         <aside className="hidden min-[1450px]:block">
-          <div className="sticky top-36 overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="sticky top-52 overflow-hidden rounded-xl border bg-card shadow-sm">
             <div className="border-b px-4 py-3.5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-semibold">签核与风险</h2>
