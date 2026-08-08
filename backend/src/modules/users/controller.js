@@ -204,7 +204,7 @@ async function listEngineers(req, res) {
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
-     WHERE role = 'engineer' AND status = 'active'
+     WHERE role IN ('engineer', 'engineering_supervisor') AND status = 'active'
      ORDER BY real_name ASC`,
   )
   res.json({ items: rows.map(userPayload) })

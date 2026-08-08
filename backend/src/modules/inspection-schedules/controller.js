@@ -600,7 +600,7 @@ async function assertActiveEngineer(connection, engineerId) {
   const [rows] = await connection.execute(
     `SELECT id
      FROM users
-     WHERE id = :engineerId AND role = 'engineer' AND status = 'active'
+     WHERE id = :engineerId AND role IN ('engineer', 'engineering_supervisor') AND status = 'active'
      LIMIT 1`,
     { engineerId },
   )

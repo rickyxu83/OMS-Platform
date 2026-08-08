@@ -3,6 +3,7 @@ const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden } = require('../../../utils/http-error')
 const { ensureUserLoginColumns } = require('../../users/schema')
 const { STEP_ROLES } = require('../domain')
+const { ROLE_LABELS } = require('../../../permissions/catalog')
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const allowedDomains = new Set((env.mrApprovalEmailDomains || []).map((value) => value.toLowerCase()))
@@ -46,8 +47,18 @@ async function ensureWorkflowTables() {
     ['assignment_error', 'VARCHAR(255) NULL AFTER assignee_user_id'],
     ['approver_name_snapshot', 'VARCHAR(64) NULL AFTER approver_id'],
     ['approver_role_snapshot', 'VARCHAR(32) NULL AFTER approver_name_snapshot'],
+    ['approver_signature_snapshot', 'LONGTEXT NULL AFTER approver_role_snapshot'],
     ['version_no', 'INT UNSIGNED NULL AFTER cycle'],
   ])
+  await query(
+    `UPDATE mr_approvals approval
+     JOIN users approver ON approver.id = approval.approver_id
+     SET approval.approver_signature_snapshot = approver.engineer_signature
+     WHERE approval.action = 'approve'
+       AND approval.approver_signature_snapshot IS NULL
+       AND approver.engineer_signature IS NOT NULL
+       AND approver.engineer_signature <> ''`,
+  )
   await query(
     `CREATE TABLE IF NOT EXISTS mr_versions (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -153,7 +164,7 @@ async function salesWithAssistant(connection, salesId) {
             a.role AS assistant_role, a.status AS assistant_status
      FROM users s
      LEFT JOIN users a ON a.id = s.assistant_user_id
-     WHERE s.id = :salesId AND s.role = 'sales'
+     WHERE s.id = :salesId AND s.role IN ('sales', 'sales_supervisor')
      LIMIT 1`,
     { salesId },
   )
@@ -180,7 +191,7 @@ async function resolveStepAssignee(connection, order, stepKey, { required = fals
   }
   if (stepKey === 'sales') {
     const [rows] = await connection.execute(
-      "SELECT id, real_name AS name, email, role FROM users WHERE id = :id AND role = 'sales' AND status = 'active' LIMIT 1",
+      "SELECT id, real_name AS name, email, role FROM users WHERE id = :id AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1",
       { id: order.salesOwnerId },
     )
     if (!rows[0]) throw badRequest('负责业务不存在或已停用')
@@ -194,7 +205,12 @@ async function resolveStepAssignee(connection, order, stepKey, { required = fals
     { role },
   )
   if (rows.length !== 1) {
-    if (required) throw badRequest(`${role || stepKey}未配置唯一在职审批人`)
+    const label = ROLE_LABELS[role] || role || stepKey
+    if (required) {
+      throw badRequest(rows.length
+        ? `${label}在职审批人有 ${rows.length} 位，请在用户管理中只保留 1 位`
+        : `${label}未配置在职审批人，请先在用户管理中设置`)
+    }
     return null
   }
   assertApprovalEmail(rows[0], rows[0].name || role)
@@ -278,7 +294,7 @@ async function activateCurrentStep(connection, order, cycle, initiatorUserId) {
   if (!approval) return null
   let assignee
   try {
-    assignee = await resolveStepAssignee(connection, order, approval.step_key)
+    assignee = await resolveStepAssignee(connection, order, approval.step_key, { required: true })
   } catch (error) {
     await pauseApproval(connection, order, approval, error.message || '审批人配置异常')
     return null
@@ -376,10 +392,10 @@ async function assistantSetting(userId) {
   const rows = await query(
     `SELECT s.assistant_user_id, a.real_name AS assistant_name, a.email AS assistant_email
      FROM users s LEFT JOIN users a ON a.id = s.assistant_user_id
-     WHERE s.id = :userId AND s.role = 'sales' LIMIT 1`,
+     WHERE s.id = :userId AND s.role IN ('sales', 'sales_supervisor') LIMIT 1`,
     { userId },
   )
-  if (!rows[0]) throw forbidden('只有业务可以设置对应助理')
+  if (!rows[0]) throw forbidden('只有业务或业务主管可以设置对应助理')
   return {
     assistantUserId: rows[0].assistant_user_id || null,
     assistantName: rows[0].assistant_name || null,
@@ -393,10 +409,10 @@ async function updateAssistantSetting(userId, assistantUserId) {
   if (!Number.isInteger(assistantId) || assistantId <= 0) throw badRequest('请选择对应助理')
   await transaction(async (connection) => {
     const [salesRows] = await connection.execute(
-      "SELECT id, assistant_user_id FROM users WHERE id = :id AND role = 'sales' AND status = 'active' LIMIT 1 FOR UPDATE",
+      "SELECT id, assistant_user_id FROM users WHERE id = :id AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1 FOR UPDATE",
       { id: userId },
     )
-    if (!salesRows[0]) throw forbidden('只有业务可以设置对应助理')
+    if (!salesRows[0]) throw forbidden('只有业务或业务主管可以设置对应助理')
     const [assistantRows] = await connection.execute(
       "SELECT id, email FROM users WHERE id = :id AND role = 'assistant' AND status = 'active' LIMIT 1",
       { id: assistantId },
@@ -475,7 +491,7 @@ async function reconcilePendingMrAssignments() {
         createdBy: Number(row.created_by),
       }
       try {
-        const expected = await resolveStepAssignee(connection, order, approval.step_key)
+        const expected = await resolveStepAssignee(connection, order, approval.step_key, { required: true })
         if (!expected) {
           await pauseApproval(connection, order, approval, '当前角色未配置唯一在职审批人')
           paused += 1

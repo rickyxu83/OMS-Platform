@@ -1909,7 +1909,7 @@ async function timesheetMonthly(req, res) {
        FROM service_orders
        WHERE assigned_engineer_id IS NOT NULL
      ) participants ON participants.service_order_id = so.id
-     JOIN users u ON u.id = participants.engineer_id AND u.role = 'engineer'
+     JOIN users u ON u.id = participants.engineer_id AND u.role IN ('engineer', 'engineering_supervisor')
      JOIN customers c ON c.id = so.customer_id
      LEFT JOIN devices d ON d.id = so.device_id
      LEFT JOIN service_reports sr ON sr.service_order_id = so.id
@@ -1946,7 +1946,7 @@ async function timesheetMonthly(req, res) {
         `SELECT tme.id, tme.engineer_id, tme.entry_date, tme.category, tme.customer_project,
                 tme.work_content, tme.progress, tme.remark, u.real_name AS engineer_name
          FROM timesheet_manual_entries tme
-         JOIN users u ON u.id = tme.engineer_id AND u.role = 'engineer'
+         JOIN users u ON u.id = tme.engineer_id AND u.role IN ('engineer', 'engineering_supervisor')
          WHERE tme.entry_date >= :startDate
            AND tme.entry_date <= :endDate
            ${filterEngineerId ? 'AND tme.engineer_id = :engineerId' : ''}
@@ -4227,7 +4227,7 @@ async function confirmInspectionOrder(req, res) {
     const [engineerRows] = await connection.execute(
       `SELECT id
        FROM users
-       WHERE id = :engineerId AND role = 'engineer' AND status = 'active'
+       WHERE id = :engineerId AND role IN ('engineer', 'engineering_supervisor') AND status = 'active'
        LIMIT 1`,
       { engineerId },
     )

@@ -24,7 +24,7 @@ async function resolveSubmissionCustomer(connection, order, user) {
     assertSalesCanAccessSalesperson(customer.salesperson, user, forbidden)
   } else {
     const code = await nextCustomerCode(connection)
-    const salesperson = user?.role === 'sales'
+    const salesperson = ['sales', 'sales_supervisor'].includes(user?.role)
       ? user.real_name || user.realName || user.username || null
       : null
     try {
