@@ -8,6 +8,7 @@ import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })))
+const ApprovalTasks = lazy(() => import("@/pages/ApprovalTasks").then((module) => ({ default: module.ApprovalTasks })))
 const ServiceReport = lazy(() => import("@/pages/ServiceReport").then((module) => ({ default: module.ServiceReport })))
 const CustomerSignature = lazy(() => import("@/pages/CustomerSignature").then((module) => ({ default: module.CustomerSignature })))
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
@@ -206,6 +207,10 @@ export default function App() {
                 <Dashboard />
               </ProtectedAdminPage>
             }
+          />
+          <Route
+            path="/approval-tasks"
+            element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
           />
           <Route
             path="/service-orders"

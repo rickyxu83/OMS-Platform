@@ -70,10 +70,11 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
                   <span className={`text-xs ${marker.text}`}>{marker.label}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
-                  {approval.approverName ? <span>{approval.approverName}</span> : null}
+                  {approval.approverName || approval.assigneeName ? <span>{approval.approverName || `处理人：${approval.assigneeName}`}</span> : null}
                   {approval.decidedAt ? <span className="tabular-nums">{time(approval.decidedAt)}</span> : null}
                 </div>
                 {approval.reason ? <div className="mt-1 text-xs text-red-700">{approval.reason}</div> : null}
+                {approval.assignmentError ? <div className="mt-1 text-xs text-red-700">{approval.assignmentError}</div> : null}
               </div>
             </li>
           )

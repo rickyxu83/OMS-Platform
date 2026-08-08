@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer')
+const env = require('../config/env')
 const { effectiveSettings } = require('../modules/settings/controller')
 
 const MAIL_ACTION_COLOR = '#7c3aed'
@@ -857,6 +858,135 @@ async function sendCustomerSignatureRequestMail(order, recipientEmail, signUrl, 
   return { sent: true, to }
 }
 
+function mrMoney(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
+}
+
+function mrOptionText(value) {
+  if (Array.isArray(value)) return value.join('、') || '-'
+  if (!value) return '-'
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.join('、') || '-' : String(value)
+  } catch (_error) {
+    return String(value)
+  }
+}
+
+async function sendMrApprovalMail(order, recipient, event = 'task') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+  const to = recipientEmails([recipient])
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+  const items = Array.isArray(order.items) ? order.items : []
+  const salesValues = items.map((item) => item.subtotal)
+  const sales = salesValues.every((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+    ? salesValues.reduce((sum, value) => sum + Number(value), 0)
+    : null
+  const costValues = items.map((item) => {
+    const rawAmount = item.costInclTax ?? item.cost_incl_tax
+    const rawRate = item.taxRate ?? item.tax_rate
+    if (rawAmount === null || rawAmount === undefined || rawRate === null || rawRate === undefined) return null
+    const amount = Number(rawAmount)
+    const rate = Number(rawRate)
+    return Number.isFinite(amount) && Number.isFinite(rate) ? amount / (1 + rate / 100) : null
+  })
+  const cost = costValues.every((value) => value !== null) ? costValues.reduce((sum, value) => sum + value, 0) : null
+  const grossProfit = sales !== null && cost !== null ? sales - cost : null
+  const margin = sales > 0 && grossProfit !== null ? grossProfit / sales * 100 : null
+  const eventLabels = {
+    task: '待你签核',
+    transfer: '审批待办已转交给你',
+    owner_transfer: 'MR 负责业务已变更，请重新核对',
+    reject: 'MR 已驳回并退回修改',
+    approved: 'MR 已全部签核通过',
+    withdraw: '业务已撤回 MR',
+    void: 'MR 已作废',
+    assignment_error: 'MR 审批人配置异常，流程已暂停',
+  }
+  const action = eventLabels[event] || 'MR 状态已更新'
+  const detailBaseUrl = settings.notification?.serviceOrderAdminBaseUrl || env.corsAllowedOrigins?.[0] || ''
+  const detailUrl = adminLink(detailBaseUrl, `/mr/${encodeURIComponent(order.id)}`)
+  if (!detailUrl) return { skipped: true, reason: 'admin_base_url_missing' }
+  const rows = items.map((item, index) => {
+    const rawCostIncludingTax = item.costInclTax ?? item.cost_incl_tax
+    const rawTaxRate = item.taxRate ?? item.tax_rate
+    const costIncludingTax = rawCostIncludingTax === null || rawCostIncludingTax === undefined ? null : Number(rawCostIncludingTax)
+    const taxRate = rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawTaxRate)
+    const costExcludingTax = Number.isFinite(costIncludingTax) && Number.isFinite(taxRate) ? costIncludingTax / (1 + taxRate / 100) : null
+    return `
+    <tr>
+      <td style="border:1px solid #cbd5e1;padding:6px;text-align:center">${index + 1}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px"><strong>${htmlEscape(item.name || '-')}</strong><br>${htmlEscape(item.description || '-')}<br><small>保固：${htmlEscape(item.warrantyService || item.warranty_service || '-')}；装机：${htmlEscape(item.installBy || item.install_by || '-')}</small></td>
+      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.companyPartNo || item.company_part_no || '-')}<br><small>${htmlEscape(item.oemSpec || item.oem_spec || '-')}</small></td>
+      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">${htmlEscape(item.qty ?? '-')}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">¥ ${mrMoney(item.unitPrice ?? item.unit_price)}<br><strong>¥ ${mrMoney(item.subtotal)}</strong></td>
+      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.vendor || '-')}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">含税 ¥ ${mrMoney(costIncludingTax)}<br>未税 ¥ ${mrMoney(costExcludingTax)}<br><small>税率 ${htmlEscape(item.taxRate ?? item.tax_rate ?? '-')}%</small></td>
+      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.purchaseOrderNo || item.purchase_order_no || '-')}<br><small>${htmlEscape(item.costSource || item.cost_source || '-')}</small></td>
+    </tr>`
+  }).join('')
+  const quotationFiles = Array.isArray(order.quotationFiles) ? order.quotationFiles : []
+  const quotationList = quotationFiles.length
+    ? `<ul style="margin:6px 0 14px;padding-left:20px">${quotationFiles.map((file) => `<li>${htmlEscape(file.name || '-')}（${mrMoney(Number(file.size || 0) / 1024)} KB）</li>`).join('')}</ul>`
+    : '<p style="color:#64748b">无源报价附件</p>'
+  const subject = `[MR] ${action}：${order.ctrlNo || `#${order.id}`} / ${order.customerName || order.customer_name || '未选客户'}`
+  const linkBlock = detailUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">查看完整 MR 并审核</a></p>`
+    : '<p style="color:#64748b">请登录 OMS 管理端，在待办中心打开该 MR。</p>'
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.6;color:#1f2937">
+      <h2 style="margin:0 0 8px">${htmlEscape(action)}</h2>
+      <p>${htmlEscape(recipient.realName || recipient.real_name || recipient.username || '')}，请核对以下完整 MR 内容。邮件按钮只打开网页，签核必须在登录后的 OMS 页面完成。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:980px;margin-bottom:14px">
+        <tr><td style="padding:5px 0;color:#64748b;width:100px">客户</td><td>${htmlEscape(order.customerName || order.customer_name || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">Ctrl.NO</td><td>${htmlEscape(order.ctrlNo || order.ctrl_no || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">负责业务</td><td>${htmlEscape(order.salesOwnerName || order.sales_owner_name || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">当前节点</td><td>${htmlEscape(order.currentStepLabel || order.current_step_label || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">审核版本</td><td>${(order.currentStepLabel || order.current_step_label) === '助理' ? `待冻结 V${Number(order.versionNo || order.version_no || 0) + 1}` : `V${Number(order.versionNo || order.version_no || 0)}`}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">填表 / 案分类</td><td>${htmlEscape(order.fillDate || order.fill_date || '-')} / ${htmlEscape(order.caseCategory || order.case_category || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">客户联系人 / P.O</td><td>${htmlEscape(order.contactName || order.contact_name || '-')} / ${htmlEscape(order.customerPo || order.customer_po || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">发票</td><td>${htmlEscape(order.invoiceType || order.invoice_type || '-')}；${htmlEscape(order.invoiceProcess || order.invoice_process || '-')}；${htmlEscape(order.billingContent || order.billing_content || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">开票对象 / 时间</td><td>${htmlEscape(order.invoiceRecipient || order.invoice_recipient || '-')} / ${htmlEscape(order.billingTiming || order.billing_timing || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">采购联系人</td><td>${htmlEscape(order.purchaser || '-')} / ${htmlEscape(order.purchaserTel || order.purchaser_tel || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">收件人</td><td>${htmlEscape(order.recipient || '-')} / ${htmlEscape(order.recipientTel || order.recipient_tel || '-')} / ${htmlEscape(order.recipientMail || order.recipient_mail || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">交货</td><td>${htmlEscape(order.latestDeliveryDate || order.latest_delivery_date || '-')}；${htmlEscape(order.deliveryLocation || order.delivery_location || '-')}；${htmlEscape(order.deliveryTerms || order.delivery_terms || '-')}；出货单 ${htmlEscape(order.shipmentNo || order.shipment_no || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">付款 / 分批</td><td>${htmlEscape(order.paymentTerms || order.payment_terms || '-')}${order.paymentOther || order.payment_other ? `（${htmlEscape(order.paymentOther || order.payment_other)}）` : ''} / ${Number(order.splitDelivery ?? order.split_delivery) ? '是' : '否'}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">验收</td><td>${htmlEscape(order.acceptance || '-')}${order.acceptanceOther || order.acceptance_other ? `（${htmlEscape(order.acceptanceOther || order.acceptance_other)}）` : ''}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">装机 / 维护</td><td>${htmlEscape(mrOptionText(order.installOptions || order.install_options))} / ${htmlEscape(mrOptionText(order.maintenanceOptions || order.maintenance_options))}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">合同 / 罚则</td><td>${htmlEscape(order.contractNo || order.contract_no || '-')} / ${htmlEscape(order.penaltyContent || order.penalty_content || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b">备注</td><td>${htmlEscape(order.remark || '-')}</td></tr>
+      </table>
+      <h3 style="margin:14px 0 4px">源报价附件</h3>
+      ${quotationList}
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;width:100%;min-width:860px;font-size:13px">
+          <thead><tr style="background:#4e386e;color:#fff">
+            <th style="padding:7px">#</th><th style="padding:7px">品名 / 描述 / 履约</th><th style="padding:7px">料号 / 原厂规格</th>
+            <th style="padding:7px">数量</th><th style="padding:7px">销售单价 / 小计</th><th style="padding:7px">厂商</th>
+            <th style="padding:7px">采购成本 / 税率</th><th style="padding:7px">采购单号 / 成本来源</th>
+          </tr></thead><tbody>${rows || '<tr><td colspan="8" style="padding:12px;text-align:center">暂无品项</td></tr>'}</tbody>
+        </table>
+      </div>
+      <table style="border-collapse:collapse;margin-top:14px;width:100%;max-width:680px">
+        <tr><td style="padding:6px;background:#f1f5f9">未税售价</td><td style="padding:6px;text-align:right">¥ ${mrMoney(sales)}</td></tr>
+        <tr><td style="padding:6px;background:#f1f5f9">未税成本</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
+        <tr><td style="padding:6px;background:#f1f5f9">毛利</td><td style="padding:6px;text-align:right">¥ ${mrMoney(grossProfit)}</td></tr>
+        <tr><td style="padding:6px;background:#f1f5f9">毛利率</td><td style="padding:6px;text-align:right">${margin === null ? '-' : `${margin.toFixed(2)}%`}</td></tr>
+      </table>
+      <p style="margin-top:16px;color:#b91c1c;font-size:12px">本邮件包含采购成本和毛利等内部商业信息，请勿转发给无关人员。</p>
+      ${mailFooter()}
+    </div>`
+  await mailTransporter(mail).sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
@@ -869,4 +999,5 @@ module.exports = {
   sendMonthlyOperationsSummaryMail,
   sendSalesServiceOrderMail,
   sendCustomerSignatureRequestMail,
+  sendMrApprovalMail,
 }

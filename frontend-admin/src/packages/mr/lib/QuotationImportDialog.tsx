@@ -246,7 +246,7 @@ export function QuotationImportDialog({
     setLoading(true)
     setError('')
     try {
-      const saved = await importQuotations(orderId, files, false, roles, true)
+      const saved = await importQuotations(orderId, files, true, roles, false)
       const editedSources = saved.sources.map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
       onApply({ ...saved, items: previewItems, sources: editedSources }, effectivePricingMode)
       onOpenChange(false)

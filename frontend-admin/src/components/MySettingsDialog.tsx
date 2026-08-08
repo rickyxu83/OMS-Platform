@@ -68,6 +68,8 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [savingSignature, setSavingSignature] = useState(false);
+  const [assistants, setAssistants] = useState<Array<{ id: string | number; realName?: string; username?: string; email?: string }>>([]);
+  const [assistantUserId, setAssistantUserId] = useState("");
 
   const workspaces = useMemo(() => (
     Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
@@ -81,6 +83,19 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     setPreferredWorkspaceState(getPreferredWorkspace(user?.id) || user?.defaultWorkspace || workspaces[0]?.key || "");
     refreshUser().catch(() => {});
   }, [open]);
+
+  useEffect(() => {
+    if (!open || user?.role !== "sales") return;
+    let active = true;
+    Promise.all([api.get("/users/assistants"), api.get("/mr/assistant-setting")])
+      .then(([directory, setting]) => {
+        if (!active) return;
+        setAssistants(Array.isArray(directory?.items) ? directory.items : []);
+        setAssistantUserId(setting?.assistantUserId ? String(setting.assistantUserId) : "");
+      })
+      .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : "助理设置加载失败"); });
+    return () => { active = false; };
+  }, [open, user?.role]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,10 +113,15 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
       toast.error("登录别名仅支持 2-32 位字母、数字、点、下划线或短横线");
       return;
     }
+    if (user?.role === "sales" && !assistantUserId) {
+      toast.error("请选择对应助理");
+      return;
+    }
 
     setSavingProfile(true);
     try {
       await api.put("/users/me", { loginAlias: normalizedAlias || null });
+      if (user?.role === "sales") await api.put("/mr/assistant-setting", { assistantUserId });
       setPreferredWorkspace(user?.id, preferredWorkspace);
       await refreshUser();
       toast.success("我的设置已保存");
@@ -280,6 +300,22 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                   </Select>
                 </div>
               </div>
+              {user?.role === "sales" ? (
+                <div className="space-y-1.5 rounded-lg border bg-amber-50/60 p-3">
+                  <Label>MR 对应助理</Label>
+                  <Select value={assistantUserId} onValueChange={setAssistantUserId}>
+                    <SelectTrigger><SelectValue placeholder="请选择负责你的 MR 助理" /></SelectTrigger>
+                    <SelectContent>
+                      {assistants.map((assistant) => (
+                        <SelectItem key={assistant.id} value={String(assistant.id)}>
+                          {assistant.realName || assistant.username} · {assistant.email || "未配置邮箱"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">更换后，尚未完成助理会签的 MR 会立即转给新助理并重新发送邮件。</p>
+                </div>
+              ) : null}
               <div className="flex justify-end">
                 <Button onClick={saveProfile} disabled={savingProfile}>
                   <Save className="h-4 w-4" />

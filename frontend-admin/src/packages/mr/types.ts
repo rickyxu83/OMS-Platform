@@ -38,6 +38,11 @@ export interface MrApproval {
   action?: 'approve' | 'reject' | 'skipped' | null
   reason?: string | null
   approverName?: string | null
+  approverRole?: string | null
+  assigneeUserId?: string | number | null
+  assigneeName?: string | null
+  assignmentError?: string | null
+  versionNo?: number | null
   decidedAt?: string | null
 }
 
@@ -48,6 +53,8 @@ export interface MrOrder {
   customerContactId?: string | number | null
   salesOwnerId?: string | number | null
   salesOwnerName?: string | null
+  assistantUserId?: string | number | null
+  assistantName?: string | null
   customerName?: string | null
   customerCode?: string | null
   customerAddress?: string | null
@@ -90,6 +97,15 @@ export interface MrOrder {
   remark?: string | null
   rejectReason?: string | null
   voidReason?: string | null
+  withdrawReason?: string | null
+  returnTarget?: 'sales' | 'assistant' | null
+  versionNo?: number
+  archiveStatus?: 'pending' | 'generating' | 'ready' | 'failed' | null
+  archiveError?: string | null
+  archivedDocumentTypes?: Array<'approved' | 'voided'>
+  assignmentError?: string | null
+  currentAssigneeName?: string | null
+  currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null
   currentStepKey?: string | null
   currentStepLabel?: string | null
   createdByName?: string | null
@@ -114,6 +130,7 @@ export interface MrOrder {
     canDelete?: boolean
     canVoid?: boolean
     canApprove?: boolean
+    canWithdraw?: boolean
   }
 }
 
@@ -145,6 +162,8 @@ export interface UserOption {
   realName?: string
   username?: string
   role?: string
+  assistantUserId?: string | number | null
+  email?: string | null
 }
 export interface VendorOption {
   id: string | number
@@ -201,4 +220,27 @@ export interface ParsedQuotationSheet {
     unit_price?: number
     extended?: number
   }>
+}
+
+export interface ApprovalTask {
+  id: string | number
+  businessType: string
+  businessId: string | number
+  title: string
+  assigneeName?: string | null
+  initiatorName?: string | null
+  status: string
+  businessStatus?: string | null
+  currentStepLabel?: string | null
+  customerName?: string | null
+  ctrlNo?: string | null
+  detailPath: string
+  createdAt?: string | null
+  completedAt?: string | null
+}
+
+export interface AssistantSetting {
+  assistantUserId?: string | number | null
+  assistantName?: string | null
+  assistantEmail?: string | null
 }

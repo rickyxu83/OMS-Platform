@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, Printer, Save, Send, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileDown, FileSpreadsheet, Loader2, Pencil, Printer, Save, Send, ShieldCheck, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -8,19 +8,24 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ErrorToast } from '@/components/ErrorToast'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
+  downloadMrDocument,
   getMr,
   getMrConstants,
   loadCustomer,
   loadMrReferences,
   rejectMr,
+  reassignMrSales,
   submitMr,
   updateMr,
   voidMr,
+  withdrawMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, VendorOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, UserOption, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
+import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
@@ -60,7 +65,7 @@ function suggestInvoiceType(result: QuotationImportResult) {
   return rate === 13 ? '13%普通发票' : ''
 }
 type ValidationError = { field?: string; message?: string }
-type Decision = 'reject' | 'void' | null
+type Decision = 'approve' | 'reject' | 'withdraw' | 'void' | null
 
 function syncInstallOptions(items: MrItem[], previous: string[], next: string[]) {
   const oldDefaults = new Set(previous.filter((value) => value !== 'NO'))
@@ -96,13 +101,41 @@ function validationDetails(error: unknown): ValidationError[] {
   return Array.isArray(details) ? details.filter((item): item is ValidationError => Boolean(item && typeof item === 'object')) : []
 }
 
+const CHANGE_LABELS: Record<string, string> = {
+  customerId: '客户', customerContactId: '客户联系人', salesOwnerId: '负责业务', customerName: '客户名称', contactName: '联系人',
+  caseCategory: '案分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票别', pricingMode: '计价模式', totalExcludingTax: '未税总计',
+  invoiceProcess: '发票处理', billingContent: '开票内容', invoiceRecipient: '开票对象', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购电话',
+  recipient: '收件人', recipientTel: '收件电话', recipientMail: '收件邮箱', paymentTerms: '付款条件', paymentOther: '付款说明', splitDelivery: '分批送机',
+  acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则',
+  fillDate: '填表日期', latestDeliveryDate: '最晚交货日', deliveryLocation: '交货地点', shipmentNo: '出货单号', deliveryTerms: '交货条款', remark: '备注', approvalSteps: '签核链', totals: '金额汇总',
+  salesExcludingTax: '未税售价', vat: '销售税额', salesIncludingTax: '含税售价', costExcludingTax: '未税成本', costIncludingTax: '含税成本', marginRate: '毛利率',
+}
+const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '描述', warrantyService: '保固服务', installBy: '装机', qty: '数量', unitPrice: '销售单价', subtotal: '销售小计', vendor: '厂商', costInclTax: '成本含税', taxRate: '成本税率', purchaseOrderNo: '采购单号', costSource: '成本来源' }
+function changeLabel(path: string) {
+  const item = path.match(/^items\.(\d+)(?:\.(.+))?$/)
+  if (item) return `第 ${Number(item[1]) + 1} 项${item[2] ? ` · ${ITEM_CHANGE_LABELS[item[2]] || item[2]}` : ''}`
+  const [root, nested] = path.split('.')
+  const suffix = nested === undefined ? '' : /^\d+$/.test(nested) ? ` · ${Number(nested) + 1}` : ` · ${CHANGE_LABELS[nested] || nested}`
+  return `${CHANGE_LABELS[root] || root}${suffix}`
+}
+function changeValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-'
+  if (Array.isArray(value)) return value.join('、') || '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (value === true) return '是'
+  if (value === false) return '否'
+  return String(value)
+}
+
 export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [form, setForm] = useState<MrOrder | null>(null)
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [vendors, setVendors] = useState<VendorOption[]>([])
+  const [salespeople, setSalespeople] = useState<UserOption[]>([])
   const [contacts, setContacts] = useState<CustomerOption['contacts']>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -112,6 +145,10 @@ export function MrFormPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [decision, setDecision] = useState<Decision>(null)
   const [reason, setReason] = useState('')
+  const [rejectTarget, setRejectTarget] = useState<'sales' | 'assistant'>('sales')
+  const [editing, setEditing] = useState(false)
+  const [reassignOpen, setReassignOpen] = useState(false)
+  const [reassignSalesId, setReassignSalesId] = useState('')
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
@@ -120,7 +157,12 @@ export function MrFormPage() {
   const errorListRef = useRef<HTMLDivElement | null>(null)
 
   const calculated = useMemo(() => form ? calculateForm(form) : null, [form])
-  const editable = Boolean(form?.permissions?.canEdit)
+  const canEdit = Boolean(form?.permissions?.canEdit)
+  const assistantReview = Boolean(canEdit && form?.status === 'in_review' && form?.currentStepKey === 'assistant')
+  const editable = Boolean(canEdit && (!assistantReview || editing))
+  const documentMode = Boolean(form?.status === 'in_review' && !editing)
+  const approvedDocumentReady = Boolean(form?.archivedDocumentTypes?.includes('approved'))
+  const voidedDocumentReady = Boolean(form?.archivedDocumentTypes?.includes('voided'))
 
   const load = useCallback(async () => {
     if (!id) return
@@ -135,7 +177,7 @@ export function MrFormPage() {
         || contactByName(customerContacts, order.contactName || order.purchaser || order.recipient || customer?.contactName)
         || contactByName(customerContacts, customer?.contactName)
         || customerContacts[0]
-      const hydratedOrder = !order.customerContactId && defaultContact ? {
+      const hydratedOrder = order.permissions?.canEdit && ['draft', 'rejected'].includes(order.status || '') && !order.customerContactId && defaultContact ? {
         ...order,
         customerContactId: defaultContact.id || null,
         contactName: defaultContact.name || order.contactName || '',
@@ -147,9 +189,11 @@ export function MrFormPage() {
       } : order
       if (sequence !== loadSequence.current) return
       setForm(hydratedOrder)
+      setEditing(false)
       setConstants(optionData)
       setCustomers(references.customers)
       setVendors(references.vendors)
+      setSalespeople(references.salespeople.filter((candidate) => candidate.role === 'sales'))
       setContacts(customer?.contacts || [])
       setDirty(false)
     } catch (err) {
@@ -306,7 +350,6 @@ export function MrFormPage() {
 
 
   const applyQuotationImport = async (result: QuotationImportResult, selectedMode?: number) => {
-    const salesFile = result.files[result.salesSourceIndex]
     const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
     const suggested = suggestPricingMode(result)
     const importedMode = Number(selectedMode) || Number(calculated?.pricingMode) || suggested.mode
@@ -367,7 +410,7 @@ export function MrFormPage() {
       invoiceRecipient: calculated?.invoiceRecipient || importedContactName,
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
-    toast.success(`已导入 ${items.length} 个品项和 ${result.files.length} 份原文件，建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
+    toast.success(`已导入 ${items.length} 个品项和 ${result.sources.length} 份原文件，历史附件已保留；建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
     if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未在客户库里找到，已先填入名称，请确认或手动关联`)
   }
   const save = async () => {
@@ -379,7 +422,8 @@ export function MrFormPage() {
       const saved = await updateMr(id, calculated)
       setForm(saved)
       setDirty(false)
-      toast.success('草稿已保存')
+      if (saved.status === 'in_review') setEditing(false)
+      toast.success(saved.status === 'in_review' ? '修改已保存，请确认单据后会签' : '草稿已保存')
       return saved
     } catch (err) {
       setError((err as Error).message || '保存失败')
@@ -409,31 +453,47 @@ export function MrFormPage() {
     }
   }
 
-  const approve = async () => {
-    if (!id) return
+
+  const confirmDecision = async () => {
+    if (!id || !decision || (decision !== 'approve' && !reason.trim())) return
     setBusy(true)
     try {
-      const next = await approveMr(id)
+      const next = decision === 'approve'
+        ? await approveMr(id)
+        : decision === 'reject'
+          ? await rejectMr(id, reason.trim(), rejectTarget)
+          : decision === 'withdraw'
+            ? await withdrawMr(id, reason.trim())
+            : await voidMr(id, reason.trim())
       setForm(next)
-      toast.success(next.status === 'approved' ? 'MR 已全部签核通过' : '签核完成，已流转到下一步')
+      setEditing(false)
+      setDecision(null)
+      setReason('')
+      const messages = { approve: next.status === 'approved' ? 'MR 已全部签核通过' : '签核完成，已流转到下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回到草稿', void: 'MR 已作废' }
+      toast.success(messages[decision])
     } catch (err) {
-      setError((err as Error).message || '签核失败')
+      const details = validationDetails(err)
+      setError((err as Error).message || '操作失败')
+      setErrors(details)
+      if (assistantReview && details.length) {
+        setDecision(null)
+        setEditing(true)
+      }
     } finally {
       setBusy(false)
     }
   }
 
-  const confirmDecision = async () => {
-    if (!id || !decision || !reason.trim()) return
+  const confirmReassign = async () => {
+    if (!id || !reassignSalesId) return
     setBusy(true)
     try {
-      const next = decision === 'reject' ? await rejectMr(id, reason.trim()) : await voidMr(id, reason.trim())
+      const next = await reassignMrSales(id, reassignSalesId)
       setForm(next)
-      setDecision(null)
-      setReason('')
-      toast.success(decision === 'reject' ? '已驳回并退回修改' : 'MR 已作废')
+      setReassignOpen(false)
+      toast.success('负责业务已变更；未完成流程将由新对应助理重新提交')
     } catch (err) {
-      setError((err as Error).message || '操作失败')
+      setError((err as Error).message || '负责业务变更失败')
     } finally {
       setBusy(false)
     }
@@ -495,7 +555,7 @@ export function MrFormPage() {
       errorCount={errors.length}
       busy={busy}
       layout={layout}
-      onApprove={() => void approve()}
+      onApprove={() => { if (dirty) toast.error('请先保存修改，再进行会签'); else { setDecision('approve'); setReason('') } }}
       onReject={() => { setDecision('reject'); setReason('') }}
       onShowErrors={() => errorListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
     />
@@ -527,19 +587,39 @@ export function MrFormPage() {
                 <FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
+            <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: documentMode ? form : calculated } })}>
             <Printer className="mr-2 size-4" />{status === 'in_review' ? '查看审批文档' : '打印预览'}
             </Button>
+            {status === 'approved' ? (
+              <Button variant="outline" disabled={!approvedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                <FileDown className="mr-2 size-4" />{approvedDocumentReady ? '下载正式 PDF' : calculated.archiveStatus === 'failed' ? '归档重试中' : '归档处理中'}
+              </Button>
+            ) : null}
+            {status === 'voided' ? (
+              <Button variant="outline" disabled={!approvedDocumentReady} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                <FileDown className="mr-2 size-4" />原审批 PDF
+              </Button>
+            ) : null}
+            {status === 'voided' ? (
+              <Button variant="outline" disabled={!voidedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'voided').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                <FileDown className="mr-2 size-4" />{voidedDocumentReady ? '作废 PDF' : calculated.archiveStatus === 'failed' ? '作废归档重试中' : '作废归档处理中'}
+              </Button>
+            ) : null}
+            {assistantReview && !editing ? <Button onClick={() => setEditing(true)}><Pencil className="mr-2 size-4" />修改单据</Button> : null}
+            {assistantReview && editing ? <Button variant="outline" onClick={() => { if (!dirty || window.confirm('放弃未保存修改？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-2 size-4" />退出修改</Button> : null}
+            {calculated.permissions?.canWithdraw ? <Button variant="outline" onClick={() => { setDecision('withdraw'); setReason('') }}><Undo2 className="mr-2 size-4" />撤回</Button> : null}
+            {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更负责业务</Button> : null}
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
             {editable ? (
               <Button variant="outline" disabled={busy || !dirty} onClick={() => void save()}>
-                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}保存草稿
+                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}{status === 'in_review' ? '保存修改' : '保存草稿'}
               </Button>
             ) : null}
-            {editable ? <Button disabled={busy} onClick={() => void submit()}><Send className="mr-2 size-4" />提交签核</Button> : null}
+            {editable && ['draft', 'rejected'].includes(status) ? <Button disabled={busy} onClick={() => void submit()}><Send className="mr-2 size-4" />提交签核</Button> : null}
           </div>
         </div>
-        <div className="border-t lg:hidden">
+        {!documentMode ? (
+          <div className="border-t lg:hidden">
           <SectionNav
             sections={WORKBENCH_SECTIONS}
             activeId={activeSection}
@@ -548,10 +628,44 @@ export function MrFormPage() {
             orientation="horizontal"
             onNavigate={goToSection}
           />
-        </div>
+          </div>
+        ) : null}
       </div>
 
-      <div className="border-b"><WorkbenchMetrics order={calculated} /></div>
+      {documentMode ? (
+        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 sm:px-6 min-[1280px]:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} embedded /></div>
+          <aside className="min-w-0 space-y-4">
+            <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核</h2><StatusBadge status={status} /></div>
+              <div className="mt-3 text-sm"><span className="text-muted-foreground">节点：</span>{calculated.currentStepLabel || '-'}</div>
+              <div className="mt-1 text-sm"><span className="text-muted-foreground">处理人：</span>{calculated.currentAssigneeName || '等待人员配置'}</div>
+              {calculated.assignmentError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{calculated.assignmentError}</div> : null}
+              {assistantReview ? <p className="mt-3 text-xs text-muted-foreground">需要补充字段时点击顶部“修改单据”；保存后会回到本页，再执行会签。</p> : null}
+            </div>
+            {calculated.currentVersion && calculated.currentStepKey !== 'assistant' ? (
+              <details className="rounded-xl border bg-card p-4 shadow-sm" open>
+                <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项）</summary>
+                <div className="mt-3 max-h-64 space-y-2 overflow-auto">
+                  {calculated.currentVersion.changes.length ? calculated.currentVersion.changes.map((change, index) => (
+                    <div key={`${change.field}-${index}`} className="rounded-md bg-muted/40 p-2 text-xs">
+                      <div className="font-medium">{changeLabel(change.field)}</div>
+                      <div className="mt-1 grid gap-1 text-muted-foreground"><span>原：{changeValue(change.before)}</span><span>新：{changeValue(change.after)}</span></div>
+                    </div>
+                  )) : <div className="text-sm text-muted-foreground">助理未修改提交内容。</div>}
+                </div>
+              </details>
+            ) : null}
+            <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
+            {calculated.quotationFiles?.length ? (
+              <Button className="w-full" variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />查看源报价附件（{calculated.quotationFiles.length}）</Button>
+            ) : null}
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
+          </aside>
+        </div>
+      ) : (
+        <>
+          <div className="border-b"><WorkbenchMetrics order={calculated} /></div>
 
       <div className="mx-auto grid max-w-[1700px] gap-6 px-4 py-5 sm:px-6 min-[1450px]:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-5 pb-24 lg:pb-6">
@@ -863,6 +977,8 @@ export function MrFormPage() {
       <div className="sticky bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">
         {summary('bar')}
       </div>
+        </>
+      )}
 
       {id ? (
         <QuotationImportDialog
@@ -877,21 +993,48 @@ export function MrFormPage() {
         />
       ) : null}
 
+      <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>变更负责业务</DialogTitle><DialogDescription>未完成的签核会关闭，并退回新业务；新业务需在“我的设置”确认对应助理，再由助理重新核对提交。历史电子签不变。</DialogDescription></DialogHeader>
+          <Select value={reassignSalesId} onValueChange={setReassignSalesId}>
+            <SelectTrigger><SelectValue placeholder="选择新的负责业务" /></SelectTrigger>
+            <SelectContent>{salespeople.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}</SelectContent>
+          </Select>
+          <DialogFooter><Button variant="outline" onClick={() => setReassignOpen(false)}>取消</Button><Button disabled={busy || !reassignSalesId || Number(reassignSalesId) === Number(calculated.salesOwnerId)} onClick={() => void confirmReassign()}>确认变更</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(decision)} onOpenChange={(open) => { if (!open) setDecision(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{decision === 'reject' ? '驳回 MR' : '作废 MR'}</DialogTitle>
+            <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR' : decision === 'withdraw' ? '撤回 MR' : '作废 MR'}</DialogTitle>
             <DialogDescription>
-              {decision === 'reject' ? '驳回后业务或助理可修改，重新提交会从助理开始签核。' : '已通过的 MR 不会删除，作废原因会永久留存。'}
+              {decision === 'approve'
+                ? `你将以本人账号确认 ${assistantReview ? `并冻结 V${Number(calculated.versionNo || 0) + 1}` : `V${calculated.versionNo || calculated.currentVersion?.versionNo || 1}`}，未税金额 ¥ ${money(calculated.totals?.salesExcludingTax)}。签核后不可修改本版本。`
+                : decision === 'reject'
+                  ? '请选择退回对象并填写原因；修改后会从助理重新开始签核。'
+                  : decision === 'withdraw'
+                    ? '撤回后当前待办关闭，MR 回到草稿；重新提交会从助理开始。'
+                    : '已通过的 MR 不会删除，原审批 PDF 永久保留，并生成作废版本。'}
             </DialogDescription>
           </DialogHeader>
-          <Field label={decision === 'reject' ? '驳回原因' : '作废原因'}>
-            <Textarea rows={4} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </Field>
+          {decision === 'reject' ? (
+            <Field label="退回给">
+              <Select value={rejectTarget} onValueChange={(value) => setRejectTarget(value as 'sales' | 'assistant')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="sales">负责业务</SelectItem><SelectItem value="assistant">对应助理</SelectItem></SelectContent>
+              </Select>
+            </Field>
+          ) : null}
+          {decision !== 'approve' ? (
+            <Field label={decision === 'reject' ? '驳回原因' : decision === 'withdraw' ? '撤回原因' : '作废原因'}>
+              <Textarea rows={4} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </Field>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>取消</Button>
-            <Button variant={decision === 'reject' ? 'default' : 'destructive'} disabled={busy || !reason.trim()} onClick={() => void confirmDecision()}>
-              {decision === 'reject' ? '确认驳回' : '确认作废'}
+            <Button variant={decision === 'void' ? 'destructive' : 'default'} disabled={busy || (decision !== 'approve' && !reason.trim())} onClick={() => void confirmDecision()}>
+              {decision === 'approve' ? '确认同意并签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : '确认作废'}
             </Button>
           </DialogFooter>
         </DialogContent>

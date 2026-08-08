@@ -12,7 +12,7 @@ const { ensureUserLoginColumns } = require('./schema')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
-const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, last_login_at, created_at, updated_at'
+const publicColumns = 'id, username, real_name, phone, email, login_alias, role, assistant_user_id, status, avatar_path, must_change_password, engineer_signature, last_login_at, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(ALL_ROLES)
 const allowedStatuses = new Set(['active', 'disabled'])
@@ -132,6 +132,7 @@ function userPayload(row) {
     phone: normalizePhoneNumber(row.phone) || row.phone,
     email: row.email,
     role: row.role,
+    assistantUserId: row.assistant_user_id || null,
     status: row.status,
     engineerSignature: row.engineer_signature || '',
     hasEngineerSignature: Boolean(row.engineer_signature),
@@ -218,6 +219,17 @@ async function listSalespeople(req, res) {
      ORDER BY real_name ASC, username ASC`,
   )
   res.json({ items: rows.map(userPayload).filter((user) => salespersonRoles.has(user.role)) })
+}
+
+async function listAssistants(_req, res) {
+  await ensureUserLoginColumns()
+  const rows = await query(
+    `SELECT ${publicColumns}
+     FROM users
+     WHERE role = 'assistant' AND status = 'active'
+     ORDER BY real_name ASC, username ASC`,
+  )
+  res.json({ items: rows.map(userPayload) })
 }
 
 async function create(req, res) {
@@ -487,6 +499,7 @@ module.exports = {
   list,
   listEngineers,
   listSalespeople,
+  listAssistants,
   create,
   update,
   remove,

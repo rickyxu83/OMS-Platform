@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
 import {
   LayoutDashboard,
+  ListTodo,
   ClipboardPenLine,
   FileText,
   FileSignature,
@@ -129,6 +130,7 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "运营总览",
+      "approval-tasks": "待办中心",
       "service-report": "工单填写",
       "service-orders": "工单处理",
       mr: "订购申请（MR）",
@@ -190,6 +192,7 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "運營總覽",
+      "approval-tasks": "待辦中心",
       "service-report": "工單填寫",
       "service-orders": "工單處理",
       mr: "訂購申請（MR）",
@@ -222,6 +225,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     groupKey: "workspace",
     items: [
       { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard", requiredPermissions: ["order.view", "order.engineer.own"] },
+      { labelKey: "approval-tasks", icon: ListTodo, path: "approval-tasks" },
     ],
   },
   {
@@ -327,6 +331,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
@@ -414,6 +419,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    const load = () => api.get("/approval-tasks?view=pending")
+      .then((data) => { if (active) setPendingTaskCount(Number(data?.pendingCount || 0)); })
+      .catch(() => {});
+    void load();
+    const timer = window.setInterval(load, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [user?.id, location.pathname]);
 
   const handleLangToggle = () => {
     const nextLang = lang === "zh-CN" ? "zh-TW" : "zh-CN";
@@ -580,9 +595,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             <Icon className={`w-4 h-4 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
                             <span className="text-sm font-medium">{item.label}</span>
                           </div>
-                          {isActive && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                          )}
+                          <div className="flex items-center gap-2">
+                            {item.path === "approval-tasks" && pendingTaskCount > 0 ? (
+                              <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{pendingTaskCount > 99 ? "99+" : pendingTaskCount}</span>
+                            ) : null}
+                            {isActive ? <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" /> : null}
+                          </div>
                         </button>
                       );
                     })}

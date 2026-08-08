@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import type { CustomerOption, MrConstants, MrOrder, QuotationImportResult, UserOption, VendorOption } from './types'
+import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrOrder, QuotationImportResult, UserOption, VendorOption } from './types'
 
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
@@ -16,10 +16,16 @@ export const createMr = (body: Partial<MrOrder> = {}) => api.post('/mr', body) a
 export const updateMr = (id: string | number, body: Partial<MrOrder>) => api.put(`/mr/${pathId(id)}`, body) as Promise<MrOrder>
 export const submitMr = (id: string | number) => api.post(`/mr/${pathId(id)}/submit`) as Promise<MrOrder>
 export const approveMr = (id: string | number) => api.post(`/mr/${pathId(id)}/approve`) as Promise<MrOrder>
-export const rejectMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/reject`, { reason }) as Promise<MrOrder>
+export const rejectMr = (id: string | number, reason: string, target: 'sales' | 'assistant') => api.post(`/mr/${pathId(id)}/reject`, { reason, target }) as Promise<MrOrder>
+export const reassignMrSales = (id: string | number, salesOwnerId: string | number) => api.post(`/mr/${pathId(id)}/reassign-sales`, { salesOwnerId }) as Promise<MrOrder>
+export const withdrawMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/withdraw`, { reason }) as Promise<MrOrder>
 export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/void`, { reason }) as Promise<MrOrder>
 export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
+export const getAssistantSetting = () => api.get('/mr/assistant-setting') as Promise<AssistantSetting>
+export const setAssistantSetting = (assistantUserId: string | number) => api.put('/mr/assistant-setting', { assistantUserId }) as Promise<AssistantSetting>
+export const listApprovalTasks = (view: 'pending' | 'initiated' | 'completed') => api.get(`/approval-tasks?view=${view}`) as Promise<{ items: ApprovalTask[]; pendingCount: number }>
+export const listSalespeople = () => api.get('/users/salespeople') as Promise<{ items: UserOption[] }>
 
 export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false) {
   const body = new FormData()
@@ -36,6 +42,16 @@ export async function downloadQuotation(id: string | number, fileId: string | nu
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function downloadMrDocument(id: string | number, type?: 'approved' | 'voided') {
+  const blob = await api.download(`/mr/${pathId(id)}/document${type ? `?type=${type}` : ''}`)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `MR-${id}-${type || '正式'}.pdf`
   anchor.click()
   URL.revokeObjectURL(url)
 }
