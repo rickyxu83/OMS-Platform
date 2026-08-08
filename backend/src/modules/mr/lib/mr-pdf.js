@@ -191,76 +191,6 @@ function approvals(doc, fonts, rows, y) {
   return y + 84
 }
 
-function appendixEntries(order, items, approvalRows) {
-  const orderText = [
-    ['客户', order.customerName || order.customer_name], ['联系人', order.contactName || order.contact_name], ['客户 P/O', order.customerPo || order.customer_po],
-    ['负责业务', order.salesOwnerName || order.sales_owner_name], ['案分类', order.caseCategory || order.case_category], ['Ctrl.NO', order.ctrlNo || order.ctrl_no],
-    ['计价模式', order.pricingMode || order.pricing_mode], ['未税总计', order.totalExcludingTax || order.total_excluding_tax],
-    ['发票', order.invoiceType || order.invoice_type], ['发票处理', order.invoiceProcess || order.invoice_process], ['开票内容', order.billingContent || order.billing_content],
-    ['开票对象', order.invoiceRecipient || order.invoice_recipient], ['开票/收款时间', order.billingTiming || order.billing_timing],
-    ['采购联系人', order.purchaser], ['采购电话', order.purchaserTel || order.purchaser_tel], ['收件人', order.recipient],
-    ['收件电话', order.recipientTel || order.recipient_tel], ['收件邮箱', order.recipientMail || order.recipient_mail],
-    ['付款条件', order.paymentTerms || order.payment_terms], ['付款说明', order.paymentOther || order.payment_other], ['是否分批', Number(order.splitDelivery ?? order.split_delivery) ? '是' : '否'],
-    ['验收', order.acceptance], ['验收说明', order.acceptanceOther || order.acceptance_other], ['装机', options(order.installOptions || order.install_options)], ['维护', options(order.maintenanceOptions || order.maintenance_options)],
-    ['合同编号', order.contractNo || order.contract_no], ['罚则', order.penaltyContent || order.penalty_content], ['填表日期', order.fillDate || order.fill_date],
-    ['最晚交货日', order.latestDeliveryDate || order.latest_delivery_date], ['交货地点', order.deliveryLocation || order.delivery_location],
-    ['出货单号', order.shipmentNo || order.shipment_no], ['交货条款', order.deliveryTerms || order.delivery_terms], ['备注', order.remark], ['作废原因', order.voidReason || order.void_reason],
-    ['源报价附件', (order.quotationFiles || []).map((file) => `${file.name}${file.createdAt ? `（${time(file.createdAt)}）` : ''}`).join('、')],
-  ].map(([label, content]) => `${label}：${value(content)}`).join('\n')
-  const entries = [['MR 完整资料', orderText]]
-  items.forEach((item, index) => entries.push([`品项 ${index + 1}`, [
-    ['公司料号', item.companyPartNo || item.company_part_no], ['原厂规格', item.oemSpec || item.oem_spec], ['品名', item.name], ['描述', item.description],
-    ['保固服务', item.warrantyService || item.warranty_service], ['装机', item.installBy || item.install_by], ['数量', item.qty], ['销售单价', item.unitPrice ?? item.unit_price],
-    ['报价原单价', item.quotedUnitPrice ?? item.quoted_unit_price], ['销售小计', item.subtotal], ['厂商', item.vendor],
-    ['成本未税', item.costExcludingTax ?? item.cost_excluding_tax], ['成本含税', item.costInclTax ?? item.cost_incl_tax], ['成本税率', item.taxRate ?? item.tax_rate], ['毛利率', item.marginRate ?? item.margin_rate],
-    ['采购单号', item.purchaseOrderNo || item.purchase_order_no], ['成本来源', item.costSource || item.cost_source],
-  ].map(([label, content]) => `${label}：${value(content)}`).join('\n')]))
-  approvalRows.forEach((approval, index) => entries.push([`签核 ${index + 1}`, [
-    `节点：${value(approval.stepLabel || approval.step_label)}`, `结果：${value(approval.action)}`,
-    `签核人：${value(approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName)}`,
-    `角色：${value(approval.approverRoleSnapshot || approval.approver_role_snapshot)}`, `时间：${time(approval.decidedAt || approval.decided_at)}`, `原因：${value(approval.reason)}`,
-  ].join('\n')]))
-  return entries
-}
-
-function splitToFit(doc, fonts, content, width, maxHeight) {
-  const pending = [value(content)]
-  const result = []
-  doc.font(fonts.regular).fontSize(8)
-  while (pending.length) {
-    const chunk = pending.shift()
-    if (doc.heightOfString(chunk, { width, lineGap: 1 }) <= maxHeight || chunk.length <= 1) result.push(chunk)
-    else {
-      const middle = Math.ceil(chunk.length / 2)
-      pending.unshift(chunk.slice(0, middle), chunk.slice(middle))
-    }
-  }
-  return result
-}
-
-function appendix(doc, fonts, order, approvalRows) {
-  const left = PAGE.margin
-  const width = PAGE.width - PAGE.margin * 2
-  const bottom = PAGE.height - 32
-  doc.addPage()
-  let y = header(doc, fonts, order, '客户订购申请单 · 完整文字附录')
-  for (const [label, content] of appendixEntries(order, Array.isArray(order.items) ? order.items : [], approvalRows)) {
-    const chunks = splitToFit(doc, fonts, content, width, bottom - 92)
-    chunks.forEach((chunk, index) => {
-      doc.font(fonts.regular).fontSize(8)
-      const bodyHeight = doc.heightOfString(chunk, { width, lineGap: 1 })
-      if (y + bodyHeight + 24 > bottom) {
-        doc.addPage()
-        y = header(doc, fonts, order, '客户订购申请单 · 完整文字附录')
-      }
-      text(doc, fonts, index ? `${label}（续）` : label, left, y, { size: 8, bold: true, color: PURPLE, width })
-      doc.font(fonts.regular).fontSize(8).fillColor('#111827').text(chunk, left, y + 12, { width, lineGap: 1 })
-      y = doc.y + 9
-    })
-  }
-}
-
-
 function watermark(doc, fonts, label) {
   if (!label) return
   doc.save().opacity(0.12).fillColor('#b91c1c').font(fonts.bold).fontSize(54)
@@ -308,7 +238,6 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   y = totals(doc, fonts, order, items, y + 5)
   y = details(doc, fonts, order, y)
   approvals(doc, fonts, approvalRows, y)
-  appendix(doc, fonts, order, approvalRows)
   drawWatermarks(doc, fonts, watermarkLabel)
   drawFooters(doc, fonts)
   return doc
