@@ -2,6 +2,7 @@ const cron = require('node-cron')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
 const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
+const { generateDueOrders } = require('../modules/inspection-schedules/controller')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../modules/customers/internal')
 const {
   sendMaintenanceExpiryMail,
@@ -17,9 +18,14 @@ const { processMrNotifications } = require('./mr-notifications')
 const { processMrArchives } = require('../modules/mr/archive')
 
 const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
+const INSPECTION_AUTO_GENERATE_DAYS = 14
 
 function scheduleCron(expression, task) {
   return cron.schedule(expression, task, { timezone: SCHEDULER_TIMEZONE })
+}
+
+function shanghaiDateKeyAfter(days) {
+  return new Date(Date.now() + (8 * 60 + days * 24 * 60) * 60 * 1000).toISOString().slice(0, 10)
 }
 
 function deviceDisplaySql(alias = 'd') {
@@ -39,6 +45,7 @@ async function notificationSettings() {
     'notification.inspectionReminderRecipients',
     'notification.inspectionReminderSalesNotifyEnabled',
     'notification.inspectionScheduleDateMissingEnabled',
+    'notification.inspectionAutoGenerateEnabled',
     'notification.inspectionOverdueEnabled',
     'notification.inspectionOverdueDays',
     'notification.inspectionOverdueRecipients',
@@ -60,6 +67,7 @@ async function notificationSettings() {
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
     inspectionReminderSalesNotifyEnabled: saved['notification.inspectionReminderSalesNotifyEnabled'] !== 'false',
     inspectionScheduleDateMissingEnabled: saved['notification.inspectionScheduleDateMissingEnabled'] !== 'false',
+    inspectionAutoGenerateEnabled: saved['notification.inspectionAutoGenerateEnabled'] !== 'false',
     inspectionOverdueEnabled: saved['notification.inspectionOverdueEnabled'] !== 'false',
     inspectionOverdueDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionOverdueDays'] || 1))),
     inspectionOverdueRecipients: String(saved['notification.inspectionOverdueRecipients'] || '').trim(),
@@ -846,6 +854,22 @@ function startScheduler() {
     }
   })
 
+  scheduleCron('30 6 * * *', async () => {
+    console.log('[scheduler] Running inspection auto-generation...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.inspectionAutoGenerateEnabled) {
+        console.log('[scheduler] Inspection auto-generation is disabled')
+        return
+      }
+      const dueDate = shanghaiDateKeyAfter(INSPECTION_AUTO_GENERATE_DAYS)
+      const result = await generateDueOrders({ dueDate, limit: 100 })
+      console.log(`[scheduler] Inspection auto-generation processed through ${dueDate}: generated=${result.generated}, skipped=${result.skipped}`)
+    } catch (error) {
+      console.error('[scheduler] Inspection auto-generation failed', error?.message)
+    }
+  })
+
   scheduleCron('0 7 * * *', async () => {
     console.log('[scheduler] Running inspection reminder check...')
     try {
@@ -1081,7 +1105,7 @@ function startScheduler() {
     }
   })
 
-  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), MR approval notifications (1m), MR PDF archive retry (2m)`)
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection auto-generation (06:30, 14 days ahead), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), MR approval notifications (1m), MR PDF archive retry (2m)`)
 }
 
 module.exports = { startScheduler }
