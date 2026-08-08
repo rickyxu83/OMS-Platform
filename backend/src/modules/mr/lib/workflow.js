@@ -142,14 +142,12 @@ async function ensureWorkflowTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   const documentColumns = await tableColumns('mr_documents')
-  const addDocumentFormatColumn = !documentColumns.has('format_version')
-  if (addDocumentFormatColumn) {
+  if (!documentColumns.has('format_version')) {
     await query('ALTER TABLE mr_documents ADD COLUMN format_version INT UNSIGNED NULL AFTER version_no')
   }
   await query('UPDATE mr_documents SET format_version = 1 WHERE format_version IS NULL')
-  if (addDocumentFormatColumn) {
-    await query(`ALTER TABLE mr_documents MODIFY COLUMN format_version INT UNSIGNED NOT NULL DEFAULT ${PDF_FORMAT_VERSION}`)
-  }
+  // 始终执行 MODIFY，保证上次部署中断后重试仍能把列约束补全
+  await query(`ALTER TABLE mr_documents MODIFY COLUMN format_version INT UNSIGNED NOT NULL DEFAULT ${PDF_FORMAT_VERSION}`)
   await query(`UPDATE mr_orders o INNER JOIN mr_documents d ON d.mr_id = o.id
                  AND d.version_no = (SELECT MAX(d2.version_no) FROM mr_documents d2
                                      WHERE d2.mr_id = d.mr_id AND d2.document_type = d.document_type)
