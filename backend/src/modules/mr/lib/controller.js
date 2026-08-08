@@ -33,6 +33,7 @@ const {
   updateAssistantSetting,
   mrDocument,
 } = require('./workflow')
+const { PDF_FORMAT_VERSION } = require('./mr-pdf')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
 const SALES_ROLES = new Set(['sales', 'sales_supervisor'])
@@ -339,7 +340,7 @@ async function loadDetail(id, user) {
        ORDER BY version_no DESC LIMIT 1`,
       { id },
     ),
-    query('SELECT document_type FROM mr_documents WHERE mr_id = :id ORDER BY created_at', { id }),
+    query('SELECT document_type FROM mr_documents WHERE mr_id = :id AND format_version >= :formatVersion ORDER BY created_at', { id, formatVersion: PDF_FORMAT_VERSION }),
   ])
   const rawItems = itemRows.map(camelizeRow)
   const normalized = normalizeOrder({ ...order, items: rawItems })
@@ -1099,13 +1100,14 @@ async function downloadDocument(req, res) {
   if (!canView(order, req.user)) throw forbidden('无权下载该 MR 归档文件')
   const requestedType = ['approved', 'voided'].includes(req.query.type) ? req.query.type : null
   const document = await mrDocument(req.params.id, requestedType)
-  if (!document || !fs.existsSync(document.storage_path)) {
+  const stale = document && Number(document.format_version || 0) < PDF_FORMAT_VERSION
+  if (!document || !fs.existsSync(document.storage_path) || stale) {
     if (['approved', 'voided'].includes(order.status)) {
       if (document?.id) await query('DELETE FROM mr_documents WHERE id = :id', { id: document.id })
       await query(
-        `UPDATE mr_orders SET archive_status = 'pending', archive_next_attempt_at = NOW(), archive_error = '归档文件缺失，等待重新生成'
+        `UPDATE mr_orders SET archive_status = 'pending', archive_next_attempt_at = NOW(), archive_error = :reason
          WHERE id = :id`,
-        { id: req.params.id },
+        { id: req.params.id, reason: stale ? 'PDF 格式升级，等待重新生成' : '归档文件缺失，等待重新生成' },
       )
       throw badRequest('正式 PDF 正在生成，请稍后重试')
     }

@@ -1,4 +1,5 @@
 const assert = require('assert')
+const { PDFParse } = require('pdf-parse')
 delete process.env.MR_APPROVAL_EMAIL_DOMAINS
 const { assertAssistantMapping, completeTask, resolveStepAssignee, _test } = require('../workflow')
 const { normalizeOrder, validateSubmission } = require('../domain')
@@ -112,6 +113,8 @@ async function main() {
     salesOwnerName: '业务甲',
     latestDeliveryDate: '2026-08-08',
     invoiceType: '13%增值税',
+    pricingMode: 1,
+    totalExcludingTax: 100,
     installOptions: ['敦阳'],
     maintenanceOptions: ['NO'],
     splitDelivery: 0,
@@ -132,11 +135,25 @@ async function main() {
     approver_name_snapshot: '助理甲',
     approver_signature_snapshot: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
     decided_at: '2026-08-08 10:00:00',
+  }, {
+    step_label: '业务',
+    action: 'approve',
+    reason: '确认无误',
+    approver_name_snapshot: '业务乙',
+    decided_at: '2026-08-08 11:00:00',
   }])
   assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF')
   assert(pdf.length > 1000)
   assert(pdf.includes(Buffer.from('/Subtype /Image')), 'MR PDF 应嵌入审批人的手写签名')
   assert.strictEqual((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1, '正式 MR 不应追加原始文字附录')
+  const parser = new PDFParse({ data: pdf })
+  const extracted = await parser.getText()
+  await parser.destroy()
+  assert(extracted.text.includes('多项系统集成'), '正式 PDF 应保留已填写的计价模式')
+  assert(extracted.text.includes('确认无误'), '正式 PDF 应保留已填写的签核意见')
+  assert(!extracted.text.includes('客户 P/O'), '正式 PDF 不应显示空白客户 P/O')
+  assert(!extracted.text.includes('采购单号 / 来源'), '正式 PDF 不应显示全为空的采购列')
+  assert(!extracted.text.includes('未设置手写签名'), '正式 PDF 不应显示空白签名占位')
 
   console.log('mr workflow and PDF tests passed')
 }

@@ -4,6 +4,7 @@ const { badRequest, forbidden } = require('../../../utils/http-error')
 const { ensureUserLoginColumns } = require('../../users/schema')
 const { STEP_ROLES } = require('../domain')
 const { ROLE_LABELS } = require('../../../permissions/catalog')
+const { PDF_FORMAT_VERSION } = require('./mr-pdf')
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const allowedDomains = new Set((env.mrApprovalEmailDomains || []).map((value) => value.toLowerCase()))
@@ -129,6 +130,7 @@ async function ensureWorkflowTables() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       mr_id BIGINT UNSIGNED NOT NULL,
       version_no INT UNSIGNED NOT NULL,
+      format_version INT UNSIGNED NOT NULL DEFAULT ${PDF_FORMAT_VERSION},
       document_type VARCHAR(16) NOT NULL,
       storage_path VARCHAR(500) NOT NULL,
       original_name VARCHAR(255) NOT NULL,
@@ -139,6 +141,21 @@ async function ensureWorkflowTables() {
       CONSTRAINT fk_mr_documents_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const documentColumns = await tableColumns('mr_documents')
+  const addDocumentFormatColumn = !documentColumns.has('format_version')
+  if (addDocumentFormatColumn) {
+    await query('ALTER TABLE mr_documents ADD COLUMN format_version INT UNSIGNED NULL AFTER version_no')
+  }
+  await query('UPDATE mr_documents SET format_version = 1 WHERE format_version IS NULL')
+  if (addDocumentFormatColumn) {
+    await query(`ALTER TABLE mr_documents MODIFY COLUMN format_version INT UNSIGNED NOT NULL DEFAULT ${PDF_FORMAT_VERSION}`)
+  }
+  await query(`UPDATE mr_orders o INNER JOIN mr_documents d ON d.mr_id = o.id
+                 AND d.version_no = (SELECT MAX(d2.version_no) FROM mr_documents d2
+                                     WHERE d2.mr_id = d.mr_id AND d2.document_type = d.document_type)
+               SET o.archive_status = 'pending', o.archive_next_attempt_at = NOW(), o.archive_error = 'PDF 格式升级，等待重新生成'
+               WHERE d.format_version < ${PDF_FORMAT_VERSION} AND o.status IN ('approved', 'voided')
+                 AND COALESCE(o.archive_status, 'ready') IN ('ready', 'failed')`)
   workflowTablesReady = true
   })()
   try {
