@@ -219,7 +219,7 @@ export function MrItemTable({
         </div>
 
         {editable && editMode ? (
-          <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-24">
+          <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-36">
             <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量操作台</h3></div>
             <p className="mb-3 text-sm text-muted-foreground">已选 {selectedRows.size} 项。选择一项作为模板，再选择要复制的字段。</p>
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>

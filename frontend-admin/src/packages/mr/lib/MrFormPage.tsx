@@ -577,7 +577,7 @@ export function MrFormPage() {
       <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
       <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
 
-      <div data-mr-sticky-header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
+      <div data-mr-sticky-header className="sticky top-14 lg:top-16 z-30 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
@@ -965,7 +965,7 @@ export function MrFormPage() {
         </div>
 
         <aside className="hidden min-[1450px]:block">
-          <div className="sticky top-24 overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="sticky top-36 overflow-hidden rounded-xl border bg-card shadow-sm">
             <div className="border-b px-4 py-3.5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-semibold">签核与风险</h2>
