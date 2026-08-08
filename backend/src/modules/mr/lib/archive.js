@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const env = require('../../../config/env')
 const { query } = require('../../../config/db')
-const { ensureWorkflowTables } = require('./workflow')
+const { ensureWorkflowTables, mrDocument } = require('./workflow')
 const { buildMrPdf } = require('./mr-pdf')
 
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
@@ -161,17 +161,6 @@ async function processMrArchives(limit = 5) {
     }
   }
   return { processed: rows.length, archived, failed }
-}
-
-async function mrDocument(mrId, type = null) {
-  await ensureWorkflowTables()
-  const rows = await query(
-    `SELECT * FROM mr_documents WHERE mr_id = :mrId
-       AND (:type IS NULL OR document_type = :type)
-     ORDER BY CASE document_type WHEN 'voided' THEN 0 ELSE 1 END, version_no DESC LIMIT 1`,
-    { mrId, type: type || null },
-  )
-  return rows[0] || null
 }
 
 module.exports = { archiveMrDocument, processMrArchives, mrDocument }

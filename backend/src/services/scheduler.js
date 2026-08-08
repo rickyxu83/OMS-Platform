@@ -15,7 +15,7 @@ const {
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 const { processMrNotifications } = require('./mr-notifications')
-const { processMrArchives } = require('../modules/mr/lib/archive')
+const { processMrArchives } = require('../modules/mr/archive')
 
 const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
 const INSPECTION_AUTO_GENERATE_DAYS = 14

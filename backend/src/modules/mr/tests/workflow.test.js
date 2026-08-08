@@ -1,8 +1,8 @@
 const assert = require('assert')
 delete process.env.MR_APPROVAL_EMAIL_DOMAINS
-const { assertAssistantMapping, completeTask, resolveStepAssignee, _test } = require('../lib/workflow')
+const { assertAssistantMapping, completeTask, resolveStepAssignee, _test } = require('../workflow')
 const { normalizeOrder, validateSubmission } = require('../domain')
-const { buildMrPdf } = require('../lib/mr-pdf')
+const { buildMrPdf } = require('../mr-pdf')
 const { getDefaultPermissionMatrix } = require('../../../permissions/catalog')
 
 function assistantRow(overrides = {}) {

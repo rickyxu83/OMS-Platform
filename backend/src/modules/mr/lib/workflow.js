@@ -552,6 +552,17 @@ async function listApprovalTasks(userId, view = 'pending') {
   })), pendingCount: Number(countRows[0]?.count || 0) }
 }
 
+async function mrDocument(mrId, type = null) {
+  await ensureWorkflowTables()
+  const rows = await query(
+    `SELECT * FROM mr_documents WHERE mr_id = :mrId
+       AND (:type IS NULL OR document_type = :type)
+     ORDER BY CASE document_type WHEN 'voided' THEN 0 ELSE 1 END, version_no DESC LIMIT 1`,
+    { mrId, type: type || null },
+  )
+  return rows[0] || null
+}
+
 module.exports = {
   ensureWorkflowTables,
   assertAssistantMapping,
@@ -565,5 +576,6 @@ module.exports = {
   updateAssistantSetting,
   listApprovalTasks,
   reconcilePendingMrAssignments,
+  mrDocument,
   _test: { comparableSnapshot, diffValues, jsonValue },
 }
