@@ -178,6 +178,8 @@ async function main() {
   await voidedParser.destroy()
   assert(voidedText.text.includes('审批后作废原因'), '作废 PDF 应保留作废原因')
 
+  assert(!extracted.text.includes('客户名称'), '正式 PDF 明细区不应重复汇总行已展示的客户名称')
+  assert(!extracted.text.includes('最晚交货日'), '正式 PDF 明细区不应重复页眉已展示的最晚交货日')
   console.log('mr workflow and PDF tests passed')
 }
 
