@@ -64,7 +64,7 @@ export async function loadMrReferences() {
   ])
   return {
     customers: customers.items || [],
-    salespeople: (salespeople.items || []).filter((user) => user.role === 'sales'),
+    salespeople: (salespeople.items || []).filter((user) => ['sales', 'sales_supervisor'].includes(user.role || '')),
     vendors: vendors.items || [],
   }
 }

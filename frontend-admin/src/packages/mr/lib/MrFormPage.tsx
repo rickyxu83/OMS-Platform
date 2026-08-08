@@ -193,7 +193,7 @@ export function MrFormPage() {
       setConstants(optionData)
       setCustomers(references.customers)
       setVendors(references.vendors)
-      setSalespeople(references.salespeople.filter((candidate) => candidate.role === 'sales'))
+      setSalespeople(references.salespeople)
       setContacts(customer?.contacts || [])
       setDirty(false)
     } catch (err) {
@@ -561,6 +561,15 @@ export function MrFormPage() {
     />
   )
 
+  const approvalDocumentToolbar = (
+    <div className="mr-print-toolbar">
+      <div><strong className="block text-sm text-foreground">审批文档预览</strong><span>空白选填项会标记“未填写”，正式归档时取消标记。</span></div>
+      <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated } })}>
+        <Printer className="mr-2 size-4" />全屏查看 / 打印
+      </Button>
+    </div>
+  )
+
   return (
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
@@ -568,7 +577,7 @@ export function MrFormPage() {
       <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
       <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
 
-      <div className="border-b bg-background/95 backdrop-blur">
+      <div className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
@@ -587,9 +596,11 @@ export function MrFormPage() {
                 <FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: documentMode ? form : calculated } })}>
-            <Printer className="mr-2 size-4" />{status === 'in_review' ? '查看审批文档' : '打印预览'}
-            </Button>
+            {status !== 'in_review' ? (
+              <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
+                <Printer className="mr-2 size-4" />打印预览
+              </Button>
+            ) : null}
             {status === 'approved' ? (
               <Button variant="outline" disabled={!approvedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
                 <FileDown className="mr-2 size-4" />{approvedDocumentReady ? '下载正式 PDF' : calculated.archiveStatus === 'failed' ? '归档重试中' : '归档处理中'}
@@ -633,8 +644,8 @@ export function MrFormPage() {
       </div>
 
       {documentMode ? (
-        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 sm:px-6 min-[1280px]:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} embedded /></div>
+        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 sm:px-6 min-[1600px]:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} toolbar={approvalDocumentToolbar} embedded /></div>
           <aside className="min-w-0 space-y-4">
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核</h2><StatusBadge status={status} /></div>

@@ -1,6 +1,7 @@
 const assert = require('assert')
 delete process.env.MR_APPROVAL_EMAIL_DOMAINS
-const { assertAssistantMapping, completeTask, _test } = require('../lib/workflow')
+const { assertAssistantMapping, completeTask, resolveStepAssignee, _test } = require('../lib/workflow')
+const { normalizeOrder, validateSubmission } = require('../domain')
 const { buildMrPdf } = require('../lib/mr-pdf')
 const { getDefaultPermissionMatrix } = require('../../../permissions/catalog')
 
@@ -31,6 +32,23 @@ async function main() {
   const permissions = getDefaultPermissionMatrix()
   assert.strictEqual(permissions.admin['mr.approve'], false)
   assert.strictEqual(permissions.assistant['mr.approve'], true)
+  for (const [permission, enabled] of Object.entries(permissions.engineer)) {
+    if (enabled) assert.strictEqual(permissions.engineering_supervisor[permission], true, `工程主管缺少工程师权限 ${permission}`)
+  }
+  for (const [permission, enabled] of Object.entries(permissions.sales)) {
+    if (enabled) assert.strictEqual(permissions.sales_supervisor[permission], true, `业务主管缺少业务权限 ${permission}`)
+  }
+  await assert.rejects(
+    resolveStepAssignee({
+      async execute() {
+        return [[
+          { id: 3, name: '工程主管甲', email: 'engineer-a@example.com', role: 'engineering_supervisor' },
+          { id: 23, name: '工程主管乙', email: 'engineer-b@example.com', role: 'engineering_supervisor' },
+        ]]
+      },
+    }, {}, 'engineering', { required: true }),
+    /工程主管在职审批人有 2 位/,
+  )
   assert.deepStrictEqual(assertAssistantMapping(assistantRow()), {
     id: 9,
     name: '助理甲',
@@ -44,6 +62,21 @@ async function main() {
   assert.throws(
     () => assertAssistantMapping(assistantRow({ assistant_email: 'invalid' })),
     /当前业务请重新设置助理后再提交/,
+  )
+
+  const vendorOrder = normalizeOrder({
+    pricingMode: 2,
+    totalExcludingTax: 100,
+    invoiceType: '13%增值税',
+    items: [
+      { name: '主设备', qty: 1, unitPrice: 99, vendor: '厂商甲', costInclTax: 80, taxRate: 13 },
+      { name: '技术服务', qty: 1, unitPrice: 1, vendor: '', costInclTax: 0, taxRate: 13 },
+    ],
+  })
+  assert.deepStrictEqual(
+    validateSubmission(vendorOrder.order, vendorOrder.items).filter((error) => error.field?.endsWith('.vendor')),
+    [],
+    '单项系统集成主项已填厂商时不得误报，技术服务行无需厂商',
   )
 
   const before = _test.comparableSnapshot({
@@ -93,9 +126,16 @@ async function main() {
       taxRate: 13,
     }],
     totals: { salesExcludingTax: 100, costExcludingTax: 70.8, marginRate: 29.2 },
-  }, [{ step_label: '助理', action: 'approve', approver_name_snapshot: '助理甲', decided_at: '2026-08-08 10:00:00' }])
+  }, [{
+    step_label: '助理',
+    action: 'approve',
+    approver_name_snapshot: '助理甲',
+    approver_signature_snapshot: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    decided_at: '2026-08-08 10:00:00',
+  }])
   assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF')
   assert(pdf.length > 1000)
+  assert(pdf.includes(Buffer.from('/Subtype /Image')), 'MR PDF 应嵌入审批人的手写签名')
 
   console.log('mr workflow and PDF tests passed')
 }
