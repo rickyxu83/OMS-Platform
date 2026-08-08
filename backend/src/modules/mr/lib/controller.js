@@ -31,8 +31,8 @@ const {
   freezeVersion,
   assistantSetting,
   updateAssistantSetting,
+  mrDocument,
 } = require('./workflow')
-const { mrDocument } = require('./archive')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
 const SALES_ROLES = new Set(['sales', 'sales_supervisor'])

@@ -1,5 +1,5 @@
 const { query } = require('../config/db')
-const { ensureWorkflowTables, reconcilePendingMrAssignments } = require('../modules/mr/lib/workflow')
+const { ensureWorkflowTables, reconcilePendingMrAssignments } = require('../modules/mr/workflow')
 const { sendMrApprovalMail } = require('./mail')
 
 async function notificationContext(mrId, recipientUserId) {
@@ -33,7 +33,7 @@ async function notificationContext(mrId, recipientUserId) {
 }
 
 async function processMrNotifications(limit = 20) {
-  await require('../modules/mr/lib/controller').ensureTables()
+  await require('../modules/mr/controller').ensureTables()
   await ensureWorkflowTables()
   await reconcilePendingMrAssignments()
   await query(
