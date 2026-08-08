@@ -71,9 +71,8 @@ export function sectionOfField(field?: string) {
 export function scrollToSection(id: string) {
   const target = document.getElementById(`mr-section-${id}`)
   if (!target) return
-  // 粘性头部高度随按钮换行变化，按实际高度+管理端顶栏高度留滚动余量，避免跳转后分区顶部被遮住
-  const adminOffset = window.matchMedia('(min-width: 1024px)').matches ? 64 : 56
+  // 粘性头部高度随按钮换行变化，按实际高度留滚动余量（吸附参照系为主内容区，不含管理端顶栏）
   const header = document.querySelector('[data-mr-sticky-header]')
-  target.style.scrollMarginTop = `${adminOffset + (header ? header.getBoundingClientRect().height : 0) + 12}px`
+  target.style.scrollMarginTop = `${(header ? header.getBoundingClientRect().height : 128) + 12}px`
   target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
