@@ -635,7 +635,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
         
         {/* Top Bar */}
-        <header className={`h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-4 xl:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
+        <header className={`h-14 bg-card/90 backdrop-blur-md z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-4 xl:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
+        {/* ponytail: 不用 sticky——所在列 overflow-hidden 从不滚动（滚动的是 main），sticky 是死代码，且 Safari 对 flex 容器内 sticky 布局高度计算有 bug，会导致 main 顶部叠进顶栏下方 */}
           <div className="flex min-w-0 items-center gap-2 lg:gap-3 xl:gap-4">
             <Button
               variant="outline"
