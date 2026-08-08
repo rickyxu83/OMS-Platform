@@ -28,7 +28,7 @@ function vendorAbbreviation(value: unknown, fallback = '-') {
 
 function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: string; formal: boolean }) {
   const status = order.status || 'draft'
-  const reference = [formal && !hasValue(order.customerPo) ? null : text(order.customerPo, emptyText), STATUS[status] || status].filter(hasValue).join(' · ')
+  const reference = [formal && !hasValue(order.customerPo) ? null : hasValue(order.customerPo) ? String(order.customerPo) : `客户 P/O · ${emptyText}`, STATUS[status] || status].filter(hasValue).join(' · ')
   return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{text(order.ctrlNo || order.fileName, emptyText)}</b><span>{reference}</span></div></header>
 }
 function Fact({ label, value }: { label: string; value: ReactNode }) { return <div className="a-fact"><small>{label}</small><div>{value}</div></div> }
@@ -144,7 +144,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '毛利', raw: grossProfit, value: grossProfit === null ? emptyText : moneyText(grossProfit, emptyText) },
     { label: '整单毛利率', raw: totals.marginRate, value: percent(totals.marginRate, emptyText) },
   ].filter((fact) => !formal || hasValue(fact.raw))
-  const topLine = (value: unknown) => formal && !hasValue(value) ? null : <span>{text(value, emptyText)}</span>
+  const topLine = (label: string, value: unknown) => formal && !hasValue(value) ? null : <span>{hasValue(value) ? text(value, emptyText) : `${label} · ${emptyText}`}</span>
   return (
     <div className={`mr-print-page ${embedded ? 'is-embedded' : ''}`}>
       <style>{styles}</style>
@@ -153,9 +153,9 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         {watermark ? <div className="a-watermark">{watermark}</div> : null}
         <Header order={order} emptyText={emptyText} formal={formal} />
         <div className="a-orderbar">
-          <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine(order.customerPo)}</div>
-          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine(order.deliveryLocation)}</div>
-          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine([order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
+          <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine('客户 P/O', order.customerPo)}</div>
+          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('送机地点', order.deliveryLocation)}</div>
+          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine('发票别 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
           <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}{hasValue(order.ctrlNo) ? ` · ${order.ctrlNo}` : ''}</span></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 项`}>
