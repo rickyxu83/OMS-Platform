@@ -39,6 +39,7 @@ export interface MrApproval {
   reason?: string | null
   approverName?: string | null
   approverRole?: string | null
+  approverSignatureSnapshot?: string | null
   assigneeUserId?: string | number | null
   assigneeName?: string | null
   assignmentError?: string | null

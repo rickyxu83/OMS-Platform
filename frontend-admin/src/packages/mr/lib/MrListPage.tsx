@@ -93,7 +93,7 @@ export function MrListPage() {
     setCreating(true)
     try {
       const data = await listSalespeople()
-      const assigned = (data.items || []).filter((sales) => sales.role === 'sales' && String(sales.assistantUserId || '') === String(user.id || ''))
+      const assigned = (data.items || []).filter((sales) => ['sales', 'sales_supervisor'].includes(sales.role || '') && String(sales.assistantUserId || '') === String(user.id || ''))
       if (!assigned.length) {
         setError('当前没有业务将你设置为对应助理')
         return

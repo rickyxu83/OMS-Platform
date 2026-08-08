@@ -8,48 +8,79 @@ import type { MrApproval, MrItem, MrOrder } from '../types'
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
 const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
 
-function text(value: unknown) { return value === null || value === undefined || value === '' ? '-' : String(value) }
+function text(value: unknown, fallback = '-') { return value === null || value === undefined || value === '' ? fallback : String(value) }
 function money(value: unknown) { if (value === null || value === undefined || value === '') return '-'; const amount = Number(value); return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-' }
 function percent(value: unknown) { const amount = Number(value); return value === null || value === undefined || !Number.isFinite(amount) ? '-' : `${amount.toFixed(2)}%` }
 function decidedAt(value?: string | null) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function approval(approvals: MrApproval[], key: string) { return approvals.find((item) => item.stepKey === key) }
 function approvalState(item?: MrApproval) { return item?.action === 'approve' ? '已签核' : item?.action === 'reject' ? '已驳回' : item?.action === 'skipped' ? '已跳过' : item ? '待签核' : '未开始' }
-function vendorAbbreviation(value: unknown) {
-  return text(value).replace(/(?:信息|计算机|网络|电子)?(?:科技|技术|贸易|商贸)?(?:股份)?有限公司$/, '') || '-'
+function vendorAbbreviation(value: unknown, fallback = '-') {
+  return text(value, fallback).replace(/(?:信息|计算机|网络|电子)?(?:科技|技术|贸易|商贸)?(?:股份)?有限公司$/, '') || fallback
 }
 
-function Header({ order }: { order: MrOrder }) {
+function Header({ order, emptyText }: { order: MrOrder; emptyText: string }) {
   const status = order.status || 'draft'
-  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{text(order.ctrlNo || order.fileName)}</b><span>{text(order.customerPo)} · {STATUS[status] || status}</span></div></header>
+  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{text(order.ctrlNo || order.fileName, emptyText)}</b><span>{text(order.customerPo, emptyText)} · {STATUS[status] || status}</span></div></header>
 }
 function Fact({ label, value, wide = false }: { label: string; value: ReactNode; wide?: boolean }) { return <div className={`a-fact ${wide ? 'a-wide' : ''}`}><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
-function ItemTable({ items }: { items: MrItem[] }) {
+function ItemTable({ items, emptyText }: { items: MrItem[]; emptyText: string }) {
   const labels = ['项目', '公司料号', '原厂规格', '品名 / 描述', '保固服务', '装机', '数量', '单价', '销售小计', '厂商', 'Cost', '成本含税', '采购单号']
   return <table className="a-items"><thead><tr>{labels.map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{items.map((item, index) => {
-    const values: ReactNode[] = [index + 1, text(item.companyPartNo), text(item.oemSpec), <span key="description"><strong>{text(item.name)}</strong>{item.description ? <small>{item.description}</small> : null}</span>, text(item.warrantyService), text(item.installBy), text(item.qty), `¥ ${money(item.unitPrice)}`, `¥ ${money(item.subtotal)}`, vendorAbbreviation(item.vendor), `¥ ${money(item.costExcludingTax)}`, <span key="cost"><strong>¥ {money(item.costInclTax)}</strong><small>税率 {text(item.taxRate)}%</small></span>, <span key="purchase"><strong>{text(item.purchaseOrderNo)}</strong><small>{text(item.costSource)}</small></span>]
-    return <tr key={item.id || index}>{values.map((itemValue, column) => <td key={labels[column]} data-label={labels[column]} className={column === 8 ? 'a-strong' : undefined} title={column === 9 ? text(item.vendor) : undefined}>{itemValue}</td>)}</tr>
+    const values: ReactNode[] = [
+      index + 1,
+      text(item.companyPartNo, emptyText),
+      text(item.oemSpec, emptyText),
+      <span key="description"><strong>{text(item.name || item.description, emptyText)}</strong>{item.name && item.description ? <small>{item.description}</small> : null}</span>,
+      text(item.warrantyService, emptyText),
+      text(item.installBy, emptyText),
+      text(item.qty, emptyText),
+      `¥ ${money(item.unitPrice)}`,
+      `¥ ${money(item.subtotal)}`,
+      vendorAbbreviation(item.vendor, emptyText),
+      `¥ ${money(item.costExcludingTax)}`,
+      <span key="cost"><strong>¥ {money(item.costInclTax)}</strong><small>税率 {text(item.taxRate, emptyText)}%</small></span>,
+      <span key="purchase"><strong>{text(item.purchaseOrderNo, emptyText)}</strong><small>{text(item.costSource, emptyText)}</small></span>,
+    ]
+    return <tr key={item.id || index}>{values.map((itemValue, column) => <td key={labels[column]} data-label={labels[column]} className={column === 8 ? 'a-strong' : undefined} title={column === 9 ? text(item.vendor, emptyText) : undefined}>{itemValue}</td>)}</tr>
   })}</tbody></table>
 }
-function Signatures({ order }: { order: MrOrder }) { const approvals = order.approvals || []; return <div className="a-signatures">{SIGNATURE_ROLES.map(([key, label]) => { const item = approval(approvals, key); return <div className={`a-signature ${item?.action === 'approve' ? 'approved' : item?.action === 'reject' ? 'rejected' : ''}`} key={key}><b>{label}</b><span>{approvalState(item)}</span><strong>{item?.approverName || item?.assigneeName || '—'}</strong><small>{decidedAt(item?.decidedAt)}</small>{item?.reason ? <small className="a-signature-reason">{item.reason}</small> : null}</div> })}</div> }
+function Signatures({ order }: { order: MrOrder }) {
+  const approvals = order.approvals || []
+  return <div className="a-signatures">{SIGNATURE_ROLES.map(([key, label]) => {
+    const item = approval(approvals, key)
+    const name = item?.approverName || item?.assigneeName || '—'
+    return <div className={`a-signature ${item?.action === 'approve' ? 'approved' : item?.action === 'reject' ? 'rejected' : ''}`} key={key}>
+      <b>{label}</b><span>{approvalState(item)}</span>
+      {item?.action === 'approve' && item.approverSignatureSnapshot ? <img src={item.approverSignatureSnapshot} alt={`${name}的手写签名`} /> : null}
+      <strong>{name}</strong>
+      {item?.action === 'approve' && !item.approverSignatureSnapshot ? <small>未设置手写签名</small> : null}
+      <small>{decidedAt(item?.decidedAt)}</small>
+      {item?.reason ? <small className="a-signature-reason">{item.reason}</small> : null}
+    </div>
+  })}</div>
+}
 
 const styles = `
 .mr-print-page{min-height:100vh;padding:24px;background:#e8ecef;color:#17232d;font-family:Arial,"Microsoft YaHei",sans-serif}.mr-print-page *{box-sizing:border-box}.mr-print-toolbar{max-width:1360px;margin:0 auto 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;color:#53616d;font-size:12px}.mr-print-actions{display:flex;gap:8px}.mr-document{max-width:1360px;margin:auto;padding:32px 38px 24px;background:#fff;border:1px solid #d4dce2;border-top:5px solid #73529b;box-shadow:0 15px 42px #26374618}.a-header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px;padding-bottom:17px;border-bottom:2px solid #4e386e}.a-brand{display:flex;align-items:center;gap:11px}.a-brand img{width:42px;height:42px;object-fit:contain}.a-brand span{display:block;color:#766a87;font-size:9px;letter-spacing:.09em}.a-brand strong{display:block;margin-top:4px;color:#3e2d59;font-size:16px}.a-title{text-align:center}.a-title h1{margin:0;color:#4e386e;font-size:25px;letter-spacing:.12em}.a-title p{margin:6px 0 0;color:#766a87;font-size:11px}.a-ref{text-align:right}.a-ref b{display:block;color:#3e2d59;font-size:16px}.a-ref span{display:block;margin-top:5px;color:#766a87;font-size:11px}.a-orderbar{display:grid;grid-template-columns:1.2fr 1fr 1fr .7fr;margin-top:17px;border-top:1px solid #c9bae0;border-bottom:1px solid #c9bae0;background:#faf8fd}.a-orderbar>div{min-height:62px;padding:11px 14px;border-right:1px solid #ded5ea}.a-orderbar>div:last-child{border-right:0}.a-orderbar small,.a-delivery small,.a-note small{display:block;color:#766a87;font-size:10px}.a-orderbar b,.a-orderbar span,.a-delivery b,.a-delivery span{display:block;margin-top:4px;overflow-wrap:anywhere}.a-orderbar b,.a-delivery b{color:#3e2d59;font-size:13px}.a-orderbar span,.a-delivery span{color:#746985;font-size:10px;line-height:1.35}.a-section{margin-top:20px}.a-section-title{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid #4e386e}.a-section-title>span{color:#766a87;font-size:10px;font-weight:800;letter-spacing:.1em}.a-section-title h2{margin:0;color:#4e386e;font-size:15px}.a-items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px}.a-items th,.a-items td{padding:7px 5px;border:1px solid #cbd5db;vertical-align:top;overflow-wrap:anywhere}.a-items th{background:#57406f;color:#fff;text-align:left;font-size:9px}.a-items th:nth-child(1){width:3%;text-align:center}.a-items th:nth-child(2){width:8%}.a-items th:nth-child(3){width:9%}.a-items th:nth-child(4){width:15%}.a-items th:nth-child(5){width:9%}.a-items th:nth-child(6){width:6%}.a-items th:nth-child(7){width:4%;text-align:right}.a-items th:nth-child(8),.a-items th:nth-child(9),.a-items th:nth-child(11),.a-items th:nth-child(12){width:8%;text-align:right}.a-items th:nth-child(10){width:7%}.a-items th:nth-child(13){width:6%}.a-items td:nth-child(1),.a-items td:nth-child(7),.a-items td:nth-child(n+8):nth-child(-n+9),.a-items td:nth-child(n+11):nth-child(-n+12){text-align:right;font-variant-numeric:tabular-nums}.a-items td:first-child{text-align:center}.a-items td strong,.a-items td small{display:block}.a-items td small{margin-top:3px;color:#64747e;line-height:1.35}.a-items tbody tr:nth-child(even){background:#fafbfc}.a-strong{font-weight:800}.a-totals{display:grid;grid-template-columns:repeat(7,1fr);margin-top:9px;border:1px solid #c9bae0}.a-total{min-width:0;padding:10px 11px;border-right:1px solid #ded5ea}.a-total:last-child{border-right:0}.a-total small{display:block;color:#766a87;font-size:10px}.a-total b{display:block;margin-top:4px;color:#3e2d59;font-size:14px}.a-total:last-child{background:#f1ecf7}.a-bottom{display:grid;grid-template-columns:1fr 1.2fr;gap:26px}.a-delivery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #d8cfe5;border-left:1px solid #d8cfe5}.a-delivery>div{min-height:60px;padding:9px 11px;border-right:1px solid #d8cfe5;border-bottom:1px solid #d8cfe5}.a-note{margin:9px 0 0;padding:9px 11px;background:#f4f0f8;color:#594b68;font-size:10px;line-height:1.55}.a-note small{margin-bottom:3px}.a-signatures{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.a-signature{min-height:88px;padding:10px;border:1px solid #bcc8cf;background:#fafbfc}.a-signature b,.a-signature span,.a-signature strong,.a-signature small{display:block}.a-signature span{margin-top:7px;color:#667681;font-size:10px}.a-signature strong{min-height:20px;margin-top:6px;font-size:12px}.a-signature small{color:#667681;font-size:9px}.a-signature.approved span{color:#216c49;font-weight:700}.a-signature.rejected span{color:#9b2c2c;font-weight:700}.a-footer{display:flex;justify-content:space-between;margin-top:18px;padding-top:8px;border-top:1px solid #d6dee3;color:#71808a;font-size:9px}@media(max-width:900px){.mr-print-page{padding:10px}.mr-document{padding:24px 18px;min-width:720px}.mr-print-toolbar{align-items:flex-start;flex-direction:column}.a-orderbar{grid-template-columns:repeat(2,1fr)}.a-bottom{gap:16px}}@media print{@page{size:A4 landscape;margin:9mm}.mr-print-page{padding:0;background:#fff}.mr-print-toolbar{display:none!important}.mr-document{max-width:none;padding:0;border:0;box-shadow:none}.mr-document,.mr-document *{print-color-adjust:exact;-webkit-print-color-adjust:exact}.a-items{font-size:8.5px}.a-items th,.a-items td{padding:5px 4px}.a-orderbar,.a-total:last-child,.a-note{background:#fff!important}.a-header,.a-section-title{border-color:#111}.a-title h1,.a-section-title h2,.a-orderbar b,.a-delivery b{color:#111!important}.a-orderbar,.a-delivery,.a-delivery>div,.a-totals,.a-total{border-color:#bbb}.a-items th{background:#eee!important;color:#111!important}.a-signatures,.a-footer{break-inside:avoid;page-break-inside:avoid}}
 .mr-print-page{padding:20px}.mr-print-toolbar{margin-bottom:12px}.mr-document{padding:24px 30px 18px}.a-header{gap:16px;padding-bottom:9px}.a-brand{gap:9px}.a-brand img{width:34px;height:34px}.a-brand span{color:#655a73;font-size:8px;letter-spacing:.06em}.a-brand strong{margin-top:2px;font-size:14px}.a-title h1{font-size:21px;letter-spacing:.06em}.a-ref b{font-size:14px}.a-ref span{margin-top:3px;color:#655a73;font-size:10px}.a-orderbar{margin-top:9px}.a-orderbar>div{min-height:46px;padding:7px 10px}.a-orderbar small,.a-delivery small,.a-note small{color:#655a73;font-size:9px}.a-orderbar b,.a-orderbar span,.a-delivery b,.a-delivery span{margin-top:2px}.a-orderbar b,.a-delivery b{font-size:12px}.a-orderbar span,.a-delivery span{color:#61566e;font-size:9px;line-height:1.3}.a-section{margin-top:12px}.a-section-title{gap:8px;margin-bottom:5px;padding-bottom:4px}.a-section-title>span{color:#655a73;font-size:9px}.a-section-title h2{font-size:13px}.a-items{font-size:8.5px}.a-items th,.a-items td{padding:5px 4px;border-color:#b9c5cc}.a-items th{font-size:8.5px}.a-items td small{margin-top:2px;color:#52616a;line-height:1.3}.a-totals{margin-top:6px}.a-total{padding:7px 8px}.a-total small{color:#655a73;font-size:9px}.a-total b{margin-top:2px;font-size:12px}.a-bottom{gap:18px}.a-delivery>div{min-height:48px;padding:6px 8px}.a-note{margin-top:6px;padding:6px 8px;font-size:9px;line-height:1.4}.a-signatures{gap:6px}.a-signature{min-height:70px;padding:7px;border-color:#aebbc3}.a-signature span{margin-top:4px;color:#52616a;font-size:9px}.a-signature strong{min-height:17px;margin-top:4px;font-size:11px}.a-signature small{color:#52616a;font-size:8px}.a-footer{margin-top:10px;padding-top:6px;border-color:#bfc9cf;color:#52616a;font-size:8px}@media print{@page{size:A4 landscape;margin:7mm}html,body,#root{height:auto!important;min-height:0!important;overflow:visible!important}.mr-print-page{min-height:0;padding:0}.mr-print-toolbar,[data-sonner-toaster]{display:none!important}.mr-document{max-width:none;padding:0;border:0;box-shadow:none;color:#111!important}.a-brand span,.a-ref span,.a-orderbar small,.a-orderbar span,.a-section-title>span,.a-items td small,.a-total small,.a-delivery small,.a-delivery span,.a-note,.a-signature span,.a-signature small,.a-footer{color:#222!important}.a-orderbar,.a-total:last-child,.a-note,.a-signature,.a-items tbody tr{background:#fff!important}.a-header,.a-section-title{border-color:#111!important}.a-title h1,.a-section-title h2,.a-orderbar b,.a-delivery b,.a-total b{color:#111!important}.a-orderbar,.a-orderbar>div,.a-delivery,.a-delivery>div,.a-totals,.a-total,.a-items th,.a-items td,.a-signature{border-color:#777!important}.a-items th{background:#ddd!important;color:#111!important}.a-items thead{display:table-header-group}.a-items tr,.a-totals,.a-signatures,.a-footer{break-inside:avoid;page-break-inside:avoid}}
 .mr-document{position:relative;overflow:hidden}.a-watermark{pointer-events:none;position:absolute;inset:42% 5% auto;z-index:2;transform:rotate(-18deg);color:#b91c1c18;font-size:56px;font-weight:800;text-align:center;letter-spacing:.08em}.a-signature-reason{margin-top:3px;overflow-wrap:anywhere}.mr-print-page.is-embedded{min-height:0;padding:0;background:transparent}.mr-print-page.is-embedded .mr-document{max-width:none}
+.a-signature img{display:block;width:100%;height:28px;margin:3px 0;object-fit:contain}.mr-print-page.is-embedded .mr-print-toolbar{max-width:none;margin:0;padding:12px 14px;border-bottom:1px solid #d4dce2}
+@media screen and (min-width:901px){.mr-print-page .a-items,.mr-print-page .a-items th{font-size:10px}.mr-print-page .a-items th,.mr-print-page .a-items td{padding:7px 5px}.mr-print-page .a-orderbar span,.mr-print-page .a-delivery span{font-size:10px}}
 @media(max-width:900px){.mr-document{min-width:0!important;padding:18px 14px}.a-header{grid-template-columns:1fr;gap:10px}.a-brand,.a-ref{text-align:left}.a-title{text-align:left}.a-title h1{font-size:18px}.a-orderbar{grid-template-columns:1fr}.a-orderbar>div{border-right:0;border-bottom:1px solid #ded5ea}.a-totals{grid-template-columns:repeat(2,1fr)}.a-total{border-bottom:1px solid #ded5ea}.a-bottom{display:block}.a-items,.a-items tbody,.a-items tr,.a-items td{display:block;width:100%}.a-items thead{display:none}.a-items tr{margin-bottom:10px;border:1px solid #b9c5cc;background:#fff!important}.a-items td,.a-items td:first-child,.a-items td:nth-child(n){display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px;border:0;border-bottom:1px solid #e2e8f0;text-align:left!important;font-size:11px}.a-items td:last-child{border-bottom:0}.a-items td::before{content:attr(data-label);color:#655a73;font-weight:700}.a-signatures{grid-template-columns:1fr}.a-signature{min-height:0}}
 @media print{.a-watermark{position:fixed;inset:42% 5% auto}.a-items{display:table;width:100%}.a-items thead{display:table-header-group}.a-items tbody{display:table-row-group}.a-items tr{display:table-row;border:0;margin:0}.a-items td{display:table-cell;width:auto;border:1px solid #777;font-size:8.5px}.a-items td::before{display:none}}
 `
 
 export function MrDocumentView({ order, toolbar, embedded = false }: { order: MrOrder; toolbar?: ReactNode; embedded?: boolean }) {
-  const install = (order.installOptions || []).join('、') || '-'
-  const maintenance = (order.maintenanceOptions || []).join('、') || '-'
+  const status = order.status || 'draft'
+  const emptyText = ['approved', 'voided'].includes(status) ? '-' : '未填写'
+  const install = (order.installOptions || []).join('、') || emptyText
+  const maintenance = (order.maintenanceOptions || []).join('、') || emptyText
   const totals = order.totals || {}
   const sales = totals.salesExcludingTax === null || totals.salesExcludingTax === undefined ? NaN : Number(totals.salesExcludingTax)
   const cost = totals.costExcludingTax === null || totals.costExcludingTax === undefined ? NaN : Number(totals.costExcludingTax)
   const grossProfit = Number.isFinite(sales) && Number.isFinite(cost) ? sales - cost : null
   const contractDetail = [order.contractType, order.contractNo].filter(Boolean).join(' / ')
-  const status = order.status || 'draft'
   const watermark = status === 'in_review' ? '签核中 · 非正式文件' : status === 'voided' ? '已作废' : ''
   const versionLabel = status === 'in_review' && order.currentStepKey === 'assistant'
     ? `${Number(order.versionNo || 0) + 1}（待冻结）`
@@ -60,15 +91,15 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
       {toolbar}
       <article className="mr-document">
         {watermark ? <div className="a-watermark">{watermark}</div> : null}
-        <Header order={order} />
+        <Header order={order} emptyText={emptyText} />
         <div className="a-orderbar">
-          <div><small>客户 / CUSTOMER</small><b>{text(order.customerName)}</b><span>{text(order.customerPo)}</span></div>
-          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate)}</b><span>{text(order.deliveryLocation)}</span></div>
-          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms)}</b><span>{text(order.invoiceType)} · {text(order.billingContent)}</span></div>
-          <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel} · {text(order.ctrlNo)}</span></div>
+          <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b><span>{text(order.customerPo, emptyText)}</span></div>
+          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b><span>{text(order.deliveryLocation, emptyText)}</span></div>
+          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b><span>{text(order.invoiceType, emptyText)} · {text(order.billingContent, emptyText)}</span></div>
+          <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel} · {text(order.ctrlNo, emptyText)}</span></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 项`}>
-          <ItemTable items={order.items || []} />
+          <ItemTable items={order.items || []} emptyText={emptyText} />
           <div className="a-totals">
             <div className="a-total"><small>未税售价</small><b>¥ {money(totals.salesExcludingTax)}</b></div>
             <div className="a-total"><small>销售税额</small><b>¥ {money(totals.vat)}</b></div>
@@ -82,19 +113,19 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         <div className="a-bottom">
           <Section index="02" title="交付资料">
             <div className="a-delivery">
-              <div><small>客户联系人</small><b>{text(order.contactName)}</b><span>{text(order.purchaserTel)}</span></div>
-              <div><small>采购 / 收件</small><b>{text(order.purchaser)} / {text(order.recipient)}</b><span>{text(order.recipientTel)} · {text(order.recipientMail)}</span></div>
-              <div><small>履约要求</small><b>{text(order.acceptance === '其他' ? order.acceptanceOther : order.acceptance)}</b><span>装机：{install} · 维护：{maintenance}</span></div>
-              <div><small>开票与合同</small><b>{contractDetail || '-'}</b><span>{text(order.invoiceProcess)} · {text(order.billingTiming)}</span></div>
-              <div><small>负责业务 / 案分类</small><b>{text(order.salesOwnerName)}</b><span>{text(order.caseCategory)} · 填表 {text(order.fillDate)}</span></div>
-              <div><small>付款 / 分批</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms)}</b><span>{order.splitDelivery ? '分批送机' : '不分批送机'}</span></div>
-              <div><small>交货条款 / 出货单</small><b>{text(order.deliveryTerms)}</b><span>{text(order.shipmentNo)}</span></div>
-              <div><small>开票对象 / 内容</small><b>{text(order.invoiceRecipient)}</b><span>{text(order.billingContent)}</span></div>
+              <div><small>客户联系人</small><b>{text(order.contactName, emptyText)}</b><span>{text(order.purchaserTel, emptyText)}</span></div>
+              <div><small>采购 / 收件</small><b>{text(order.purchaser, emptyText)} / {text(order.recipient, emptyText)}</b><span>{text(order.recipientTel, emptyText)} · {text(order.recipientMail, emptyText)}</span></div>
+              <div><small>履约要求</small><b>{text(order.acceptance === '其他' ? order.acceptanceOther : order.acceptance, emptyText)}</b><span>装机：{install} · 维护：{maintenance}</span></div>
+              <div><small>开票与合同</small><b>{contractDetail || emptyText}</b><span>{text(order.invoiceProcess, emptyText)} · {text(order.billingTiming, emptyText)}</span></div>
+              <div><small>负责业务 / 案分类</small><b>{text(order.salesOwnerName, emptyText)}</b><span>{text(order.caseCategory, emptyText)} · 填表 {text(order.fillDate, emptyText)}</span></div>
+              <div><small>付款 / 分批</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b><span>{order.splitDelivery === null || order.splitDelivery === undefined ? emptyText : order.splitDelivery ? '分批送机' : '不分批送机'}</span></div>
+              <div><small>交货条款 / 出货单</small><b>{text(order.deliveryTerms, emptyText)}</b><span>{text(order.shipmentNo, emptyText)}</span></div>
+              <div><small>开票对象 / 内容</small><b>{text(order.invoiceRecipient, emptyText)}</b><span>{text(order.billingContent, emptyText)}</span></div>
             </div>
-            {order.penaltyContent ? <p className="a-note"><small>罚则</small>{text(order.penaltyContent)}</p> : null}
+            {order.penaltyContent || emptyText === '未填写' ? <p className="a-note"><small>罚则</small>{text(order.penaltyContent, emptyText)}</p> : null}
             {order.rejectReason ? <p className="a-note"><small>驳回原因</small>{text(order.rejectReason)}</p> : null}
             {order.voidReason ? <p className="a-note"><small>作废原因</small>{text(order.voidReason)}</p> : null}
-            {order.remark ? <p className="a-note"><small>备注</small>{text(order.remark)}</p> : null}
+            {order.remark || emptyText === '未填写' ? <p className="a-note"><small>备注</small>{text(order.remark, emptyText)}</p> : null}
           </Section>
           <Section index="03" title="会签流转"><Signatures order={order} /></Section>
         </div>

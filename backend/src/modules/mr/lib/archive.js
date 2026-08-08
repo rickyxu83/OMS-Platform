@@ -46,7 +46,7 @@ async function archiveContext(mrId) {
   if (!version) throw new Error('MR 尚未生成冻结版本')
   const approvals = await query(
     `SELECT step_key, step_label, action, reason, approver_name_snapshot,
-            approver_role_snapshot, decided_at
+            approver_role_snapshot, approver_signature_snapshot, decided_at
      FROM mr_approvals WHERE mr_id = :mrId AND cycle = :cycle ORDER BY seq`,
     { mrId, cycle: version.cycle },
   )

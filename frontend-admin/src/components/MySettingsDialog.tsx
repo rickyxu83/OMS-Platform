@@ -75,6 +75,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
   ), [user?.availableWorkspaces]);
   const canMaintainEngineerSignature = Boolean(user);
+  const canSetAssistant = ["sales", "sales_supervisor"].includes(String(user?.role || ""));
   const passwordRuleState = passwordRules.map((rule) => ({ ...rule, passed: rule.test(newPassword) }));
 
   useEffect(() => {
@@ -82,10 +83,11 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     setLoginAlias(String(user?.loginAlias || ""));
     setPreferredWorkspaceState(getPreferredWorkspace(user?.id) || user?.defaultWorkspace || workspaces[0]?.key || "");
     refreshUser().catch(() => {});
+    api.get("/users/me").then((data) => setEngineerSignature(String(data?.user?.engineerSignature || ""))).catch(() => {});
   }, [open]);
 
   useEffect(() => {
-    if (!open || user?.role !== "sales") return;
+    if (!open || !canSetAssistant) return;
     let active = true;
     Promise.all([api.get("/users/assistants"), api.get("/mr/assistant-setting")])
       .then(([directory, setting]) => {
@@ -95,13 +97,12 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
       })
       .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : "助理设置加载失败"); });
     return () => { active = false; };
-  }, [open, user?.role]);
+  }, [open, canSetAssistant]);
 
   useEffect(() => {
     if (!open) return;
     setLoginAlias(String(user?.loginAlias || ""));
-    setEngineerSignature(String(user?.engineerSignature || ""));
-  }, [open, user?.loginAlias, user?.engineerSignature]);
+  }, [open, user?.loginAlias]);
 
   async function saveProfile() {
     const normalizedAlias = loginAlias.trim();
@@ -113,7 +114,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
       toast.error("登录别名仅支持 2-32 位字母、数字、点、下划线或短横线");
       return;
     }
-    if (user?.role === "sales" && !assistantUserId) {
+    if (canSetAssistant && !assistantUserId) {
       toast.error("请选择对应助理");
       return;
     }
@@ -121,7 +122,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     setSavingProfile(true);
     try {
       await api.put("/users/me", { loginAlias: normalizedAlias || null });
-      if (user?.role === "sales") await api.put("/mr/assistant-setting", { assistantUserId });
+      if (canSetAssistant) await api.put("/mr/assistant-setting", { assistantUserId });
       setPreferredWorkspace(user?.id, preferredWorkspace);
       await refreshUser();
       toast.success("我的设置已保存");
@@ -300,7 +301,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                   </Select>
                 </div>
               </div>
-              {user?.role === "sales" ? (
+              {canSetAssistant ? (
                 <div className="space-y-1.5 rounded-lg border bg-amber-50/60 p-3">
                   <Label>MR 对应助理</Label>
                   <Select value={assistantUserId} onValueChange={setAssistantUserId}>

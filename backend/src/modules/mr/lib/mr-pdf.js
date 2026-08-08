@@ -149,7 +149,7 @@ function details(doc, fonts, order, y) {
     ['罚则', value(order.penaltyContent || order.penalty_content)],
     ['备注', value(order.remark)],
     ['作废原因', value(order.voidReason || order.void_reason)],
-  ]
+  ].filter(([label, content]) => !['罚则', '备注', '作废原因'].includes(label) || content !== '-')
   const colWidth = (PAGE.width - PAGE.margin * 2) / 2
   entries.forEach(([label, content], index) => {
     const x = PAGE.margin + (index % 2) * colWidth
@@ -161,19 +161,34 @@ function details(doc, fonts, order, y) {
   return y + Math.ceil(entries.length / 2) * 27 + 8
 }
 
+function signatureImage(doc, dataUrl, x, y, width, height) {
+  const match = String(dataUrl || '').match(/^data:image\/(?:png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/)
+  if (!match) return false
+  try {
+    doc.image(Buffer.from(match[1], 'base64'), x, y, { fit: [width, height], align: 'center', valign: 'center' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function approvals(doc, fonts, rows, y) {
   text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: PURPLE })
   y += 16
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   rows.forEach((approval, index) => {
     const x = PAGE.margin + width * index
-    doc.rect(x, y, width, 58).strokeColor(BORDER).lineWidth(0.5).stroke()
+    const signature = approval.approverSignatureSnapshot || approval.approver_signature_snapshot
+    doc.rect(x, y, width, 76).strokeColor(BORDER).lineWidth(0.5).stroke()
     text(doc, fonts, approval.stepLabel || approval.step_label, x + 5, y + 5, { size: 7, bold: true, width: width - 10, align: 'center' })
-    text(doc, fonts, approval.action === 'approve' ? '已同意' : approval.action === 'reject' ? '已驳回' : '未签核', x + 5, y + 18, { size: 7, color: approval.action === 'approve' ? '#047857' : '#b91c1c', width: width - 10, align: 'center' })
-    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName || '-', x + 5, y + 30, { size: 8, bold: true, width: width - 10, align: 'center' })
-    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 5, y + 43, { size: 6.5, color: MUTED, width: width - 10, align: 'center' })
+    text(doc, fonts, approval.action === 'approve' ? '已同意' : approval.action === 'reject' ? '已驳回' : '未签核', x + 5, y + 17, { size: 7, color: approval.action === 'approve' ? '#047857' : '#b91c1c', width: width - 10, align: 'center' })
+    if (!signatureImage(doc, signature, x + 8, y + 27, width - 16, 25) && approval.action === 'approve') {
+      text(doc, fonts, '未设置手写签名', x + 5, y + 35, { size: 7, color: MUTED, width: width - 10, align: 'center' })
+    }
+    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName || '-', x + 5, y + 54, { size: 7, bold: true, width: width - 10, align: 'center' })
+    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 5, y + 65, { size: 6, color: MUTED, width: width - 10, align: 'center' })
   })
-  return y + 66
+  return y + 84
 }
 
 function appendixEntries(order, items, approvalRows) {
