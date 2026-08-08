@@ -82,12 +82,64 @@ function numericWord(word) {
   return match ? number(match[1]) : null
 }
 
+async function extractPdfLayout(buffer) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const document = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
+  try {
+    const pages = []
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber)
+      const viewport = page.getViewport({ scale: 1 })
+      const content = await page.getTextContent({ includeMarkedContent: false })
+      const words = content.items
+        .filter((item) => String(item.str || '').trim() && Number(item.width || 0) < viewport.width * 1.5)
+        .map((item) => {
+          const height = Math.abs(Number(item.transform?.[3])) || Number(item.height) || 1
+          return {
+            text: String(item.str).trim(),
+            left: Number(item.transform?.[4]) || 0,
+            top: viewport.height - (Number(item.transform?.[5]) || 0) - height,
+            width: Number(item.width) || 0,
+            height,
+            confidence: 100,
+          }
+        })
+        .sort((left, right) => left.top - right.top || left.left - right.left)
+      const lines = []
+      for (const word of words) {
+        const line = lines.at(-1)
+        const tolerance = Math.max(2, Math.min(6, word.height * 0.6))
+        if (!line || Math.abs(word.top - line.top) > tolerance) {
+          lines.push({ top: word.top, words: [word] })
+        } else {
+          line.words.push(word)
+          line.top = Math.min(line.top, word.top)
+        }
+      }
+      pages.push({
+        page: pageNumber,
+        width: viewport.width,
+        height: viewport.height,
+        lines: lines.map((line) => {
+          line.words.sort((left, right) => left.left - right.left)
+          return { ...line, text: line.words.map((word) => word.text).join(' ') }
+        }),
+      })
+    }
+    return { pages }
+  } finally {
+    await document.destroy()
+  }
+}
+
 function coordinateItems(layout) {
   const items = []
   for (const page of layout?.pages || []) {
     const lines = [...(page.lines || [])].sort((left, right) => Number(left.top) - Number(right.top) || Number(left.left) - Number(right.left))
     const pageWidth = Number(page.width) || 2400
     let columns = null
+    let headerIndex = -1
+    let dataLineIndexes = []
     let pending = []
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const line = lines[lineIndex]
@@ -96,12 +148,23 @@ function coordinateItems(layout) {
       const header = {}
       for (const word of normalizedWords) {
         const center = Number(word.left) + Number(word.width) / 2
-        if (/^(数量|數量|qty|quantity)$/.test(word.label) && header.qty === undefined) header.qty = center
-        else if (/^(单价|單價|unitprice|price)$/.test(word.label) && header.unit === undefined) header.unit = center
-        else if (/^(金额|金額|小计|小計|合计|合計|amount|extended)$/.test(word.label) && header.extended === undefined) header.extended = center
+        if (/^(part_?no|partnumber|型号|料号|料號)$/.test(word.label) && header.part === undefined) header.part = center
+        else if (/^(description|品名|描述|规格|規格)$/.test(word.label) && header.description === undefined) header.description = center
+        else if (/^(数量|數量|qty|quantity)$/.test(word.label) && header.qty === undefined) header.qty = center
+        else if (/(单价|單價|unitprice|unit|price)/.test(word.label) && header.unit === undefined) header.unit = center
+        else if (/(金额|金額|小计|小計|合计|合計|amount|extended)/.test(word.label) && header.extended === undefined) header.extended = center
       }
       if (header.qty && header.unit && header.extended && header.qty < header.unit && header.unit < header.extended) {
         columns = header
+        headerIndex = lineIndex
+        const numericStart = columns.unit - pageWidth * 0.06
+        dataLineIndexes = lines.map((candidate, candidateIndex) => {
+          if (candidateIndex <= lineIndex) return false
+          const candidateText = cleanOcrLine(candidate.text).replace(/\s+/g, '')
+          if (/(未税|未稅|含税|含稅|总计|總計|合计|合計|grand\s*total|sub\s*total|税额|稅額|备注|備註)/i.test(candidateText)) return false
+          const candidateWords = (candidate.words || []).map((word) => ({ ...word, value: numericWord(word) })).filter((word) => word.value !== null)
+          return candidateWords.filter((word) => Number(word.left) + Number(word.width) / 2 > numericStart).length >= 2
+        }).map((matched, candidateIndex) => matched ? candidateIndex : -1).filter((candidateIndex) => candidateIndex >= 0)
         pending = []
         continue
       }
@@ -113,7 +176,8 @@ function coordinateItems(layout) {
         continue
       }
       const numericWords = normalizedWords.map((word) => ({ ...word, value: numericWord(word) })).filter((word) => word.value !== null && !/^\d{4}[./-]\d{1,2}/.test(word.text))
-      const rightWords = numericWords.filter((word) => (Number(word.left) + Number(word.width) / 2) > pageWidth * 0.68)
+      const numericStart = columns?.unit ? columns.unit - pageWidth * 0.06 : pageWidth * 0.68
+      const rightWords = numericWords.filter((word) => (Number(word.left) + Number(word.width) / 2) > numericStart)
       if (rightWords.length < 2) {
         if (/[A-Za-z\u3400-\u9fff]/.test(text)) pending = [...pending.slice(-6), line]
         continue
@@ -164,15 +228,36 @@ function coordinateItems(layout) {
       if (!pair || (pair.unitWord.value < 100 && pair.extendedWord.value < 100)) continue
       const { unitWord, extendedWord, qtyWord, qty } = pair
       const firstPriceX = Math.min(center(unitWord), center(extendedWord))
-      const descriptionWords = normalizedWords.filter((word) => center(word) < firstPriceX && numericWord(word) === null).map((word) => word.text)
-      const pendingText = pending.filter((entry) => Number(entry.top) >= Number(line.top) - 180).map((entry) => entry.text).join(' ')
-      const description = cleanOcrLine([...descriptionWords, pendingText].filter(Boolean).join(' ')) || '待人工核对品项'
+      const dataPosition = dataLineIndexes.indexOf(lineIndex)
+      let descriptionSourceLines = pending.concat(line)
+      if (dataPosition >= 0) {
+        const previousDataLine = dataLineIndexes[dataPosition - 1]
+        const nextDataLine = dataLineIndexes[dataPosition + 1]
+        const summaryIndex = lines.findIndex((candidate, candidateIndex) => candidateIndex > lineIndex && /(未税|未稅|含税|含稅|总计|總計|合计|合計|grand\s*total|sub\s*total|税额|稅額|备注|備註)/i.test(cleanOcrLine(candidate.text).replace(/\s+/g, '')))
+        const hasDescription = (candidate) => (candidate.words || []).some((word) => center(word) < numericStart && numericWord(word) === null && /[A-Za-z\u3400-\u9fff]/.test(String(word.text || '')))
+        const dataStartTop = (candidateIndex) => {
+          const candidate = lines[candidateIndex]
+          if (hasDescription(candidate)) return Number(candidate.top)
+          const prior = lines.slice(headerIndex + 1, candidateIndex).reverse().find((entry) => Number(candidate.top) - Number(entry.top) <= 8 && hasDescription(entry))
+          return Number(prior?.top ?? candidate.top)
+        }
+        const startTop = previousDataLine === undefined ? Number(lines[headerIndex]?.top || 0) + 0.01 : hasDescription(line) ? (Number(lines[previousDataLine].top) + Number(line.top)) / 2 : dataStartTop(lineIndex)
+        const endTop = nextDataLine === undefined ? Number(lines[summaryIndex]?.top || page.height || Infinity) : hasDescription(lines[nextDataLine]) ? (Number(line.top) + Number(lines[nextDataLine].top)) / 2 : dataStartTop(nextDataLine)
+        descriptionSourceLines = lines.filter((candidate) => Number(candidate.top) >= startTop && Number(candidate.top) < endTop)
+      }
+      const nearbyPartLines = lines.filter((candidate, candidateIndex) => {
+        if (candidateIndex === lineIndex || Math.abs(Number(candidate.top) - Number(line.top)) > 6) return false
+        return (candidate.words || []).some((word) => /\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/.test(String(word.text || '')))
+      })
+      descriptionSourceLines = [...new Set([...descriptionSourceLines, ...nearbyPartLines])]
+      const descriptionWordsWithConfidence = descriptionSourceLines.flatMap((entry) => (entry.words || []).filter((word) => center(word) < firstPriceX && numericWord(word) === null))
+      const descriptionWords = descriptionWordsWithConfidence.map((word) => word.text)
+      const description = cleanOcrLine(descriptionWords.join(' ')) || '待人工核对品项'
       const expected = qty * unitWord.value
       const tolerance = Math.max(0.02, Math.abs(extendedWord.value) * 0.005)
       const amountConsistent = Math.abs(expected - extendedWord.value) <= tolerance
-      const descriptionWordsWithConfidence = normalizedWords.filter((word) => center(word) < firstPriceX && numericWord(word) === null)
       const confidence = {
-        description: averageConfidence([...descriptionWordsWithConfidence, ...pending.filter((entry) => Number(entry.top) >= Number(line.top) - 180).flatMap((entry) => entry.words || [])]),
+        description: averageConfidence(descriptionWordsWithConfidence),
         qty: qtyWord ? Math.round(Number(qtyWord.confidence) || 0) : 40,
         unitPrice: Math.round(Number(unitWord.confidence) || 0),
         extended: Math.round(Number(extendedWord.confidence) || 0),
@@ -180,7 +265,8 @@ function coordinateItems(layout) {
       confidence.overall = Math.min(...Object.values(confidence))
       const reviewFields = Object.entries(confidence).filter(([field, value]) => field !== 'overall' && value < 70).map(([field]) => field)
       if (!amountConsistent) reviewFields.push('extended')
-      const partNo = description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
+      const partColumnWords = columns?.part && columns?.description ? descriptionSourceLines.flatMap((entry) => entry.words || []).filter((word) => center(word) >= columns.part - pageWidth * 0.05 && center(word) < (columns.part + columns.description) / 2) : []
+      const partNo = [...partColumnWords].sort((left, right) => Math.abs(Number(left.top ?? line.top) - Number(line.top)) - Math.abs(Number(right.top ?? line.top) - Number(line.top))).map((word) => String(word.text || '').match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0]).find(Boolean) || description.match(/\b[A-Za-z][A-Za-z0-9+./-]{2,}\b/)?.[0] || ''
       items.push({
         item_no: String(items.length + 1),
         part_no: partNo,
@@ -319,7 +405,14 @@ async function parsePdf(buffer) {
   const parser = new PDFParse({ data: buffer })
   try {
     const result = await parser.getText()
-    return parsePdfText(result.text)
+    let layout = null
+    try {
+      layout = await extractPdfLayout(buffer)
+    } catch (_error) {
+      // Keep the existing text parser as a fallback when native coordinates are unavailable.
+    }
+    const parsed = parsePdfText(result.text, layout)
+    return { ...parsed, recognitionMethod: layout ? 'pdf_layout' : 'pdf_text' }
   } finally {
     await parser.destroy()
   }

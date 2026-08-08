@@ -650,6 +650,7 @@ async function importQuotation(req, res) {
       let parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
+      recognitionMethod = parsed.recognitionMethod || recognitionMethod
       if (parsed.documentType === 'scanned_pdf') {
         try {
           const ocr = await recognizePdf(file.buffer, name)

@@ -1,6 +1,7 @@
 const assert = require('assert')
 const ExcelJS = require('exceljs')
 const XLSX = require('xlsx')
+const PDFDocument = require('pdfkit')
 const {
   extractWorkbookImages,
   companyCandidates,
@@ -8,6 +9,7 @@ const {
   applyQuotationLayoutRule,
   mergeQuotations,
   parsePdfText,
+  parsePdf,
 } = require('../quotation-parser')
 
 async function main() {
@@ -49,6 +51,17 @@ async function main() {
   assert.deepStrictEqual([coordinatePdf.sheets[0].items[0].qty, coordinatePdf.sheets[0].items[0].unit_price, coordinatePdf.sheets[0].items[0].extended], [4, 442, 1770])
   assert.deepStrictEqual([coordinatePdf.sheets[0].items[1].qty, coordinatePdf.sheets[0].items[1].unit_price, coordinatePdf.sheets[0].items[1].extended], [1, 54867, 54867])
   assert(coordinatePdf.sheets[0].items[1].review_fields.includes('extended'))
+  const nativePdfDocument = new PDFDocument({ size: [600, 400], margin: 0 })
+  const nativePdfChunks = []
+  nativePdfDocument.on('data', (chunk) => nativePdfChunks.push(chunk))
+  const nativePdfDone = new Promise((resolve) => nativePdfDocument.on('end', resolve))
+  for (const [text, left] of [['Part_no', 50], ['Description', 130], ['Qty', 330], ['Unit Price', 390], ['Amount', 480]]) nativePdfDocument.text(text, left, 50, { lineBreak: false })
+  for (const [text, left] of [['FG-100', 50], ['Firewall appliance', 130], ['2', 340], ['1,200', 400], ['2,400', 490]]) nativePdfDocument.text(text, left, 80, { lineBreak: false })
+  nativePdfDocument.end()
+  await nativePdfDone
+  const nativePdf = await parsePdf(Buffer.concat(nativePdfChunks))
+  assert.equal(nativePdf.recognitionMethod, 'pdf_layout')
+  assert.deepStrictEqual([nativePdf.sheets[0].items[0].part_no, nativePdf.sheets[0].items[0].qty, nativePdf.sheets[0].items[0].unit_price, nativePdf.sheets[0].items[0].extended], ['FG-100', 2, 1200, 2400])
   const salesItem = { item_no: '1', part_no: '', name: 'FortiGate 60F 防火墙授权', description: 'FortiGate 60F 防火墙授权', qty: 1, unit_price: 100, extended: 100 }
   const purchaseItem = { item_no: '1', part_no: '', name: 'FortiGate 60F 防火墙授权续保', description: 'FortiGate 60F 防火墙授权续保', qty: 1, unit_price: 60, extended: 60 }
   const merged = mergeQuotations([
