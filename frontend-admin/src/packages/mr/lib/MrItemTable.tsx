@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { Check, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -82,12 +83,17 @@ export function MrItemTable({
   const applyBatch = () => {
     const source = items[batchSourceIndex]
     if (!source || !selectedRows.size) return
+    const fieldCount = Object.values(batchFields).filter(Boolean).length
+    const affectedCount = [...selectedRows].filter((index) => index !== batchSourceIndex).length
+    if (!fieldCount) return toast.info('请至少选择一个复制字段')
+    if (!affectedCount) return toast.info('请选择复制来源以外的品项')
     const patch: Partial<MrItem> = {}
     if (batchFields.vendor) patch.vendor = source.vendor
     if (batchFields.purchaseOrderNo) patch.purchaseOrderNo = source.purchaseOrderNo
     if (batchFields.warrantyService) patch.warrantyService = source.warrantyService
     if (batchFields.installBy) patch.installBy = source.installBy
     onChange(items.map((item, index) => selectedRows.has(index) && index !== batchSourceIndex ? { ...item, ...patch } : item))
+    toast.success(`已将 ${fieldCount} 个字段应用到 ${affectedCount} 项品项`)
   }
   if (!items.length) {
     return (

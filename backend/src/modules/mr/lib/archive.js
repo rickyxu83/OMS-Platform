@@ -3,8 +3,7 @@ const path = require('path')
 const env = require('../../../config/env')
 const { query } = require('../../../config/db')
 const { ensureWorkflowTables, mrDocument } = require('./workflow')
-const { buildMrPdf } = require('./mr-pdf')
-
+const { buildMrPdf, PDF_FORMAT_VERSION } = require('./mr-pdf')
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const documentRoot = path.join(uploadRoot, 'mr-documents')
 fs.mkdirSync(documentRoot, { recursive: true })
@@ -93,11 +92,11 @@ async function archiveMrDocument(mrId, requestedType = null, markReady = true) {
     await fs.promises.rename(tempPath, finalPath)
     const stat = await fs.promises.stat(finalPath)
     await query(
-      `INSERT INTO mr_documents (mr_id, version_no, document_type, storage_path, original_name, size)
-       VALUES (:mrId, :versionNo, :type, :storagePath, :filename, :size)
-       ON DUPLICATE KEY UPDATE storage_path = VALUES(storage_path), original_name = VALUES(original_name),
+      `INSERT INTO mr_documents (mr_id, version_no, format_version, document_type, storage_path, original_name, size)
+       VALUES (:mrId, :versionNo, :formatVersion, :type, :storagePath, :filename, :size)
+       ON DUPLICATE KEY UPDATE format_version = VALUES(format_version), storage_path = VALUES(storage_path), original_name = VALUES(original_name),
                                size = VALUES(size), created_at = CURRENT_TIMESTAMP`,
-      { mrId, versionNo: context.versionNo, type, storagePath: finalPath, filename, size: stat.size },
+      { mrId, versionNo: context.versionNo, formatVersion: PDF_FORMAT_VERSION, type, storagePath: finalPath, filename, size: stat.size },
     )
     if (markReady) {
       await query(
@@ -149,7 +148,9 @@ async function processMrArchives(limit = 5) {
     try {
       if (row.status === 'voided') {
         const approvedDocument = await mrDocument(row.id, 'approved')
-        if (!approvedDocument || !fs.existsSync(approvedDocument.storage_path)) await archiveMrDocument(row.id, 'approved', false)
+        if (!approvedDocument || Number(approvedDocument.format_version || 0) < PDF_FORMAT_VERSION || !fs.existsSync(approvedDocument.storage_path)) {
+          await archiveMrDocument(row.id, 'approved', false)
+        }
         await archiveMrDocument(row.id, 'voided')
       } else {
         await archiveMrDocument(row.id, 'approved')
