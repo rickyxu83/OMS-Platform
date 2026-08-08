@@ -46,7 +46,7 @@ export const MR_SECTIONS: MrSection[] = [
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
   { id: 'remark', title: '备注', icon: StickyNote, fields: ['remark'] },
-  { id: 'approval', title: '电子签流转', icon: ShieldCheck, fields: [] },
+  { id: 'approval', title: '电子签核', icon: ShieldCheck, fields: [] },
 ]
 
 const SECTION_BY_FIELD = new Map<string, string>()

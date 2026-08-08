@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 3
+const PDF_FORMAT_VERSION = 4
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -57,7 +57,7 @@ function summary(doc, fonts, order, y) {
     ['客户', order.customerName || order.customer_name],
     ['客户 P/O', order.customerPo || order.customer_po],
     ['负责业务', order.salesOwnerName || order.sales_owner_name],
-    ['最晚交货', order.latestDeliveryDate || order.latest_delivery_date],
+    ['最晚交货日', order.latestDeliveryDate || order.latest_delivery_date],
   ].filter(([, content]) => hasValue(content))
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
   cells.forEach(([label, content], index) => {
@@ -84,10 +84,10 @@ function itemColumns(items) {
     { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
     { key: 'description', label: '品名 / 描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
     { key: 'warranty', label: '保固服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '装机', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'install', label: '装机方', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
     { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '销售单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '销售小计 / 毛利', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'subtotal', label: '销售小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '厂商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => item.vendor },
     { key: 'costExcludingTax', label: '成本未税', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '成本含税 / 税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
@@ -177,16 +177,16 @@ function detailEntries(order, includeVoidReason = true) {
     ['发票别', orderField(order, 'invoiceType', 'invoice_type')],
     ['发票处理', orderField(order, 'invoiceProcess', 'invoice_process')],
     ['开票内容', orderField(order, 'billingContent', 'billing_content')],
-    ['开票对象', orderField(order, 'invoiceRecipient', 'invoice_recipient')],
+    ['发票收件人', orderField(order, 'invoiceRecipient', 'invoice_recipient')],
     ['开票 / 收款', orderField(order, 'billingTiming', 'billing_timing')],
     ['采购联系人', order.purchaser],
     ['采购联系电话', orderField(order, 'purchaserTel', 'purchaser_tel')],
-    ['收件人', order.recipient],
+    ['货物收件人', order.recipient],
     ['收件电话', orderField(order, 'recipientTel', 'recipient_tel')],
     ['收件邮箱', orderField(order, 'recipientMail', 'recipient_mail')],
     ['付款条件', orderField(order, 'paymentTerms', 'payment_terms')],
     ['付款条件说明', orderField(order, 'paymentOther', 'payment_other')],
-    ['是否分批', hasValue(splitDelivery) ? (Number(splitDelivery) ? '是' : '否') : ''],
+    ['分批送机', hasValue(splitDelivery) ? (Number(splitDelivery) ? '可分批' : '不分批') : ''],
     ['验收', order.acceptance],
     ['验收说明', orderField(order, 'acceptanceOther', 'acceptance_other')],
     ['装机对象', options(order.installOptions || order.install_options)],
@@ -205,6 +205,14 @@ function detailEntries(order, includeVoidReason = true) {
   return entries.filter(([label, content]) => hasValue(content) && !HEADER_DUPLICATES.has(label))
 }
 
+const DETAIL_GROUPS = [
+  ['客户与合同', ['客户联系人', '案分类', '合同号', '罚则说明', '填表日期', '报价附件']],
+  ['交易与开票', ['计价模式', '发票别', '发票处理', '开票内容', '发票收件人', '开票 / 收款', '付款条件', '付款条件说明']],
+  ['交付与验收', ['分批送机', '验收', '验收说明', '装机对象', '维护对象', '送机地点', '交货条款', '出货单号']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '货物收件人', '收件电话', '收件邮箱']],
+  ['备注与其他', ['备注', '作废原因']],
+]
+
 function details(doc, fonts, order, y, includeVoidReason = true) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
@@ -217,27 +225,44 @@ function details(doc, fonts, order, y, includeVoidReason = true) {
     y += 15
   }
   drawTitle()
-  for (let start = 0; start < entries.length; start += columns) {
-    const row = entries.slice(start, start + columns)
-    doc.font(fonts.regular).fontSize(7)
-    const rawHeight = Math.max(27, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 12, lineGap: 1 }) + 15))
-    if (y + rawHeight > bottom) {
+  const groupOf = new Map()
+  for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
+  const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
+  for (const [group, groupEntries] of grouped) {
+    if (y + 42 > bottom) {
       doc.addPage()
       y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
       drawTitle()
     }
-    const rowHeight = Math.min(rawHeight, Math.max(27, bottom - y))
-    row.forEach(([label, content], index) => {
-      const x = left + index * colWidth
-      const rowY = y
-      doc.rect(x, rowY, colWidth, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
-      text(doc, fonts, label, x + 6, rowY + 4, { size: 6.5, color: MUTED, width: colWidth - 12 })
-      // ponytail: 超长内容截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
-      text(doc, fonts, content, x + 6, rowY + 14, { size: 7, width: colWidth - 12, height: rowHeight - 17, lineGap: 1, ellipsis: true })
-    })
-    y += rowHeight
+    doc.rect(left, y + 1.5, 3, 8).fill(PURPLE)
+    text(doc, fonts, group, left + 7, y, { size: 8, bold: true, color: PURPLE })
+    y += 13
+    for (let start = 0; start < groupEntries.length; start += columns) {
+      const row = groupEntries.slice(start, start + columns)
+      doc.font(fonts.regular).fontSize(7)
+      const rawHeight = Math.max(27, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 12, lineGap: 1 }) + 15))
+      if (y + rawHeight > bottom) {
+        doc.addPage()
+        y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
+        drawTitle()
+        doc.rect(left, y + 1.5, 3, 8).fill(PURPLE)
+        text(doc, fonts, group, left + 7, y, { size: 8, bold: true, color: PURPLE })
+        y += 13
+      }
+      const rowHeight = Math.min(rawHeight, Math.max(27, bottom - y))
+      row.forEach(([label, content], index) => {
+        const x = left + index * colWidth
+        const rowY = y
+        doc.rect(x, rowY, colWidth, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
+        text(doc, fonts, label, x + 6, rowY + 4, { size: 6.5, color: MUTED, width: colWidth - 12 })
+        // ponytail: 超长内容截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
+        text(doc, fonts, content, x + 6, rowY + 14, { size: 7, width: colWidth - 12, height: rowHeight - 17, lineGap: 1, ellipsis: true })
+      })
+      y += rowHeight
+    }
+    y += 4
   }
-  return y + 8
+  return y + 4
 }
 
 function signatureImage(doc, dataUrl, x, y, width, height) {
@@ -266,7 +291,7 @@ function approvals(doc, fonts, rows, y) {
   rows.forEach((approval, index) => {
     const x = PAGE.margin + width * index
     const signature = approval.approverSignatureSnapshot || approval.approver_signature_snapshot
-    const action = approval.action === 'approve' ? '已同意' : approval.action === 'reject' ? '已驳回' : approval.action === 'skipped' ? '已跳过' : ''
+    const action = approval.action === 'approve' ? '已签核' : approval.action === 'reject' ? '已驳回' : approval.action === 'skipped' ? '已跳过' : ''
     doc.rect(x, y, width, boxHeight).strokeColor(BORDER).lineWidth(0.5).stroke()
     text(doc, fonts, approval.stepLabel || approval.step_label, x + 5, y + 5, { size: 7, bold: true, width: width - 10, align: 'center' })
     text(doc, fonts, action, x + 5, y + 17, { size: 7, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 10, align: 'center' })
