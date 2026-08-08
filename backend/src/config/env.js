@@ -51,6 +51,7 @@ const env = {
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'oms_platform_token',
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
+  mrApprovalEmailDomains: parseCsv(process.env.MR_APPROVAL_EMAIL_DOMAINS),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {

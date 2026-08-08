@@ -5,12 +5,13 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createMr, deleteMr, listMr } from '../client'
-import type { MrOrder, MrStatus } from '../types'
+import { createMr, deleteMr, listMr, listSalespeople } from '../client'
+import type { MrOrder, MrStatus, UserOption } from '../types'
 
 const STATUS_LABELS: Record<MrStatus, string> = {
   draft: '草稿',
@@ -40,7 +41,7 @@ function shortDate(value?: string | null) {
 
 export function MrListPage() {
   const navigate = useNavigate()
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
   const [items, setItems] = useState<MrOrder[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
@@ -48,6 +49,9 @@ export function MrListPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [salesOptions, setSalesOptions] = useState<UserOption[]>([])
+  const [selectedSalesId, setSelectedSalesId] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -68,13 +72,41 @@ export function MrListPage() {
   }, [queryInput])
   useEffect(() => { void load() }, [load])
 
-  const createDraft = async () => {
+  const createForSales = async (salesOwnerId?: string | number) => {
     setCreating(true)
     try {
-      const draft = await createMr({})
+      const draft = await createMr(salesOwnerId ? { salesOwnerId } : {})
+      setCreateOpen(false)
       navigate(`/mr/${draft.id}`)
     } catch (err) {
       setError((err as Error).message || '创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const createDraft = async () => {
+    if (user?.role !== 'assistant') {
+      await createForSales()
+      return
+    }
+    setCreating(true)
+    try {
+      const data = await listSalespeople()
+      const assigned = (data.items || []).filter((sales) => sales.role === 'sales' && String(sales.assistantUserId || '') === String(user.id || ''))
+      if (!assigned.length) {
+        setError('当前没有业务将你设置为对应助理')
+        return
+      }
+      if (assigned.length === 1) {
+        await createForSales(assigned[0].id)
+        return
+      }
+      setSalesOptions(assigned)
+      setSelectedSalesId(String(assigned[0].id))
+      setCreateOpen(true)
+    } catch (err) {
+      setError((err as Error).message || '负责业务加载失败')
     } finally {
       setCreating(false)
     }
@@ -155,7 +187,7 @@ export function MrListPage() {
                   <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge></TableCell>
-                  <TableCell>{order.currentStepLabel || '-'}</TableCell>
+                  <TableCell><div>{order.currentStepLabel || '-'}</div>{order.assignmentError ? <div className="mt-1 text-xs text-destructive">配置暂停：{order.assignmentError}</div> : order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{order.currentAssigneeName}</div> : null}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
@@ -169,6 +201,24 @@ export function MrListPage() {
           </TableBody>
         </Table>
       </div>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择负责业务</DialogTitle>
+            <DialogDescription>助理只能为已将自己设为对应助理的业务代建 MR。</DialogDescription>
+          </DialogHeader>
+          <Select value={selectedSalesId} onValueChange={setSelectedSalesId}>
+            <SelectTrigger><SelectValue placeholder="选择业务" /></SelectTrigger>
+            <SelectContent>
+              {salesOptions.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button disabled={!selectedSalesId || creating} onClick={() => void createForSales(selectedSalesId)}>创建 MR</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

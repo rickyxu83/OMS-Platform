@@ -12,6 +12,7 @@ router.post('/me/avatar', requireRoles(...ROLE_GROUPS.userSelf), controller.avat
 router.delete('/me/avatar', requireRoles(...ROLE_GROUPS.userSelf), controller.removeAvatar)
 router.get('/engineers', requireRoles(...ROLE_GROUPS.engineerDirectory), controller.listEngineers)
 router.get('/salespeople', requireRoles(...ROLE_GROUPS.salesDirectory), controller.listSalespeople)
+router.get('/assistants', requireRoles(...ROLE_GROUPS.userSelf), controller.listAssistants)
 router.post('/', requirePermission('user.create'), controller.create)
 router.put('/:id', requirePermission('user.edit'), controller.update)
 router.delete('/:id', requirePermission('user.delete'), controller.remove)

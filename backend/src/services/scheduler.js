@@ -13,6 +13,8 @@ const {
   sendMonthlyOperationsSummaryMail,
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
+const { processMrNotifications } = require('./mr-notifications')
+const { processMrArchives } = require('../modules/mr/lib/archive')
 
 const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
 
@@ -1061,7 +1063,25 @@ function startScheduler() {
     }
   })
 
-  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes)`)
+  scheduleCron('* * * * *', async () => {
+    try {
+      const result = await processMrNotifications(20)
+      if (result.processed) console.log(`[scheduler] MR notifications processed: sent=${result.sent}, failed=${result.failed}`)
+    } catch (error) {
+      console.error('[scheduler] MR notification check failed', error?.message)
+    }
+  })
+
+  scheduleCron('*/2 * * * *', async () => {
+    try {
+      const result = await processMrArchives(5)
+      if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}`)
+    } catch (error) {
+      console.error('[scheduler] MR archive check failed', error?.message)
+    }
+  })
+
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), MR approval notifications (1m), MR PDF archive retry (2m)`)
 }
 
 module.exports = { startScheduler }

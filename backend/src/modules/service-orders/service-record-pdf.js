@@ -792,4 +792,5 @@ module.exports = {
   buildServiceRecordPdf,
   buildServiceRecordsPdf,
   serviceRecordPdfFilename,
+  registerFonts,
 }

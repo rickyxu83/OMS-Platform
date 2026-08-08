@@ -20,17 +20,32 @@ const {
   computeApprovalSteps,
 } = require('../domain')
 const { resolveSubmissionCustomer } = require('../customer-resolution')
+const {
+  ensureWorkflowTables,
+  salesWithAssistant,
+  assertAssistantMapping,
+  resolveStepAssignee,
+  activateCurrentStep,
+  completeTask,
+  saveSubmissionBaseline,
+  freezeVersion,
+  assistantSetting,
+  updateAssistantSetting,
+} = require('./workflow')
+const { mrDocument } = require('./archive')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
-const APPROVE_ANY_ROLE = 'admin'
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const quotationRoot = path.join(uploadRoot, 'mr-quotations')
 fs.mkdirSync(quotationRoot, { recursive: true })
 
 let tablesReady = false
+let tablesPromise = null
 
 async function ensureTables() {
   if (tablesReady) return
+  if (tablesPromise) return tablesPromise
+  tablesPromise = (async () => {
   await query(
     `CREATE TABLE IF NOT EXISTS mr_orders (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -148,7 +163,15 @@ async function ensureTables() {
       CONSTRAINT fk_mr_approvals_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  await ensureWorkflowTables()
   tablesReady = true
+  })()
+  try {
+    await tablesPromise
+  } catch (error) {
+    tablesPromise = null
+    throw error
+  }
 }
 
 function camelizeRow(row) {
@@ -169,6 +192,12 @@ function parseOptions(value) {
   }
 }
 
+function parseJsonValue(value, fallback = null) {
+  if (value === null || value === undefined) return fallback
+  if (typeof value !== 'string') return value
+  try { return JSON.parse(value) } catch { return fallback }
+}
+
 function orderPayload(row) {
   const payload = camelizeRow(row)
   payload.installOptions = parseOptions(payload.installOptions)
@@ -181,45 +210,64 @@ function orderPayload(row) {
 }
 
 function canView(order, user) {
-  return user.role !== 'sales' || order.currentStepKey === 'sales' || Number(order.salesOwnerId) === Number(user.id) || user.role === APPROVE_ANY_ROLE
+  if (user.role === 'admin') return true
+  if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
+  if (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)) return true
+  if (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)) return true
+  return Boolean(order.approvalParticipant)
 }
 
-
 function canEdit(order, user) {
-  if (user.role === 'assistant' && order.status === 'in_review' && order.currentStepKey === 'assistant') return true
+  if (order.status === 'in_review') {
+    return user.role === 'assistant' && order.currentStepKey === 'assistant' && Number(order.currentAssigneeUserId) === Number(user.id)
+  }
   if (!EDITABLE_STATUSES.has(order.status)) return false
-  if (user.role === 'admin' || user.role === 'assistant') return true
-  return user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)
+  if (user.role === 'admin') return true
+  if (order.status === 'rejected') {
+    if (order.returnTarget === 'assistant') return user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)
+    return user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)
+  }
+  return (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id))
+    || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
 }
 
 function canDelete(order, user) {
-  return EDITABLE_STATUSES.has(order.status)
-    && (user.role === 'admin' || Number(order.createdBy) === Number(user.id))
+  if (user.role === 'admin') return EDITABLE_STATUSES.has(order.status)
+  return EDITABLE_STATUSES.has(order.status) && Number(order.createdBy) === Number(user.id) && canEdit(order, user)
 }
 
 function canVoid(order, user) {
   if (order.status !== 'approved') return false
-  if (['admin', 'assistant', 'operations_director', 'sales_supervisor'].includes(user.role)) return true
-  return user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id)
+  if (['admin', 'operations_director', 'sales_supervisor'].includes(user.role)) return true
+  return (user.role === 'sales' && Number(order.salesOwnerId) === Number(user.id))
+    || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
 }
 
 function canApprove(order, user) {
-  if (order.status !== 'in_review' || !order.currentStepKey) return false
-  if (user.role === APPROVE_ANY_ROLE) return true
-  const requiredRole = STEP_ROLES[order.currentStepKey]
-  if (user.role !== requiredRole) return false
-  return true
+  return order.status === 'in_review'
+    && Boolean(order.currentStepKey)
+    && STEP_ROLES[order.currentStepKey] === user.role
+    && Number(order.currentAssigneeUserId) === Number(user.id)
 }
 
-async function loadRawOrder(id) {
+async function loadRawOrder(id, user = null) {
+  await ensureTables()
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, updater.real_name AS updated_by_name,
-            sales.real_name AS sales_owner_name, c.code AS customer_code,
-            pending.step_key AS current_step_key, pending.step_label AS current_step_label
+            sales.real_name AS sales_owner_name, sales.assistant_user_id, assistant.real_name AS assistant_name,
+            c.code AS customer_code,
+            pending.step_key AS current_step_key, pending.step_label AS current_step_label,
+            pending.assignee_user_id AS current_assignee_user_id, pending.assignment_error,
+            EXISTS (
+              SELECT 1 FROM mr_approvals participant
+              WHERE participant.mr_id = o.id
+                AND (participant.assignee_user_id = :viewerId OR participant.approver_id = :viewerId)
+            ) AS approval_participant
      FROM mr_orders o
      LEFT JOIN users creator ON creator.id = o.created_by
      LEFT JOIN users updater ON updater.id = o.updated_by
      LEFT JOIN users sales ON sales.id = o.sales_owner_id
+     LEFT JOIN users assistant ON assistant.id = sales.assistant_user_id
      LEFT JOIN customers c ON c.id = o.customer_id
      LEFT JOIN mr_approvals pending ON pending.id = (
        SELECT a.id FROM mr_approvals a
@@ -228,17 +276,23 @@ async function loadRawOrder(id) {
      )
      WHERE o.id = :id
      LIMIT 1`,
-    { id },
+    { id, viewerId: Number(user?.id || 0) },
   )
   if (!rows[0]) throw notFound('MR 单不存在')
   return orderPayload(rows[0])
 }
 
 async function loadLockedOrder(connection, id) {
-  const [rows] = await connection.execute('SELECT * FROM mr_orders WHERE id = :id LIMIT 1 FOR UPDATE', { id })
+  const [rows] = await connection.execute(
+    `SELECT o.*, sales.assistant_user_id
+     FROM mr_orders o LEFT JOIN users sales ON sales.id = o.sales_owner_id
+     WHERE o.id = :id LIMIT 1 FOR UPDATE`,
+    { id },
+  )
   if (!rows[0]) throw notFound('MR 单不存在')
   const [pending] = await connection.execute(
-    `SELECT step_key AS current_step_key, step_label AS current_step_label
+    `SELECT step_key AS current_step_key, step_label AS current_step_label,
+            assignee_user_id AS current_assignee_user_id, assignment_error
      FROM mr_approvals WHERE mr_id = :id AND action IS NULL
      ORDER BY cycle DESC, seq LIMIT 1`,
     { id },
@@ -254,14 +308,16 @@ async function loadCalculatedOrder(connection, order) {
 
 async function loadDetail(id, user) {
   await ensureTables()
-  const order = await loadRawOrder(id)
+  const order = await loadRawOrder(id, user)
   if (!canView(order, user)) throw forbidden('无权查看该 MR 单')
-  const [itemRows, approvalRows, fileRows] = await Promise.all([
+  const [itemRows, approvalRows, fileRows, versionRows, documentRows] = await Promise.all([
     query('SELECT * FROM mr_items WHERE mr_id = :id ORDER BY row_no, id', { id }),
     query(
-      `SELECT a.*, u.real_name AS approver_name, u.username AS approver_username
+      `SELECT a.*, COALESCE(a.approver_name_snapshot, u.real_name) AS approver_name,
+              a.approver_role_snapshot AS approver_role, assignee.real_name AS assignee_name
        FROM mr_approvals a
        LEFT JOIN users u ON u.id = a.approver_id
+       LEFT JOIN users assignee ON assignee.id = a.assignee_user_id
        WHERE a.mr_id = :id
        ORDER BY a.cycle, a.seq`,
       { id },
@@ -271,6 +327,13 @@ async function loadDetail(id, user) {
        FROM files WHERE owner_type = 'mr_order' AND owner_id = :id ORDER BY id`,
       { id },
     ),
+    query(
+      `SELECT version_no, snapshot, changes, created_at
+       FROM mr_versions WHERE mr_id = :id AND kind = 'frozen'
+       ORDER BY version_no DESC LIMIT 1`,
+      { id },
+    ),
+    query('SELECT document_type FROM mr_documents WHERE mr_id = :id ORDER BY created_at', { id }),
   ])
   const rawItems = itemRows.map(camelizeRow)
   const normalized = normalizeOrder({ ...order, items: rawItems })
@@ -279,18 +342,40 @@ async function loadDetail(id, user) {
   const approvalHistory = approvalRows.map(camelizeRow)
   const currentCycle = approvalHistory.reduce((max, approval) => Math.max(max, Number(approval.cycle) || 0), 0)
   const approvals = approvalHistory.filter((approval) => Number(approval.cycle) === currentCycle)
-  return {
+  const currentApproval = approvals.find((approval) => !approval.action)
+  const currentVersion = versionRows[0] ? {
+    versionNo: Number(versionRows[0].version_no),
+    changes: parseOptions(versionRows[0].changes),
+    createdAt: versionRows[0].created_at,
+  } : null
+  const liveTotals = totals(merged, items)
+  const frozenSnapshot = parseJsonValue(versionRows[0]?.snapshot, null)
+  const useFrozenSnapshot = frozenSnapshot && (
+    ['approved', 'voided'].includes(order.status)
+    || (order.status === 'in_review' && order.currentStepKey !== 'assistant')
+  )
+  const displayed = useFrozenSnapshot ? {
     ...merged,
-    totals: totals(merged, items),
+    ...frozenSnapshot,
+    items: Array.isArray(frozenSnapshot.items) ? frozenSnapshot.items : items,
+    totals: frozenSnapshot.totals || liveTotals,
+  } : { ...merged, totals: liveTotals }
+  return {
+    ...displayed,
     approvals,
     approvalHistory,
+    currentVersion,
+    currentAssigneeName: currentApproval?.assigneeName || null,
+    assignmentError: currentApproval?.assignmentError || order.assignmentError || null,
     quotationFiles: fileRows.map((file) => ({ id: file.id, name: file.original_name, size: Number(file.size), createdAt: file.created_at })),
+    archivedDocumentTypes: documentRows.map((row) => row.document_type),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
       canEdit: canEdit(order, user),
       canDelete: canDelete(order, user),
       canVoid: canVoid(order, user),
       canApprove: canApprove(order, user),
+      canWithdraw: user.role === 'sales' && order.status === 'in_review' && Number(order.salesOwnerId) === Number(user.id),
     },
   }
 }
@@ -318,6 +403,18 @@ async function resolveReferences(order, user) {
     if (!users[0]) throw badRequest('负责业务不存在或已停用')
   }
   return order
+}
+
+async function assertCreateOwner(order, user) {
+  if (['admin', 'sales'].includes(user.role)) return
+  if (user.role !== 'assistant') throw forbidden('只有业务或其对应助理可以创建 MR 单')
+  if (!order.salesOwnerId) throw badRequest('助理代建 MR 时请选择负责业务')
+  const rows = await query(
+    `SELECT assistant_user_id FROM users
+     WHERE id = :salesId AND role = 'sales' AND status = 'active' LIMIT 1`,
+    { salesId: order.salesOwnerId },
+  )
+  if (Number(rows[0]?.assistant_user_id) !== Number(user.id)) throw forbidden('只能为由你负责的业务代建 MR 单')
 }
 
 const ORDER_COLUMNS = [
@@ -364,7 +461,18 @@ async function list(req, res) {
   const where = []
   const params = {}
   if (req.user.role === 'sales') {
-    where.push("(o.sales_owner_id = :userId OR pending.step_key = 'sales')")
+    where.push('o.sales_owner_id = :userId')
+    params.userId = req.user.id
+  } else if (req.user.role === 'assistant') {
+    where.push(`(sales.assistant_user_id = :userId OR EXISTS (
+      SELECT 1 FROM mr_approvals visible
+      WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId)
+    ))`)
+    params.userId = req.user.id
+  } else if (req.user.role !== 'admin') {
+    const participantClause = `EXISTS (SELECT 1 FROM mr_approvals visible
+      WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId))`
+    where.push(req.user.role === 'operations_director' ? `(o.status IN ('approved', 'voided') OR ${participantClause})` : participantClause)
     params.userId = req.user.id
   }
   const status = String(req.query.status || '').trim()
@@ -377,17 +485,23 @@ async function list(req, res) {
     where.push('(o.customer_name LIKE :q OR o.ctrl_no LIKE :q OR c.code LIKE :q)')
     params.q = `%${q}%`
   }
+  params.permissionUserId = req.user.id
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, sales.real_name AS sales_owner_name,
+            sales.assistant_user_id, assistant.real_name AS assistant_name,
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
-            pending.step_key AS current_step_key, pending.step_label AS current_step_label
+            pending.step_key AS current_step_key, pending.step_label AS current_step_label,
+            pending.assignee_user_id AS current_assignee_user_id, current_assignee.real_name AS current_assignee_name, pending.assignment_error,
+            CASE WHEN pending.assignee_user_id = :permissionUserId THEN 1 ELSE 0 END AS approval_participant
      FROM mr_orders o
      LEFT JOIN users creator ON creator.id = o.created_by
      LEFT JOIN users sales ON sales.id = o.sales_owner_id
+     LEFT JOIN users assistant ON assistant.id = sales.assistant_user_id
      LEFT JOIN customers c ON c.id = o.customer_id
      LEFT JOIN mr_approvals pending ON pending.id = (
        SELECT a.id FROM mr_approvals a WHERE a.mr_id = o.id AND a.action IS NULL ORDER BY a.cycle DESC, a.seq LIMIT 1
      )
+     LEFT JOIN users current_assignee ON current_assignee.id = pending.assignee_user_id
      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
      ORDER BY o.updated_at DESC, o.id DESC
      LIMIT 500`,
@@ -395,8 +509,18 @@ async function list(req, res) {
   )
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user) } }
+    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: req.user.role === 'sales' && order.status === 'in_review' && Number(order.salesOwnerId) === Number(req.user.id) } }
   }) })
+}
+
+async function getAssistantSetting(req, res) {
+  await ensureTables()
+  res.json(await assistantSetting(req.user.id))
+}
+
+async function setAssistantSetting(req, res) {
+  await ensureTables()
+  res.json(await updateAssistantSetting(req.user.id, req.body?.assistantUserId))
 }
 
 async function detail(req, res) {
@@ -407,6 +531,7 @@ async function create(req, res) {
   await ensureTables()
   const normalized = normalizeOrder(req.body || {})
   await resolveReferences(normalized.order, req.user)
+  await assertCreateOwner(normalized.order, req.user)
   const params = dbParams(normalized.order)
   const id = await transaction(async (connection) => {
     const columns = ORDER_COLUMNS.map(([, column]) => column)
@@ -429,6 +554,7 @@ async function update(req, res) {
   await transaction(async (connection) => {
     const existing = await loadLockedOrder(connection, req.params.id)
     if (!canEdit(existing, req.user)) throw forbidden('当前状态或身份不允许编辑该 MR 单')
+    if (req.user.role !== 'admin' || existing.status !== 'draft') params.sales_owner_id = existing.salesOwnerId
     await connection.execute(
       `UPDATE mr_orders SET
        ${ORDER_COLUMNS.map(([, column]) => `${column} = :${column}`).join(', ')}, updated_by = :userId
@@ -460,11 +586,14 @@ async function submit(req, res) {
   await transaction(async (connection) => {
     const locked = await loadLockedOrder(connection, req.params.id)
     if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许提交该 MR 单')
+    if (locked.status === 'in_review') throw badRequest('请先保存修改，再通过助理会签推进流程')
     const detailValue = await loadCalculatedOrder(connection, locked)
     await resolveSubmissionCustomer(connection, detailValue, req.user)
     const errors = validateSubmission(detailValue, detailValue.items)
     if (errors.length) throw badRequest('规范检查未通过', errors)
     await ensureMrVendors(connection, detailValue.items)
+    await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
+    await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
     const steps = computeApprovalSteps(detailValue, detailValue.items)
     const [cycleRows] = await connection.execute('SELECT COALESCE(MAX(cycle), 0) + 1 AS next_cycle FROM mr_approvals WHERE mr_id = :id', { id: req.params.id })
     const cycle = Number(cycleRows[0].next_cycle)
@@ -477,79 +606,130 @@ async function submit(req, res) {
     }
     await connection.execute(
       `UPDATE mr_orders SET status = 'in_review', submitted_at = NOW(), fill_date = CURDATE(), approved_at = NULL,
-       rejected_at = NULL, reject_reason = NULL, updated_by = :userId WHERE id = :id`,
+       rejected_at = NULL, reject_reason = NULL, return_target = NULL, withdrawn_at = NULL, withdraw_reason = NULL,
+       updated_by = :userId WHERE id = :id`,
       { id: req.params.id, userId: req.user.id },
     )
+    const [submissionDates] = await connection.execute('SELECT CURDATE() AS fill_date')
+    detailValue.fillDate = submissionDates[0].fill_date
+    const snapshot = { ...detailValue, totals: totals(detailValue, detailValue.items), approvalSteps: steps }
+    await saveSubmissionBaseline(connection, detailValue, cycle, snapshot, req.user.id)
+    await activateCurrentStep(connection, detailValue, cycle, detailValue.createdBy || req.user.id)
   })
-  await removeStoredQuotationFiles(req.params.id)
   res.json(await loadDetail(req.params.id, req.user))
 }
 
 async function decide(req, res, action) {
   const reason = String(req.body?.reason || '').trim().slice(0, 500)
+  const returnTarget = ['sales', 'assistant'].includes(req.body?.target) ? req.body.target : 'sales'
   if (action === 'reject' && !reason) throw badRequest('驳回时必须填写原因')
   await ensureTables()
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    let [steps] = await connection.execute(
+    const [steps] = await connection.execute(
       `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
        ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
       { id: req.params.id },
     )
-    if (!steps[0]) throw badRequest('当前没有待签核步骤')
-    order.currentStepKey = steps[0].step_key
-    order.currentStepLabel = steps[0].step_label
+    const current = steps[0]
+    if (!current) throw badRequest('当前没有待签核步骤')
+    order.currentStepKey = current.step_key
+    order.currentStepLabel = current.step_label
+    order.currentAssigneeUserId = current.assignee_user_id
     if (!canApprove(order, req.user)) throw forbidden('当前签核步骤不属于你')
-    if (action === 'approve' && order.currentStepKey === 'assistant') {
+    const expectedCurrentAssignee = await resolveStepAssignee(connection, order, current.step_key, { required: true })
+    if (expectedCurrentAssignee.id !== Number(req.user.id)) throw forbidden('该签核待办已转交')
+    if (action === 'approve' && current.step_key !== 'assistant' && Number(order.versionNo || 0) === 0) {
+      const legacyDetail = await loadCalculatedOrder(connection, order)
+      const legacySteps = computeApprovalSteps(legacyDetail, legacyDetail.items)
+      const legacySnapshot = { ...legacyDetail, totals: totals(legacyDetail, legacyDetail.items), approvalSteps: legacySteps }
+      const [legacyBaselines] = await connection.execute(
+        `SELECT id FROM mr_versions WHERE mr_id = :mrId AND cycle = :cycle AND kind = 'submitted' LIMIT 1`,
+        { mrId: order.id, cycle: current.cycle },
+      )
+      if (!legacyBaselines[0]) await saveSubmissionBaseline(connection, order, current.cycle, legacySnapshot, req.user.id)
+      await freezeVersion(connection, order, current.cycle, legacySnapshot, req.user.id)
+    }
+    if (action === 'approve' && current.step_key === 'assistant') {
       const detailValue = await loadCalculatedOrder(connection, order)
       const errors = validateSubmission(detailValue, detailValue.items)
       if (errors.length) throw badRequest('助理补充后仍有未完成内容', errors)
       await ensureMrVendors(connection, detailValue.items)
+      await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
       const nextSteps = computeApprovalSteps(detailValue, detailValue.items)
-      const cycle = steps[0].cycle
-      await connection.execute('DELETE FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle', { id: req.params.id, cycle })
-      for (const step of nextSteps) {
+      await connection.execute(
+        'DELETE FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle AND seq > 1',
+        { id: req.params.id, cycle: current.cycle },
+      )
+      for (const step of nextSteps.slice(1)) {
         await connection.execute(
           `INSERT INTO mr_approvals (mr_id, cycle, seq, step_key, step_label)
            VALUES (:mrId, :cycle, :seq, :key, :label)`,
-          { mrId: req.params.id, cycle, ...step },
+          { mrId: req.params.id, cycle: current.cycle, ...step },
         )
       }
-      ;[steps] = await connection.execute(
-        `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
-         ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
-        { id: req.params.id },
+      const snapshot = { ...detailValue, totals: totals(detailValue, detailValue.items), approvalSteps: nextSteps }
+      const [baselineRows] = await connection.execute(
+        `SELECT id FROM mr_versions WHERE mr_id = :mrId AND cycle = :cycle AND kind = 'submitted' LIMIT 1`,
+        { mrId: order.id, cycle: current.cycle },
       )
+      if (!baselineRows[0] && Number(order.versionNo || 0) === 0) {
+        await saveSubmissionBaseline(connection, order, current.cycle, snapshot, req.user.id)
+      }
+      await freezeVersion(connection, order, current.cycle, snapshot, req.user.id)
     }
     await connection.execute(
-      `UPDATE mr_approvals SET approver_id = :userId, action = :action, reason = :reason, decided_at = NOW()
+      `UPDATE mr_approvals SET approver_id = :userId, approver_name_snapshot = :approverName,
+              approver_role_snapshot = :approverRole, action = :action, reason = :reason, decided_at = NOW()
        WHERE id = :stepId`,
-      { userId: req.user.id, action, reason: reason || null, stepId: steps[0].id },
+      {
+        userId: req.user.id,
+        approverName: req.user.real_name || req.user.username,
+        approverRole: req.user.role,
+        action,
+        reason: reason || null,
+        stepId: current.id,
+      },
     )
+    await completeTask(connection, current.id, action === 'reject' ? 'rejected' : 'approved')
     if (action === 'reject') {
       await connection.execute(
         `UPDATE mr_approvals SET action = 'skipped', reason = '前序驳回'
          WHERE mr_id = :id AND cycle = :cycle AND action IS NULL`,
-        { id: req.params.id, cycle: steps[0].cycle },
+        { id: req.params.id, cycle: current.cycle },
       )
       await connection.execute(
         `UPDATE mr_orders SET status = 'rejected', rejected_at = NOW(), reject_reason = :reason,
-         updated_by = :userId WHERE id = :id`,
-        { id: req.params.id, userId: req.user.id, reason },
+                return_target = :returnTarget, updated_by = :userId WHERE id = :id`,
+        { id: req.params.id, userId: req.user.id, reason, returnTarget },
+      )
+      const recipient = await resolveStepAssignee(connection, order, returnTarget, { required: true })
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'reject')`,
+        { mrId: req.params.id, recipientId: recipient.id },
       )
       return
     }
     const [pending] = await connection.execute(
       `SELECT id FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle AND action IS NULL LIMIT 1`,
-      { id: req.params.id, cycle: steps[0].cycle },
+      { id: req.params.id, cycle: current.cycle },
     )
     if (!pending[0]) {
       await connection.execute(
-        `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), updated_by = :userId WHERE id = :id`,
+        `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
+                archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
+                updated_by = :userId WHERE id = :id`,
         { id: req.params.id, userId: req.user.id },
+      )
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'approved')`,
+        { mrId: req.params.id, recipientId: order.salesOwnerId },
       )
     } else {
       await connection.execute('UPDATE mr_orders SET updated_by = :userId WHERE id = :id', { id: req.params.id, userId: req.user.id })
+      await activateCurrentStep(connection, order, current.cycle, order.createdBy || req.user.id)
     }
   })
   res.json(await loadDetail(req.params.id, req.user))
@@ -563,6 +743,101 @@ async function reject(req, res) {
   await decide(req, res, 'reject')
 }
 
+async function reassignSalesOwner(req, res) {
+  if (req.user.role !== 'admin') throw forbidden('只有管理员可以正式变更负责业务')
+  const salesOwnerId = Number(req.body?.salesOwnerId)
+  if (!Number.isInteger(salesOwnerId) || salesOwnerId <= 0) throw badRequest('请选择新的负责业务')
+  await ensureTables()
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (Number(order.salesOwnerId) === salesOwnerId) throw badRequest('负责业务未发生变化')
+    if (['approved', 'voided'].includes(order.status)) throw badRequest('已通过或已作废 MR 不允许变更负责业务')
+    const mapping = await salesWithAssistant(connection, salesOwnerId)
+    const nextOrder = { ...order, salesOwnerId }
+    await resolveStepAssignee(connection, nextOrder, 'sales', { required: true })
+    let assistant = null
+    try { assistant = assertAssistantMapping(mapping) } catch (_error) { /* 新业务可在“我的设置”补配助理 */ }
+    if (order.status === 'in_review') {
+      const [pending] = await connection.execute(
+        `SELECT id, cycle FROM mr_approvals WHERE mr_id = :id AND action IS NULL
+         ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
+        { id: req.params.id },
+      )
+      if (pending[0]) {
+        await completeTask(connection, pending[0].id, 'reassigned')
+        await connection.execute(
+          `UPDATE mr_approvals SET action = 'skipped', reason = '负责业务变更'
+           WHERE mr_id = :id AND cycle = :cycle AND action IS NULL`,
+          { id: req.params.id, cycle: pending[0].cycle },
+        )
+      }
+    }
+    const restart = ['in_review', 'rejected'].includes(order.status)
+    await connection.execute(
+      `UPDATE mr_orders SET sales_owner_id = :salesOwnerId,
+              status = CASE WHEN :restart = 1 THEN 'rejected' ELSE status END,
+              return_target = CASE WHEN :restart = 1 THEN 'assistant' ELSE return_target END,
+              rejected_at = CASE WHEN :restart = 1 THEN NOW() ELSE rejected_at END,
+              reject_reason = CASE WHEN :restart = 1 THEN '负责业务已变更，请新对应助理核对后重新提交' ELSE reject_reason END,
+              updated_by = :userId WHERE id = :id`,
+      { id: req.params.id, salesOwnerId, restart: restart ? 1 : 0, userId: req.user.id },
+    )
+    if (restart) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'owner_transfer')`,
+        { mrId: req.params.id, recipientId: salesOwnerId },
+      )
+      if (assistant) {
+        await connection.execute(
+          `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+           VALUES (:mrId, :recipientId, 'owner_transfer')`,
+          { mrId: req.params.id, recipientId: assistant.id },
+        )
+      }
+    }
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
+async function withdraw(req, res) {
+  const reason = String(req.body?.reason || '').trim().slice(0, 500)
+  if (!reason) throw badRequest('撤回时必须填写原因')
+  await ensureTables()
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (req.user.role !== 'sales' || order.status !== 'in_review' || Number(order.salesOwnerId) !== Number(req.user.id)) {
+      throw forbidden('只有负责业务可以撤回签核中的 MR 单')
+    }
+    const [pending] = await connection.execute(
+      `SELECT id, cycle, assignee_user_id FROM mr_approvals
+       WHERE mr_id = :id AND action IS NULL ORDER BY cycle DESC, seq LIMIT 1 FOR UPDATE`,
+      { id: req.params.id },
+    )
+    if (!pending[0]) throw badRequest('当前没有可撤回的签核任务')
+    await completeTask(connection, pending[0].id, 'withdrawn')
+    await connection.execute(
+      `UPDATE mr_approvals SET action = 'skipped', reason = '业务撤回'
+       WHERE mr_id = :id AND cycle = :cycle AND action IS NULL`,
+      { id: req.params.id, cycle: pending[0].cycle },
+    )
+    await connection.execute(
+      `UPDATE mr_orders SET status = 'draft', withdrawn_at = NOW(), withdraw_reason = :reason,
+              rejected_at = NULL, reject_reason = NULL, return_target = NULL, updated_by = :userId
+       WHERE id = :id`,
+      { id: req.params.id, userId: req.user.id, reason },
+    )
+    if (pending[0].assignee_user_id) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'withdraw')`,
+        { mrId: req.params.id, recipientId: pending[0].assignee_user_id },
+      )
+    }
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
 async function voidOrder(req, res) {
   const reason = String(req.body?.reason || '').trim().slice(0, 500)
   if (!reason) throw badRequest('作废时必须填写原因')
@@ -572,8 +847,19 @@ async function voidOrder(req, res) {
     if (!canVoid(order, req.user)) throw forbidden('当前状态或身份不允许作废该 MR 单')
     await connection.execute(
       `UPDATE mr_orders SET status = 'voided', voided_at = NOW(), void_reason = :reason,
-       updated_by = :userId WHERE id = :id`,
+              archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
+              updated_by = :userId WHERE id = :id`,
       { id: req.params.id, userId: req.user.id, reason },
+    )
+    await connection.execute(
+      `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
+       WHERE mr_id = :mrId AND event = 'approved' AND status IN ('pending', 'failed')`,
+      { mrId: req.params.id },
+    )
+    await connection.execute(
+      `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+       VALUES (:mrId, :recipientId, 'void')`,
+      { mrId: req.params.id, recipientId: order.salesOwnerId },
     )
   })
   res.json(await loadDetail(req.params.id, req.user))
@@ -591,6 +877,7 @@ async function remove(req, res) {
     )
     files = rows
     await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId: req.params.id })
+    await connection.execute("DELETE FROM approval_tasks WHERE business_type = 'mr' AND business_id = :id", { id: req.params.id })
     await connection.execute('DELETE FROM mr_orders WHERE id = :id', { id: req.params.id })
   })
   await Promise.allSettled(files.map((file) => fs.promises.rm(file.storage_path, { force: true })))
@@ -614,15 +901,51 @@ function originalNameUtf8(file) {
 function uploadedFiles(req) {
   return Object.values(req.files || {}).flat()
 }
-async function removeStoredQuotationFiles(ownerId) {
-  const rows = await query(
-    `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId`,
+async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
+  const written = []
+  let oldFiles = []
+  try {
+    for (const [index, file] of uploads.entries()) {
+      const name = originalNameUtf8(file)
+      const extension = path.extname(name).toLowerCase()
+      const storagePath = path.join(quotationRoot, `${ownerId}-${Date.now()}-${index}-${Math.round(Math.random() * 1e9)}${extension}`)
+      await fs.promises.writeFile(storagePath, file.buffer)
+      written.push({ name, storagePath, mimeType: file.mimetype || 'application/octet-stream', size: file.size })
+    }
+    await transaction(async (connection) => {
+      const locked = await loadLockedOrder(connection, ownerId)
+      if (!canEdit(locked, user)) throw forbidden('当前状态或身份不允许保存报价附件')
+      if (cleanupExisting) {
+        ;[oldFiles] = await connection.execute(
+          `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
+          { ownerId },
+        )
+        await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId })
+      }
+      let primaryFileId = null
+      for (const file of written) {
+        const [result] = await connection.execute(
+          `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
+           VALUES ('mr_order', :ownerId, :name, :storagePath, :mimeType, :size, :userId)`,
+          { ownerId, userId: user.id, ...file },
+        )
+        if (!primaryFileId) primaryFileId = result.insertId
+      }
+      await connection.execute(
+        'UPDATE mr_orders SET quotation_file_id = :fileId WHERE id = :ownerId',
+        { ownerId, fileId: primaryFileId },
+      )
+    })
+  } catch (error) {
+    await Promise.allSettled(written.map((file) => fs.promises.rm(file.storagePath, { force: true })))
+    throw error
+  }
+  await Promise.allSettled(oldFiles.map((file) => fs.promises.rm(file.storage_path, { force: true })))
+  return query(
+    `SELECT id, original_name AS name, size, created_at AS createdAt
+     FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
     { ownerId },
   )
-  if (!rows.length) return
-  await query('DELETE FROM files WHERE owner_type = \'mr_order\' AND owner_id = :ownerId', { ownerId })
-  await query('UPDATE mr_orders SET quotation_file_id = NULL WHERE id = :ownerId', { ownerId })
-  await Promise.allSettled(rows.map((file) => fs.promises.rm(file.storage_path, { force: true })))
 }
 
 async function importQuotation(req, res) {
@@ -737,12 +1060,14 @@ async function importQuotation(req, res) {
     } : {},
   }
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认销售报价或供应商报价角色')
-  if (String(req.body?.cleanupStoredFiles || '') === '1') await removeStoredQuotationFiles(req.params.id)
-  res.json({ files: [], ...payload })
+  const persist = String(req.body?.persist || '') === '1'
+  const cleanupStoredFiles = String(req.body?.cleanupStoredFiles || '') === '1'
+  const files = persist ? await persistQuotationFiles(req.params.id, uploads, req.user, cleanupStoredFiles) : []
+  res.json({ files, ...payload })
 }
 
 async function downloadQuotation(req, res) {
-  const order = await loadRawOrder(req.params.id)
+  const order = await loadRawOrder(req.params.id, req.user)
   if (!canView(order, req.user)) throw forbidden('无权下载该报价单')
   const fileId = Number(req.query.fileId || order.quotationFileId)
   if (!fileId) throw notFound('该 MR 单未上传报价单')
@@ -755,6 +1080,26 @@ async function downloadQuotation(req, res) {
   res.download(rows[0].storage_path, rows[0].original_name)
 }
 
+async function downloadDocument(req, res) {
+  const order = await loadRawOrder(req.params.id, req.user)
+  if (!canView(order, req.user)) throw forbidden('无权下载该 MR 归档文件')
+  const requestedType = ['approved', 'voided'].includes(req.query.type) ? req.query.type : null
+  const document = await mrDocument(req.params.id, requestedType)
+  if (!document || !fs.existsSync(document.storage_path)) {
+    if (['approved', 'voided'].includes(order.status)) {
+      if (document?.id) await query('DELETE FROM mr_documents WHERE id = :id', { id: document.id })
+      await query(
+        `UPDATE mr_orders SET archive_status = 'pending', archive_next_attempt_at = NOW(), archive_error = '归档文件缺失，等待重新生成'
+         WHERE id = :id`,
+        { id: req.params.id },
+      )
+      throw badRequest('正式 PDF 正在生成，请稍后重试')
+    }
+    throw notFound('该 MR 尚无正式归档 PDF')
+  }
+  res.download(document.storage_path, document.original_name)
+}
+
 function getConstants(_req, res) {
   res.json({ ...constants, pricingModes: [{ value: 1, label: '多项系统集成' }, { value: 2, label: '单项系统集成' }, { value: 3, label: '开明细' }] })
 }
@@ -763,6 +1108,8 @@ module.exports = {
   ensureTables,
   quotationUpload,
   getConstants,
+  getAssistantSetting,
+  setAssistantSetting,
   list,
   detail,
   create,
@@ -770,8 +1117,11 @@ module.exports = {
   submit,
   approve,
   reject,
+  reassignSalesOwner,
+  withdraw,
   voidOrder,
   remove,
   importQuotation,
   downloadQuotation,
+  downloadDocument,
 }

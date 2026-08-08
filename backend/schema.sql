@@ -10,6 +10,7 @@ CREATE TABLE users (
   avatar_path VARCHAR(255) NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   role ENUM('admin', 'assistant', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'engineer', 'sales', 'dispatcher') NOT NULL,
+  assistant_user_id BIGINT UNSIGNED NULL,
   status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
   failed_login_count INT UNSIGNED NOT NULL DEFAULT 0,
   locked_until DATETIME NULL,
@@ -19,6 +20,7 @@ CREATE TABLE users (
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_username (username),
   KEY idx_users_email (email),
+  KEY idx_users_assistant (assistant_user_id),
   KEY idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -481,6 +483,7 @@ CREATE TABLE IF NOT EXISTS device_model_aliases (
 CREATE TABLE IF NOT EXISTS mr_orders (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  version_no INT UNSIGNED NOT NULL DEFAULT 0,
   customer_id BIGINT UNSIGNED NULL,
   customer_contact_id BIGINT UNSIGNED NULL,
   sales_owner_id BIGINT UNSIGNED NULL,
@@ -526,8 +529,15 @@ CREATE TABLE IF NOT EXISTS mr_orders (
   approved_at DATETIME NULL,
   rejected_at DATETIME NULL,
   reject_reason VARCHAR(500) NULL,
+  return_target VARCHAR(16) NULL,
+  withdrawn_at DATETIME NULL,
+  withdraw_reason VARCHAR(500) NULL,
   voided_at DATETIME NULL,
   void_reason VARCHAR(500) NULL,
+  archive_status VARCHAR(16) NULL,
+  archive_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  archive_next_attempt_at DATETIME NULL,
+  archive_error VARCHAR(500) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -553,6 +563,7 @@ CREATE TABLE IF NOT EXISTS mr_items (
   vendor VARCHAR(255) NULL,
   cost_incl_tax DECIMAL(14,2) NULL,
   tax_rate DECIMAL(5,2) NULL,
+  quoted_unit_price DECIMAL(14,6) NULL,
   purchase_order_no VARCHAR(255) NULL,
   cost_source VARCHAR(255) NULL,
   PRIMARY KEY (id),
@@ -564,14 +575,84 @@ CREATE TABLE IF NOT EXISTS mr_approvals (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   mr_id BIGINT UNSIGNED NOT NULL,
   cycle INT NOT NULL DEFAULT 1,
+  version_no INT UNSIGNED NULL,
   seq INT NOT NULL,
   step_key VARCHAR(24) NOT NULL,
   step_label VARCHAR(32) NOT NULL,
+  assignee_user_id BIGINT UNSIGNED NULL,
+  assignment_error VARCHAR(255) NULL,
   approver_id BIGINT UNSIGNED NULL,
+  approver_name_snapshot VARCHAR(64) NULL,
+  approver_role_snapshot VARCHAR(32) NULL,
   action VARCHAR(16) NULL,
   reason VARCHAR(500) NULL,
   decided_at DATETIME NULL,
   PRIMARY KEY (id),
   KEY idx_mr_approvals_mr (mr_id, cycle, seq),
   CONSTRAINT fk_mr_approvals_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mr_versions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  mr_id BIGINT UNSIGNED NOT NULL,
+  cycle INT NOT NULL,
+  version_no INT UNSIGNED NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  snapshot JSON NOT NULL,
+  changes JSON NULL,
+  created_by BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_mr_versions_cycle_kind (mr_id, cycle, kind),
+  KEY idx_mr_versions_number (mr_id, version_no),
+  CONSTRAINT fk_mr_versions_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS approval_tasks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  business_type VARCHAR(32) NOT NULL,
+  business_id BIGINT UNSIGNED NOT NULL,
+  approval_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  assignee_user_id BIGINT UNSIGNED NOT NULL,
+  initiator_user_id BIGINT UNSIGNED NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  detail_path VARCHAR(255) NOT NULL,
+  completed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_approval_tasks_approval (business_type, approval_id),
+  KEY idx_approval_tasks_assignee (assignee_user_id, status, created_at),
+  KEY idx_approval_tasks_initiator (initiator_user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mr_notification_outbox (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  mr_id BIGINT UNSIGNED NOT NULL,
+  recipient_user_id BIGINT UNSIGNED NOT NULL,
+  event VARCHAR(24) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_error VARCHAR(500) NULL,
+  sent_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_mr_notification_due (status, next_attempt_at),
+  CONSTRAINT fk_mr_outbox_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mr_documents (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  mr_id BIGINT UNSIGNED NOT NULL,
+  version_no INT UNSIGNED NOT NULL,
+  document_type VARCHAR(16) NOT NULL,
+  storage_path VARCHAR(500) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  size BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_mr_documents_version_type (mr_id, version_no, document_type),
+  CONSTRAINT fk_mr_documents_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

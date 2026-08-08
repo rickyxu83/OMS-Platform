@@ -71,7 +71,7 @@ async function ensureUserLoginColumns() {
      FROM information_schema.columns
      WHERE table_schema = DATABASE()
        AND table_name = 'users'
-       AND column_name IN ('email', 'login_alias', 'last_login_at', 'locked_until')`,
+       AND column_name IN ('email', 'login_alias', 'last_login_at', 'locked_until', 'assistant_user_id')`,
   )
   const columns = new Set(rows.map((row) => row.columnName))
 
@@ -81,6 +81,10 @@ async function ensureUserLoginColumns() {
 
   if (!columns.has('login_alias')) {
     await query('ALTER TABLE users ADD COLUMN login_alias VARCHAR(64) NULL AFTER email')
+  }
+
+  if (!columns.has('assistant_user_id')) {
+    await query('ALTER TABLE users ADD COLUMN assistant_user_id BIGINT UNSIGNED NULL AFTER role')
   }
 
   if (!columns.has('last_login_at')) {
@@ -97,6 +101,17 @@ async function ensureUserLoginColumns() {
   )
   if (!indexRows[0]) {
     await query('CREATE INDEX idx_users_email ON users (email)')
+  }
+
+  const assistantIndexRows = await query(
+    `SELECT index_name AS indexName
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = 'users'
+       AND index_name = 'idx_users_assistant'`,
+  )
+  if (!assistantIndexRows[0]) {
+    await query('CREATE INDEX idx_users_assistant ON users (assistant_user_id)')
   }
 
   await query(
