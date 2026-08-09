@@ -514,9 +514,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             0% { transform: translateX(-180%) skewX(-18deg); }
             55%, 100% { transform: translateX(340%) skewX(-18deg); }
           }
-          @keyframes admin-test-banner-blink {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: .72; transform: scale(1.1); }
+          .admin-test-banner {
+            background-color: #fbbf24;
+            background-image: repeating-linear-gradient(
+              -45deg,
+              rgba(0, 0, 0, 0.13) 0,
+              rgba(0, 0, 0, 0.13) 3px,
+              transparent 3px,
+              transparent 16px
+            );
           }
           .admin-test-banner::after {
             content: "";
@@ -525,12 +531,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             bottom: 0;
             left: 0;
             width: 38%;
-            background: linear-gradient(105deg, transparent, rgba(255,255,255,.45), transparent);
+            background: linear-gradient(105deg, transparent, rgba(255,255,255,.5), transparent);
             animation: admin-test-banner-sweep 3s ease-in-out infinite;
             pointer-events: none;
-          }
-          .admin-test-banner-icon {
-            animation: admin-test-banner-blink 1.6s ease-in-out infinite;
           }
         `}</style>
         <div className="h-full flex flex-col">
@@ -539,7 +542,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {IS_TEST_SERVER ? (
             <div className="admin-test-banner relative flex h-16 shrink-0 items-center justify-between gap-2 overflow-hidden border-b-2 border-amber-700 bg-amber-300 px-3 text-amber-950">
               <div className="flex min-w-0 items-center gap-2.5">
-                <TriangleAlert className="admin-test-banner-icon h-6 w-6 shrink-0" aria-hidden="true" />
+                <TriangleAlert className="h-6 w-6 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold leading-tight">测试开发服务器</p>
                   <p className="truncate text-[11px] font-medium leading-snug text-amber-900/90">
