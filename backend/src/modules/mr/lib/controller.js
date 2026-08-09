@@ -89,6 +89,12 @@ async function ensureTables() {
       delivery_location VARCHAR(500) NULL,
       shipment_no VARCHAR(255) NULL,
       delivery_terms VARCHAR(255) NULL,
+      gross_profit_recognition_start_month VARCHAR(7) NULL,
+      gross_profit_recognition_amount DECIMAL(14,2) NULL,
+      remaining_recognizable_gross_profit DECIMAL(14,2) NULL,
+      taiwan_business_transfer_start_month VARCHAR(7) NULL,
+      taiwan_business_transfer_amount DECIMAL(14,2) NULL,
+      remaining_taiwan_business_transfer DECIMAL(14,2) NULL,
       quotation_file_id BIGINT UNSIGNED NULL,
       remark TEXT NULL,
       created_by BIGINT UNSIGNED NOT NULL,
@@ -108,11 +114,22 @@ async function ensureTables() {
       KEY idx_mr_orders_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  const deliveryLocationColumns = await query(
-    `SELECT 1 FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'mr_orders' AND column_name = 'delivery_location' LIMIT 1`,
-  )
-  if (!deliveryLocationColumns[0]) await query('ALTER TABLE mr_orders ADD COLUMN delivery_location VARCHAR(500) NULL AFTER latest_delivery_date')
+  const requiredOrderColumns = new Map([
+    ['delivery_location', 'VARCHAR(500) NULL'],
+    ['gross_profit_recognition_start_month', 'VARCHAR(7) NULL'],
+    ['gross_profit_recognition_amount', 'DECIMAL(14,2) NULL'],
+    ['remaining_recognizable_gross_profit', 'DECIMAL(14,2) NULL'],
+    ['taiwan_business_transfer_start_month', 'VARCHAR(7) NULL'],
+    ['taiwan_business_transfer_amount', 'DECIMAL(14,2) NULL'],
+    ['remaining_taiwan_business_transfer', 'DECIMAL(14,2) NULL'],
+  ])
+  const existingOrderColumns = new Set((await query(
+    `SELECT column_name AS name FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_orders'`,
+  )).map((row) => row.name))
+  for (const [name, definition] of requiredOrderColumns) {
+    if (!existingOrderColumns.has(name)) await query(`ALTER TABLE mr_orders ADD COLUMN ${name} ${definition}`)
+  }
   await query(
     `CREATE TABLE IF NOT EXISTS mr_items (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -438,6 +455,8 @@ const ORDER_COLUMNS = [
   ['maintenanceOptions', 'maintenance_options'], ['contractNo', 'contract_no'], ['fillDate', 'fill_date'],
   ['latestDeliveryDate', 'latest_delivery_date'], ['deliveryLocation', 'delivery_location'],
   ['shipmentNo', 'shipment_no'], ['deliveryTerms', 'delivery_terms'],
+  ['grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month'], ['grossProfitRecognitionAmount', 'gross_profit_recognition_amount'], ['remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'],
+  ['taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month'], ['taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'], ['remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'],
   ['remark', 'remark'],
 ]
 

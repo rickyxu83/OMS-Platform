@@ -4,6 +4,7 @@ import type { MrApproval, MrOrder } from '../types'
 function time(value?: string | null) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : ''
 }
+function displayStepLabel(approval: MrApproval) { return approval.stepKey === 'sales' ? '业务负责人' : approval.stepLabel }
 
 type StepState = 'approve' | 'reject' | 'skipped' | 'current' | 'waiting'
 
@@ -21,7 +22,7 @@ const MARKERS: Record<StepState, { icon: typeof Check; dot: string; text: string
 }
 
 function projectedApprovals(order: MrOrder): MrApproval[] {
-  const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务']]
+  const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务负责人']]
   if ((order.installOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签单位'])
   steps.push(['supervisor', '处级单位'])
   const margin = order.totals?.marginRate
@@ -43,7 +44,7 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
   if (!approvals.length) {
     return (
       <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-        {order.status === 'draft' ? '提交后按装机对象与金额生成签核链' : '暂无签核记录'}
+        {order.status === 'draft' ? '提交后，系统将根据装机承担方与金额自动生成签核流程' : '暂无签核记录'}
       </div>
     )
   }
@@ -66,7 +67,7 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
               </div>
               <div className={layout === 'horizontal' ? 'min-w-0' : `min-w-0 flex-1 ${last ? 'pb-0' : 'pb-4'} ${state === 'current' ? 'rounded-md bg-amber-50 px-2.5 py-1.5 -mt-1' : ''}`}>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <span className="text-sm font-medium">{approval.stepLabel}</span>
+                  <span className="text-sm font-medium">{displayStepLabel(approval)}</span>
                   <span className={`text-xs ${marker.text}`}>{marker.label}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
@@ -87,7 +88,7 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {previous.map((approval) => (
               <div key={`${approval.cycle}-${approval.id}`} className="rounded-md bg-card p-2.5 text-xs">
-                <div className="font-medium">第 {approval.cycle} 轮 · {approval.stepLabel}</div>
+                <div className="font-medium">第 {approval.cycle} 轮 · {displayStepLabel(approval)}</div>
                 <div className={`mt-0.5 ${approval.action === 'reject' ? 'text-red-700' : 'text-emerald-700'}`}>
                   {approval.action === 'reject' ? '驳回' : '同意'} · {approval.approverName || '-'}
                 </div>

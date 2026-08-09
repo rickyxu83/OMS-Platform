@@ -63,10 +63,10 @@ export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; 
   const margin = totals.marginRate
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
   const metrics = [
-    { label: '销售未税', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warning: false },
-    { label: '采购未税', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
-    { label: '整单毛利', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
-    { label: '签核状态', value: order.currentStepLabel || statusLabel(order.status), warning: false },
+    { label: '销售额（不含税）', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
+    { label: '签核进度', value: order.currentStepLabel ? `${order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel} · ${statusLabel(order.status)}` : statusLabel(order.status), warning: false },
   ]
   return (
     <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
@@ -110,11 +110,11 @@ export function SummaryPanel({
   const rail = layout === 'rail'
 
   const rows = [
-    { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warn: false },
-    { label: '增值税', value: <AnimatedMoney value={totals.vat} animationKey={animationKey} />, warn: false },
-    { label: '含税合计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warn: false },
-    { label: 'COST 总计', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
-    { label: '毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
+    { label: '销售额（不含税）', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warn: false },
+    { label: '销售税额', value: <AnimatedMoney value={totals.vat} animationKey={animationKey} />, warn: false },
+    { label: '销售额（含税）', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warn: false },
+    { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
+    { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
   ]
 
   return (
@@ -131,7 +131,7 @@ export function SummaryPanel({
       {lowMargin ? (
         <p className={`flex items-start gap-1.5 text-xs text-amber-700 ${rail ? '' : 'hidden shrink-0 sm:flex'}`}>
           <AlertTriangle className="mt-px size-3.5 shrink-0" />
-          毛利率低于 15%，需签核至副总经理。
+          毛利率低于 15%，签核流程须包含副总经理步骤。
         </p>
       ) : null}
 
@@ -142,13 +142,13 @@ export function SummaryPanel({
           className={`flex items-center gap-1.5 text-xs font-medium text-destructive hover:underline ${rail ? 'w-full' : 'shrink-0'}`}
         >
           <AlertTriangle className="size-3.5" />
-          {errorCount} 项待补，点击查看
+          {errorCount} 个字段待完善，点击查看
         </button>
       ) : null}
 
       {order.currentStepLabel ? (
         <div className={`text-xs text-muted-foreground ${rail ? 'border-t pt-3' : 'shrink-0 whitespace-nowrap'}`}>
-          当前签核步骤：<span className="font-medium text-foreground">{order.currentStepLabel}</span>
+          当前签核步骤：<span className="font-medium text-foreground">{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel}</span>
         </div>
       ) : null}
 

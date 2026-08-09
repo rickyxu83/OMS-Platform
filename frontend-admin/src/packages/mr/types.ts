@@ -95,6 +95,12 @@ export interface MrOrder {
   deliveryTerms?: string | null
   quotationFileId?: string | number | null
   quotationFiles?: QuotationFile[]
+  grossProfitRecognitionStartMonth?: string | null
+  grossProfitRecognitionAmount?: number | null
+  remainingRecognizableGrossProfit?: number | null
+  taiwanBusinessTransferStartMonth?: string | null
+  taiwanBusinessTransferAmount?: number | null
+  remainingTaiwanBusinessTransfer?: number | null
   remark?: string | null
   rejectReason?: string | null
   voidReason?: string | null
