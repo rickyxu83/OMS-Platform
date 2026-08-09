@@ -268,6 +268,7 @@ export function MrFormPage() {
     const currentMode = Number(form.pricingMode || 0)
     if (currentMode === nextMode) return
     const currentItems = calculated.items || []
+    const nextItems = currentMode === 2 ? currentItems.slice(0, 1) : currentItems
     const warnings: string[] = []
     if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
       warnings.push('开明细中的逐项销售单价会按系统集成规则重算。')
@@ -282,14 +283,14 @@ export function MrFormPage() {
     }
     if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确定切换计价模式吗？`)) return
     if (nextMode === 3) {
-      patch({ pricingMode: 3, items: currentMode === 1 ? quotationDetailItems(currentItems) : currentItems })
+      patch({ pricingMode: 3, items: quotationDetailItems(nextItems) })
       return
     }
     if (nextMode === 2) {
       patch({ pricingMode: 2, items: singleIntegrationItems(currentItems, form.invoiceType, form.installOptions || []) })
       return
     }
-    patch({ pricingMode: nextMode })
+    patch({ pricingMode: nextMode, items: nextItems })
   }
 
   const changeInvoiceType = (invoiceType: string) => {
@@ -591,11 +592,6 @@ export function MrFormPage() {
             <StatusBadge status={status} />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {editable || calculated.quotationFiles?.length ? (
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <FileSpreadsheet className="mr-2 size-4" />报价文件{calculated.quotationFiles?.length ? ` (${calculated.quotationFiles.length})` : ''}
-              </Button>
-            ) : null}
             {status !== 'in_review' ? (
               <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
                 <Printer className="mr-2 size-4" />打印预览
