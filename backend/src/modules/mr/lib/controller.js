@@ -8,6 +8,7 @@ const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
 const { parsePdf, parsePdfText } = require('./quotation-pdf-parser')
 const { recognizePdf } = require('./ocr-client')
 const { extractWorkbookImages, companyCandidates } = require('./workbook-images')
+const { archiveMrDocument } = require('./archive')
 const { validateParsedQuotation } = require('./quotation-validation')
 const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
@@ -693,6 +694,7 @@ async function decide(req, res, action) {
   await ensureTables()
   await transaction(async (connection) => {
     let autoApprovedLabel = null
+    let becameApproved = false
     const order = await loadLockedOrder(connection, req.params.id)
     const [steps] = await connection.execute(
       `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
@@ -820,6 +822,7 @@ async function decide(req, res, action) {
       { id: req.params.id, cycle: current.cycle },
     )
     if (!pending[0]) {
+      becameApproved = true
       await connection.execute(
         `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
                 archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
@@ -836,6 +839,13 @@ async function decide(req, res, action) {
       await activateCurrentStep(connection, order, current.cycle, order.createdBy || req.user.id)
     }
   })
+  if (becameApproved) {
+    try {
+      await archiveMrDocument(req.params.id, 'approved')
+    } catch (error) {
+      console.error('[mr] 同步归档失败，等待后台重试', error?.message || error)
+    }
+  }
   const detail = await loadDetail(req.params.id, req.user)
   res.json(autoApprovedLabel ? { ...detail, autoApprovedStep: autoApprovedLabel } : detail)
 }
