@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 26
+const PDF_FORMAT_VERSION = 27
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -103,10 +103,10 @@ function itemColumns(items) {
     { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
     { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
     { key: 'install', label: '品项装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
-    { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
+    { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
+    { key: 'vendor', label: '供应商', weight: 8, align: 'center', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
     { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
     { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
@@ -173,7 +173,7 @@ function totals(doc, fonts, order, items, y) {
   let x = PAGE.margin
   cells.forEach(([label, content], index) => {
     text(doc, fonts, label, x + 10, y + 5, { size: 6.5, color: MUTED })
-    text(doc, fonts, content, x + 10, y + 16, { size: 9, bold: true, color: index === cells.length - 1 ? PURPLE : '#111827', width: width - 14, align: 'right' })
+    text(doc, fonts, content, x + 10, y + 16, { size: 9, bold: true, color: index === cells.length - 1 ? PURPLE : '#111827', width: width - 14 })
     x += width
   })
   return y + 41
