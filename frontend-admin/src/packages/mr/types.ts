@@ -113,6 +113,7 @@ export interface MrOrder {
   archiveStatus?: 'pending' | 'generating' | 'ready' | 'failed' | null
   archiveError?: string | null
   archivedDocumentTypes?: Array<'approved' | 'voided'>
+  autoApprovedStep?: string | null
   assignmentError?: string | null
   currentAssigneeName?: string | null
   currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null

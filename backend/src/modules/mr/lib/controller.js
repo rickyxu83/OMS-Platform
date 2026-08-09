@@ -692,6 +692,7 @@ async function decide(req, res, action) {
   if (action === 'reject' && !reason) throw badRequest('驳回时必须填写原因')
   await ensureTables()
   await transaction(async (connection) => {
+    let autoApprovedLabel = null
     const order = await loadLockedOrder(connection, req.params.id)
     const [steps] = await connection.execute(
       `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
@@ -761,6 +762,40 @@ async function decide(req, res, action) {
       },
     )
     await completeTask(connection, current.id, action === 'reject' ? 'rejected' : 'approved')
+    // 连签：当前签核人与下一轮签核人是同一人时，一次签完下一环节并提示
+    if (action === 'approve') {
+      const [nextRows] = await connection.execute(
+        'SELECT * FROM mr_approvals WHERE mr_id = :id AND cycle = :cycle AND action IS NULL ORDER BY seq LIMIT 1',
+        { id: req.params.id, cycle: current.cycle },
+      )
+      const next = nextRows[0]
+      if (next) {
+        let nextAssigneeId = null
+        try {
+          const resolved = await resolveStepAssignee(connection, order, next.step_key, { required: false })
+          nextAssigneeId = resolved ? Number(resolved.id) : null
+        } catch {
+          nextAssigneeId = null
+        }
+        if (nextAssigneeId === Number(req.user.id)) {
+          await connection.execute(
+            `UPDATE mr_approvals SET approver_id = :userId, approver_name_snapshot = :approverName,
+                    approver_role_snapshot = :approverRole, approver_signature_snapshot = :approverSignature,
+                    action = 'approve', reason = NULL, decided_at = NOW()
+             WHERE id = :stepId`,
+            {
+              userId: req.user.id,
+              approverName: req.user.real_name || req.user.username,
+              approverRole: req.user.role,
+              approverSignature: req.user.engineer_signature || null,
+              stepId: next.id,
+            },
+          )
+          await completeTask(connection, next.id, 'approved')
+          autoApprovedLabel = next.step_label || next.step_key
+        }
+      }
+    }
     if (action === 'reject') {
       await connection.execute(
         `UPDATE mr_approvals SET action = 'skipped', reason = '前序驳回'
@@ -801,7 +836,8 @@ async function decide(req, res, action) {
       await activateCurrentStep(connection, order, current.cycle, order.createdBy || req.user.id)
     }
   })
-  res.json(await loadDetail(req.params.id, req.user))
+  const detail = await loadDetail(req.params.id, req.user)
+  res.json(autoApprovedLabel ? { ...detail, autoApprovedStep: autoApprovedLabel } : detail)
 }
 
 async function approve(req, res) {

@@ -541,8 +541,12 @@ export function MrFormPage() {
       setEditing(false)
       setDecision(null)
       setReason('')
-      const messages = { approve: next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回并恢复为草稿', void: 'MR 已作废' }
-      toast.success(messages[decision])
+      if (decision === 'approve' && next.autoApprovedStep) {
+        toast.success(`当前签核已完成，因您同时负责下一环节，已一并完成「${next.autoApprovedStep}」签核`)
+      } else {
+        const messages = { approve: next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回并恢复为草稿', void: 'MR 已作废' }
+        toast.success(messages[decision])
+      }
     } catch (err) {
       const details = validationDetails(err)
       setError((err as Error).message || '操作失败')
