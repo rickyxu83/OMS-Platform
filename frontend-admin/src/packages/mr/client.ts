@@ -69,5 +69,8 @@ export async function loadMrReferences() {
   }
 }
 
-export const loadCustomer = (id: string | number) => api.get(`/customers/${pathId(id)}`) as Promise<CustomerOption>
-export const createCustomerContact = (customerId: string | number, body: { name: string; phone?: string }) => api.post(`/customers/${pathId(customerId)}/contacts`, body) as Promise<{ id: string | number; name: string; phone?: string | null }>
+export async function loadCustomer(id: string | number) {
+  const data = await api.get(`/customers/${pathId(id)}`)
+  return (data?.item || data) as CustomerOption
+}
+export const createCustomerContact = (customerId: string | number, body: { name: string; phone?: string; email?: string }) => api.post(`/customers/${pathId(customerId)}/contacts`, body) as Promise<{ id: string | number; name: string; phone?: string | null; email?: string | null }>

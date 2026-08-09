@@ -106,7 +106,7 @@ function validationDetails(error: unknown): ValidationError[] {
 const CHANGE_LABELS: Record<string, string> = {
   customerId: '客户', customerContactId: '客户联系人', salesOwnerId: '业务负责人', customerName: '客户名称', contactName: '联系人',
   caseCategory: '项目分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票类型', pricingMode: '计价模式', totalExcludingTax: '未税总计',
-  invoiceProcess: '开票方式', billingContent: '开票内容', invoiceRecipient: '发票收件人', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购联系电话',
+  invoiceProcess: '开票方式', billingContent: '开票内容', invoiceRecipient: '发票收件人', invoiceRecipientTel: '发票收件电话', invoiceRecipientMail: '发票收件邮箱', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购联系电话', purchaserMail: '采购联系邮箱',
   recipient: '收货人', recipientTel: '收货联系电话', recipientMail: '收货邮箱', paymentTerms: '付款条件', paymentOther: '付款条件说明', splitDelivery: '是否允许分批交付',
   acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则说明',
   fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
@@ -157,10 +157,12 @@ export function MrFormPage() {
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
   const loadSequence = useRef(0)
+  const customerLoadSequence = useRef(0)
   const ignoreNextPop = useRef(false)
   const errorListRef = useRef<HTMLDivElement | null>(null)
 
   const calculated = useMemo(() => form ? calculateForm(form) : null, [form])
+  const linkedContacts = (contacts || []).filter((contact) => form?.customerId && String(contact.customerId) === String(form.customerId))
   const canEdit = Boolean(form?.permissions?.canEdit)
   const assistantReview = Boolean(canEdit && form?.status === 'in_review' && form?.currentStepKey === 'assistant')
   const editable = Boolean(canEdit && (!assistantReview || editing))
@@ -187,9 +189,13 @@ export function MrFormPage() {
         contactName: defaultContact.name || order.contactName || '',
         purchaser: order.purchaser || defaultContact.name || '',
         purchaserTel: order.purchaserTel || defaultContact.phone || '',
+        purchaserMail: order.purchaserMail || defaultContact.email || '',
         recipient: order.recipient || defaultContact.name || '',
         recipientTel: order.recipientTel || defaultContact.phone || '',
+        recipientMail: order.recipientMail || defaultContact.email || '',
         invoiceRecipient: order.invoiceRecipient || defaultContact.name || '',
+        invoiceRecipientTel: order.invoiceRecipientTel || defaultContact.phone || '',
+        invoiceRecipientMail: order.invoiceRecipientMail || defaultContact.email || '',
       } : order
       if (sequence !== loadSequence.current) return
       setForm(hydratedOrder)
@@ -309,8 +315,10 @@ export function MrFormPage() {
   }
 
   const chooseCustomer = async (value: string) => {
+    const sequence = ++customerLoadSequence.current
     const customer = customers.find((item) => String(item.id) === value)
     const deliveryLocation = customer?.salesDeliveryAddress || customer?.mapAddress || customer?.address || customer?.mapPoiName || ''
+    setContacts([])
     patch({
       customerId: value,
       customerContactId: null,
@@ -319,14 +327,18 @@ export function MrFormPage() {
       contactName: '',
       purchaser: '',
       purchaserTel: '',
+      purchaserMail: '',
       recipient: '',
       recipientTel: '',
       recipientMail: '',
       invoiceRecipient: '',
+      invoiceRecipientTel: '',
+      invoiceRecipientMail: '',
       deliveryLocation,
     })
     try {
       const detail = await loadCustomer(value)
+      if (sequence !== customerLoadSequence.current) return
       const defaultContact = contactByName(detail.contacts, detail.contactName) || detail.contacts?.[0]
       setContacts(detail.contacts || [])
       if (defaultContact) {
@@ -335,13 +347,17 @@ export function MrFormPage() {
           contactName: defaultContact.name || '',
           purchaser: defaultContact.name || '',
           purchaserTel: defaultContact.phone || '',
+          purchaserMail: defaultContact.email || '',
           recipient: defaultContact.name || '',
           recipientTel: defaultContact.phone || '',
+          recipientMail: defaultContact.email || '',
           invoiceRecipient: defaultContact.name || '',
+          invoiceRecipientTel: defaultContact.phone || '',
+          invoiceRecipientMail: defaultContact.email || '',
         })
       }
     } catch (err) {
-      setError((err as Error).message || '联系人加载失败')
+      if (sequence === customerLoadSequence.current) setError((err as Error).message || '联系人加载失败')
     }
   }
   const handleCustomerInput = (value: string) => {
@@ -350,22 +366,48 @@ export function MrFormPage() {
       void chooseCustomer(String(customer.id))
       return
     }
+    customerLoadSequence.current += 1
     patch({ customerId: null, customerCode: '', customerName: value, customerContactId: null, contactName: '' })
     setContacts([])
   }
 
 
   const patchContactField = (field: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
-    const contact = contactByName(contacts, value)
+    const contact = contactByName(linkedContacts, value)
     const next: Partial<MrOrder> = { [field]: value }
-    if (field === 'purchaser') next.purchaserTel = contact?.phone || ''
-    if (field === 'recipient') next.recipientTel = contact?.phone || ''
+    if (field === 'purchaser') {
+      next.purchaserTel = contact?.phone || ''
+      next.purchaserMail = contact?.email || ''
+    }
+    if (field === 'recipient') {
+      next.recipientTel = contact?.phone || ''
+      next.recipientMail = contact?.email || ''
+    }
+    if (field === 'invoiceRecipient') {
+      next.invoiceRecipientTel = contact?.phone || ''
+      next.invoiceRecipientMail = contact?.email || ''
+    }
     patch(next)
   }
-  const patchContactPhoneField = (field: 'purchaserTel' | 'recipientTel', value: string) => {
-    const contact = (contacts || []).find((item) => item.phone && item.phone === value)
-    if (field === 'purchaserTel') patch({ purchaserTel: value, ...(contact?.name ? { purchaser: contact.name } : {}) })
-    if (field === 'recipientTel') patch({ recipientTel: value, ...(contact?.name ? { recipient: contact.name } : {}) })
+  const patchContactPhoneField = (field: 'purchaserTel' | 'recipientTel' | 'invoiceRecipientTel', value: string) => {
+    const contact = linkedContacts.find((item) => item.phone && item.phone === value)
+    const next: Partial<MrOrder> = { [field]: value }
+    if (contact?.name) {
+      if (field === 'purchaserTel') { next.purchaser = contact.name; next.purchaserMail = contact.email || '' }
+      if (field === 'recipientTel') { next.recipient = contact.name; next.recipientMail = contact.email || '' }
+      if (field === 'invoiceRecipientTel') { next.invoiceRecipient = contact.name; next.invoiceRecipientMail = contact.email || '' }
+    }
+    patch(next)
+  }
+  const patchContactMailField = (field: 'purchaserMail' | 'recipientMail' | 'invoiceRecipientMail', value: string) => {
+    const contact = linkedContacts.find((item) => item.email && item.email.toLowerCase() === value.trim().toLowerCase())
+    const next: Partial<MrOrder> = { [field]: value }
+    if (contact?.name) {
+      if (field === 'purchaserMail') { next.purchaser = contact.name; next.purchaserTel = contact.phone || '' }
+      if (field === 'recipientMail') { next.recipient = contact.name; next.recipientTel = contact.phone || '' }
+      if (field === 'invoiceRecipientMail') { next.invoiceRecipient = contact.name; next.invoiceRecipientTel = contact.phone || '' }
+    }
+    patch(next)
   }
 
 
@@ -382,36 +424,38 @@ export function MrFormPage() {
     const matchedCustomer = !calculated?.customerId
       ? result.metadata?.matchedCustomer || customers.find((customer) => [customer.name, customer.code].some((value) => normalizeLookup(value) === normalizeLookup(metadataCustomer)))
       : undefined
-    let importedContacts = contacts || []
+    let importedContacts = linkedContacts
     if (matchedCustomer) {
       if (matchedCustomer.contacts?.length) {
         importedContacts = matchedCustomer.contacts
-        setContacts(importedContacts)
       } else {
         try {
           const detail = await loadCustomer(matchedCustomer.id)
           importedContacts = detail.contacts || []
-          setContacts(importedContacts)
         } catch (err) {
           setError((err as Error).message || '客户联系人加载失败')
         }
       }
     }
+    const nextCustomerId = calculated?.customerId || matchedCustomer?.id || null
+    importedContacts = importedContacts.filter((contact) => nextCustomerId && String(contact.customerId) === String(nextCustomerId))
+    if (matchedCustomer) setContacts(importedContacts)
     const importedContact = contactByName(importedContacts, result.metadata?.attn)
       || contactByName(importedContacts, matchedCustomer?.contactName)
       || importedContacts[0]
-    const nextCustomerId = calculated?.customerId || matchedCustomer?.id || null
     const nextCustomerName = calculated?.customerId
       ? calculated.customerName
       : matchedCustomer?.name || metadataCustomer || calculated?.customerName || ''
     const deliveryCustomer = matchedCustomer || customers.find((customer) => String(customer.id) === String(nextCustomerId))
     const defaultDeliveryLocation = deliveryCustomer?.salesDeliveryAddress || deliveryCustomer?.mapAddress || deliveryCustomer?.address || deliveryCustomer?.mapPoiName || ''
-    const nextContactId = calculated?.customerContactId || importedContact?.id || null
-    const nextContactName = calculated?.customerContactId
-      ? calculated.contactName
+    const selectedContact = importedContacts.find((contact) => String(contact.id) === String(calculated?.customerContactId))
+    const nextContactId = selectedContact?.id || importedContact?.id || null
+    const nextContactName = selectedContact
+      ? calculated?.contactName
       : importedContact?.name || result.metadata?.attn || calculated?.contactName || ''
     const importedContactName = importedContact?.name || result.metadata?.attn || ''
     const importedContactPhone = importedContact?.phone || ''
+    const importedContactMail = importedContact?.email || ''
     patch({
       pricingMode: importedMode,
       invoiceType: importedInvoiceType || calculated?.invoiceType || '',
@@ -427,9 +471,13 @@ export function MrFormPage() {
       contactName: nextContactName,
       purchaser: calculated?.purchaser || importedContactName,
       purchaserTel: calculated?.purchaserTel || importedContactPhone,
+      purchaserMail: calculated?.purchaserMail || importedContactMail,
       recipient: calculated?.recipient || importedContactName,
       recipientTel: calculated?.recipientTel || importedContactPhone,
+      recipientMail: calculated?.recipientMail || importedContactMail,
       invoiceRecipient: calculated?.invoiceRecipient || importedContactName,
+      invoiceRecipientTel: calculated?.invoiceRecipientTel || importedContactPhone,
+      invoiceRecipientMail: calculated?.invoiceRecipientMail || importedContactMail,
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
     setImportAnimationKey((current) => current + 1)
@@ -562,7 +610,7 @@ export function MrFormPage() {
   }
 
   const status = calculated.status || 'draft'
-  const contactCandidates = (contacts || []).filter((item) => item.id && item.name)
+  const contactCandidates = linkedContacts.filter((item) => item.id && item.name)
   const contactChoices = Array.from(new Map([...contactCandidates.slice(0, 3), ...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId))].map((item) => [String(item.id), item])).values())
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
   const deliveryLocations = [
@@ -573,7 +621,6 @@ export function MrFormPage() {
   ]
     .filter((item): item is { value: string; label: string } => Boolean(item.value))
     .filter((item, index, options) => options.findIndex((option) => option.value === item.value) === index)
-  const deliveryChoice = deliveryLocations.some((option) => option.value === calculated.deliveryLocation) ? calculated.deliveryLocation || '' : 'custom'
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
@@ -605,8 +652,10 @@ export function MrFormPage() {
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
       <datalist id="mr-customer-options">{customers.map((customer) => <option key={customer.id} value={customer.name || ''}>{customer.code || ''}</option>)}</datalist>
-      <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{contact.phone || ''}</option>)}</datalist>
+      <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{[contact.phone, contact.email].filter(Boolean).join(' · ')}</option>)}</datalist>
       <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
+      <datalist id="mr-contact-mail-options">{contactChoices.filter((contact) => contact.email).map((contact) => <option key={`mail-${contact.id || contact.email}`} value={contact.email || ''}>{contact.name || ''}</option>)}</datalist>
+      <datalist id="mr-delivery-location-options">{deliveryLocations.map((location) => <option key={location.value} value={location.value}>{location.label}</option>)}</datalist>
 
       <div data-mr-sticky-header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -897,26 +946,29 @@ export function MrFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="联系人信息" icon={MR_SECTIONS[3].icon} description="可手动填写姓名与联系电话；如所填姓名或电话已存在于客户档案中，系统将自动补全对应信息。" flash={flashSection === 'contacts'}>
+          <SectionCard id="contacts" title="联系人信息" icon={MR_SECTIONS[3].icon} description="可手动填写姓名、联系电话和邮箱；如内容存在于当前客户档案中，系统将自动补全对应信息。" flash={flashSection === 'contacts'}>
             <div className="overflow-x-auto border">
-              <div className="min-w-[620px]">
-                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
-                  <div>联系人角色</div><div>姓名</div><div>联系电话</div>
+              <div className="min-w-[880px]">
+                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
+                  <div>联系人角色</div><div>姓名</div><div>联系电话（选填）</div><div>邮箱（选填）</div>
                 </div>
-                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
+                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
                   <Input list="mr-contact-options" value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patchContactField('purchaser', e.target.value)} />
                   <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
+                  <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} />
                 </div>
-                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
+                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">收货人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
                   <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收货人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
                   <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
+                  <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} />
                 </div>
-                <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 px-4 py-4">
+                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
                   <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} readOnly={!editable} placeholder="发票收件人姓名" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
-                  <div className="text-xs text-muted-foreground">无需填写联系电话</div>
+                  <Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} />
+                  <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -942,18 +994,7 @@ export function MrFormPage() {
                 </Field>
               ) : null}
               <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
-                <div className="space-y-2">
-                  {deliveryLocations.length ? (
-                    <Select value={deliveryChoice} onValueChange={(value) => { if (value !== 'custom') patch({ deliveryLocation: value }) }}>
-                      <SelectTrigger><SelectValue placeholder="选择销售交付地址或工程服务地址" /></SelectTrigger>
-                      <SelectContent>
-                        {deliveryLocations.map((location) => <SelectItem key={location.value} value={location.value}>{location.label} · {location.value}</SelectItem>)}
-                        <SelectItem value="custom">手动填写其他交付地点</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="优先选择销售交付地址，也可选择工程服务地址或手动填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
-                </div>
+                <Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} placeholder="选择销售或工程服务地址，也可直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
               </Field>
               <WorkOptions
                 label="装机承担方"
