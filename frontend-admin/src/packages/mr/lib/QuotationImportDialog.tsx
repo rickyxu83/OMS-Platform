@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { downloadQuotation, importQuotations } from '../client'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
+import { AnimatedInteger, AnimatedMoney } from './mr-ui'
 
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
 type UploadRole = 'sales' | 'purchase'
@@ -122,6 +123,35 @@ function FileDropZone({
   )
 }
 
+function ImportActivity({ saving }: { saving: boolean }) {
+  const stages = saving ? ['保存附件', '写入品项', '刷新金额'] : ['读取文件', '识别字段', '匹配品项']
+  return (
+    <div role="status" aria-live="polite" className="relative overflow-hidden rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 flex h-1 gap-1 bg-primary/10">
+        {stages.map((stage, index) => <span key={stage} className="h-full flex-1 animate-pulse bg-primary/70 motion-reduce:animate-none" style={{ animationDelay: `${index * 180}ms` }} />)}
+      </div>
+      <div className="flex items-center gap-3">
+        <div aria-hidden="true" className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-background text-primary shadow-sm">
+          <FileSpreadsheet className="size-5 animate-pulse motion-reduce:animate-none" />
+          <Loader2 className="absolute -inset-1 size-12 animate-spin opacity-40 motion-reduce:animate-none" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{saving ? '正在确认导入结果…' : '正在识别报价文件…'}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{saving ? '正在整理附件、品项与金额，请稍候' : '正在解析版面、确认来源角色并匹配品项'}</div>
+          <div aria-hidden="true" className="mt-3 flex flex-wrap gap-2">
+            {stages.map((stage, index) => (
+              <span key={stage} className="inline-flex items-center gap-1.5 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+                <span className="size-1.5 animate-bounce rounded-full bg-primary motion-reduce:animate-none" style={{ animationDelay: `${index * 140}ms` }} />
+                {stage}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function QuotationImportDialog({
   orderId,
   open,
@@ -144,6 +174,7 @@ export function QuotationImportDialog({
   const [salesFiles, setSalesFiles] = useState<File[]>([])
   const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<QuotationImportResult | null>(null)
+  const [previewAnimationKey, setPreviewAnimationKey] = useState(0)
   const [draftItems, setDraftItems] = useState<MrItem[]>([])
   const [sourceVendors, setSourceVendors] = useState<Record<number, string>>({})
   const [editMode, setEditMode] = useState(false)
@@ -230,7 +261,9 @@ export function QuotationImportDialog({
     if (!nextFiles.length) return
     setLoading(true)
     try {
-      setPreview(await importQuotations(orderId, nextFiles, false, nextRoles))
+      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles)
+      setPreview(parsed)
+      setPreviewAnimationKey((current) => current + 1)
     } catch (err) {
       setError((err as Error).message || '报价单解析失败')
     } finally {
@@ -294,12 +327,12 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-        {loading ? <div role="status" className="flex items-center gap-3 border bg-muted/30 px-4 py-3 text-sm"><Loader2 className="size-5 shrink-0 animate-spin text-primary" /><div><div className="font-medium">{preview ? '正在确认导入结果…' : '正在识别报价文件…'}</div><div className="text-xs text-muted-foreground">{preview ? '正在清理历史附件并整理当前品项，请稍候' : '正在解析表格、确认来源角色并匹配品项'}</div></div></div> : null}
+        {loading ? <ImportActivity saving={Boolean(preview)} /> : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件：销售报价 {salesFiles.length} 份，供应商报价 {purchaseFiles.length} 份</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
         {preview ? (
-          <div className="space-y-5">
+          <div key={previewAnimationKey} className="space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500">
             <section>
               <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">来源分组优先；识别结果仍会提示异常</span></div>
               {preview.metadata?.matchedCustomer ? (
@@ -325,10 +358,10 @@ export function QuotationImportDialog({
                       {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别，手工填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>
                     <div className="text-sm tabular-nums">
-                      <div>¥ {money(source.total)}</div>
+                      <div><AnimatedMoney value={source.total} animationKey={previewAnimationKey} /></div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{source.taxIncluded === null || source.taxIncluded === undefined ? '口径未识别' : source.taxIncluded ? '含税' : '未税'}</div>
                     </div>
-                    <div className="text-sm text-muted-foreground">{source.itemCount} 项</div>
+                    <div className="text-sm text-muted-foreground"><AnimatedInteger value={source.itemCount} animationKey={previewAnimationKey} /> 项</div>
                   </div>
                 ))}
               </div>
@@ -343,7 +376,7 @@ export function QuotationImportDialog({
             ) : null}
 
             <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">报价识别品项（{previewItems.length}）</h3><span className="text-xs text-muted-foreground">销售行级金额和 Cost 按最终 MR 显示未税口径，同时列出含税金额供核对</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对编辑'}</Button></div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">报价识别品项（<AnimatedInteger value={previewItems.length} animationKey={previewAnimationKey} />）</h3><span className="text-xs text-muted-foreground">销售行级金额和 Cost 按最终 MR 显示未税口径，同时列出含税金额供核对</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对编辑'}</Button></div>
               {editMode && selectedRows.size ? (
                 <div className="mb-3 grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[180px_1fr] md:items-center">
                   <label className="text-sm font-medium" htmlFor="quotation-batch-source">复制来源</label>

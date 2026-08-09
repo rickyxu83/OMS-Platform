@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useCountUp } from './count-up'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -46,6 +47,21 @@ export function textValue(value?: unknown) {
 
 export function percent(value?: number | null) {
   return value === null || value === undefined ? '-' : `${Number(value).toFixed(2)}%`
+}
+
+export function AnimatedMoney({ value, animationKey = 0 }: { value?: number | null; animationKey?: number }) {
+  const display = useCountUp(value, animationKey)
+  return <>{value === null || value === undefined ? '-' : `¥ ${money(display)}`}</>
+}
+
+export function AnimatedPercent({ value, animationKey = 0 }: { value?: number | null; animationKey?: number }) {
+  const display = useCountUp(value, animationKey)
+  return <>{value === null || value === undefined ? '-' : percent(display)}</>
+}
+
+export function AnimatedInteger({ value, animationKey = 0 }: { value?: number | null; animationKey?: number }) {
+  const display = useCountUp(value, animationKey)
+  return <>{value === null || value === undefined ? '-' : Math.round(display).toLocaleString('zh-CN')}</>
 }
 
 export function choiceValue(value?: number | boolean | null, yes = '是', no = '否') {

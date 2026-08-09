@@ -2,7 +2,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MrOrder } from '../types'
 import type { MrSection } from './form-sections'
-import { money, percent, statusLabel } from './mr-ui'
+import { AnimatedMoney, AnimatedPercent, statusLabel } from './mr-ui'
 
 /**
  * Section list. `vertical` is the desktop rail; `horizontal` is the mobile chip
@@ -58,20 +58,20 @@ export function SectionNav({
   )
 }
 
-export function WorkbenchMetrics({ order }: { order: MrOrder }) {
+export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; animationKey?: number }) {
   const totals = order.totals || {}
   const margin = totals.marginRate
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
   const metrics = [
-    ['销售未税', `¥ ${money(totals.salesExcludingTax)}`, false],
-    ['采购未税', `¥ ${money(totals.costExcludingTax)}`, false],
-    ['整单毛利', percent(margin), lowMargin],
-    ['签核状态', order.currentStepLabel || statusLabel(order.status), false],
-  ] as Array<[string, string, boolean]>
+    { label: '销售未税', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '采购未税', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '整单毛利', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
+    { label: '签核状态', value: order.currentStepLabel || statusLabel(order.status), warning: false },
+  ]
   return (
     <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
-      {metrics.map(([label, value, warning]) => (
-        <div key={label} className="min-w-0 bg-card px-4 py-3 sm:px-5">
+      {metrics.map(({ label, value, warning }) => (
+        <div key={`${label}-${animationKey}`} className={`min-w-0 bg-card px-4 py-3 sm:px-5 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
           <div className="text-xs text-muted-foreground">{label}</div>
           <div className={`mt-1 truncate text-lg font-semibold tabular-nums ${warning ? 'text-red-600' : ''}`}>{value}</div>
         </div>
@@ -89,6 +89,7 @@ export function SummaryPanel({
   errorCount,
   busy,
   layout,
+  animationKey = 0,
   onApprove,
   onReject,
   onShowErrors,
@@ -97,6 +98,7 @@ export function SummaryPanel({
   errorCount: number
   busy: boolean
   layout: 'rail' | 'bar'
+  animationKey?: number
   onApprove: () => void
   onReject: () => void
   onShowErrors: () => void
@@ -107,19 +109,19 @@ export function SummaryPanel({
   const canApprove = Boolean(order.permissions?.canApprove)
   const rail = layout === 'rail'
 
-  const rows: Array<[string, string, boolean]> = [
-    ['未税总计', `¥ ${money(totals.salesExcludingTax)}`, false],
-    ['增值税', `¥ ${money(totals.vat)}`, false],
-    ['含税合计', `¥ ${money(totals.salesIncludingTax)}`, false],
-    ['COST 总计', `¥ ${money(totals.costExcludingTax)}`, false],
-    ['毛利率', percent(margin), lowMargin],
+  const rows = [
+    { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warn: false },
+    { label: '增值税', value: <AnimatedMoney value={totals.vat} animationKey={animationKey} />, warn: false },
+    { label: '含税合计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warn: false },
+    { label: 'COST 总计', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
+    { label: '毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
   ]
 
   return (
     <div className={rail ? 'space-y-3 border-t p-3' : 'flex items-center gap-3 overflow-x-auto px-4 py-2'}>
       <dl className={rail ? 'space-y-1.5' : 'flex shrink-0 items-center gap-4'}>
-        {rows.map(([label, value, warn]) => (
-          <div key={label} className={rail ? 'flex items-baseline justify-between gap-2' : 'shrink-0'}>
+        {rows.map(({ label, value, warn }) => (
+          <div key={`${label}-${animationKey}`} className={`${rail ? 'flex items-baseline justify-between gap-2' : 'shrink-0'} ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
             <dt className="text-xs text-muted-foreground">{label}</dt>
             <dd className={`text-sm font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</dd>
           </div>
