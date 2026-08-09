@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 32
+const PDF_FORMAT_VERSION = 33
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -64,8 +64,8 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   const right = PAGE.width - PAGE.margin
   text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', left, 20, { size: 7, color: MUTED })
   text(doc, fonts, '敦阳（宁波）科技有限公司', left, 30, { size: 13, bold: true, color: PURPLE })
-  text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
-  text(doc, fonts, 'Customer Order Request (Domestic)', 280, 38, { size: 6.5, color: MUTED, width: 282, align: 'center' })
+  text(doc, fonts, title, 280, 20, { size: 16, bold: true, color: '#111827', width: 282, align: 'center' })
+  text(doc, fonts, 'Customer Order Request (Domestic)', 280, 39, { size: 6, color: '#8a93a3', width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, `单据编号 ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
   line(doc, left, 50, right, 50, '#111')
@@ -320,7 +320,7 @@ function details(doc, fonts, order, items, y, includeVoidReason = true) {
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
   const drawTitle = () => {
     text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: '#111827' })
-    text(doc, fonts, 'Order & Delivery Information', left + 94, y + 2, { size: 6.3, color: MUTED, width: 210 })
+    text(doc, fonts, 'Order & Delivery Information', left + 108, y + 2, { size: 6, color: '#8a93a3', width: 210 })
     y += 17
   }
   const newPage = () => {
@@ -375,7 +375,7 @@ function approvalBoxHeight(doc, fonts, rows) {
 
 function approvals(doc, fonts, rows, y) {
   text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
-  text(doc, fonts, 'Approval Records', PAGE.margin + 86, y + 2, { size: 6.5, color: MUTED })
+  text(doc, fonts, 'Approval Records', PAGE.margin + 96, y + 2, { size: 6, color: '#8a93a3' })
   y += 16
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   const boxHeight = approvalBoxHeight(doc, fonts, rows)
@@ -388,12 +388,13 @@ function approvals(doc, fonts, rows, y) {
     if (index > 0) {
       doc.moveTo(x, y + 6).lineTo(x, y + boxHeight - 6).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
     }
-    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + width - 80, y + 4, 48, 32)
-    const textWidth = width - (hasSignature ? 88 : 16)
-    text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
-    text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
-    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
-    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 8, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
+    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 8, y + 4, 48, 32)
+    const textX = x + (hasSignature ? 66 : 8)
+    const textWidth = width - (textX - x) - 8
+    text(doc, fonts, stepLabel, textX, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
+    text(doc, fonts, action, textX, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
+    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, textX, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
+    text(doc, fonts, time(approval.decidedAt || approval.decided_at), textX, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
     if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 42, align: 'left' })
   })
   return y + boxHeight + 8
