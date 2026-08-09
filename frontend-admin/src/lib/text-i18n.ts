@@ -116,6 +116,10 @@ const phraseMap: Record<string, string> = {
   "浏览器": "瀏覽器",
   "软件": "軟體",
   "网络": "網路",
+  "签核": "簽核",
+  "会签": "會簽",
+  "结账": "結帳",
+  "操作台": "操作臺",
   "文档": "文件",
   "配置文件": "設定檔",
   "日志文件": "日誌檔",
@@ -408,6 +412,18 @@ function translateElementAttrs(element: Element, lang: AppLang) {
   }
 }
 
+function translateInputValue(element: HTMLInputElement | HTMLTextAreaElement, lang: AppLang) {
+  if (shouldSkipAttrElement(element)) return
+  if (element instanceof HTMLInputElement) {
+    const type = (element.type || "text").toLowerCase()
+    if (["number", "password", "hidden", "email", "tel", "url", "date", "time"].includes(type)) return
+  }
+  const current = element.value
+  if (!hasHan(current)) return
+  const translated = localizedText(current, lang)
+  if (current !== translated) element.value = translated
+}
+
 function translateTree(root: ParentNode, lang: AppLang) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let node = walker.nextNode()
@@ -418,6 +434,10 @@ function translateTree(root: ParentNode, lang: AppLang) {
 
   if (root instanceof Element) translateElementAttrs(root, lang)
   root.querySelectorAll?.("*").forEach((element) => translateElementAttrs(element, lang))
+  // 输入框/文本域 value 做展示型转换（切换语言时一次性；用户输入不实时转换，避免打断编辑）
+  root.querySelectorAll?.("input, textarea").forEach((element) => {
+    translateInputValue(element as HTMLInputElement | HTMLTextAreaElement, lang)
+  })
 }
 
 function restoreOriginalTree(root: ParentNode) {
