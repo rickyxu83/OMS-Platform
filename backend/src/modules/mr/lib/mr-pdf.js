@@ -3,11 +3,9 @@ const { registerFonts } = require('../../service-orders/service-record-pdf')
 
 const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
-const PURPLE_DEEP = '#5b4bd0'
-const PURPLE_LIGHT = '#8b7cf0'
 const MUTED = '#64748b'
-const BORDER = '#e0e3ec'
-const PDF_FORMAT_VERSION = 23
+const BORDER = '#eef1f5'
+const PDF_FORMAT_VERSION = 24
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -69,7 +67,7 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: PURPLE, width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, value(order.ctrlNo || order.ctrl_no), right - 180, 34, { size: 9, width: 180, align: 'right' })
-  line(doc, left, 50, right, 50, PURPLE_LIGHT)
+  line(doc, left, 50, right, 50, '#111827')
   return 58
 }
 
@@ -128,16 +126,15 @@ function itemColumns(items) {
 function itemHeader(doc, fonts, columns, y) {
   let x = PAGE.margin
   for (const column of columns) {
-    const gradient = doc.linearGradient(x, y, x + column.width, y).stop(0, PURPLE_DEEP).stop(1, PURPLE_LIGHT)
-    doc.rect(x, y, column.width, 30).fill(gradient).stroke('#9d90ee')
     if (column.sub) {
-      text(doc, fonts, column.title || column.label, x + 3, y + 6, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, align: 'center', lineGap: 0 })
-      text(doc, fonts, column.sub, x + 3, y + 18, { size: 5.7, color: '#d8cfe8', width: column.width - 6, align: 'center', lineGap: 0 })
+      text(doc, fonts, column.title || column.label, x + 3, y + 2, { size: 6.7, bold: true, color: '#475569', width: column.width - 6, align: 'center', lineGap: 0 })
+      text(doc, fonts, column.sub, x + 3, y + 14, { size: 5.7, color: '#94a3b8', width: column.width - 6, align: 'center', lineGap: 0 })
     } else {
-      text(doc, fonts, column.label, x + 3, y + 11, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, align: 'center', lineGap: 0 })
+      text(doc, fonts, column.label, x + 3, y + 8, { size: 6.7, bold: true, color: '#475569', width: column.width - 6, align: 'center', lineGap: 0 })
     }
     x += column.width
   }
+  line(doc, PAGE.margin, y + 24, PAGE.width - PAGE.margin, y + 24, '#111827')
   return y + 30
 }
 
@@ -150,11 +147,11 @@ function itemRow(doc, fonts, item, index, columns, y, maxHeight = Infinity) {
   const rowHeight = Math.min(itemRowHeight(doc, fonts, item, index, columns), maxHeight)
   let x = PAGE.margin
   columns.forEach((column) => {
-    doc.rect(x, y, column.width, rowHeight).strokeColor('#e6e4f0').lineWidth(0.45).stroke()
     // ponytail: 超长内容按单元格截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
     text(doc, fonts, column.content(item, index), x + 3, y + 5, { size: 7, width: column.width - 6, height: rowHeight - 8, align: column.align, lineGap: 1, ellipsis: true })
     x += column.width
   })
+  line(doc, PAGE.margin, y + rowHeight - 1, PAGE.width - PAGE.margin, y + rowHeight - 1, '#eef1f5')
   return y + rowHeight
 }
 
@@ -176,21 +173,16 @@ function totals(doc, fonts, order, items, y) {
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
-  const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
+  const totalWidth = PAGE.width - PAGE.margin * 2
+  const width = totalWidth / Math.max(1, cells.length)
+  doc.roundedRect(PAGE.margin, y, totalWidth, 33, 8).fill('#f5f6fa')
   let x = PAGE.margin
   cells.forEach(([label, content], index) => {
-    doc.rect(x, y, width, 31)
-    if (index === cells.length - 1) {
-      const gradient = doc.linearGradient(x, y, x + width, y).stop(0, '#f6f3ff').stop(1, '#ece7ff')
-      doc.fill(gradient).stroke(BORDER)
-    } else {
-      doc.fillAndStroke('#ffffff', BORDER)
-    }
-    text(doc, fonts, label, x + 6, y + 4, { size: 6.5, color: MUTED })
-    text(doc, fonts, content, x + 6, y + 15, { size: 9, bold: true, width: width - 12, align: 'right' })
+    text(doc, fonts, label, x + 10, y + 5, { size: 6.5, color: MUTED })
+    text(doc, fonts, content, x + 10, y + 16, { size: 9, bold: true, color: index === cells.length - 1 ? PURPLE : '#111827', width: width - 14, align: 'right' })
     x += width
   })
-  return y + 39
+  return y + 41
 }
 
 function orderField(order, camel, snake = camel) {
@@ -282,9 +274,8 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
   const columns = 3
   const colWidth = (width - 18) / columns
   const height = detailCardHeight(doc, fonts, entries, columns, colWidth)
-  doc.roundedRect(x, y, width, height, 8).fillAndStroke('#fbfaff', '#e6e4f0')
   doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
-  text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: PURPLE, width: width - 30 })
+  text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: '#111827', width: width - 30 })
   let rowY = y + 22
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
@@ -308,8 +299,8 @@ function noteCardHeight(doc, fonts, entries, width) {
 
 function drawNoteCard(doc, fonts, entries, x, y, width) {
   const height = noteCardHeight(doc, fonts, entries, width)
-  doc.roundedRect(x, y, width, height, 8).fillAndStroke('#faf7ff', '#e5ddf5')
-  doc.rect(x, y + 7, 3, height - 14).fill(PURPLE_LIGHT)
+  doc.roundedRect(x, y, width, height, 6).fill('#f8f8fb')
+  doc.rect(x, y + 7, 3, height - 14).fill(PURPLE)
   text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
   let rowY = y + 22
   entries.forEach(([label, content], index) => {
@@ -333,7 +324,7 @@ function details(doc, fonts, order, y, includeVoidReason = true) {
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
   const drawTitle = () => {
-    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: PURPLE })
+    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: '#111827' })
     text(doc, fonts, '按业务主题汇总', left + 94, y + 2, { size: 6.5, color: MUTED })
     y += 17
   }
@@ -388,7 +379,7 @@ function approvalBoxHeight(doc, fonts, rows) {
 }
 
 function approvals(doc, fonts, rows, y) {
-  text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: PURPLE })
+  text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
   y += 16
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   const boxHeight = approvalBoxHeight(doc, fonts, rows)
