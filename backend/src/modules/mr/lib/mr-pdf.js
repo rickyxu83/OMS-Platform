@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 21
+const PDF_FORMAT_VERSION = 22
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -108,8 +108,8 @@ function itemColumns(items) {
     { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', title: '未税小计', sub: '毛利率', label: '未税小计', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
-    { key: 'costExcludingTax', title: '采购成本', sub: '（不含税）', label: '采购成本', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
-    { key: 'costInclTax', title: '采购成本', sub: '（含税）/ 采购税率', label: '采购成本', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
+    { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
+    { key: 'costInclTax', title: '采购成本（含税）', sub: '采购税率', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
     { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
