@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 19
+const PDF_FORMAT_VERSION = 20
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -358,7 +358,15 @@ function signatureImage(doc, dataUrl, x, y, width, height) {
   const match = String(dataUrl || '').match(/^data:image\/(?:png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/)
   if (!match) return false
   try {
-    doc.image(Buffer.from(match[1], 'base64'), x, y, { fit: [width, height], align: 'center', valign: 'center' })
+    const buffer = Buffer.from(match[1], 'base64')
+    const img = doc.openImage(buffer)
+    // 强制等比缩放到目标高度（宽度超限时降高），保证各签名高度一致；
+    // 不用 fit：fit 按 min 比例缩放且只缩不放，图源小的签名会变成小方块
+    const ratio = img.width / img.height
+    const scaledW = ratio * height
+    const finalH = scaledW > width ? (height * width) / scaledW : height
+    const finalW = ratio * finalH
+    doc.image(buffer, x + (width - finalW) / 2, y + (height - finalH) / 2, { width: finalW, height: finalH })
     return true
   } catch {
     return false
