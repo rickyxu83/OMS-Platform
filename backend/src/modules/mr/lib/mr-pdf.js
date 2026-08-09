@@ -23,14 +23,14 @@ function money(input, fallback = '') {
 }
 function moneyText(input) { return hasValue(input) ? `¥ ${money(input)}` : '' }
 
-function monthText(input) {
-  const match = value(input).match(/^(\d{4})-(\d{2})$/)
-  return match ? `${match[1]} 年 ${Number(match[2])} 月` : value(input)
+function dateText(input) {
+  const match = value(input).match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/)
+  return match ? `${match[1]} 年 ${Number(match[2])} 月${match[3] ? ` ${Number(match[3])} 日` : ''}` : value(input)
 }
 
-function scheduleText(month, initialAmount, remainingAmount, action) {
+function scheduleText(date, initialAmount, remainingAmount, action) {
   return [
-    hasValue(month) ? `${monthText(month)}起${action}` : '',
+    hasValue(date) ? `${dateText(date)}起${action}` : '',
     hasValue(initialAmount) ? `首期 ${moneyText(initialAmount)}` : '',
     hasValue(remainingAmount) ? `剩余 ${moneyText(remainingAmount)}（按季）` : '',
   ].filter(hasValue).join(' · ')
@@ -360,7 +360,8 @@ function approvals(doc, fonts, rows, y) {
     const x = PAGE.margin + width * index
     const signature = approval.approverSignatureSnapshot || approval.approver_signature_snapshot
     const action = approval.action === 'approve' ? '已同意' : approval.action === 'reject' ? '已驳回' : approval.action === 'skipped' ? '不适用' : ''
-    const stepLabel = (approval.stepKey || approval.step_key) === 'sales' ? '业务负责人' : approval.stepLabel || approval.step_label
+    const stepKey = approval.stepKey || approval.step_key
+    const stepLabel = stepKey === 'sales' ? '业务负责人' : stepKey === 'engineering' ? '工程会签' : approval.stepLabel || approval.step_label
     doc.rect(x, y, width, boxHeight).strokeColor(BORDER).lineWidth(0.5).stroke()
     text(doc, fonts, stepLabel, x + 5, y + 5, { size: 7, bold: true, width: width - 10, align: 'center' })
     text(doc, fonts, action, x + 5, y + 17, { size: 7, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 10, align: 'center' })

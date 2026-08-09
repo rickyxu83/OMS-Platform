@@ -187,14 +187,14 @@ async function salesWithAssistant(connection, salesId) {
 }
 
 function assertAssistantMapping(row) {
-  if (!row || row.status !== 'active') throw badRequest('负责业务不存在或已停用')
+  if (!row || row.status !== 'active') throw badRequest('业务负责人不存在或已停用')
   if (!row.assistant_id || row.assistant_role !== 'assistant' || row.assistant_status !== 'active') {
-    throw badRequest('当前业务请重新设置助理后再提交')
+    throw badRequest('请为当前业务负责人重新设置助理后再提交')
   }
   try {
     assertApprovalEmail({ email: row.assistant_email }, '对应助理')
   } catch (_error) {
-    throw badRequest('当前业务请重新设置助理后再提交')
+    throw badRequest('请为当前业务负责人重新设置助理后再提交')
   }
   return { id: Number(row.assistant_id), name: row.assistant_name, email: row.assistant_email, role: 'assistant' }
 }
@@ -209,8 +209,8 @@ async function resolveStepAssignee(connection, order, stepKey, { required = fals
       "SELECT id, real_name AS name, email, role FROM users WHERE id = :id AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1",
       { id: order.salesOwnerId },
     )
-    if (!rows[0]) throw badRequest('负责业务不存在或已停用')
-    assertApprovalEmail(rows[0], '负责业务')
+    if (!rows[0]) throw badRequest('业务负责人不存在或已停用')
+    assertApprovalEmail(rows[0], '业务负责人')
     return { ...rows[0], id: Number(rows[0].id) }
   }
   const role = STEP_ROLES[stepKey]
@@ -223,8 +223,8 @@ async function resolveStepAssignee(connection, order, stepKey, { required = fals
     const label = ROLE_LABELS[role] || role || stepKey
     if (required) {
       throw badRequest(rows.length
-        ? `${label}在职审批人有 ${rows.length} 位，请在用户管理中只保留 1 位`
-        : `${label}未配置在职审批人，请先在用户管理中设置`)
+        ? `${label}在职签核人有 ${rows.length} 位，请在用户管理中仅保留 1 位`
+        : `${label}未配置在职签核人，请先在用户管理中设置`)
     }
     return null
   }
@@ -311,11 +311,11 @@ async function activateCurrentStep(connection, order, cycle, initiatorUserId) {
   try {
     assignee = await resolveStepAssignee(connection, order, approval.step_key, { required: true })
   } catch (error) {
-    await pauseApproval(connection, order, approval, error.message || '审批人配置异常')
+    await pauseApproval(connection, order, approval, error.message || '签核人配置异常')
     return null
   }
   if (!assignee) {
-    await pauseApproval(connection, order, approval, '当前角色未配置唯一在职审批人')
+    await pauseApproval(connection, order, approval, '当前角色未配置唯一在职签核人')
     return null
   }
   await createTask(connection, order, approval, assignee, initiatorUserId)
@@ -508,7 +508,7 @@ async function reconcilePendingMrAssignments() {
       try {
         const expected = await resolveStepAssignee(connection, order, approval.step_key, { required: true })
         if (!expected) {
-          await pauseApproval(connection, order, approval, '当前角色未配置唯一在职审批人')
+          await pauseApproval(connection, order, approval, '当前角色未配置唯一在职签核人')
           paused += 1
           return
         }
@@ -517,7 +517,7 @@ async function reconcilePendingMrAssignments() {
           reassigned += 1
         }
       } catch (error) {
-        await pauseApproval(connection, order, approval, error.message || '审批人配置异常')
+        await pauseApproval(connection, order, approval, error.message || '签核人配置异常')
         paused += 1
       }
     })

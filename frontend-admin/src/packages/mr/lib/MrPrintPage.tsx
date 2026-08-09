@@ -24,10 +24,10 @@ function hasValue(value: unknown) {
 function text(value: unknown, fallback = '-') { return hasValue(value) ? String(value) : fallback }
 function money(value: unknown, fallback = '-') { if (!hasValue(value)) return fallback; const amount = Number(value); return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : fallback }
 function moneyText(value: unknown, fallback: string) { return hasValue(value) ? `¥ ${money(value, fallback)}` : fallback }
-function monthText(value: unknown) { const match = String(value || '').match(/^(\d{4})-(\d{2})$/); return match ? `${match[1]} 年 ${Number(match[2])} 月` : text(value, '') }
-function scheduleText(month: unknown, initialAmount: unknown, remainingAmount: unknown, action: string, fallback: string) {
+function dateText(value: unknown) { const match = String(value || '').match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/); return match ? `${match[1]} 年 ${Number(match[2])} 月${match[3] ? ` ${Number(match[3])} 日` : ''}` : text(value, '') }
+function scheduleText(date: unknown, initialAmount: unknown, remainingAmount: unknown, action: string, fallback: string) {
   return [
-    hasValue(month) ? `${monthText(month)}起${action}` : '',
+    hasValue(date) ? `${dateText(date)}起${action}` : '',
     hasValue(initialAmount) ? `首期 ${moneyText(initialAmount, fallback)}` : '',
     hasValue(remainingAmount) ? `剩余 ${moneyText(remainingAmount, fallback)}（按季）` : '',
   ].filter(hasValue).join(' · ') || fallback
