@@ -35,7 +35,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'contacts',
     title: '联系人信息',
     icon: ClipboardCheck,
-    fields: ['purchaser', 'purchaserTel', 'invoiceRecipient', 'recipient', 'recipientTel', 'recipientMail'],
+    fields: ['purchaser', 'purchaserTel', 'purchaserMail', 'invoiceRecipient', 'invoiceRecipientTel', 'invoiceRecipientMail', 'recipient', 'recipientTel', 'recipientMail'],
   },
   {
     id: 'delivery',

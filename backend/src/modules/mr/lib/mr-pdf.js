@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 8
+const PDF_FORMAT_VERSION = 9
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -178,7 +178,7 @@ const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
 ]
 
 function detailEntries(order) {
@@ -197,9 +197,12 @@ function detailEntries(order) {
     ['开票方式', orderField(order, 'invoiceProcess', 'invoice_process')],
     ['开票内容', orderField(order, 'billingContent', 'billing_content')],
     ['发票收件人', orderField(order, 'invoiceRecipient', 'invoice_recipient')],
+    ['发票收件电话', orderField(order, 'invoiceRecipientTel', 'invoice_recipient_tel')],
+    ['发票收件邮箱', orderField(order, 'invoiceRecipientMail', 'invoice_recipient_mail')],
     ['开票/收款时间', orderField(order, 'billingTiming', 'billing_timing')],
     ['采购联系人', order.purchaser],
     ['采购联系电话', orderField(order, 'purchaserTel', 'purchaser_tel')],
+    ['采购联系邮箱', orderField(order, 'purchaserMail', 'purchaser_mail')],
     ['收货人', order.recipient],
     ['收货联系电话', orderField(order, 'recipientTel', 'recipient_tel')],
     ['收货邮箱', orderField(order, 'recipientMail', 'recipient_mail')],

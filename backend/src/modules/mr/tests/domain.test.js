@@ -167,19 +167,34 @@ function validBody(overrides = {}) {
 }
 
 {
-  const { order } = normalizeOrder(validBody({
+  const { order, items } = normalizeOrder(validBody({
     grossProfitRecognitionStartMonth: '2026-08-12',
     grossProfitRecognitionAmount: '100.25',
     remainingRecognizableGrossProfit: '200',
     taiwan_business_transfer_start_month: '2026-09-18',
     taiwan_business_transfer_amount: '300.50',
     remaining_taiwan_business_transfer: '400',
+    purchaserTel: '13800000001',
+    purchaserMail: 'buyer@example.com',
+    recipientTel: '',
+    recipientMail: 'receiver@example.com',
+    invoiceRecipient: '发票收件人',
+    invoiceRecipientTel: '13800000002',
+    invoiceRecipientMail: 'invoice@example.com',
   }))
   assert.deepStrictEqual([
     order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount, order.remainingRecognizableGrossProfit,
     order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer,
   ], ['2026-08-12', 100.25, 200, '2026-09-18', 300.5, 400])
   assert.equal(normalizeOrder(validBody({ grossProfitRecognitionStartMonth: '2026-08' })).order.grossProfitRecognitionStartMonth, null)
+  assert.equal(order.purchaserMail, 'buyer@example.com')
+  assert.equal(order.invoiceRecipientTel, '13800000002')
+  assert.equal(order.invoiceRecipientMail, 'invoice@example.com')
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+
+  const invalid = normalizeOrder(validBody({ purchaserMail: 'invalid-email' }))
+  assert(invalid.order.purchaserMail)
+  assert(validateSubmission(invalid.order, invalid.items).some((error) => error.field === 'purchaserMail'))
 }
 
 console.log('mr domain OK')

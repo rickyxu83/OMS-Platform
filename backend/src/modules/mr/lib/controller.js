@@ -69,9 +69,12 @@ async function ensureTables() {
       invoice_process VARCHAR(32) NULL,
       billing_content VARCHAR(500) NULL,
       invoice_recipient VARCHAR(255) NULL,
+      invoice_recipient_tel VARCHAR(64) NULL,
+      invoice_recipient_mail VARCHAR(255) NULL,
       billing_timing VARCHAR(255) NULL,
       purchaser VARCHAR(255) NULL,
       purchaser_tel VARCHAR(64) NULL,
+      purchaser_mail VARCHAR(255) NULL,
       recipient VARCHAR(255) NULL,
       recipient_tel VARCHAR(64) NULL,
       recipient_mail VARCHAR(255) NULL,
@@ -117,6 +120,9 @@ async function ensureTables() {
   const dateColumns = new Set(['gross_profit_recognition_start_month', 'taiwan_business_transfer_start_month'])
   const requiredOrderColumns = new Map([
     ['delivery_location', 'VARCHAR(500) NULL'],
+    ['invoice_recipient_tel', 'VARCHAR(64) NULL'],
+    ['invoice_recipient_mail', 'VARCHAR(255) NULL'],
+    ['purchaser_mail', 'VARCHAR(255) NULL'],
     ['gross_profit_recognition_start_month', 'VARCHAR(10) NULL'],
     ['gross_profit_recognition_amount', 'DECIMAL(14,2) NULL'],
     ['remaining_recognizable_gross_profit', 'DECIMAL(14,2) NULL'],
@@ -129,9 +135,25 @@ async function ensureTables() {
      WHERE table_schema = DATABASE() AND table_name = 'mr_orders'`,
   )).map((row) => [row.name, row]))
   for (const [name, definition] of requiredOrderColumns) {
-    if (!existingOrderColumns.has(name)) await query(`ALTER TABLE mr_orders ADD COLUMN ${name} ${definition}`)
-    else if (dateColumns.has(name) && Number(existingOrderColumns.get(name).maxLength) < 10) {
+    if (!existingOrderColumns.has(name)) {
+      try {
+        await query(`ALTER TABLE mr_orders ADD COLUMN ${name} ${definition}`)
+      } catch (error) {
+        if (error?.code !== 'ER_DUP_FIELDNAME') throw error
+      }
+    } else if (dateColumns.has(name) && Number(existingOrderColumns.get(name).maxLength) < 10) {
       await query(`ALTER TABLE mr_orders MODIFY COLUMN ${name} VARCHAR(10) NULL`)
+    }
+  }
+  const contactEmailColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'customer_contacts' AND column_name = 'email' LIMIT 1`,
+  )
+  if (!contactEmailColumns[0]) {
+    try {
+      await query('ALTER TABLE customer_contacts ADD COLUMN email VARCHAR(255) NULL AFTER phone')
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error
     }
   }
   // Legacy values only contain a month; day 1 preserves that month in the new date control.
@@ -460,7 +482,8 @@ const ORDER_COLUMNS = [
   ['pricingMode', 'pricing_mode'], ['totalExcludingTax', 'total_excluding_tax'], ['hasContract', 'has_contract'],
   ['contractType', 'contract_type'], ['hasPenalty', 'has_penalty'], ['penaltyContent', 'penalty_content'],
   ['invoiceProcess', 'invoice_process'], ['billingContent', 'billing_content'], ['invoiceRecipient', 'invoice_recipient'],
-  ['billingTiming', 'billing_timing'], ['purchaser', 'purchaser'], ['purchaserTel', 'purchaser_tel'],
+  ['invoiceRecipientTel', 'invoice_recipient_tel'], ['invoiceRecipientMail', 'invoice_recipient_mail'],
+  ['billingTiming', 'billing_timing'], ['purchaser', 'purchaser'], ['purchaserTel', 'purchaser_tel'], ['purchaserMail', 'purchaser_mail'],
   ['recipient', 'recipient'], ['recipientTel', 'recipient_tel'], ['recipientMail', 'recipient_mail'],
   ['paymentTerms', 'payment_terms'], ['paymentOther', 'payment_other'], ['splitDelivery', 'split_delivery'],
   ['acceptance', 'acceptance'], ['acceptanceOther', 'acceptance_other'], ['installOptions', 'install_options'],
@@ -1088,7 +1111,7 @@ async function importQuotation(req, res) {
     { customer: customerName },
   ))[0] : null
   const matchedContacts = matchedCustomer ? await query(
-    'SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId ORDER BY use_count DESC, last_used_at DESC, id DESC',
+    'SELECT id, customer_id, name, phone, email FROM customer_contacts WHERE customer_id = :customerId ORDER BY use_count DESC, last_used_at DESC, id DESC',
     { customerId: matchedCustomer.id },
   ) : []
   const payload = {
