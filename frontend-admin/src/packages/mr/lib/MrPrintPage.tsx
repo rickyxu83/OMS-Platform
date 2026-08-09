@@ -46,7 +46,7 @@ function vendorAbbreviation(value: unknown, fallback = '-') {
 function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: string; formal: boolean }) {
   // 客户 P/O 只在订货条显示，页眉不再重复
   const controlNumber = hasValue(order.ctrlNo || order.fileName) ? text(order.ctrlNo || order.fileName, emptyText) : formal ? '' : `Ctrl.NO · ${emptyText}`
-  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK (NINGBO) TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{controlNumber}</b></div></header>
+  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK (NINGBO) TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><span>单据编号</span><b>{controlNumber}</b></div></header>
 }
 function Fact({ label, value }: { label: string; value: ReactNode }) { return <div className="a-fact"><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
@@ -246,7 +246,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           </div>
         </Section>
         <Section index="03" title="电子签核记录"><Signatures order={order} formal={formal} /></Section>
-        <footer className="a-footer"><span>MR / 电子签核归档文件{hasValue(order.fillDate) ? ` · 填表日期 ${order.fillDate}` : ''}</span><span>适用于黑白输出</span></footer>
+        <footer className="a-footer"><span>MR / 电子签核归档文件{hasValue(order.fillDate) ? ` · 填表日期 ${order.fillDate}` : ''}</span><span>本文件由系统自动生成</span><span>适用于黑白输出</span></footer>
       </article>
     </div>
   )

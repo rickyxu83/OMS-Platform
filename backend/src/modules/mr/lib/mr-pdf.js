@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 29
+const PDF_FORMAT_VERSION = 30
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -66,7 +66,7 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, '敦阳（宁波）科技有限公司', left, 30, { size: 13, bold: true, color: PURPLE })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: PURPLE, width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
-  text(doc, fonts, value(order.ctrlNo || order.ctrl_no), right - 180, 34, { size: 9, width: 180, align: 'right' })
+  text(doc, fonts, `单据编号 ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
   line(doc, left, 50, right, 50, '#111827')
   return 58
 }
@@ -421,7 +421,8 @@ function drawFooters(doc, fonts, order) {
     doc.switchToPage(index)
     const y = PAGE.height - 18
     text(doc, fonts, `MR 电子签核归档文件${fillDate ? ` · 填表日期 ${fillDate}` : ''}`, PAGE.margin, y, { size: 6.5, color: MUTED })
-    text(doc, fonts, `${index + 1}/${range.count}`, PAGE.width - PAGE.margin - 120, y, { size: 6.5, color: MUTED, width: 120, align: 'right' })
+    text(doc, fonts, '本文件由系统自动生成，为电子签核归档件', PAGE.margin, y, { size: 6.5, color: MUTED, width: PAGE.width - PAGE.margin * 2, align: 'center' })
+    text(doc, fonts, `第 ${index + 1} / ${range.count} 页`, PAGE.width - PAGE.margin - 120, y, { size: 6.5, color: MUTED, width: 120, align: 'right' })
   }
 }
 
