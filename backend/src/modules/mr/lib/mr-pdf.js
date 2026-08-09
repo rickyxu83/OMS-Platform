@@ -406,10 +406,10 @@ function approvals(doc, fonts, rows, y) {
     }
     const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 65, y + 2, 48, 32)
     const textWidth = width - (hasSignature ? 80 : 16)
-    text(doc, fonts, stepLabel, textX, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
-    text(doc, fonts, action, textX, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
-    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, textX, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
-    text(doc, fonts, time(approval.decidedAt || approval.decided_at), textX, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
+    text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
+    text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
+    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
+    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 8, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
     if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 42, align: 'left' })
   })
   return y + boxHeight + 8
