@@ -2,10 +2,12 @@ const PDFDocument = require('pdfkit')
 const { registerFonts } = require('../../service-orders/service-record-pdf')
 
 const PAGE = { width: 841.89, height: 595.28, margin: 28 }
-const PURPLE = '#4e386e'
+const PURPLE = '#6d5bd0'
+const PURPLE_DEEP = '#5b4bd0'
+const PURPLE_LIGHT = '#8b7cf0'
 const MUTED = '#64748b'
-const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 22
+const BORDER = '#e0e3ec'
+const PDF_FORMAT_VERSION = 23
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -67,7 +69,7 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: PURPLE, width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, value(order.ctrlNo || order.ctrl_no), right - 180, 34, { size: 9, width: 180, align: 'right' })
-  line(doc, left, 50, right, 50, PURPLE)
+  line(doc, left, 50, right, 50, PURPLE_LIGHT)
   return 58
 }
 
@@ -126,7 +128,8 @@ function itemColumns(items) {
 function itemHeader(doc, fonts, columns, y) {
   let x = PAGE.margin
   for (const column of columns) {
-    doc.rect(x, y, column.width, 30).fillAndStroke(PURPLE, '#b9c5cc')
+    const gradient = doc.linearGradient(x, y, x + column.width, y).stop(0, PURPLE_DEEP).stop(1, PURPLE_LIGHT)
+    doc.rect(x, y, column.width, 30).fill(gradient).stroke('#9d90ee')
     if (column.sub) {
       text(doc, fonts, column.title || column.label, x + 3, y + 6, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, align: 'center', lineGap: 0 })
       text(doc, fonts, column.sub, x + 3, y + 18, { size: 5.7, color: '#d8cfe8', width: column.width - 6, align: 'center', lineGap: 0 })
@@ -147,7 +150,7 @@ function itemRow(doc, fonts, item, index, columns, y, maxHeight = Infinity) {
   const rowHeight = Math.min(itemRowHeight(doc, fonts, item, index, columns), maxHeight)
   let x = PAGE.margin
   columns.forEach((column) => {
-    doc.rect(x, y, column.width, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
+    doc.rect(x, y, column.width, rowHeight).strokeColor('#e6e4f0').lineWidth(0.45).stroke()
     // ponytail: 超长内容按单元格截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
     text(doc, fonts, column.content(item, index), x + 3, y + 5, { size: 7, width: column.width - 6, height: rowHeight - 8, align: column.align, lineGap: 1, ellipsis: true })
     x += column.width
@@ -177,8 +180,12 @@ function totals(doc, fonts, order, items, y) {
   let x = PAGE.margin
   cells.forEach(([label, content], index) => {
     doc.rect(x, y, width, 31)
-    if (index === cells.length - 1) doc.fillAndStroke('#f1ecf7', BORDER)
-    else doc.fillAndStroke('#ffffff', BORDER)
+    if (index === cells.length - 1) {
+      const gradient = doc.linearGradient(x, y, x + width, y).stop(0, '#f6f3ff').stop(1, '#ece7ff')
+      doc.fill(gradient).stroke(BORDER)
+    } else {
+      doc.fillAndStroke('#ffffff', BORDER)
+    }
     text(doc, fonts, label, x + 6, y + 4, { size: 6.5, color: MUTED })
     text(doc, fonts, content, x + 6, y + 15, { size: 9, bold: true, width: width - 12, align: 'right' })
     x += width
@@ -275,7 +282,7 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
   const columns = 3
   const colWidth = (width - 18) / columns
   const height = detailCardHeight(doc, fonts, entries, columns, colWidth)
-  doc.roundedRect(x, y, width, height, 5).fillAndStroke('#f8fafc', '#d8e0e8')
+  doc.roundedRect(x, y, width, height, 8).fillAndStroke('#fbfaff', '#e6e4f0')
   doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
   text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: PURPLE, width: width - 30 })
   let rowY = y + 22
@@ -301,8 +308,8 @@ function noteCardHeight(doc, fonts, entries, width) {
 
 function drawNoteCard(doc, fonts, entries, x, y, width) {
   const height = noteCardHeight(doc, fonts, entries, width)
-  doc.roundedRect(x, y, width, height, 5).fillAndStroke('#f7f3fa', '#d9cfe5')
-  doc.rect(x, y + 7, 3, height - 14).fill(PURPLE)
+  doc.roundedRect(x, y, width, height, 8).fillAndStroke('#faf7ff', '#e5ddf5')
+  doc.rect(x, y + 7, 3, height - 14).fill(PURPLE_LIGHT)
   text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
   let rowY = y + 22
   entries.forEach(([label, content], index) => {
