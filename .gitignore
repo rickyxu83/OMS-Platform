@@ -23,6 +23,7 @@ yarn-error.log*
 AGENTS.local.md
 docs/deploy.local.md
 scripts/deploy.local.env
+scripts/deploy.local.env.*
 .env.deploy.local
 
 # Local automation and session artifacts
