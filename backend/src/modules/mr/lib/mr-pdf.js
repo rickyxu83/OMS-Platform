@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 14
+const PDF_FORMAT_VERSION = 15
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -41,7 +41,9 @@ function time(input) {
 }
 
 function abbreviateVendor(input) {
-  return value(input).replace(/(?:信息|计算机|网络|电子)?(?:科技|技术|贸易|商贸)?(?:股份)?有限公司$/, '')
+  return value(input)
+    .replace(/(?:计算机系统集成|系统集成|计算机|信息|网络|电子|科技|技术|贸易|商贸|实业|自动化|设备|咨询|服务)?(?:股份)?有限公司$/, '')
+    .replace(/(?:计算机系统集成|系统集成|计算机|信息|网络|电子|科技|技术|贸易|商贸|实业|自动化|设备|咨询|服务)+$/, '') || value(input)
 }
 
 function options(input) {
