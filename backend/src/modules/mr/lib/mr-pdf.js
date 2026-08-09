@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 17
+const PDF_FORMAT_VERSION = 18
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -384,12 +384,12 @@ function approvals(doc, fonts, rows, y) {
     const stepKey = approval.stepKey || approval.step_key
     const stepLabel = stepKey === 'sales' ? '业务负责人' : stepKey === 'engineering' ? '工程会签' : approval.stepLabel || approval.step_label
     doc.rect(x, y, width, boxHeight).strokeColor(BORDER).lineWidth(0.5).stroke()
-    text(doc, fonts, stepLabel, x + 5, y + 4, { size: 6.5, bold: true, width: width - 10, align: 'center' })
-    text(doc, fonts, action, x + 5, y + 13, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 10, align: 'center' })
+    text(doc, fonts, stepLabel, x + 6, y + 4, { size: 6.5, bold: true, width: width - 12, align: 'left' })
+    text(doc, fonts, action, x + 6, y + 13, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 12, align: 'left' })
     signatureImage(doc, signature, x + 8, y + 20, width - 16, 16)
-    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 5, y + 39, { size: 6.5, bold: true, width: width - 10, align: 'center' })
-    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 5, y + 48, { size: 5.5, color: MUTED, width: width - 10, align: 'center' })
-    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 5, y + 57, { size: 6, color: MUTED, width: width - 10, height: boxHeight - 59, align: 'center' })
+    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 6, y + 39, { size: 6.5, bold: true, width: width - 12, align: 'left' })
+    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 6, y + 48, { size: 5.5, color: MUTED, width: width - 12, align: 'left' })
+    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 6, y + 57, { size: 6, color: MUTED, width: width - 12, height: boxHeight - 59, align: 'left' })
   })
   return y + boxHeight + 8
 }
