@@ -14,7 +14,7 @@ const FACT_GROUPS = [
   ['客户与合同', ['客户联系人', '案分类', '合同号', '罚则说明', '填表日期', '报价附件']],
   ['交易与开票', ['计价模式', '发票处理', '开票 / 收款', '付款条件说明']],
   ['交付与验收', ['分批送机', '验收', '验收说明', '交货条款', '出货单号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '货物收件人', '收件电话', '收件邮箱', '发票收件人']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '货物收件人', '收件电话', '收件邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
   ['备注与其他', ['备注', '驳回原因', '作废原因']],
 ] as const
 
@@ -124,10 +124,13 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '付款条件说明', raw: order.paymentOther, value: text(order.paymentOther, emptyText) },
     { label: '采购联系人', raw: order.purchaser, value: text(order.purchaser, emptyText) },
     { label: '采购联系电话', raw: order.purchaserTel, value: text(order.purchaserTel, emptyText) },
+    { label: '采购联系邮箱', raw: order.purchaserMail, value: text(order.purchaserMail, emptyText) },
     { label: '货物收件人', raw: order.recipient, value: text(order.recipient, emptyText) },
     { label: '收件电话', raw: order.recipientTel, value: text(order.recipientTel, emptyText) },
     { label: '收件邮箱', raw: order.recipientMail, value: text(order.recipientMail, emptyText) },
     { label: '发票收件人', raw: order.invoiceRecipient, value: text(order.invoiceRecipient, emptyText) },
+    { label: '发票收件电话', raw: order.invoiceRecipientTel, value: text(order.invoiceRecipientTel, emptyText) },
+    { label: '发票收件邮箱', raw: order.invoiceRecipientMail, value: text(order.invoiceRecipientMail, emptyText) },
     { label: '最晚交货日', raw: order.latestDeliveryDate, value: text(order.latestDeliveryDate, emptyText) },
     { label: '分批送机', raw: order.splitDelivery, value: hasValue(order.splitDelivery) ? order.splitDelivery ? '可分批' : '不分批' : emptyText },
     { label: '验收', raw: order.acceptance, value: text(order.acceptance, emptyText) },

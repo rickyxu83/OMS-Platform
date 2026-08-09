@@ -42,7 +42,7 @@ interface Customer {
   salesperson?: string;
   updatedAt?: string;
   createdAt?: string;
-  contacts?: Array<{ id?: string | number; name?: string; phone?: string }>;
+  contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>;
 }
 
 interface CustomerDevice {
@@ -98,7 +98,7 @@ interface CustomerDeletePreview {
     devices: CustomerDevice[];
     serviceOrders: CustomerOrder[];
     inspectionSchedules: CustomerSchedule[];
-    contacts: Array<{ id: string | number; name?: string; phone?: string; useCount?: number }>;
+    contacts: Array<{ id: string | number; name?: string; phone?: string; email?: string; useCount?: number }>;
   };
   previewLimit?: number;
 }
@@ -111,7 +111,7 @@ interface GeoCandidate {
   location?: string;
   contactName?: string;
   contactPhone?: string;
-  contacts?: { name: string; phone?: string }[];
+  contacts?: { name: string; phone?: string; email?: string }[];
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -141,7 +141,7 @@ interface CustomerForm {
   mapPoiId: string;
   mapPoiName: string;
   mapAddress: string;
-  contacts: Array<{ id?: string | number; name: string; phone: string }>;
+  contacts: Array<{ id?: string | number; name: string; phone: string; email: string }>;
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -156,7 +156,7 @@ const EMPTY_FORM: CustomerForm = {
   mapPoiId: "",
   mapPoiName: "",
   mapAddress: "",
-  contacts: [{ name: "", phone: "" }],
+  contacts: [{ name: "", phone: "", email: "" }],
 };
 
 const I18N = {
@@ -221,6 +221,7 @@ const I18N = {
       salespersonPlaceholder: "请选择对应销售",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "详细至街道门牌号",
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
@@ -230,6 +231,7 @@ const I18N = {
       contacts: "联系人列表",
       contactName: "联系人姓名",
       contactPhone: "联系人电话",
+      contactEmail: "联系人邮箱",
       badgeSystem: "系统",
       badgeMap: "地图",
       selectedCoordinate: "已选坐标",
@@ -397,6 +399,7 @@ const I18N = {
       salespersonPlaceholder: "請選擇對應銷售",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "詳細至街道路牌號",
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
@@ -406,6 +409,7 @@ const I18N = {
       contacts: "聯絡人列表",
       contactName: "聯絡人姓名",
       contactPhone: "聯絡人電話",
+      contactEmail: "聯絡人信箱",
       badgeSystem: "系統",
       badgeMap: "地圖",
       selectedCoordinate: "已選座標",
@@ -693,7 +697,7 @@ export function Customers() {
   const customerListGrid = canDeleteCustomer ? CUSTOMER_LIST_GRID : CUSTOMER_LIST_READONLY_GRID;
   const customerListMinWidth = canDeleteCustomer ? "min-w-[1180px]" : "min-w-[1136px]";
 
-  const primaryContact = form.contacts[0] || { name: "", phone: "" };
+  const primaryContact = form.contacts[0] || { name: "", phone: "", email: "" };
   const salespersonOptions = useMemo(() => {
     const options = userRole === "sales"
       ? [currentSalespersonName].filter(Boolean)
@@ -986,8 +990,9 @@ export function Customers() {
           id: contact.id,
           name: contact.name || "",
           phone: contact.phone || "",
+          email: contact.email || "",
         }))
-      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "" }]
+      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "", email: "" }]
     setEditingId(c.id);
     setForm({
       id: c.id,
@@ -1092,7 +1097,7 @@ export function Customers() {
   function applyCandidate(company: GeoCandidate) {
     const coordinates = candidateCoordinates(company);
     setForm((prev) => {
-      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "" }]
+      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "", email: "" }]
       if (company.contactName || company.contactPhone) {
         currentContacts[0] = {
           ...currentContacts[0],
@@ -1197,7 +1202,7 @@ export function Customers() {
     );
   }
 
-  function updateContact(index: number, field: "name" | "phone", value: string) {
+  function updateContact(index: number, field: "name" | "phone" | "email", value: string) {
     setForm((prev) => ({
       ...prev,
       contacts: prev.contacts.map((contact, contactIndex) => (
@@ -1209,7 +1214,7 @@ export function Customers() {
   function addContact() {
     setForm((prev) => ({
       ...prev,
-      contacts: [...prev.contacts, { name: "", phone: "" }],
+      contacts: [...prev.contacts, { name: "", phone: "", email: "" }],
     }));
   }
 
@@ -1218,7 +1223,7 @@ export function Customers() {
       const nextContacts = prev.contacts.filter((_, contactIndex) => contactIndex !== index)
       return {
         ...prev,
-        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "" }],
+        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "", email: "" }],
       };
     });
   }
@@ -1401,6 +1406,7 @@ export function Customers() {
             ...(contact.id ? { id: contact.id } : {}),
             name: contact.name.trim(),
             phone: contact.phone.trim() || undefined,
+            email: contact.email.trim() || undefined,
           }))
           .filter((contact) => contact.name),
       };
@@ -1769,7 +1775,7 @@ export function Customers() {
             const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
             const contacts = detailTarget.contacts?.length
               ? detailTarget.contacts
-              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "" }]
+              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "", email: "" }]
             const devices = detailInsight?.devices || [];
             const schedules = detailInsight?.schedules || [];
             const orders = detailInsight?.orders || [];
@@ -1869,10 +1875,11 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.contacts}</div>
                           <div className="mt-3 space-y-2">
-                            {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
+                            {contacts.some((contact) => contact.name || contact.phone || contact.email) ? contacts.map((contact, index) => (
                               <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
                                 <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
                                 <div className="text-xs text-muted-foreground">{renderPhoneLink(contact.phone)}</div>
+                                {contact.email ? <a className="text-xs text-primary hover:underline" href={`mailto:${contact.email}`}>{contact.email}</a> : null}
                               </div>
                             )) : (
                               <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
@@ -2066,7 +2073,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
@@ -2250,7 +2257,7 @@ export function Customers() {
               </div>
               <div className="space-y-3">
                 {form.contacts.map((contact, index) => (
-                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
+                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
                     <div className="space-y-2">
                       <Label>{t.dialog.contactName}</Label>
                       <Input
@@ -2265,6 +2272,16 @@ export function Customers() {
                         value={contact.phone}
                         onChange={(e) => updateContact(index, "phone", e.target.value)}
                         placeholder={t.dialog.phonePlaceholder}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t.dialog.contactEmail}</Label>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        value={contact.email}
+                        onChange={(e) => updateContact(index, "email", e.target.value)}
+                        placeholder={t.dialog.emailPlaceholder}
                       />
                     </div>
                     <Button
@@ -2384,6 +2401,7 @@ export function Customers() {
                             <div key={`delete-contact-${contact.id}`} className="rounded-md bg-slate-50 px-3 py-2">
                               <div className="font-medium text-slate-900">{contact.name || t.misc.unknown}</div>
                               <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                              {contact.email ? <div className="text-xs text-muted-foreground">{contact.email}</div> : null}
                             </div>
                           ))}
                         </div>

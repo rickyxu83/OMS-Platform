@@ -14,6 +14,7 @@ const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./intern
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
 let ensureCustomerLevelColumnPromise = null
+let ensureCustomerContactEmailColumnPromise = null
 let pinyinFn = null
 
 try {
@@ -81,8 +82,36 @@ async function ensureCustomerLevelColumn() {
   return ensureCustomerLevelColumnPromise
 }
 
+async function ensureCustomerContactEmailColumn() {
+  if (!ensureCustomerContactEmailColumnPromise) {
+    ensureCustomerContactEmailColumnPromise = (async () => {
+      const rows = await query(
+        `SELECT COUNT(*) AS total
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'customer_contacts'
+           AND COLUMN_NAME = 'email'`,
+      )
+      if (Number(rows[0]?.total || 0) === 0) {
+        try {
+          await query('ALTER TABLE customer_contacts ADD COLUMN email VARCHAR(255) NULL AFTER phone')
+        } catch (error) {
+          if (error?.code !== 'ER_DUP_FIELDNAME') throw error
+        }
+      }
+    })()
+  }
+  return ensureCustomerContactEmailColumnPromise
+}
 function normalizeCustomerLevel(level) {
   return CUSTOMER_LEVELS.has(level) ? level : 'normal'
+}
+
+function normalizeContactEmail(value) {
+  const email = String(value || '').trim()
+  if (!email) return null
+  if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest('联系人邮箱格式不正确')
+  return email
 }
 
 function contactPayload(row) {
@@ -91,6 +120,7 @@ function contactPayload(row) {
     customerId: row.customer_id,
     name: row.name,
     phone: normalizePhoneNumber(row.phone) || row.phone,
+    email: row.email || null,
     useCount: row.use_count,
     lastUsedAt: row.last_used_at,
     engineerUseCount: Number(row.engineer_use_count || 0),
@@ -253,7 +283,7 @@ async function loadContacts(customerIds, engineerId = null) {
     return values
   }, { engineerId: Number(engineerId || 0) || null })
   const rows = await query(
-    `SELECT cc.id, cc.customer_id, cc.name, cc.phone, cc.use_count, cc.last_used_at,
+    `SELECT cc.id, cc.customer_id, cc.name, cc.phone, cc.email, cc.use_count, cc.last_used_at,
             COALESCE(ccu.use_count, 0) AS engineer_use_count,
             ccu.last_used_at AS engineer_last_used_at
      FROM customer_contacts cc
@@ -359,6 +389,18 @@ async function mergeDuplicateContacts(connection, keeperId, duplicateIds) {
     { keeperId },
   )
   const placeholders = duplicateIds.map((_, index) => `:duplicateId${index}`).join(',')
+  const [emailRows] = await connection.execute(
+    `SELECT email FROM customer_contacts
+     WHERE id IN (${placeholders}) AND NULLIF(email, '') IS NOT NULL
+     ORDER BY id DESC LIMIT 1`,
+    params,
+  )
+  if (emailRows[0]?.email) {
+    await connection.execute(
+      `UPDATE customer_contacts SET email = COALESCE(NULLIF(email, ''), :email) WHERE id = :keeperId`,
+      { keeperId, email: emailRows[0].email },
+    )
+  }
   const [usageRows] = await connection.execute(
     `SELECT engineer_id, SUM(use_count) AS use_count, MAX(last_used_at) AS last_used_at
      FROM customer_contact_usage
@@ -392,6 +434,7 @@ async function replaceContacts(connection, customerId, contacts = []) {
       id: Number(contact.id || 0) || null,
       name: String(contact.name || '').trim(),
       phone: normalizePhoneNumber(contact.phone) || null,
+      email: normalizeContactEmail(contact.email),
     }))
     .filter((contact) => contact.name)
 
@@ -403,7 +446,7 @@ async function replaceContacts(connection, customerId, contacts = []) {
     deduped.push(contact)
   }
 
-  const existingRows = await connection.execute('SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId', { customerId })
+  const existingRows = await connection.execute('SELECT id, name, phone, email FROM customer_contacts WHERE customer_id = :customerId', { customerId })
   const existingById = new Map(existingRows[0].map((row) => [Number(row.id), row]))
   const existingIds = new Set(existingRows[0].map((row) => Number(row.id)))
   const keptIds = []
@@ -424,9 +467,9 @@ async function replaceContacts(connection, customerId, contacts = []) {
       )
       await connection.execute(
         `UPDATE customer_contacts
-         SET name = :name, phone = :phone, updated_at = CURRENT_TIMESTAMP
+         SET name = :name, phone = :phone, email = :email, updated_at = CURRENT_TIMESTAMP
          WHERE id = :id AND customer_id = :customerId`,
-        { id: contact.id, customerId, name: contact.name, phone: contact.phone },
+        { id: contact.id, customerId, name: contact.name, phone: contact.phone, email: contact.email },
       )
       await syncServiceOrderContactSnapshot(connection, customerId, previousContact, contact)
       keptIds.push(contact.id)
@@ -446,17 +489,17 @@ async function replaceContacts(connection, customerId, contacts = []) {
         )
         await connection.execute(
           `UPDATE customer_contacts
-           SET phone = :phone, updated_at = CURRENT_TIMESTAMP
+           SET phone = :phone, email = :email, updated_at = CURRENT_TIMESTAMP
            WHERE id = :id`,
-          { id: sameNameRows[0].id, phone: contact.phone },
+          { id: sameNameRows[0].id, phone: contact.phone, email: contact.email },
         )
         keptIds.push(sameNameRows[0].id)
         continue
       }
       const [result] = await connection.execute(
-        `INSERT INTO customer_contacts (customer_id, name, phone, use_count, last_used_at)
-         VALUES (:customerId, :name, :phone, 1, CURRENT_TIMESTAMP)`,
-        { customerId, name: contact.name, phone: contact.phone },
+        `INSERT INTO customer_contacts (customer_id, name, phone, email, use_count, last_used_at)
+         VALUES (:customerId, :name, :phone, :email, 1, CURRENT_TIMESTAMP)`,
+        { customerId, name: contact.name, phone: contact.phone, email: contact.email },
       )
       keptIds.push(result.insertId)
     }
@@ -729,6 +772,7 @@ function relationPreviewPayload({ customer, counts, devices, serviceOrders, insp
         id: row.id,
         name: row.name,
         phone: normalizePhoneNumber(row.phone) || row.phone,
+        email: row.email || null,
         useCount: Number(row.use_count || 0),
       })),
     },
@@ -737,6 +781,7 @@ function relationPreviewPayload({ customer, counts, devices, serviceOrders, insp
 }
 
 async function loadCustomerDeletePreview(customerId, user) {
+  await ensureCustomerContactEmailColumn()
   await ensureInspectionScheduleDevicesForPreview()
   const customers = await query(
     `SELECT id, name, code, salesperson
@@ -821,7 +866,7 @@ async function loadCustomerDeletePreview(customerId, user) {
       { customerId },
     ),
     query(
-      `SELECT id, name, phone, use_count
+      `SELECT id, name, phone, email, use_count
        FROM customer_contacts
        WHERE customer_id = :customerId
        ORDER BY use_count DESC, last_used_at DESC, id DESC
@@ -840,6 +885,7 @@ async function deletePreview(req, res) {
 
 async function list(req, res) {
   await ensureCustomerLevelColumn()
+  await ensureCustomerContactEmailColumn()
   const { salesperson = '', mine = '' } = req.query
   const sortLocale = normalizeSortLocale(req.query.sortLocale || req.query.lang)
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
@@ -940,6 +986,7 @@ async function list(req, res) {
 
 async function create(req, res) {
   await ensureCustomerLevelColumn()
+  await ensureCustomerContactEmailColumn()
   const {
     name,
     code,
@@ -1068,6 +1115,7 @@ async function create(req, res) {
 
 async function detail(req, res) {
   await ensureCustomerLevelColumn()
+  await ensureCustomerContactEmailColumn()
   const rows = await query(
     `SELECT id, name, name_key, code, address, contact_name, contact_phone, salesperson,
             level,
@@ -1091,6 +1139,7 @@ async function detail(req, res) {
 
 async function update(req, res) {
   await ensureCustomerLevelColumn()
+  await ensureCustomerContactEmailColumn()
   const {
     name,
     code,
@@ -1239,6 +1288,7 @@ async function remove(req, res) {
 
 async function merge(req, res) {
   await ensureCustomerLevelColumn()
+  await ensureCustomerContactEmailColumn()
   const targetCustomerId = Number(req.params.id)
   const sourceCustomerId = Number(req.body?.sourceCustomerId)
 
@@ -1393,29 +1443,36 @@ async function devices(req, res) {
 }
 
 async function createContact(req, res) {
+  await ensureCustomerContactEmailColumn()
   const customerId = Number(req.params.id)
   const name = String(req.body?.name || '').trim()
   const phone = normalizePhoneNumber(req.body?.phone) || null
+  const email = normalizeContactEmail(req.body?.email)
   if (!customerId || !name) throw badRequest('联系人姓名不能为空')
   const contact = await transaction(async (connection) => {
     const [customers] = await connection.execute('SELECT id FROM customers WHERE id = :id LIMIT 1', { id: customerId })
     if (!customers[0]) throw notFound('客户不存在')
     const [existing] = await connection.execute(
-      'SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId AND name = :name AND (phone <=> :phone) LIMIT 1',
+      'SELECT id, name, phone, email FROM customer_contacts WHERE customer_id = :customerId AND name = :name AND (phone <=> :phone) LIMIT 1',
       { customerId, name, phone },
     )
     if (existing[0]) {
-      await connection.execute('UPDATE customer_contacts SET use_count = use_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = :id', { id: existing[0].id })
-      return existing[0]
+      await connection.execute(
+        `UPDATE customer_contacts
+         SET email = COALESCE(:email, email), use_count = use_count + 1, last_used_at = CURRENT_TIMESTAMP
+         WHERE id = :id`,
+        { id: existing[0].id, email },
+      )
+      return { ...existing[0], email: email || existing[0].email || null }
     }
     const [result] = await connection.execute(
-      `INSERT INTO customer_contacts (customer_id, name, phone, use_count, last_used_at)
-       VALUES (:customerId, :name, :phone, 1, CURRENT_TIMESTAMP)`,
-      { customerId, name, phone },
+      `INSERT INTO customer_contacts (customer_id, name, phone, email, use_count, last_used_at)
+       VALUES (:customerId, :name, :phone, :email, 1, CURRENT_TIMESTAMP)`,
+      { customerId, name, phone, email },
     )
-    return { id: result.insertId, name, phone }
+    return { id: result.insertId, name, phone, email }
   })
-  res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null })
+  res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null, email: contact.email || null })
 }
 
 module.exports = {

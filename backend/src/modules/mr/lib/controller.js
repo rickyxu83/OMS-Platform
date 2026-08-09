@@ -69,9 +69,12 @@ async function ensureTables() {
       invoice_process VARCHAR(32) NULL,
       billing_content VARCHAR(500) NULL,
       invoice_recipient VARCHAR(255) NULL,
+      invoice_recipient_tel VARCHAR(64) NULL,
+      invoice_recipient_mail VARCHAR(255) NULL,
       billing_timing VARCHAR(255) NULL,
       purchaser VARCHAR(255) NULL,
       purchaser_tel VARCHAR(64) NULL,
+      purchaser_mail VARCHAR(255) NULL,
       recipient VARCHAR(255) NULL,
       recipient_tel VARCHAR(64) NULL,
       recipient_mail VARCHAR(255) NULL,
@@ -108,11 +111,25 @@ async function ensureTables() {
       KEY idx_mr_orders_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  const deliveryLocationColumns = await query(
-    `SELECT 1 FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'mr_orders' AND column_name = 'delivery_location' LIMIT 1`,
-  )
-  if (!deliveryLocationColumns[0]) await query('ALTER TABLE mr_orders ADD COLUMN delivery_location VARCHAR(500) NULL AFTER latest_delivery_date')
+  const ensureColumn = async (table, column, definition) => {
+    const rows = await query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column LIMIT 1`,
+      { table, column },
+    )
+    if (!rows[0]) {
+      try {
+        await query(`ALTER TABLE ${table} ADD COLUMN ${definition}`)
+      } catch (error) {
+        if (error?.code !== 'ER_DUP_FIELDNAME') throw error
+      }
+    }
+  }
+  await ensureColumn('mr_orders', 'delivery_location', 'delivery_location VARCHAR(500) NULL AFTER latest_delivery_date')
+  await ensureColumn('mr_orders', 'invoice_recipient_tel', 'invoice_recipient_tel VARCHAR(64) NULL AFTER invoice_recipient')
+  await ensureColumn('mr_orders', 'invoice_recipient_mail', 'invoice_recipient_mail VARCHAR(255) NULL AFTER invoice_recipient_tel')
+  await ensureColumn('mr_orders', 'purchaser_mail', 'purchaser_mail VARCHAR(255) NULL AFTER purchaser_tel')
+  await ensureColumn('customer_contacts', 'email', 'email VARCHAR(255) NULL AFTER phone')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_items (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -431,7 +448,8 @@ const ORDER_COLUMNS = [
   ['pricingMode', 'pricing_mode'], ['totalExcludingTax', 'total_excluding_tax'], ['hasContract', 'has_contract'],
   ['contractType', 'contract_type'], ['hasPenalty', 'has_penalty'], ['penaltyContent', 'penalty_content'],
   ['invoiceProcess', 'invoice_process'], ['billingContent', 'billing_content'], ['invoiceRecipient', 'invoice_recipient'],
-  ['billingTiming', 'billing_timing'], ['purchaser', 'purchaser'], ['purchaserTel', 'purchaser_tel'],
+  ['invoiceRecipientTel', 'invoice_recipient_tel'], ['invoiceRecipientMail', 'invoice_recipient_mail'],
+  ['billingTiming', 'billing_timing'], ['purchaser', 'purchaser'], ['purchaserTel', 'purchaser_tel'], ['purchaserMail', 'purchaser_mail'],
   ['recipient', 'recipient'], ['recipientTel', 'recipient_tel'], ['recipientMail', 'recipient_mail'],
   ['paymentTerms', 'payment_terms'], ['paymentOther', 'payment_other'], ['splitDelivery', 'split_delivery'],
   ['acceptance', 'acceptance'], ['acceptanceOther', 'acceptance_other'], ['installOptions', 'install_options'],
@@ -1057,7 +1075,7 @@ async function importQuotation(req, res) {
     { customer: customerName },
   ))[0] : null
   const matchedContacts = matchedCustomer ? await query(
-    'SELECT id, name, phone FROM customer_contacts WHERE customer_id = :customerId ORDER BY use_count DESC, last_used_at DESC, id DESC',
+    'SELECT id, customer_id, name, phone, email FROM customer_contacts WHERE customer_id = :customerId ORDER BY use_count DESC, last_used_at DESC, id DESC',
     { customerId: matchedCustomer.id },
   ) : []
   const payload = {

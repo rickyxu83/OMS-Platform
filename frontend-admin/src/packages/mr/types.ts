@@ -74,9 +74,12 @@ export interface MrOrder {
   invoiceProcess?: string | null
   billingContent?: string | null
   invoiceRecipient?: string | null
+  invoiceRecipientTel?: string | null
+  invoiceRecipientMail?: string | null
   billingTiming?: string | null
   purchaser?: string | null
   purchaserTel?: string | null
+  purchaserMail?: string | null
   recipient?: string | null
   recipientTel?: string | null
   recipientMail?: string | null
@@ -155,7 +158,7 @@ export interface CustomerOption {
   address?: string
   mapAddress?: string
   mapPoiName?: string
-  contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>
+  contacts?: Array<{ id?: string | number; customerId?: string | number; name?: string; phone?: string; email?: string }>
 }
 
 export interface UserOption {

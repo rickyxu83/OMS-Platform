@@ -157,9 +157,12 @@ function normalizeOrder(body = {}) {
     invoiceProcess: text(body.invoiceProcess ?? body.invoice_process, 32),
     billingContent: text(body.billingContent ?? body.billing_content, 500),
     invoiceRecipient: text(body.invoiceRecipient ?? body.invoice_recipient, 255),
+    invoiceRecipientTel: text(body.invoiceRecipientTel ?? body.invoice_recipient_tel, 64),
+    invoiceRecipientMail: text(body.invoiceRecipientMail ?? body.invoice_recipient_mail, 255),
     billingTiming: text(body.billingTiming ?? body.billing_timing, 255),
     purchaser: text(body.purchaser, 255),
     purchaserTel: text(body.purchaserTel ?? body.purchaser_tel, 64),
+    purchaserMail: text(body.purchaserMail ?? body.purchaser_mail, 255),
     recipient: text(body.recipient, 255),
     recipientTel: text(body.recipientTel ?? body.recipient_tel, 64),
     recipientMail: text(body.recipientMail ?? body.recipient_mail, 255),
@@ -219,6 +222,9 @@ function validateSubmission(order, items) {
   requireValue('splitDelivery', order.splitDelivery, '请选择是否分批送机')
   requireValue('caseCategory', order.caseCategory, '请选择案分类')
   requireValue('acceptance', order.acceptance, '请选择验收条件')
+  for (const [field, label] of [['purchaserMail', '采购联系人'], ['recipientMail', '货物收件人'], ['invoiceRecipientMail', '发票收件人']]) {
+    if (order[field] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(order[field])) errors.push({ field, message: `${label}邮箱格式不正确` })
+  }
   if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票别无效' })
   if (![1, 2, 3].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
   if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '发票处理方式无效' })

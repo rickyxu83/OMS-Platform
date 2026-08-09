@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 4
+const PDF_FORMAT_VERSION = 5
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -178,9 +178,12 @@ function detailEntries(order, includeVoidReason = true) {
     ['发票处理', orderField(order, 'invoiceProcess', 'invoice_process')],
     ['开票内容', orderField(order, 'billingContent', 'billing_content')],
     ['发票收件人', orderField(order, 'invoiceRecipient', 'invoice_recipient')],
+    ['发票收件电话', orderField(order, 'invoiceRecipientTel', 'invoice_recipient_tel')],
+    ['发票收件邮箱', orderField(order, 'invoiceRecipientMail', 'invoice_recipient_mail')],
     ['开票 / 收款', orderField(order, 'billingTiming', 'billing_timing')],
     ['采购联系人', order.purchaser],
     ['采购联系电话', orderField(order, 'purchaserTel', 'purchaser_tel')],
+    ['采购联系邮箱', orderField(order, 'purchaserMail', 'purchaser_mail')],
     ['货物收件人', order.recipient],
     ['收件电话', orderField(order, 'recipientTel', 'recipient_tel')],
     ['收件邮箱', orderField(order, 'recipientMail', 'recipient_mail')],
@@ -207,9 +210,9 @@ function detailEntries(order, includeVoidReason = true) {
 
 const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '案分类', '合同号', '罚则说明', '填表日期', '报价附件']],
-  ['交易与开票', ['计价模式', '发票别', '发票处理', '开票内容', '发票收件人', '开票 / 收款', '付款条件', '付款条件说明']],
+  ['交易与开票', ['计价模式', '发票别', '发票处理', '开票内容', '开票 / 收款', '付款条件', '付款条件说明']],
   ['交付与验收', ['分批送机', '验收', '验收说明', '装机对象', '维护对象', '送机地点', '交货条款', '出货单号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '货物收件人', '收件电话', '收件邮箱']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '货物收件人', '收件电话', '收件邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
   ['备注与其他', ['备注', '作废原因']],
 ]
 

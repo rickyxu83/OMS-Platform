@@ -159,4 +159,24 @@ function validBody(overrides = {}) {
   assert.deepStrictEqual(totals(order, items), { salesExcludingTax: 100, vat: 13, salesIncludingTax: 113, costExcludingTax: null, costIncludingTax: null, marginRate: null })
 }
 
+{
+  const { order, items } = normalizeOrder(validBody({
+    purchaserTel: '13800000001',
+    purchaserMail: 'buyer@example.com',
+    recipientTel: '',
+    recipientMail: 'receiver@example.com',
+    invoiceRecipient: '发票收件人',
+    invoiceRecipientTel: '13800000002',
+    invoiceRecipientMail: 'invoice@example.com',
+  }))
+  assert.equal(order.purchaserMail, 'buyer@example.com')
+  assert.equal(order.invoiceRecipientTel, '13800000002')
+  assert.equal(order.invoiceRecipientMail, 'invoice@example.com')
+  assert.deepStrictEqual(validateSubmission(order, items), [])
+
+  const invalid = normalizeOrder(validBody({ purchaserMail: 'invalid-email' }))
+  assert(invalid.order.purchaserMail)
+  assert(validateSubmission(invalid.order, invalid.items).some((error) => error.field === 'purchaserMail'))
+}
+
 console.log('mr domain OK')
