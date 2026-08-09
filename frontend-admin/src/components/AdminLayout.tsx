@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   Languages,
   ChevronUp,
+  TriangleAlert,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -298,6 +299,8 @@ function displayUserName(user: Record<string, any> | null | undefined) {
   return String(user?.realName || user?.name || user?.username || "用户");
 }
 
+const IS_TEST_SERVER = String(import.meta.env.VITE_APP_ENVIRONMENT || "").toLowerCase() === "test";
+
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -531,6 +534,24 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <PanelLeftClose className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* 测试服提示 */}
+          {IS_TEST_SERVER ? (
+            <div
+              role="status"
+              className="mx-3 mt-3 rounded-xl border-2 border-amber-700 bg-amber-300 px-3 py-2.5 text-amber-950 shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <TriangleAlert className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold leading-tight">测试开发服务器</p>
+                  <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-900/90">
+                    仅供测试，请勿录入正式业务数据
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
