@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, Printer } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -62,8 +62,8 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.unitPrice), render: (item: MrItem) => moneyText(item.unitPrice, emptyText) },
     { key: 'subtotal', label: '未税小计 / 毛利率', title: '未税小计', sub: '毛利率', weight: 10, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.subtotal), render: (item: MrItem) => <span><strong>{moneyText(item.subtotal, emptyText)}</strong><small>{percent(item.marginRate, emptyText)}</small></span> },
     { key: 'vendor', label: '供应商', weight: 6, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.vendor), render: (item: MrItem) => vendorAbbreviation(item.vendor, emptyText) },
-    { key: 'costExcludingTax', label: '采购成本（不含税）', title: '采购成本', sub: '（不含税）', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
-    { key: 'costInclTax', label: '采购成本（含税） / 采购税率', title: '采购成本', sub: '（含税）/ 采购税率', weight: 11, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
+    { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
+    { key: 'costInclTax', label: '采购成本（含税） / 采购税率', title: '采购成本（含税）', sub: '采购税率', weight: 11, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
     { key: 'purchase', label: '采购订单号', weight: 7, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo), render: (item: MrItem) => text(item.purchaseOrderNo, emptyText) },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
@@ -110,6 +110,25 @@ const styles = `
 export function MrDocumentView({ order, toolbar, embedded = false }: { order: MrOrder; toolbar?: ReactNode; embedded?: boolean }) {
   const status = order.status || 'draft'
   const formal = ['approved', 'voided'].includes(status)
+  const detailGroupsRef = useRef<HTMLDivElement | null>(null)
+  // 统一“订购与交付资料”4 张便当卡片高度（取最高者，避免内容行数不同导致参差）
+  useEffect(() => {
+    const container = detailGroupsRef.current
+    if (!container) return
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('.a-fact-group'))
+    if (!cards.length) return
+    const equalize = () => {
+      const max = Math.max(...cards.map((card) => card.offsetHeight))
+      cards.forEach((card) => { card.style.minHeight = `${max}px` })
+    }
+    equalize()
+    const observer = new ResizeObserver(equalize)
+    cards.forEach((card) => observer.observe(card))
+    return () => {
+      observer.disconnect()
+      cards.forEach((card) => { card.style.minHeight = '' })
+    }
+  }, [])
   const emptyText = formal ? '' : '未填写'
   const install = (order.installOptions || []).join('、') || emptyText
   const maintenance = (order.maintenanceOptions || []).join('、') || emptyText
@@ -207,7 +226,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           </div>
         </Section>
         <Section index="02" title={`订购与交付资料 · 共 ${facts.length + noteFacts.length} 项`}>
-          <div className="a-detail-groups">
+          <div className="a-detail-groups" ref={detailGroupsRef}>
             {groupedFacts.map(({ group, items }) => (
               <div className="a-fact-group" key={group}>
                 <div className="a-fact-group-title">{group}</div>
