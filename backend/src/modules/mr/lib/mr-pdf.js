@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 16
+const PDF_FORMAT_VERSION = 17
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -106,10 +106,10 @@ function itemColumns(items) {
     { key: 'install', label: '品项装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '未税小计\n/ 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'subtotal', title: '未税小计', sub: '毛利率', label: '未税小计', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
-    { key: 'costExcludingTax', label: '采购成本\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
-    { key: 'costInclTax', label: '采购成本（含税）\n/ 采购税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
+    { key: 'costExcludingTax', title: '采购成本', sub: '（不含税）', label: '采购成本', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
+    { key: 'costInclTax', title: '采购成本', sub: '（含税）/ 采购税率', label: '采购成本', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
     { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
@@ -126,8 +126,13 @@ function itemColumns(items) {
 function itemHeader(doc, fonts, columns, y) {
   let x = PAGE.margin
   for (const column of columns) {
-    doc.rect(x, y, column.width, 30).fillAndStroke(PURPLE, PURPLE)
-    text(doc, fonts, column.label, x + 3, y + 5, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, height: 20, align: 'center', lineGap: 0 })
+    doc.rect(x, y, column.width, 30).fillAndStroke(PURPLE, '#b9c5cc')
+    if (column.sub) {
+      text(doc, fonts, column.title || column.label, x + 3, y + 6, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, align: 'center', lineGap: 0 })
+      text(doc, fonts, column.sub, x + 3, y + 18, { size: 5.7, color: '#d8cfe8', width: column.width - 6, align: 'center', lineGap: 0 })
+    } else {
+      text(doc, fonts, column.label, x + 3, y + 11, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, align: 'center', lineGap: 0 })
+    }
     x += column.width
   }
   return y + 30
@@ -160,17 +165,24 @@ function totals(doc, fonts, order, items, y) {
   }, 0))
   const margin = totalsValue.marginRate ?? (sales > 0 ? (sales - cost) / sales * 100 : null)
   const cells = [
-    ['未税总计', moneyText(sales)], ['采购成本（不含税）', moneyText(cost)],
-    ['毛利额', moneyText(sales - cost)], ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
+    ['未税总计', moneyText(sales)],
+    ['销售税额', moneyText(totalsValue.vat)],
+    ['含税总计', moneyText(totalsValue.salesIncludingTax)],
+    ['采购成本（不含税）', moneyText(cost)],
+    ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
+    ['毛利额', moneyText(sales - cost)],
+    ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
   let x = PAGE.margin
-  for (const [label, content] of cells) {
-    doc.rect(x, y, width, 31).strokeColor(BORDER).lineWidth(0.5).stroke()
+  cells.forEach(([label, content], index) => {
+    doc.rect(x, y, width, 31)
+    if (index === cells.length - 1) doc.fillAndStroke('#f1ecf7', BORDER)
+    else doc.fillAndStroke('#ffffff', BORDER)
     text(doc, fonts, label, x + 6, y + 4, { size: 6.5, color: MUTED })
     text(doc, fonts, content, x + 6, y + 15, { size: 9, bold: true, width: width - 12, align: 'right' })
     x += width
-  }
+  })
   return y + 39
 }
 
