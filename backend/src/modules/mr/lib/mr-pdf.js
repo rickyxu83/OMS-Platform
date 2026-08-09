@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 18
+const PDF_FORMAT_VERSION = 19
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -369,7 +369,7 @@ function approvalBoxHeight(doc, fonts, rows) {
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   doc.font(fonts.regular).fontSize(6)
   const reasonHeight = Math.max(0, ...rows.filter((approval) => hasValue(approval.reason)).map((approval) => doc.heightOfString(value(approval.reason), { width: width - 10, align: 'center' })))
-  return 58 + (reasonHeight ? Math.ceil(reasonHeight) + 4 : 0)
+  return 66 + (reasonHeight ? Math.ceil(reasonHeight) + 4 : 0)
 }
 
 function approvals(doc, fonts, rows, y) {
@@ -385,11 +385,11 @@ function approvals(doc, fonts, rows, y) {
     const stepLabel = stepKey === 'sales' ? '业务负责人' : stepKey === 'engineering' ? '工程会签' : approval.stepLabel || approval.step_label
     doc.rect(x, y, width, boxHeight).strokeColor(BORDER).lineWidth(0.5).stroke()
     text(doc, fonts, stepLabel, x + 6, y + 4, { size: 6.5, bold: true, width: width - 12, align: 'left' })
-    text(doc, fonts, action, x + 6, y + 13, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 12, align: 'left' })
-    signatureImage(doc, signature, x + 8, y + 20, width - 16, 16)
-    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 6, y + 39, { size: 6.5, bold: true, width: width - 12, align: 'left' })
-    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 6, y + 48, { size: 5.5, color: MUTED, width: width - 12, align: 'left' })
-    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 6, y + 57, { size: 6, color: MUTED, width: width - 12, height: boxHeight - 59, align: 'left' })
+    text(doc, fonts, action, x + 6, y + 12, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 12, align: 'left' })
+    signatureImage(doc, signature, x + 8, y + 19, width - 16, 25)
+    text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 6, y + 47, { size: 6.5, bold: true, width: width - 12, align: 'left' })
+    text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 6, y + 56, { size: 5.5, color: MUTED, width: width - 12, align: 'left' })
+    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 6, y + 65, { size: 6, color: MUTED, width: width - 12, height: boxHeight - 67, align: 'left' })
   })
   return y + boxHeight + 8
 }
