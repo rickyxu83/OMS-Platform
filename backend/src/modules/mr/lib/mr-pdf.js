@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 24
+const PDF_FORMAT_VERSION = 25
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -75,7 +75,6 @@ function summary(doc, fonts, order, y) {
   const cells = [
     ['客户', order.customerName || order.customer_name],
     ['客户 P/O', order.customerPo || order.customer_po],
-    ['业务负责人', order.salesOwnerName || order.sales_owner_name],
     ['最晚交付日期', order.latestDeliveryDate || order.latest_delivery_date],
   ].filter(([, content]) => hasValue(content))
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
@@ -189,7 +188,7 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期'])
+const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
@@ -198,7 +197,7 @@ const DETAIL_GROUPS = [
   ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
 ]
 
-function detailEntries(order) {
+function detailEntries(order, items = []) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
   const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
   const entries = [
@@ -228,7 +227,7 @@ function detailEntries(order) {
     ['是否允许分批交付', hasValue(splitDelivery) ? (Number(splitDelivery) ? '允许分批交付' : '不允许分批交付') : ''],
     ['验收条件', order.acceptance],
     ['验收说明', orderField(order, 'acceptanceOther', 'acceptance_other')],
-    ['装机承担方', options(order.installOptions || order.install_options)],
+    ...(items.some((item) => hasValue(itemField(item, 'installBy', 'install_by'))) ? [] : [['装机承担方', options(order.installOptions || order.install_options)]]),
     ['维护承担方', options(order.maintenanceOptions || order.maintenance_options)],
     ['合同编号', orderField(order, 'contractNo', 'contract_no')],
     ['罚则说明', orderField(order, 'penaltyContent', 'penalty_content')],
@@ -314,11 +313,11 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
   return height
 }
 
-function details(doc, fonts, order, y, includeVoidReason = true) {
+function details(doc, fonts, order, items, y, includeVoidReason = true) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
   const bottom = PAGE.height - 32
-  const entries = detailEntries(order)
+  const entries = detailEntries(order, items)
   const notes = noteEntries(order, includeVoidReason)
   const groupOf = new Map()
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
@@ -451,7 +450,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
   y = totals(doc, fonts, order, items, y + 5)
-  y = details(doc, fonts, order, y, Boolean(watermarkLabel))
+  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel))
   if (approvalRows.length) {
     const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
     if (y + approvalSpace > bottom) {

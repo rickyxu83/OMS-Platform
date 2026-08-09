@@ -44,9 +44,9 @@ function vendorAbbreviation(value: unknown, fallback = '-') {
 }
 
 function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: string; formal: boolean }) {
-  const reference = formal && !hasValue(order.customerPo) ? '' : hasValue(order.customerPo) ? String(order.customerPo) : `客户 P/O · ${emptyText}`
+  // 客户 P/O 只在订货条显示，页眉不再重复
   const controlNumber = hasValue(order.ctrlNo || order.fileName) ? text(order.ctrlNo || order.fileName, emptyText) : formal ? '' : `Ctrl.NO · ${emptyText}`
-  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{controlNumber}</b><span>{reference}</span></div></header>
+  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{controlNumber}</b></div></header>
 }
 function Fact({ label, value }: { label: string; value: ReactNode }) { return <div className="a-fact"><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
@@ -178,7 +178,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '交付条款', raw: order.deliveryTerms, value: text(order.deliveryTerms, emptyText) },
     { label: '出货单编号', raw: order.shipmentNo, value: text(order.shipmentNo, emptyText) },
     { label: '填表日期', raw: order.fillDate, value: text(order.fillDate, emptyText) },
-  ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms !== '其他') && !(fact.label === '验收说明' && order.acceptance !== '其他') && !(fact.label === '业务负责人' && (order.approvals || []).some((item) => item.stepKey === 'sales')))
+  ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms !== '其他') && !(fact.label === '验收说明' && order.acceptance !== '其他') && !(fact.label === '业务负责人' && (order.approvals || []).some((item) => item.stepKey === 'sales')) && !(fact.label === '装机承担方' && (order.items || []).some((item) => hasValue(item.installBy))))
   const groupedFacts = FACT_GROUPS.map(([group, labels]) => ({
     group,
     items: labels.map((label) => facts.find((fact) => fact.label === label)).filter((fact): fact is (typeof facts)[number] => Boolean(fact)),
@@ -218,7 +218,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         <div className="a-orderbar">
           <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine('客户 P/O', order.customerPo)}</div>
           <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('交付地点', order.deliveryLocation)}</div>
-          <div><small>交易条款 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine('发票类型 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
+          <div><small>交易条款 / TERMS</small><b>{text(order.paymentTerms, emptyText)}</b>{topLine('发票类型 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
           <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}</span></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 个品项`}>
