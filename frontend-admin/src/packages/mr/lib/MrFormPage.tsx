@@ -36,6 +36,7 @@ import {
   BinaryChoice,
   Field,
   SectionCard,
+  SmartCombobox,
   StatusBadge,
   SubPanel,
   WorkOptions,
@@ -611,7 +612,7 @@ export function MrFormPage() {
 
   const status = calculated.status || 'draft'
   const contactCandidates = linkedContacts.filter((item) => item.id && item.name)
-  const contactChoices = Array.from(new Map([...contactCandidates.slice(0, 3), ...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId))].map((item) => [String(item.id), item])).values())
+  const contactChoices = Array.from(new Map([...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId)), ...contactCandidates].map((item) => [String(item.id), item])).values())
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
   const deliveryLocations = [
     { value: selectedCustomer?.salesDeliveryAddress, label: '销售交付地址' },
@@ -651,8 +652,6 @@ export function MrFormPage() {
   return (
     <div className="min-h-full bg-muted/30">
       <ErrorToast message={error} />
-      <datalist id="mr-customer-options">{customers.map((customer) => <option key={customer.id} value={customer.name || ''}>{customer.code || ''}</option>)}</datalist>
-      <datalist id="mr-contact-options">{contactChoices.map((contact) => <option key={contact.id || contact.name} value={contact.name}>{[contact.phone, contact.email].filter(Boolean).join(' · ')}</option>)}</datalist>
       <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
       <datalist id="mr-contact-mail-options">{contactChoices.filter((contact) => contact.email).map((contact) => <option key={`mail-${contact.id || contact.email}`} value={contact.email || ''}>{contact.name || ''}</option>)}</datalist>
       <datalist id="mr-delivery-location-options">{deliveryLocations.map((location) => <option key={location.value} value={location.value}>{location.label}</option>)}</datalist>
@@ -899,7 +898,14 @@ export function MrFormPage() {
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案" onChange={(e) => handleCustomerInput(e.target.value)} />
+                <SmartCombobox
+                  value={calculated.customerName || ''}
+                  readOnly={!editable}
+                  placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
+                  options={customers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
+                  onChange={handleCustomerInput}
+                  onSelect={(option) => void chooseCustomer(option.value)}
+                />
               </Field>
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
@@ -954,19 +960,37 @@ export function MrFormPage() {
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-                  <Input list="mr-contact-options" value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patchContactField('purchaser', e.target.value)} />
+<SmartCombobox
+                  value={calculated.purchaser || ''}
+                  readOnly={!editable}
+                  placeholder="采购联系人姓名"
+                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                  onChange={(value) => patchContactField('purchaser', value)}
+                />
                   <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
                   <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">收货人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-                  <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收货人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
+<SmartCombobox
+                  value={calculated.recipient || ''}
+                  readOnly={!editable}
+                  placeholder="收货人姓名"
+                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                  onChange={(value) => patchContactField('recipient', value)}
+                />
                   <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
                   <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
-                  <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} readOnly={!editable} placeholder="发票收件人姓名" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
+<SmartCombobox
+                  value={calculated.invoiceRecipient || ''}
+                  readOnly={!editable}
+                  placeholder="发票收件人姓名"
+                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                  onChange={(value) => patchContactField('invoiceRecipient', value)}
+                />
                   <Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} />
                   <Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} />
                 </div>

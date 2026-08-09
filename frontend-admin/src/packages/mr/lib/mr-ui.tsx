@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { useCountUp } from './count-up'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { MrStatus } from '../types'
 
@@ -231,5 +234,99 @@ export function WorkOptions({
         ))}
       </div>
     </Field>
+  )
+}
+
+export function SmartCombobox({
+  value,
+  placeholder,
+  options,
+  onChange,
+  onSelect,
+  readOnly = false,
+  className = '',
+}: {
+  value: string
+  placeholder?: string
+  options: Array<{ value: string; label: string; hint?: string }>
+  onChange: (value: string) => void
+  onSelect?: (option: { value: string; label: string; hint?: string }) => void
+  readOnly?: boolean
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [text, setText] = useState(value)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  // 外部值变化（如选择客户后自动回填联系人）时同步文本框
+  useEffect(() => { setText(value) }, [value])
+  useEffect(() => { setOpen(false) }, [value])
+
+  // 点击外部关闭
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const keyword = text.trim().toLowerCase()
+    if (!keyword) return options
+    return options.filter((option) => [option.label, option.hint || ''].some((item) => item.toLowerCase().includes(keyword)))
+  }, [options, text])
+
+  useEffect(() => {
+    if (open && filtered.length) setActiveIndex(0)
+  }, [open, filtered.length])
+
+  if (readOnly) {
+    return <Input readOnly value={value} placeholder={placeholder} className={className} />
+  }
+
+  const showList = open && filtered.length > 0
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.min(index + 1, filtered.length - 1)) }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.max(index - 1, 0)) }
+    else if (event.key === 'Enter') {
+      if (showList) { event.preventDefault(); const option = filtered[activeIndex]; if (option) { onChange(option.label); setText(option.label); onSelect?.(option); setOpen(false) } }
+    } else if (event.key === 'Escape') { setOpen(false) }
+  }
+
+  return (
+    <div ref={rootRef} className={`relative min-w-0 ${className}`}>
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          value={text}
+          placeholder={placeholder}
+          className="pr-8"
+          onChange={(event) => { setText(event.target.value); onChange(event.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+        />
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
+      </div>
+      {showList ? (
+        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+          {filtered.map((option, index) => (
+            <button
+              type="button"
+              key={option.value}
+              className={`flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm ${index === activeIndex ? 'bg-accent text-accent-foreground' : ''}`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onPointerDown={(event) => { event.preventDefault(); onChange(option.label); setText(option.label); onSelect?.(option); setOpen(false) }}
+            >
+              <span className="truncate font-medium">{option.label}</span>
+              {option.hint ? <span className="truncate text-xs text-muted-foreground">{option.hint}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
