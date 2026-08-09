@@ -24,7 +24,7 @@ const integrated = calculateForm({ pricingMode: 1, totalExcludingTax: 300, invoi
   { name: 'A', qty: 1, costInclTax: 106, taxRate: 6 },
   { name: 'B', qty: 1, costInclTax: 113, taxRate: 13 },
 ] })
-assert(integrated.items?.[0].unitPrice === 150 && integrated.items?.[1].unitPrice === 150, '多项系统集成应按逐项未税成本分摊售价')
+assert(integrated.items?.[0].unitPrice === 150 && integrated.items?.[1].unitPrice === 150, '多项系统集成应按采购成本（不含税）分摊售价')
 
 assert(salesSubtotal({ qty: 2, quotedUnitPrice: 130000 }) === 260000, '没有采购成本时应回退展示销售报价原始未税小计')
 assert(salesSubtotal({ qty: 2, quotedUnitPrice: 130000, subtotal: 250000 }) === 250000, '已有最终计价结果时应优先显示MR销售小计')

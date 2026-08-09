@@ -58,7 +58,7 @@ export function ApprovalTasks() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold"><ListTodo className="size-6 text-primary" />待办中心</h1>
-          <p className="mt-1 text-sm text-muted-foreground">统一查看 MR 及以后接入的请假、加班等审批任务。</p>
+          <p className="mt-1 text-sm text-muted-foreground">统一查看 MR 签核及其他系统接入的审批任务。</p>
         </div>
         <Button variant="outline" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={`mr-2 size-4 ${loading ? 'animate-spin' : ''}`} />刷新
@@ -79,7 +79,7 @@ export function ApprovalTasks() {
       {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div> : null}
       <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
-          <TableHeader><TableRow><TableHead>业务</TableHead><TableHead>标题</TableHead><TableHead>当前节点</TableHead><TableHead>发起人</TableHead><TableHead>状态</TableHead><TableHead>时间</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>业务</TableHead><TableHead>标题</TableHead><TableHead>当前步骤</TableHead><TableHead>发起人</TableHead><TableHead>状态</TableHead><TableHead>时间</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={6} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
