@@ -1,8 +1,8 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Loader2, Printer } from 'lucide-react'
+import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { getMr } from '../client'
+import { downloadMrDocument, getMr } from '../client'
 import type { MrApproval, MrItem, MrOrder } from '../types'
 
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
@@ -242,7 +242,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           </div>
         </Section>
         <Section index="03" title="电子签核记录"><Signatures order={order} formal={formal} /></Section>
-        <footer className="a-footer"><span>MR / 电子签核归档文件{hasValue(order.fillDate) ? ` · 填表日期 ${order.fillDate}` : ''}</span><span>适用于黑白打印</span></footer>
+        <footer className="a-footer"><span>MR / 电子签核归档文件{hasValue(order.fillDate) ? ` · 填表日期 ${order.fillDate}` : ''}</span><span>适用于黑白输出</span></footer>
       </article>
     </div>
   )
@@ -261,6 +261,7 @@ export function MrPrintPage() {
   if (!order) return <div className="p-8 text-destructive">{error}</div>
   const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '')
   const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true })
-  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 打印预览</span><div className="mr-print-actions"><Button variant="outline" onClick={goBack}><ArrowLeft className="mr-2 size-4" />返回 MR 申请</Button><Button onClick={() => window.print()}><Printer className="mr-2 size-4" />打印或另存为 PDF</Button></div></div>
+  const pdfId = order.status === 'approved' ? order.id : undefined
+  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 预览</span><div className="mr-print-actions"><Button variant="outline" onClick={goBack}><ArrowLeft className="mr-2 size-4" />返回 MR 申请</Button>{pdfId ? <Button onClick={() => void downloadMrDocument(pdfId, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败'))}><FileDown className="mr-2 size-4" />另存为 PDF</Button> : null}</div></div>
   return <MrDocumentView order={order} toolbar={toolbar} />
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, FileDown, FileSpreadsheet, Loader2, Pencil, Printer, Save, Send, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Save, Send, ShieldCheck, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -643,7 +643,7 @@ export function MrFormPage() {
     <div className="mr-print-toolbar">
       <div><strong className="block text-sm text-foreground">签核文件预览</strong><span>未填写的选填字段会标记为“未填写”；正式归档文件将隐藏空白字段。</span></div>
       <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated } })}>
-        <Printer className="mr-2 size-4" />全屏查看或打印
+        <Eye className="mr-2 size-4" />全屏预览
       </Button>
     </div>
   )
@@ -673,7 +673,7 @@ export function MrFormPage() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             {status !== 'in_review' ? (
               <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
-                <Printer className="mr-2 size-4" />打印预览
+                <Eye className="mr-2 size-4" />预览
               </Button>
             ) : null}
             {status === 'approved' ? (
@@ -1053,7 +1053,7 @@ export function MrFormPage() {
           <SectionCard className="min-[1450px]:hidden" id="approval" title="电子签核流程" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
             <ApprovalPanel order={calculated} layout="horizontal" />
             {status === 'approved' ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可打印并归档。</div>
+              <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
             ) : null}
           </SectionCard>
         </div>

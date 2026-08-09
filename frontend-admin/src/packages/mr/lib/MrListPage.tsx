@@ -129,7 +129,7 @@ export function MrListPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
-          <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档打印</p>
+          <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档输出</p>
         </div>
         {hasPermission('mr.create') ? (
           <Button onClick={createDraft} disabled={creating}>
