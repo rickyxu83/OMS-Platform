@@ -15,15 +15,12 @@ import {
   Shield,
   LogOut,
   MessageSquare,
-  Search,
   PanelLeftClose,
   PanelLeftOpen,
   Languages,
   ChevronUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -38,13 +35,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Separator } from "./ui/separator";
 import { toast } from "sonner";
 import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { matchesSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 import { MySettingsDialog, UserAvatar } from "./MySettingsDialog";
 
@@ -320,15 +315,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() => (
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
-  const [quickNavOpen, setQuickNavOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<"problem" | "suggestion">("problem");
-  const [feedbackContent, setFeedbackContent] = useState("");
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
@@ -455,12 +444,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
-  const filteredNavItems = searchQuery
-    ? allNavItems.filter(item =>
-        matchesSearchText(item.label, searchQuery)
-      )
-    : allNavItems;
-
   const mobileNavPriority = ["dashboard", "service-orders", "service-report"];
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
@@ -480,39 +463,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   };
 
   const logoutToLogin = () => {
-    setQuickNavOpen(false);
-    setFeedbackOpen(false);
     setAnnouncementOpen(false);
     setMySettingsOpen(false);
     logout();
     window.setTimeout(() => {
       window.location.replace(`${import.meta.env.BASE_URL}login`);
     }, 0);
-  };
-
-  const submitFeedback = async () => {
-    const content = feedbackContent.trim();
-    if (!content) {
-      toast.error(strings.common.feedbackEmpty);
-      return;
-    }
-
-    setFeedbackSubmitting(true);
-    try {
-      await api.post("/feedback", {
-        type: feedbackType,
-        content,
-        pagePath: location.pathname,
-      });
-      toast.success(strings.common.feedbackSuccess);
-      setFeedbackContent("");
-      setFeedbackType("problem");
-      setFeedbackOpen(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "提交失败");
-    } finally {
-      setFeedbackSubmitting(false);
-    }
   };
 
   const currentAnnouncement = announcements[0] || null;
@@ -552,7 +508,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       >
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center border-b border-sidebar-border/50 px-5">
+          <div className="flex h-16 items-center justify-between gap-2 border-b border-sidebar-border/50 px-4">
             <div className="flex items-center gap-2.5">
               <div className="admin-brand-mark">
                 <img src={logoSrc} alt="" aria-hidden="true" />
@@ -564,6 +520,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
               </div>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarOpen(false)}
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              aria-label="收起侧边栏"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Navigation */}
@@ -610,157 +576,23 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             })}
           </nav>
 
-          {/* Sidebar Footer - Version Info */}
-          <div className="flex h-11 items-center border-t border-sidebar-border/50 bg-sidebar-accent/10 px-4">
-            <div className="flex w-full items-center justify-between px-2">
-              <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
-              <span className="text-xs font-mono text-muted-foreground">{appVersion}</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
-          aria-label="关闭导航菜单"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative overflow-hidden">
-        {/* Decorative Background Elements */}
-        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
-        
-        {/* Top Bar */}
-        <header className={`h-14 bg-card/90 backdrop-blur-md z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-4 xl:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
-        {/* ponytail: 不用 sticky——所在列 overflow-hidden 从不滚动（滚动的是 main），sticky 是死代码，且 Safari 对 flex 容器内 sticky 布局高度计算有 bug，会导致 main 顶部叠进顶栏下方 */}
-          <div className="flex min-w-0 items-center gap-2 lg:gap-3 xl:gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="h-8 w-8 border-border/70 bg-background/70 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
-            >
-              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-            </Button>
-            <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-              <span className="hidden whitespace-nowrap sm:inline">{strings.common.systemName}</span>
-              <span className="hidden sm:inline">/</span>
-              <span className="min-w-0 max-w-[8rem] truncate text-base font-semibold text-foreground sm:text-sm sm:font-medium xl:max-w-none">{strings.pages[currentPage] || currentPage}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 lg:hidden">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setQuickNavOpen(true)}
-              className="h-8 w-8"
-              aria-label={strings.common.quickNav}
-            >
-              <Search className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setFeedbackOpen(true)}
-              className="h-8 w-8"
-              aria-label={strings.common.feedback}
-            >
-              <MessageSquare className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLangToggle}
-              className="h-8 px-2 text-xs"
-            >
-              {strings.common.langShort}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-full p-0"
-              onClick={() => setMySettingsOpen(true)}
-              aria-label="我的设置"
-            >
-              <UserAvatar user={currentUser} className="h-8 w-8" textClassName="text-xs" />
-            </Button>
-          </div>
-
-          <div className="hidden min-w-0 flex-shrink-0 items-center gap-3 lg:flex">
-            <div className="flex items-center gap-2">
-              {/* Quick Nav */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuickNavOpen(true)}
-                className="gap-2"
-                aria-label={strings.common.quickNav}
-              >
-                <Search className="w-4 h-4" />
-                <span className="hidden xl:inline">{strings.common.quickNav}</span>
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setFeedbackOpen(true)}
-                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-                aria-label={strings.common.feedback}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="hidden xl:inline">{strings.common.feedback}</span>
-              </Button>
-
-              {/* Language Toggle */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLangToggle}
-                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-                aria-label={strings.common.langShort}
-              >
-                <Languages className="w-4 h-4" />
-                <span className="hidden text-xs font-medium xl:inline">{strings.common.langShort}</span>
-              </Button>
-
-              {canSwitchEngineer && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => goToWorkspace("engineer")}
-                  className="hidden xl:inline-flex"
-                >
-                  {strings.common.switchEngineer}
-                </Button>
-              )}
-            </div>
-
-            <Separator orientation="vertical" className="hidden h-8 xl:block" />
-
-            {/* User Info */}
+          <div className="border-t border-sidebar-border/50 bg-sidebar-accent/10 p-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex min-w-0 items-center gap-3 rounded-full px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  aria-label="打开我的设置"
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="打开我的账号菜单"
                 >
-                  <div className="hidden min-w-0 text-right xl:block">
-                    <div className="max-w-[9rem] truncate whitespace-nowrap text-sm font-medium">{currentDisplayName}</div>
-                    <div className="whitespace-nowrap text-xs text-muted-foreground">
-                      {currentRoleLabel}
-                    </div>
+                  <UserAvatar user={currentUser} className="h-9 w-9 shrink-0" textClassName="text-xs" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-sidebar-foreground">{currentDisplayName}</div>
+                    <div className="truncate text-xs text-muted-foreground">{currentRoleLabel}</div>
                   </div>
-                  <UserAvatar user={currentUser} />
+                  <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
                 <DropdownMenuLabel>
                   <div className="min-w-0">
                     <div className="truncate">{currentDisplayName}</div>
@@ -785,8 +617,51 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleLangToggle}
+                className="h-8 gap-2 px-2 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                aria-label={`切换语言，当前${strings.common.langShort}`}
+              >
+                <Languages className="h-4 w-4" />
+                <span className="text-xs font-medium">{strings.common.langShort}</span>
+              </Button>
+              <span className="font-mono text-xs text-muted-foreground" title={strings.brand.version}>{appVersion}</span>
+            </div>
           </div>
-        </header>
+        </div>
+      </aside>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
+          aria-label="关闭导航菜单"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {!sidebarOpen ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => setSidebarOpen(true)}
+          className="fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+          aria-label="展开侧边栏"
+          title="展开侧边栏"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      ) : null}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
 
         {/* Page Content */}
         <main
@@ -842,93 +717,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         )}
       </div>
 
-      {/* Quick Navigation Dialog */}
-      <Dialog open={quickNavOpen} onOpenChange={setQuickNavOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{strings.common.quickNavTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder={strings.common.quickNavPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {filteredNavItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => {
-                      navigateTo(item.path);
-                      setQuickNavOpen(false);
-                      setSearchQuery("");
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-accent transition-colors text-left"
-                  >
-                    <Icon className="w-5 h-5 text-primary" />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-              {filteredNavItems.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  {strings.common.quickNavEmpty}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
-        <DialogContent className="sm:max-w-[460px]">
-          <DialogHeader>
-            <DialogTitle>{strings.common.feedbackTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">{strings.common.feedbackType}</div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["problem", strings.common.feedbackProblem],
-                  ["suggestion", strings.common.feedbackSuggestion],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={feedbackType === value ? "default" : "outline"}
-                    onClick={() => setFeedbackType(value as "problem" | "suggestion")}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium">{strings.common.feedbackContent}</div>
-              <Textarea
-                value={feedbackContent}
-                onChange={(event) => setFeedbackContent(event.target.value)}
-                placeholder={strings.common.feedbackPlaceholder}
-                className="min-h-[120px]"
-                maxLength={2000}
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setFeedbackOpen(false)} disabled={feedbackSubmitting}>
-                取消
-              </Button>
-              <Button onClick={submitFeedback} disabled={feedbackSubmitting}>
-                {feedbackSubmitting ? "提交中…" : strings.common.feedbackSubmit}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={announcementOpen && Boolean(currentAnnouncement)}
