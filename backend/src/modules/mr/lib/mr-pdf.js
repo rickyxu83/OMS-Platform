@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 13
+const PDF_FORMAT_VERSION = 14
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -101,8 +101,8 @@ function itemColumns(items) {
     { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
     { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
     { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '品项装机方', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
-    { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
+    { key: 'install', label: '品项装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计\n/ 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
