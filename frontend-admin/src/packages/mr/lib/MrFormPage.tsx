@@ -269,6 +269,7 @@ export function MrFormPage() {
     if (currentMode === nextMode) return
     const currentItems = calculated.items || []
     const nextItems = currentMode === 2 ? currentItems.slice(0, 1) : currentItems
+    const currentSalesTotal = calculated.totals?.salesExcludingTax ?? calculated.totalExcludingTax
     const warnings: string[] = []
     if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
       warnings.push('开明细中的逐项销售单价会按系统集成规则重算。')
@@ -283,14 +284,14 @@ export function MrFormPage() {
     }
     if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确定切换计价模式吗？`)) return
     if (nextMode === 3) {
-      patch({ pricingMode: 3, items: quotationDetailItems(nextItems) })
+      patch({ pricingMode: 3, totalExcludingTax: currentSalesTotal, items: quotationDetailItems(nextItems) })
       return
     }
     if (nextMode === 2) {
-      patch({ pricingMode: 2, items: singleIntegrationItems(currentItems, form.invoiceType, form.installOptions || []) })
+      patch({ pricingMode: 2, totalExcludingTax: currentSalesTotal, items: singleIntegrationItems(currentItems, form.invoiceType, form.installOptions || []) })
       return
     }
-    patch({ pricingMode: nextMode, items: nextItems })
+    patch({ pricingMode: nextMode, totalExcludingTax: currentSalesTotal, items: nextItems })
   }
 
   const changeInvoiceType = (invoiceType: string) => {
