@@ -41,8 +41,7 @@ function vendorAbbreviation(value: unknown, fallback = '-') {
 }
 
 function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: string; formal: boolean }) {
-  const status = order.status || 'draft'
-  const reference = [formal && !hasValue(order.customerPo) ? null : hasValue(order.customerPo) ? String(order.customerPo) : `客户 P/O · ${emptyText}`, STATUS[status] || status].filter(hasValue).join(' · ')
+  const reference = formal && !hasValue(order.customerPo) ? '' : hasValue(order.customerPo) ? String(order.customerPo) : `客户 P/O · ${emptyText}`
   const controlNumber = hasValue(order.ctrlNo || order.fileName) ? text(order.ctrlNo || order.fileName, emptyText) : formal ? '' : `Ctrl.NO · ${emptyText}`
   return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK / NINGBO TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><b>{controlNumber}</b><span>{reference}</span></div></header>
 }
@@ -100,6 +99,9 @@ const styles = `
 .a-detail-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.a-fact-group{min-width:0;margin:0!important;padding:10px 12px;border:1px solid #d8e0e8;border-radius:8px;background:#f8fafc;break-inside:avoid}.a-fact-group-title{position:relative;margin:0 0 8px;padding-left:11px;border:0;color:#4e386e;font-size:10px;font-weight:700}.a-fact-group-title:before{content:"";position:absolute;left:0;top:.35em;width:5px;height:5px;border-radius:50%;background:#73529b}.a-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px;border:0}.a-fact{min-width:0;min-height:0;padding:0;border:0;background:transparent;break-inside:avoid}.a-fact small{display:block;color:#6b7280;font-size:8px}.a-fact div{margin-top:2px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:9.5px;font-weight:600;line-height:1.35}.a-notes-card{grid-column:1/-1;padding:10px 13px;border:1px solid #d9cfe5;border-left:4px solid #73529b;border-radius:8px;background:#f7f3fa;break-inside:avoid}.a-notes-title{margin-bottom:3px;color:#4e386e;font-size:10px;font-weight:700}.a-note-row{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:7px 0;border-top:1px solid #e5ddec}.a-notes-title+.a-note-row{border-top:0}.a-note-row small{color:#594b68;font-size:8.5px;font-weight:700}.a-note-row div{overflow-wrap:anywhere;white-space:pre-wrap;font-size:9.5px;line-height:1.4}
 @media(max-width:900px){.a-detail-groups{grid-template-columns:1fr}.a-details{grid-template-columns:repeat(2,minmax(0,1fr))}.a-notes-card{grid-column:auto}.a-note-row{grid-template-columns:1fr;gap:2px}}
 @media print{.a-detail-groups{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px}.a-fact-group,.a-notes-card{border-color:#999!important;background:#fff!important}.a-fact-group-title{color:#111!important}.a-fact-group-title:before{background:#555!important}.a-details{grid-template-columns:repeat(3,minmax(0,1fr))!important;border:0!important}.a-fact{min-height:0!important;padding:0!important;border:0!important}.a-fact small,.a-note-row small{color:#333!important}.a-fact div,.a-note-row div{font-size:8.5px}.a-notes-title{color:#111!important}.a-note-row{grid-template-columns:96px minmax(0,1fr);padding:5px 0;border-color:#bbb}}
+.a-signature img{display:block;max-width:100%;max-height:70px;margin:4px auto 2px;object-fit:contain}
+@media screen{.mr-print-page .a-section-title h2{font-size:14px}.mr-print-page .a-items,.mr-print-page .a-items th{font-size:11px}.mr-print-page .a-items td small{font-size:9.5px}.mr-print-page .a-orderbar small,.mr-print-page .a-total small,.mr-print-page .a-note small{font-size:10px}.mr-print-page .a-orderbar b{font-size:13px}.mr-print-page .a-orderbar span{font-size:10.5px}.mr-print-page .a-total b{font-size:13px}.mr-print-page .a-fact-group-title,.mr-print-page .a-notes-title{font-size:11px}.mr-print-page .a-fact small{font-size:10px}.mr-print-page .a-fact div{font-size:11px}.mr-print-page .a-note-row small{font-size:10px}.mr-print-page .a-note-row div{font-size:11px}}
+@media print{.a-signature img{max-height:48px}}
 `
 
 export function MrDocumentView({ order, toolbar, embedded = false }: { order: MrOrder; toolbar?: ReactNode; embedded?: boolean }) {
@@ -152,7 +154,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '交付条款', raw: order.deliveryTerms, value: text(order.deliveryTerms, emptyText) },
     { label: '出货单编号', raw: order.shipmentNo, value: text(order.shipmentNo, emptyText) },
     { label: '填表日期', raw: order.fillDate, value: text(order.fillDate, emptyText) },
-  ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms !== '其他') && !(fact.label === '验收说明' && order.acceptance !== '其他'))
+  ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms !== '其他') && !(fact.label === '验收说明' && order.acceptance !== '其他') && !(fact.label === '业务负责人' && (order.approvals || []).some((item) => item.stepKey === 'sales')))
   const groupedFacts = FACT_GROUPS.map(([group, labels]) => ({
     group,
     items: labels.map((label) => facts.find((fact) => fact.label === label)).filter((fact): fact is (typeof facts)[number] => Boolean(fact)),
@@ -193,7 +195,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine('客户 P/O', order.customerPo)}</div>
           <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('交付地点', order.deliveryLocation)}</div>
           <div><small>交易条款 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine('发票类型 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
-          <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}{hasValue(order.ctrlNo) ? ` · ${order.ctrlNo}` : ''}</span></div>
+          <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}</span></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 个品项`}>
           <ItemTable items={order.items || []} emptyText={emptyText} formal={formal} />
@@ -218,7 +220,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           </div>
         </Section>
         <Section index="03" title="电子签核记录"><Signatures order={order} formal={formal} /></Section>
-        <footer className="a-footer"><span>MR / 电子签核归档文件</span><span>V{versionLabel} · 适用于黑白打印</span></footer>
+        <footer className="a-footer"><span>MR / 电子签核归档文件</span><span>适用于黑白打印</span></footer>
       </article>
     </div>
   )
