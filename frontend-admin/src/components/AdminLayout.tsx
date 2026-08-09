@@ -509,49 +509,80 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           sidebarOpen ? "translate-x-0 lg:w-64" : "-translate-x-full lg:w-0 lg:translate-x-0"
         } fixed inset-y-0 left-0 z-40 w-[82vw] max-w-[320px] transition-transform duration-300 bg-sidebar border-r border-sidebar-border flex-shrink-0 overflow-hidden shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none lg:transition-all`}
       >
+        <style>{`
+          @keyframes admin-test-banner-sweep {
+            0% { transform: translateX(-180%) skewX(-18deg); }
+            55%, 100% { transform: translateX(340%) skewX(-18deg); }
+          }
+          @keyframes admin-test-banner-blink {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .72; transform: scale(1.1); }
+          }
+          .admin-test-banner::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 38%;
+            background: linear-gradient(105deg, transparent, rgba(255,255,255,.45), transparent);
+            animation: admin-test-banner-sweep 3s ease-in-out infinite;
+            pointer-events: none;
+          }
+          .admin-test-banner-icon {
+            animation: admin-test-banner-blink 1.6s ease-in-out infinite;
+          }
+        `}</style>
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center justify-between gap-2 border-b border-sidebar-border/50 px-4">
-            <div className="flex items-center gap-2.5">
-              <div className="admin-brand-mark">
-                <img src={logoSrc} alt="" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
-                  {strings.brand.title}
-                </span>
-                <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarOpen(false)}
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              aria-label="收起侧边栏"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* 测试服提示 */}
+          {/* 顶部：测试服时替换为黄色提示，否则显示品牌 */}
           {IS_TEST_SERVER ? (
-            <div
-              role="status"
-              className="mx-3 mt-3 rounded-xl border-2 border-amber-700 bg-amber-300 px-3 py-2.5 text-amber-950 shadow-sm"
-            >
-              <div className="flex items-center gap-2.5">
-                <TriangleAlert className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <div className="admin-test-banner relative flex h-16 shrink-0 items-center justify-between gap-2 overflow-hidden border-b-2 border-amber-700 bg-amber-300 px-3 text-amber-950">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <TriangleAlert className="admin-test-banner-icon h-6 w-6 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold leading-tight">测试开发服务器</p>
-                  <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-900/90">
+                  <p className="truncate text-sm font-bold leading-tight">测试开发服务器</p>
+                  <p className="truncate text-[11px] font-medium leading-snug text-amber-900/90">
                     仅供测试，请勿录入正式业务数据
                   </p>
                 </div>
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(false)}
+                className="h-8 w-8 shrink-0 text-amber-900 hover:bg-amber-200/70 hover:text-amber-950"
+                aria-label="收起侧边栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
             </div>
-          ) : null}
+          ) : (
+            <div className="flex h-16 items-center justify-between gap-2 border-b border-sidebar-border/50 px-4">
+              <div className="flex items-center gap-2.5">
+                <div className="admin-brand-mark">
+                  <img src={logoSrc} alt="" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
+                    {strings.brand.title}
+                  </span>
+                  <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(false)}
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                aria-label="收起侧边栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
