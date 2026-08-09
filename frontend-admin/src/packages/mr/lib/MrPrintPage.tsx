@@ -11,7 +11,7 @@ const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务负责人'], 
 // 页眉、订货条与汇总已展示的字段，不再重复进订购与交付资料区
 const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '客户 P/O', '发票类型', '开票内容', '付款条件', '未税总计', '最晚交付日期', '交付地点'])
 const FACT_GROUPS = [
-  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价原始附件']],
+  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '开票方式', '开票/收款时间', '付款条件说明']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付条款', '出货单编号']],
   ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
@@ -149,7 +149,6 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '交付条款', raw: order.deliveryTerms, value: text(order.deliveryTerms, emptyText) },
     { label: '出货单编号', raw: order.shipmentNo, value: text(order.shipmentNo, emptyText) },
     { label: '填表日期', raw: order.fillDate, value: text(order.fillDate, emptyText) },
-    { label: '报价原始附件', raw: order.quotationFiles, value: order.quotationFiles?.map((file) => file.name).join('、') || emptyText },
   ].filter((fact) => (!formal || hasValue(fact.raw)) && !HEADER_DUPLICATES.has(fact.label) && !(fact.label === '付款条件说明' && order.paymentTerms !== '其他') && !(fact.label === '验收说明' && order.acceptance !== '其他'))
   const groupedFacts = FACT_GROUPS.map(([group, labels]) => ({
     group,

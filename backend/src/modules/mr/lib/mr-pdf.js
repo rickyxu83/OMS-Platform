@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 7
+const PDF_FORMAT_VERSION = 8
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -175,7 +175,7 @@ function orderField(order, camel, snake = camel) {
 const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期'])
 
 const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价原始附件']],
+  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
   ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
@@ -183,7 +183,6 @@ const DETAIL_GROUPS = [
 
 function detailEntries(order) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
-  const files = Array.isArray(order.quotationFiles || order.quotation_files) ? (order.quotationFiles || order.quotation_files).map((file) => file.name).filter(hasValue).join('、') : ''
   const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
   const entries = [
     ['客户名称', orderField(order, 'customerName', 'customer_name')],
@@ -218,7 +217,6 @@ function detailEntries(order) {
     ['交付地点', orderField(order, 'deliveryLocation', 'delivery_location')],
     ['出货单编号', orderField(order, 'shipmentNo', 'shipment_no')],
     ['交付条款', orderField(order, 'deliveryTerms', 'delivery_terms')],
-    ['报价原始附件', files],
   ]
   return entries.filter(([label, content]) => hasValue(content) && !HEADER_DUPLICATES.has(label))
 }
