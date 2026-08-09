@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 9
+const PDF_FORMAT_VERSION = 10
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -59,10 +59,12 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, 'STARK / NINGBO TECHNOLOGY INC.', left, 20, { size: 7, color: MUTED })
   text(doc, fonts, '敦阳（宁波）科技有限公司', left, 30, { size: 13, bold: true, color: PURPLE })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: PURPLE, width: 282, align: 'center' })
-  text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
-  text(doc, fonts, value(order.ctrlNo || order.ctrl_no), right - 180, 34, { size: 9, width: 180, align: 'right' })
-  line(doc, left, 50, right, 50, PURPLE)
-  return 58
+  text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 20, { size: 9, bold: true, width: 112, align: 'right' })
+  text(doc, fonts, value(order.ctrlNo || order.ctrl_no), right - 180, 32, { size: 9, width: 180, align: 'right' })
+  const fillDate = value(order.fillDate || order.fill_date)
+  if (fillDate) text(doc, fonts, `填表日期 ${fillDate}`, right - 180, 43, { size: 7, color: MUTED, width: 180, align: 'right' })
+  line(doc, left, 54, right, 54, PURPLE)
+  return 62
 }
 
 function summary(doc, fonts, order, y) {
@@ -397,7 +399,9 @@ function drawFooters(doc, fonts) {
   const range = doc.bufferedPageRange()
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(index)
-    text(doc, fonts, `MR 电子签核归档文件 · 第 ${index + 1} 页 / 共 ${range.count} 页`, PAGE.margin, PAGE.height - 18, { size: 6.5, color: MUTED, width: PAGE.width - PAGE.margin * 2, align: 'center' })
+    const y = PAGE.height - 18
+    text(doc, fonts, 'MR 电子签核归档文件', PAGE.margin, y, { size: 6.5, color: MUTED })
+    text(doc, fonts, `${index + 1}/${range.count}`, PAGE.width - PAGE.margin - 120, y, { size: 6.5, color: MUTED, width: 120, align: 'right' })
   }
 }
 
