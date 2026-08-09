@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 4
+const PDF_FORMAT_VERSION = 6
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -56,8 +56,8 @@ function summary(doc, fonts, order, y) {
   const cells = [
     ['客户', order.customerName || order.customer_name],
     ['客户 P/O', order.customerPo || order.customer_po],
-    ['负责业务', order.salesOwnerName || order.sales_owner_name],
-    ['最晚交货日', order.latestDeliveryDate || order.latest_delivery_date],
+    ['业务负责人', order.salesOwnerName || order.sales_owner_name],
+    ['最晚交付日期', order.latestDeliveryDate || order.latest_delivery_date],
   ].filter(([, content]) => hasValue(content))
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
   cells.forEach(([label, content], index) => {
@@ -79,19 +79,19 @@ function itemDescription(item) {
 
 function itemColumns(items) {
   const definitions = [
-    { key: 'index', label: '#', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
+    { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
     { key: 'companyPartNo', label: '公司料号', weight: 7, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')), content: (item) => itemField(item, 'companyPartNo', 'company_part_no') },
     { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
-    { key: 'description', label: '品名 / 描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
-    { key: 'warranty', label: '保固服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '装机方', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
+    { key: 'install', label: '品项装机方', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
     { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
-    { key: 'unitPrice', label: '销售单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '销售小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'vendor', label: '厂商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => item.vendor },
-    { key: 'costExcludingTax', label: '成本未税', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
-    { key: 'costInclTax', label: '成本含税 / 税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
-    { key: 'purchase', label: '采购单号 / 来源', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) || hasValue(itemField(item, 'costSource', 'cost_source')), content: (item) => [itemField(item, 'purchaseOrderNo', 'purchase_order_no'), itemField(item, 'costSource', 'cost_source')].filter(hasValue).join('\n') },
+    { key: 'unitPrice', label: '销售单价\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
+    { key: 'subtotal', label: '销售小计（不含税）\n/ 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => item.vendor },
+    { key: 'costExcludingTax', label: '采购成本\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
+    { key: 'costInclTax', label: '采购成本（含税）\n/ 采购税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
+    { key: 'purchase', label: '采购订单号\n/ 成本来源', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) || hasValue(itemField(item, 'costSource', 'cost_source')), content: (item) => [itemField(item, 'purchaseOrderNo', 'purchase_order_no'), itemField(item, 'costSource', 'cost_source')].filter(hasValue).join('\n') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
@@ -107,11 +107,11 @@ function itemColumns(items) {
 function itemHeader(doc, fonts, columns, y) {
   let x = PAGE.margin
   for (const column of columns) {
-    doc.rect(x, y, column.width, 22).fillAndStroke(PURPLE, PURPLE)
-    text(doc, fonts, column.label, x + 3, y + 7, { size: 7, bold: true, color: '#fff', width: column.width - 6, align: column.align })
+    doc.rect(x, y, column.width, 30).fillAndStroke(PURPLE, PURPLE)
+    text(doc, fonts, column.label, x + 3, y + 5, { size: 6.7, bold: true, color: '#fff', width: column.width - 6, height: 20, align: column.align, lineGap: 0 })
     x += column.width
   }
-  return y + 22
+  return y + 30
 }
 
 function itemRowHeight(doc, fonts, item, index, columns) {
@@ -141,8 +141,8 @@ function totals(doc, fonts, order, items, y) {
   }, 0))
   const margin = totalsValue.marginRate ?? (sales > 0 ? (sales - cost) / sales * 100 : null)
   const cells = [
-    ['未税售价', moneyText(sales)], ['未税成本', moneyText(cost)],
-    ['毛利', moneyText(sales - cost)], ['毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
+    ['销售额（不含税）', moneyText(sales)], ['采购成本（不含税）', moneyText(cost)],
+    ['毛利额', moneyText(sales - cost)], ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
   const width = 150
   let x = PAGE.width - PAGE.margin - width * cells.length
@@ -159,7 +159,7 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '负责业务', 'Ctrl.NO', '未税总计', '最晚交货日'])
+const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '销售额（不含税）', '最晚交付日期'])
 
 function detailEntries(order, includeVoidReason = true) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
@@ -170,35 +170,41 @@ function detailEntries(order, includeVoidReason = true) {
     ['客户联系人', orderField(order, 'contactName', 'contact_name')],
     ['客户 P/O', orderField(order, 'customerPo', 'customer_po')],
     ['Ctrl.NO', orderField(order, 'ctrlNo', 'ctrl_no')],
-    ['负责业务', orderField(order, 'salesOwnerName', 'sales_owner_name')],
-    ['案分类', orderField(order, 'caseCategory', 'case_category')],
+    ['业务负责人', orderField(order, 'salesOwnerName', 'sales_owner_name')],
+    ['项目分类', orderField(order, 'caseCategory', 'case_category')],
     ['计价模式', pricing],
-    ['未税总计', hasValue(orderField(order, 'totalExcludingTax', 'total_excluding_tax')) ? `¥ ${money(orderField(order, 'totalExcludingTax', 'total_excluding_tax'))}` : ''],
-    ['发票别', orderField(order, 'invoiceType', 'invoice_type')],
-    ['发票处理', orderField(order, 'invoiceProcess', 'invoice_process')],
+    ['销售额（不含税）', hasValue(orderField(order, 'totalExcludingTax', 'total_excluding_tax')) ? `¥ ${money(orderField(order, 'totalExcludingTax', 'total_excluding_tax'))}` : ''],
+    ['发票类型', orderField(order, 'invoiceType', 'invoice_type')],
+    ['开票方式', orderField(order, 'invoiceProcess', 'invoice_process')],
     ['开票内容', orderField(order, 'billingContent', 'billing_content')],
     ['发票收件人', orderField(order, 'invoiceRecipient', 'invoice_recipient')],
-    ['开票 / 收款', orderField(order, 'billingTiming', 'billing_timing')],
+    ['开票/收款时间', orderField(order, 'billingTiming', 'billing_timing')],
     ['采购联系人', order.purchaser],
     ['采购联系电话', orderField(order, 'purchaserTel', 'purchaser_tel')],
-    ['货物收件人', order.recipient],
-    ['收件电话', orderField(order, 'recipientTel', 'recipient_tel')],
-    ['收件邮箱', orderField(order, 'recipientMail', 'recipient_mail')],
+    ['收货人', order.recipient],
+    ['收货联系电话', orderField(order, 'recipientTel', 'recipient_tel')],
+    ['收货邮箱', orderField(order, 'recipientMail', 'recipient_mail')],
     ['付款条件', orderField(order, 'paymentTerms', 'payment_terms')],
     ['付款条件说明', orderField(order, 'paymentOther', 'payment_other')],
-    ['分批送机', hasValue(splitDelivery) ? (Number(splitDelivery) ? '可分批' : '不分批') : ''],
-    ['验收', order.acceptance],
+    ['是否允许分批交付', hasValue(splitDelivery) ? (Number(splitDelivery) ? '允许分批交付' : '不允许分批交付') : ''],
+    ['验收条件', order.acceptance],
     ['验收说明', orderField(order, 'acceptanceOther', 'acceptance_other')],
-    ['装机对象', options(order.installOptions || order.install_options)],
-    ['维护对象', options(order.maintenanceOptions || order.maintenance_options)],
-    ['合同号', orderField(order, 'contractNo', 'contract_no')],
+    ['装机承担方', options(order.installOptions || order.install_options)],
+    ['维护承担方', options(order.maintenanceOptions || order.maintenance_options)],
+    ['合同编号', orderField(order, 'contractNo', 'contract_no')],
     ['罚则说明', orderField(order, 'penaltyContent', 'penalty_content')],
     ['填表日期', orderField(order, 'fillDate', 'fill_date')],
-    ['最晚交货日', orderField(order, 'latestDeliveryDate', 'latest_delivery_date')],
-    ['送机地点', orderField(order, 'deliveryLocation', 'delivery_location')],
+    ['最晚交付日期', orderField(order, 'latestDeliveryDate', 'latest_delivery_date')],
+    ['交付地点', orderField(order, 'deliveryLocation', 'delivery_location')],
     ['出货单号', orderField(order, 'shipmentNo', 'shipment_no')],
-    ['交货条款', orderField(order, 'deliveryTerms', 'delivery_terms')],
+    ['交付条款', orderField(order, 'deliveryTerms', 'delivery_terms')],
     ['报价附件', files],
+    ['毛利认列起始月份', orderField(order, 'grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month')],
+    ['起认列毛利', moneyText(orderField(order, 'grossProfitRecognitionAmount', 'gross_profit_recognition_amount'))],
+    ['剩余可认列毛利总和（按季）', moneyText(orderField(order, 'remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'))],
+    ['台湾业务转拨起始月份', orderField(order, 'taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month')],
+    ['转拨台湾业务', moneyText(orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'))],
+    ['剩余需转拨台湾业务总和（按季）', moneyText(orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'))],
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ]
@@ -206,11 +212,11 @@ function detailEntries(order, includeVoidReason = true) {
 }
 
 const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '案分类', '合同号', '罚则说明', '填表日期', '报价附件']],
-  ['交易与开票', ['计价模式', '发票别', '发票处理', '开票内容', '发票收件人', '开票 / 收款', '付款条件', '付款条件说明']],
-  ['交付与验收', ['分批送机', '验收', '验收说明', '装机对象', '维护对象', '送机地点', '交货条款', '出货单号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '货物收件人', '收件电话', '收件邮箱']],
-  ['备注与其他', ['备注', '作废原因']],
+  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价附件']],
+  ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
+  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单号']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
+  ['备注与其他', ['毛利认列起始月份', '起认列毛利', '剩余可认列毛利总和（按季）', '台湾业务转拨起始月份', '转拨台湾业务', '剩余需转拨台湾业务总和（按季）', '备注', '作废原因']],
 ]
 
 function details(doc, fonts, order, y, includeVoidReason = true) {
@@ -291,9 +297,10 @@ function approvals(doc, fonts, rows, y) {
   rows.forEach((approval, index) => {
     const x = PAGE.margin + width * index
     const signature = approval.approverSignatureSnapshot || approval.approver_signature_snapshot
-    const action = approval.action === 'approve' ? '已签核' : approval.action === 'reject' ? '已驳回' : approval.action === 'skipped' ? '已跳过' : ''
+    const action = approval.action === 'approve' ? '已同意' : approval.action === 'reject' ? '已驳回' : approval.action === 'skipped' ? '不适用' : ''
+    const stepLabel = (approval.stepKey || approval.step_key) === 'sales' ? '业务负责人' : approval.stepLabel || approval.step_label
     doc.rect(x, y, width, boxHeight).strokeColor(BORDER).lineWidth(0.5).stroke()
-    text(doc, fonts, approval.stepLabel || approval.step_label, x + 5, y + 5, { size: 7, bold: true, width: width - 10, align: 'center' })
+    text(doc, fonts, stepLabel, x + 5, y + 5, { size: 7, bold: true, width: width - 10, align: 'center' })
     text(doc, fonts, action, x + 5, y + 17, { size: 7, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: width - 10, align: 'center' })
     signatureImage(doc, signature, x + 8, y + 27, width - 16, 25)
     text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 5, y + 54, { size: 7, bold: true, width: width - 10, align: 'center' })
@@ -324,7 +331,7 @@ function drawFooters(doc, fonts) {
   const range = doc.bufferedPageRange()
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(index)
-    text(doc, fonts, `MR 审批存档文件 · 第 ${index + 1} 页 / 共 ${range.count} 页`, PAGE.margin, PAGE.height - 18, { size: 6.5, color: MUTED, width: PAGE.width - PAGE.margin * 2, align: 'center' })
+    text(doc, fonts, `MR 电子签核归档文件 · 第 ${index + 1} 页 / 共 ${range.count} 页`, PAGE.margin, PAGE.height - 18, { size: 6.5, color: MUTED, width: PAGE.width - PAGE.margin * 2, align: 'center' })
   }
 }
 
@@ -346,7 +353,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   })
   if (y + 45 > bottom) {
     doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 审批存档')
+    y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
   y = totals(doc, fonts, order, items, y + 5)
   y = details(doc, fonts, order, y, Boolean(watermarkLabel))
@@ -354,7 +361,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
     if (y + approvalSpace > bottom) {
       doc.addPage()
-      y = header(doc, fonts, order, '客户订购申请单 · 审批存档')
+      y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
     }
     approvals(doc, fonts, approvalRows, y)
   }

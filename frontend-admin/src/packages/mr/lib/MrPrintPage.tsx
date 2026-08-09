@@ -7,15 +7,15 @@ import type { MrApproval, MrItem, MrOrder } from '../types'
 
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
 const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
-const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
+const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务负责人'], ['engineering', '工程会签单位'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
 // 页眉、订货条与汇总已展示的字段，不再重复进订购与交付资料区
-const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '客户 P/O', '发票别', '开票内容', '付款条件', '未税总计', '最晚交货日', '送机地点'])
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '客户 P/O', '发票类型', '开票内容', '付款条件', '销售额（不含税）', '最晚交付日期', '交付地点'])
 const FACT_GROUPS = [
-  ['客户与合同', ['客户联系人', '案分类', '合同号', '罚则说明', '填表日期', '报价附件']],
-  ['交易与开票', ['计价模式', '发票处理', '开票 / 收款', '付款条件说明']],
-  ['交付与验收', ['分批送机', '验收', '验收说明', '交货条款', '出货单号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '货物收件人', '收件电话', '收件邮箱', '发票收件人']],
-  ['备注与其他', ['备注', '驳回原因', '作废原因']],
+  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价附件']],
+  ['交易与开票', ['计价模式', '开票方式', '开票/收款时间', '付款条件说明']],
+  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付条款', '出货单号']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
+  ['备注与其他', ['毛利认列起始月份', '起认列毛利', '剩余可认列毛利总和（按季）', '台湾业务转拨起始月份', '转拨台湾业务', '剩余需转拨台湾业务总和（按季）', '备注', '驳回原因', '作废原因']],
 ] as const
 
 function hasValue(value: unknown) {
@@ -28,7 +28,7 @@ function moneyText(value: unknown, fallback: string) { return hasValue(value) ? 
 function percent(value: unknown, fallback = '-') { const amount = Number(value); return hasValue(value) && Number.isFinite(amount) ? `${amount.toFixed(2)}%` : fallback }
 function decidedAt(value?: string | null) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function approval(approvals: MrApproval[], key: string) { return approvals.find((item) => item.stepKey === key) }
-function approvalState(item?: MrApproval) { return item?.action === 'approve' ? '已签核' : item?.action === 'reject' ? '已驳回' : item?.action === 'skipped' ? '已跳过' : item ? '待签核' : '未开始' }
+function approvalState(item?: MrApproval) { return item?.action === 'approve' ? '已同意' : item?.action === 'reject' ? '已驳回' : item?.action === 'skipped' ? '不适用' : item ? '待签核' : '未开始' }
 function vendorAbbreviation(value: unknown, fallback = '-') {
   return text(value, fallback).replace(/(?:信息|计算机|网络|电子)?(?:科技|技术|贸易|商贸)?(?:股份)?有限公司$/, '') || fallback
 }
@@ -42,19 +42,19 @@ function Fact({ label, value }: { label: string; value: ReactNode }) { return <d
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
 function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: string; formal: boolean }) {
   const definitions = [
-    { key: 'index', label: '项目', weight: 3, align: 'center', optional: false, present: () => true, render: (_item: MrItem, index: number) => index + 1 },
+    { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, render: (_item: MrItem, index: number) => index + 1 },
     { key: 'companyPartNo', label: '公司料号', weight: 7, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.companyPartNo), render: (item: MrItem) => text(item.companyPartNo, emptyText) },
     { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.oemSpec), render: (item: MrItem) => text(item.oemSpec, emptyText) },
-    { key: 'description', label: '品名 / 描述', weight: 18, align: 'left', optional: false, present: (item: MrItem) => hasValue(item.name) || hasValue(item.description), render: (item: MrItem) => <span><strong>{text(item.name || item.description, emptyText)}</strong>{item.name && item.description && item.name !== item.description ? <small>{item.description}</small> : null}</span> },
-    { key: 'warrantyService', label: '保固服务', weight: 8, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.warrantyService), render: (item: MrItem) => text(item.warrantyService, emptyText) },
-    { key: 'installBy', label: '装机方', weight: 6, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.installBy), render: (item: MrItem) => text(item.installBy, emptyText) },
+    { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item: MrItem) => hasValue(item.name) || hasValue(item.description), render: (item: MrItem) => <span><strong>{text(item.name || item.description, emptyText)}</strong>{item.name && item.description && item.name !== item.description ? <small>{item.description}</small> : null}</span> },
+    { key: 'warrantyService', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.warrantyService), render: (item: MrItem) => text(item.warrantyService, emptyText) },
+    { key: 'installBy', label: '品项装机方', weight: 6, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.installBy), render: (item: MrItem) => text(item.installBy, emptyText) },
     { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.qty), render: (item: MrItem) => text(item.qty, emptyText) },
-    { key: 'unitPrice', label: '销售单价', weight: 8, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.unitPrice), render: (item: MrItem) => moneyText(item.unitPrice, emptyText) },
-    { key: 'subtotal', label: '销售小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.subtotal), render: (item: MrItem) => <span><strong>{moneyText(item.subtotal, emptyText)}</strong><small>{percent(item.marginRate, emptyText)}</small></span> },
-    { key: 'vendor', label: '厂商', weight: 8, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.vendor), render: (item: MrItem) => vendorAbbreviation(item.vendor, emptyText) },
-    { key: 'costExcludingTax', label: '成本未税', weight: 8, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
-    { key: 'costInclTax', label: '成本含税 / 税率', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
-    { key: 'purchase', label: '采购单号 / 来源', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo) || hasValue(item.costSource), render: (item: MrItem) => <span><strong>{text(item.purchaseOrderNo, emptyText)}</strong><small>{text(item.costSource, emptyText)}</small></span> },
+    { key: 'unitPrice', label: '销售单价（不含税）', weight: 8, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.unitPrice), render: (item: MrItem) => moneyText(item.unitPrice, emptyText) },
+    { key: 'subtotal', label: '销售小计（不含税）/ 毛利率', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.subtotal), render: (item: MrItem) => <span><strong>{moneyText(item.subtotal, emptyText)}</strong><small>{percent(item.marginRate, emptyText)}</small></span> },
+    { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.vendor), render: (item: MrItem) => vendorAbbreviation(item.vendor, emptyText) },
+    { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 8, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
+    { key: 'costInclTax', label: '采购成本（含税）/ 采购税率', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
+    { key: 'purchase', label: '采购订单号 / 成本来源', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo) || hasValue(item.costSource), render: (item: MrItem) => <span><strong>{text(item.purchaseOrderNo, emptyText)}</strong><small>{text(item.costSource, emptyText)}</small></span> },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)
@@ -110,35 +110,41 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '客户联系人', raw: order.contactName, value: text(order.contactName, emptyText) },
     { label: 'Ctrl.NO', raw: order.ctrlNo, value: text(order.ctrlNo, emptyText) },
     { label: '客户 P/O', raw: order.customerPo, value: text(order.customerPo, emptyText) },
-    { label: '负责业务', raw: order.salesOwnerName, value: text(order.salesOwnerName, emptyText) },
+    { label: '业务负责人', raw: order.salesOwnerName, value: text(order.salesOwnerName, emptyText) },
     { label: '计价模式', raw: order.pricingMode, value: PRICING[Number(order.pricingMode)] || emptyText },
-    { label: '发票别', raw: order.invoiceType, value: text(order.invoiceType, emptyText) },
-    { label: '未税总计', raw: order.totalExcludingTax ?? totals.salesExcludingTax, value: moneyText(order.totalExcludingTax ?? totals.salesExcludingTax, emptyText) },
-    { label: '案分类', raw: order.caseCategory, value: text(order.caseCategory, emptyText) },
-    { label: '合同号', raw: order.contractNo, value: text(order.contractNo, emptyText) },
+    { label: '发票类型', raw: order.invoiceType, value: text(order.invoiceType, emptyText) },
+    { label: '销售额（不含税）', raw: order.totalExcludingTax ?? totals.salesExcludingTax, value: moneyText(order.totalExcludingTax ?? totals.salesExcludingTax, emptyText) },
+    { label: '项目分类', raw: order.caseCategory, value: text(order.caseCategory, emptyText) },
+    { label: '合同编号', raw: order.contractNo, value: text(order.contractNo, emptyText) },
     { label: '罚则说明', raw: order.penaltyContent, value: text(order.penaltyContent, emptyText) },
-    { label: '发票处理', raw: order.invoiceProcess, value: text(order.invoiceProcess, emptyText) },
-    { label: '开票 / 收款', raw: order.billingTiming, value: text(order.billingTiming, emptyText) },
+    { label: '开票方式', raw: order.invoiceProcess, value: text(order.invoiceProcess, emptyText) },
+    { label: '开票/收款时间', raw: order.billingTiming, value: text(order.billingTiming, emptyText) },
     { label: '开票内容', raw: order.billingContent, value: text(order.billingContent, emptyText) },
     { label: '付款条件', raw: order.paymentTerms, value: text(order.paymentTerms, emptyText) },
     { label: '付款条件说明', raw: order.paymentOther, value: text(order.paymentOther, emptyText) },
     { label: '采购联系人', raw: order.purchaser, value: text(order.purchaser, emptyText) },
     { label: '采购联系电话', raw: order.purchaserTel, value: text(order.purchaserTel, emptyText) },
-    { label: '货物收件人', raw: order.recipient, value: text(order.recipient, emptyText) },
-    { label: '收件电话', raw: order.recipientTel, value: text(order.recipientTel, emptyText) },
-    { label: '收件邮箱', raw: order.recipientMail, value: text(order.recipientMail, emptyText) },
+    { label: '收货人', raw: order.recipient, value: text(order.recipient, emptyText) },
+    { label: '收货联系电话', raw: order.recipientTel, value: text(order.recipientTel, emptyText) },
+    { label: '收货邮箱', raw: order.recipientMail, value: text(order.recipientMail, emptyText) },
     { label: '发票收件人', raw: order.invoiceRecipient, value: text(order.invoiceRecipient, emptyText) },
-    { label: '最晚交货日', raw: order.latestDeliveryDate, value: text(order.latestDeliveryDate, emptyText) },
-    { label: '分批送机', raw: order.splitDelivery, value: hasValue(order.splitDelivery) ? order.splitDelivery ? '可分批' : '不分批' : emptyText },
-    { label: '验收', raw: order.acceptance, value: text(order.acceptance, emptyText) },
+    { label: '最晚交付日期', raw: order.latestDeliveryDate, value: text(order.latestDeliveryDate, emptyText) },
+    { label: '是否允许分批交付', raw: order.splitDelivery, value: hasValue(order.splitDelivery) ? order.splitDelivery ? '允许分批交付' : '不允许分批交付' : emptyText },
+    { label: '验收条件', raw: order.acceptance, value: text(order.acceptance, emptyText) },
     { label: '验收说明', raw: order.acceptanceOther, value: text(order.acceptanceOther, emptyText) },
-    { label: '送机地点', raw: order.deliveryLocation, value: text(order.deliveryLocation, emptyText) },
-    { label: '装机对象', raw: order.installOptions, value: install },
-    { label: '维护对象', raw: order.maintenanceOptions, value: maintenance },
-    { label: '交货条款', raw: order.deliveryTerms, value: text(order.deliveryTerms, emptyText) },
+    { label: '交付地点', raw: order.deliveryLocation, value: text(order.deliveryLocation, emptyText) },
+    { label: '装机承担方', raw: order.installOptions, value: install },
+    { label: '维护承担方', raw: order.maintenanceOptions, value: maintenance },
+    { label: '交付条款', raw: order.deliveryTerms, value: text(order.deliveryTerms, emptyText) },
     { label: '出货单号', raw: order.shipmentNo, value: text(order.shipmentNo, emptyText) },
     { label: '填表日期', raw: order.fillDate, value: text(order.fillDate, emptyText) },
     { label: '报价附件', raw: order.quotationFiles, value: order.quotationFiles?.map((file) => file.name).join('、') || emptyText },
+    { label: '毛利认列起始月份', raw: order.grossProfitRecognitionStartMonth, value: text(order.grossProfitRecognitionStartMonth, emptyText) },
+    { label: '起认列毛利', raw: order.grossProfitRecognitionAmount, value: moneyText(order.grossProfitRecognitionAmount, emptyText) },
+    { label: '剩余可认列毛利总和（按季）', raw: order.remainingRecognizableGrossProfit, value: moneyText(order.remainingRecognizableGrossProfit, emptyText) },
+    { label: '台湾业务转拨起始月份', raw: order.taiwanBusinessTransferStartMonth, value: text(order.taiwanBusinessTransferStartMonth, emptyText) },
+    { label: '转拨台湾业务', raw: order.taiwanBusinessTransferAmount, value: moneyText(order.taiwanBusinessTransferAmount, emptyText) },
+    { label: '剩余需转拨台湾业务总和（按季）', raw: order.remainingTaiwanBusinessTransfer, value: moneyText(order.remainingTaiwanBusinessTransfer, emptyText) },
     { label: '备注', raw: order.remark, value: text(order.remark, emptyText) },
     ...(order.rejectReason ? [{ label: '驳回原因', raw: order.rejectReason, value: order.rejectReason }] : []),
     ...(order.voidReason ? [{ label: '作废原因', raw: order.voidReason, value: order.voidReason }] : []),
@@ -148,12 +154,12 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     items: labels.map((label) => facts.find((fact) => fact.label === label)).filter((fact): fact is (typeof facts)[number] => Boolean(fact)),
   })).filter(({ items }) => items.length > 0)
   const totalFacts = [
-    { label: '未税售价', raw: totals.salesExcludingTax, value: moneyText(totals.salesExcludingTax, emptyText) },
+    { label: '销售额（不含税）', raw: totals.salesExcludingTax, value: moneyText(totals.salesExcludingTax, emptyText) },
     { label: '销售税额', raw: totals.vat, value: moneyText(totals.vat, emptyText) },
-    { label: '含税合计', raw: totals.salesIncludingTax, value: moneyText(totals.salesIncludingTax, emptyText) },
-    { label: '采购成本（未税）', raw: totals.costExcludingTax, value: moneyText(totals.costExcludingTax, emptyText) },
+    { label: '销售额（含税）', raw: totals.salesIncludingTax, value: moneyText(totals.salesIncludingTax, emptyText) },
+    { label: '采购成本（不含税）', raw: totals.costExcludingTax, value: moneyText(totals.costExcludingTax, emptyText) },
     { label: '采购成本（含税）', raw: totals.costIncludingTax, value: moneyText(totals.costIncludingTax, emptyText) },
-    { label: '毛利', raw: grossProfit, value: grossProfit === null ? emptyText : moneyText(grossProfit, emptyText) },
+    { label: '毛利额', raw: grossProfit, value: grossProfit === null ? emptyText : moneyText(grossProfit, emptyText) },
     { label: '整单毛利率', raw: totals.marginRate, value: percent(totals.marginRate, emptyText) },
   ].filter((fact) => !formal || hasValue(fact.raw))
   const topLine = (label: string, value: unknown) => formal && !hasValue(value) ? null : <span>{hasValue(value) ? text(value, emptyText) : `${label} · ${emptyText}`}</span>
@@ -166,17 +172,17 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         <Header order={order} emptyText={emptyText} formal={formal} />
         <div className="a-orderbar">
           <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine('客户 P/O', order.customerPo)}</div>
-          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('送机地点', order.deliveryLocation)}</div>
-          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine('发票别 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
+          <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('交付地点', order.deliveryLocation)}</div>
+          <div><small>交易 / TERMS</small><b>{text(order.paymentTerms === '其他' ? order.paymentOther : order.paymentTerms, emptyText)}</b>{topLine('发票类型 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
           <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}{hasValue(order.ctrlNo) ? ` · ${order.ctrlNo}` : ''}</span></div>
         </div>
-        <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 项`}>
+        <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 个品项`}>
           <ItemTable items={order.items || []} emptyText={emptyText} formal={formal} />
           <div className="a-totals" style={{ gridTemplateColumns: `repeat(${Math.max(1, totalFacts.length)}, 1fr)`, '--total-columns': Math.max(1, totalFacts.length) } as CSSProperties}>
             {totalFacts.map((fact) => <div className="a-total" key={fact.label}><small>{fact.label}</small><b>{fact.value}</b></div>)}
           </div>
         </Section>
-        <Section index="02" title={`订购与交付资料 · ${facts.length} 项`}>
+        <Section index="02" title={`订购与交付资料 · ${facts.length} 项资料`}>
           {groupedFacts.map(({ group, items }) => (
             <div className="a-fact-group" key={group}>
               <div className="a-fact-group-title">{group}</div>
@@ -185,7 +191,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
           ))}
         </Section>
         <Section index="03" title="电子签核记录"><Signatures order={order} formal={formal} /></Section>
-        <footer className="a-footer"><span>MR / 审批存档文件</span><span>V{versionLabel} · 黑白打印适配</span></footer>
+        <footer className="a-footer"><span>MR / 电子签核归档文件</span><span>V{versionLabel} · 适用于黑白打印</span></footer>
       </article>
     </div>
   )
@@ -198,12 +204,12 @@ export function MrPrintPage() {
   const previewOrder = (location.state as { previewOrder?: MrOrder } | null)?.previewOrder || null
   const [order, setOrder] = useState<MrOrder | null>(previewOrder)
   const [error, setError] = useState('')
-  useEffect(() => { if (!id || previewOrder) return; let active = true; getMr(id).then((value) => { if (active) setOrder(value) }).catch((err) => { if (active) setError((err as Error).message || '加载失败') }); return () => { active = false } }, [id, previewOrder])
+  useEffect(() => { if (!id || previewOrder) return; let active = true; getMr(id).then((value) => { if (active) setOrder(value) }).catch((err) => { if (active) setError((err as Error).message || 'MR 加载失败') }); return () => { active = false } }, [id, previewOrder])
   useEffect(() => { if (!order) return; const previous = document.title; document.title = order.fileName || 'MR'; return () => { document.title = previous } }, [order])
   if (!order && !error) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin" /></div>
   if (!order) return <div className="p-8 text-destructive">{error}</div>
   const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '')
   const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true })
-  const toolbar = <div className="mr-print-toolbar"><span>MR 审批文件 / 打印预览</span><div className="mr-print-actions"><Button variant="outline" onClick={goBack}><ArrowLeft className="mr-2 size-4" />返回 MR</Button><Button onClick={() => window.print()}><Printer className="mr-2 size-4" />打印 / 存为 PDF</Button></div></div>
+  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 / 打印预览</span><div className="mr-print-actions"><Button variant="outline" onClick={goBack}><ArrowLeft className="mr-2 size-4" />返回 MR</Button><Button onClick={() => window.print()}><Printer className="mr-2 size-4" />打印或另存为 PDF</Button></div></div>
   return <MrDocumentView order={order} toolbar={toolbar} />
 }

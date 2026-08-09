@@ -95,7 +95,7 @@ export function MrListPage() {
       const data = await listSalespeople()
       const assigned = (data.items || []).filter((sales) => ['sales', 'sales_supervisor'].includes(sales.role || '') && String(sales.assistantUserId || '') === String(user.id || ''))
       if (!assigned.length) {
-        setError('当前没有业务将你设置为对应助理')
+        setError('当前未关联任何业务负责人；请由业务负责人先在“我的设置”中指定对应助理。')
         return
       }
       if (assigned.length === 1) {
@@ -106,7 +106,7 @@ export function MrListPage() {
       setSelectedSalesId(String(assigned[0].id))
       setCreateOpen(true)
     } catch (err) {
-      setError((err as Error).message || '负责业务加载失败')
+      setError((err as Error).message || '业务负责人加载失败')
     } finally {
       setCreating(false)
     }
@@ -129,12 +129,12 @@ export function MrListPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
-          <p className="mt-1 text-sm text-muted-foreground">填写、报价单导入、签核和打印存档</p>
+          <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档打印</p>
         </div>
         {hasPermission('mr.create') ? (
           <Button onClick={createDraft} disabled={creating}>
             {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
-            新建 MR
+            新建 MR 申请
           </Button>
         ) : null}
       </header>
@@ -162,9 +162,9 @@ export function MrListPage() {
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
               <TableHead>计价模式</TableHead>
-              <TableHead className="text-right">未税总计</TableHead>
+              <TableHead className="text-right">销售额（不含税）</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>当前步骤</TableHead>
+              <TableHead>当前签核步骤</TableHead>
               <TableHead>更新时间</TableHead>
               <TableHead className="w-[104px] text-right">操作</TableHead>
             </TableRow>
@@ -173,21 +173,21 @@ export function MrListPage() {
               {loading ? (
                 <TableRow><TableCell colSpan={7} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
               ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="h-40 text-center text-muted-foreground">没有符合条件的 MR 单</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
             ) : items.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
               return (
                 <TableRow key={order.id}>
                   <TableCell>
                     <button type="button" className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => navigate(`/mr/${order.id}`)}>
-                      <span className="block font-medium">{order.customerName || '未选客户'}</span>
-                      <span className="block text-xs text-muted-foreground">{order.customerCode || '-'} / {order.ctrlNo || '未填 Ctrl.NO'}</span>
+                      <span className="block font-medium">{order.customerName || '未选择客户'}</span>
+                      <span className="block text-xs text-muted-foreground">{order.customerCode || '-'} / {order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
                   <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge></TableCell>
-                  <TableCell><div>{order.currentStepLabel || '-'}</div>{order.assignmentError ? <div className="mt-1 text-xs text-destructive">配置暂停：{order.assignmentError}</div> : order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{order.currentAssigneeName}</div> : null}</TableCell>
+                  <TableCell><div>{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel || '-'}</div>{order.assignmentError ? <div className="mt-1 text-xs text-destructive">流程暂停：{order.assignmentError}</div> : order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{order.currentAssigneeName}</div> : null}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
@@ -204,18 +204,18 @@ export function MrListPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>选择负责业务</DialogTitle>
-            <DialogDescription>助理只能为已将自己设为对应助理的业务代建 MR。</DialogDescription>
+            <DialogTitle>选择业务负责人</DialogTitle>
+            <DialogDescription>助理仅可为已将其指定为对应助理的业务负责人代为创建 MR 申请。</DialogDescription>
           </DialogHeader>
           <Select value={selectedSalesId} onValueChange={setSelectedSalesId}>
-            <SelectTrigger><SelectValue placeholder="选择业务" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="选择业务负责人" /></SelectTrigger>
             <SelectContent>
               {salesOptions.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}
             </SelectContent>
           </Select>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button disabled={!selectedSalesId || creating} onClick={() => void createForSales(selectedSalesId)}>创建 MR</Button>
+            <Button disabled={!selectedSalesId || creating} onClick={() => void createForSales(selectedSalesId)}>创建 MR 申请</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

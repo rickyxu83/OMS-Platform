@@ -93,19 +93,19 @@ export function MrItemTable({
     if (batchFields.warrantyService) patch.warrantyService = source.warrantyService
     if (batchFields.installBy) patch.installBy = source.installBy
     onChange(items.map((item, index) => selectedRows.has(index) && index !== batchSourceIndex ? { ...item, ...patch } : item))
-    toast.success(`已将 ${fieldCount} 个字段应用到 ${affectedCount} 项品项`)
+    toast.success(`已将 ${fieldCount} 个字段应用至 ${affectedCount} 个品项`)
   }
   if (!items.length) {
     return (
       <div className="space-y-3">
         <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-          尚未填写品项{editable ? '，可从报价文件导入或手动添加。' : '。'}
+          尚未添加品项{editable ? '。可通过报价导入或手动添加。' : '。'}
         </div>
         {editable && mode !== 2 ? (
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
               {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
-              {editMode ? '完成编辑' : '编辑模式'}
+              {editMode ? '完成编辑' : '编辑品项'}
             </Button>
             {editMode ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
           </div>
@@ -122,12 +122,12 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{editMode ? '点击品项编辑完整资料；勾选框只用于批量复制。' : '当前为浏览模式，进入编辑模式后可修改品项。'}</p>
+          <p className="text-xs text-muted-foreground">{editMode ? '请选择品项以编辑完整资料；复选框仅用于批量复制。' : '当前为浏览模式；选择“编辑品项”后即可修改。'}</p>
           <div className="flex items-center gap-2">
-            {editMode ? <span className="text-xs text-muted-foreground">已勾选 {selectedRows.size} 项</span> : null}
+            {editMode ? <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span> : null}
             <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
               {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
-              {editMode ? '完成编辑' : '编辑模式'}
+              {editMode ? '完成编辑' : '编辑品项'}
             </Button>
           </div>
         </div>
@@ -139,11 +139,11 @@ export function MrItemTable({
             <table className="w-full min-w-[760px] table-fixed text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
-                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable && editMode ? '选择 / #' : '#'}</th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">品名/品名描述</th>
+                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable && editMode ? '选择 / 序号' : '序号'}</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
                   <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
-                  <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价</th>
-                  <th scope="col" className="w-36 px-3 py-2 text-right font-medium">售价小计</th>
+                  <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价（不含税）</th>
+                  <th scope="col" className="w-36 px-3 py-2 text-right font-medium">销售小计（不含税）</th>
                   <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
                 </tr>
               </thead>
@@ -183,8 +183,8 @@ export function MrItemTable({
                           aria-label={`${editable ? '编辑' : '查看'}第 ${index + 1} 项`}
                           aria-pressed={rowSelectionEnabled ? selected : undefined}
                         >
-                          <span className="block break-words font-medium">{item.description || item.name || '未填写品名/品名描述'}</span>
-                          <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '原厂规格未填'}</span>
+                          <span className="block break-words font-medium">{item.description || item.name || '未填写品名及描述'}</span>
+                          <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
                         </button>
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
@@ -220,20 +220,20 @@ export function MrItemTable({
 
         {editable && editMode ? (
           <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-44">
-            <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量操作台</h3></div>
-            <p className="mb-3 text-sm text-muted-foreground">已选 {selectedRows.size} 项。选择一项作为模板，再选择要复制的字段。</p>
+            <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量复制</h3></div>
+            <p className="mb-3 text-sm text-muted-foreground">已选择 {selectedRows.size} 个品项。请选择复制来源及需要复制的字段。</p>
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>
             <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
               <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
               <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
             </Select>
             <div className="my-4 space-y-3 border-y py-4">
-              <p className="text-xs text-muted-foreground">只复制重复资料，不覆盖数量、售价和采购成本。</p>
-              {([['vendor', '厂商'], ['purchaseOrderNo', '采购单号'], ['warrantyService', '保固/服务'], ['installBy', '明细装机']] as const).map(([field, label]) => (
+              <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购成本。</p>
+              {([['vendor', '供应商'], ['purchaseOrderNo', '采购订单号'], ['warrantyService', '保固与服务'], ['installBy', '品项装机方']] as const).map(([field, label]) => (
                 <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
               ))}
             </div>
-            <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用到已选品项</Button>
+            <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用至已选品项</Button>
           </aside>
         ) : null}
       </div>
@@ -285,7 +285,7 @@ function ItemEditorPanel({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-3">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-primary">编辑品项 {index + 1}</div>
-          <div className="mt-1 text-sm text-muted-foreground">完整内容在此编辑，关闭后品项表只保留摘要。</div>
+          <div className="mt-1 text-sm text-muted-foreground">请在此编辑完整资料；关闭后，品项表仅显示摘要。</div>
         </div>
         <div className="flex items-center gap-1">
           {onRemove ? (
@@ -300,9 +300,9 @@ function ItemEditorPanel({
       </div>
 
       <div className="space-y-4">
-        <SubPanel title="品项资料">
+        <SubPanel title="品项信息">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="品名/品名描述" editable={editable} readonlyText={textValue(item.description || item.name)} className="md:col-span-2 xl:col-span-4">
+            <Field label="品名及描述" editable={editable} readonlyText={textValue(item.description || item.name)} className="md:col-span-2 xl:col-span-4">
               <Textarea rows={5} value={item.description || item.name || ''} disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
             </Field>
             <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)} className="md:col-span-2">
@@ -311,53 +311,53 @@ function ItemEditorPanel({
             <Field label="公司料号" editable={editable} readonlyText={textValue(item.companyPartNo)}>
               <Input value={item.companyPartNo || ''} onChange={(event) => onChange({ companyPartNo: event.target.value })} />
             </Field>
-            <Field label="保固 / 服务" editable={editable} readonlyText={textValue(item.warrantyService)}>
+            <Field label="保固与服务" editable={editable} readonlyText={textValue(item.warrantyService)}>
               <Input value={item.warrantyService || ''} onChange={(event) => onChange({ warrantyService: event.target.value })} />
             </Field>
           </div>
         </SubPanel>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <SubPanel title="销售">
+          <SubPanel title="销售信息">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="数量" editable={editable} readonlyText={textValue(item.qty)}>
                 <Input type="number" min={1} step={1} value={numberValue(item.qty)} onChange={(event) => onChange({ qty: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field label="销售单价" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
+              <Field label="销售单价（不含税）" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.unitPrice)} disabled={mode !== 3} onChange={(event) => onChange({ unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field label="售价小计" editable={false} readonlyText={`¥ ${money(item.subtotal)}`} />
+              <Field label="销售小计（不含税）" editable={false} readonlyText={`¥ ${money(item.subtotal)}`} />
               <Field label="毛利率" editable={false} readonlyText={<span className={low ? 'text-red-600' : ''}>{percent(item.marginRate)}</span>} />
             </div>
-            {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成优先保留销售报价逐项价；没有逐项价时才按成本分摊。</p> : null}
-            {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成按主项 99%、技术服务 1% 自动拆分。</p> : null}
+            {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成将优先保留销售报价中的逐项单价；仅在逐项单价缺失时按采购成本占比分摊销售额。</p> : null}
+            {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成将销售额按主项 99%、技术服务 1% 自动分配。</p> : null}
           </SubPanel>
 
-          <SubPanel title="采购">
+          <SubPanel title="采购信息">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field required={!serviceRow} label="厂商" editable={editable} readonlyText={textValue(item.vendor)}>
-                <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从维保方目录选择或输入完整名称" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
-                {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="mt-1 block text-xs text-emerald-700">已关联 OMS 维保方目录</span> : null}
+              <Field required={!serviceRow} label="供应商" editable={editable} readonlyText={textValue(item.vendor)}>
+                <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从供应商目录选择或输入完整名称" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
+                {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="mt-1 block text-xs text-emerald-700">已关联 OMS 供应商目录</span> : null}
               </Field>
-              <Field label="采购单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
+              <Field label="采购订单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
                 <Input value={item.purchaseOrderNo || ''} onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />
               </Field>
-              <Field required={!serviceRow} label="成本含税（整行）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
+              <Field required={!serviceRow} label="采购成本（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field required={!serviceRow} label="成本税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
+              <Field required={!serviceRow} label="采购税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
                 <Select value={String(item.taxRate || '')} disabled={serviceRow} onValueChange={(value) => onChange({ taxRate: Number(value) })}>
-                  <SelectTrigger><SelectValue placeholder="税率" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="选择采购税率" /></SelectTrigger>
                   <SelectContent>{allowedTaxRates.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="未税成本" editable={false} readonlyText={item.costExcludingTax == null ? '-' : `¥ ${money(item.costExcludingTax)}`} />
-              {item.costSource ? <Field label="成本来源" editable={false} readonlyText={item.costSource} /> : null}
+              <Field label="采购成本（不含税）" editable={false} readonlyText={item.costExcludingTax == null ? '-' : `¥ ${money(item.costExcludingTax)}`} />
+              {item.costSource ? <Field label="采购成本来源" editable={false} readonlyText={item.costSource} /> : null}
             </div>
           </SubPanel>
         </div>
 
-        <SubPanel title="明细装机">
+        <SubPanel title="品项装机信息">
           {editable ? (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-x-5 gap-y-2">
@@ -368,7 +368,7 @@ function ItemEditorPanel({
                   </label>
                 ))}
               </div>
-              <Input value={installExtra} placeholder="额外装机对象，可用顿号分隔" onChange={(event) => setInstallExtra(event.target.value)} />
+              <Input value={installExtra} placeholder="请输入其他装机承担方，多个名称请以顿号分隔" onChange={(event) => setInstallExtra(event.target.value)} />
             </div>
           ) : <div className="text-sm">{installValues.join('、') || '-'}</div>}
         </SubPanel>

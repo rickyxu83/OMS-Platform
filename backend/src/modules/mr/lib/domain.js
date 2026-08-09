@@ -41,6 +41,11 @@ function date(value) {
     : null
 }
 
+function month(value) {
+  const normalized = text(value, 7)
+  return normalized && /^\d{4}-(0[1-9]|1[0-2])$/.test(normalized) ? normalized : null
+}
+
 function options(value) {
   const source = Array.isArray(value) ? value : []
   return [...new Set(source.map((item) => text(item, 16)).filter((item) => WORK_OPTIONS.includes(item)))]
@@ -176,6 +181,12 @@ function normalizeOrder(body = {}) {
     deliveryLocation: text(body.deliveryLocation ?? body.delivery_location, 500),
     shipmentNo: text(body.shipmentNo ?? body.shipment_no, 255),
     deliveryTerms: text(body.deliveryTerms ?? body.delivery_terms, 255),
+    grossProfitRecognitionStartMonth: month(body.grossProfitRecognitionStartMonth ?? body.gross_profit_recognition_start_month),
+    grossProfitRecognitionAmount: optionalNumber(body.grossProfitRecognitionAmount ?? body.gross_profit_recognition_amount),
+    remainingRecognizableGrossProfit: optionalNumber(body.remainingRecognizableGrossProfit ?? body.remaining_recognizable_gross_profit),
+    taiwanBusinessTransferStartMonth: month(body.taiwanBusinessTransferStartMonth ?? body.taiwan_business_transfer_start_month),
+    taiwanBusinessTransferAmount: optionalNumber(body.taiwanBusinessTransferAmount ?? body.taiwan_business_transfer_amount),
+    remainingTaiwanBusinessTransfer: optionalNumber(body.remainingTaiwanBusinessTransfer ?? body.remaining_taiwan_business_transfer),
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
     remark: text(body.remark, 10000),
   }
@@ -286,7 +297,7 @@ function computeApprovalSteps(order, items) {
   const result = totals(order, items)
   const steps = [
     { seq: 1, key: 'assistant', label: '助理', role: STEP_ROLES.assistant },
-    { seq: 2, key: 'sales', label: '业务', role: STEP_ROLES.sales },
+    { seq: 2, key: 'sales', label: '业务负责人', role: STEP_ROLES.sales },
   ]
   if (order.installOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签单位', role: STEP_ROLES.engineering })
   steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })

@@ -21,7 +21,7 @@ export const MR_SECTIONS: MrSection[] = [
   },
   {
     id: 'trade',
-    title: '交易设置',
+    title: '交易信息',
     icon: CircleDollarSign,
     fields: ['pricingMode', 'invoiceType', 'totalExcludingTax', 'caseCategory', 'contractNo', 'penaltyContent'],
   },
@@ -33,7 +33,7 @@ export const MR_SECTIONS: MrSection[] = [
   },
   {
     id: 'contacts',
-    title: '联系人',
+    title: '联系人信息',
     icon: ClipboardCheck,
     fields: ['purchaser', 'purchaserTel', 'invoiceRecipient', 'recipient', 'recipientTel', 'recipientMail'],
   },
@@ -45,8 +45,8 @@ export const MR_SECTIONS: MrSection[] = [
     fields: ['latestDeliveryDate', 'splitDelivery', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options']
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
-  { id: 'remark', title: '备注', icon: StickyNote, fields: ['remark'] },
-  { id: 'approval', title: '电子签核', icon: ShieldCheck, fields: [] },
+  { id: 'remark', title: '备注与其他', icon: StickyNote, fields: ['remark', 'grossProfitRecognitionStartMonth', 'grossProfitRecognitionAmount', 'remainingRecognizableGrossProfit', 'taiwanBusinessTransferStartMonth', 'taiwanBusinessTransferAmount', 'remainingTaiwanBusinessTransfer'] },
+  { id: 'approval', title: '电子签核流程', icon: ShieldCheck, fields: [] },
 ]
 
 const SECTION_BY_FIELD = new Map<string, string>()

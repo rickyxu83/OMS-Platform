@@ -54,9 +54,9 @@ function suggestPricingMode(result: QuotationImportResult) {
   const deliveryText = result.metadata?.delivery || ''
   const serviceSignal = /安装|装机|实施|部署|送达安装|维保|续保|保固|服务|support|warranty/i.test(`${itemText} ${sourceText} ${deliveryText}`)
   const purchaseCount = (result.sources || []).filter((source) => source.role === 'purchase').length
-  if ((result.items || []).length === 1 && serviceSignal) return { mode: 2, reason: '单一主设备/服务，并识别到安装或服务内容' }
-  if ((result.items || []).length > 1 || purchaseCount > 1) return { mode: 1, reason: `识别到 ${result.items.length} 个品项或多份供应商成本来源` }
-  return { mode: 3, reason: '只有单一品项，未识别到整包集成或安装服务' }
+  if ((result.items || []).length === 1 && serviceSignal) return { mode: 2, reason: '仅识别到一个主要品项，且包含安装或服务内容' }
+  if ((result.items || []).length > 1 || purchaseCount > 1) return { mode: 1, reason: `识别到 ${result.items.length} 个品项或多份供应商成本文件` }
+  return { mode: 3, reason: (result.items || []).length === 1 ? '仅识别到一个品项，且未发现整包集成、安装或服务内容' : '未识别到可供系统集成归类的多个品项或安装服务内容' }
 }
 function suggestInvoiceType(result: QuotationImportResult) {
   const rate = Number(result.metadata?.taxRate)
@@ -104,15 +104,16 @@ function validationDetails(error: unknown): ValidationError[] {
 }
 
 const CHANGE_LABELS: Record<string, string> = {
-  customerId: '客户', customerContactId: '客户联系人', salesOwnerId: '负责业务', customerName: '客户名称', contactName: '联系人',
-  caseCategory: '案分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票别', pricingMode: '计价模式', totalExcludingTax: '未税总计',
-  invoiceProcess: '发票处理', billingContent: '开票内容', invoiceRecipient: '开票对象', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购电话',
-  recipient: '收件人', recipientTel: '收件电话', recipientMail: '收件邮箱', paymentTerms: '付款条件', paymentOther: '付款说明', splitDelivery: '分批送机',
-  acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则',
-  fillDate: '填表日期', latestDeliveryDate: '最晚交货日', deliveryLocation: '交货地点', shipmentNo: '出货单号', deliveryTerms: '交货条款', remark: '备注', approvalSteps: '签核链', totals: '金额汇总',
-  salesExcludingTax: '未税售价', vat: '销售税额', salesIncludingTax: '含税售价', costExcludingTax: '未税成本', costIncludingTax: '含税成本', marginRate: '毛利率',
+  customerId: '客户', customerContactId: '客户联系人', salesOwnerId: '业务负责人', customerName: '客户名称', contactName: '联系人',
+  caseCategory: '项目分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票类型', pricingMode: '计价模式', totalExcludingTax: '销售额（不含税）',
+  invoiceProcess: '开票方式', billingContent: '开票内容', invoiceRecipient: '发票收件人', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购联系电话',
+  recipient: '收货人', recipientTel: '收货联系电话', recipientMail: '收货邮箱', paymentTerms: '付款条件', paymentOther: '付款条件说明', splitDelivery: '是否允许分批交付',
+  acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则说明',
+  fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
+  grossProfitRecognitionStartMonth: '毛利认列起始月份', grossProfitRecognitionAmount: '起认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总和（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始月份', taiwanBusinessTransferAmount: '转拨台湾业务', remainingTaiwanBusinessTransfer: '剩余需转拨台湾业务总和（按季）',
+  salesExcludingTax: '销售额（不含税）', vat: '销售税额', salesIncludingTax: '销售额（含税）', costExcludingTax: '采购成本（不含税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
 }
-const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '描述', warrantyService: '保固服务', installBy: '装机', qty: '数量', unitPrice: '销售单价', subtotal: '销售小计', vendor: '厂商', costInclTax: '成本含税', taxRate: '成本税率', purchaseOrderNo: '采购单号', costSource: '成本来源' }
+const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '品项装机方', qty: '数量', unitPrice: '销售单价（不含税）', subtotal: '销售小计（不含税）', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购订单号', costSource: '采购成本来源' }
 function changeLabel(path: string) {
   const item = path.match(/^items\.(\d+)(?:\.(.+))?$/)
   if (item) return `第 ${Number(item[1]) + 1} 项${item[2] ? ` · ${ITEM_CHANGE_LABELS[item[2]] || item[2]}` : ''}`
@@ -275,17 +276,17 @@ export function MrFormPage() {
     const currentSalesTotal = calculated.totals?.salesExcludingTax ?? calculated.totalExcludingTax
     const warnings: string[] = []
     if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
-      warnings.push('开明细中的逐项销售单价会按系统集成规则重算。')
+      warnings.push('从“开明细”切换至系统集成模式后，逐项销售单价将按目标计价模式重新计算。')
     }
     const secondIsService = Boolean(currentItems[1] && `${currentItems[1].name || ''}${currentItems[1].description || ''}`.includes('服务'))
     if (nextMode === 2 && (currentItems.length > 2 || (currentItems.length === 2 && !secondIsService))) {
-      warnings.push('单项系统集成只保留第一项作为主项，并重建第二项“技术服务”；其余品项会删除。')
+      warnings.push('切换至“单项系统集成”后，系统仅保留第一项作为主项，并重新生成第二项“技术服务”；其余品项将被删除。')
     }
     if (currentMode === 1 && nextMode === 3) {
       const quotedCount = currentItems.filter((item) => item.quotedUnitPrice != null).length
-      warnings.push(quotedCount ? `将恢复 ${quotedCount} 项销售报价原始单价，其余项目保留当前系统分摊价并待人工确认。` : '销售报价没有逐项单价，将保留当前系统分摊价并转为逐项确认。')
+      warnings.push(quotedCount ? `将恢复 ${quotedCount} 个品项的销售报价原始单价；其余品项将保留当前分摊单价，并标记为待人工确认。` : '销售报价中未识别到逐项单价；系统将保留当前分摊单价，并标记为待人工确认。')
     }
-    if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确定切换计价模式吗？`)) return
+    if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确认切换计价模式吗？`)) return
     if (nextMode === 3) {
       patch({ pricingMode: 3, totalExcludingTax: currentSalesTotal, items: quotationDetailItems(nextItems) })
       return
@@ -416,8 +417,8 @@ export function MrFormPage() {
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
     setImportAnimationKey((current) => current + 1)
-    toast.success(`已导入 ${items.length} 个品项和 ${result.sources.length} 份原文件，历史附件已保留；建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
-    if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未在客户库里找到，已先填入名称，请确认或手动关联`)
+    toast.success(`已导入 ${items.length} 个品项并留存 ${result.sources.length} 份原始文件；历史附件已保留。建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
+    if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未匹配到客户档案，系统已暂存客户名称；请确认或手动关联。`)
   }
   const save = async () => {
     if (!id || !calculated) return null
@@ -429,7 +430,7 @@ export function MrFormPage() {
       setForm(saved)
       setDirty(false)
       if (saved.status === 'in_review') setEditing(false)
-      toast.success(saved.status === 'in_review' ? '修改已保存，请确认单据后会签' : '草稿已保存')
+      toast.success(saved.status === 'in_review' ? '修改已保存；请确认申请内容后继续签核。' : '草稿已保存')
       return saved
     } catch (err) {
       setError((err as Error).message || '保存失败')
@@ -450,7 +451,7 @@ export function MrFormPage() {
       const submitted = await submitMr(id)
       setForm(submitted)
       setDirty(false)
-      toast.success('已提交签核')
+      toast.success('已提交签核流程')
     } catch (err) {
       setError((err as Error).message || '提交失败')
       setErrors(validationDetails(err))
@@ -475,7 +476,7 @@ export function MrFormPage() {
       setEditing(false)
       setDecision(null)
       setReason('')
-      const messages = { approve: next.status === 'approved' ? 'MR 已全部签核通过' : '签核完成，已流转到下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回到草稿', void: 'MR 已作废' }
+      const messages = { approve: next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回并恢复为草稿', void: 'MR 已作废' }
       toast.success(messages[decision])
     } catch (err) {
       const details = validationDetails(err)
@@ -497,9 +498,9 @@ export function MrFormPage() {
       const next = await reassignMrSales(id, reassignSalesId)
       setForm(next)
       setReassignOpen(false)
-      toast.success('负责业务已变更；未完成流程将由新对应助理重新提交')
+      toast.success('业务负责人已变更；未完成的签核流程将由新负责人的对应助理重新提交。')
     } catch (err) {
-      setError((err as Error).message || '负责业务变更失败')
+      setError((err as Error).message || '业务负责人变更失败')
     } finally {
       setBusy(false)
     }
@@ -562,7 +563,7 @@ export function MrFormPage() {
       busy={busy}
       layout={layout}
       animationKey={importAnimationKey}
-      onApprove={() => { if (dirty) toast.error('请先保存修改，再进行会签'); else { setDecision('approve'); setReason('') } }}
+      onApprove={() => { if (dirty) toast.error('请先保存修改，再进行签核'); else { setDecision('approve'); setReason('') } }}
       onReject={() => { setDecision('reject'); setReason('') }}
       onShowErrors={() => errorListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
     />
@@ -570,9 +571,9 @@ export function MrFormPage() {
 
   const approvalDocumentToolbar = (
     <div className="mr-print-toolbar">
-      <div><strong className="block text-sm text-foreground">审批文档预览</strong><span>空白选填项会标记“未填写”，正式归档时取消标记。</span></div>
+      <div><strong className="block text-sm text-foreground">签核文件预览</strong><span>未填写的选填字段会标记为“未填写”；正式归档文件将隐藏空白字段。</span></div>
       <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated } })}>
-        <Printer className="mr-2 size-4" />全屏查看 / 打印
+        <Printer className="mr-2 size-4" />全屏查看或打印
       </Button>
     </div>
   )
@@ -589,9 +590,9 @@ export function MrFormPage() {
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
             <div className="min-w-0">
-              <div className="truncate text-lg font-semibold">MR 交易工作台</div>
+              <div className="truncate text-lg font-semibold">MR 申请工作台</div>
               <div className="truncate text-xs text-muted-foreground">
-                {calculated.customerName || `草稿 #${calculated.id}`} · {calculated.ctrlNo || '未填 Ctrl.NO'}
+                {calculated.customerName || `草稿 #${calculated.id}`} · {calculated.ctrlNo || 'Ctrl.NO 未填写'}
                 {dirty ? ' · 未保存' : ''}
               </div>
             </div>
@@ -610,18 +611,18 @@ export function MrFormPage() {
             ) : null}
             {status === 'voided' ? (
               <Button variant="outline" disabled={!approvedDocumentReady} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
-                <FileDown className="mr-2 size-4" />原审批 PDF
+                <FileDown className="mr-2 size-4" />原正式 PDF
               </Button>
             ) : null}
             {status === 'voided' ? (
               <Button variant="outline" disabled={!voidedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'voided').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
-                <FileDown className="mr-2 size-4" />{voidedDocumentReady ? '作废 PDF' : calculated.archiveStatus === 'failed' ? '作废归档重试中' : '作废归档处理中'}
+                <FileDown className="mr-2 size-4" />{voidedDocumentReady ? '作废归档 PDF' : calculated.archiveStatus === 'failed' ? '作废归档重试中' : '作废归档处理中'}
               </Button>
             ) : null}
-            {assistantReview && !editing ? <Button onClick={() => setEditing(true)}><Pencil className="mr-2 size-4" />修改单据</Button> : null}
-            {assistantReview && editing ? <Button variant="outline" onClick={() => { if (!dirty || window.confirm('放弃未保存修改？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-2 size-4" />退出修改</Button> : null}
+            {assistantReview && !editing ? <Button onClick={() => setEditing(true)}><Pencil className="mr-2 size-4" />编辑申请单</Button> : null}
+            {assistantReview && editing ? <Button variant="outline" onClick={() => { if (!dirty || window.confirm('确认放弃未保存的修改吗？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-2 size-4" />退出编辑</Button> : null}
             {calculated.permissions?.canWithdraw ? <Button variant="outline" onClick={() => { setDecision('withdraw'); setReason('') }}><Undo2 className="mr-2 size-4" />撤回</Button> : null}
-            {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更负责业务</Button> : null}
+            {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更业务负责人</Button> : null}
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
             {editable ? (
               <Button variant="outline" disabled={busy || !dirty} onClick={() => void save()}>
@@ -651,20 +652,20 @@ export function MrFormPage() {
           <div className="min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} toolbar={approvalDocumentToolbar} embedded /></div>
           <aside className="min-w-0 space-y-4">
             <div className="rounded-xl border bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核</h2><StatusBadge status={status} /></div>
-              <div className="mt-3 text-sm"><span className="text-muted-foreground">节点：</span>{calculated.currentStepLabel || '-'}</div>
-              <div className="mt-1 text-sm"><span className="text-muted-foreground">处理人：</span>{calculated.currentAssigneeName || '等待人员配置'}</div>
+              <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核信息</h2><StatusBadge status={status} /></div>
+              <div className="mt-3 text-sm"><span className="text-muted-foreground">签核步骤：</span>{calculated.currentStepKey === 'sales' ? '业务负责人' : calculated.currentStepLabel || '-'}</div>
+              <div className="mt-1 text-sm"><span className="text-muted-foreground">当前处理人：</span>{calculated.currentAssigneeName || '待配置处理人'}</div>
               {calculated.assignmentError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{calculated.assignmentError}</div> : null}
-              {assistantReview ? <p className="mt-3 text-xs text-muted-foreground">需要补充字段时点击顶部“修改单据”；保存后会回到本页，再执行会签。</p> : null}
+              {assistantReview ? <p className="mt-3 text-xs text-muted-foreground">如需补充字段，请选择顶部“编辑申请单”；保存后将返回本页，再继续签核。</p> : null}
             </div>
             {calculated.currentVersion && calculated.currentStepKey !== 'assistant' ? (
               <details className="rounded-xl border bg-card p-4 shadow-sm" open>
-                <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项）</summary>
+                <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项变更）</summary>
                 <div className="mt-3 max-h-64 space-y-2 overflow-auto">
                   {calculated.currentVersion.changes.length ? calculated.currentVersion.changes.map((change, index) => (
                     <div key={`${change.field}-${index}`} className="rounded-md bg-muted/40 p-2 text-xs">
                       <div className="font-medium">{changeLabel(change.field)}</div>
-                      <div className="mt-1 grid gap-1 text-muted-foreground"><span>原：{changeValue(change.before)}</span><span>新：{changeValue(change.after)}</span></div>
+                      <div className="mt-1 grid gap-1 text-muted-foreground"><span>变更前：{changeValue(change.before)}</span><span>变更后：{changeValue(change.after)}</span></div>
                     </div>
                   )) : <div className="text-sm text-muted-foreground">助理未修改提交内容。</div>}
                 </div>
@@ -672,7 +673,7 @@ export function MrFormPage() {
             ) : null}
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
             {calculated.quotationFiles?.length ? (
-              <Button className="w-full" variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />查看源报价附件（{calculated.quotationFiles.length}）</Button>
+              <Button className="w-full" variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />查看报价原始附件（{calculated.quotationFiles.length}）</Button>
             ) : null}
             <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
           </aside>
@@ -684,12 +685,12 @@ export function MrFormPage() {
           {status === 'rejected' ? (
             <div className="rounded-xl border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
               <div className="font-medium">签核已驳回</div>
-              <div className="mt-1">{calculated.rejectReason || '请修改后重新提交，签核会从助理开始。'}</div>
+              <div className="mt-1">{calculated.rejectReason || '请修改申请内容后重新提交；签核流程将从助理步骤重新开始。'}</div>
             </div>
           ) : null}
           {status === 'voided' && calculated.voidReason ? (
             <div className="rounded-xl border-l-4 border-zinc-400 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-              <div className="font-medium">此单已作废</div>
+              <div className="font-medium">该申请单已作废</div>
               <div className="mt-1">{calculated.voidReason}</div>
             </div>
           ) : null}
@@ -716,7 +717,7 @@ export function MrFormPage() {
             </div>
           ) : null}
 
-          <SectionCard id="trade" title="交易设置" icon={MR_SECTIONS[1].icon} description="可先导入报价自动建议计价模式；手工填写时再在此设置。" flash={flashSection === 'trade'}>
+          <SectionCard id="trade" title="交易信息" icon={MR_SECTIONS[1].icon} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
                 <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
@@ -729,16 +730,16 @@ export function MrFormPage() {
                   </div>
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="发票别" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
+                  <Field label="发票类型" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
                     <Select
                       value={calculated.invoiceType || ''}
                       onValueChange={changeInvoiceType}
                     >
-                      <SelectTrigger><SelectValue placeholder="选择发票别" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择发票类型" /></SelectTrigger>
                       <SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
-                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
+                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="销售额（不含税）" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
                     <Input
                       type="number"
                       min={0}
@@ -748,9 +749,9 @@ export function MrFormPage() {
                       onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
                     />
                   </Field>
-                  <Field label="案分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
+                  <Field label="项目分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
                     <Select value={calculated.caseCategory || ''} onValueChange={(value) => patch({ caseCategory: value })}>
-                      <SelectTrigger><SelectValue placeholder="选择案分类" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择项目分类" /></SelectTrigger>
                       <SelectContent>{constants.CASE_CATEGORIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
@@ -758,23 +759,23 @@ export function MrFormPage() {
                 {editable ? (
                   <p className="text-xs text-muted-foreground">
                     {!calculated.pricingMode
-                      ? '可先导入报价，系统会根据品项、服务内容和供应商来源建议计价模式；手工填写时再手动选择。'
+                      ? '请先选择计价模式；报价导入与手动录入均按当前模式处理。'
                       : Number(calculated.pricingMode) === 1
-                        ? '先填未税总计，再录入各项成本；销售单价按未税 COST 占比自动分摊。'
+                        ? '请先填写销售额（不含税），再录入各品项采购成本。若销售报价未提供逐项单价，系统将按不含税采购成本占比分摊销售额。'
                         : Number(calculated.pricingMode) === 2
-                          ? '先填未税总计；品项固定为主项与技术服务，销售额按 99% / 1% 自动分配。'
-                          : '逐项填写未税销售单价，未税总计由品项售价自动汇总。'}
+                          ? '请先填写销售额（不含税）；系统将销售额按主项 99%、技术服务 1% 自动分配。'
+                          : '请逐项填写销售单价（不含税）；销售额（不含税）由各品项销售小计自动汇总。'}
                   </p>
                 ) : null}
               </SubPanel>
 
-              <SubPanel title="合约">
+              <SubPanel title="合同与罚则">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="合同号（不填表示无合约）" editable={editable} readonlyText={textValue(calculated.contractNo)} className="sm:col-span-2">
-                    <Input value={calculated.contractNo || ''} placeholder="有合同再填写" onChange={(e) => patch({ contractNo: e.target.value })} />
+                  <Field label="合同编号（选填）" editable={editable} readonlyText={textValue(calculated.contractNo)} className="sm:col-span-2">
+                    <Input value={calculated.contractNo || ''} placeholder="无合同时可留空" onChange={(e) => patch({ contractNo: e.target.value })} />
                   </Field>
                   <Field label="罚则说明（选填）" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
-                    <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="有罚则时填写，没有可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
+                    <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="无罚则时可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
                   </Field>
                 </div>
               </SubPanel>
@@ -785,7 +786,7 @@ export function MrFormPage() {
             id="items"
             title="品项明细"
             icon={MR_SECTIONS[5].icon}
-            description={`共 ${calculated.items?.length || 0} 项`}
+            description={`共 ${calculated.items?.length || 0} 个品项`}
           actions={editable || calculated.quotationFiles?.length ? (
               <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                 <FileSpreadsheet className="mr-2 size-4" />报价导入
@@ -794,8 +795,8 @@ export function MrFormPage() {
           >
             {editable && !itemSetupReady ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <span>{calculated.quotationFiles?.length ? '报价已导入，请补充或确认发票别后编辑品项。' : '可先导入报价自动建议计价模式；手工添加品项前请先设置计价模式和发票别。'}</span>
-                <Button type="button" size="sm" variant="outline" onClick={() => goToSection('trade')}>设置计价与发票</Button>
+                <span>{!calculated.pricingMode ? '请先选择计价模式；报价导入与手动录入均按当前模式处理。' : '请先选择发票类型，再编辑品项。'}</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => goToSection('trade')}>完善交易信息</Button>
               </div>
             ) : null}
             <MrItemTable
@@ -809,11 +810,11 @@ export function MrFormPage() {
             />
             <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
               {[
-                { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
-                { label: '增值税', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
-                { label: '含税合计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
-                { label: 'COST 总计', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
-                { label: '毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
+                { label: '销售额（不含税）', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '销售税额', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
+                { label: '销售额（含税）', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '采购成本（不含税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '整单毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
               ].map(({ label, value, warn }) => (
                 <div key={`${label}-${importAnimationKey}`} className={`bg-card p-4 ${importAnimationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
                   <div className="text-xs text-muted-foreground">{label}</div>
@@ -826,7 +827,7 @@ export function MrFormPage() {
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索已有客户；无匹配时提交自动建档" onChange={(e) => handleCustomerInput(e.target.value)} />
+                <Input list="mr-customer-options" readOnly={!editable} value={calculated.customerName || ''} placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案" onChange={(e) => handleCustomerInput(e.target.value)} />
               </Field>
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
@@ -839,15 +840,15 @@ export function MrFormPage() {
 
           <SectionCard id="billing" title="开票与付款" icon={MR_SECTIONS[2].icon} flash={flashSection === 'billing'}>
             <div className="grid gap-4 lg:grid-cols-2">
-              <SubPanel title="开票">
+              <SubPanel title="开票信息">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="发票处理" editable={editable} readonlyText={textValue(calculated.invoiceProcess)}>
+                  <Field label="开票方式" editable={editable} readonlyText={textValue(calculated.invoiceProcess)}>
                     <Select value={calculated.invoiceProcess || ''} onValueChange={(value) => patch({ invoiceProcess: value })}>
-                      <SelectTrigger><SelectValue placeholder="选择处理方式" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择开票方式" /></SelectTrigger>
                       <SelectContent>{constants.INVOICE_PROCESSES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
-                  <Field label="开票 / 收款" editable={editable} readonlyText={textValue(calculated.billingTiming)}>
+                  <Field label="开票/收款时间" editable={editable} readonlyText={textValue(calculated.billingTiming)}>
                     <Input value={calculated.billingTiming || ''} onChange={(e) => patch({ billingTiming: e.target.value })} />
                   </Field>
                   <Field label="开票内容" editable={editable} readonlyText={textValue(calculated.billingContent)} className="sm:col-span-2">
@@ -855,7 +856,7 @@ export function MrFormPage() {
                   </Field>
                 </div>
               </SubPanel>
-              <SubPanel title="付款">
+              <SubPanel title="付款信息">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="付款条件" editable={editable} readonlyText={textValue(calculated.paymentTerms)}>
                     <Select value={calculated.paymentTerms || ''} onValueChange={(value) => patch({ paymentTerms: value })}>
@@ -873,26 +874,26 @@ export function MrFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="联系人" icon={MR_SECTIONS[3].icon} description="姓名和电话可直接手工填写；输入客户档案中的姓名或电话时会自动带出另一项。" flash={flashSection === 'contacts'}>
+          <SectionCard id="contacts" title="联系人信息" icon={MR_SECTIONS[3].icon} description="可手动填写姓名与联系电话；如所填姓名或电话已存在于客户档案中，系统将自动补全对应信息。" flash={flashSection === 'contacts'}>
             <div className="overflow-x-auto border">
               <div className="min-w-[620px]">
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
-                  <div>联系人角色</div><div>姓名</div><div>电话</div>
+                  <div>联系人角色</div><div>姓名</div><div>联系电话</div>
                 </div>
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
                   <Input list="mr-contact-options" value={calculated.purchaser || ''} readOnly={!editable} placeholder="采购联系人姓名" onChange={(e) => patchContactField('purchaser', e.target.value)} />
-                  <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
+                  <Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">货物收件人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-                  <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收件人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
-                  <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
+                  <div className="font-medium">收货人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
+                  <Input list="mr-contact-options" value={calculated.recipient || ''} readOnly={!editable} placeholder="收货人姓名" onChange={(e) => patchContactField('recipient', e.target.value)} />
+                  <Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-[180px_minmax(240px,1fr)_180px] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
                   <Input list="mr-contact-options" value={calculated.invoiceRecipient || ''} readOnly={!editable} placeholder="发票收件人姓名" onChange={(e) => patchContactField('invoiceRecipient', e.target.value)} />
-                  <div className="text-xs text-muted-foreground">不需要电话</div>
+                  <div className="text-xs text-muted-foreground">无需填写联系电话</div>
                 </div>
               </div>
             </div>
@@ -900,13 +901,13 @@ export function MrFormPage() {
 
           <SectionCard id="delivery" title="交付、验收与服务" icon={MR_SECTIONS[4].icon} flash={flashSection === 'delivery'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="最晚交货日" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
+              <Field label="最晚交付日期" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
                 <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
               </Field>
-              <Field label="分批送机" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '可', '否')}>
-                <BinaryChoice value={calculated.splitDelivery} yes="可" no="否" onChange={(value) => patch({ splitDelivery: value })} />
+              <Field label="是否允许分批交付" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '允许', '不允许')}>
+                <BinaryChoice value={calculated.splitDelivery} yes="允许" no="不允许" onChange={(value) => patch({ splitDelivery: value })} />
               </Field>
-              <Field label="验收" editable={editable} readonlyText={textValue(calculated.acceptance)}>
+              <Field label="验收条件" editable={editable} readonlyText={textValue(calculated.acceptance)}>
                 <Select value={calculated.acceptance || ''} onValueChange={(value) => patch({ acceptance: value })}>
                   <SelectTrigger><SelectValue placeholder="选择验收条件" /></SelectTrigger>
                   <SelectContent>{constants.ACCEPTANCE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
@@ -917,29 +918,29 @@ export function MrFormPage() {
                   <Input value={calculated.acceptanceOther || ''} onChange={(e) => patch({ acceptanceOther: e.target.value })} />
                 </Field>
               ) : null}
-              <Field label="送机地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
+              <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
                 <div className="space-y-2">
                   {deliveryLocations.length ? (
                     <Select value={deliveryChoice} onValueChange={(value) => { if (value !== 'custom') patch({ deliveryLocation: value }) }}>
-                      <SelectTrigger><SelectValue placeholder="选择客户地址" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择客户交付地址" /></SelectTrigger>
                       <SelectContent>
                         {deliveryLocations.map((location) => <SelectItem key={location} value={location}>{location}</SelectItem>)}
-                        <SelectItem value="custom">手工填写其他地点</SelectItem>
+                        <SelectItem value="custom">手动填写其他交付地点</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : null}
-                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="可从客户地址选择，也可手工填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="可选择客户地址，也可手动填写其他交付地点" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
                 </div>
               </Field>
               <WorkOptions
-                label="装机对象"
+                label="装机承担方"
                 value={calculated.installOptions || []}
                 choices={constants.WORK_OPTIONS}
                 editable={editable}
                 onChange={(value) => patch({ installOptions: value, items: syncInstallOptions(calculated.items || [], calculated.installOptions || [], value) })}
               />
               <WorkOptions
-                label="维护对象"
+                label="维护承担方"
                 value={calculated.maintenanceOptions || []}
                 choices={constants.WORK_OPTIONS}
                 editable={editable}
@@ -947,20 +948,48 @@ export function MrFormPage() {
               />
             </div>
             {editable && (calculated.installOptions || []).includes('敦阳') ? (
-              <p className="mt-3 text-xs text-muted-foreground">装机含敦阳，签核链会加入工程会签单位。</p>
+              <p className="mt-3 text-xs text-muted-foreground">装机承担方包含“敦阳”时，签核流程将增加工程会签步骤。</p>
             ) : null}
           </SectionCard>
 
-          <SectionCard id="remark" title="备注" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
-            {editable
-              ? <Textarea rows={4} value={calculated.remark || ''} onChange={(e) => patch({ remark: e.target.value })} />
-              : <div className="min-h-6 text-sm break-words whitespace-pre-wrap">{textValue(calculated.remark)}</div>}
+          <SectionCard id="remark" title="备注与其他" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SubPanel title="毛利认列">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="起始月份" editable={editable} readonlyText={textValue(calculated.grossProfitRecognitionStartMonth)}>
+                    <Input type="month" value={calculated.grossProfitRecognitionStartMonth || ''} onChange={(e) => patch({ grossProfitRecognitionStartMonth: e.target.value })} />
+                  </Field>
+                  <Field label="起认列毛利" editable={editable} readonlyText={money(calculated.grossProfitRecognitionAmount)}>
+                    <Input type="number" step="0.01" value={calculated.grossProfitRecognitionAmount ?? ''} onChange={(e) => patch({ grossProfitRecognitionAmount: asNumber(e.target.value) })} />
+                  </Field>
+                  <Field label="剩余可认列毛利总和（按季）" editable={editable} readonlyText={money(calculated.remainingRecognizableGrossProfit)} className="sm:col-span-2">
+                    <Input type="number" step="0.01" value={calculated.remainingRecognizableGrossProfit ?? ''} onChange={(e) => patch({ remainingRecognizableGrossProfit: asNumber(e.target.value) })} />
+                  </Field>
+                </div>
+              </SubPanel>
+              <SubPanel title="台湾业务转拨">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="起始月份" editable={editable} readonlyText={textValue(calculated.taiwanBusinessTransferStartMonth)}>
+                    <Input type="month" value={calculated.taiwanBusinessTransferStartMonth || ''} onChange={(e) => patch({ taiwanBusinessTransferStartMonth: e.target.value })} />
+                  </Field>
+                  <Field label="转拨台湾业务" editable={editable} readonlyText={money(calculated.taiwanBusinessTransferAmount)}>
+                    <Input type="number" step="0.01" value={calculated.taiwanBusinessTransferAmount ?? ''} onChange={(e) => patch({ taiwanBusinessTransferAmount: asNumber(e.target.value) })} />
+                  </Field>
+                  <Field label="剩余需转拨台湾业务总和（按季）" editable={editable} readonlyText={money(calculated.remainingTaiwanBusinessTransfer)} className="sm:col-span-2">
+                    <Input type="number" step="0.01" value={calculated.remainingTaiwanBusinessTransfer ?? ''} onChange={(e) => patch({ remainingTaiwanBusinessTransfer: asNumber(e.target.value) })} />
+                  </Field>
+                </div>
+              </SubPanel>
+            </div>
+            <Field label="备注" editable={editable} readonlyText={textValue(calculated.remark)} className="mt-4">
+              <Textarea rows={4} value={calculated.remark || ''} onChange={(e) => patch({ remark: e.target.value })} />
+            </Field>
           </SectionCard>
 
-          <SectionCard className="min-[1450px]:hidden" id="approval" title="电子签流转" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
+          <SectionCard className="min-[1450px]:hidden" id="approval" title="电子签核流程" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
             <ApprovalPanel order={calculated} layout="horizontal" />
             {status === 'approved' ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核完成，可打印存档。</div>
+              <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可打印并归档。</div>
             ) : null}
           </SectionCard>
         </div>
@@ -974,9 +1003,9 @@ export function MrFormPage() {
               </div>
               {highValue || lowMargin ? (
                 <div className="mt-3 border-l-4 border-red-500 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-                  {highValue ? '未税售价超过 75 万元；' : ''}
-                  {lowMargin ? `毛利率 ${percent(marginRate)} 低于 15%；` : ''}
-                  需要副总经理签核。
+                  {highValue ? '销售额（不含税）超过 75 万元；' : ''}
+                  {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
+                  签核流程将增加副总经理签核步骤。
                 </div>
               ) : null}
             </div>
@@ -1007,9 +1036,9 @@ export function MrFormPage() {
 
       <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>变更负责业务</DialogTitle><DialogDescription>未完成的签核会关闭，并退回新业务；新业务需在“我的设置”确认对应助理，再由助理重新核对提交。历史电子签不变。</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>变更业务负责人</DialogTitle><DialogDescription>变更后，所有未完成的签核任务将关闭，申请单将转交新的业务负责人。新负责人须在“我的设置”中确认对应助理，再由助理重新核对并提交签核；历史签核记录不受影响。</DialogDescription></DialogHeader>
           <Select value={reassignSalesId} onValueChange={setReassignSalesId}>
-            <SelectTrigger><SelectValue placeholder="选择新的负责业务" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="选择新的业务负责人" /></SelectTrigger>
             <SelectContent>{salespeople.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}</SelectContent>
           </Select>
           <DialogFooter><Button variant="outline" onClick={() => setReassignOpen(false)}>取消</Button><Button disabled={busy || !reassignSalesId || Number(reassignSalesId) === Number(calculated.salesOwnerId)} onClick={() => void confirmReassign()}>确认变更</Button></DialogFooter>
@@ -1019,22 +1048,22 @@ export function MrFormPage() {
       <Dialog open={Boolean(decision)} onOpenChange={(open) => { if (!open) setDecision(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR' : decision === 'withdraw' ? '撤回 MR' : '作废 MR'}</DialogTitle>
+            <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR 申请' : decision === 'withdraw' ? '撤回 MR 申请' : '作废 MR 申请'}</DialogTitle>
             <DialogDescription>
               {decision === 'approve'
-                ? `你将以本人账号确认 ${assistantReview ? `并冻结 V${Number(calculated.versionNo || 0) + 1}` : `V${calculated.versionNo || calculated.currentVersion?.versionNo || 1}`}，未税金额 ¥ ${money(calculated.totals?.salesExcludingTax)}。签核后不可修改本版本。`
+                ? `本次操作将以当前登录账号完成电子签核。签核版本为 V${assistantReview ? Number(calculated.versionNo || 0) + 1 : calculated.versionNo || calculated.currentVersion?.versionNo || 1}，销售额（不含税）为 ¥ ${money(calculated.totals?.salesExcludingTax)}；签核完成后，该版本不可修改。`
                 : decision === 'reject'
-                  ? '请选择退回对象并填写原因；修改后会从助理重新开始签核。'
+                  ? '请选择退回对象并填写原因；完成修改后，签核流程将从助理步骤重新开始。'
                   : decision === 'withdraw'
-                    ? '撤回后当前待办关闭，MR 回到草稿；重新提交会从助理开始。'
-                    : '已通过的 MR 不会删除，原审批 PDF 永久保留，并生成作废版本。'}
+                    ? '撤回后，当前待办将关闭，MR 申请将恢复为草稿；重新提交时，签核流程将从助理步骤开始。'
+                    : '作废后，原正式 PDF 将永久留存，并另行生成作废归档 PDF。'}
             </DialogDescription>
           </DialogHeader>
           {decision === 'reject' ? (
-            <Field label="退回给">
+            <Field label="退回对象">
               <Select value={rejectTarget} onValueChange={(value) => setRejectTarget(value as 'sales' | 'assistant')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="sales">负责业务</SelectItem><SelectItem value="assistant">对应助理</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="sales">业务负责人</SelectItem><SelectItem value="assistant">对应助理</SelectItem></SelectContent>
               </Select>
             </Field>
           ) : null}
@@ -1046,7 +1075,7 @@ export function MrFormPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>取消</Button>
             <Button variant={decision === 'void' ? 'destructive' : 'default'} disabled={busy || (decision !== 'approve' && !reason.trim())} onClick={() => void confirmDecision()}>
-              {decision === 'approve' ? '确认同意并签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : '确认作废'}
+              {decision === 'approve' ? '确认签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : '确认作废'}
             </Button>
           </DialogFooter>
         </DialogContent>
