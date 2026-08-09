@@ -21,7 +21,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 35
+const PDF_FORMAT_VERSION = 36
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -91,19 +91,26 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
 }
 
 function summary(doc, fonts, order, y) {
+  const left = PAGE.margin
+  const right = PAGE.width - PAGE.margin
+  const width = (right - left) / 4
+  const statusLabels = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
+  const statusLabel = statusLabels[order.status || order.status_code] || value(order.status)
+  const invoiceLine = [value(order.invoiceType || order.invoice_type), value(order.billingContent || order.billing_content)].filter(hasValue).join(' · ')
   const cells = [
-    ['客户', order.customerName || order.customer_name],
-    ['客户 P/O', order.customerPo || order.customer_po],
-    ['最晚交付日期', order.latestDeliveryDate || order.latest_delivery_date],
-  ].filter(([, content]) => hasValue(content))
-  const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
-  cells.forEach(([label, content], index) => {
-    const x = PAGE.margin + width * index
-    text(doc, fonts, label, x + 6, y + 5, { size: 6.5, color: MUTED })
-    text(doc, fonts, content, x + 6, y + 16, { size: 8.5, bold: true, width: width - 12, height: 16 })
+    { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-'), sub: value(order.customerPo || order.customer_po) ? '客户 P/O：' + value(order.customerPo || order.customer_po) : '' },
+    { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-'), sub: value(orderField(order, 'deliveryLocation', 'delivery_location')) ? '交付地点：' + value(orderField(order, 'deliveryLocation', 'delivery_location')) : '' },
+    { label: '交易条款 / TERMS', main: value(order.paymentTerms || order.payment_terms, '-'), sub: invoiceLine ? '发票类型 / 开票内容：' + invoiceLine : '' },
+    { label: '状态 / STATUS', main: statusLabel, sub: 'V' + Number(order.versionNo || order.version_no || 0) },
+  ]
+  cells.forEach((cell, index) => {
+    const x = left + width * index
+    text(doc, fonts, cell.label, x + 6, y + 3, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
+    text(doc, fonts, cell.main, x + 6, y + 13, { size: 8.5, bold: true, width: width - 12, height: 12, ellipsis: true })
+    if (cell.sub) text(doc, fonts, cell.sub, x + 6, y + 25, { size: 6, color: MUTED, width: width - 12, ellipsis: true })
   })
-  if (cells.length) line(doc, PAGE.margin, y + 36, PAGE.width - PAGE.margin, y + 36, '#e5e7eb')
-  return cells.length ? y + 44 : y
+  line(doc, left, y + 36, right, y + 36, '#e5e7eb')
+  return y + 44
 }
 
 function itemField(item, camel, snake = camel) {
@@ -202,7 +209,7 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
+const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期', '发票类型', '开票内容', '付款条件', '交付地点'])
 
 const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
@@ -370,12 +377,10 @@ function signatureImage(doc, dataUrl, x, y, width, height) {
   try {
     const buffer = Buffer.from(match[1], 'base64')
     const img = doc.openImage(buffer)
-    // 强制等比缩放到目标高度（宽度超限时降高），保证各签名高度一致；
-    // 不用 fit：fit 按 min 比例缩放且只缩不放，图源小的签名会变成小方块
-    const ratio = img.width / img.height
-    const scaledW = ratio * height
-    const finalH = scaledW > width ? (height * width) / scaledW : height
-    const finalW = ratio * finalH
+    // 按签名自身比例等比 fit 进目标区域（可放大）；不统一高度，保持各签名原始形状
+    const scale = Math.min(width / img.width, height / img.height)
+    const finalW = img.width * scale
+    const finalH = img.height * scale
     doc.image(buffer, x + (width - finalW) / 2, y + (height - finalH) / 2, { width: finalW, height: finalH })
     return true
   } catch {
@@ -404,8 +409,8 @@ function approvals(doc, fonts, rows, y) {
     if (index > 0) {
       doc.moveTo(x, y + 6).lineTo(x, y + boxHeight - 6).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
     }
-    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 65, y + 2, 48, 32)
-    const textWidth = width - (hasSignature ? 80 : 16)
+    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 62, y + 2, 50, 40)
+    const textWidth = width - (hasSignature ? 78 : 16)
     text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
     text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
