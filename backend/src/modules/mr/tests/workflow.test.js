@@ -125,6 +125,7 @@ async function main() {
     taiwanBusinessTransferAmount: 20,
     remainingTaiwanBusinessTransfer: 50,
     remark: '按季度确认',
+    quotationFiles: [{ name: '内部报价原始附件.xlsx' }],
     items: [{
       name: '服务器',
       description: '测试设备',
@@ -162,6 +163,7 @@ async function main() {
   assert(compactText.includes('2026年8月起认列毛利') && compactText.includes('首期¥30.00') && compactText.includes('剩余¥70.00（按季）'), '毛利认列字段应组合成一行摘要')
   assert(compactText.includes('2026年9月起转拨台湾业务') && compactText.includes('首期¥20.00') && compactText.includes('剩余¥50.00（按季）'), '台湾业务转拨字段应组合成一行摘要')
   assert(!compactText.includes('毛利认列起始月份') && !compactText.includes('剩余需转拨台湾业务总和'), '组合字段不应再逐项展示')
+  assert(!compactText.includes('报价原始附件') && !compactText.includes('内部报价原始附件.xlsx'), 'PDF 不应显示报价原始附件')
   assert(!extracted.text.includes('客户 P/O'), '正式 PDF 不应显示空白客户 P/O')
   assert(!extracted.text.includes('采购单号 / 来源'), '正式 PDF 不应显示全为空的采购列')
   assert(!extracted.text.includes('未设置手写签名'), '正式 PDF 不应显示空白签名占位')
