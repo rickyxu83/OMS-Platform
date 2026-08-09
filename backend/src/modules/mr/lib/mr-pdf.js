@@ -1,11 +1,27 @@
+const fs = require('fs')
+const path = require('path')
 const PDFDocument = require('pdfkit')
 const { registerFonts } = require('../../service-orders/service-record-pdf')
+
+// 页眉 logo（与前端预览同一张 dunyang-mark.png），只读取一次
+const LOGO_PATH = path.join(__dirname, '..', 'assets', 'dunyang-mark.png')
+let logoBufferCache
+function getLogoBuffer() {
+  if (logoBufferCache === undefined) {
+    try {
+      logoBufferCache = fs.readFileSync(LOGO_PATH)
+    } catch {
+      logoBufferCache = null
+    }
+  }
+  return logoBufferCache
+}
 
 const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 33
+const PDF_FORMAT_VERSION = 34
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -62,8 +78,11 @@ function line(doc, x1, y1, x2, y2, color = BORDER) {
 function header(doc, fonts, order, title = '客户订购申请单（境内单）') {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
-  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', left, 20, { size: 7, color: MUTED })
-  text(doc, fonts, '敦阳（宁波）科技有限公司', left, 30, { size: 13, bold: true, color: PURPLE })
+  const logoImage = getLogoBuffer()
+  if (logoImage) doc.image(logoImage, left, 18, { width: 26, height: 26 })
+  const textLeft = left + (logoImage ? 34 : 0)
+  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 20, { size: 7, color: MUTED })
+  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 30, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 20, { size: 16, bold: true, color: '#111827', width: 282, align: 'center' })
   text(doc, fonts, 'Customer Order Request (Domestic)', 280, 39, { size: 6, color: '#8a93a3', width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
