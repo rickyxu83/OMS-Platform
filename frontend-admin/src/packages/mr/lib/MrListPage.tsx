@@ -161,6 +161,7 @@ export function MrListPage() {
           <TableHeader>
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
+              <TableHead>负责的销售</TableHead>
               <TableHead>计价模式</TableHead>
               <TableHead className="text-right">未税总计</TableHead>
               <TableHead>状态</TableHead>
@@ -171,9 +172,9 @@ export function MrListPage() {
           </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
               ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
             ) : items.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
               return (
@@ -184,6 +185,7 @@ export function MrListPage() {
                       <span className="block text-xs text-muted-foreground">{order.customerCode || '-'} / {order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
+                  <TableCell>{order.salesOwnerName || '-'}</TableCell>
                   <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge></TableCell>
