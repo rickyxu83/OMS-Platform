@@ -31,6 +31,7 @@ interface Customer {
   contactPhone?: string;
   phone?: string;
   address?: string;
+  salesDeliveryAddress?: string;
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -134,6 +135,7 @@ interface CustomerForm {
   code: string;
   salesperson: string;
   address: string;
+  salesDeliveryAddress: string;
   level: string;
   latitude: number | null;
   longitude: number | null;
@@ -149,6 +151,7 @@ const EMPTY_FORM: CustomerForm = {
   code: "",
   salesperson: "",
   address: "",
+  salesDeliveryAddress: "",
   level: "normal",
   latitude: null,
   longitude: null,
@@ -215,13 +218,16 @@ const I18N = {
       salesperson: "对应销售",
       contact: "联系人",
       phone: "联系电话",
-      address: "客户地址",
+      address: "工程服务地址",
+      salesDeliveryAddress: "销售交付地址",
       namePlaceholder: "请输入企业全称",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "请选择对应销售",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
       addressPlaceholder: "详细至街道门牌号",
+      salesDeliveryAddressPlaceholder: "填写销售订购时使用的收货地址",
+      salesDeliveryAddressHelp: "仅用于 MR 交付地点，不会覆盖工程工单使用的客户地址。",
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
       level: "客户等级",
@@ -391,13 +397,16 @@ const I18N = {
       salesperson: "對應銷售",
       contact: "聯絡人",
       phone: "聯絡電話",
-      address: "客戶地址",
+      address: "工程服務地址",
+      salesDeliveryAddress: "銷售交付地址",
       namePlaceholder: "請輸入企業全稱",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "請選擇對應銷售",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
       addressPlaceholder: "詳細至街道路牌號",
+      salesDeliveryAddressPlaceholder: "填寫銷售訂購時使用的收貨地址",
+      salesDeliveryAddressHelp: "僅用於 MR 交付地點，不會覆蓋工程工單使用的客戶地址。",
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
       level: "客戶等級",
@@ -553,6 +562,7 @@ const CADENCE_LABELS: Record<string, string> = {
   weekly: "每周",
 };
 
+const SALES_DELIVERY_ADDRESS_ROLES = new Set(["admin", "assistant", "operations_director", "sales_supervisor", "sales"]);
 const CUSTOMER_DELETE_ROLES = new Set([
   "admin",
   "assistant",
@@ -686,6 +696,7 @@ export function Customers() {
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const userRole = String(user?.role || "");
   const canManageCustomer = hasPermission("customer.create", "customer.edit");
+  const canManageSalesDeliveryAddress = SALES_DELIVERY_ADDRESS_ROLES.has(userRole);
   const canDeleteCustomer = hasPermission("customer.delete");
   const canForceDeleteCustomer = canDeleteCustomer;
   const canMergeCustomer = hasPermission("customer.merge");
@@ -995,6 +1006,7 @@ export function Customers() {
       code: c.code || "",
       salesperson: c.salesperson || "",
       address: c.address || "",
+      salesDeliveryAddress: c.salesDeliveryAddress || "",
       level: c.level || "normal",
       latitude,
       longitude,
@@ -1389,6 +1401,7 @@ export function Customers() {
         contactName: primaryContact.name.trim() || undefined,
         contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        ...(canManageSalesDeliveryAddress ? { salesDeliveryAddress: form.salesDeliveryAddress.trim() || null } : {}),
         latitude: form.latitude,
         longitude: form.longitude,
         mapProvider: form.mapProvider || null,
@@ -1883,6 +1896,12 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.address}</div>
                           <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
+                          {canManageSalesDeliveryAddress && detailTarget.salesDeliveryAddress ? (
+                            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                              <div className="text-xs font-medium text-amber-900">{t.dialog.salesDeliveryAddress}</div>
+                              <div className="mt-1 text-sm text-slate-700">{detailTarget.salesDeliveryAddress}</div>
+                            </div>
+                          ) : null}
                           <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
                             {detailTarget.latitude != null && detailTarget.longitude != null ? (
                               <div className="flex items-start gap-2">
@@ -2133,6 +2152,19 @@ export function Customers() {
                   </Button>
                 </div>
               </div>
+
+              {canManageSalesDeliveryAddress ? (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                  <Label htmlFor="cust-sales-delivery-address">{t.dialog.salesDeliveryAddress}</Label>
+                  <Input
+                    id="cust-sales-delivery-address"
+                    value={form.salesDeliveryAddress}
+                    onChange={(e) => setForm({ ...form, salesDeliveryAddress: e.target.value })}
+                    placeholder={t.dialog.salesDeliveryAddressPlaceholder}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.dialog.salesDeliveryAddressHelp}</p>
+                </div>
+              ) : null}
 
               {showCandidates && candidates.length > 0 ? (
                 <div className="border rounded-lg bg-white shadow-sm max-h-[200px] overflow-y-auto">

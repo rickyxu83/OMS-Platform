@@ -310,7 +310,21 @@ export function MrFormPage() {
 
   const chooseCustomer = async (value: string) => {
     const customer = customers.find((item) => String(item.id) === value)
-    patch({ customerId: value, customerContactId: null, customerName: customer?.name || '', customerCode: customer?.code || '', contactName: '', purchaser: '', purchaserTel: '', recipient: '', recipientTel: '', recipientMail: '', invoiceRecipient: '' })
+    const deliveryLocation = customer?.salesDeliveryAddress || customer?.mapAddress || customer?.address || customer?.mapPoiName || ''
+    patch({
+      customerId: value,
+      customerContactId: null,
+      customerName: customer?.name || '',
+      customerCode: customer?.code || '',
+      contactName: '',
+      purchaser: '',
+      purchaserTel: '',
+      recipient: '',
+      recipientTel: '',
+      recipientMail: '',
+      invoiceRecipient: '',
+      deliveryLocation,
+    })
     try {
       const detail = await loadCustomer(value)
       const defaultContact = contactByName(detail.contacts, detail.contactName) || detail.contacts?.[0]
@@ -390,6 +404,8 @@ export function MrFormPage() {
     const nextCustomerName = calculated?.customerId
       ? calculated.customerName
       : matchedCustomer?.name || metadataCustomer || calculated?.customerName || ''
+    const deliveryCustomer = matchedCustomer || customers.find((customer) => String(customer.id) === String(nextCustomerId))
+    const defaultDeliveryLocation = deliveryCustomer?.salesDeliveryAddress || deliveryCustomer?.mapAddress || deliveryCustomer?.address || deliveryCustomer?.mapPoiName || ''
     const nextContactId = calculated?.customerContactId || importedContact?.id || null
     const nextContactName = calculated?.customerContactId
       ? calculated.contactName
@@ -406,7 +422,7 @@ export function MrFormPage() {
       customerName: nextCustomerName,
       customerPo: calculated?.customerPo || result.metadata?.customerPo || '',
       latestDeliveryDate: calculated?.latestDeliveryDate || result.metadata?.latestDeliveryDate || '',
-      deliveryLocation: calculated?.deliveryLocation || result.metadata?.deliveryLocation || '',
+      deliveryLocation: calculated?.deliveryLocation || result.metadata?.deliveryLocation || defaultDeliveryLocation,
       customerContactId: nextContactId,
       contactName: nextContactName,
       purchaser: calculated?.purchaser || importedContactName,
@@ -549,8 +565,15 @@ export function MrFormPage() {
   const contactCandidates = (contacts || []).filter((item) => item.id && item.name)
   const contactChoices = Array.from(new Map([...contactCandidates.slice(0, 3), ...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId))].map((item) => [String(item.id), item])).values())
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
-  const deliveryLocations = Array.from(new Set([selectedCustomer?.mapAddress, selectedCustomer?.address, selectedCustomer?.mapPoiName].filter((value): value is string => Boolean(value))))
-  const deliveryChoice = deliveryLocations.includes(calculated.deliveryLocation || '') ? calculated.deliveryLocation || '' : 'custom'
+  const deliveryLocations = [
+    { value: selectedCustomer?.salesDeliveryAddress, label: '销售交付地址' },
+    { value: selectedCustomer?.mapAddress, label: '工程服务地址' },
+    { value: selectedCustomer?.address, label: '工程服务地址' },
+    { value: selectedCustomer?.mapPoiName, label: '工程服务地点' },
+  ]
+    .filter((item): item is { value: string; label: string } => Boolean(item.value))
+    .filter((item, index, options) => options.findIndex((option) => option.value === item.value) === index)
+  const deliveryChoice = deliveryLocations.some((option) => option.value === calculated.deliveryLocation) ? calculated.deliveryLocation || '' : 'custom'
   const itemSetupReady = Boolean(calculated.pricingMode && calculated.invoiceType)
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
@@ -922,14 +945,14 @@ export function MrFormPage() {
                 <div className="space-y-2">
                   {deliveryLocations.length ? (
                     <Select value={deliveryChoice} onValueChange={(value) => { if (value !== 'custom') patch({ deliveryLocation: value }) }}>
-                      <SelectTrigger><SelectValue placeholder="选择客户交付地址" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择销售或工程服务地址" /></SelectTrigger>
                       <SelectContent>
-                        {deliveryLocations.map((location) => <SelectItem key={location} value={location}>{location}</SelectItem>)}
-                        <SelectItem value="custom">手动填写其他交付地点</SelectItem>
+                        {deliveryLocations.map((location) => <SelectItem key={location.value} value={location.value}>{location.label} · {location.value}</SelectItem>)}
+                        <SelectItem value="custom">手动填写其他销售交付地点</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : null}
-                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="可选择客户地址，也可手动填写其他交付地点" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="优先选择销售交付地址，也可调用工程服务地址或手动填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
                 </div>
               </Field>
               <WorkOptions

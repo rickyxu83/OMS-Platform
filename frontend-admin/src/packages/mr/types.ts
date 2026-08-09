@@ -159,6 +159,7 @@ export interface CustomerOption {
   contactName?: string
   contactPhone?: string
   address?: string
+  salesDeliveryAddress?: string
   mapAddress?: string
   mapPoiName?: string
   contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>
