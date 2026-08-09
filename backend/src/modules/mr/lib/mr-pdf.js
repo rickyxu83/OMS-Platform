@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 6
+const PDF_FORMAT_VERSION = 7
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -22,6 +22,19 @@ function money(input, fallback = '') {
   return Number.isFinite(number) ? number.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : fallback
 }
 function moneyText(input) { return hasValue(input) ? `¥ ${money(input)}` : '' }
+
+function monthText(input) {
+  const match = value(input).match(/^(\d{4})-(\d{2})$/)
+  return match ? `${match[1]} 年 ${Number(match[2])} 月` : value(input)
+}
+
+function scheduleText(month, initialAmount, remainingAmount, action) {
+  return [
+    hasValue(month) ? `${monthText(month)}起${action}` : '',
+    hasValue(initialAmount) ? `首期 ${moneyText(initialAmount)}` : '',
+    hasValue(remainingAmount) ? `剩余 ${moneyText(remainingAmount)}（按季）` : '',
+  ].filter(hasValue).join(' · ')
+}
 
 function time(input) {
   return input ? String(input).replace('T', ' ').slice(0, 16) : ''
@@ -86,8 +99,8 @@ function itemColumns(items) {
     { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
     { key: 'install', label: '品项装机方', weight: 6, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
     { key: 'qty', label: '数量', weight: 4, align: 'right', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
-    { key: 'unitPrice', label: '销售单价\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '销售小计（不含税）\n/ 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
+    { key: 'subtotal', label: '未税小计\n/ 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => item.vendor },
     { key: 'costExcludingTax', label: '采购成本\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '采购成本（含税）\n/ 采购税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
@@ -141,7 +154,7 @@ function totals(doc, fonts, order, items, y) {
   }, 0))
   const margin = totalsValue.marginRate ?? (sales > 0 ? (sales - cost) / sales * 100 : null)
   const cells = [
-    ['销售额（不含税）', moneyText(sales)], ['采购成本（不含税）', moneyText(cost)],
+    ['未税总计', moneyText(sales)], ['采购成本（不含税）', moneyText(cost)],
     ['毛利额', moneyText(sales - cost)], ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
   const width = 150
@@ -159,9 +172,16 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '销售额（不含税）', '最晚交付日期'])
+const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期'])
 
-function detailEntries(order, includeVoidReason = true) {
+const DETAIL_GROUPS = [
+  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价原始附件']],
+  ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
+  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
+]
+
+function detailEntries(order) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
   const files = Array.isArray(order.quotationFiles || order.quotation_files) ? (order.quotationFiles || order.quotation_files).map((file) => file.name).filter(hasValue).join('、') : ''
   const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
@@ -173,7 +193,7 @@ function detailEntries(order, includeVoidReason = true) {
     ['业务负责人', orderField(order, 'salesOwnerName', 'sales_owner_name')],
     ['项目分类', orderField(order, 'caseCategory', 'case_category')],
     ['计价模式', pricing],
-    ['销售额（不含税）', hasValue(orderField(order, 'totalExcludingTax', 'total_excluding_tax')) ? `¥ ${money(orderField(order, 'totalExcludingTax', 'total_excluding_tax'))}` : ''],
+    ['未税总计', hasValue(orderField(order, 'totalExcludingTax', 'total_excluding_tax')) ? `¥ ${money(orderField(order, 'totalExcludingTax', 'total_excluding_tax'))}` : ''],
     ['发票类型', orderField(order, 'invoiceType', 'invoice_type')],
     ['开票方式', orderField(order, 'invoiceProcess', 'invoice_process')],
     ['开票内容', orderField(order, 'billingContent', 'billing_content')],
@@ -196,79 +216,123 @@ function detailEntries(order, includeVoidReason = true) {
     ['填表日期', orderField(order, 'fillDate', 'fill_date')],
     ['最晚交付日期', orderField(order, 'latestDeliveryDate', 'latest_delivery_date')],
     ['交付地点', orderField(order, 'deliveryLocation', 'delivery_location')],
-    ['出货单号', orderField(order, 'shipmentNo', 'shipment_no')],
+    ['出货单编号', orderField(order, 'shipmentNo', 'shipment_no')],
     ['交付条款', orderField(order, 'deliveryTerms', 'delivery_terms')],
-    ['报价附件', files],
-    ['毛利认列起始月份', orderField(order, 'grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month')],
-    ['起认列毛利', moneyText(orderField(order, 'grossProfitRecognitionAmount', 'gross_profit_recognition_amount'))],
-    ['剩余可认列毛利总和（按季）', moneyText(orderField(order, 'remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'))],
-    ['台湾业务转拨起始月份', orderField(order, 'taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month')],
-    ['转拨台湾业务', moneyText(orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'))],
-    ['剩余需转拨台湾业务总和（按季）', moneyText(orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'))],
-    ['备注', order.remark],
-    ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
+    ['报价原始附件', files],
   ]
   return entries.filter(([label, content]) => hasValue(content) && !HEADER_DUPLICATES.has(label))
 }
 
-const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期', '报价附件']],
-  ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
-  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '收货人', '收货联系电话', '收货邮箱', '发票收件人']],
-  ['备注与其他', ['毛利认列起始月份', '起认列毛利', '剩余可认列毛利总和（按季）', '台湾业务转拨起始月份', '转拨台湾业务', '剩余需转拨台湾业务总和（按季）', '备注', '作废原因']],
-]
+function noteEntries(order, includeVoidReason) {
+  return [
+    ['毛利认列', scheduleText(
+      orderField(order, 'grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month'),
+      orderField(order, 'grossProfitRecognitionAmount', 'gross_profit_recognition_amount'),
+      orderField(order, 'remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'),
+      '认列毛利',
+    )],
+    ['台湾业务转拨', scheduleText(
+      orderField(order, 'taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month'),
+      orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'),
+      orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'),
+      '转拨台湾业务',
+    )],
+    ['备注', order.remark],
+    ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
+  ].filter(([, content]) => hasValue(content))
+}
+
+function detailCardHeight(doc, fonts, entries, columns, colWidth) {
+  let height = 22
+  for (let start = 0; start < entries.length; start += columns) {
+    const row = entries.slice(start, start + columns)
+    doc.font(fonts.regular).fontSize(6.8)
+    height += Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+  }
+  return height + 3
+}
+
+function drawDetailCard(doc, fonts, group, entries, x, y, width) {
+  const columns = 3
+  const colWidth = (width - 18) / columns
+  const height = detailCardHeight(doc, fonts, entries, columns, colWidth)
+  doc.roundedRect(x, y, width, height, 5).fillAndStroke('#f8fafc', '#d8e0e8')
+  doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
+  text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: PURPLE, width: width - 30 })
+  let rowY = y + 22
+  for (let start = 0; start < entries.length; start += columns) {
+    const row = entries.slice(start, start + columns)
+    doc.font(fonts.regular).fontSize(6.8)
+    const rowHeight = Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    row.forEach(([label, content], index) => {
+      const cellX = x + 9 + index * colWidth
+      text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: colWidth - 16 })
+      text(doc, fonts, content, cellX, rowY + 11, { size: 6.9, bold: true, width: colWidth - 16, height: rowHeight - 13, lineGap: 1, ellipsis: true })
+    })
+    rowY += rowHeight
+  }
+  return height
+}
+
+function noteCardHeight(doc, fonts, entries, width) {
+  const contentWidth = width - 142
+  doc.font(fonts.regular).fontSize(7)
+  return 22 + entries.reduce((sum, [, content]) => sum + Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
+}
+
+function drawNoteCard(doc, fonts, entries, x, y, width) {
+  const height = noteCardHeight(doc, fonts, entries, width)
+  doc.roundedRect(x, y, width, height, 5).fillAndStroke('#f7f3fa', '#d9cfe5')
+  doc.rect(x, y + 7, 3, height - 14).fill(PURPLE)
+  text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
+  let rowY = y + 22
+  entries.forEach(([label, content], index) => {
+    doc.font(fonts.regular).fontSize(7)
+    const rowHeight = Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
+    if (index) line(doc, x + 12, rowY, x + width - 12, rowY, '#e5ddec')
+    text(doc, fonts, label, x + 12, rowY + 6, { size: 6.6, bold: true, color: PURPLE, width: 104 })
+    text(doc, fonts, content, x + 122, rowY + 6, { size: 7, width: width - 142, height: rowHeight - 8, lineGap: 1, ellipsis: true })
+    rowY += rowHeight
+  })
+  return height
+}
 
 function details(doc, fonts, order, y, includeVoidReason = true) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
-  const columns = 4
-  const colWidth = width / columns
   const bottom = PAGE.height - 32
-  const entries = detailEntries(order, includeVoidReason)
-  const drawTitle = () => {
-    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: PURPLE })
-    y += 15
-  }
-  drawTitle()
+  const entries = detailEntries(order)
+  const notes = noteEntries(order, includeVoidReason)
   const groupOf = new Map()
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
-  for (const [group, groupEntries] of grouped) {
-    if (y + 42 > bottom) {
-      doc.addPage()
-      y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
-      drawTitle()
-    }
-    doc.rect(left, y + 1.5, 3, 8).fill(PURPLE)
-    text(doc, fonts, group, left + 7, y, { size: 8, bold: true, color: PURPLE })
-    y += 13
-    for (let start = 0; start < groupEntries.length; start += columns) {
-      const row = groupEntries.slice(start, start + columns)
-      doc.font(fonts.regular).fontSize(7)
-      const rawHeight = Math.max(27, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 12, lineGap: 1 }) + 15))
-      if (y + rawHeight > bottom) {
-        doc.addPage()
-        y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
-        drawTitle()
-        doc.rect(left, y + 1.5, 3, 8).fill(PURPLE)
-        text(doc, fonts, group, left + 7, y, { size: 8, bold: true, color: PURPLE })
-        y += 13
-      }
-      const rowHeight = Math.min(rawHeight, Math.max(27, bottom - y))
-      row.forEach(([label, content], index) => {
-        const x = left + index * colWidth
-        const rowY = y
-        doc.rect(x, rowY, colWidth, rowHeight).strokeColor(BORDER).lineWidth(0.45).stroke()
-        text(doc, fonts, label, x + 6, rowY + 4, { size: 6.5, color: MUTED, width: colWidth - 12 })
-        // ponytail: 超长内容截断加省略号，避免整行溢出页面；需要全文时再做跨页拆分
-        text(doc, fonts, content, x + 6, rowY + 14, { size: 7, width: colWidth - 12, height: rowHeight - 17, lineGap: 1, ellipsis: true })
-      })
-      y += rowHeight
-    }
-    y += 4
+  const drawTitle = () => {
+    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: PURPLE })
+    text(doc, fonts, '按业务主题汇总', left + 94, y + 2, { size: 6.5, color: MUTED })
+    y += 17
   }
-  return y + 4
+  const newPage = () => {
+    doc.addPage()
+    y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
+    drawTitle()
+  }
+  drawTitle()
+  const cardGap = 8
+  const cardWidth = (width - cardGap) / 2
+  for (let start = 0; start < grouped.length; start += 2) {
+    const cards = grouped.slice(start, start + 2)
+    const heights = cards.map(([, groupEntries]) => detailCardHeight(doc, fonts, groupEntries, 3, (cardWidth - 18) / 3))
+    const rowHeight = Math.max(...heights)
+    if (y + rowHeight > bottom) newPage()
+    cards.forEach(([group, groupEntries], index) => drawDetailCard(doc, fonts, group, groupEntries, left + index * (cardWidth + cardGap), y, cardWidth))
+    y += rowHeight + 7
+  }
+  if (notes.length) {
+    const height = noteCardHeight(doc, fonts, notes, width)
+    if (y + height > bottom) newPage()
+    y += drawNoteCard(doc, fonts, notes, left, y, width) + 7
+  }
+  return y + 2
 }
 
 function signatureImage(doc, dataUrl, x, y, width, height) {
