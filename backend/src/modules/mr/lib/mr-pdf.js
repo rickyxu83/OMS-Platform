@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 15
+const PDF_FORMAT_VERSION = 16
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -163,8 +163,8 @@ function totals(doc, fonts, order, items, y) {
     ['未税总计', moneyText(sales)], ['采购成本（不含税）', moneyText(cost)],
     ['毛利额', moneyText(sales - cost)], ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
-  const width = 150
-  let x = PAGE.width - PAGE.margin - width * cells.length
+  const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, cells.length)
+  let x = PAGE.margin
   for (const [label, content] of cells) {
     doc.rect(x, y, width, 31).strokeColor(BORDER).lineWidth(0.5).stroke()
     text(doc, fonts, label, x + 6, y + 4, { size: 6.5, color: MUTED })
