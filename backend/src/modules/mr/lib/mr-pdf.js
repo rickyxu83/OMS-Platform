@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#4e386e'
 const MUTED = '#64748b'
 const BORDER = '#94a3b8'
-const PDF_FORMAT_VERSION = 11
+const PDF_FORMAT_VERSION = 12
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -104,7 +104,7 @@ function itemColumns(items) {
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item) => hasValue(item.vendor), content: (item) => item.vendor },
     { key: 'costExcludingTax', label: '采购成本\n（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '采购成本（含税）\n/ 采购税率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
-    { key: 'purchase', label: '采购订单号\n/ 成本来源', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) || hasValue(itemField(item, 'costSource', 'cost_source')), content: (item) => [itemField(item, 'purchaseOrderNo', 'purchase_order_no'), itemField(item, 'costSource', 'cost_source')].filter(hasValue).join('\n') },
+    { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2

@@ -61,7 +61,7 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
     { key: 'vendor', label: '供应商', weight: 8, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.vendor), render: (item: MrItem) => vendorAbbreviation(item.vendor, emptyText) },
     { key: 'costExcludingTax', label: '采购成本（不含税）', title: '采购成本', sub: '（不含税）', weight: 8, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
     { key: 'costInclTax', label: '采购成本（含税） / 采购税率', title: '采购成本', sub: '（含税）/ 采购税率', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
-    { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo) || hasValue(item.costSource), render: (item: MrItem) => <span><strong>{text(item.purchaseOrderNo, emptyText)}</strong><small>{text(item.costSource, emptyText)}</small></span> },
+    { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo), render: (item: MrItem) => text(item.purchaseOrderNo, emptyText) },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)
