@@ -13,7 +13,8 @@ const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./intern
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
-let ensureCustomerLevelColumnPromise = null
+const SALES_DELIVERY_ADDRESS_ROLES = new Set(['admin', 'assistant', 'operations_director', 'sales_supervisor', 'sales'])
+let ensureCustomerColumnsPromise = null
 let pinyinFn = null
 
 try {
@@ -59,26 +60,47 @@ function customerMatchesKeyword(row, keyword) {
   ].some((value) => matchesSearchText(value, keyword))
 }
 
-async function ensureCustomerLevelColumn() {
-  if (!ensureCustomerLevelColumnPromise) {
-    ensureCustomerLevelColumnPromise = (async () => {
+async function ensureCustomerColumns() {
+  if (!ensureCustomerColumnsPromise) {
+    ensureCustomerColumnsPromise = (async () => {
       const rows = await query(
-        `SELECT COUNT(*) AS total
+        `SELECT COLUMN_NAME AS column_name
          FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'customers'
-           AND COLUMN_NAME = 'level'`,
+           AND COLUMN_NAME IN ('level', 'sales_delivery_address')`,
       )
-      if (Number(rows[0]?.total || 0) === 0) {
+      const columns = new Set(rows.map((row) => row.column_name))
+      if (!columns.has('level')) {
         await query(
           `ALTER TABLE customers
            ADD COLUMN level ENUM('key', 'normal', 'potential', 'vip') NOT NULL DEFAULT 'normal'
            AFTER salesperson`,
         )
       }
+      if (!columns.has('sales_delivery_address')) {
+        await query(
+          `ALTER TABLE customers
+           ADD COLUMN sales_delivery_address VARCHAR(255) NULL
+           AFTER address`,
+        )
+      }
     })()
   }
-  return ensureCustomerLevelColumnPromise
+  return ensureCustomerColumnsPromise
+}
+
+function canAccessSalesDeliveryAddress(user) {
+  return SALES_DELIVERY_ADDRESS_ROLES.has(String(user?.role || ''))
+}
+
+function salesDeliveryAddressInput(req, fallback = null) {
+  if (!canAccessSalesDeliveryAddress(req.user) || !Object.prototype.hasOwnProperty.call(req.body || {}, 'salesDeliveryAddress')) return fallback
+  const input = req.body.salesDeliveryAddress
+  if (input !== null && typeof input !== 'string') throw badRequest('销售交付地址格式不正确')
+  const value = String(input || '').trim()
+  if (value.length > 255) throw badRequest('销售交付地址不能超过 255 个字符')
+  return value || null
 }
 
 function normalizeCustomerLevel(level) {
@@ -182,7 +204,7 @@ function normalizeSortLocale(value) {
   return value === 'zh-TW' ? 'zh-TW' : 'zh-CN'
 }
 
-function customerPayload(row, contacts = [], sortLocale = 'zh-CN') {
+function customerPayload(row, contacts = [], sortLocale = 'zh-CN', includeSalesDeliveryAddress = false) {
   const sort = customerSortPayload(row.name, sortLocale)
   return {
     id: row.id,
@@ -190,6 +212,7 @@ function customerPayload(row, contacts = [], sortLocale = 'zh-CN') {
     nameKey: row.name_key,
     code: row.code,
     address: row.address,
+    ...(includeSalesDeliveryAddress ? { salesDeliveryAddress: row.sales_delivery_address } : {}),
     contactName: row.contact_name,
     contactPhone: normalizePhoneNumber(row.contact_phone) || row.contact_phone,
     salesperson: row.salesperson,
@@ -839,7 +862,7 @@ async function deletePreview(req, res) {
 }
 
 async function list(req, res) {
-  await ensureCustomerLevelColumn()
+  await ensureCustomerColumns()
   const { salesperson = '', mine = '' } = req.query
   const sortLocale = normalizeSortLocale(req.query.sortLocale || req.query.lang)
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
@@ -873,7 +896,7 @@ async function list(req, res) {
     : 'c.id DESC'
   const salesScope = buildSalesCustomerScope(req.user, 'c')
   const rows = await query(
-      `SELECT c.id, c.name, c.name_key, c.code, c.address, c.contact_name, c.contact_phone, c.salesperson,
+      `SELECT c.id, c.name, c.name_key, c.code, c.address, c.sales_delivery_address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
             remark, created_at, updated_at,
@@ -935,11 +958,11 @@ async function list(req, res) {
   const visibleRows = shouldPostFilterKeyword ? rows.filter((row) => customerMatchesKeyword(row, rawKeyword)).slice(0, normalizedPageSize) : rows
   await cleanupDuplicateContacts(visibleRows.map((row) => row.id))
   const contactsByCustomer = await loadContacts(visibleRows.map((row) => row.id), req.user.id)
-  res.json({ items: visibleRows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale)) })
+  res.json({ items: visibleRows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale, canAccessSalesDeliveryAddress(req.user))) })
 }
 
 async function create(req, res) {
-  await ensureCustomerLevelColumn()
+  await ensureCustomerColumns()
   const {
     name,
     code,
@@ -963,12 +986,13 @@ async function create(req, res) {
   assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = customerNameKey(name)
   const normalizedContactPhone = normalizePhoneNumber(contactPhone)
+  const salesDeliveryAddress = salesDeliveryAddressInput(req)
 
   let result
   try {
     result = await transaction(async (connection) => {
       const [existingRows] = await connection.execute(
-        'SELECT id, code, salesperson, contact_name, contact_phone FROM customers WHERE name_key = :nameKey LIMIT 1',
+        'SELECT id, code, salesperson, sales_delivery_address, contact_name, contact_phone FROM customers WHERE name_key = :nameKey LIMIT 1',
         { nameKey },
       )
       if (existingRows[0]) {
@@ -979,6 +1003,7 @@ async function create(req, res) {
            SET name = :name,
                code = :code,
                address = COALESCE(:address, address),
+               sales_delivery_address = COALESCE(:salesDeliveryAddress, sales_delivery_address),
                contact_name = COALESCE(:contactName, contact_name),
                contact_phone = COALESCE(:contactPhone, contact_phone),
                salesperson = COALESCE(:salesperson, salesperson),
@@ -996,6 +1021,7 @@ async function create(req, res) {
             name,
             code: effectiveCode,
             address: address || null,
+            salesDeliveryAddress,
             contactName: contactName || null,
             contactPhone: normalizedContactPhone || null,
             salesperson: salesperson || null,
@@ -1025,12 +1051,12 @@ async function create(req, res) {
 
       const [insertResult] = await connection.execute(
         `INSERT INTO customers (
-           name, name_key, code, address, contact_name, contact_phone, salesperson,
+           name, name_key, code, address, sales_delivery_address, contact_name, contact_phone, salesperson,
            level,
            latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address, remark
          )
          VALUES (
-           :name, :nameKey, :code, :address, :contactName, :contactPhone, :salesperson,
+           :name, :nameKey, :code, :address, :salesDeliveryAddress, :contactName, :contactPhone, :salesperson,
            :level,
            :latitude, :longitude, :mapProvider, :mapPoiId, :mapPoiName, :mapAddress, :remark
          )`,
@@ -1039,6 +1065,7 @@ async function create(req, res) {
           nameKey,
           code: code || (await nextCustomerCode(connection)),
           address: address || null,
+          salesDeliveryAddress,
           contactName: contactName || null,
           contactPhone: normalizedContactPhone || null,
           salesperson: salesperson || null,
@@ -1067,9 +1094,9 @@ async function create(req, res) {
 }
 
 async function detail(req, res) {
-  await ensureCustomerLevelColumn()
+  await ensureCustomerColumns()
   const rows = await query(
-    `SELECT id, name, name_key, code, address, contact_name, contact_phone, salesperson,
+    `SELECT id, name, name_key, code, address, sales_delivery_address, contact_name, contact_phone, salesperson,
             level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
             remark, created_at, updated_at
@@ -1086,11 +1113,11 @@ async function detail(req, res) {
 
   await cleanupDuplicateContacts([rows[0].id])
   const contactsByCustomer = await loadContacts([rows[0].id], req.user.id)
-  res.json({ item: customerPayload(rows[0], contactsByCustomer.get(rows[0].id) || []) })
+  res.json({ item: customerPayload(rows[0], contactsByCustomer.get(rows[0].id) || [], 'zh-CN', canAccessSalesDeliveryAddress(req.user)) })
 }
 
 async function update(req, res) {
-  await ensureCustomerLevelColumn()
+  await ensureCustomerColumns()
   const {
     name,
     code,
@@ -1108,7 +1135,7 @@ async function update(req, res) {
     mapAddress,
     remark,
   } = req.body || {}
-  const existing = await query('SELECT id, code, salesperson, contact_name, contact_phone FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, code, salesperson, sales_delivery_address, contact_name, contact_phone FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('客户不存在')
   }
@@ -1116,6 +1143,7 @@ async function update(req, res) {
   assertSalesCanUseSalesperson(salesperson, req.user, forbidden)
   const nameKey = name ? customerNameKey(name) : null
   const normalizedContactPhone = normalizePhoneNumber(contactPhone)
+  const salesDeliveryAddress = salesDeliveryAddressInput(req, existing[0].sales_delivery_address || null)
 
   try {
     await transaction(async (connection) => {
@@ -1125,6 +1153,7 @@ async function update(req, res) {
              name_key = COALESCE(:nameKey, name_key),
              code = :code,
              address = :address,
+             sales_delivery_address = :salesDeliveryAddress,
              contact_name = :contactName,
              contact_phone = :contactPhone,
              salesperson = :salesperson,
@@ -1143,6 +1172,7 @@ async function update(req, res) {
           nameKey,
           code: code || existing[0].code || (await nextCustomerCode(connection)),
           address: address || null,
+          salesDeliveryAddress,
           contactName: contactName || null,
           contactPhone: normalizedContactPhone || null,
           salesperson: salesperson || null,
@@ -1238,7 +1268,7 @@ async function remove(req, res) {
 }
 
 async function merge(req, res) {
-  await ensureCustomerLevelColumn()
+  await ensureCustomerColumns()
   const targetCustomerId = Number(req.params.id)
   const sourceCustomerId = Number(req.body?.sourceCustomerId)
 
@@ -1250,7 +1280,7 @@ async function merge(req, res) {
   }
 
   const customers = await query(
-    `SELECT id, name, code, address, contact_name, contact_phone, salesperson,
+    `SELECT id, name, code, address, sales_delivery_address, contact_name, contact_phone, salesperson,
             level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address, remark
      FROM customers
@@ -1320,6 +1350,7 @@ async function merge(req, res) {
     await connection.execute(
       `UPDATE customers
        SET address = COALESCE(NULLIF(address, ''), :address),
+           sales_delivery_address = COALESCE(NULLIF(sales_delivery_address, ''), :salesDeliveryAddress),
            salesperson = COALESCE(NULLIF(salesperson, ''), :salesperson),
            level = COALESCE(level, :level),
            latitude = COALESCE(latitude, :latitude),
@@ -1333,6 +1364,7 @@ async function merge(req, res) {
       {
         targetCustomerId,
         address: sourceCustomer.address || null,
+        salesDeliveryAddress: sourceCustomer.sales_delivery_address || null,
         salesperson: sourceCustomer.salesperson || null,
         level: normalizeCustomerLevel(sourceCustomer.level),
         latitude: sourceCustomer.latitude || null,
@@ -1429,4 +1461,5 @@ module.exports = {
   devices,
   nextCustomerCode,
   createContact,
+  _test: { canAccessSalesDeliveryAddress, customerPayload, salesDeliveryAddressInput },
 }

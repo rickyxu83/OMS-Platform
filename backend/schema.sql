@@ -30,6 +30,7 @@ CREATE TABLE customers (
   name_key VARCHAR(160) NULL,
   code VARCHAR(64) NULL,
   address VARCHAR(255) NULL,
+  sales_delivery_address VARCHAR(255) NULL,
   contact_name VARCHAR(64) NULL,
   contact_phone VARCHAR(32) NULL,
   salesperson VARCHAR(64) NULL,
