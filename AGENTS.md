@@ -147,3 +147,13 @@ Use the five default mattpocock/skills triage labels. See `docs/agents/triage-la
 ### Domain docs
 
 Use a single-context domain documentation layout. See `docs/agents/domain.md`.
+
+## Agent 工作流规则（2026-08-10 起试用）
+
+1. **先判断自己身份再决定流程**：动手前先确认主会话模型（是否支持视觉、是否付费）。不要机械套用"主会话 + 子代理"流水线。
+2. **不做本地 mock/模拟验证**：代码改动跑完项目自带测试（`npm run test:mr`）+ `npx tsc --noEmit` + `npm run build` 通过后，直接部署测试服（profile 见本地私有 `scripts/deploy.local.env`），由用户自己上去验收。禁止为验证视觉效果做 headless Chrome mock 截屏、本地 PDF 模拟等耗时环节。
+3. **子代理使用原则**：
+   - 主会话是免费模型（如 deepseek-v4-flash-free）：能自己干的活（改代码、跑测试、提交、部署、git/SSH 操作）一律自己干，不派子代理。
+   - `executor` 仅在主会话是付费模型（如 k3）且想把重复性 grunt work 甩给免费子代理时才派。
+   - `vision` 仅在主会话无视觉且必须看图时才派，一次调用合并所有问题。
+   - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
