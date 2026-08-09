@@ -5,7 +5,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 28
+const PDF_FORMAT_VERSION = 29
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -62,7 +62,7 @@ function line(doc, x1, y1, x2, y2, color = BORDER) {
 function header(doc, fonts, order, title = '客户订购申请单（境内单）') {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
-  text(doc, fonts, 'STARK / NINGBO TECHNOLOGY INC.', left, 20, { size: 7, color: MUTED })
+  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', left, 20, { size: 7, color: MUTED })
   text(doc, fonts, '敦阳（宁波）科技有限公司', left, 30, { size: 13, bold: true, color: PURPLE })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: PURPLE, width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
