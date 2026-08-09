@@ -31,6 +31,8 @@ import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './for
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
 import {
+  AnimatedMoney,
+  AnimatedPercent,
   BinaryChoice,
   Field,
   SectionCard,
@@ -143,6 +145,7 @@ export function MrFormPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [importOpen, setImportOpen] = useState(false)
+  const [importAnimationKey, setImportAnimationKey] = useState(0)
   const [decision, setDecision] = useState<Decision>(null)
   const [reason, setReason] = useState('')
   const [rejectTarget, setRejectTarget] = useState<'sales' | 'assistant'>('sales')
@@ -412,6 +415,7 @@ export function MrFormPage() {
       invoiceRecipient: calculated?.invoiceRecipient || importedContactName,
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
+    setImportAnimationKey((current) => current + 1)
     toast.success(`已导入 ${items.length} 个品项和 ${result.sources.length} 份原文件，历史附件已保留；建议计价模式：${PRICING_LABELS[importedMode]}${matchedCustomer ? `，已匹配客户 ${matchedCustomer.name}` : ''}`)
     if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未在客户库里找到，已先填入名称，请确认或手动关联`)
   }
@@ -557,6 +561,7 @@ export function MrFormPage() {
       errorCount={errors.length}
       busy={busy}
       layout={layout}
+      animationKey={importAnimationKey}
       onApprove={() => { if (dirty) toast.error('请先保存修改，再进行会签'); else { setDecision('approve'); setReason('') } }}
       onReject={() => { setDecision('reject'); setReason('') }}
       onShowErrors={() => errorListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
@@ -638,7 +643,7 @@ export function MrFormPage() {
           />
           </div>
         ) : null}
-        {!documentMode ? <div className="border-t"><WorkbenchMetrics order={calculated} /></div> : null}
+        {!documentMode ? <div className="border-t"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
       </div>
 
       {documentMode ? (
@@ -803,14 +808,14 @@ export function MrFormPage() {
               onChange={(items: MrItem[]) => patch({ items })}
             />
             <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
-              {([
-                ['未税总计', `¥ ${money(calculated.totals?.salesExcludingTax)}`, false],
-                ['增值税', `¥ ${money(calculated.totals?.vat)}`, false],
-                ['含税合计', `¥ ${money(calculated.totals?.salesIncludingTax)}`, false],
-                ['COST 总计', `¥ ${money(calculated.totals?.costExcludingTax)}`, false],
-                ['毛利率', percent(calculated.totals?.marginRate), Number(calculated.totals?.marginRate) < 15],
-              ] as Array<[string, string, boolean]>).map(([label, value, warn]) => (
-                <div key={label} className="bg-card p-4">
+              {[
+                { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '增值税', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
+                { label: '含税合计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: 'COST 总计', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
+              ].map(({ label, value, warn }) => (
+                <div key={`${label}-${importAnimationKey}`} className={`bg-card p-4 ${importAnimationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
                   <div className="text-xs text-muted-foreground">{label}</div>
                   <div className={`mt-1 text-xl font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</div>
                 </div>

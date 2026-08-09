@@ -1,3 +1,4 @@
+import { countUpValue } from './count-up.ts'
 import { calculateForm, normalizeCostTaxRates, quotationDetailItems, salesSubtotal, singleIntegrationItems } from './form-logic.ts'
 
 function assert(condition: unknown, message: string) {
@@ -64,4 +65,7 @@ const incomplete = calculateForm({ pricingMode: 1, totalExcludingTax: 100, invoi
   { name: '待补成本', qty: 1, quotedUnitPrice: 100, costInclTax: null, taxRate: 13 },
   ] })
 assert(incomplete.totals?.costExcludingTax === null && incomplete.totals?.costIncludingTax === null && incomplete.totals?.marginRate === null, '成本不完整时汇总不得显示为0或计算毛利')
+assert(countUpValue(100, 0) === 0 && countUpValue(100, 0.5) === 87.5 && countUpValue(100, 1) === 100, '数字动画应从0缓出到目标值')
+assert(countUpValue(100, -1) === 0 && countUpValue(100, 2) === 100, '数字动画进度应限制在0到1')
+
 console.log('mr form logic OK')
