@@ -142,8 +142,8 @@ export function MrItemTable({
                   <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable && editMode ? '选择 / 序号' : '序号'}</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
                   <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
-                  <th scope="col" className="w-32 px-3 py-2 text-right font-medium">销售单价（不含税）</th>
-                  <th scope="col" className="w-36 px-3 py-2 text-right font-medium">销售小计（不含税）</th>
+                  <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
+                  <th scope="col" className="w-36 px-3 py-2 text-right font-medium">未税小计</th>
                   <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
                 </tr>
               </thead>
@@ -323,14 +323,14 @@ function ItemEditorPanel({
               <Field label="数量" editable={editable} readonlyText={textValue(item.qty)}>
                 <Input type="number" min={1} step={1} value={numberValue(item.qty)} onChange={(event) => onChange({ qty: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field label="销售单价（不含税）" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
+              <Field label="未税单价" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.unitPrice)} disabled={mode !== 3} onChange={(event) => onChange({ unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              <Field label="销售小计（不含税）" editable={false} readonlyText={`¥ ${money(item.subtotal)}`} />
+              <Field label="未税小计" editable={false} readonlyText={`¥ ${money(item.subtotal)}`} />
               <Field label="毛利率" editable={false} readonlyText={<span className={low ? 'text-red-600' : ''}>{percent(item.marginRate)}</span>} />
             </div>
-            {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成将优先保留销售报价中的逐项单价；仅在逐项单价缺失时按采购成本占比分摊销售额。</p> : null}
-            {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成将销售额按主项 99%、技术服务 1% 自动分配。</p> : null}
+            {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成将优先保留销售报价中的逐项未税单价；仅在逐项未税单价缺失时，按采购成本（不含税）占比分摊未税总计。</p> : null}
+            {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成将未税总计按主项 99%、技术服务 1% 自动分配。</p> : null}
           </SubPanel>
 
           <SubPanel title="采购信息">

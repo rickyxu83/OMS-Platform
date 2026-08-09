@@ -162,7 +162,7 @@ export function MrListPage() {
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
               <TableHead>计价模式</TableHead>
-              <TableHead className="text-right">销售额（不含税）</TableHead>
+              <TableHead className="text-right">未税总计</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>当前签核步骤</TableHead>
               <TableHead>更新时间</TableHead>

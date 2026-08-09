@@ -84,7 +84,7 @@ async function archiveMrDocument(mrId, requestedType = null, markReady = true) {
   const context = await archiveContext(mrId)
   const type = requestedType || (context.order.status === 'voided' ? 'voided' : 'approved')
   const watermarkLabel = type === 'voided' ? `已作废 · ${context.order.voidReason || ''}` : ''
-  const filename = `${safeName(context.order.customerCode || context.order.customerName)}_${safeName(context.order.ctrlNo || mrId)}_V${context.versionNo}_${type === 'voided' ? '作废' : '审批'}.pdf`
+  const filename = `${safeName(context.order.customerCode || context.order.customerName)}_${safeName(context.order.ctrlNo || mrId)}_V${context.versionNo}_${type === 'voided' ? '作废' : '签核'}.pdf`
   const finalPath = path.join(documentRoot, `${mrId}-v${context.versionNo}-${type}.pdf`)
   const tempPath = `${finalPath}.${process.pid}.${Date.now()}.tmp`
   try {

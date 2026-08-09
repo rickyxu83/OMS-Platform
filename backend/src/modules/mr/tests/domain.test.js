@@ -33,6 +33,13 @@ function validBody(overrides = {}) {
   assert.equal(order.totalExcludingTax, 100)
   assert.equal(items[0].subtotal, 100)
 }
+
+{
+  const { order } = normalizeOrder(validBody({ caseCategory: '其它', installOptions: ['厂商'], maintenanceOptions: ['其它'] }))
+  assert.equal(order.caseCategory, '其他')
+  assert.deepStrictEqual(order.installOptions, ['供应商'])
+  assert.deepStrictEqual(order.maintenanceOptions, ['其他'])
+}
 {
   const { order } = normalizeOrder(validBody({ hasContract: 1, contractNo: 'C-1', contractType: '维护/服务', hasPenalty: 0, penaltyContent: '逾期罚则' }))
   assert.equal(order.hasContract, 1)
@@ -161,18 +168,18 @@ function validBody(overrides = {}) {
 
 {
   const { order } = normalizeOrder(validBody({
-    grossProfitRecognitionStartMonth: '2026-08',
+    grossProfitRecognitionStartMonth: '2026-08-12',
     grossProfitRecognitionAmount: '100.25',
     remainingRecognizableGrossProfit: '200',
-    taiwan_business_transfer_start_month: '2026-09',
+    taiwan_business_transfer_start_month: '2026-09-18',
     taiwan_business_transfer_amount: '300.50',
     remaining_taiwan_business_transfer: '400',
   }))
   assert.deepStrictEqual([
     order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount, order.remainingRecognizableGrossProfit,
     order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer,
-  ], ['2026-08', 100.25, 200, '2026-09', 300.5, 400])
-  assert.equal(normalizeOrder(validBody({ grossProfitRecognitionStartMonth: '2026-13' })).order.grossProfitRecognitionStartMonth, null)
+  ], ['2026-08-12', 100.25, 200, '2026-09-18', 300.5, 400])
+  assert.equal(normalizeOrder(validBody({ grossProfitRecognitionStartMonth: '2026-08' })).order.grossProfitRecognitionStartMonth, null)
 }
 
 console.log('mr domain OK')

@@ -105,15 +105,15 @@ function validationDetails(error: unknown): ValidationError[] {
 
 const CHANGE_LABELS: Record<string, string> = {
   customerId: '客户', customerContactId: '客户联系人', salesOwnerId: '业务负责人', customerName: '客户名称', contactName: '联系人',
-  caseCategory: '项目分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票类型', pricingMode: '计价模式', totalExcludingTax: '销售额（不含税）',
+  caseCategory: '项目分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票类型', pricingMode: '计价模式', totalExcludingTax: '未税总计',
   invoiceProcess: '开票方式', billingContent: '开票内容', invoiceRecipient: '发票收件人', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购联系电话',
   recipient: '收货人', recipientTel: '收货联系电话', recipientMail: '收货邮箱', paymentTerms: '付款条件', paymentOther: '付款条件说明', splitDelivery: '是否允许分批交付',
   acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则说明',
-  fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
-  grossProfitRecognitionStartMonth: '毛利认列起始月份', grossProfitRecognitionAmount: '起认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总和（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始月份', taiwanBusinessTransferAmount: '转拨台湾业务', remainingTaiwanBusinessTransfer: '剩余需转拨台湾业务总和（按季）',
-  salesExcludingTax: '销售额（不含税）', vat: '销售税额', salesIncludingTax: '销售额（含税）', costExcludingTax: '采购成本（不含税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
+  fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
+  grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）',
+  salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购成本（不含税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
 }
-const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '品项装机方', qty: '数量', unitPrice: '销售单价（不含税）', subtotal: '销售小计（不含税）', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购订单号', costSource: '采购成本来源' }
+const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '品项装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购订单号', costSource: '采购成本来源' }
 function changeLabel(path: string) {
   const item = path.match(/^items\.(\d+)(?:\.(.+))?$/)
   if (item) return `第 ${Number(item[1]) + 1} 项${item[2] ? ` · ${ITEM_CHANGE_LABELS[item[2]] || item[2]}` : ''}`
@@ -201,7 +201,7 @@ export function MrFormPage() {
       setContacts(customer?.contacts || [])
       setDirty(false)
     } catch (err) {
-      if (sequence === loadSequence.current) setError((err as Error).message || 'MR 单加载失败')
+      if (sequence === loadSequence.current) setError((err as Error).message || 'MR 申请加载失败')
     } finally {
       if (sequence === loadSequence.current) setLoading(false)
     }
@@ -214,7 +214,7 @@ export function MrFormPage() {
 
   useEffect(() => {
     if (!dirty) return
-    const message = '当前 MR 有未保存修改，确定离开吗？'
+    const message = '当前 MR 申请存在未保存的修改，确定离开吗？'
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault() }
     const guard = (event: Event) => {
       if (window.confirm(message)) setDirty(false)
@@ -276,7 +276,7 @@ export function MrFormPage() {
     const currentSalesTotal = calculated.totals?.salesExcludingTax ?? calculated.totalExcludingTax
     const warnings: string[] = []
     if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
-      warnings.push('从“开明细”切换至系统集成模式后，逐项销售单价将按目标计价模式重新计算。')
+      warnings.push('从“开明细”切换至系统集成模式后，各品项的未税单价将按目标计价模式重新计算。')
     }
     const secondIsService = Boolean(currentItems[1] && `${currentItems[1].name || ''}${currentItems[1].description || ''}`.includes('服务'))
     if (nextMode === 2 && (currentItems.length > 2 || (currentItems.length === 2 && !secondIsService))) {
@@ -284,7 +284,7 @@ export function MrFormPage() {
     }
     if (currentMode === 1 && nextMode === 3) {
       const quotedCount = currentItems.filter((item) => item.quotedUnitPrice != null).length
-      warnings.push(quotedCount ? `将恢复 ${quotedCount} 个品项的销售报价原始单价；其余品项将保留当前分摊单价，并标记为待人工确认。` : '销售报价中未识别到逐项单价；系统将保留当前分摊单价，并标记为待人工确认。')
+      warnings.push(quotedCount ? `将恢复销售报价中识别出的 ${quotedCount} 个品项原始未税单价；其余品项将保留当前分摊单价，并标记为待人工确认。` : '销售报价中未识别到逐项未税单价；系统将保留当前分摊单价，并标记为待人工确认。')
     }
     if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n确认切换计价模式吗？`)) return
     if (nextMode === 3) {
@@ -303,7 +303,7 @@ export function MrFormPage() {
   }
 
   const navigateAway = (path: string) => {
-    if (dirty && !window.confirm('当前 MR 有未保存修改，确定离开吗？')) return
+    if (dirty && !window.confirm('当前 MR 申请存在未保存的修改，确定离开吗？')) return
     setDirty(false)
     navigate(path)
   }
@@ -433,7 +433,7 @@ export function MrFormPage() {
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
     })
     setImportAnimationKey((current) => current + 1)
-    toast.success(`已导入 ${items.length} 个品项并留存 ${result.sources.length} 份原始文件；历史附件已保留。建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
+    toast.success(`已导入 ${items.length} 个品项，并留存 ${result.sources.length} 份报价原始附件；原有附件均已保留。建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
     if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未匹配到客户档案，系统已暂存客户名称；请确认或手动关联。`)
   }
   const save = async () => {
@@ -514,7 +514,7 @@ export function MrFormPage() {
       const next = await reassignMrSales(id, reassignSalesId)
       setForm(next)
       setReassignOpen(false)
-      toast.success('业务负责人已变更；未完成的签核流程将由新负责人的对应助理重新提交。')
+      toast.success('业务负责人已变更；未完成的签核流程将由新业务负责人的对应助理重新提交。')
     } catch (err) {
       setError((err as Error).message || '业务负责人变更失败')
     } finally {
@@ -676,8 +676,8 @@ export function MrFormPage() {
           <aside className="min-w-0 space-y-4">
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核信息</h2><StatusBadge status={status} /></div>
-              <div className="mt-3 text-sm"><span className="text-muted-foreground">签核步骤：</span>{calculated.currentStepKey === 'sales' ? '业务负责人' : calculated.currentStepLabel || '-'}</div>
-              <div className="mt-1 text-sm"><span className="text-muted-foreground">当前处理人：</span>{calculated.currentAssigneeName || '待配置处理人'}</div>
+              <div className="mt-3 text-sm"><span className="text-muted-foreground">签核步骤：</span>{calculated.currentStepKey === 'sales' ? '业务负责人' : calculated.currentStepKey === 'engineering' ? '工程会签' : calculated.currentStepLabel || '-'}</div>
+              <div className="mt-1 text-sm"><span className="text-muted-foreground">当前签核人：</span>{calculated.currentAssigneeName || '待配置签核人'}</div>
               {calculated.assignmentError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{calculated.assignmentError}</div> : null}
               {assistantReview ? <p className="mt-3 text-xs text-muted-foreground">如需补充字段，请选择顶部“编辑申请单”；保存后将返回本页，再继续签核。</p> : null}
             </div>
@@ -762,7 +762,7 @@ export function MrFormPage() {
                       <SelectContent>{constants.INVOICE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
-                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="销售额（不含税）" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
+                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
                     <Input
                       type="number"
                       min={0}
@@ -784,10 +784,10 @@ export function MrFormPage() {
                     {!calculated.pricingMode
                       ? '请先选择计价模式；报价导入与手动录入均按当前模式处理。'
                       : Number(calculated.pricingMode) === 1
-                        ? '请先填写销售额（不含税），再录入各品项采购成本。若销售报价未提供逐项单价，系统将按不含税采购成本占比分摊销售额。'
+                        ? '请先填写未税总计，再录入各品项采购成本。若销售报价未提供逐项未税单价，系统将按采购成本（不含税）占比分摊未税总计。'
                         : Number(calculated.pricingMode) === 2
-                          ? '请先填写销售额（不含税）；系统将销售额按主项 99%、技术服务 1% 自动分配。'
-                          : '请逐项填写销售单价（不含税）；销售额（不含税）由各品项销售小计自动汇总。'}
+                          ? '请先填写未税总计；系统将未税总计按主项 99%、技术服务 1% 自动分配。'
+                          : '请逐项填写未税单价；未税总计由各品项未税小计自动汇总。'}
                   </p>
                 ) : null}
               </SubPanel>
@@ -833,9 +833,9 @@ export function MrFormPage() {
             />
             <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
               {[
-                { label: '销售额（不含税）', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '销售税额', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
-                { label: '销售额（含税）', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '含税总计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '采购成本（不含税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '整单毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
               ].map(({ label, value, warn }) => (
@@ -945,14 +945,14 @@ export function MrFormPage() {
                 <div className="space-y-2">
                   {deliveryLocations.length ? (
                     <Select value={deliveryChoice} onValueChange={(value) => { if (value !== 'custom') patch({ deliveryLocation: value }) }}>
-                      <SelectTrigger><SelectValue placeholder="选择销售或工程服务地址" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择销售交付地址或工程服务地址" /></SelectTrigger>
                       <SelectContent>
                         {deliveryLocations.map((location) => <SelectItem key={location.value} value={location.value}>{location.label} · {location.value}</SelectItem>)}
-                        <SelectItem value="custom">手动填写其他销售交付地点</SelectItem>
+                        <SelectItem value="custom">手动填写其他交付地点</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : null}
-                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="优先选择销售交付地址，也可调用工程服务地址或手动填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                  <Textarea rows={2} value={calculated.deliveryLocation || ''} placeholder="优先选择销售交付地址，也可选择工程服务地址或手动填写" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
                 </div>
               </Field>
               <WorkOptions
@@ -979,26 +979,26 @@ export function MrFormPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="毛利认列">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="起始月份" editable={editable} readonlyText={textValue(calculated.grossProfitRecognitionStartMonth)}>
-                    <Input type="month" value={calculated.grossProfitRecognitionStartMonth || ''} onChange={(e) => patch({ grossProfitRecognitionStartMonth: e.target.value })} />
+                  <Field label="起始日期" editable={editable} readonlyText={textValue(calculated.grossProfitRecognitionStartMonth)}>
+                    <Input type="date" value={calculated.grossProfitRecognitionStartMonth || ''} onChange={(e) => patch({ grossProfitRecognitionStartMonth: e.target.value })} />
                   </Field>
-                  <Field label="起认列毛利" editable={editable} readonlyText={money(calculated.grossProfitRecognitionAmount)}>
+                  <Field label="首期认列毛利" editable={editable} readonlyText={money(calculated.grossProfitRecognitionAmount)}>
                     <Input type="number" step="0.01" value={calculated.grossProfitRecognitionAmount ?? ''} onChange={(e) => patch({ grossProfitRecognitionAmount: asNumber(e.target.value) })} />
                   </Field>
-                  <Field label="剩余可认列毛利总和（按季）" editable={editable} readonlyText={money(calculated.remainingRecognizableGrossProfit)} className="sm:col-span-2">
+                  <Field label="剩余可认列毛利总额（按季）" editable={editable} readonlyText={money(calculated.remainingRecognizableGrossProfit)} className="sm:col-span-2">
                     <Input type="number" step="0.01" value={calculated.remainingRecognizableGrossProfit ?? ''} onChange={(e) => patch({ remainingRecognizableGrossProfit: asNumber(e.target.value) })} />
                   </Field>
                 </div>
               </SubPanel>
               <SubPanel title="台湾业务转拨">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="起始月份" editable={editable} readonlyText={textValue(calculated.taiwanBusinessTransferStartMonth)}>
-                    <Input type="month" value={calculated.taiwanBusinessTransferStartMonth || ''} onChange={(e) => patch({ taiwanBusinessTransferStartMonth: e.target.value })} />
+                  <Field label="起始日期" editable={editable} readonlyText={textValue(calculated.taiwanBusinessTransferStartMonth)}>
+                    <Input type="date" value={calculated.taiwanBusinessTransferStartMonth || ''} onChange={(e) => patch({ taiwanBusinessTransferStartMonth: e.target.value })} />
                   </Field>
-                  <Field label="转拨台湾业务" editable={editable} readonlyText={money(calculated.taiwanBusinessTransferAmount)}>
+                  <Field label="首期台湾业务转拨金额" editable={editable} readonlyText={money(calculated.taiwanBusinessTransferAmount)}>
                     <Input type="number" step="0.01" value={calculated.taiwanBusinessTransferAmount ?? ''} onChange={(e) => patch({ taiwanBusinessTransferAmount: asNumber(e.target.value) })} />
                   </Field>
-                  <Field label="剩余需转拨台湾业务总和（按季）" editable={editable} readonlyText={money(calculated.remainingTaiwanBusinessTransfer)} className="sm:col-span-2">
+                  <Field label="剩余台湾业务待转拨总额（按季）" editable={editable} readonlyText={money(calculated.remainingTaiwanBusinessTransfer)} className="sm:col-span-2">
                     <Input type="number" step="0.01" value={calculated.remainingTaiwanBusinessTransfer ?? ''} onChange={(e) => patch({ remainingTaiwanBusinessTransfer: asNumber(e.target.value) })} />
                   </Field>
                 </div>
@@ -1026,7 +1026,7 @@ export function MrFormPage() {
               </div>
               {highValue || lowMargin ? (
                 <div className="mt-3 border-l-4 border-red-500 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-                  {highValue ? '销售额（不含税）超过 75 万元；' : ''}
+                  {highValue ? '未税总计超过 75 万元；' : ''}
                   {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
                   签核流程将增加副总经理签核步骤。
                 </div>
@@ -1059,7 +1059,7 @@ export function MrFormPage() {
 
       <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>变更业务负责人</DialogTitle><DialogDescription>变更后，所有未完成的签核任务将关闭，申请单将转交新的业务负责人。新负责人须在“我的设置”中确认对应助理，再由助理重新核对并提交签核；历史签核记录不受影响。</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>变更业务负责人</DialogTitle><DialogDescription>变更后，所有未完成的签核任务将关闭，申请单将转交新的业务负责人。新业务负责人须在“我的设置”中确认对应助理，再由助理重新核对并提交签核；历史签核记录不受影响。</DialogDescription></DialogHeader>
           <Select value={reassignSalesId} onValueChange={setReassignSalesId}>
             <SelectTrigger><SelectValue placeholder="选择新的业务负责人" /></SelectTrigger>
             <SelectContent>{salespeople.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}</SelectContent>
@@ -1074,7 +1074,7 @@ export function MrFormPage() {
             <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR 申请' : decision === 'withdraw' ? '撤回 MR 申请' : '作废 MR 申请'}</DialogTitle>
             <DialogDescription>
               {decision === 'approve'
-                ? `本次操作将以当前登录账号完成电子签核。签核版本为 V${assistantReview ? Number(calculated.versionNo || 0) + 1 : calculated.versionNo || calculated.currentVersion?.versionNo || 1}，销售额（不含税）为 ¥ ${money(calculated.totals?.salesExcludingTax)}；签核完成后，该版本不可修改。`
+                ? `本次操作将以当前登录账号完成电子签核。签核版本为 V${assistantReview ? Number(calculated.versionNo || 0) + 1 : calculated.versionNo || calculated.currentVersion?.versionNo || 1}，未税总计为 ¥ ${money(calculated.totals?.salesExcludingTax)}；签核完成后，该版本不可修改。`
                 : decision === 'reject'
                   ? '请选择退回对象并填写原因；完成修改后，签核流程将从助理步骤重新开始。'
                   : decision === 'withdraw'

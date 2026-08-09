@@ -4,7 +4,7 @@ import type { MrApproval, MrOrder } from '../types'
 function time(value?: string | null) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : ''
 }
-function displayStepLabel(approval: MrApproval) { return approval.stepKey === 'sales' ? '业务负责人' : approval.stepLabel }
+function displayStepLabel(approval: MrApproval) { return approval.stepKey === 'sales' ? '业务负责人' : approval.stepKey === 'engineering' ? '工程会签' : approval.stepLabel }
 
 type StepState = 'approve' | 'reject' | 'skipped' | 'current' | 'waiting'
 
@@ -23,7 +23,7 @@ const MARKERS: Record<StepState, { icon: typeof Check; dot: string; text: string
 
 function projectedApprovals(order: MrOrder): MrApproval[] {
   const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务负责人']]
-  if ((order.installOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签单位'])
+  if ((order.installOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签'])
   steps.push(['supervisor', '处级单位'])
   const margin = order.totals?.marginRate
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
@@ -71,7 +71,7 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
                   <span className={`text-xs ${marker.text}`}>{marker.label}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
-                  {approval.approverName || approval.assigneeName ? <span>{approval.approverName || `处理人：${approval.assigneeName}`}</span> : null}
+                  {approval.approverName || approval.assigneeName ? <span>{approval.approverName || `签核人：${approval.assigneeName}`}</span> : null}
                   {approval.decidedAt ? <span className="tabular-nums">{time(approval.decidedAt)}</span> : null}
                 </div>
                 {approval.reason ? <div className="mt-1 text-xs text-red-700">{approval.reason}</div> : null}

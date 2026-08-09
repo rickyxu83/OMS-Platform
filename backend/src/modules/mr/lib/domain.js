@@ -2,9 +2,9 @@ const INVOICE_TYPES = ['13%增值税', '13%普通发票', '6%普通发票', '6%�
 const CONTRACT_TYPES = ['买卖/维修', '维护/服务']
 const INVOICE_PROCESSES = ['随货开立', '验收再开', '预开']
 const PAYMENT_TERMS = ['月结30天', '月结60天', '月结90天', '月结120天', '其他']
-const CASE_CATEGORIES = ['软件买卖', '硬件买卖', '系统整合', '维护维修', '顾问', '项目', '其它']
+const CASE_CATEGORIES = ['软件买卖', '硬件买卖', '系统整合', '维护维修', '顾问', '项目', '其他']
 const ACCEPTANCE_TYPES = ['交货即验收', '装机完成', '测试完成', '验收报告', '其他']
-const WORK_OPTIONS = ['敦阳', '厂商', 'NO', '其它']
+const WORK_OPTIONS = ['敦阳', '供应商', 'NO', '其他']
 
 const STEP_ROLES = Object.freeze({
   assistant: 'assistant',
@@ -16,6 +16,11 @@ const STEP_ROLES = Object.freeze({
 
 function text(value, max = 500) {
   return String(value ?? '').trim().slice(0, max) || null
+}
+
+function normalizedLabel(value, max = 32) {
+  const normalized = text(value, max)
+  return normalized === '厂商' ? '供应商' : normalized === '其它' ? '其他' : normalized
 }
 
 function optionalNumber(value) {
@@ -41,14 +46,9 @@ function date(value) {
     : null
 }
 
-function month(value) {
-  const normalized = text(value, 7)
-  return normalized && /^\d{4}-(0[1-9]|1[0-2])$/.test(normalized) ? normalized : null
-}
-
 function options(value) {
   const source = Array.isArray(value) ? value : []
-  return [...new Set(source.map((item) => text(item, 16)).filter((item) => WORK_OPTIONS.includes(item)))]
+  return [...new Set(source.map((item) => normalizedLabel(item, 16)).filter((item) => WORK_OPTIONS.includes(item)))]
 }
 
 function taxRate(value) {
@@ -149,7 +149,7 @@ function normalizeOrder(body = {}) {
     salesOwnerId: optionalNumber(body.salesOwnerId ?? body.sales_owner_id),
     customerName: text(body.customerName ?? body.customer_name, 255),
     contactName: text(body.contactName ?? body.contact_name, 255),
-    caseCategory: text(body.caseCategory ?? body.case_category, 32),
+    caseCategory: normalizedLabel(body.caseCategory ?? body.case_category),
     customerPo: text(body.customerPo ?? body.customer_po, 255),
     ctrlNo: text(body.ctrlNo ?? body.ctrl_no, 64),
     invoiceType: text(body.invoiceType ?? body.invoice_type, 32),
@@ -181,10 +181,10 @@ function normalizeOrder(body = {}) {
     deliveryLocation: text(body.deliveryLocation ?? body.delivery_location, 500),
     shipmentNo: text(body.shipmentNo ?? body.shipment_no, 255),
     deliveryTerms: text(body.deliveryTerms ?? body.delivery_terms, 255),
-    grossProfitRecognitionStartMonth: month(body.grossProfitRecognitionStartMonth ?? body.gross_profit_recognition_start_month),
+    grossProfitRecognitionStartMonth: date(body.grossProfitRecognitionStartMonth ?? body.gross_profit_recognition_start_month),
     grossProfitRecognitionAmount: optionalNumber(body.grossProfitRecognitionAmount ?? body.gross_profit_recognition_amount),
     remainingRecognizableGrossProfit: optionalNumber(body.remainingRecognizableGrossProfit ?? body.remaining_recognizable_gross_profit),
-    taiwanBusinessTransferStartMonth: month(body.taiwanBusinessTransferStartMonth ?? body.taiwan_business_transfer_start_month),
+    taiwanBusinessTransferStartMonth: date(body.taiwanBusinessTransferStartMonth ?? body.taiwan_business_transfer_start_month),
     taiwanBusinessTransferAmount: optionalNumber(body.taiwanBusinessTransferAmount ?? body.taiwan_business_transfer_amount),
     remainingTaiwanBusinessTransfer: optionalNumber(body.remainingTaiwanBusinessTransfer ?? body.remaining_taiwan_business_transfer),
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
@@ -207,7 +207,7 @@ function normalizeOrder(body = {}) {
 
 function validateWorkOptions(label, value, errors) {
   if (!value.length) errors.push({ field: `${label}Options`, message: `请选择${label}承担方（可选择 NO）` })
-  if (value.includes('NO') && value.length > 1) errors.push({ field: `${label}Options`, message: `${label}选择 NO 时不能同时选择其它承担方` })
+  if (value.includes('NO') && value.length > 1) errors.push({ field: `${label}Options`, message: `${label}承担方选择“NO”时，不能同时选择其他承担方` })
 }
 
 function validateSubmission(order, items) {
@@ -216,28 +216,28 @@ function validateSubmission(order, items) {
     if (value === null || value === undefined || value === '') errors.push({ field, message })
   }
 
-  requireValue('latestDeliveryDate', order.latestDeliveryDate, '请选择最晚交货日')
+  requireValue('latestDeliveryDate', order.latestDeliveryDate, '请选择最晚交付日期')
   requireValue('customerId', order.customerId, '请选择客户档案')
   requireValue('customerName', order.customerName, '请选择客户名称')
   requireValue('purchaser', order.purchaser, '请填写采购联系人')
-  requireValue('recipient', order.recipient, '请填写收件人')
+  requireValue('recipient', order.recipient, '请填写收货人')
   requireValue('billingTiming', order.billingTiming, '请填写开票/收款时间')
-  requireValue('invoiceType', order.invoiceType, '请选择发票别')
+  requireValue('invoiceType', order.invoiceType, '请选择发票类型')
   requireValue('pricingMode', order.pricingMode, '请选择计价模式')
-  requireValue('invoiceProcess', order.invoiceProcess, '请选择发票处理方式')
+  requireValue('invoiceProcess', order.invoiceProcess, '请选择开票方式')
   requireValue('billingContent', order.billingContent, '请填写开票内容')
   requireValue('paymentTerms', order.paymentTerms, '请选择付款条件')
-  requireValue('splitDelivery', order.splitDelivery, '请选择是否分批送机')
-  requireValue('caseCategory', order.caseCategory, '请选择案分类')
+  requireValue('splitDelivery', order.splitDelivery, '请选择是否允许分批交付')
+  requireValue('caseCategory', order.caseCategory, '请选择项目分类')
   requireValue('acceptance', order.acceptance, '请选择验收条件')
-  if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票别无效' })
+  if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票类型无效' })
   if (![1, 2, 3].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
-  if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '发票处理方式无效' })
+  if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '开票方式无效' })
   if (order.paymentTerms && !PAYMENT_TERMS.includes(order.paymentTerms)) errors.push({ field: 'paymentTerms', message: '付款条件无效' })
   if (order.paymentTerms === '其他') requireValue('paymentOther', order.paymentOther, '请填写付款条件说明')
-  if (order.caseCategory && !CASE_CATEGORIES.includes(order.caseCategory)) errors.push({ field: 'caseCategory', message: '案分类无效' })
+  if (order.caseCategory && !CASE_CATEGORIES.includes(order.caseCategory)) errors.push({ field: 'caseCategory', message: '项目分类无效' })
   if (order.acceptance && !ACCEPTANCE_TYPES.includes(order.acceptance)) errors.push({ field: 'acceptance', message: '验收条件无效' })
-  if (order.acceptance === '其他') requireValue('acceptanceOther', order.acceptanceOther, '请填写验收条件说明')
+  if (order.acceptance === '其他') requireValue('acceptanceOther', order.acceptanceOther, '请填写验收说明')
 
   validateWorkOptions('装机', order.installOptions, errors)
   validateWorkOptions('维护', order.maintenanceOptions, errors)
@@ -249,27 +249,27 @@ function validateSubmission(order, items) {
 
   items.forEach((item, index) => {
     const label = `第 ${index + 1} 项`
-    if (!item.name && !item.description) errors.push({ field: `items.${index}.name`, message: `${label}请填写品名或描述` })
-    if (!(item.qty >= 1)) errors.push({ field: `items.${index}.qty`, message: `${label}数量必须大于等于 1` })
-    if (!(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}单价不得小于 0` })
+    if (!item.name && !item.description) errors.push({ field: `items.${index}.name`, message: `${label}：请填写品名及描述` })
+    if (!(item.qty >= 1)) errors.push({ field: `items.${index}.qty`, message: `${label}：数量必须大于或等于 1` })
+    if (!(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：未税单价不得小于 0` })
     const serviceRow = order.pricingMode === 2 && index === 1
-    if (!serviceRow && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}请填写厂商` })
-    if (!(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}成本含税不得小于 0` })
-    if (![6, 13].includes(item.taxRate)) errors.push({ field: `items.${index}.taxRate`, message: `${label}成本税率只能是 6% 或 13%` })
-    if (['6%普通发票', '6%服务发票'].includes(order.invoiceType) && item.taxRate === 13) errors.push({ field: `items.${index}.taxRate`, message: `${label}6%发票的成本税率只能选 6%` })
-    if (order.pricingMode === 3 && item.marginRate !== null && item.marginRate < 0) errors.push({ field: `items.${index}.unitPrice`, message: `${label}毛利率不能为负` })
+    if (!serviceRow && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}：请填写供应商` })
+    if (!(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}：采购成本（含税）不得小于 0` })
+    if (![6, 13].includes(item.taxRate)) errors.push({ field: `items.${index}.taxRate`, message: `${label}：采购税率仅可选择 6% 或 13%` })
+    if (['6%普通发票', '6%服务发票'].includes(order.invoiceType) && item.taxRate === 13) errors.push({ field: `items.${index}.taxRate`, message: `${label}：当前发票类型的适用税率为 6%，采购税率仅可选择 6%` })
+    if (order.pricingMode === 3 && item.marginRate !== null && item.marginRate < 0) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：毛利率不得为负数` })
   })
 
   if (order.pricingMode === 1 && items.length) {
     const margins = items.map((item) => item.marginRate).filter((value) => value !== null)
-    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成需要完整填写每项成本，才能计算毛利' })
-    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按成本分摊的多项系统集成各品项毛利率必须一致' })
+    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成须完整填写各品项的采购成本，方可计算毛利' })
+    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按采购成本分摊时，多项系统集成的各品项毛利率必须一致' })
   }
 
   if (order.pricingMode === 2) {
     if (items.length !== 2) errors.push({ field: 'items', message: '单项系统集成只能填写主项和技术服务两项' })
     if (items[1] && !`${items[1].name || ''}${items[1].description || ''}`.includes('服务')) errors.push({ field: 'items.1.name', message: '第二项必须是技术服务' })
-    if (items[1] && Number(items[1].costInclTax) !== 0) errors.push({ field: 'items.1.costInclTax', message: '技术服务项成本必须为 0' })
+    if (items[1] && Number(items[1].costInclTax) !== 0) errors.push({ field: 'items.1.costInclTax', message: '技术服务项的采购成本（含税）必须为 0' })
   }
 
   return errors
@@ -299,7 +299,7 @@ function computeApprovalSteps(order, items) {
     { seq: 1, key: 'assistant', label: '助理', role: STEP_ROLES.assistant },
     { seq: 2, key: 'sales', label: '业务负责人', role: STEP_ROLES.sales },
   ]
-  if (order.installOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签单位', role: STEP_ROLES.engineering })
+  if (order.installOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
   steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })
   if (result.salesExcludingTax > 750000 || (result.marginRate !== null && result.marginRate < 15)) {
     steps.push({ seq: steps.length + 1, key: 'vp', label: '副总经理', role: STEP_ROLES.vp })

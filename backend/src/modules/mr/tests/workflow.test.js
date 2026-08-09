@@ -48,7 +48,7 @@ async function main() {
         ]]
       },
     }, {}, 'engineering', { required: true }),
-    /工程主管在职审批人有 2 位/,
+    /工程主管在职签核人有 2 位/,
   )
   assert.deepStrictEqual(assertAssistantMapping(assistantRow()), {
     id: 9,
@@ -58,11 +58,11 @@ async function main() {
   })
   assert.throws(
     () => assertAssistantMapping(assistantRow({ assistant_role: 'sales' })),
-    /当前业务请重新设置助理后再提交/,
+    /请为当前业务负责人重新设置助理后再提交/,
   )
   assert.throws(
     () => assertAssistantMapping(assistantRow({ assistant_email: 'invalid' })),
-    /当前业务请重新设置助理后再提交/,
+    /请为当前业务负责人重新设置助理后再提交/,
   )
 
   const vendorOrder = normalizeOrder({
@@ -118,10 +118,10 @@ async function main() {
     installOptions: ['敦阳'],
     maintenanceOptions: ['NO'],
     splitDelivery: 0,
-    grossProfitRecognitionStartMonth: '2026-08',
+    grossProfitRecognitionStartMonth: '2026-08-12',
     grossProfitRecognitionAmount: 30,
     remainingRecognizableGrossProfit: 70,
-    taiwanBusinessTransferStartMonth: '2026-09',
+    taiwanBusinessTransferStartMonth: '2026-09-18',
     taiwanBusinessTransferAmount: 20,
     remainingTaiwanBusinessTransfer: 50,
     remark: '按季度确认',
@@ -160,9 +160,9 @@ async function main() {
   assert(extracted.text.includes('多项系统集成'), '正式 PDF 应保留已填写的计价模式')
   assert(extracted.text.includes('确认无误'), '正式 PDF 应保留已填写的签核意见')
   const compactText = extracted.text.replace(/\s+/g, '')
-  assert(compactText.includes('2026年8月起认列毛利') && compactText.includes('首期¥30.00') && compactText.includes('剩余¥70.00（按季）'), '毛利认列字段应组合成一行摘要')
-  assert(compactText.includes('2026年9月起转拨台湾业务') && compactText.includes('首期¥20.00') && compactText.includes('剩余¥50.00（按季）'), '台湾业务转拨字段应组合成一行摘要')
-  assert(!compactText.includes('毛利认列起始月份') && !compactText.includes('剩余需转拨台湾业务总和'), '组合字段不应再逐项展示')
+  assert(compactText.includes('2026年8月12日起认列毛利') && compactText.includes('首期¥30.00') && compactText.includes('剩余¥70.00（按季）'), '毛利认列字段应组合成一行摘要')
+  assert(compactText.includes('2026年9月18日起转拨台湾业务') && compactText.includes('首期¥20.00') && compactText.includes('剩余¥50.00（按季）'), '台湾业务转拨字段应组合成一行摘要')
+  assert(!compactText.includes('毛利认列起始日期') && !compactText.includes('剩余需转拨台湾业务总和'), '组合字段不应再逐项展示')
   assert(!compactText.includes('报价原始附件') && !compactText.includes('内部报价原始附件.xlsx'), 'PDF 不应显示报价原始附件')
   assert(!extracted.text.includes('客户 P/O'), '正式 PDF 不应显示空白客户 P/O')
   assert(!extracted.text.includes('采购单号 / 来源'), '正式 PDF 不应显示全为空的采购列')

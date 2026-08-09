@@ -89,10 +89,10 @@ async function ensureTables() {
       delivery_location VARCHAR(500) NULL,
       shipment_no VARCHAR(255) NULL,
       delivery_terms VARCHAR(255) NULL,
-      gross_profit_recognition_start_month VARCHAR(7) NULL,
+      gross_profit_recognition_start_month VARCHAR(10) NULL,
       gross_profit_recognition_amount DECIMAL(14,2) NULL,
       remaining_recognizable_gross_profit DECIMAL(14,2) NULL,
-      taiwan_business_transfer_start_month VARCHAR(7) NULL,
+      taiwan_business_transfer_start_month VARCHAR(10) NULL,
       taiwan_business_transfer_amount DECIMAL(14,2) NULL,
       remaining_taiwan_business_transfer DECIMAL(14,2) NULL,
       quotation_file_id BIGINT UNSIGNED NULL,
@@ -114,22 +114,34 @@ async function ensureTables() {
       KEY idx_mr_orders_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  const dateColumns = new Set(['gross_profit_recognition_start_month', 'taiwan_business_transfer_start_month'])
   const requiredOrderColumns = new Map([
     ['delivery_location', 'VARCHAR(500) NULL'],
-    ['gross_profit_recognition_start_month', 'VARCHAR(7) NULL'],
+    ['gross_profit_recognition_start_month', 'VARCHAR(10) NULL'],
     ['gross_profit_recognition_amount', 'DECIMAL(14,2) NULL'],
     ['remaining_recognizable_gross_profit', 'DECIMAL(14,2) NULL'],
-    ['taiwan_business_transfer_start_month', 'VARCHAR(7) NULL'],
+    ['taiwan_business_transfer_start_month', 'VARCHAR(10) NULL'],
     ['taiwan_business_transfer_amount', 'DECIMAL(14,2) NULL'],
     ['remaining_taiwan_business_transfer', 'DECIMAL(14,2) NULL'],
   ])
-  const existingOrderColumns = new Set((await query(
-    `SELECT column_name AS name FROM information_schema.columns
+  const existingOrderColumns = new Map((await query(
+    `SELECT column_name AS name, character_maximum_length AS maxLength FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = 'mr_orders'`,
-  )).map((row) => row.name))
+  )).map((row) => [row.name, row]))
   for (const [name, definition] of requiredOrderColumns) {
     if (!existingOrderColumns.has(name)) await query(`ALTER TABLE mr_orders ADD COLUMN ${name} ${definition}`)
+    else if (dateColumns.has(name) && Number(existingOrderColumns.get(name).maxLength) < 10) {
+      await query(`ALTER TABLE mr_orders MODIFY COLUMN ${name} VARCHAR(10) NULL`)
+    }
   }
+  // Legacy values only contain a month; day 1 preserves that month in the new date control.
+  await query(
+    `UPDATE mr_orders SET
+       gross_profit_recognition_start_month = CASE WHEN gross_profit_recognition_start_month REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN CONCAT(gross_profit_recognition_start_month, '-01') ELSE gross_profit_recognition_start_month END,
+       taiwan_business_transfer_start_month = CASE WHEN taiwan_business_transfer_start_month REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN CONCAT(taiwan_business_transfer_start_month, '-01') ELSE taiwan_business_transfer_start_month END
+     WHERE gross_profit_recognition_start_month REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'
+        OR taiwan_business_transfer_start_month REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'`,
+  )
   await query(
     `CREATE TABLE IF NOT EXISTS mr_items (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -302,7 +314,7 @@ async function loadRawOrder(id, user = null) {
      LIMIT 1`,
     { id, viewerId: Number(user?.id || 0) },
   )
-  if (!rows[0]) throw notFound('MR 单不存在')
+  if (!rows[0]) throw notFound('MR 申请不存在')
   return orderPayload(rows[0])
 }
 
@@ -313,7 +325,7 @@ async function loadLockedOrder(connection, id) {
      WHERE o.id = :id LIMIT 1 FOR UPDATE`,
     { id },
   )
-  if (!rows[0]) throw notFound('MR 单不存在')
+  if (!rows[0]) throw notFound('MR 申请不存在')
   const [pending] = await connection.execute(
     `SELECT step_key AS current_step_key, step_label AS current_step_label,
             assignee_user_id AS current_assignee_user_id, assignment_error
@@ -333,7 +345,7 @@ async function loadCalculatedOrder(connection, order) {
 async function loadDetail(id, user) {
   await ensureTables()
   const order = await loadRawOrder(id, user)
-  if (!canView(order, user)) throw forbidden('无权查看该 MR 单')
+  if (!canView(order, user)) throw forbidden('无权查看该 MR 申请')
   const [itemRows, approvalRows, fileRows, versionRows, documentRows] = await Promise.all([
     query('SELECT * FROM mr_items WHERE mr_id = :id ORDER BY row_no, id', { id }),
     query(
@@ -424,21 +436,21 @@ async function resolveReferences(order, user) {
       "SELECT id FROM users WHERE id = :id AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1",
       { id: order.salesOwnerId },
     )
-    if (!users[0]) throw badRequest('负责业务不存在或已停用')
+    if (!users[0]) throw badRequest('业务负责人不存在或已停用')
   }
   return order
 }
 
 async function assertCreateOwner(order, user) {
   if (user.role === 'admin' || SALES_ROLES.has(user.role)) return
-  if (user.role !== 'assistant') throw forbidden('只有业务、业务主管或其对应助理可以创建 MR 单')
-  if (!order.salesOwnerId) throw badRequest('助理代建 MR 时请选择负责业务')
+  if (user.role !== 'assistant') throw forbidden('仅业务人员、业务主管或其对应助理可以创建 MR 申请')
+  if (!order.salesOwnerId) throw badRequest('助理代建 MR 申请时，请选择业务负责人')
   const rows = await query(
     `SELECT assistant_user_id FROM users
      WHERE id = :salesId AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1`,
     { salesId: order.salesOwnerId },
   )
-  if (Number(rows[0]?.assistant_user_id) !== Number(user.id)) throw forbidden('只能为由你负责的业务代建 MR 单')
+  if (Number(rows[0]?.assistant_user_id) !== Number(user.id)) throw forbidden('仅可为与你建立助理对应关系的业务负责人代建 MR 申请')
 }
 
 const ORDER_COLUMNS = [
@@ -585,7 +597,7 @@ async function update(req, res) {
   const params = dbParams(normalized.order)
   await transaction(async (connection) => {
     const existing = await loadLockedOrder(connection, req.params.id)
-    if (!canEdit(existing, req.user)) throw forbidden('当前状态或身份不允许编辑该 MR 单')
+    if (!canEdit(existing, req.user)) throw forbidden('当前状态或身份不允许编辑该 MR 申请')
     if (req.user.role !== 'admin' || existing.status !== 'draft') params.sales_owner_id = existing.salesOwnerId
     await connection.execute(
       `UPDATE mr_orders SET
@@ -617,7 +629,7 @@ async function submit(req, res) {
   await ensureTables()
   await transaction(async (connection) => {
     const locked = await loadLockedOrder(connection, req.params.id)
-    if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许提交该 MR 单')
+    if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许提交该 MR 申请')
     if (locked.status === 'in_review') throw badRequest('请先保存修改，再通过助理会签推进流程')
     const detailValue = await loadCalculatedOrder(connection, locked)
     await resolveSubmissionCustomer(connection, detailValue, req.user)
@@ -778,14 +790,14 @@ async function reject(req, res) {
 }
 
 async function reassignSalesOwner(req, res) {
-  if (req.user.role !== 'admin') throw forbidden('只有管理员可以正式变更负责业务')
+  if (req.user.role !== 'admin') throw forbidden('仅管理员可以正式变更业务负责人')
   const salesOwnerId = Number(req.body?.salesOwnerId)
-  if (!Number.isInteger(salesOwnerId) || salesOwnerId <= 0) throw badRequest('请选择新的负责业务')
+  if (!Number.isInteger(salesOwnerId) || salesOwnerId <= 0) throw badRequest('请选择新的业务负责人')
   await ensureTables()
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (Number(order.salesOwnerId) === salesOwnerId) throw badRequest('负责业务未发生变化')
-    if (['approved', 'voided'].includes(order.status)) throw badRequest('已通过或已作废 MR 不允许变更负责业务')
+    if (Number(order.salesOwnerId) === salesOwnerId) throw badRequest('业务负责人未发生变化')
+    if (['approved', 'voided'].includes(order.status)) throw badRequest('已通过或已作废的 MR 申请不允许变更业务负责人')
     const mapping = await salesWithAssistant(connection, salesOwnerId)
     const nextOrder = { ...order, salesOwnerId }
     await resolveStepAssignee(connection, nextOrder, 'sales', { required: true })
@@ -800,7 +812,7 @@ async function reassignSalesOwner(req, res) {
       if (pending[0]) {
         await completeTask(connection, pending[0].id, 'reassigned')
         await connection.execute(
-          `UPDATE mr_approvals SET action = 'skipped', reason = '负责业务变更'
+          `UPDATE mr_approvals SET action = 'skipped', reason = '业务负责人变更'
            WHERE mr_id = :id AND cycle = :cycle AND action IS NULL`,
           { id: req.params.id, cycle: pending[0].cycle },
         )
@@ -812,7 +824,7 @@ async function reassignSalesOwner(req, res) {
               status = CASE WHEN :restart = 1 THEN 'rejected' ELSE status END,
               return_target = CASE WHEN :restart = 1 THEN 'assistant' ELSE return_target END,
               rejected_at = CASE WHEN :restart = 1 THEN NOW() ELSE rejected_at END,
-              reject_reason = CASE WHEN :restart = 1 THEN '负责业务已变更，请新对应助理核对后重新提交' ELSE reject_reason END,
+              reject_reason = CASE WHEN :restart = 1 THEN '业务负责人已变更，请新对应助理核对后重新提交' ELSE reject_reason END,
               updated_by = :userId WHERE id = :id`,
       { id: req.params.id, salesOwnerId, restart: restart ? 1 : 0, userId: req.user.id },
     )
@@ -841,7 +853,7 @@ async function withdraw(req, res) {
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     if (!canWithdraw(order, req.user)) {
-      throw forbidden('只有负责业务可以撤回签核中的 MR 单')
+      throw forbidden('仅业务负责人可以撤回签核中的 MR 申请')
     }
     const [pending] = await connection.execute(
       `SELECT id, cycle, assignee_user_id FROM mr_approvals
@@ -851,7 +863,7 @@ async function withdraw(req, res) {
     if (!pending[0]) throw badRequest('当前没有可撤回的签核任务')
     await completeTask(connection, pending[0].id, 'withdrawn')
     await connection.execute(
-      `UPDATE mr_approvals SET action = 'skipped', reason = '业务撤回'
+      `UPDATE mr_approvals SET action = 'skipped', reason = '业务负责人撤回'
        WHERE mr_id = :id AND cycle = :cycle AND action IS NULL`,
       { id: req.params.id, cycle: pending[0].cycle },
     )
@@ -878,7 +890,7 @@ async function voidOrder(req, res) {
   await ensureTables()
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (!canVoid(order, req.user)) throw forbidden('当前状态或身份不允许作废该 MR 单')
+    if (!canVoid(order, req.user)) throw forbidden('当前状态或身份不允许作废该 MR 申请')
     await connection.execute(
       `UPDATE mr_orders SET status = 'voided', voided_at = NOW(), void_reason = :reason,
               archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
@@ -948,7 +960,7 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
     }
     await transaction(async (connection) => {
       const locked = await loadLockedOrder(connection, ownerId)
-      if (!canEdit(locked, user)) throw forbidden('当前状态或身份不允许保存报价附件')
+      if (!canEdit(locked, user)) throw forbidden('当前状态或身份不允许保存报价原始附件')
       if (cleanupExisting) {
         ;[oldFiles] = await connection.execute(
           `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
@@ -1102,15 +1114,15 @@ async function importQuotation(req, res) {
 
 async function downloadQuotation(req, res) {
   const order = await loadRawOrder(req.params.id, req.user)
-  if (!canView(order, req.user)) throw forbidden('无权下载该报价单')
+  if (!canView(order, req.user)) throw forbidden('无权下载该报价原始附件')
   const fileId = Number(req.query.fileId || order.quotationFileId)
-  if (!fileId) throw notFound('该 MR 单未上传报价单')
+  if (!fileId) throw notFound('该 MR 申请未上传报价原始附件')
   const rows = await query(
     `SELECT storage_path, original_name FROM files
      WHERE id = :fileId AND owner_type = 'mr_order' AND owner_id = :ownerId LIMIT 1`,
     { fileId, ownerId: req.params.id },
   )
-  if (!rows[0] || !fs.existsSync(rows[0].storage_path)) throw notFound('报价单文件不存在')
+  if (!rows[0] || !fs.existsSync(rows[0].storage_path)) throw notFound('报价原始附件不存在')
   res.download(rows[0].storage_path, rows[0].original_name)
 }
 
