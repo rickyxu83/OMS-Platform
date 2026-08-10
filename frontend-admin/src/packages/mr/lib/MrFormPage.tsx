@@ -608,6 +608,7 @@ export function MrFormPage() {
       setEditing(false)
       setDecision(null)
       setReason('')
+      window.dispatchEvent(new CustomEvent('mr:approval-changed'))
       if (decision === 'approve' && next.autoApprovedStep) {
         toast.success(`当前签核已完成，因您同时负责下一环节，已一并完成「${next.autoApprovedStep}」签核`)
       } else {

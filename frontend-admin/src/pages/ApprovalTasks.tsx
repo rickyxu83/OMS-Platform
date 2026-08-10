@@ -53,6 +53,12 @@ export function ApprovalTasks() {
 
   useEffect(() => { void load() }, [load])
 
+  useEffect(() => {
+    const onApprovalChanged = () => { if (view === 'pending') void load() }
+    window.addEventListener('mr:approval-changed', onApprovalChanged)
+    return () => window.removeEventListener('mr:approval-changed', onApprovalChanged)
+  }, [view, load])
+
   return (
     <div className="mx-auto max-w-[1400px] space-y-5 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">

@@ -419,7 +419,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       .catch(() => {});
     void load();
     const timer = window.setInterval(load, 60000);
-    return () => { active = false; window.clearInterval(timer); };
+    const onApprovalChanged = () => void load();
+    window.addEventListener("mr:approval-changed", onApprovalChanged);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("mr:approval-changed", onApprovalChanged); };
   }, [user?.id, location.pathname]);
 
   const handleLangToggle = () => {
