@@ -15,7 +15,7 @@ const { archiveMrDocument } = require('./archive')
 const { validateParsedQuotation } = require('./quotation-validation')
 const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
-const { recognizeQuotationWithAi } = require('./quotation-ai-parser')
+const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
 const {
   constants,
   STEP_ROLES,
@@ -1189,6 +1189,11 @@ async function importQuotation(req, res) {
   }
   try {
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
+  try {
+    await applyAiEntityKeys(sources)
+  } catch (_error) {
+    // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
+  }
 
   const vendors = await query(
     `SELECT name, official_website AS officialWebsite

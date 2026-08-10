@@ -5,7 +5,7 @@ process.env.AI_API_URL = 'https://example.invalid/v1/chat/completions'
 process.env.AI_API_KEY = 'test-key'
 process.env.AI_MODEL = 'test-model'
 const XLSX = require('xlsx')
-const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi } = require('../lib/quotation-ai-parser')
+const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi, applyAiEntityKeys } = require('../lib/quotation-ai-parser')
 
 const sampleAi = {
   documentType: 'purchase_quote',
@@ -82,11 +82,28 @@ async function testRecognize() {
   assert.equal(emptyResult, null)
 }
 
+async function testEntityKeys() {
+  const sources = [
+    { name: '销售-维保.pdf', sheets: [{ items: [{ item_no: '1', name: 'FAS2750 14+7T 维保', description: '原厂维保1年', part_no: '' }] }] },
+    { name: '供应商-硬件.pdf', sheets: [{ items: [{ item_no: '1', name: 'DS224C 960G SSD', description: '序列号 952145001351/952145001204', part_no: '952145001351/952145001204' }] }] },
+  ]
+  const fakeFetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({ items: [
+      { sourceIndex: 0, itemIndex: 0, entityKey: 'FAS2750 存储 SN:952145001351/952145001204' },
+      { sourceIndex: 1, itemIndex: 0, entityKey: 'FAS2750 存储 SN:952145001351/952145001204' },
+    ] }) } }],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  await applyAiEntityKeys(sources, { fetchImpl: fakeFetch })
+  assert.equal(sources[0].sheets[0].items[0].entityKey, 'FAS2750 存储 SN:952145001351/952145001204')
+  assert.equal(sources[1].sheets[0].items[0].entityKey, 'FAS2750 存储 SN:952145001351/952145001204')
+}
+
 async function main() {
   testExtractJson()
   testNormalize()
   testWorkbookText()
   await testRecognize()
+  await testEntityKeys()
   console.log('quotation AI parser tests passed')
 }
 

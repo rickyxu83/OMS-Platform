@@ -224,4 +224,51 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
   }
 }
 
-module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText }
+/**
+ * AI 跨文件实体归一化：把多份报价文件识别出的品项（不含金额）汇总给 AI，
+ * 为每个品项分配统一的 entityKey（同一设备/服务实体的 key 完全相同），
+ * 用于销售报价与供应商报价的跨文件配对。失败时静默降级（保持原 entityKey）。
+ * @param {Array<{ name: string, sheets: Array<{ items: Array }> }>} sources
+ */
+async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
+  if (!env.ai.quoteRecognitionEnabled || !env.ai.apiUrl || !env.ai.apiKey || !env.ai.model) return
+  const entries = []
+  sources.forEach((source, sourceIndex) => {
+    ;(source.sheets || []).forEach((sheet) => {
+      ;(sheet.items || []).forEach((item, itemIndex) => {
+        if (item.name || item.part_no || item.description || item.entityKey) {
+          entries.push({ sourceIndex, itemIndex, name: str(item.name), partNo: str(item.part_no), description: str(item.description).slice(0, 200), entityKey: str(item.entityKey) })
+        }
+      })
+    })
+  })
+  if (entries.length < 2) return
+  const prompt = [
+    '以下是多份报价文件识别出的品项（已去除金额，仅用于实体识别）：',
+    JSON.stringify(entries.slice(0, 60)),
+    '',
+    '请判断哪些品项属于同一设备/服务实体（例如同一台存储设备的硬件采购与维保服务）。',
+    '为每个品项重新分配统一的 entityKey：',
+    '- 同一实体的所有品项必须使用完全相同的 entityKey 字符串（例如同一台 FAS2750 存储的维保报价与硬件报价，entityKey 都应为 "FAS2750 存储 SN:952145001351/952145001204"）',
+    '- 不同实体必须使用不同的 entityKey',
+    '- 命名规范：设备/服务对象 + 型号 + 序列号（无序列号则型号 + 配置，如 "FAS2750 14+7T 存储"）',
+    '- 无法判断归属的品项给独立 entityKey 或空字符串',
+    '严格只输出 JSON，不要其他文字：',
+    '{ "items": [{ "sourceIndex": 0, "itemIndex": 0, "entityKey": "..." }] }',
+  ].join('\n')
+  const content = await callAi([
+    { role: 'system', content: '你是设备实体识别助手，严格只输出合法 JSON。' },
+    { role: 'user', content: prompt },
+  ], env.ai.quoteTimeoutMs, fetchImpl)
+  const result = extractJson(content)
+  const mapping = Array.isArray(result?.items) ? result.items : []
+  for (const entry of mapping) {
+    const key = String(entry?.entityKey || '').trim()
+    if (!key) continue
+    const source = sources[Number(entry.sourceIndex)]
+    const item = source?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
+    if (item) item.entityKey = key
+  }
+}
+
+module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText, applyAiEntityKeys }
