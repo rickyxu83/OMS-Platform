@@ -1235,6 +1235,28 @@ async function importQuotation(req, res) {
   }
 }
 
+/** 供应商候选：MR 历史品项供应商 + 供应商目录（原厂），供导入/编辑页下拉联动。 */
+async function vendorSuggestions(_req, res) {
+  await ensureTables()
+  const mrVendors = await query(
+    `SELECT vendor AS name, COUNT(*) AS usageCount
+     FROM mr_items
+     WHERE vendor IS NOT NULL AND vendor != ''
+     GROUP BY vendor
+     ORDER BY usageCount DESC, vendor
+     LIMIT 300`,
+  )
+  const seen = new Set(mrVendors.map((row) => row.name))
+  const parties = await query(
+    `SELECT id, name FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
+  )
+  const items = [
+    ...mrVendors.map((row) => ({ id: `mr-${row.name}`, name: row.name })),
+    ...parties.filter((party) => !seen.has(party.name)).map((party) => ({ id: party.id, name: party.name })),
+  ]
+  res.json({ items })
+}
+
 /** 报价导入进度查询（配合前端“第 x/N 份”提示）。 */
 async function importProgressHandler(req, res) {
   const taskId = String(req.query.taskId || '').trim()
@@ -1302,6 +1324,7 @@ module.exports = {
   remove,
   importQuotation,
   importProgressHandler,
+  vendorSuggestions,
   downloadQuotation,
   downloadDocument,
 }

@@ -14,6 +14,10 @@ function normalized(value) {
   return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
 }
 
+function serialTokens(value) {
+  return String(value || '').split(/[^A-Za-z0-9]+/).filter((token) => /\d/.test(token) && token.length >= 6).map((token) => token.toLowerCase())
+}
+
 function itemKeys(item) {
   const part = normalized(item.part_no)
   const descriptionText = String(item.description || '')
@@ -21,6 +25,7 @@ function itemKeys(item) {
   const name = normalized(item.name || descriptionText.split(/\r?\n/)[0])
   const entityKey = normalized(item.entityKey)
   const keys = [part && `part:${part}`, description && `desc:${description}`, name && `name:${name}`, entityKey && `entity:${entityKey}`].filter(Boolean)
+  for (const token of serialTokens(`${item.part_no || ''} ${item.entityKey || ''} ${descriptionText}`)) keys.push(`sn:${token}`)
   for (const component of item.components || []) {
     const componentText = normalized([component.group, component.part, component.description].filter(Boolean).join(' '))
     if (componentText) keys.push(`component:${componentText}`)

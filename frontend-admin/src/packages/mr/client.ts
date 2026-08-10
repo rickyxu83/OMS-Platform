@@ -65,7 +65,7 @@ export async function loadMrReferences() {
   const [customers, salespeople, vendors] = await Promise.all([
     api.get('/customers?pageSize=200') as Promise<{ items?: CustomerOption[] }>,
     api.get('/users/salespeople') as Promise<{ items?: UserOption[] }>,
-    api.get('/maintenance-parties?partyType=original_manufacturer&limit=1000') as Promise<{ items?: VendorOption[] }>,
+    api.get('/mr/vendor-suggestions') as Promise<{ items?: VendorOption[] }>,
   ])
   return {
     customers: customers.items || [],

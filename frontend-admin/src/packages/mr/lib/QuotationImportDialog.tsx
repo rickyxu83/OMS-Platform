@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { AlertTriangle, Check, Download, FileSpreadsheet, ListChecks, Loader2, Pencil, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -193,6 +193,7 @@ export function QuotationImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
+  const parseSeqRef = useRef(0)
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(pricingMode) || 0
@@ -286,32 +287,63 @@ export function QuotationImportDialog({
     const nextRoles: UploadRole[] = [...nextSales.map(() => 'sales' as const), ...nextPurchase.map(() => 'purchase' as const)]
     setPreview(null)
     setError('')
-    if (!nextFiles.length) return
+    if (!nextFiles.length) { setLoading(false); return }
+    const seq = ++parseSeqRef.current
     setLoading(true)
     const taskId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
     const poll = setInterval(() => {
+      if (seq !== parseSeqRef.current) return
       void getImportProgress(taskId).then((next) => {
-        if (next.total > 0) setProgress(next)
+        if (seq === parseSeqRef.current && next.total > 0) setProgress(next)
       }).catch(() => { /* 进度接口暂不可用则保持通用提示 */ })
     }, 1200)
     try {
       const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId)
+      if (seq !== parseSeqRef.current) return
       setPreview(parsed)
       setPreviewAnimationKey((current) => current + 1)
     } catch (err) {
-      setError((err as Error).message || '报价文件解析失败')
+      if (seq === parseSeqRef.current) setError((err as Error).message || '报价文件解析失败')
     } finally {
       clearInterval(poll)
-      setLoading(false)
-      setProgress(null)
+      if (seq === parseSeqRef.current) {
+        setLoading(false)
+        setProgress(null)
+      }
     }
   }
 
+  const applyLocalRemoval = (removedNames: string[]) => {
+    setPreview((current) => {
+      if (!current) return current
+      const removed = new Set(removedNames)
+      const sources = (current.sources || []).filter((source) => !removed.has(source.name))
+      const items = (current.items || [])
+        .filter((item) => !(item.salesSource && removed.has(item.salesSource)))
+        .filter((item) => !(item.purchaseOnly && item.costSource && removed.has(item.costSource)))
+        .map((item) => {
+          if (!item.costSource || !removed.has(item.costSource)) return item
+          return { ...item, vendor: '', costInclTax: null, costSource: '' }
+        })
+      const warnings = (current.warnings || []).filter((warning) => !removedNames.some((name) => warning.includes(name)))
+      return { ...current, sources, items, warnings }
+    })
+    toast.success('已取消该文件的识别结果，其余文件的识别结果已保留，无需重新识别')
+  }
+
   const updateFiles = (role: UploadRole, next: File[]) => {
+    const prevAll = [...salesFiles, ...purchaseFiles]
     const nextSales = role === 'sales' ? next : salesFiles
     const nextPurchase = role === 'purchase' ? next : purchaseFiles
+    const nextAll = [...nextSales, ...nextPurchase]
+    const nextNames = new Set(nextAll.map((file) => file.name))
+    const removedNames = prevAll.filter((file) => !nextNames.has(file.name)).map((file) => file.name)
     if (role === 'sales') setSalesFiles(next)
     else setPurchaseFiles(next)
+    if (removedNames.length && nextAll.length && preview) {
+      applyLocalRemoval(removedNames)
+      return
+    }
     void parse(nextSales, nextPurchase)
   }
 

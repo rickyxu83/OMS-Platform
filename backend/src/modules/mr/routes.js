@@ -9,6 +9,7 @@ router.get('/assistant-setting', requirePermission('mr.view'), controller.getAss
 router.put('/assistant-setting', requirePermission('mr.view'), controller.setAssistantSetting)
 router.get('/', requirePermission('mr.view'), controller.list)
 router.get('/import-progress', requirePermission('mr.view'), controller.importProgressHandler)
+router.get('/vendor-suggestions', requirePermission('mr.view'), controller.vendorSuggestions)
 router.post('/', requirePermission('mr.create'), controller.create)
 router.get('/:id', requirePermission('mr.view'), controller.detail)
 router.put('/:id', requirePermission('mr.edit'), controller.update)
