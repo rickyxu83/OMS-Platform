@@ -457,7 +457,7 @@ export function MrFormPage() {
     const importedContactName = importedContact?.name || result.metadata?.attn || ''
     const importedContactPhone = importedContact?.phone || ''
     const importedContactMail = importedContact?.email || ''
-    patch({
+    const importPatch = {
       pricingMode: importedMode,
       invoiceType: importedInvoiceType || calculated?.invoiceType || '',
       items: syncInstallOptions(items, [], calculated?.installOptions || []),
@@ -480,9 +480,24 @@ export function MrFormPage() {
       invoiceRecipientTel: calculated?.invoiceRecipientTel || importedContactPhone,
       invoiceRecipientMail: calculated?.invoiceRecipientMail || importedContactMail,
       paymentTerms: calculated?.paymentTerms || paymentFromQuotation(result.metadata?.payment),
-    })
-    setImportAnimationKey((current) => current + 1)
-    toast.success(`已导入 ${items.length} 个品项，并留存 ${result.sources.length} 份报价原始附件；原有附件均已保留。建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
+    }
+    patch(importPatch)
+    // 导入结果立即自动保存，避免预览/回退页面时未保存的导入内容丢失
+    if (id && form) {
+      try {
+        const saved = await updateMr(id, calculateForm({ ...form, ...importPatch }))
+        setForm(saved)
+        setDirty(false)
+        setImportAnimationKey((current) => current + 1)
+        toast.success(`已导入 ${items.length} 个品项并自动保存，留存 ${result.sources.length} 份报价原始附件；建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
+      } catch {
+        setImportAnimationKey((current) => current + 1)
+        toast.warning(`已导入 ${items.length} 个品项，但自动保存失败；请在页面手动保存，避免预览或离开后丢失`)
+      }
+    } else {
+      setImportAnimationKey((current) => current + 1)
+      toast.success(`已导入 ${items.length} 个品项，并留存 ${result.sources.length} 份报价原始附件；原有附件均已保留。建议计价模式为“${PRICING_LABELS[importedMode]}”${matchedCustomer ? `；已匹配客户档案：${matchedCustomer.name}` : ''}`)
+    }
     if (metadataCustomer && !matchedCustomer && !calculated?.customerId) toast.warning(`报价中的客户“${metadataCustomer}”未匹配到客户档案，系统已暂存客户名称；请确认或手动关联。`)
   }
   const save = async () => {
