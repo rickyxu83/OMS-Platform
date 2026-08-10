@@ -116,7 +116,7 @@ function sourceRole(source, index, sources) {
 function flattenedItems(source, sourceIndex, vendors) {
   const vendor = vendorName(source, vendors)
   const taxRate = sourceTaxRate(source)
-  const taxIncluded = sourceTaxIncluded(source)
+  const taxIncluded = sourceItemPricesTaxIncluded(source)
   return source.sheets.flatMap((sheet) => sheet.items.map((item) => ({
     ...item,
     taxRateKnown: [6, 13].includes(Number(sheet.tax_rate)),
