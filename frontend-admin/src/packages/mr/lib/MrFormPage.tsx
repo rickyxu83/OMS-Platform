@@ -1121,6 +1121,7 @@ export function MrFormPage() {
           invoiceType={calculated.invoiceType}
           pricingMode={calculated.pricingMode}
           existingFiles={calculated.quotationFiles || []}
+          vendors={vendors}
           onOpenChange={setImportOpen}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
         />

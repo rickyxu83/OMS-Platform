@@ -226,6 +226,16 @@ assert.equal(purchaseOnlyMerge.items[0].vendor, '')
 assert.equal(purchaseOnlyMerge.items[0].costInclTax, 196)
 assert(purchaseOnlyMerge.warnings.some((warning) => warning.includes('未提供销售报价，已按供应商报价导入 1 个待填售价品项')))
 
+const dedupeMerge = mergeQuotations([
+  { name: '采购议价A.pdf', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 196, tax_rate: 13, tax_included: true, items: [{ ...parsed[0].items[0], item_no: '1', part_no: 'FAS2750-14T', name: 'NetAPP维保 FAS2750（14+7T）', description: 'NetAPP存儲 原廠7*24維保1年 FAS2750（14+7T）', qty: 1, unit_price: 196, extended: 196, components: [] }] }] },
+  { name: '报价单-维保.pdf', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 196, tax_rate: 13, tax_included: true, items: [{ ...parsed[0].items[0], item_no: '1', part_no: 'FAS2750-14T', name: 'NetAPP维保 FAS2750（14+7T）', description: 'NetAPP存儲 原廠維保1年FAS2750（14+7T）含季度巡檢/MISC', qty: 1, unit_price: 196, extended: 196, components: [] }] }] },
+  { name: '采购议价B.pdf', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 196, tax_rate: 13, tax_included: true, items: [{ ...parsed[0].items[0], item_no: '1', part_no: 'FAS2750-14T', name: 'NetAPP维保 FAS2750（14+7T）', description: 'NetAPP存儲 原廠維保1年FAS2750（14+7T）2026年-2027年', qty: 1, unit_price: 196, extended: 196, components: [] }] }] },
+], [])
+assert.equal(dedupeMerge.items.length, 1, '三份内容重复的供应商报价应合并为一个品项')
+assert.equal(dedupeMerge.items[0].oemSpec, 'FAS2750-14T')
+assert(dedupeMerge.warnings.some((warning) => warning.includes('重复，已自动合并')))
+assert(dedupeMerge.warnings.some((warning) => warning.includes('已按供应商报价导入 1 个待填售价品项')))
+
 const mixedUnmatchedPurchase = mergeQuotations([
   { name: '销售报价.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 316, tax_rate: 13, tax_included: true, items: [

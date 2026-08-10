@@ -298,7 +298,18 @@ function mergeQuotations(inputSources, vendors = []) {
     unmatchedPurchaseItems.push(purchase)
   }
   if (unmatchedPurchaseItems.length) {
+    const deduped = []
+    let duplicateCount = 0
     for (const purchase of unmatchedPurchaseItems) {
+      const isDuplicate = deduped.some((existing) => {
+        const existingPart = normalized(existing.part_no)
+        const purchasePart = normalized(purchase.part_no)
+        if (purchasePart && existingPart && purchasePart === existingPart) return true
+        if (number(purchase.qty) > 0 && number(purchase.qty) === number(existing.qty) && itemSimilarity(purchase, existing) >= 0.85) return true
+        return false
+      })
+      if (isDuplicate) { duplicateCount += 1; continue }
+      deduped.push(purchase)
       const fields = descriptionFields(purchase.description, purchase.part_no)
       items.push({
         companyPartNo: '',
@@ -328,8 +339,9 @@ function mergeQuotations(inputSources, vendors = []) {
       })
     }
     warnings.push(salesSourceIndex >= 0
-      ? `供应商报价中 ${unmatchedPurchaseItems.length} 个品项未匹配到销售报价，已按供应商报价导入为待填售价品项，请在导入后填写售价`
-      : `未提供销售报价，已按供应商报价导入 ${unmatchedPurchaseItems.length} 个待填售价品项，请在导入后填写售价`)
+      ? `供应商报价中 ${deduped.length} 个品项未匹配到销售报价，已按供应商报价导入为待填售价品项，请在导入后填写售价`
+      : `未提供销售报价，已按供应商报价导入 ${deduped.length} 个待填售价品项，请在导入后填写售价`)
+    if (duplicateCount) warnings.push(`检测到 ${duplicateCount} 个供应商报价品项与已导入品项内容重复，已自动合并（保留第一份），请核对`)
   }
   const salesTotalExcludingTax = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
   const quoteTotal = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null

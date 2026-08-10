@@ -27,13 +27,18 @@ export const setAssistantSetting = (assistantUserId: string | number) => api.put
 export const listApprovalTasks = (view: 'pending' | 'initiated' | 'completed') => api.get(`/approval-tasks?view=${view}`) as Promise<{ items: ApprovalTask[]; pendingCount: number }>
 export const listSalespeople = () => api.get('/users/salespeople') as Promise<{ items: UserOption[] }>
 
-export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false) {
+export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false, taskId = '') {
   const body = new FormData()
   for (const file of files) body.append('files', file)
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
   if (persist) body.set('persist', '1')
   if (cleanupStoredFiles) body.set('cleanupStoredFiles', '1')
+  if (taskId) body.set('taskId', taskId)
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
+}
+
+export async function getImportProgress(taskId: string) {
+  return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string }>
 }
 
 export async function downloadQuotation(id: string | number, fileId: string | number, name: string) {

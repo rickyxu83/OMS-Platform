@@ -2,6 +2,9 @@ const fs = require('fs')
 const path = require('path')
 const multer = require('multer')
 const env = require('../../../config/env')
+
+/** 报价导入进度（内存态，用于前端“第 x/N 份”提示）；识别结束后延迟清理。 */
+const importProgress = new Map()
 const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
 const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
@@ -1077,6 +1080,10 @@ async function importQuotation(req, res) {
   const order = await loadRawOrder(req.params.id)
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
 
+  const taskId = String(req.body?.taskId || '').trim()
+  const progress = { done: 0, total: uploads.length, current: '' }
+  if (taskId) importProgress.set(taskId, progress)
+  const clearProgress = () => { if (taskId) setTimeout(() => importProgress.delete(taskId), 60000) }
   let requestedRoles = []
   try {
     requestedRoles = JSON.parse(String(req.body?.sourceRoles || '[]'))
@@ -1090,7 +1097,7 @@ async function importQuotation(req, res) {
     const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
     try {
-      let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
+    let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
       let parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
@@ -1175,8 +1182,12 @@ async function importQuotation(req, res) {
         warnings: [`${name} 解析失败：${error.message}；已保留其他来源的识别结果`],
         reviewCount: 0,
       }
+    } finally {
+      progress.done += 1
+      progress.current = name
     }
   }
+  try {
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
 
   const vendors = await query(
@@ -1214,6 +1225,18 @@ async function importQuotation(req, res) {
   const cleanupStoredFiles = String(req.body?.cleanupStoredFiles || '') === '1'
   const files = persist ? await persistQuotationFiles(req.params.id, uploads, req.user, cleanupStoredFiles) : []
   res.json({ files, ...payload })
+  } finally {
+    clearProgress()
+  }
+}
+
+/** 报价导入进度查询（配合前端“第 x/N 份”提示）。 */
+async function importProgressHandler(req, res) {
+  const taskId = String(req.query.taskId || '').trim()
+  if (!taskId) throw badRequest('缺少 taskId')
+  const progress = importProgress.get(taskId)
+  if (!progress) return res.json({ done: 0, total: 0, current: '' })
+  res.json({ done: progress.done, total: progress.total, current: progress.current })
 }
 
 async function downloadQuotation(req, res) {
@@ -1273,6 +1296,7 @@ module.exports = {
   voidOrder,
   remove,
   importQuotation,
+  importProgressHandler,
   downloadQuotation,
   downloadDocument,
 }

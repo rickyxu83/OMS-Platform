@@ -7,8 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { downloadQuotation, importQuotations } from '../client'
-import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource } from '../types'
+import { downloadQuotation, getImportProgress, importQuotations } from '../client'
+import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 import { AnimatedInteger, AnimatedMoney } from './mr-ui'
 
@@ -123,13 +123,15 @@ function FileDropZone({
   )
 }
 
-function ImportActivity({ saving, fileCount = 1 }: { saving: boolean; fileCount?: number }) {
+function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; fileCount?: number; progress?: { done: number; total: number; current: string } | null }) {
   const stages = saving ? ['留存附件', '写入品项', '计算金额'] : ['读取文件', '识别字段', '匹配品项']
   const waitingHint = saving
     ? '正在留存附件、写入品项并计算金额，请稍候。'
-    : fileCount > 1
-      ? `共 ${fileCount} 份文件并行识别中，AI 识别通常约需 15-40 秒，识别完成前请勿刷新或关闭页面。`
-      : 'AI 识别通常约需 10-30 秒，识别完成前请勿刷新或关闭页面。'
+    : progress && progress.total > 0
+      ? `正在识别报价文件（第 ${progress.done}/${progress.total} 份${progress.current ? `，当前：${progress.current}` : ''}），AI 识别通常约需 10-30 秒/份，识别完成前请勿刷新或关闭页面。`
+      : fileCount > 1
+        ? `共 ${fileCount} 份文件并行识别中，AI 识别通常约需 15-40 秒，识别完成前请勿刷新或关闭页面。`
+        : 'AI 识别通常约需 10-30 秒，识别完成前请勿刷新或关闭页面。'
   return (
     <div role="status" aria-live="polite" className="relative overflow-hidden rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
       <div aria-hidden="true" className="absolute inset-x-0 top-0 flex h-1 gap-1 bg-primary/10">
@@ -164,6 +166,7 @@ export function QuotationImportDialog({
   invoiceType,
   pricingMode,
   existingFiles,
+  vendors = [],
   onOpenChange,
   onApply,
 }: {
@@ -173,6 +176,7 @@ export function QuotationImportDialog({
   invoiceType?: string | null
   pricingMode?: number | null
   existingFiles: QuotationFile[]
+  vendors?: VendorOption[]
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult, pricingMode: number) => void
 }) {
@@ -188,6 +192,7 @@ export function QuotationImportDialog({
   const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(pricingMode) || 0
@@ -265,14 +270,22 @@ export function QuotationImportDialog({
     setError('')
     if (!nextFiles.length) return
     setLoading(true)
+    const taskId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
+    const poll = setInterval(() => {
+      void getImportProgress(taskId).then((next) => {
+        if (next.total > 0) setProgress(next)
+      }).catch(() => { /* 进度接口暂不可用则保持通用提示 */ })
+    }, 1200)
     try {
-      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles)
+      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId)
       setPreview(parsed)
       setPreviewAnimationKey((current) => current + 1)
     } catch (err) {
       setError((err as Error).message || '报价文件解析失败')
     } finally {
+      clearInterval(poll)
       setLoading(false)
+      setProgress(null)
     }
   }
 
@@ -332,12 +345,13 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-        {loading ? <ImportActivity saving={Boolean(preview)} fileCount={files.length} /> : null}
+                {loading ? <ImportActivity saving={Boolean(preview)} fileCount={files.length} progress={progress} /> : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件，其中销售报价 {salesFiles.length} 份、采购来源文件 {purchaseFiles.length} 份。</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
         {preview ? (
           <div key={previewAnimationKey} className="space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500">
+        <datalist id="mr-import-vendor-options">{vendors.map((vendor) => <option key={vendor.id} value={vendor.name} />)}</datalist>
             <section>
               <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span></div>
               {preview.metadata?.matchedCustomer ? (
@@ -360,7 +374,7 @@ export function QuotationImportDialog({
                       <div className="text-xs text-muted-foreground">确认导入后，原始文件将随 MR 申请一并留存。</div>
                     </div>
                     <div className="min-w-0">
-                      {source.role === 'purchase' ? <Input value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别；请手动填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
+                      {source.role === 'purchase' ? <Input list="mr-import-vendor-options" value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别；请从下拉选择或手动填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>
                     <div className="text-sm tabular-nums">
                       <div><AnimatedMoney value={source.total} animationKey={previewAnimationKey} /></div>
@@ -402,7 +416,7 @@ export function QuotationImportDialog({
                           <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="未税单价" aria-label={`第 ${index + 1} 项未税单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input value={item.oemSpec || ''} placeholder="原厂规格" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
-                          <Input value={item.vendor || ''} placeholder="供应商" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
+                          <Input list="mr-import-vendor-options" value={item.vendor || ''} placeholder="供应商" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
                           <Input value={item.purchaseOrderNo || ''} placeholder="采购订单号" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
                           <Input value={item.warrantyService || ''} placeholder="保固与服务" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
                           <Input className="md:col-span-2" value={item.installBy || ''} placeholder="品项装机方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
