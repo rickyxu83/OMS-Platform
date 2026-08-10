@@ -123,8 +123,13 @@ function FileDropZone({
   )
 }
 
-function ImportActivity({ saving }: { saving: boolean }) {
+function ImportActivity({ saving, fileCount = 1 }: { saving: boolean; fileCount?: number }) {
   const stages = saving ? ['留存附件', '写入品项', '计算金额'] : ['读取文件', '识别字段', '匹配品项']
+  const waitingHint = saving
+    ? '正在留存附件、写入品项并计算金额，请稍候。'
+    : fileCount > 1
+      ? `共 ${fileCount} 份文件并行识别中，AI 识别通常约需 15-40 秒，识别完成前请勿刷新或关闭页面。`
+      : 'AI 识别通常约需 10-30 秒，识别完成前请勿刷新或关闭页面。'
   return (
     <div role="status" aria-live="polite" className="relative overflow-hidden rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
       <div aria-hidden="true" className="absolute inset-x-0 top-0 flex h-1 gap-1 bg-primary/10">
@@ -137,7 +142,7 @@ function ImportActivity({ saving }: { saving: boolean }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-medium">{saving ? '正在应用导入结果…' : '正在识别报价文件…'}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{saving ? '正在留存附件、写入品项并计算金额，请稍候。' : '正在解析文件、识别来源并匹配品项，请稍候。'}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{waitingHint}</div>
           <div aria-hidden="true" className="mt-3 flex flex-wrap gap-2">
             {stages.map((stage, index) => (
               <span key={stage} className="inline-flex items-center gap-1.5 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
@@ -327,7 +332,7 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-        {loading ? <ImportActivity saving={Boolean(preview)} /> : null}
+        {loading ? <ImportActivity saving={Boolean(preview)} fileCount={files.length} /> : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件，其中销售报价 {salesFiles.length} 份、采购来源文件 {purchaseFiles.length} 份。</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 

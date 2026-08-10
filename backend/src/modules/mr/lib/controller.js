@@ -1084,8 +1084,7 @@ async function importQuotation(req, res) {
   } catch (_error) {
     requestedRoles = []
   }
-  const sources = []
-  for (const [index, file] of uploads.entries()) {
+  const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
     const extension = path.extname(name).toLowerCase()
     const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
@@ -1096,7 +1095,32 @@ async function importQuotation(req, res) {
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
       recognitionMethod = parsed.recognitionMethod || recognitionMethod
-      if (parsed.documentType === 'scanned_pdf') {
+      const systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
+      let aiAdopted = null
+      const preferAi = extension === '.pdf' || systemItemCount === 0
+      if (env.ai.quoteRecognitionEnabled && preferAi) {
+        try {
+          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name)
+          if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
+            aiAdopted = aiResult
+            recognitionMethod = aiResult.recognitionMethod
+            const modeLabel = aiResult.recognitionMethod === 'ai_vision' ? 'AI 视觉' : 'AI 文本'
+            parsed = {
+              ...parsed,
+              ...aiResult,
+              warnings: [...(parsed.warnings || []), `已通过${modeLabel}识别，请在预览中核对品项`],
+            }
+            if (requestedRole && aiResult.documentType !== requestedDocumentType) {
+              parsed.warnings.push(`AI 识别该文件为“${aiResult.documentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
+            }
+          } else {
+            parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'AI 识别未返回有效品项，已保留系统识别结果'] }
+          }
+        } catch (error) {
+          parsed = { ...parsed, warnings: [...(parsed.warnings || []), `AI 识别失败（${error.message}），已保留系统识别结果`] }
+        }
+      }
+      if (parsed.documentType === 'scanned_pdf' && !aiAdopted) {
         try {
           const ocr = await recognizePdf(file.buffer, name)
           if (ocr?.text) {
@@ -1132,28 +1156,6 @@ async function importQuotation(req, res) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), '工作簿图片识别失败，供应商请人工核对'] }
         }
       }
-      const systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
-      let aiAdopted = null
-      const preferAi = extension === '.pdf' || systemItemCount === 0
-      if (env.ai.quoteRecognitionEnabled && preferAi) {
-        try {
-          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name)
-          if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
-            aiAdopted = aiResult
-            recognitionMethod = aiResult.recognitionMethod
-            const modeLabel = aiResult.recognitionMethod === 'ai_vision' ? 'AI 视觉' : 'AI 文本'
-            parsed = {
-              ...parsed,
-              ...aiResult,
-              warnings: [...(parsed.warnings || []), `已通过${modeLabel}识别，请在预览中核对品项`],
-            }
-          } else {
-            parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'AI 识别未返回有效品项，已保留系统识别结果'] }
-          }
-        } catch (error) {
-          parsed = { ...parsed, warnings: [...(parsed.warnings || []), `AI 识别失败（${error.message}），已保留系统识别结果`] }
-        }
-      }
       if (aiAdopted && systemItemCount > 0 && aiAdopted.sheets[0].items.length !== systemItemCount) {
         parsed.warnings.push(`AI 识别 ${aiAdopted.sheets[0].items.length} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
       }
@@ -1163,18 +1165,19 @@ async function importQuotation(req, res) {
       const warnings = [...(parsed.warnings || [])]
       if (!sheets.length) warnings.push(`${name} 未找到可识别的报价明细表；已保留其他来源的识别结果`)
       const documentType = requestedRole ? requestedDocumentType : parsed.documentType
-      sources.push({ name, sheets, documentType, requestedRole, warnings, reviewCount: parsed.reviewCount || 0 })
+      return { name, sheets, documentType, requestedRole, warnings, reviewCount: parsed.reviewCount || 0 }
     } catch (error) {
-      sources.push({
+      return {
         name,
         sheets: [],
         documentType: requestedDocumentType,
         requestedRole,
         warnings: [`${name} 解析失败：${error.message}；已保留其他来源的识别结果`],
         reviewCount: 0,
-      })
+      }
     }
   }
+  const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
 
   const vendors = await query(
     `SELECT name, official_website AS officialWebsite

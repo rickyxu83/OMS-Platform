@@ -167,6 +167,7 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
         messages,
         stream: false,
         max_tokens: 4000,
+        thinking: { type: 'disabled' },
       }),
     })
     const text = await response.text()
@@ -202,10 +203,21 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
   const content = await callAi(messages, timeoutMs, fetchImpl)
   const ai = extractJson(content)
   const sheet = normalizeAiResult(ai, fileName)
-  if (!sheet) return null
+  if (sheet) {
+    return {
+      sheets: [sheet],
+      documentType: ai?.documentType === 'sales_quote' ? 'sales_quote' : 'purchase_quote',
+      recognitionMethod: isPdf ? 'ai_vision' : 'ai_text',
+    }
+  }
+  // 重试一次：部分模型偶发返回空内容或解析失败，直接重发可显著提升成功率
+  const retryContent = await callAi(messages, timeoutMs, fetchImpl)
+  const retryAi = extractJson(retryContent)
+  const retrySheet = normalizeAiResult(retryAi, fileName)
+  if (!retrySheet) return null
   return {
-    sheets: [sheet],
-    documentType: ai?.documentType === 'sales_quote' ? 'sales_quote' : 'purchase_quote',
+    sheets: [retrySheet],
+    documentType: retryAi?.documentType === 'sales_quote' ? 'sales_quote' : 'purchase_quote',
     recognitionMethod: isPdf ? 'ai_vision' : 'ai_text',
   }
 }
