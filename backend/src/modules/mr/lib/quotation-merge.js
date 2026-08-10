@@ -291,28 +291,64 @@ function mergeQuotations(inputSources, vendors = []) {
       })).sort((left, right) => left.costInclTax - right.costInclTax),
     })
   }
+  const unmatchedPurchaseItems = []
   for (const purchase of purchaseItems) {
     const key = `${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`
     if (matchedPurchaseIndexes.has(key)) continue
-    warnings.push(`供应商报价品项“${purchase.name || purchase.part_no || purchase.description}”未匹配到销售报价，未导入为 MR 品项`)
+    unmatchedPurchaseItems.push(purchase)
+  }
+  if (unmatchedPurchaseItems.length) {
+    for (const purchase of unmatchedPurchaseItems) {
+      const fields = descriptionFields(purchase.description, purchase.part_no)
+      items.push({
+        companyPartNo: '',
+        oemSpec: purchase.part_no || '',
+        name: fields.name,
+        description: fields.description || fields.name,
+        warrantyService: '',
+        installBy: '',
+        qty: number(purchase.qty) || 1,
+        unitPrice: null,
+        quotedUnitPrice: null,
+        vendor: purchase.vendor || '',
+        costInclTax: round(costInclTax(purchase)),
+        taxRate: purchase.taxRate || 13,
+        purchaseOrderNo: '',
+        costSource: purchase.sourceName || '',
+        salesSource: '',
+        components: purchase.components || [],
+        recognitionMethod: purchase.recognition_method || '',
+        confidence: purchase.confidence || null,
+        reviewFields: [...new Set([...(purchase.review_fields || []), 'unitPrice'])],
+        validationMessages: ['售价未识别：该品项仅来自供应商报价且未匹配到销售报价，请在导入后填写售价'],
+        costConfidence: purchase.confidence || null,
+        costReviewFields: purchase.review_fields || [],
+        matchCandidates: [],
+        purchaseOnly: true,
+      })
+    }
+    warnings.push(salesSourceIndex >= 0
+      ? `供应商报价中 ${unmatchedPurchaseItems.length} 个品项未匹配到销售报价，已按供应商报价导入为待填售价品项，请在导入后填写售价`
+      : `未提供销售报价，已按供应商报价导入 ${unmatchedPurchaseItems.length} 个待填售价品项，请在导入后填写售价`)
   }
   const salesTotalExcludingTax = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
   const quoteTotal = salesSourceIndex >= 0 ? sourceSalesTotalExcludingTax(sources[salesSourceIndex]) : null
   if (unknownTaxSources.size) warnings.push(`${[...unknownTaxSources].join('、')} 未识别到明确成本税率，暂按 13% 导入，请逐项核对`)
 
-  const totalCost = items.reduce((sum, item) => sum + (item.costInclTax === null ? 0 : item.costInclTax / (1 + item.taxRate / 100)), 0)
   const missingCost = items.filter((item) => item.costInclTax === null)
   if (missingCost.length) warnings.push(`有 ${missingCost.length} 个品项缺少成本，暂不计算完整毛利；请补充厂商报价`)
-  const preserveQuotedPrices = items.length > 0 && items.every((item) => item.quotedUnitPrice !== null)
+  const salesPricedItems = items.filter((item) => item.salesSource)
+  const totalCost = salesPricedItems.reduce((sum, item) => sum + (item.costInclTax === null ? 0 : item.costInclTax / (1 + item.taxRate / 100)), 0)
+  const preserveQuotedPrices = salesPricedItems.length > 0 && salesPricedItems.every((item) => item.quotedUnitPrice !== null)
   if (preserveQuotedPrices) {
-    for (const item of items) item.unitPrice = item.quotedUnitPrice
+    for (const item of salesPricedItems) item.unitPrice = item.quotedUnitPrice
   } else if (salesTotalExcludingTax !== null && totalCost > 0 && !missingCost.length) {
-    for (const item of items) {
+    for (const item of salesPricedItems) {
       const cost = item.costInclTax / (1 + item.taxRate / 100)
       item.unitPrice = round((cost / totalCost * salesTotalExcludingTax) / Math.max(item.qty, 1), 6)
     }
   } else {
-    for (const item of items) if (item.quotedUnitPrice !== null) item.unitPrice = item.quotedUnitPrice
+    for (const item of salesPricedItems) if (item.quotedUnitPrice !== null) item.unitPrice = item.quotedUnitPrice
   }
   return {
     salesSourceIndex,

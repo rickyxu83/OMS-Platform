@@ -185,6 +185,7 @@ async function ensureTables() {
       quoted_unit_price DECIMAL(14,6) NULL,
       purchase_order_no VARCHAR(255) NULL,
       cost_source VARCHAR(255) NULL,
+      purchase_only TINYINT(1) NULL,
       PRIMARY KEY (id),
       KEY idx_mr_items_mr (mr_id),
       CONSTRAINT fk_mr_items_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
@@ -200,6 +201,11 @@ async function ensureTables() {
      WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'cost_source' LIMIT 1`,
   )
   if (!costSourceColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN cost_source VARCHAR(255) NULL AFTER purchase_order_no')
+  const purchaseOnlyColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'purchase_only' LIMIT 1`,
+  )
+  if (!purchaseOnlyColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN purchase_only TINYINT(1) NULL AFTER cost_source')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_approvals (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -509,10 +515,10 @@ async function replaceItems(connection, mrId, items) {
     await connection.execute(
       `INSERT INTO mr_items
         (mr_id, row_no, company_part_no, oem_spec, name, description, warranty_service,
-         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, quoted_unit_price, purchase_order_no, cost_source)
+         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, quoted_unit_price, purchase_order_no, cost_source, purchase_only)
        VALUES
         (:mrId, :rowNo, :companyPartNo, :oemSpec, :name, :description, :warrantyService,
-         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :quotedUnitPrice, :purchaseOrderNo, :costSource)`,
+         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :quotedUnitPrice, :purchaseOrderNo, :costSource, :purchaseOnly)`,
       { mrId, ...item }
     )
   }

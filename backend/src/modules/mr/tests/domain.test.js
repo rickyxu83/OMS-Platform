@@ -195,6 +195,16 @@ function validBody(overrides = {}) {
   const invalid = normalizeOrder(validBody({ purchaserMail: 'invalid-email' }))
   assert(invalid.order.purchaserMail)
   assert(validateSubmission(invalid.order, invalid.items).some((error) => error.field === 'purchaserMail'))
+
+  const purchaseOnly = normalizeOrder(validBody({ pricingMode: 1, totalExcludingTax: 1000, items: [
+    { name: '正常品项', qty: 1, unitPrice: null, quotedUnitPrice: 600, vendor: '厂商A', costInclTax: 300, taxRate: 13 },
+    { name: '补客户的光纤跳线', qty: 1, unitPrice: null, quotedUnitPrice: null, vendor: '厂商B', costInclTax: 200, taxRate: 13, purchaseOnly: true },
+  ] }))
+  assert.equal(purchaseOnly.items[0].unitPrice, 600, '有报价单价的销售品项保持报价单价')
+  assert.equal(purchaseOnly.items[1].unitPrice, null, '待填售价品项不被成本分摊覆盖')
+  assert.equal(purchaseOnly.items[1].subtotal, null)
+  assert.equal(purchaseOnly.items[1].purchaseOnly, true, 'purchaseOnly 标记应透传')
+  assert.equal(purchaseOnly.items[1].costExcludingTax, 176.99)
 }
 
 console.log('mr domain OK')

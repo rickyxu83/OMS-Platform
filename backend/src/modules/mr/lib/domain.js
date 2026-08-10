@@ -74,6 +74,7 @@ function normalizeItem(item = {}, index = 0) {
     quotedUnitPrice: optionalNumber(item.quotedUnitPrice ?? item.quoted_unit_price),
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
     costSource: text(item.costSource ?? item.cost_source, 255),
+    purchaseOnly: item.purchaseOnly === true || item.purchaseOnly === 1 || item.purchase_only === 1,
   }
 }
 
@@ -104,9 +105,10 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
 
   const costs = items.map(costExcludingTax)
   const totalCost = costs.reduce((sum, cost) => sum + (cost ?? 0), 0)
-  const preserveQuotedPrices = mode === 1 && items.length > 0 && items.every((item) => item.quotedUnitPrice !== null)
+  const pricedItems = items.filter((item) => !item.purchaseOnly)
+  const preserveQuotedPrices = mode === 1 && pricedItems.length > 0 && pricedItems.every((item) => item.quotedUnitPrice !== null)
   const completeCosts = costs.every((cost) => cost !== null)
-  const lastAllocationIndex = items.reduce((last, item, index) => Number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  const lastAllocationIndex = items.reduce((last, item, index) => !item.purchaseOnly && Number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
   let allocatedSales = 0
   return items.map((item, index) => {
     const qty = Number(item.qty)
@@ -114,13 +116,13 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
     let unitPrice = item.unitPrice
     let subtotal = null
     if (Number.isFinite(qty) && qty > 0 && Number.isFinite(total) && total >= 0) {
-      if (preserveQuotedPrices) unitPrice = Number(item.quotedUnitPrice)
-      else if (mode === 1 && completeCosts && totalCost > 0) {
+      if (!item.purchaseOnly && preserveQuotedPrices) unitPrice = Number(item.quotedUnitPrice)
+      else if (mode === 1 && !item.purchaseOnly && completeCosts && totalCost > 0) {
         subtotal = index === lastAllocationIndex ? round(total - allocatedSales, 2) : round((cost ?? 0) / totalCost * total, 2)
         allocatedSales += subtotal
         unitPrice = subtotal / qty
       }
-      if (mode === 2 && index < 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
+      if (!item.purchaseOnly && mode === 2 && index < 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
     }
     if (subtotal === null) subtotal = Number.isFinite(qty) && Number.isFinite(unitPrice) ? qty * unitPrice : null
     const marginRate = subtotal > 0 && cost !== null ? (subtotal - cost) / subtotal * 100 : null

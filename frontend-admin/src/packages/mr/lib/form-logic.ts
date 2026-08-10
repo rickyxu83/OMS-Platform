@@ -67,22 +67,23 @@ export function calculateForm(order: MrOrder): MrOrder {
   }
   const costs = source.map(costExcludingTax)
   const costTotal = costs.reduce<number>((sum, cost) => sum + (cost || 0), 0)
-  const preserveQuotedPrices = mode === 1 && source.length > 0 && source.every((item) => item.quotedUnitPrice !== null && item.quotedUnitPrice !== undefined)
+  const pricedItems = source.filter((item) => !item.purchaseOnly)
+  const preserveQuotedPrices = mode === 1 && pricedItems.length > 0 && pricedItems.every((item) => item.quotedUnitPrice !== null && item.quotedUnitPrice !== undefined)
   const completeCosts = costs.every((cost) => cost !== null)
-  const lastAllocationIndex = source.reduce((last, item, index) => number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  const lastAllocationIndex = source.reduce((last, item, index) => !item.purchaseOnly && number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
   let allocatedSales = 0
   const items = source.map((item, index) => {
     const qty = Math.max(0, number(item.qty))
     const cost = costs[index]
     let unitPrice = item.unitPrice == null ? null : number(item.unitPrice)
     let subtotal: number | null = null
-    if (qty > 0 && preserveQuotedPrices) unitPrice = number(item.quotedUnitPrice)
-    else if (qty > 0 && mode === 1 && completeCosts && costTotal > 0) {
+    if (qty > 0 && !item.purchaseOnly && preserveQuotedPrices) unitPrice = number(item.quotedUnitPrice)
+    else if (qty > 0 && mode === 1 && !item.purchaseOnly && completeCosts && costTotal > 0) {
       subtotal = index === lastAllocationIndex ? round(total - allocatedSales) : round((cost || 0) / costTotal * total)
       allocatedSales += subtotal
       unitPrice = subtotal / qty
     }
-    if (qty > 0 && mode === 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
+    if (qty > 0 && !item.purchaseOnly && mode === 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
     if (subtotal === null) subtotal = unitPrice === null ? null : round(qty * unitPrice)
     const marginRate = subtotal && cost !== null ? round((subtotal - cost) / subtotal * 100, 4) : null
     return { ...item, rowNo: index + 1, unitPrice: unitPrice === null ? null : round(unitPrice, 6), subtotal, costExcludingTax: cost === null ? null : round(cost), marginRate }

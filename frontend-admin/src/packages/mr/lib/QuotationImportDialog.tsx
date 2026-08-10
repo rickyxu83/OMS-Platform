@@ -303,7 +303,7 @@ export function QuotationImportDialog({
       <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价文件与品项导入</DialogTitle>
-          <DialogDescription>请在左侧添加销售报价，在右侧添加供应商报价或采购订单。销售报价用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价或采购订单用于匹配采购成本。</DialogDescription>
+          <DialogDescription>请在左侧添加销售报价，在右侧添加供应商报价或采购订单。销售报价用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价或采购订单用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
         </DialogHeader>
 
         {existingFiles.length ? (
@@ -334,7 +334,7 @@ export function QuotationImportDialog({
         {preview ? (
           <div key={previewAnimationKey} className="space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500">
             <section>
-              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；异常字段将标记为待核对。</span></div>
+              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span></div>
               {preview.metadata?.matchedCustomer ? (
                 <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">已匹配客户档案：{preview.metadata.matchedCustomer.code ? `${preview.metadata.matchedCustomer.code} · ` : ''}{preview.metadata.matchedCustomer.name}{preview.metadata.matchedCustomer.contacts?.length ? `（${preview.metadata.matchedCustomer.contacts.length} 位联系人）` : ''}</div>
               ) : preview.metadata?.customer ? (

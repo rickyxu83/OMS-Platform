@@ -207,8 +207,41 @@ const groupedPurchase = mergeQuotations([{ name: '自动误判为PO的供应商�
 assert.equal(groupedPurchase.sources[0].role, 'purchase')
 assert.equal(groupedPurchase.sources[0].total, 25990)
 assert.equal(groupedPurchase.salesSourceIndex, -1)
-assert.equal(groupedPurchase.items.length, 0)
-assert(groupedPurchase.warnings.some((warning) => warning.includes('未导入为 MR 品项')))
+assert.equal(groupedPurchase.items.length, 1)
+assert.equal(groupedPurchase.items[0].purchaseOnly, true)
+assert.equal(groupedPurchase.items[0].unitPrice, null)
+assert.equal(groupedPurchase.items[0].quotedUnitPrice, null)
+assert.equal(groupedPurchase.items[0].costInclTax, 25990)
+assert(groupedPurchase.warnings.some((warning) => warning.includes('待填售价品项')))
+
+const purchaseOnlyMerge = mergeQuotations([
+  { name: '纽旭光纤跳线报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 196, tax_rate: 13, tax_included: true, items: [{ ...parsed[0].items[0], part_no: 'LC-LC-5M-OM4', unit_price: 98, extended: 196 }] }] },
+], [])
+assert.equal(purchaseOnlyMerge.salesSourceIndex, -1)
+assert.equal(purchaseOnlyMerge.items.length, 1)
+assert.equal(purchaseOnlyMerge.items[0].purchaseOnly, true)
+assert.equal(purchaseOnlyMerge.items[0].unitPrice, null)
+assert.equal(purchaseOnlyMerge.items[0].quotedUnitPrice, null)
+assert.equal(purchaseOnlyMerge.items[0].vendor, '')
+assert.equal(purchaseOnlyMerge.items[0].costInclTax, 196)
+assert(purchaseOnlyMerge.warnings.some((warning) => warning.includes('未提供销售报价，已按供应商报价导入 1 个待填售价品项')))
+
+const mixedUnmatchedPurchase = mergeQuotations([
+  { name: '销售报价.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
+  { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 316, tax_rate: 13, tax_included: true, items: [
+    { ...parsed[0].items[0], unit_price: 60, extended: 120 },
+    { ...parsed[0].items[0], item_no: '2', name: '补客户的光纤跳线', part_no: 'LC-LC-5M-OM4', description: '补客户的光纤跳线（以前提供）', unit_price: 98, extended: 196, components: [] },
+  ] }] },
+], [])
+assert.equal(mixedUnmatchedPurchase.items.length, 2)
+assert.equal(mixedUnmatchedPurchase.items[0].purchaseOnly, undefined)
+assert.equal(mixedUnmatchedPurchase.items[0].quotedUnitPrice, 100)
+assert.equal(mixedUnmatchedPurchase.items[0].unitPrice, 100)
+assert.equal(mixedUnmatchedPurchase.items[0].costInclTax, 120)
+assert.equal(mixedUnmatchedPurchase.items[1].purchaseOnly, true)
+assert.equal(mixedUnmatchedPurchase.items[1].unitPrice, null)
+assert.equal(mixedUnmatchedPurchase.items[1].costInclTax, 196)
+assert(mixedUnmatchedPurchase.warnings.some((warning) => warning.includes('1 个品项未匹配到销售报价，已按供应商报价导入为待填售价品项')))
 
 const bundledSheet = XLSX.utils.aoa_to_sheet([
   ['上海石洛信息科技有限公司'],
