@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
-import { AlertTriangle, Check, Download, FileSpreadsheet, ListChecks, Loader2, Pencil, SlidersHorizontal, Upload, X } from 'lucide-react'
+import { AlertTriangle, Check, Download, FileSpreadsheet, ListChecks, Loader2, Pencil, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -234,6 +234,10 @@ export function QuotationImportDialog({
       costReviewFields: patch.costInclTax !== undefined ? [] : item.costReviewFields,
     }
   }))
+  const removeItem = (index: number) => {
+    setDraftItems((current) => current.filter((_, itemIndex) => itemIndex !== index))
+    setSelectedRows(new Set())
+  }
   const patchSourceVendor = (sourceIndex: number, vendor: string) => {
     setSourceVendors((current) => ({ ...current, [sourceIndex]: vendor }))
     const sourceName = preview?.sources.find((source) => source.index === sourceIndex)?.name
@@ -409,7 +413,11 @@ export function QuotationImportDialog({
                   <div key={`${item.oemSpec}-${index}`} className={`px-3 py-3 ${editMode && selectedRows.has(index) ? 'bg-primary/5' : ''}`}>
                     {editMode ? (
                       <div className="flex gap-3">
-                        <div className="flex shrink-0 items-start gap-2 pt-2"><Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); checked ? next.add(index) : next.delete(index); return next })} /><span className="text-sm text-muted-foreground">{index + 1}</span></div>
+                        <div className="flex shrink-0 flex-col items-center gap-2 pt-2">
+                          <Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); checked ? next.add(index) : next.delete(index); return next })} />
+                          <Button type="button" variant="ghost" size="icon" className="size-6 text-destructive hover:text-destructive" aria-label={`删除第 ${index + 1} 项`} onClick={() => removeItem(index)}><Trash2 className="size-3.5" /></Button>
+                          <span className="text-sm text-muted-foreground">{index + 1}</span>
+                        </div>
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
                           <Textarea className={`md:col-span-2 xl:col-span-2 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} aria-label={`第 ${index + 1} 项品名及描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={1} step={1} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />

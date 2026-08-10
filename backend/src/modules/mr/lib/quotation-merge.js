@@ -298,13 +298,19 @@ function mergeQuotations(inputSources, vendors = []) {
     unmatchedPurchaseItems.push(purchase)
   }
   if (unmatchedPurchaseItems.length) {
+    const partTokens = (value) => String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 4)
+    const partOverlap = (left, right) => {
+      const leftTokens = partTokens(left)
+      const rightTokens = partTokens(right)
+      if (!leftTokens.length || !rightTokens.length) return false
+      const common = leftTokens.filter((token) => rightTokens.includes(token)).length
+      return common >= 1 && common >= Math.min(leftTokens.length, rightTokens.length) / 2
+    }
     const deduped = []
     let duplicateCount = 0
     for (const purchase of unmatchedPurchaseItems) {
       const isDuplicate = deduped.some((existing) => {
-        const existingPart = normalized(existing.part_no)
-        const purchasePart = normalized(purchase.part_no)
-        if (purchasePart && existingPart && purchasePart === existingPart) return true
+        if (partOverlap(existing.part_no, purchase.part_no)) return true
         if (number(purchase.qty) > 0 && number(purchase.qty) === number(existing.qty) && itemSimilarity(purchase, existing) >= 0.85) return true
         return false
       })
