@@ -54,8 +54,17 @@ function firstSheet(source) {
 }
 
 function sourceTaxRate(source) {
-  const rate = firstSheet(source).tax_rate
-  return [6, 13].includes(Number(rate)) ? Number(rate) : 13
+  const sheet = firstSheet(source)
+  const declared = Number(sheet.tax_rate)
+  if ([6, 13].includes(declared)) return declared
+  // 未声明税率时，从“未税总计→含税总计”的比例推导
+  const untaxed = number(sheet.untaxed_total)
+  const taxed = number(sheet.total_amount ?? sheet.discounted_total)
+  if (untaxed > 0 && taxed > untaxed) {
+    const derived = Math.round((taxed / untaxed - 1) * 100)
+    if ([6, 13].includes(derived)) return derived
+  }
+  return 13
 }
 
 function sourceTaxIncluded(source) {
@@ -71,7 +80,13 @@ function sourceItemPricesTaxIncluded(source) {
   const itemTotal = (sheet.items || []).reduce((sum, item) => sum + number(item.extended ?? number(item.unit_price) * (number(item.qty) || 1)), 0)
   const approximately = (expected) => expected !== null && expected !== undefined && Math.abs(itemTotal - number(expected)) <= Math.max(1, number(expected) * 0.005)
   if (approximately(sheet.untaxed_total)) return false
+  const rate = sourceTaxRate(source)
+  // 反向校验：未税总计 × (1+税率) ≈ 品项合计 → 品项为含税价，未税总计只是折算行
+  if (sheet.untaxed_total !== null && sheet.untaxed_total !== undefined && approximately(number(sheet.untaxed_total) * (1 + rate / 100))) return true
   if (approximately(sheet.discounted_total ?? sheet.total_amount)) return true
+  // 反向校验：含税总计 ÷ (1+税率) ≈ 品项合计 → 品项为未税价，含税总计只是汇总行
+  const taxedTotal = number(sheet.total_amount)
+  if (taxedTotal !== null && taxedTotal > 0 && approximately(taxedTotal / (1 + rate / 100))) return false
   return sourceTaxIncluded(source)
 }
 
@@ -263,10 +278,23 @@ function mergeQuotations(inputSources, vendors = []) {
   const unknownSourceCount = sources.filter((source) => !source.requestedRole && !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
   const roleWarnings = []
   for (const source of sources) {
+    const sheet = firstSheet(source)
+    const sheetItems = sheet.items || []
+    if (sheetItems.length) {
+      const itemTotal = sheetItems.reduce((sum, item) => sum + number(item.extended ?? number(item.unit_price) * (number(item.qty) || 1)), 0)
+      const approximately = (expected) => expected !== null && expected !== undefined && Math.abs(itemTotal - number(expected)) <= Math.max(1, number(expected) * 0.005)
+      const untaxed = number(sheet.untaxed_total)
+      const taxed = number(sheet.total_amount)
+      if (untaxed !== null && approximately(untaxed)) {
+        roleWarnings.push(`“${source.name}”价格口径：品项为未税价（品项合计与未税总计一致），成本按税率折算含税`)
+      } else if (taxed !== null && approximately(taxed)) {
+        roleWarnings.push(`“${source.name}”价格口径：品项为含税价（品项合计与含税总计一致）`)
+      }
+    }
     const ratio = sourceDiscountRatio(source)
     if (ratio < 1) {
-      const sheet = firstSheet(source)
-      roleWarnings.push(`“${source.name}”含优惠价 ¥${number(sheet.discounted_total).toLocaleString('zh-CN')}（优惠前 ¥${(number(sheet.discounted_total) / ratio).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}），已按小计占比将优惠分摊至各品项`)
+      const sheetInfo = firstSheet(source)
+      roleWarnings.push(`“${source.name}”含优惠价 ¥${number(sheetInfo.discounted_total).toLocaleString('zh-CN')}（优惠前 ¥${(number(sheetInfo.discounted_total) / ratio).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}），已按小计占比将优惠分摊至各品项`)
     }
   }
   if (salesSourceIndex < 0) roleWarnings.push('当前仅识别到供应商报价，未提供销售报价，销售金额需在后续补充')

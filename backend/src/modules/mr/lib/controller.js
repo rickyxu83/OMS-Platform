@@ -1088,7 +1088,7 @@ async function importQuotation(req, res) {
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
 
   const taskId = String(req.body?.taskId || '').trim()
-  const progress = { done: 0, total: uploads.length, current: '' }
+  const progress = { done: 0, total: uploads.length, current: '', stage: 'parsing' }
   if (taskId) importProgress.set(taskId, progress)
   const clearProgress = () => { if (taskId) setTimeout(() => importProgress.delete(taskId), 60000) }
   let requestedRoles = []
@@ -1100,6 +1100,8 @@ async function importQuotation(req, res) {
   }
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
+    progress.current = name
+    progress.stage = 'parsing'
     const extension = path.extname(name).toLowerCase()
     const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
@@ -1114,7 +1116,7 @@ async function importQuotation(req, res) {
       const preferAi = extension === '.pdf' || systemItemCount === 0
       if (env.ai.quoteRecognitionEnabled && preferAi) {
         try {
-          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name)
+          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name, { onStage: (stage) => { progress.stage = stage } })
           if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
             aiAdopted = aiResult
             recognitionMethod = aiResult.recognitionMethod
@@ -1135,6 +1137,7 @@ async function importQuotation(req, res) {
         }
       }
       if (parsed.documentType === 'scanned_pdf' && !aiAdopted) {
+        progress.stage = 'ocr'
         try {
           const ocr = await recognizePdf(file.buffer, name)
           if (ocr?.text) {
@@ -1196,11 +1199,13 @@ async function importQuotation(req, res) {
   }
   try {
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
+  progress.stage = 'normalizing'
   try {
     await applyAiEntityKeys(sources)
   } catch (_error) {
     // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
   }
+  progress.stage = 'merging'
 
   const vendors = await query(
     `SELECT name, official_website AS officialWebsite
@@ -1270,7 +1275,7 @@ async function importProgressHandler(req, res) {
   if (!taskId) throw badRequest('缺少 taskId')
   const progress = importProgress.get(taskId)
   if (!progress) return res.json({ done: 0, total: 0, current: '' })
-  res.json({ done: progress.done, total: progress.total, current: progress.current })
+  res.json({ done: progress.done, total: progress.total, current: progress.current, stage: progress.stage })
 }
 
 async function downloadQuotation(req, res) {
