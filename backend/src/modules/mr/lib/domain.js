@@ -102,7 +102,6 @@ function normalizeItem(item = {}, index = 0) {
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
     costSource: text(item.costSource ?? item.cost_source, 255),
     purchaseOnly: item.purchaseOnly === true || item.purchaseOnly === 1 || item.purchase_only === 1,
-    costEstimated: item.costEstimated === true || item.costEstimated === 1 || item.cost_estimated === 1,
   }
 }
 

@@ -17,45 +17,6 @@ export function quotationDetailItems(items: MrItem[]) {
   return items.map((item) => ({ ...item, unitPrice: item.quotedUnitPrice ?? item.unitPrice ?? null }))
 }
 
-/**
- * 多项系统集成：按目标毛利率反推缺成本品项的采购成本（含税）。
- * 已有真实成本的品项不动；返回带 costEstimated 标记的新 items。
- * @param items 品项（须已含未税售价 unitPrice）
- * @param targetMarginRate 目标毛利率（如 0.2 = 20%）
- */
-export function deriveMissingCosts(items: MrItem[], targetMarginRate: number) {
-  const rate = Math.max(0, Math.min(0.9, Number(targetMarginRate) || 0))
-  const hasPrice = (item: MrItem) => {
-    const price = Number(item.unitPrice ?? item.quotedUnitPrice)
-    return Number.isFinite(price) && price > 0
-  }
-  return items.map((item) => {
-    const hasRealCost = item.costInclTax !== null && item.costInclTax !== undefined
-    if (hasRealCost || !hasPrice(item)) return item
-    const price = Number(item.unitPrice ?? item.quotedUnitPrice)
-    const taxRate = [6, 13].includes(Number(item.taxRate)) ? Number(item.taxRate) : 13
-    const costInclTax = round(price * Math.max(1, number(item.qty)) * (1 - rate) * (1 + taxRate / 100))
-    return {
-      ...item,
-      unitPrice: item.unitPrice ?? item.quotedUnitPrice,
-      quotedUnitPrice: item.quotedUnitPrice ?? item.unitPrice,
-      costInclTax,
-      costEstimated: true,
-      costSource: item.costSource || '',
-    }
-  })
-}
-
-/** 已有真实成本品项的加权平均毛利率（无数据返回 null），用作反推默认目标。 */
-export function weightedAverageMargin(items: MrItem[]) {
-  const known = items.filter((item) => item.costInclTax !== null && item.costInclTax !== undefined && item.unitPrice !== null && item.unitPrice !== undefined && Number(item.unitPrice) > 0)
-  if (!known.length) return null
-  const totalSales = known.reduce((sum, item) => sum + number(item.qty) * Number(item.unitPrice), 0)
-  const totalCost = known.reduce((sum, item) => sum + Number(item.costInclTax) / (1 + Number(item.taxRate || 13) / 100), 0)
-  if (!totalSales) return null
-  return round((totalSales - totalCost) / totalSales, 4)
-}
-
 export function salesSubtotal(item: MrItem) {
   if (item.subtotal !== null && item.subtotal !== undefined) return Number(item.subtotal)
   if (item.quotedUnitPrice === null || item.quotedUnitPrice === undefined) return null

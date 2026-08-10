@@ -1,5 +1,5 @@
 import { countUpValue } from './count-up.ts'
-import { calculateForm, deriveMissingCosts, normalizeCostTaxRates, quotationDetailItems, salesSubtotal, singleIntegrationItems, weightedAverageMargin } from './form-logic.ts'
+import { calculateForm, normalizeCostTaxRates, quotationDetailItems, salesSubtotal, singleIntegrationItems } from './form-logic.ts'
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message)
@@ -69,20 +69,3 @@ assert(countUpValue(100, 0) === 0 && countUpValue(100, 0.5) === 87.5 && countUpV
 assert(countUpValue(100, -1) === 0 && countUpValue(100, 2) === 100, '数字动画进度应限制在0到1')
 
 console.log('mr form logic OK')
-
-const derive = deriveMissingCosts([
-  { name: 'A', qty: 2, unitPrice: 100, quotedUnitPrice: 100, costInclTax: 113, taxRate: 13 },
-  { name: 'B', qty: 1, unitPrice: 200, taxRate: 13, costInclTax: null },
-  { name: 'C', qty: 1, unitPrice: null, costInclTax: null },
-], 0.2)
-assert(derive[0].costInclTax === 113, '已有真实成本的品项不应被反推覆盖')
-assert(derive[1].costEstimated === true, '反推品项应标记估算')
-assert(Math.abs((derive[1].costInclTax ?? 0) - 200 * 1 * 0.8 * 1.13) < 0.01, '反推成本 = 售价×数量×(1-毛利率)×(1+税率)')
-assert(derive[2].costInclTax === null, '无售价品项不应反推')
-assert(derive[1].quotedUnitPrice === 200, '手动售价应同步为报价单价以保留售价')
-
-const avg = weightedAverageMargin([
-  { name: 'A', qty: 1, unitPrice: 100, costInclTax: 79.5, taxRate: 6 },
-  { name: 'B', qty: 1, unitPrice: 100, costInclTax: 113, taxRate: 13 },
-])
-assert(avg !== null && Math.abs(avg - 0.125) < 0.001, '加权平均毛利率 = (Σ售价-Σ未税成本)/Σ售价')

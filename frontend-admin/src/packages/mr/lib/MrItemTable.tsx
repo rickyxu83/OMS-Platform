@@ -345,7 +345,6 @@ function ItemEditorPanel({
               <Field required={!serviceRow} label="采购成本（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
-              {item.costEstimated ? <p className="text-xs text-amber-700">该成本为按售价反推的估算值，拿到真实报价后请手动替换。</p> : null}
               <Field required={!serviceRow} label="采购税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
                 <Select value={String(item.taxRate || '')} disabled={serviceRow} onValueChange={(value) => onChange({ taxRate: Number(value) })}>
                   <SelectTrigger><SelectValue placeholder="选择采购税率" /></SelectTrigger>

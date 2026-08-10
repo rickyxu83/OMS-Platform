@@ -19,7 +19,6 @@ export interface MrItem {
   taxRate?: number | null
   purchaseOrderNo?: string | null
   costSource?: string | null
-  costEstimated?: boolean
   salesSource?: string | null
   purchaseOnly?: boolean
   marginRate?: number | null
