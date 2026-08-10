@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, ChevronsLeft, ChevronsRight, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -188,13 +188,6 @@ export function MrFormPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [form, setForm] = useState<MrOrder | null>(null)
-  const [railCollapsed, setRailCollapsed] = useState(() => {
-    try { return localStorage.getItem('mr-rail-collapsed') === '1' } catch { return false }
-  })
-  const toggleRail = (collapsed: boolean) => {
-    setRailCollapsed(collapsed)
-    try { localStorage.setItem('mr-rail-collapsed', collapsed ? '1' : '0') } catch { /* ignore */ }
-  }
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [vendors, setVendors] = useState<VendorOption[]>([])
@@ -829,7 +822,14 @@ export function MrFormPage() {
         </div>
       ) : (
         <>
-      <div className={`mx-auto grid max-w-[1700px] gap-6 px-4 py-5 sm:px-6 ${railCollapsed ? 'min-[1450px]:grid-cols-[minmax(0,1fr)_52px]' : 'min-[1450px]:grid-cols-[minmax(0,1fr)_340px]'}`}>
+      <div className="mx-auto max-w-[1700px] space-y-6 px-4 py-5 sm:px-6">
+        {highValue || lowMargin ? (
+          <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {highValue ? '未税总计超过 75 万元；' : ''}
+            {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
+            签核流程将增加副总经理签核步骤。
+          </div>
+        ) : null}
         <div className="flex min-w-0 flex-col gap-5 pb-24 lg:pb-6">
           {status === 'rejected' ? (
             <div className="rounded-xl border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -1143,44 +1143,13 @@ export function MrFormPage() {
             </Field>
           </SectionCard>
 
-          <SectionCard className="min-[1450px]:hidden" id="approval" title="电子签核流程" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
+          <SectionCard id="approval" title="电子签核流程" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
             <ApprovalPanel order={calculated} layout="horizontal" />
             {status === 'approved' ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
             ) : null}
           </SectionCard>
         </div>
-
-        <aside className="hidden min-[1450px]:block">
-          {railCollapsed ? (
-            <div className="sticky top-44 flex flex-col items-center gap-3 rounded-xl border bg-card px-2 py-3 shadow-sm">
-              <Button type="button" variant="ghost" size="icon" className="size-8" title="展开签核与风险侧栏" aria-label="展开签核与风险侧栏" onClick={() => toggleRail(false)}><ChevronsLeft className="size-4" /></Button>
-              <span className="text-xs text-muted-foreground [writing-mode:vertical-rl]">签核与风险</span>
-              <span className={`size-2.5 rounded-full ${status === 'approved' ? 'bg-emerald-500' : status === 'rejected' || status === 'voided' ? 'bg-red-500' : status === 'in_review' ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} title={`当前状态：${status}`} />
-            </div>
-          ) : (
-            <div className="sticky top-44 overflow-hidden rounded-xl border bg-card shadow-sm">
-              <div className="border-b px-4 py-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-semibold">签核与风险</h2>
-                  <div className="flex items-center gap-1">
-                    <StatusBadge status={status} />
-                    <Button type="button" variant="ghost" size="icon" className="size-7" title="收起侧栏" aria-label="收起签核与风险侧栏" onClick={() => toggleRail(true)}><ChevronsRight className="size-4" /></Button>
-                  </div>
-                </div>
-                {highValue || lowMargin ? (
-                  <div className="mt-3 border-l-4 border-red-500 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-                    {highValue ? '未税总计超过 75 万元；' : ''}
-                    {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
-                    签核流程将增加副总经理签核步骤。
-                  </div>
-                ) : null}
-              </div>
-              <div className="border-b p-4"><ApprovalPanel order={calculated} /></div>
-              {summary('rail')}
-            </div>
-          )}
-        </aside>
       </div>
 
       <div className="sticky bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">
