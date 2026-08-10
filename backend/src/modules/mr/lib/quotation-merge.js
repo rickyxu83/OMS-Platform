@@ -155,9 +155,26 @@ function sourceRecognition(source) {
   }
 }
 
-function pickPurchase(candidates) {
-  return [...new Map(candidates.map((item) => [`${item.sourceIndex}:${item.item_no}:${item.part_no}:${item.description}`, item])).values()]
-    .sort((left, right) => costInclTax(left) / Math.max(number(left.qty), 1) - costInclTax(right) / Math.max(number(right.qty), 1))[0]
+function pickPurchase(candidates, sale = null) {
+  const deduped = [...new Map(candidates.map((item) => [`${item.sourceIndex}:${item.item_no}:${item.part_no}:${item.description}`, item])).values()]
+  if (!sale) {
+    return [...deduped].sort((left, right) => costInclTax(left) / Math.max(number(left.qty), 1) - costInclTax(right) / Math.max(number(right.qty), 1))[0]
+  }
+  const saleSn = new Set(serialTokens(`${sale.part_no || ''} ${sale.entityKey || ''} ${sale.description || ''}`))
+  const saleEntity = normalized(sale.entityKey)
+  const score = (candidate) => {
+    const candidateSn = serialTokens(`${candidate.part_no || ''} ${candidate.entityKey || ''} ${candidate.description || ''}`)
+    const sharedSn = candidateSn.filter((token) => saleSn.has(token)).length
+    const entityMatch = saleEntity && normalized(candidate.entityKey) === saleEntity ? 1 : 0
+    return { sharedSn, entityMatch, unitCost: costInclTax(candidate) / Math.max(number(candidate.qty), 1) }
+  }
+  return [...deduped].sort((left, right) => {
+    const leftScore = score(left)
+    const rightScore = score(right)
+    if (rightScore.entityMatch !== leftScore.entityMatch) return rightScore.entityMatch - leftScore.entityMatch
+    if (rightScore.sharedSn !== leftScore.sharedSn) return rightScore.sharedSn - leftScore.sharedSn
+    return leftScore.unitCost - rightScore.unitCost
+  })[0]
 }
 
 function bigrams(value) {
@@ -247,7 +264,7 @@ function mergeQuotations(inputSources, vendors = []) {
       && String(sale.entityKey || '').trim() && String(fuzzy[0].purchase.entityKey || '').trim()
       && textSimilarity(sale.entityKey, fuzzy[0].purchase.entityKey) >= 0.7
       && !matchedPurchaseIndexes.has(`${fuzzy[0].purchase.sourceIndex}:${fuzzy[0].purchase.item_no}:${fuzzy[0].purchase.part_no}:${fuzzy[0].purchase.description}`) ? fuzzy[0] : null
-    const purchase = pickPurchase(exactCandidates) || autoFuzzy?.purchase || autoEntityMatch?.purchase
+    const purchase = pickPurchase(exactCandidates, sale) || autoFuzzy?.purchase || autoEntityMatch?.purchase
     if (fuzzy.length && !autoFuzzy && !autoEntityMatch) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
     if (purchase) {
       matchedPurchaseIndexes.add(`${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`)
