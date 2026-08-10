@@ -39,3 +39,4 @@ conversation-*.txt
 *.tgz
 *.tar.gz
 *.zip
+__pycache__/

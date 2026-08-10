@@ -3,6 +3,7 @@ import cgi
 import csv
 import glob
 import io
+import base64
 import json
 import os
 import subprocess
@@ -15,6 +16,33 @@ MAX_BYTES = 20 * 1024 * 1024
 MAX_PAGES = 10
 TIMEOUT_SECONDS = 120
 OCR_LOCK = threading.Lock()
+RENDER_LOCK = threading.Lock()
+MAX_RENDER_PAGES = 5
+RENDER_DPI = 200
+
+
+def write_input(directory, data):
+    """检测文件类型并写入临时目录，返回 (input_path, is_pdf)。"""
+    if data.startswith(b'%PDF'):
+        input_path = os.path.join(directory, 'input.pdf')
+    elif data.startswith(b'\x89PNG\r\n\x1a\n'):
+        input_path = os.path.join(directory, 'input.png')
+    elif data.startswith(b'\xff\xd8\xff'):
+        input_path = os.path.join(directory, 'input.jpg')
+    else:
+        raise ValueError('只支持 PDF、PNG 或 JPEG')
+    with open(input_path, 'wb') as handle:
+        handle.write(data)
+    return input_path, input_path.endswith('.pdf')
+
+
+def pdf_page_count(input_path, max_pages):
+    info = run(['pdfinfo', input_path]).stdout
+    pages_line = next((line for line in info.splitlines() if line.startswith('Pages:')), '')
+    pages = int(pages_line.split(':', 1)[1].strip()) if pages_line else 0
+    if not pages or pages > max_pages:
+        raise ValueError(f'PDF 页数必须在 1-{max_pages} 页以内')
+    return pages
 
 
 def run(command, timeout=TIMEOUT_SECONDS):
@@ -65,22 +93,9 @@ def tsv_page(image_path, page_index, psm):
 def ocr_document(data):
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='mr-ocr-') as directory:
-        if data.startswith(b'%PDF'):
-            input_path = os.path.join(directory, 'input.pdf')
-        elif data.startswith(b'\x89PNG\r\n\x1a\n'):
-            input_path = os.path.join(directory, 'input.png')
-        elif data.startswith(b'\xff\xd8\xff'):
-            input_path = os.path.join(directory, 'input.jpg')
-        else:
-            raise ValueError('只支持 PDF、PNG 或 JPEG')
-        with open(input_path, 'wb') as handle:
-            handle.write(data)
-        if input_path.endswith('.pdf'):
-            info = run(['pdfinfo', input_path]).stdout
-            pages_line = next((line for line in info.splitlines() if line.startswith('Pages:')), '')
-            pages = int(pages_line.split(':', 1)[1].strip()) if pages_line else 0
-            if not pages or pages > MAX_PAGES:
-                raise ValueError(f'PDF 页数必须在 1-{MAX_PAGES} 页以内')
+        input_path, is_pdf = write_input(directory, data)
+        if is_pdf:
+            pages = pdf_page_count(input_path, MAX_PAGES)
             prefix = os.path.join(directory, 'page')
             run(['pdftoppm', '-r', '300', '-png', '-f', '1', '-l', str(pages), input_path, prefix])
             image_paths = sorted(glob.glob(f'{prefix}-*.png'))
@@ -95,6 +110,41 @@ def ocr_document(data):
             'text': text,
             'layout': {'pages': layout_pages},
             'pages': pages,
+            'durationMs': round((time.monotonic() - started) * 1000),
+        }
+
+
+def render_document(data):
+    """将 PDF/图片渲染为 PNG base64 列表，供 AI 视觉识别使用。"""
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix='mr-render-') as directory:
+        input_path, is_pdf = write_input(directory, data)
+        if is_pdf:
+            pages = pdf_page_count(input_path, MAX_RENDER_PAGES)
+            prefix = os.path.join(directory, 'page')
+            run(['pdftoppm', '-r', str(RENDER_DPI), '-png', '-f', '1', '-l', str(pages), input_path, prefix])
+            image_paths = sorted(glob.glob(f'{prefix}-*.png'))
+        else:
+            pages = 1
+            image_paths = [input_path]
+        images = []
+        width = height = 0
+        for index, image_path in enumerate(image_paths, 1):
+            with open(image_path, 'rb') as handle:
+                raw = handle.read()
+            if index == 1:
+                try:
+                    identify = run(['identify', '-format', '%w %h', image_path], timeout=15).stdout.split()
+                    width, height = int(identify[0]), int(identify[1])
+                except Exception:
+                    width = height = 0
+            images.append({'page': index, 'data': base64.b64encode(raw).decode('ascii')})
+        return {
+            'ok': True,
+            'pages': pages,
+            'width': width,
+            'height': height,
+            'images': images,
             'durationMs': round((time.monotonic() - started) * 1000),
         }
 
@@ -115,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {'error': 'not found'})
 
     def do_POST(self):
-        if self.path != '/ocr':
+        if self.path not in ('/ocr', '/render'):
             self.send_json(404, {'error': 'not found'})
             return
         length = int(self.headers.get('Content-Length', '0'))
@@ -127,8 +177,12 @@ class Handler(BaseHTTPRequestHandler):
             data = form['file'].file.read()
             if not data or len(data) > MAX_BYTES:
                 raise ValueError('文件大小超过限制')
-            with OCR_LOCK:
-                result = ocr_document(data)
+            if self.path == '/render':
+                with RENDER_LOCK:
+                    result = render_document(data)
+            else:
+                with OCR_LOCK:
+                    result = ocr_document(data)
             self.send_json(200, result)
         except subprocess.TimeoutExpired:
             self.send_json(504, {'error': 'OCR 处理超时'})

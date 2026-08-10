@@ -38,7 +38,7 @@ function sourceLabel(role: QuotationSource['role']) {
 }
 
 function recognitionMethodLabel(method?: string) {
-  return method === 'excel_cells' ? 'Excel 单元格' : method === 'ocr_layout' ? 'OCR 坐标' : method === 'pdf_layout' ? 'PDF 坐标' : method === 'pdf_text' ? 'PDF 文字层' : '自动识别'
+  return method === 'excel_cells' ? 'Excel 单元格' : method === 'ocr_layout' ? 'OCR 坐标' : method === 'pdf_layout' ? 'PDF 坐标' : method === 'pdf_text' ? 'PDF 文字层' : method === 'ai_vision' ? 'AI 视觉识别' : method === 'ai_text' ? 'AI 文本识别' : '自动识别'
 }
 
 function confidenceLabel(confidence?: number | null, reviewCount = 0) {

@@ -66,6 +66,9 @@ const env = {
     summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 120000),
     summaryRetryAttempts: Number(process.env.AI_SUMMARY_RETRY_ATTEMPTS || 5),
     summaryRetryDelayMs: Number(process.env.AI_SUMMARY_RETRY_DELAY_MS || 3000),
+    quoteRecognitionEnabled: process.env.AI_QUOTE_RECOGNITION_ENABLED === 'true',
+    quoteTimeoutMs: Number(process.env.AI_QUOTE_TIMEOUT_MS || 90000),
+    quoteMaxPages: Number(process.env.AI_QUOTE_MAX_PAGES || 3),
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',

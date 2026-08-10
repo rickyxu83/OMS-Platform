@@ -12,6 +12,7 @@ const { archiveMrDocument } = require('./archive')
 const { validateParsedQuotation } = require('./quotation-validation')
 const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
+const { recognizeQuotationWithAi } = require('./quotation-ai-parser')
 const {
   constants,
   STEP_ROLES,
@@ -1130,6 +1131,31 @@ async function importQuotation(req, res) {
         } catch (_error) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), '工作簿图片识别失败，供应商请人工核对'] }
         }
+      }
+      const systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
+      let aiAdopted = null
+      const preferAi = extension === '.pdf' || systemItemCount === 0
+      if (env.ai.quoteRecognitionEnabled && preferAi) {
+        try {
+          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name)
+          if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
+            aiAdopted = aiResult
+            recognitionMethod = aiResult.recognitionMethod
+            const modeLabel = aiResult.recognitionMethod === 'ai_vision' ? 'AI 视觉' : 'AI 文本'
+            parsed = {
+              ...parsed,
+              ...aiResult,
+              warnings: [...(parsed.warnings || []), `已通过${modeLabel}识别，请在预览中核对品项`],
+            }
+          } else {
+            parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'AI 识别未返回有效品项，已保留系统识别结果'] }
+          }
+        } catch (error) {
+          parsed = { ...parsed, warnings: [...(parsed.warnings || []), `AI 识别失败（${error.message}），已保留系统识别结果`] }
+        }
+      }
+      if (aiAdopted && systemItemCount > 0 && aiAdopted.sheets[0].items.length !== systemItemCount) {
+        parsed.warnings.push(`AI 识别 ${aiAdopted.sheets[0].items.length} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
       }
       parsed = applyQuotationLayoutRule(parsed, name, requestedRole)
       parsed = validateParsedQuotation(parsed, recognitionMethod)
