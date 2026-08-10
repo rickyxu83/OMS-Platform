@@ -1,8 +1,8 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileDown, Loader2, Undo2 } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { downloadMrDocument, getMr } from '../client'
+import { downloadMrDocument, getMr, withdrawMr } from '../client'
 import type { MrApproval, MrItem, MrOrder } from '../types'
 
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
@@ -285,7 +285,21 @@ export function MrPrintPage() {
   const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '')
   const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true })
   const exitPreview = () => { if (window.history.length > 1) window.history.back(); else goBack() }
+  const canWithdraw = Boolean(order.permissions?.canWithdraw)
+  const withdraw = () => {
+    if (!id) return
+    const reason = window.prompt('请输入撤回原因：')
+    if (reason === null) return
+    if (!reason.trim()) { setError('撤回原因不能为空'); return }
+    withdrawMr(id, reason.trim())
+      .then((next) => {
+        setOrder(next)
+        window.dispatchEvent(new CustomEvent('mr:approval-changed'))
+        setError('')
+      })
+      .catch((err) => setError((err as Error).message || '撤回失败'))
+  }
   const pdfId = order.status === 'approved' ? order.id : undefined
-  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 预览</span><div className="mr-print-actions"><Button variant="outline" onClick={exitPreview}><ArrowLeft className="mr-2 size-4" />退出预览</Button>{pdfId ? <Button onClick={() => void downloadMrDocument(pdfId, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败'))}><FileDown className="mr-2 size-4" />另存为 PDF</Button> : null}</div></div>
+  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 预览</span><div className="mr-print-actions">{canWithdraw ? <Button variant="outline" onClick={withdraw}><Undo2 className="mr-2 size-4" />撤回</Button> : null}<Button variant="outline" onClick={exitPreview}><ArrowLeft className="mr-2 size-4" />退出预览</Button>{pdfId ? <Button onClick={() => void downloadMrDocument(pdfId, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败'))}><FileDown className="mr-2 size-4" />另存为 PDF</Button> : null}</div></div>
   return <MrDocumentView order={order} toolbar={toolbar} />
 }
