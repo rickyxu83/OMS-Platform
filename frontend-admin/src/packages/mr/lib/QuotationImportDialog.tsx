@@ -216,6 +216,7 @@ export function QuotationImportDialog({
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])
+  const purchaseOnlyCandidates = previewItems.filter((item) => item.purchaseOnly)
   const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => {
     if (itemIndex !== index) return item
     const reviewed = new Set(item.reviewFields || [])
@@ -237,6 +238,19 @@ export function QuotationImportDialog({
   const removeItem = (index: number) => {
     setDraftItems((current) => current.filter((_, itemIndex) => itemIndex !== index))
     setSelectedRows(new Set())
+  }
+  const adoptCost = (index: number, candidateIndex: number) => {
+    const candidate = previewItems[candidateIndex]
+    if (!candidate) return
+    const target = previewItems[index]
+    patchItem(index, {
+      vendor: candidate.vendor || target?.vendor || '',
+      costInclTax: candidate.costInclTax,
+      taxRate: candidate.taxRate || target?.taxRate || 13,
+      costSource: candidate.costSource || '',
+      matchCandidates: [],
+    })
+    toast.success(`已关联供应商品项成本 ¥ ${money(candidate.costInclTax)}${candidate.vendor ? `（${candidate.vendor}）` : ''}；如不再需要该供应商品项，可手动删除`)
   }
   const patchSourceVendor = (sourceIndex: number, vendor: string) => {
     setSourceVendors((current) => ({ ...current, [sourceIndex]: vendor }))
@@ -423,6 +437,16 @@ export function QuotationImportDialog({
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={1} step={1} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="未税单价" aria-label={`第 ${index + 1} 项未税单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
+                          {!item.purchaseOnly && item.costInclTax == null && purchaseOnlyCandidates.length ? (
+                            <div className="md:col-span-2 xl:col-span-4">
+                              <Select onValueChange={(value) => adoptCost(index, Number(value))}>
+                                <SelectTrigger className="w-full bg-background"><SelectValue placeholder="未匹配到采购成本：从供应商品项选择关联" /></SelectTrigger>
+                                <SelectContent>{purchaseOnlyCandidates.map((candidate, candidateIndex) => (
+                                  <SelectItem key={`${candidate.costSource}-${candidateIndex}`} value={String(candidateIndex)}>{candidate.name || candidate.oemSpec || candidate.description || '供应商品项'} · ¥ {money(candidate.costInclTax)}{candidate.vendor ? ` · ${candidate.vendor}` : ''}</SelectItem>
+                                ))}</SelectContent>
+                              </Select>
+                            </div>
+                          ) : null}
                           <Input value={item.oemSpec || ''} placeholder="原厂规格" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
                           <Input list="mr-import-vendor-options" value={item.vendor || ''} placeholder="供应商" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
                           <Input value={item.purchaseOrderNo || ''} placeholder="采购订单号" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
