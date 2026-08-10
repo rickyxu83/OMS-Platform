@@ -19,7 +19,8 @@ function itemKeys(item) {
   const descriptionText = String(item.description || '')
   const description = normalized(descriptionText)
   const name = normalized(item.name || descriptionText.split(/\r?\n/)[0])
-  const keys = [part && `part:${part}`, description && `desc:${description}`, name && `name:${name}`].filter(Boolean)
+  const entityKey = normalized(item.entityKey)
+  const keys = [part && `part:${part}`, description && `desc:${description}`, name && `name:${name}`, entityKey && `entity:${entityKey}`].filter(Boolean)
   for (const component of item.components || []) {
     const componentText = normalized([component.group, component.part, component.description].filter(Boolean).join(' '))
     if (componentText) keys.push(`component:${componentText}`)
@@ -175,8 +176,8 @@ function textSimilarity(left, right) {
 }
 
 function itemSimilarity(left, right) {
-  const leftFields = [left.part_no, left.name, left.description].filter(Boolean)
-  const rightFields = [right.part_no, right.name, right.description].filter(Boolean)
+  const leftFields = [left.part_no, left.name, left.description, left.entityKey].filter(Boolean)
+  const rightFields = [right.part_no, right.name, right.description, right.entityKey].filter(Boolean)
   const fieldScores = leftFields.flatMap((leftField) => rightFields.map((rightField) => textSimilarity(leftField, rightField)))
   return Math.max(0, textSimilarity(leftFields.join(' '), rightFields.join(' ')), ...fieldScores)
 }
@@ -237,8 +238,12 @@ function mergeQuotations(inputSources, vendors = []) {
     const autoFuzzy = purchaseSources.length === 1 && fuzzy.length === 1 && fuzzy[0].score >= 0.9
       && number(sale.qty) > 0 && number(sale.qty) === number(fuzzyPurchase.qty) && fuzzyPurchase.taxRateKnown
       && !matchedPurchaseIndexes.has(fuzzyKey) ? fuzzy[0] : null
-    const purchase = pickPurchase(exactCandidates) || autoFuzzy?.purchase
-    if (fuzzy.length && !autoFuzzy) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
+    const autoEntityMatch = !autoFuzzy && fuzzy.length === 1 && fuzzy[0].score >= 0.72
+      && String(sale.entityKey || '').trim() && String(fuzzy[0].purchase.entityKey || '').trim()
+      && textSimilarity(sale.entityKey, fuzzy[0].purchase.entityKey) >= 0.7
+      && !matchedPurchaseIndexes.has(`${fuzzy[0].purchase.sourceIndex}:${fuzzy[0].purchase.item_no}:${fuzzy[0].purchase.part_no}:${fuzzy[0].purchase.description}`) ? fuzzy[0] : null
+    const purchase = pickPurchase(exactCandidates) || autoFuzzy?.purchase || autoEntityMatch?.purchase
+    if (fuzzy.length && !autoFuzzy && !autoEntityMatch) warnings.push(`“${sale.name || sale.part_no || sale.description}”找到 ${fuzzy.length} 个供应商候选，未自动采用，请在预览中确认`)
     if (purchase) {
       matchedPurchaseIndexes.add(`${purchase.sourceIndex}:${purchase.item_no}:${purchase.part_no}:${purchase.description}`)
       for (const key of itemKeys(sale)) {
@@ -281,7 +286,7 @@ function mergeQuotations(inputSources, vendors = []) {
       validationMessages,
       costConfidence: purchase?.confidence || null,
       costReviewFields: purchase?.review_fields || [],
-      matchCandidates: (autoFuzzy ? [] : fuzzy).map((match) => ({
+      matchCandidates: (autoFuzzy || autoEntityMatch ? [] : fuzzy).map((match) => ({
         description: match.purchase.name || match.purchase.part_no || match.purchase.description,
         vendor: match.purchase.vendor || '',
         costInclTax: round(costInclTax(match.purchase)),
@@ -323,6 +328,7 @@ function mergeQuotations(inputSources, vendors = []) {
         oemSpec: purchase.part_no || '',
         name: fields.name,
         description: fields.description || fields.name,
+        entityKey: purchase.entityKey || '',
         warrantyService: '',
         installBy: '',
         qty: number(purchase.qty) || 1,

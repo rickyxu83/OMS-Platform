@@ -236,6 +236,15 @@ assert.equal(dedupeMerge.items[0].oemSpec, 'FAS2750-14T')
 assert(dedupeMerge.warnings.some((warning) => warning.includes('重复，已自动合并')))
 assert(dedupeMerge.warnings.some((warning) => warning.includes('已按供应商报价导入 1 个待填售价品项')))
 
+const entityMatch = mergeQuotations([
+  { name: '销售报价-维保.pdf', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [{ item_no: '1', part_no: '', entityKey: 'FAS2750 14+7T 存储 SN:952145001351/952145001204 + DS224C', name: 'NetAPP存储 原厂维保1年FAS2750（14+7T）', description: 'NetAPP存储 原厂维保1年FAS2750（14+7T）2026年-2027年 含季度巡检/MISC', qty: 1, unit_price: 55000, extended: 55000 }], total: 55000, tax_rate: 13, tax_included: true }] },
+  { name: '供应商报价-敦阳.pdf', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [{ item_no: '1', part_no: '952145001351/952145001204', entityKey: 'FAS2750 存储 SN:952145001351/952145001204 + DS224C 扩展柜', name: 'DS224C 960G SSD*24', description: 'DS224C 960G SSD*24, Qty 1; 序列号: 952145001351/952145001204', qty: 12, unit_price: 49507, extended: 49507 }], total: 49507, tax_rate: 13, tax_included: true }] },
+], [])
+assert.equal(entityMatch.items.length, 1, '描述不同但实体相同的销售/供应商品项应按 entityKey 配对')
+assert.equal(entityMatch.items[0].costInclTax, 49507)
+assert(Math.abs(entityMatch.items[0].quotedUnitPrice - 55000 / 1.13) < 0.001, '含税销售单价应转为未税报价单价')
+assert.equal(entityMatch.items[0].costSource, '供应商报价-敦阳.pdf')
+
 const mixedUnmatchedPurchase = mergeQuotations([
   { name: '销售报价.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 316, tax_rate: 13, tax_included: true, items: [
