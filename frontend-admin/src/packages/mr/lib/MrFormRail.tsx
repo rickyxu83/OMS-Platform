@@ -62,14 +62,19 @@ export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; 
   const totals = order.totals || {}
   const margin = totals.marginRate
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
+  const grossProfit = totals.salesExcludingTax !== null && totals.salesExcludingTax !== undefined && totals.costExcludingTax !== null && totals.costExcludingTax !== undefined
+    ? Number(totals.salesExcludingTax) - Number(totals.costExcludingTax)
+    : null
   const metrics = [
     { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warning: false },
-    { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '含税合计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warning: false },
+    { label: '毛利', value: <AnimatedMoney value={grossProfit} animationKey={animationKey} />, warning: grossProfit !== null && grossProfit < 0 },
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
+    { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
     { label: '签核进度', value: order.currentStepLabel ? `${order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepKey === 'engineering' ? '工程会签' : order.currentStepLabel} · ${statusLabel(order.status)}` : statusLabel(order.status), warning: false },
   ]
   return (
-    <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 xl:grid-cols-6">
       {metrics.map(({ label, value, warning }) => (
         <div key={`${label}-${animationKey}`} className={`min-w-0 bg-card px-4 py-3 sm:px-5 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
           <div className="text-xs text-muted-foreground">{label}</div>
