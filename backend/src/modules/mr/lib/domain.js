@@ -296,7 +296,7 @@ function validateSubmission(order, items) {
   items.forEach((item, index) => {
     const label = `第 ${index + 1} 项`
     if (!item.name && !item.description) errors.push({ field: `items.${index}.name`, message: `${label}：请填写品名及描述` })
-    if (!(item.qty >= 1)) errors.push({ field: `items.${index}.qty`, message: `${label}：数量必须大于或等于 1` })
+    if (!(item.qty > 0)) errors.push({ field: `items.${index}.qty`, message: `${label}：数量必须大于 0` })
     if (!(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：未税单价不得小于 0` })
     const serviceRow = order.pricingMode === 2 && index === 1
     if (!serviceRow && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}：请填写供应商` })

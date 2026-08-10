@@ -321,7 +321,7 @@ function ItemEditorPanel({
           <SubPanel title="销售信息">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="数量" editable={editable} readonlyText={textValue(item.qty)}>
-                <Input type="number" min={1} step={1} value={numberValue(item.qty)} onChange={(event) => onChange({ qty: event.target.value === '' ? null : Number(event.target.value) })} />
+                <Input type="number" min={0} step={0.01} value={numberValue(item.qty)} onChange={(event) => onChange({ qty: event.target.value === '' ? null : Number(event.target.value) })} />
               </Field>
               <Field label="未税单价" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.unitPrice)} disabled={mode !== 3} onChange={(event) => onChange({ unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
