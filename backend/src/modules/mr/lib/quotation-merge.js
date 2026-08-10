@@ -310,6 +310,7 @@ function mergeQuotations(inputSources, vendors = []) {
     let duplicateCount = 0
     for (const purchase of unmatchedPurchaseItems) {
       const isDuplicate = deduped.some((existing) => {
+        if (existing.sourceIndex === purchase.sourceIndex) return false
         if (partOverlap(existing.part_no, purchase.part_no)) return true
         if (number(purchase.qty) > 0 && number(purchase.qty) === number(existing.qty) && itemSimilarity(purchase, existing) >= 0.85) return true
         return false
