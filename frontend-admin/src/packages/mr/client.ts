@@ -38,7 +38,7 @@ export async function importQuotations(id: string | number, files: File[], persi
 }
 
 export async function getImportProgress(taskId: string) {
-  return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string }>
+  return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string; stage?: string }>
 }
 
 export async function downloadQuotation(id: string | number, fileId: string | number, name: string) {

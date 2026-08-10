@@ -123,19 +123,37 @@ function FileDropZone({
   )
 }
 
-function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; fileCount?: number; progress?: { done: number; total: number; current: string } | null }) {
+const IMPORT_STAGE_LABELS: Record<string, string> = {
+  parsing: '系统解析文件结构',
+  rendering: '渲染报价页为图片',
+  ai: 'AI 识别中（通常 10-30 秒）',
+  ocr: 'OCR 文字识别中',
+  normalizing: '跨文件匹配品项实体',
+  merging: '汇总识别结果',
+}
+
+function importStageIndex(stage?: string) {
+  if (!stage) return 0
+  if (stage === 'rendering' || stage === 'parsing') return 0
+  if (stage === 'normalizing' || stage === 'merging') return 2
+  return 1
+}
+
+function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; fileCount?: number; progress?: { done: number; total: number; current: string; stage?: string } | null }) {
   const stages = saving ? ['留存附件', '写入品项', '计算金额'] : ['读取文件', '识别字段', '匹配品项']
+  const activeIndex = saving ? 1 : importStageIndex(progress?.stage)
+  const stageLabel = progress?.stage ? IMPORT_STAGE_LABELS[progress.stage] || progress.stage : ''
   const waitingHint = saving
     ? '正在留存附件、写入品项并计算金额，请稍候。'
     : progress && progress.total > 0
-      ? `正在识别报价文件（第 ${progress.done}/${progress.total} 份${progress.current ? `，当前：${progress.current}` : ''}），AI 识别通常约需 10-30 秒/份，识别完成前请勿刷新或关闭页面。`
+      ? `正在识别报价文件（第 ${progress.done}/${progress.total} 份${progress.current ? `，当前：${progress.current}` : ''}）${stageLabel ? ` · ${stageLabel}` : ''}，识别完成前请勿刷新或关闭页面。`
       : fileCount > 1
         ? `共 ${fileCount} 份文件并行识别中，AI 识别通常约需 15-40 秒，识别完成前请勿刷新或关闭页面。`
         : 'AI 识别通常约需 10-30 秒，识别完成前请勿刷新或关闭页面。'
   return (
     <div role="status" aria-live="polite" className="relative overflow-hidden rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
       <div aria-hidden="true" className="absolute inset-x-0 top-0 flex h-1 gap-1 bg-primary/10">
-        {stages.map((stage, index) => <span key={stage} className="h-full flex-1 animate-pulse bg-primary/70 motion-reduce:animate-none" style={{ animationDelay: `${index * 180}ms` }} />)}
+        {stages.map((stage, index) => <span key={stage} className={`h-full flex-1 ${index <= activeIndex ? 'animate-pulse bg-primary/70 motion-reduce:animate-none' : 'bg-primary/20'}`} style={{ animationDelay: `${index * 180}ms` }} />)}
       </div>
       <div className="flex items-center gap-3">
         <div aria-hidden="true" className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-background text-primary shadow-sm">
@@ -147,8 +165,10 @@ function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; 
           <div className="mt-0.5 text-xs text-muted-foreground">{waitingHint}</div>
           <div aria-hidden="true" className="mt-3 flex flex-wrap gap-2">
             {stages.map((stage, index) => (
-              <span key={stage} className="inline-flex items-center gap-1.5 rounded-full border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
-                <span className="size-1.5 animate-bounce rounded-full bg-primary motion-reduce:animate-none" style={{ animationDelay: `${index * 140}ms` }} />
+              <span key={stage} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${index === activeIndex ? 'border-primary/40 bg-primary/10 text-primary' : index < activeIndex ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'bg-background/80 text-muted-foreground'}`}>
+                {index < activeIndex
+                  ? <Check className="size-3" />
+                  : <span className={`size-1.5 rounded-full bg-primary ${index === activeIndex ? 'animate-bounce motion-reduce:animate-none' : 'opacity-40'}`} style={{ animationDelay: `${index * 140}ms` }} />}
                 {stage}
               </span>
             ))}
