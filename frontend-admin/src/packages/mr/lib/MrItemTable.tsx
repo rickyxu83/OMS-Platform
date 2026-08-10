@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { Check, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { Check, Copy, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -75,6 +75,21 @@ export function MrItemTable({
   }
 
   const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(mode === 3 && patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
+  const duplicateItem = (index: number) => {
+    const source = items[index]
+    if (!source) return
+    const copy: MrItem = {
+      ...source,
+      id: undefined,
+      rowNo: undefined,
+      subtotal: undefined,
+      costExcludingTax: undefined,
+      marginRate: undefined,
+      matchCandidates: source.matchCandidates ? [...source.matchCandidates] : undefined,
+    }
+    onChange([...items.slice(0, index + 1), copy, ...items.slice(index + 1)])
+    setSelectedIndex(index + 1)
+  }
   const remove = (index: number) => {
     onChange(items.filter((_, itemIndex) => itemIndex !== index))
     setSelectedIndex((current) => current === index ? null : current !== null && current > index ? current - 1 : current)
@@ -159,7 +174,7 @@ export function MrItemTable({
                     >
                       <td className="px-3 py-3 text-muted-foreground tabular-nums">
                         {editable && editMode ? (
-                          <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                          <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               aria-label={`选择第 ${index + 1} 项用于批量操作`}
                               checked={selectedRows.has(index)}
@@ -170,7 +185,8 @@ export function MrItemTable({
                                 return next
                               })}
                             />
-                            {index + 1}
+                            <span className="tabular-nums">{index + 1}</span>
+                            <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
                           </div>
                         ) : index + 1}
                       </td>
