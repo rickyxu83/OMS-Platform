@@ -742,9 +742,6 @@ export function MrFormPage() {
             <StatusBadge status={status} />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {documentMode ? (
-              <Button variant="outline" onClick={() => { if (window.history.length > 1) window.history.back(); else navigateAway('/mr') }}><ArrowLeft className="mr-2 size-4" />退出预览</Button>
-            ) : null}
             {status !== 'in_review' ? (
               <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
                 <Eye className="mr-2 size-4" />预览

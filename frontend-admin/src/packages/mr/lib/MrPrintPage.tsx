@@ -284,7 +284,8 @@ export function MrPrintPage() {
   if (!order) return <div className="p-8 text-destructive">{error}</div>
   const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '')
   const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true })
+  const exitPreview = () => { if (window.history.length > 1) window.history.back(); else goBack() }
   const pdfId = order.status === 'approved' ? order.id : undefined
-  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 预览</span><div className="mr-print-actions"><Button variant="outline" onClick={goBack}><ArrowLeft className="mr-2 size-4" />返回 MR 申请</Button>{pdfId ? <Button onClick={() => void downloadMrDocument(pdfId, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败'))}><FileDown className="mr-2 size-4" />另存为 PDF</Button> : null}</div></div>
+  const toolbar = <div className="mr-print-toolbar"><span>MR 签核文件 · 预览</span><div className="mr-print-actions"><Button variant="outline" onClick={exitPreview}><ArrowLeft className="mr-2 size-4" />退出预览</Button>{pdfId ? <Button onClick={() => void downloadMrDocument(pdfId, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败'))}><FileDown className="mr-2 size-4" />另存为 PDF</Button> : null}</div></div>
   return <MrDocumentView order={order} toolbar={toolbar} />
 }
