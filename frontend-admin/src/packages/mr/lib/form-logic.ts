@@ -68,9 +68,11 @@ export function calculateForm(order: MrOrder): MrOrder {
   const costs = source.map(costExcludingTax)
   const costTotal = costs.reduce<number>((sum, cost) => sum + (cost || 0), 0)
   const pricedItems = source.filter((item) => !item.purchaseOnly)
+  // 仅有供应商报价品项（无销售来源）时，purchaseOnly 品项就是 MR 主体，应参与总额分摊
+  const includePurchaseOnly = pricedItems.length === 0
   const preserveQuotedPrices = mode === 1 && pricedItems.length > 0 && pricedItems.every((item) => item.quotedUnitPrice !== null && item.quotedUnitPrice !== undefined)
   const completeCosts = costs.every((cost) => cost !== null)
-  const lastAllocationIndex = source.reduce((last, item, index) => !item.purchaseOnly && number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  const lastAllocationIndex = source.reduce((last, item, index) => (includePurchaseOnly || !item.purchaseOnly) && number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
   let allocatedSales = 0
   const items = source.map((item, index) => {
     const qty = Math.max(0, number(item.qty))
@@ -78,7 +80,7 @@ export function calculateForm(order: MrOrder): MrOrder {
     let unitPrice = item.unitPrice == null ? null : number(item.unitPrice)
     let subtotal: number | null = null
     if (qty > 0 && !item.purchaseOnly && preserveQuotedPrices) unitPrice = number(item.quotedUnitPrice)
-    else if (qty > 0 && mode === 1 && !item.purchaseOnly && completeCosts && costTotal > 0) {
+    else if (qty > 0 && mode === 1 && (includePurchaseOnly || !item.purchaseOnly) && completeCosts && costTotal > 0) {
       subtotal = index === lastAllocationIndex ? round(total - allocatedSales) : round((cost || 0) / costTotal * total)
       allocatedSales += subtotal
       unitPrice = subtotal / qty

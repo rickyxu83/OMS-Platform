@@ -206,6 +206,16 @@ function validBody(overrides = {}) {
   assert.equal(purchaseOnly.items[1].purchaseOnly, true, 'purchaseOnly 标记应透传')
   assert.equal(purchaseOnly.items[1].costExcludingTax, 176.99)
 
+  const purchaseOnlyAllocate = normalizeOrder(validBody({ pricingMode: 1, totalExcludingTax: 120000, items: [
+    { name: '光纤跳线 LC-LC 5m', qty: 12, unitPrice: null, quotedUnitPrice: null, vendor: '纽旭', costInclTax: 1320, taxRate: 13, purchaseOnly: true },
+    { name: '六类跳线 1米', qty: 8, unitPrice: null, quotedUnitPrice: null, vendor: '灵沛', costInclTax: 84, taxRate: 13, purchaseOnly: true },
+  ] }))
+  const allocatedTotal = purchaseOnlyAllocate.items.reduce((sum, item) => sum + (item.subtotal ?? 0), 0)
+  assert(Math.abs(allocatedTotal - 120000) < 0.02, '仅供应商报价品项时，多项系统集成总额应分摊到各品项')
+  assert(purchaseOnlyAllocate.items.every((item) => Number.isFinite(item.unitPrice)), '各品项单价应自动算出')
+  const margins = purchaseOnlyAllocate.items.map((item) => item.marginRate)
+  assert(Math.abs(margins[0] - margins[1]) < 0.01, '成本占比分摊后各品项毛利率应一致')
+
   const schedule = normalizeOrder(validBody({
     grossProfitRecognitions: [
       { startMonth: '2026-09', frequency: 'monthly', amount: 10000 },

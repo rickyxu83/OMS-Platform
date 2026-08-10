@@ -133,9 +133,11 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
   const costs = items.map(costExcludingTax)
   const totalCost = costs.reduce((sum, cost) => sum + (cost ?? 0), 0)
   const pricedItems = items.filter((item) => !item.purchaseOnly)
+  // 仅有供应商报价品项（无销售来源）时，purchaseOnly 品项就是 MR 主体，应参与总额分摊
+  const includePurchaseOnly = pricedItems.length === 0
   const preserveQuotedPrices = mode === 1 && pricedItems.length > 0 && pricedItems.every((item) => item.quotedUnitPrice !== null)
   const completeCosts = costs.every((cost) => cost !== null)
-  const lastAllocationIndex = items.reduce((last, item, index) => !item.purchaseOnly && Number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
+  const lastAllocationIndex = items.reduce((last, item, index) => (includePurchaseOnly || !item.purchaseOnly) && Number(item.qty) > 0 && costs[index] !== null ? index : last, -1)
   let allocatedSales = 0
   return items.map((item, index) => {
     const qty = Number(item.qty)
@@ -144,7 +146,7 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
     let subtotal = null
     if (Number.isFinite(qty) && qty > 0 && Number.isFinite(total) && total >= 0) {
       if (!item.purchaseOnly && preserveQuotedPrices) unitPrice = Number(item.quotedUnitPrice)
-      else if (mode === 1 && !item.purchaseOnly && completeCosts && totalCost > 0) {
+      else if (mode === 1 && (includePurchaseOnly || !item.purchaseOnly) && completeCosts && totalCost > 0) {
         subtotal = index === lastAllocationIndex ? round(total - allocatedSales, 2) : round((cost ?? 0) / totalCost * total, 2)
         allocatedSales += subtotal
         unitPrice = subtotal / qty
