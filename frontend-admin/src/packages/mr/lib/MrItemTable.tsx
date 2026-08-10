@@ -171,6 +171,7 @@ export function MrItemTable({
                   <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
                   <th scope="col" className="w-36 px-3 py-2 text-right font-medium">未税小计</th>
                   <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
+                  <th scope="col" className="w-12 px-2 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -220,10 +221,15 @@ export function MrItemTable({
                       <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
                       <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
+                      <td className="w-12 px-2 py-3 text-right">
+                        {editable ? (
+                          <Button type="button" variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" title="删除此品项" aria-label={`删除第 ${index + 1} 项`} onClick={(event) => { event.stopPropagation(); if (window.confirm(`确定删除“${item.description || item.name || `第 ${index + 1} 项`}”吗？删除后不可恢复。`)) { remove(index) } }}><Trash2 className="size-4" /></Button>
+                        ) : null}
+                      </td>
                       </tr>
                       {selected && rowSelectionEnabled ? (
                         <tr className="bg-background">
-                          <td colSpan={6} className="p-3 sm:p-4">
+                          <td colSpan={7} className="p-3 sm:p-4">
                             <ItemEditorPanel
                               item={item}
                               index={index}
