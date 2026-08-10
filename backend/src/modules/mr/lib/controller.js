@@ -103,6 +103,8 @@ async function ensureTables() {
       taiwan_business_transfer_start_month VARCHAR(10) NULL,
       taiwan_business_transfer_amount DECIMAL(14,2) NULL,
       remaining_taiwan_business_transfer DECIMAL(14,2) NULL,
+      gross_profit_recognitions JSON NULL,
+      taiwan_business_transfers JSON NULL,
       quotation_file_id BIGINT UNSIGNED NULL,
       remark TEXT NULL,
       created_by BIGINT UNSIGNED NOT NULL,
@@ -134,6 +136,8 @@ async function ensureTables() {
     ['taiwan_business_transfer_start_month', 'VARCHAR(10) NULL'],
     ['taiwan_business_transfer_amount', 'DECIMAL(14,2) NULL'],
     ['remaining_taiwan_business_transfer', 'DECIMAL(14,2) NULL'],
+    ['gross_profit_recognitions', 'JSON NULL'],
+    ['taiwan_business_transfers', 'JSON NULL'],
   ])
   const existingOrderColumns = new Map((await query(
     `SELECT column_name AS name, character_maximum_length AS maxLength FROM information_schema.columns
@@ -266,6 +270,8 @@ function orderPayload(row) {
   const payload = camelizeRow(row)
   payload.installOptions = parseOptions(payload.installOptions)
   payload.maintenanceOptions = parseOptions(payload.maintenanceOptions)
+  payload.grossProfitRecognitions = parseJsonValue(payload.grossProfitRecognitions, null)
+  payload.taiwanBusinessTransfers = parseJsonValue(payload.taiwanBusinessTransfers, null)
   payload.hasContract = payload.hasContract === null ? null : Number(payload.hasContract)
   payload.hasPenalty = payload.hasPenalty === null ? null : Number(payload.hasPenalty)
   payload.splitDelivery = payload.splitDelivery === null ? null : Number(payload.splitDelivery)
@@ -503,13 +509,14 @@ const ORDER_COLUMNS = [
   ['shipmentNo', 'shipment_no'], ['deliveryTerms', 'delivery_terms'],
   ['grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month'], ['grossProfitRecognitionAmount', 'gross_profit_recognition_amount'], ['remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'],
   ['taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month'], ['taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'], ['remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'],
+  ['grossProfitRecognitions', 'gross_profit_recognitions'], ['taiwanBusinessTransfers', 'taiwan_business_transfers'],
   ['remark', 'remark'],
 ]
 
 function dbParams(order) {
   return Object.fromEntries(ORDER_COLUMNS.map(([key, column]) => [
     column,
-    ['installOptions', 'maintenanceOptions'].includes(key) ? JSON.stringify(order[key] || []) : order[key],
+    ['installOptions', 'maintenanceOptions', 'grossProfitRecognitions', 'taiwanBusinessTransfers'].includes(key) ? JSON.stringify(order[key] || []) : order[key],
   ]))
 }
 

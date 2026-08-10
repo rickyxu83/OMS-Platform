@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Save, Send, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -23,7 +23,7 @@ import {
   voidMr,
   withdrawMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, UserOption, VendorOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
@@ -111,7 +111,7 @@ const CHANGE_LABELS: Record<string, string> = {
   recipient: '收货人', recipientTel: '收货联系电话', recipientMail: '收货邮箱', paymentTerms: '付款条件', paymentOther: '付款条件说明', splitDelivery: '是否允许分批交付',
   acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则说明',
   fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
-  grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）',
+  grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）', grossProfitRecognitions: '毛利认列', taiwanBusinessTransfers: '台湾业务转拨',
   salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购成本（不含税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
 }
 const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '品项装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购订单号', costSource: '采购成本来源' }
@@ -129,6 +129,58 @@ function changeValue(value: unknown) {
   if (value === true) return '是'
   if (value === false) return '否'
   return String(value)
+}
+
+function ScheduleEntriesEditor({
+  entries,
+  editable,
+  actionLabel,
+  withBusinessName = false,
+  onChange,
+}: {
+  entries: ScheduleEntry[]
+  editable: boolean
+  actionLabel: string
+  withBusinessName?: boolean
+  onChange: (entries: ScheduleEntry[]) => void
+}) {
+  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
+  const remove = (index: number) => onChange(entries.filter((_, entryIndex) => entryIndex !== index))
+  const add = () => onChange([...entries, { businessName: withBusinessName ? '' : null, startMonth: '', frequency: 'monthly', amount: null }])
+  const entryText = (entry: ScheduleEntry) => {
+    const parts = [
+      entry.startMonth ? `${entry.startMonth} 起` : '',
+      entry.frequency === 'quarterly' ? '每季度' : '每月',
+      entry.amount !== null && entry.amount !== undefined ? `${actionLabel} ¥ ${money(entry.amount)}` : '',
+    ].filter(Boolean)
+    return (withBusinessName && entry.businessName ? `${entry.businessName}：` : '') + (parts.join(' ') || '未填写')
+  }
+  if (!editable) {
+    return entries.length ? (
+      <ul className="space-y-1.5">
+        {entries.map((entry, index) => <li key={index} className="text-sm text-foreground">{entryText(entry)}</li>)}
+      </ul>
+    ) : <span className="text-sm text-muted-foreground">-</span>
+  }
+  return (
+    <div className="space-y-2">
+      {entries.map((entry, index) => (
+        <div key={index} className="grid gap-2 rounded-md border bg-muted/20 p-2 sm:grid-cols-[1fr_auto] sm:items-start">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {withBusinessName ? <Input value={entry.businessName || ''} placeholder="业务名字" aria-label={`第 ${index + 1} 笔业务名字`} onChange={(event) => update(index, { businessName: event.target.value })} /> : null}
+            <Input type="month" value={entry.startMonth || ''} aria-label={`第 ${index + 1} 笔起始月份`} onChange={(event) => update(index, { startMonth: event.target.value })} />
+            <Select value={entry.frequency || 'monthly'} onValueChange={(value) => update(index, { frequency: value as ScheduleEntry['frequency'] })}>
+              <SelectTrigger aria-label={`第 ${index + 1} 笔认列频率`}><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="monthly">每月</SelectItem><SelectItem value="quarterly">每季度</SelectItem></SelectContent>
+            </Select>
+            <Input type="number" min={0} step="0.01" value={entry.amount ?? ''} placeholder={`每${entry.frequency === 'quarterly' ? '季度' : '月'}${actionLabel}金额`} aria-label={`第 ${index + 1} 笔金额`} onChange={(event) => update(index, { amount: event.target.value === '' ? null : Number(event.target.value) })} />
+          </div>
+          <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive" aria-label={`删除第 ${index + 1} 笔`} onClick={() => remove(index)}><Trash2 className="size-4" /></Button>
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={add}><Plus className="mr-1 size-4" />增加一笔{actionLabel}</Button>
+    </div>
+  )
 }
 
 export function MrFormPage() {
@@ -1062,30 +1114,21 @@ export function MrFormPage() {
           <SectionCard id="remark" title="备注与其他" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="毛利认列">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="起始日期" editable={editable} readonlyText={textValue(calculated.grossProfitRecognitionStartMonth)}>
-                    <Input type="date" value={calculated.grossProfitRecognitionStartMonth || ''} onChange={(e) => patch({ grossProfitRecognitionStartMonth: e.target.value })} />
-                  </Field>
-                  <Field label="首期认列毛利" editable={editable} readonlyText={money(calculated.grossProfitRecognitionAmount)}>
-                    <Input type="number" step="0.01" value={calculated.grossProfitRecognitionAmount ?? ''} onChange={(e) => patch({ grossProfitRecognitionAmount: asNumber(e.target.value) })} />
-                  </Field>
-                  <Field label="剩余可认列毛利总额（按季）" editable={editable} readonlyText={money(calculated.remainingRecognizableGrossProfit)} className="sm:col-span-2">
-                    <Input type="number" step="0.01" value={calculated.remainingRecognizableGrossProfit ?? ''} onChange={(e) => patch({ remainingRecognizableGrossProfit: asNumber(e.target.value) })} />
-                  </Field>
-                </div>
+                <ScheduleEntriesEditor
+                  entries={calculated.grossProfitRecognitions || []}
+                  editable={editable}
+                  actionLabel="认列"
+                  onChange={(next) => patch({ grossProfitRecognitions: next })}
+                />
               </SubPanel>
               <SubPanel title="台湾业务转拨">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="起始日期" editable={editable} readonlyText={textValue(calculated.taiwanBusinessTransferStartMonth)}>
-                    <Input type="date" value={calculated.taiwanBusinessTransferStartMonth || ''} onChange={(e) => patch({ taiwanBusinessTransferStartMonth: e.target.value })} />
-                  </Field>
-                  <Field label="首期台湾业务转拨金额" editable={editable} readonlyText={money(calculated.taiwanBusinessTransferAmount)}>
-                    <Input type="number" step="0.01" value={calculated.taiwanBusinessTransferAmount ?? ''} onChange={(e) => patch({ taiwanBusinessTransferAmount: asNumber(e.target.value) })} />
-                  </Field>
-                  <Field label="剩余台湾业务待转拨总额（按季）" editable={editable} readonlyText={money(calculated.remainingTaiwanBusinessTransfer)} className="sm:col-span-2">
-                    <Input type="number" step="0.01" value={calculated.remainingTaiwanBusinessTransfer ?? ''} onChange={(e) => patch({ remainingTaiwanBusinessTransfer: asNumber(e.target.value) })} />
-                  </Field>
-                </div>
+                <ScheduleEntriesEditor
+                  entries={calculated.taiwanBusinessTransfers || []}
+                  editable={editable}
+                  actionLabel="转拨"
+                  withBusinessName
+                  onChange={(next) => patch({ taiwanBusinessTransfers: next })}
+                />
               </SubPanel>
             </div>
             <Field label="备注" editable={editable} readonlyText={textValue(calculated.remark)} className="mt-4">

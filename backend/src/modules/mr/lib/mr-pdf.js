@@ -52,6 +52,32 @@ function scheduleText(date, initialAmount, remainingAmount, action) {
   ].filter(hasValue).join(' · ')
 }
 
+function parseJsonList(input) {
+  if (Array.isArray(input)) return input
+  if (typeof input !== 'string' || !input) return []
+  try { const parsed = JSON.parse(input); return Array.isArray(parsed) ? parsed : [] } catch { return [] }
+}
+
+function entryText(entry, action) {
+  if (!entry) return ''
+  const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
+  const prefix = hasValue(entry.businessName) ? `${entry.businessName}：` : ''
+  return [
+    prefix + (hasValue(entry.startMonth) ? `${dateText(entry.startMonth)}起` : ''),
+    hasValue(entry.amount) ? `${period}${action} ${moneyText(entry.amount)}` : '',
+  ].filter(hasValue).join('')
+}
+
+function scheduleEntriesText(rawEntries, legacyStartMonth, legacyAmount, legacyRemaining, action) {
+  const entries = parseJsonList(rawEntries)
+  if (entries.length) return entries.map((entry) => entryText(entry, action)).filter(hasValue).join('\n')
+  if (hasValue(legacyStartMonth) || hasValue(legacyAmount)) {
+    const head = entryText({ startMonth: String(legacyStartMonth || '').slice(0, 7), frequency: 'quarterly', amount: legacyAmount }, action)
+    return [head, hasValue(legacyRemaining) ? `剩余 ${moneyText(legacyRemaining)}（按季）` : ''].filter(hasValue).join(' · ')
+  }
+  return ''
+}
+
 function time(input) {
   return input ? String(input).replace('T', ' ').slice(0, 16) : ''
 }
@@ -263,17 +289,19 @@ function detailEntries(order, items = []) {
 
 function noteEntries(order, includeVoidReason) {
   return [
-    ['毛利认列', scheduleText(
+    ['毛利认列', scheduleEntriesText(
+      orderField(order, 'grossProfitRecognitions', 'gross_profit_recognitions'),
       orderField(order, 'grossProfitRecognitionStartMonth', 'gross_profit_recognition_start_month'),
       orderField(order, 'grossProfitRecognitionAmount', 'gross_profit_recognition_amount'),
       orderField(order, 'remainingRecognizableGrossProfit', 'remaining_recognizable_gross_profit'),
-      '认列毛利',
+      '认列',
     )],
-    ['台湾业务转拨', scheduleText(
+    ['台湾业务转拨', scheduleEntriesText(
+      orderField(order, 'taiwanBusinessTransfers', 'taiwan_business_transfers'),
       orderField(order, 'taiwanBusinessTransferStartMonth', 'taiwan_business_transfer_start_month'),
       orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'),
       orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'),
-      '转拨台湾业务',
+      '转拨',
     )],
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],

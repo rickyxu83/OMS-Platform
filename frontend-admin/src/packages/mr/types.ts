@@ -102,9 +102,11 @@ export interface MrOrder {
   quotationFiles?: QuotationFile[]
   grossProfitRecognitionStartMonth?: string | null
   grossProfitRecognitionAmount?: number | null
+  grossProfitRecognitions?: ScheduleEntry[]
   remainingRecognizableGrossProfit?: number | null
   taiwanBusinessTransferStartMonth?: string | null
   taiwanBusinessTransferAmount?: number | null
+  taiwanBusinessTransfers?: ScheduleEntry[]
   remainingTaiwanBusinessTransfer?: number | null
   remark?: string | null
   rejectReason?: string | null
@@ -179,6 +181,13 @@ export interface UserOption {
   assistantUserId?: string | number | null
   email?: string | null
 }
+export interface ScheduleEntry {
+  businessName?: string | null
+  startMonth?: string | null
+  frequency?: 'monthly' | 'quarterly' | null
+  amount?: number | null
+}
+
 export interface VendorOption {
   id: string | number
   name: string

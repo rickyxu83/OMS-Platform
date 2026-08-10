@@ -205,6 +205,28 @@ function validBody(overrides = {}) {
   assert.equal(purchaseOnly.items[1].subtotal, null)
   assert.equal(purchaseOnly.items[1].purchaseOnly, true, 'purchaseOnly 标记应透传')
   assert.equal(purchaseOnly.items[1].costExcludingTax, 176.99)
+
+  const schedule = normalizeOrder(validBody({
+    grossProfitRecognitions: [
+      { startMonth: '2026-09', frequency: 'monthly', amount: 10000 },
+      { startMonth: '2026-10', frequency: 'quarterly', amount: 30000 },
+      { startMonth: '', frequency: 'monthly', amount: null },
+    ],
+    taiwanBusinessTransfers: JSON.stringify([
+      { businessName: '存储项目A', startMonth: '2026-08', frequency: 'monthly', amount: 50000 },
+      { businessName: '维保项目B', startMonth: '2026-09', frequency: 'quarterly', amount: 80000 },
+    ]),
+  }))
+  assert.equal(schedule.order.grossProfitRecognitions.length, 2, '空条目应被过滤')
+  assert.equal(schedule.order.grossProfitRecognitions[0].frequency, 'monthly')
+  assert.equal(schedule.order.grossProfitRecognitions[1].frequency, 'quarterly')
+  assert.equal(schedule.order.taiwanBusinessTransfers.length, 2, 'JSON 字符串应被解析')
+  assert.equal(schedule.order.taiwanBusinessTransfers[0].businessName, '存储项目A')
+
+  const legacy = normalizeOrder(validBody({ grossProfitRecognitionStartMonth: '2026-08-12', grossProfitRecognitionAmount: 100.25, taiwanBusinessTransferStartMonth: '2026-09-18', taiwanBusinessTransferAmount: 300.5 }))
+  assert.deepStrictEqual(legacy.order.grossProfitRecognitions, [{ startMonth: '2026-08', frequency: 'quarterly', amount: 100.25 }], '旧版单值认列字段应升级为一笔排程')
+  assert.equal(legacy.order.taiwanBusinessTransfers.length, 1)
+  assert.equal(legacy.order.taiwanBusinessTransfers[0].startMonth, '2026-09')
 }
 
 console.log('mr domain OK')

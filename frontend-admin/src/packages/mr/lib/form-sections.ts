@@ -45,7 +45,7 @@ export const MR_SECTIONS: MrSection[] = [
     fields: ['latestDeliveryDate', 'splitDelivery', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options']
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
-  { id: 'remark', title: '备注与其他', icon: StickyNote, fields: ['remark', 'grossProfitRecognitionStartMonth', 'grossProfitRecognitionAmount', 'remainingRecognizableGrossProfit', 'taiwanBusinessTransferStartMonth', 'taiwanBusinessTransferAmount', 'remainingTaiwanBusinessTransfer'] },
+  { id: 'remark', title: '备注与其他', icon: StickyNote, fields: ['remark', 'grossProfitRecognitionStartMonth', 'grossProfitRecognitionAmount', 'remainingRecognizableGrossProfit', 'taiwanBusinessTransferStartMonth', 'taiwanBusinessTransferAmount', 'remainingTaiwanBusinessTransfer', 'grossProfitRecognitions', 'taiwanBusinessTransfers'] },
   { id: 'approval', title: '电子签核流程', icon: ShieldCheck, fields: [] },
 ]
 

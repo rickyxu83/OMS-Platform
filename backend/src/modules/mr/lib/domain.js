@@ -57,6 +57,33 @@ function taxRate(value) {
   return number > 0 && number <= 1 ? number * 100 : number
 }
 
+function month(value) {
+  const normalized = text(value, 10)
+  if (!normalized) return null
+  const candidate = normalized.slice(0, 7)
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(candidate) ? candidate : null
+}
+
+function frequency(value) {
+  return value === 'quarterly' ? 'quarterly' : 'monthly'
+}
+
+function scheduleEntries(value, { withName = false } = {}) {
+  const source = typeof value === 'string' ? parseJson(value) : value
+  if (!Array.isArray(source)) return []
+  return source.map((entry) => ({
+    ...(withName ? { businessName: text(entry?.businessName, 100) } : {}),
+    startMonth: month(entry?.startMonth),
+    frequency: frequency(entry?.frequency),
+    amount: optionalNumber(entry?.amount),
+  })).filter((entry) => entry.startMonth || entry.amount !== null || (withName && entry.businessName))
+}
+
+function parseJson(value) {
+  if (value === null || value === undefined || value === '') return null
+  try { return JSON.parse(value) } catch { return null }
+}
+
 function normalizeItem(item = {}, index = 0) {
   return {
     rowNo: index + 1,
@@ -192,6 +219,8 @@ function normalizeOrder(body = {}) {
     taiwanBusinessTransferStartMonth: date(body.taiwanBusinessTransferStartMonth ?? body.taiwan_business_transfer_start_month),
     taiwanBusinessTransferAmount: optionalNumber(body.taiwanBusinessTransferAmount ?? body.taiwan_business_transfer_amount),
     remainingTaiwanBusinessTransfer: optionalNumber(body.remainingTaiwanBusinessTransfer ?? body.remaining_taiwan_business_transfer),
+    grossProfitRecognitions: scheduleEntries(body.grossProfitRecognitions ?? body.gross_profit_recognitions),
+    taiwanBusinessTransfers: scheduleEntries(body.taiwanBusinessTransfers ?? body.taiwan_business_transfers, { withName: true }),
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
     remark: text(body.remark, 10000),
   }
@@ -199,6 +228,13 @@ function normalizeOrder(body = {}) {
   order.contractType = null
   order.hasPenalty = order.hasContract && order.penaltyContent ? 1 : 0
   if (!order.hasContract) order.penaltyContent = null
+  // 旧版单值认列/转拨字段自动升级为一笔排程（新版支持多笔）
+  if (!order.grossProfitRecognitions.length && (order.grossProfitRecognitionStartMonth || order.grossProfitRecognitionAmount !== null)) {
+    order.grossProfitRecognitions = [{ startMonth: month(order.grossProfitRecognitionStartMonth), frequency: 'quarterly', amount: order.grossProfitRecognitionAmount }]
+  }
+  if (!order.taiwanBusinessTransfers.length && (order.taiwanBusinessTransferStartMonth || order.taiwanBusinessTransferAmount !== null)) {
+    order.taiwanBusinessTransfers = [{ businessName: null, startMonth: month(order.taiwanBusinessTransferStartMonth), frequency: 'quarterly', amount: order.taiwanBusinessTransferAmount }]
+  }
   const bodyItems = Array.isArray(body.items) ? body.items : []
   const rawItems = String(order.invoiceType || '').startsWith('6%')
     ? bodyItems.map((item) => ({ ...item, taxRate: 6 }))

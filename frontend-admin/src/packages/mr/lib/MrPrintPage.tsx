@@ -32,6 +32,25 @@ function scheduleText(date: unknown, initialAmount: unknown, remainingAmount: un
     hasValue(remainingAmount) ? `剩余 ${moneyText(remainingAmount, fallback)}（按季）` : '',
   ].filter(hasValue).join(' · ') || fallback
 }
+function scheduleEntriesText(entries: unknown, legacyStartMonth: unknown, legacyAmount: unknown, legacyRemaining: unknown, action: string, fallback: string) {
+  const list = Array.isArray(entries) ? entries : []
+  if (list.length) {
+    const lines = list.map((entry) => {
+      const period = entry?.frequency === 'quarterly' ? '每季度' : '每月'
+      const prefix = hasValue(entry?.businessName) ? `${entry.businessName}：` : ''
+      return [
+        prefix + (hasValue(entry?.startMonth) ? `${dateText(entry?.startMonth)}起` : ''),
+        hasValue(entry?.amount) ? `${period}${action} ${moneyText(entry?.amount, fallback)}` : '',
+      ].filter(hasValue).join('')
+    }).filter(hasValue)
+    return lines.join('；') || fallback
+  }
+  if (hasValue(legacyStartMonth) || hasValue(legacyAmount)) {
+    const head = `${dateText(String(legacyStartMonth || '').slice(0, 7))}起每季度${action} ${moneyText(legacyAmount, fallback)}`
+    return [head, hasValue(legacyRemaining) ? `剩余 ${moneyText(legacyRemaining, fallback)}（按季）` : ''].filter(hasValue).join(' · ') || fallback
+  }
+  return fallback
+}
 function percent(value: unknown, fallback = '-') { const amount = Number(value); return hasValue(value) && Number.isFinite(amount) ? `${amount.toFixed(2)}%` : fallback }
 function decidedAt(value?: string | null) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function approval(approvals: MrApproval[], key: string) { return approvals.find((item) => item.stepKey === key) }
@@ -188,13 +207,13 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
   const noteFacts = [
     {
       label: '毛利认列',
-      raw: [order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount, order.remainingRecognizableGrossProfit].filter(hasValue),
-      value: scheduleText(order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount, order.remainingRecognizableGrossProfit, '认列毛利', emptyText),
+      raw: [...(order.grossProfitRecognitions || []), order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount].filter(hasValue),
+      value: scheduleEntriesText(order.grossProfitRecognitions, order.grossProfitRecognitionStartMonth, order.grossProfitRecognitionAmount, order.remainingRecognizableGrossProfit, '认列', emptyText),
     },
     {
       label: '台湾业务转拨',
-      raw: [order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer].filter(hasValue),
-      value: scheduleText(order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer, '转拨台湾业务', emptyText),
+      raw: [...(order.taiwanBusinessTransfers || []), order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount].filter(hasValue),
+      value: scheduleEntriesText(order.taiwanBusinessTransfers, order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer, '转拨', emptyText),
     },
     { label: '备注', raw: order.remark, value: text(order.remark, emptyText) },
     ...(order.rejectReason ? [{ label: '驳回原因', raw: order.rejectReason, value: order.rejectReason }] : []),
