@@ -709,9 +709,9 @@ async function decide(req, res, action) {
   const returnTarget = ['sales', 'assistant'].includes(req.body?.target) ? req.body.target : 'sales'
   if (action === 'reject' && !reason) throw badRequest('驳回时必须填写原因')
   await ensureTables()
+  let autoApprovedLabel = null
+  let becameApproved = false
   await transaction(async (connection) => {
-    let autoApprovedLabel = null
-    let becameApproved = false
     const order = await loadLockedOrder(connection, req.params.id)
     const [steps] = await connection.execute(
       `SELECT * FROM mr_approvals WHERE mr_id = :id AND action IS NULL
