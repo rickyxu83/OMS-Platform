@@ -26,7 +26,7 @@ import {
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrDocumentView } from './MrPrintPage'
-import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
+import { calculateForm, deriveMissingCosts, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems, weightedAverageMargin } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
@@ -179,6 +179,36 @@ function ScheduleEntriesEditor({
         </div>
       ))}
       <Button type="button" variant="outline" size="sm" onClick={add}><Plus className="mr-1 size-4" />增加一笔{actionLabel}</Button>
+    </div>
+  )
+}
+
+function ReverseCostPanel({ order, editable, onApply }: { order: MrOrder; editable: boolean; onApply: (items: MrItem[]) => void }) {
+  const [targetRate, setTargetRate] = useState<number | null>(null)
+  const items = order.items || []
+  const missingCost = items.filter((item) => (item.costInclTax === null || item.costInclTax === undefined) && (item.unitPrice !== null && item.unitPrice !== undefined && Number(item.unitPrice) > 0))
+  const avgMargin = weightedAverageMargin(items)
+  const effectiveRate = targetRate ?? avgMargin ?? 0.2
+  if (!editable || !missingCost.length) return null
+  return (
+    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+      <div className="font-medium">{missingCost.length} 个品项缺采购成本</div>
+      <p className="mt-1 text-xs text-blue-800">多项系统集成下可按售价反推成本（目标毛利率）：已有真实成本的品项不受影响，反推值会标记“估算”。</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs"><span className="whitespace-nowrap">目标毛利率</span>
+          <Input
+            type="number"
+            min={0}
+            max={90}
+            step="1"
+            className="h-8 w-20"
+            value={Math.round(effectiveRate * 100)}
+            onChange={(event) => setTargetRate(event.target.value === '' ? null : Number(event.target.value) / 100)}
+          />
+          <span>%</span>
+        </label>
+        <Button type="button" size="sm" onClick={() => onApply(deriveMissingCosts(items, effectiveRate))}>反推并填入</Button>
+      </div>
     </div>
   )
 }
@@ -898,6 +928,7 @@ export function MrFormPage() {
                       onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
                     />
                   </Field>
+                  <ReverseCostPanel order={calculated} editable={editable && Number(calculated.pricingMode) === 1} onApply={(items) => patch({ items })} />
                   <Field label="项目分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
                     <Select value={calculated.caseCategory || ''} onValueChange={(value) => patch({ caseCategory: value })}>
                       <SelectTrigger><SelectValue placeholder="选择项目分类" /></SelectTrigger>
