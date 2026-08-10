@@ -137,20 +137,18 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{editMode ? '请选择品项以编辑完整资料；复选框仅用于批量复制。' : '当前为浏览模式；选择“编辑品项”后即可修改。'}</p>
+          <p className="text-xs text-muted-foreground">{editMode ? '请选择品项以编辑完整资料；复选框用于批量复制、批量删除。' : '勾选序号旁的复选框可批量删除；选择“编辑品项”后可修改内容或批量复制。'}</p>
           <div className="flex items-center gap-2">
-            {editMode ? (
+            {editable && selectedRows.size ? (
               <>
                 <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span>
-                {selectedRows.size ? (
-                  <Button type="button" variant="destructive" size="sm" onClick={() => {
-                    if (window.confirm(`确定删除选中的 ${selectedRows.size} 个品项吗？删除后不可恢复。`)) {
-                      onChange(items.filter((_, index) => !selectedRows.has(index)))
-                      setSelectedRows(new Set())
-                      toast.success(`已删除 ${selectedRows.size} 个品项`)
-                    }
-                  }}><Trash2 className="mr-1.5 size-4" />批量删除</Button>
-                ) : null}
+                <Button type="button" variant="destructive" size="sm" onClick={() => {
+                  if (window.confirm(`确定删除选中的 ${selectedRows.size} 个品项吗？删除后不可恢复。`)) {
+                    onChange(items.filter((_, index) => !selectedRows.has(index)))
+                    setSelectedRows(new Set())
+                    toast.success(`已删除 ${selectedRows.size} 个品项`)
+                  }
+                }}><Trash2 className="mr-1.5 size-4" />批量删除</Button>
               </>
             ) : null}
             <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
@@ -167,7 +165,7 @@ export function MrItemTable({
             <table className="w-full min-w-[760px] table-fixed text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
-                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable && editMode ? '选择 / 序号' : '序号'}</th>
+                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable ? '选择 / 序号' : '序号'}</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
                   <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
                   <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
@@ -186,7 +184,7 @@ export function MrItemTable({
                       className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''} ${rowSelectionEnabled ? 'cursor-pointer' : ''}`}
                     >
                       <td className="px-3 py-3 text-muted-foreground tabular-nums">
-                        {editable && editMode ? (
+                        {editable ? (
                           <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               aria-label={`选择第 ${index + 1} 项用于批量操作`}
@@ -199,7 +197,9 @@ export function MrItemTable({
                               })}
                             />
                             <span className="tabular-nums">{index + 1}</span>
-                            <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
+                            {editMode ? (
+                              <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
+                            ) : null}
                           </div>
                         ) : index + 1}
                       </td>
