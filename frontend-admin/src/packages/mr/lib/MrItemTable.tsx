@@ -139,7 +139,20 @@ export function MrItemTable({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{editMode ? '请选择品项以编辑完整资料；复选框仅用于批量复制。' : '当前为浏览模式；选择“编辑品项”后即可修改。'}</p>
           <div className="flex items-center gap-2">
-            {editMode ? <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span> : null}
+            {editMode ? (
+              <>
+                <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span>
+                {selectedRows.size ? (
+                  <Button type="button" variant="destructive" size="sm" onClick={() => {
+                    if (window.confirm(`确定删除选中的 ${selectedRows.size} 个品项吗？删除后不可恢复。`)) {
+                      onChange(items.filter((_, index) => !selectedRows.has(index)))
+                      setSelectedRows(new Set())
+                      toast.success(`已删除 ${selectedRows.size} 个品项`)
+                    }
+                  }}><Trash2 className="mr-1.5 size-4" />批量删除</Button>
+                ) : null}
+              </>
+            ) : null}
             <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
               {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
               {editMode ? '完成编辑' : '编辑品项'}
