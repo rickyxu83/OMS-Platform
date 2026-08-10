@@ -169,7 +169,6 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
         messages,
         stream: false,
         max_tokens: 4000,
-        temperature: 0.2,
         thinking: { type: 'disabled' },
       }),
     })
