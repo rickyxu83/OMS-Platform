@@ -154,7 +154,7 @@ function scanFinancials(reader, maxRow, maxCol) {
     const label = normalizeLabel(rowText)
     const value = number.length ? number[number.length - 1] : null
     if (value !== null && /(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/.test(label)) untaxedTotal = value
-    if (value !== null && /(优惠总计|優惠總計|优惠含税|優惠含稅|折后含税|折後含稅)/.test(label)) discountedTotal = value
+    if (value !== null && /(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/.test(label)) discountedTotal = value
     if (value !== null && /(含税总计|含稅總計|含税金额|含稅金額|totalamount|total)/.test(label)) total = value
   }
   return { notes: texts, taxRate, taxIncluded, untaxedTotal, discountedTotal, total }

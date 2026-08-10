@@ -15,7 +15,7 @@ const USER_PROMPT = [
   '2. qty / unitPrice / extended 输出为数字（不要千分位逗号、不要货币符号）；extended 以文件中的小计/金额为准',
   '3. name 必须包含完整品名：若文件中“产品名称”与“型号及规格”分列，name 应组合为“产品名称 + 规格”（例如 “6类非屏蔽跳线 1米”、“LC-LC OM4光纤跳线 15米”），不得只填规格（如单独的 “1米”“15米”）；description 必须包含表格中的全部明细字段——如序列号、硬件配置、设备型号、月数、设备地点、服务级别等表格列内容，不得省略（例如 “DS224C 960G SSD*24, Qty 1; 序列号: 952145001351/952145001204; 月数: 12; 设备地点: 苏州; 服务级别: 4R”）；partNo 为型号/料号：优先填写文件中的料号、序列号或型号编码（多个编码用 / 连接）；若文件包含设备清单/资产清单/序列号列表（可能与价格表分离、位于文件其他区域），请按顺序把每台设备的序列号写入对应品项的 partNo（第 n 个报价品项对应第 n 台设备的序列号）；尤其是 NetApp 设备，每台通常有一组两个序列号（多份文件中前后顺序可能不同），必须把所有序列号全部写入 partNo，不得遗漏或留空；不要填 MISC、FAS2750、维修、维保等短词或品名，确实没有任何编码时才填空字符串',
   '4. taxRate 用数字（如 13、6），无法判断填 null；taxIncluded 为布尔值，判断文件是否注明含税',
-  '5. untaxedTotal 为未税总计、totalAmount 为含税总计，没有则填 null',
+  '5. untaxedTotal 为未税总计、totalAmount 为含税总计；如文件有“最终优惠价/优惠价/折后价”（在总价基础上再优惠的金额），填写 discountedTotal，没有则填 null',
   '6. documentType 取值 "sales_quote"（销售报价/客户 PO）或 "purchase_quote"（供应商报价）',
   '7. vendor 为报价方/供应商公司名：优先取“报价方/供方”字段；若无，根据报价联系人邮箱域名判断（如 @vstecs.com 对应“伟仕佳杰 VST ECS”），或页眉/页脚/印章中的报价公司标志判断；严禁把“报价至/收件方/客户姓名/客户地址”中的公司当作供应商；产品品牌或制造商（如联想凌拓、NetAPP、HPE、Cisco）不是报价方，不得作为 vendor；确实无法判断才填空字符串',
   '8. 如文件中公司名含“报价单”等字样请正确区分报价方与客户方；attn 为报价联系人（报价方联系人，不是客户联系人）',
@@ -25,7 +25,7 @@ const USER_PROMPT = [
   '{',
   '  "documentType": "purchase_quote",',
   '  "customer": "", "vendor": "", "attn": "", "payment": "", "delivery": "",',
-  '  "taxRate": null, "taxIncluded": true, "untaxedTotal": null, "totalAmount": null,',
+  '  "taxRate": null, "taxIncluded": true, "untaxedTotal": null, "totalAmount": null, "discountedTotal": null,',,
   '  "items": [{ "itemNo": 1, "partNo": "", "name": "", "description": "", "entityKey": "", "qty": 1, "unitPrice": 0, "extended": 0 }]',
   '}',
   '',
@@ -92,6 +92,7 @@ function normalizeAiResult(ai, fileName) {
     tax_included: ai.taxIncluded === true,
     untaxed_total: finiteNumber(ai.untaxedTotal),
     total_amount: finiteNumber(ai.totalAmount),
+    discounted_total: finiteNumber(ai.discountedTotal),
     items,
   }
 }

@@ -272,6 +272,27 @@ assert.equal(ssdParsed.items[0].components?.length || 0, 0, '“数量：”汇�
 assert.equal(ssdParsed.items[0].qty, 8)
 assert.equal(ssdParsed.items[0].extended, 88000)
 
+const discountMerge = mergeQuotations([
+  { name: '供应商优惠价报价.pdf', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ items: [
+    { item_no: '1', part_no: '', name: 'FAS2750（14+7T）维保', description: 'FAS2750（14+7T）维保', qty: 1, unit_price: 58300, extended: 58300 },
+    { item_no: '2', part_no: '', name: 'FAS2750（7T）维保', description: 'FAS2750（7T）维保', qty: 1, unit_price: 45200, extended: 45200 },
+  ], total: 98896, discounted_total: 98896, tax_rate: 13, tax_included: true }] },
+], [])
+assert.equal(discountMerge.items.length, 2)
+assert(Math.abs(discountMerge.items[0].costInclTax - 58300 * (98896 / 103500)) < 0.01, '优惠应按小计占比分摊至采购成本')
+assert(Math.abs(discountMerge.items[1].costInclTax - 45200 * (98896 / 103500)) < 0.01)
+assert(Math.abs(discountMerge.items[0].costInclTax + discountMerge.items[1].costInclTax - 98896) < 0.02, '分摊后成本合计应等于优惠价')
+assert(discountMerge.warnings.some((warning) => warning.includes('优惠价') && warning.includes('分摊')))
+
+const discountSales = mergeQuotations([
+  { name: '销售优惠价报价.pdf', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ items: [
+    { item_no: '1', part_no: '', name: 'FAS2750（14+7T）维保', description: 'FAS2750（14+7T）维保', qty: 1, unit_price: 58300, extended: 58300 },
+    { item_no: '2', part_no: '', name: 'FAS2750（7T）维保', description: 'FAS2750（7T）维保', qty: 1, unit_price: 45200, extended: 45200 },
+  ], total: 98896, discounted_total: 98896, tax_rate: 13, tax_included: true }] },
+], [])
+assert(Math.abs(discountSales.items[0].quotedUnitPrice - 58300 / 1.13 * (98896 / 103500)) < 0.01, '销售报价单价也应按优惠分摊')
+assert(Math.abs(discountSales.items[0].quotedUnitPrice + discountSales.items[1].quotedUnitPrice - 98896 / 1.13) < 0.05, '分摊后未税单价合计应等于优惠价未税口径')
+
 const mixedUnmatchedPurchase = mergeQuotations([
   { name: '销售报价.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 316, tax_rate: 13, tax_included: true, items: [

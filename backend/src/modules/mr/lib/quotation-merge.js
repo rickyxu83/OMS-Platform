@@ -75,6 +75,22 @@ function sourceItemPricesTaxIncluded(source) {
   return sourceTaxIncluded(source)
 }
 
+/** 报价含“最终优惠价/优惠价”时，按小计占比把优惠分摊到各品项的折扣率；无优惠或异常时返回 1。 */
+function sourceDiscountRatio(source) {
+  const sheet = firstSheet(source)
+  const discounted = number(sheet.discounted_total)
+  if (!Number.isFinite(discounted) || discounted <= 0) return 1
+  const rate = sourceTaxRate(source)
+  const taxIncluded = sourceItemPricesTaxIncluded(source)
+  const itemTotal = (sheet.items || []).reduce((sum, item) => sum + number(item.extended ?? number(item.unit_price) * (number(item.qty) || 1)), 0)
+  const computed = taxIncluded ? itemTotal : itemTotal * (1 + rate / 100)
+  const base = computed > 0 ? computed : number(sheet.total_amount)
+  if (!base || base <= 0) return 1
+  const ratio = discounted / base
+  if (ratio >= 1 || ratio < 0.5) return 1
+  return ratio
+}
+
 function sourceSalesTotalExcludingTax(source) {
   const sheet = firstSheet(source)
   const rate = sourceTaxRate(source)
@@ -117,11 +133,13 @@ function flattenedItems(source, sourceIndex, vendors) {
   const vendor = vendorName(source, vendors)
   const taxRate = sourceTaxRate(source)
   const taxIncluded = sourceItemPricesTaxIncluded(source)
+  const discountRatio = sourceDiscountRatio(source)
   return source.sheets.flatMap((sheet) => sheet.items.map((item) => ({
     ...item,
     taxRateKnown: [6, 13].includes(Number(sheet.tax_rate)),
     taxRate,
     taxIncluded,
+    discountRatio,
     sourceIndex,
     sourceName: source.name,
     vendor,
@@ -142,7 +160,8 @@ function looksLikePartNumber(value) {
 
 function costInclTax(item) {
   const extended = item.extended === null || item.extended === undefined ? number(item.unit_price) * (number(item.qty) || 1) : number(item.extended)
-  return item.taxIncluded ? extended : extended * (1 + number(item.taxRate) / 100)
+  const ratio = item.discountRatio === null || item.discountRatio === undefined ? 1 : number(item.discountRatio)
+  return (item.taxIncluded ? extended : extended * (1 + number(item.taxRate) / 100)) * (ratio || 1)
 }
 
 function sourceRecognition(source) {
@@ -243,6 +262,13 @@ function mergeQuotations(inputSources, vendors = []) {
   const explicitSalesCount = sources.filter((source) => source.role === 'sales').length
   const unknownSourceCount = sources.filter((source) => !source.requestedRole && !['sales_quote', 'purchase_quote', 'customer_order'].includes(source.documentType)).length
   const roleWarnings = []
+  for (const source of sources) {
+    const ratio = sourceDiscountRatio(source)
+    if (ratio < 1) {
+      const sheet = firstSheet(source)
+      roleWarnings.push(`“${source.name}”含优惠价 ¥${number(sheet.discounted_total).toLocaleString('zh-CN')}（优惠前 ¥${(number(sheet.discounted_total) / ratio).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}），已按小计占比将优惠分摊至各品项`)
+    }
+  }
   if (salesSourceIndex < 0) roleWarnings.push('当前仅识别到供应商报价，未提供销售报价，销售金额需在后续补充')
   if (explicitSalesCount > 1) roleWarnings.push(`识别到 ${explicitSalesCount} 份销售报价，已采用第一份，其余按供应商报价处理，请核对文件角色`)
   else if (explicitSalesCount === 1 && unknownSourceCount) roleWarnings.push(`已识别销售报价，其余 ${unknownSourceCount} 份未明确来源文件按供应商报价处理`)
@@ -294,7 +320,7 @@ function mergeQuotations(inputSources, vendors = []) {
       installBy: '',
       qty: number(sale.qty) || 1,
       unitPrice: null,
-      quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceItemPricesTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1), 6),
+      quotedUnitPrice: sale.unit_price === null || sale.unit_price === undefined ? null : round(number(sale.unit_price) / (sourceItemPricesTaxIncluded(salesSource) ? 1 + sourceTaxRate(salesSource) / 100 : 1) * (sale.discountRatio ?? 1), 6),
       vendor: purchase?.vendor || '',
       costInclTax: purchase ? round(costInclTax(purchase)) : null,
       taxRate: purchase?.taxRate || 13,
