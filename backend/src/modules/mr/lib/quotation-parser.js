@@ -191,6 +191,8 @@ function parseSheet(ws) {
   const addComponent = (item, group, part, description, qty) => {
     const text = [group, part, description].map(cellText).filter(Boolean).join('：')
     if (!text || qty === null) return
+    // 汇总标签行（如“数量：”“总价：”“合计：”）不是组件，避免覆盖真正的产品描述
+    if (/^(数量|總數|总数|总价|總價|合计|合計|小计|小計|金额|金額|单价|單價|备注|備註|税率|稅率|税|稅|单位|單位)[：:]?$/i.test(cellText(description).replace(/\s+/g, ''))) return
     item.components = item.components || []
     item.components.push({ group: cellText(group), part: cellText(part), description: cellText(description), qty })
   }
@@ -214,7 +216,7 @@ function parseSheet(ws) {
     const unitPrice = toFloat(rawValue(ws, row, header.columns.unit))
     const extended = header.columns.extended ? toFloat(rawValue(ws, row, header.columns.extended)) : null
     const rowText = [group, description, part, reader.text(row, header.columns.item)].join(' ')
-    if (/(小计|小計|合计|合計|subtotal|total|税金|稅金|優惠|优惠|未税|未稅|含税|含稅)/i.test(rowText) && unitPrice === null) continue
+    if (/(小计|小計|合计|合計|总价|總價|subtotal|total|税金|稅金|優惠|优惠|未税|未稅|含税|含稅)/i.test(rowText) && unitPrice === null) continue
     if (unitPrice !== null && qty !== null && (description || part || group)) {
       flush()
       const aggregateTitle = header.aggregate ? reader.text(header.row - 1, 1) : ''

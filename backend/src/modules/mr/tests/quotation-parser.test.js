@@ -245,6 +245,33 @@ assert.equal(entityMatch.items[0].costInclTax, 49507)
 assert(Math.abs(entityMatch.items[0].quotedUnitPrice - 55000 / 1.13) < 0.001, '含税销售单价应转为未税报价单价')
 assert.equal(entityMatch.items[0].costSource, '供应商报价-敦阳.pdf')
 
+const ssdSheet = XLSX.utils.aoa_to_sheet([
+  ['', '', '', '', '', ''],
+  ['', '', '', '', '', ''],
+  ['', '', '', '', '', ''],
+  ['', '', '', '', '', ''],
+  ['', '', '', '', '', ''],
+  ['', '产品编码', '产品描述', '数量', '单价', '合计'],
+  [''],
+  ['', 'P40498-B21 ', 'HPE 960GB SATA RI SFF BC MV SSD', 8, 11000, 88000],
+  [''],
+  [''],
+  [''],
+  [''],
+  ['', 'CTO', '三年保修', null, null, 88000],
+  [''],
+  ['', '', '数量：', 1, '总价：', 88000],
+])
+const ssdBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(ssdBook, ssdSheet, '价格明细清单')
+const ssdParsed = parseWorkbook(XLSX.write(ssdBook, { type: 'buffer', bookType: 'xlsx' }))[0]
+assert.equal(ssdParsed.items.length, 1, '汇总标签行不应产生额外品项')
+assert.equal(ssdParsed.items[0].part_no, 'P40498-B21')
+assert.equal(ssdParsed.items[0].description, 'HPE 960GB SATA RI SFF BC MV SSD', '产品描述应保留原文，不被汇总标签覆盖')
+assert.equal(ssdParsed.items[0].components?.length || 0, 0, '“数量：”汇总标签不应被识别为组件')
+assert.equal(ssdParsed.items[0].qty, 8)
+assert.equal(ssdParsed.items[0].extended, 88000)
+
 const mixedUnmatchedPurchase = mergeQuotations([
   { name: '销售报价.xlsx', requestedRole: 'sales', documentType: 'sales_quote', sheets: [{ ...parsed[0], total: 200 }] },
   { name: '供应商报价.xlsx', requestedRole: 'purchase', documentType: 'purchase_quote', sheets: [{ ...parsed[0], total: 316, tax_rate: 13, tax_included: true, items: [
