@@ -219,7 +219,7 @@ function scheduleEntryText(entry: ScheduleEntry | undefined, actionLabel: string
     const per = periods && total !== null ? total / periods : null
     const head = entry.startMonth ? `自 ${entry.startMonth} 起` : ''
     const count = periods ? `分 ${periods} 期${actionLabel}` : `分期${actionLabel}`
-    return `${prefix}${head}${count}（每年 3、6、9、12 月）${per !== null ? `，每期 ¥ ${money(per)}` : ''}${total !== null ? `，总金额 ¥ ${money(total)}` : ''}`
+    return `${prefix}${head}${count}${per !== null ? `，每期 ¥ ${money(per)}` : ''}${total !== null ? `，总金额 ¥ ${money(total)}` : ''}`
   }
   // 旧版遗留：频率 + 每期金额
   const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
@@ -1164,13 +1164,21 @@ export function MrFormPage() {
               onFocusHandled={() => setFocusItemIndex(null)}
               onChange={(items: MrItem[]) => patch({ items })}
             />
-            <div className="mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
+            <div className={`mt-5 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 ${(() => { const t = (calculated.taiwanBusinessTransfers || []).reduce((s, e) => s + (Number(e.totalAmount) || 0), 0); return t > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5' })()}`}>
               {[
                 { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '销售税额', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
                 { label: '含税总计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '采购成本（不含税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '整单毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
+                ...(() => {
+                  const t = (calculated.taiwanBusinessTransfers || []).reduce((s, e) => s + (Number(e.totalAmount) || 0), 0)
+                  const s = Number(calculated.totals?.salesExcludingTax) || 0
+                  const c = calculated.totals?.costExcludingTax
+                  if (!t || c === null || c === undefined || !s) return []
+                  const r = s - c - t
+                  return [{ label: '留存毛利（率）', value: <span><AnimatedMoney value={r} animationKey={importAnimationKey} /> · <AnimatedPercent value={r / s * 100} animationKey={importAnimationKey} /></span>, warn: r < 0 }]
+                })(),
               ].map(({ label, value, warn }) => (
                 <div key={`${label}-${importAnimationKey}`} className={`bg-card p-4 ${importAnimationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
                   <div className="text-xs text-muted-foreground">{label}</div>

@@ -73,7 +73,7 @@ function entryText(entry, action) {
     const count = periods ? `分 ${periods} 期${action}` : `分期${action}`
     const perText = per !== null ? `，每期 ${moneyText(per)}` : ''
     const totalText = total !== null ? `，总金额 ${moneyText(total)}` : ''
-    return `${prefix}${head}${count}（每年 3、6、9、12 月）${perText}${totalText}`
+    return `${prefix}${head}${count}${perText}${totalText}`
   }
   // 旧版：频率 + 每期金额
   const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
@@ -225,6 +225,9 @@ function totals(doc, fonts, order, items, y) {
     return sum + (Number.isFinite(amount) && Number.isFinite(rate) ? amount / (1 + rate / 100) : 0)
   }, 0))
   const margin = totalsValue.marginRate ?? (sales > 0 ? (sales - cost) / sales * 100 : null)
+  // 台湾业务转拨存在时追加“留存毛利/留存毛利率”（毛利 − 转拨总金额）
+  const transferTotal = parseJsonList(orderField(order, 'taiwanBusinessTransfers', 'taiwan_business_transfers'))
+    .reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
   const cells = [
     ['未税总计', moneyText(sales)],
     ['销售税额', moneyText(totalsValue.vat)],
@@ -233,6 +236,10 @@ function totals(doc, fonts, order, items, y) {
     ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
+    ...(transferTotal > 0 ? [
+      ['留存毛利', moneyText(sales - cost - transferTotal)],
+      ['留存毛利率', sales > 0 ? `${((sales - cost - transferTotal) / sales * 100).toFixed(2)}%` : ''],
+    ] : []),
   ].filter(([, content]) => hasValue(content))
   const totalWidth = PAGE.width - PAGE.margin * 2
   const width = totalWidth / Math.max(1, cells.length)
