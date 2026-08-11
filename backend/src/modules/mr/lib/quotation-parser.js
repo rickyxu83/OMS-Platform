@@ -220,12 +220,12 @@ function parseSheet(ws) {
   const flush = () => {
     if (!current) return
     if (current.components?.length) {
-      // 组件数量保留在结构化 components 字段，不写入描述（数量列的数字只进数量字段）
+      // 组件数量保留在结构化 components 字段；描述用纯文本拼装（不引入 Markdown 记号，预览/PDF/Excel 都直接可读）
       const componentLines = current.components.map((component) => {
         const label = component.description || component.part || component.group
-        return `- ${label}`
+        return `${label}`
       })
-      current.description = `${current.name || current.description}：\n${componentLines.join('\n')}`
+      current.description = `${current.name || current.description}：${componentLines.join('；')}`
     }
     items.push(current)
     current = null

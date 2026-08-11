@@ -204,6 +204,7 @@ export interface QuotationFile {
   name: string
   size?: number
   createdAt?: string
+  quoteRole?: string | null
 }
 
 export interface QuotationSource {

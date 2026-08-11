@@ -220,6 +220,24 @@ export function QuotationImportDialog({
   const [removedStoredIds, setRemovedStoredIds] = useState<Set<string | number>>(new Set())
   const parseSeqRef = useRef(0)
   const storedFiles = existingFiles.filter((file) => !removedStoredIds.has(file.id))
+  const storedSalesFiles = storedFiles.filter((file) => file.quoteRole === 'quote_sales')
+  const storedPurchaseFiles = storedFiles.filter((file) => file.quoteRole !== 'quote_sales')
+  const renderStoredFile = (file: QuotationFile) => (
+    <div key={file.id} className="flex min-w-0 items-center justify-between gap-2 border bg-muted/40 px-2 py-1 text-xs">
+      <span className="min-w-0 truncate" title={file.name}>{file.name}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        <span className="text-muted-foreground">已留存</span>
+        <button type="button" aria-label={`下载 ${file.name}`} onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="p-1 text-muted-foreground hover:text-foreground">
+          <Download className="size-3.5" />
+        </button>
+        {editable ? (
+          <button type="button" aria-label={`删除 ${file.name}`} disabled={deletingFileId === file.id} onClick={() => void removeStoredFile(file)} className="p-1 text-muted-foreground hover:text-destructive">
+            {deletingFileId === file.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+          </button>
+        ) : null}
+      </span>
+    </div>
+  )
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(pricingMode) || 0
@@ -415,25 +433,15 @@ export function QuotationImportDialog({
           <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
         </DialogHeader>
 
-        {storedFiles.length ? (
+        {!editable && storedFiles.length ? (
           <section className="border-y py-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="text-sm font-medium">已留存的报价文件</div>
-              <span className="text-xs text-muted-foreground">再次导入时，留存文件会与新选择的文件一并重新识别。</span>
-            </div>
+            <div className="mb-2 text-sm font-medium">已留存的报价文件</div>
             <div className="grid gap-2 sm:grid-cols-2">
               {storedFiles.map((file) => (
-                <div key={file.id} className="flex min-w-0 items-center gap-1 border px-3 py-2 hover:bg-muted">
-                  <button type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
-                    <span className="min-w-0 truncate text-sm">{file.name}</span>
-                    <Download className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                  {editable ? (
-                    <button type="button" aria-label={`删除 ${file.name}`} disabled={deletingFileId === file.id} onClick={() => void removeStoredFile(file)} className="shrink-0 p-1 text-muted-foreground hover:text-destructive">
-                      {deletingFileId === file.id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                    </button>
-                  ) : null}
-                </div>
+                <button key={file.id} type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 items-center justify-between gap-3 border px-3 py-2 text-left hover:bg-muted">
+                  <span className="min-w-0 truncate text-sm">{file.name}</span>
+                  <Download className="size-4 shrink-0 text-muted-foreground" />
+                </button>
               ))}
             </div>
           </section>
@@ -441,8 +449,14 @@ export function QuotationImportDialog({
 
         {editable ? (
           <div className="grid gap-3 md:grid-cols-2">
-            <FileDropZone title="销售报价/客户订单" hint="用于识别客户、销售金额、客户 P/O、交付与付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
-            <FileDropZone title="供应商报价" hint="用于匹配各品项的采购成本；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+            <div>
+              <FileDropZone title="销售报价/客户订单" hint="用于识别客户、销售金额、客户 P/O、交付与付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
+              {storedSalesFiles.length ? <div className="mt-1 space-y-1">{storedSalesFiles.map(renderStoredFile)}</div> : null}
+            </div>
+            <div>
+              <FileDropZone title="供应商报价" hint="用于匹配各品项的采购成本；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+              {storedPurchaseFiles.length ? <div className="mt-1 space-y-1">{storedPurchaseFiles.map(renderStoredFile)}</div> : null}
+            </div>
           </div>
         ) : null}
 

@@ -4,8 +4,8 @@ const crypto = require('crypto')
 const multer = require('multer')
 const env = require('../../../config/env')
 
-/** 报价识别解析器版本：识别逻辑变更时 +1，旧缓存自动失效。 */
-const RECOGNITION_PARSER_VERSION = 1
+/** 报价识别解析器版本：识别逻辑/输出格式变更时 +1，旧缓存自动失效。 */
+const RECOGNITION_PARSER_VERSION = 2
 
 async function readRecognitionCache(fileHash) {
   try {
@@ -445,7 +445,7 @@ async function loadDetail(id, user) {
       { id },
     ),
     query(
-      `SELECT id, original_name, size, created_at
+      `SELECT id, original_name, size, created_at, quote_role
        FROM files WHERE owner_type = 'mr_order' AND owner_id = :id ORDER BY id`,
       { id },
     ),
@@ -489,7 +489,7 @@ async function loadDetail(id, user) {
     currentVersion,
     currentAssigneeName: currentApproval?.assigneeName || null,
     assignmentError: currentApproval?.assignmentError || order.assignmentError || null,
-    quotationFiles: fileRows.map((file) => ({ id: file.id, name: file.original_name, size: Number(file.size), createdAt: file.created_at })),
+    quotationFiles: fileRows.map((file) => ({ id: file.id, name: file.original_name, size: Number(file.size), createdAt: file.created_at, quoteRole: file.quote_role || null })),
     archivedDocumentTypes: documentRows.map((row) => row.document_type),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
@@ -1123,7 +1123,7 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
   }
   await Promise.allSettled(oldFiles.map((file) => fs.promises.rm(file.storage_path, { force: true })))
   return query(
-    `SELECT id, original_name AS name, size, created_at AS createdAt
+    `SELECT id, original_name AS name, size, created_at AS createdAt, quote_role AS quoteRole
      FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
     { ownerId },
   )
@@ -1179,6 +1179,7 @@ async function importQuotation(req, res) {
   }
   // 留存文件的角色来自入库时的 quote_role，新上传文件的角色来自本次请求的 sourceRoles
   const effectiveRoles = [...storedUploads.map((file) => file.storedRole), ...requestedRoles]
+  const uploadHashes = uploads.map((file) => crypto.createHash('sha256').update(file.buffer).digest('hex'))
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
     progress.current = name
@@ -1293,7 +1294,6 @@ async function importQuotation(req, res) {
     }
   }
   try {
-  const uploadHashes = uploads.map((file) => crypto.createHash('sha256').update(file.buffer).digest('hex'))
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
   progress.stage = 'normalizing'
   // 跨文件实体归一化按“文件集合”缓存：同一批文件重复导入直接复用，只有新增文件才重跑 AI
@@ -1435,7 +1435,7 @@ async function deleteQuotationFile(req, res) {
   })
   await fs.promises.rm(removed.storage_path, { force: true })
   const files = await query(
-    `SELECT id, original_name AS name, size, created_at AS createdAt
+    `SELECT id, original_name AS name, size, created_at AS createdAt, quote_role AS quoteRole
      FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
     { ownerId: req.params.id },
   )
