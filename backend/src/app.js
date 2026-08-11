@@ -27,6 +27,7 @@ const roleRoutes = require('./modules/roles/routes')
 const serviceOrderRoutes = require('./modules/service-orders/routes')
 const customerSignatureRequestRoutes = require('./modules/service-orders/public-routes')
 const settingsRoutes = require('./modules/settings/routes')
+const userSignatureRequestRoutes = require('./modules/user-signature/public-routes')
 const userRoutes = require('./modules/users/routes')
 
 const developmentOrigins = env.nodeEnv === 'production' ? [] : [
@@ -84,6 +85,7 @@ pool
 
 app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/customer-signature-requests', customerSignatureRequestRoutes)
+app.use('/api/v1/user-signature', userSignatureRequestRoutes)
 app.use('/api/v1/announcements', authenticate, auditLogger, announcementRoutes)
 app.use('/api/v1/users', authenticate, auditLogger, userRoutes)
 app.use('/api/v1/customers', authenticate, requireEngineerOnboardingComplete, auditLogger, customerRoutes)

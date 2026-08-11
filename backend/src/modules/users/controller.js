@@ -7,6 +7,7 @@ const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
 const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
 const { buildLikeSearch } = require('../../utils/chinese')
+const { validateSignature } = require('../../utils/signature')
 const { ALL_ROLES } = require('../../permissions/catalog')
 const { ensureUserLoginColumns } = require('./schema')
 
@@ -154,18 +155,6 @@ function validatePassword(password) {
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
     throw badRequest('密码需要包含大小写字母、数字和特殊符号')
   }
-}
-
-function validateSignature(dataUrl) {
-  if (!dataUrl) return ''
-  const value = String(dataUrl)
-  if (!/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(value)) {
-    throw badRequest('签名格式不正确')
-  }
-  if (Buffer.from(value.split(',')[1], 'base64').length > 1024 * 1024) {
-    throw badRequest('签名图片过大')
-  }
-  return value
 }
 
 async function list(req, res) {

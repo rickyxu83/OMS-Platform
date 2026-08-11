@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, KeyRound, LogOut, Save, Settings, Trash2 } from "lucide-react";
+import { Camera, CheckCircle2, Copy, KeyRound, Link2, LogOut, QrCode, Save, Settings, Trash2 } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -68,6 +69,11 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [savingSignature, setSavingSignature] = useState(false);
+  const [signatureLinkOpen, setSignatureLinkOpen] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [signatureLink, setSignatureLink] = useState("");
+  const [signatureLinkExpiresAt, setSignatureLinkExpiresAt] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [assistants, setAssistants] = useState<Array<{ id: string | number; realName?: string; username?: string; email?: string }>>([]);
   const [assistantUserId, setAssistantUserId] = useState("");
 
@@ -205,6 +211,44 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     }
   }
 
+  // 外层设置弹窗关闭时，一并关闭签名链接弹窗，避免孤儿弹窗残留
+  useEffect(() => {
+    if (!open) setSignatureLinkOpen(false);
+  }, [open]);
+
+  async function generateSignatureLink() {
+    setGeneratingLink(true);
+    try {
+      const data = await api.post("/users/me/signature-links");
+      const url = String(data?.url || "");
+      if (!url) {
+        toast.error("链接生成失败，请稍后再试");
+        return;
+      }
+      setSignatureLink(url);
+      setSignatureLinkExpiresAt(String(data?.expiresAt || ""));
+      setSignatureLinkOpen(true);
+      try {
+        setQrDataUrl(await QRCode.toDataURL(url, { width: 200, margin: 1 }));
+      } catch {
+        setQrDataUrl("");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "链接生成失败");
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
+  async function copySignatureLink() {
+    try {
+      await navigator.clipboard.writeText(signatureLink);
+      toast.success("链接已复制，去微信或短信发送吧");
+    } catch {
+      toast.error("复制失败，请长按手动复制");
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 sm:max-w-[760px]">
@@ -334,11 +378,17 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                       <h3 className="text-sm font-semibold">手写签名</h3>
                       <p className="text-xs text-muted-foreground">用于系统中需要本人签署的记录，可在此手写、更新或清除。</p>
                     </div>
-                    {engineerSignature ? (
-                      <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已填写</Badge>
-                    ) : (
-                      <Badge variant="warning">未维护</Badge>
-                    )}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {engineerSignature ? (
+                        <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已填写</Badge>
+                      ) : (
+                        <Badge variant="warning">未维护</Badge>
+                      )}
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={generateSignatureLink} disabled={generatingLink}>
+                        <QrCode className="h-4 w-4" />
+                        {generatingLink ? "生成中..." : "手机签名"}
+                      </Button>
+                    </div>
                   </div>
                   <SignatureCapture value={engineerSignature} onChange={setEngineerSignature} />
                   <div className="flex justify-end">
@@ -404,6 +454,39 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
             </section>
           </div>
         </div>
+
+        <Dialog open={signatureLinkOpen} onOpenChange={setSignatureLinkOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Link2 className="h-5 w-5 text-primary" />
+                手机签名链接
+              </DialogTitle>
+              <DialogDescription>
+                在手机上打开链接即可直接手写签名，无需登录。链接 1 小时内有效，生成新链接会作废之前的链接。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center gap-2">
+              <Input value={signatureLink} readOnly className="bg-slate-50 text-xs" />
+              <Button variant="outline" className="shrink-0 gap-1.5" onClick={copySignatureLink}>
+                <Copy className="h-4 w-4" />
+                复制
+              </Button>
+            </div>
+            {qrDataUrl ? (
+              <div className="flex justify-center rounded-lg border bg-white p-3">
+                <img src={qrDataUrl} alt="签名链接二维码" className="h-44 w-44" />
+              </div>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              微信扫一扫可直接打开；也可以复制链接后通过微信或短信发送。
+              {signatureLinkExpiresAt ? <span>有效期至 {signatureLinkExpiresAt}。</span> : null}
+            </p>
+            <div className="flex justify-end">
+              <Button onClick={() => setSignatureLinkOpen(false)}>完成</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

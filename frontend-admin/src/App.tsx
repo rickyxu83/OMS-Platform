@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ def
 const ApprovalTasks = lazy(() => import("@/pages/ApprovalTasks").then((module) => ({ default: module.ApprovalTasks })))
 const ServiceReport = lazy(() => import("@/pages/ServiceReport").then((module) => ({ default: module.ServiceReport })))
 const CustomerSignature = lazy(() => import("@/pages/CustomerSignature").then((module) => ({ default: module.CustomerSignature })))
+const EngineerSignature = lazy(() => import("@/pages/EngineerSignature").then((module) => ({ default: module.EngineerSignature })))
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
 const MrListPage = lazy(() => import("@/packages/mr/MrListPage").then((module) => ({ default: module.MrListPage })))
 const MrFormPage = lazy(() => import("@/packages/mr/MrFormPage").then((module) => ({ default: module.MrFormPage })))
@@ -183,6 +184,14 @@ export default function App() {
             element={
               <Suspense fallback={<PageLoading />}>
                 <CustomerSignature />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/engineer-signature/:token"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <EngineerSignature />
               </Suspense>
             }
           />
