@@ -1297,7 +1297,8 @@ async function importQuotation(req, res) {
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
   progress.stage = 'normalizing'
   // 跨文件实体归一化按“文件集合”缓存：同一批文件重复导入直接复用，只有新增文件才重跑 AI
-  const setHash = crypto.createHash('sha256').update(uploadHashes.join(':')).digest('hex')
+  // key 直接取命名空间输入的 sha256，保证 64 字符不超过 file_hash CHAR(64)
+  const setHash = crypto.createHash('sha256').update(`entity-set:${uploadHashes.join(':')}`).digest('hex')
   const cachedEntity = await readRecognitionCache(`set:${setHash}`)
   if (cachedEntity?.entityMap) {
     for (const entry of cachedEntity.entityMap) {
