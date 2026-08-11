@@ -54,7 +54,7 @@ const HEADER_ALIASES = {
   part: ['partno', 'partnumber', '产品编码', '产品編碼', '产品编号', '型号', '機型', '机型', '产品型号', '產品編號'],
   description: ['description', 'product', '产品描述', '產品描述', '产品名称', '项目名称及说明', '品名', '描述', '項目名稱及說明', '產品', '產品名稱'],
   qty: ['qty', "q'ty", 'quantity', '数量', '總數', '总数', '采购量', '採購量', '數量'],
-  unit: ['unitnetprice', 'unitprice', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价'],
+  unit: ['unitnetprice', 'unitprice', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价', '售价', '售價'],
   extended: ['extendednetprice', 'extendedprice', 'totalsellingprice', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
 }
 
@@ -125,13 +125,13 @@ function findValue(reader, maxRow, labels, preferredColumns = [1, 2, 4, 5, 6]) {
   return ''
 }
 
-function scanFinancials(reader, maxRow, maxCol) {
+function scanFinancials(reader, maxRow, maxCol, referenceSum = 0) {
   const texts = []
   let taxRate = null
   let taxIncluded = false
-  let untaxedTotal = null
-  let discountedTotal = null
-  let total = null
+  const untaxedCandidates = []
+  const discountedCandidates = []
+  const totalCandidates = []
   for (let row = 1; row <= maxRow; row += 1) {
     const rowValues = []
     for (let col = 1; col <= maxCol; col += 1) {
@@ -157,21 +157,27 @@ function scanFinancials(reader, maxRow, maxCol) {
         if (adjacent !== null && adjacent > 0 && adjacent <= 1) taxRate = adjacent * 100
       }
     }
-    // 取标签右侧最近的数值（避免同行远处无关数值如毛利率/汇率公式单元格被误当总价）
-    const numberAfter = (labelPattern) => {
+    // 收集标签右侧所有数值，稍后按“与品项合计最接近”定夺（避开同行税率/毛利率/公式等干扰数）
+    const numbersAfter = (labelPattern) => {
       const labelIndex = rowValues.findIndex((item) => labelPattern.test(normalizeLabel(item.text)))
       const candidates = labelIndex >= 0 ? rowValues.slice(labelIndex + 1) : rowValues
-      const found = candidates.map((item) => toFloat(item.value)).find((num) => num !== null)
-      return found === undefined || found === null ? null : found
+      return candidates.map((item) => toFloat(item.value)).filter((num) => num !== null)
     }
     const label = normalizeLabel(rowText)
-    const untaxedValue = numberAfter(/(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/)
-    const discountedValue = numberAfter(/(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/)
-    const totalValue = numberAfter(/(含税总计|含稅總計|含税金额|含稅金額|合计含税|合計含稅|totalamount|total)/)
-    if (untaxedValue !== null && /(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/.test(label)) untaxedTotal = untaxedValue
-    if (discountedValue !== null && /(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/.test(label)) discountedTotal = discountedValue
-    if (totalValue !== null && /(含税总计|含稅總計|含税金额|含稅金額|合计含税|合計含稅|totalamount|total)/.test(label)) total = totalValue
+    if (/(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/.test(label)) untaxedCandidates.push(...numbersAfter(/(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/))
+    if (/(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/.test(label)) discountedCandidates.push(...numbersAfter(/(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/))
+    if (/(含税总计|含稅總計|含税金额|含稅金額|含税总价|含稅總價|合计含税|合計含稅|totalamount|total)/.test(label)) totalCandidates.push(...numbersAfter(/(含税总计|含稅總計|含税金额|含稅金額|含税总价|含稅總價|合计含税|合計含稅|totalamount|total)/))
   }
+  const pick = (candidates) => {
+    if (!candidates.length) return null
+    if (referenceSum > 0) {
+      return [...candidates].sort((left, right) => Math.abs(Math.abs(left) - referenceSum) - Math.abs(Math.abs(right) - referenceSum))[0]
+    }
+    return candidates[0]
+  }
+  const untaxedTotal = pick(untaxedCandidates)
+  const discountedTotal = pick(discountedCandidates)
+  const total = pick(totalCandidates)
   return { notes: texts, taxRate, taxIncluded, untaxedTotal, discountedTotal, total }
 }
 
@@ -243,11 +249,25 @@ function parseSheet(ws) {
     const group = header.columns.group ? reader.text(row, header.columns.group) : ''
     const description = firstText(row, 'description')
     const part = firstText(row, 'part')
-    const qty = firstNumber(row, 'qty')
+    let qty = firstNumber(row, 'qty')
     const unitPrice = firstNumber(row, 'unit')
     const extended = header.columns.extended ? firstNumber(row, 'extended') : null
+    if (qty === null && unitPrice !== null) {
+      // 版式错位容错：数量列被“套/台”等单位文本占用、数量值错到邻列时，在数量列左右一格内找能通过 数量×单价≈小计 验证的数字
+      const probe = [...new Set(pickCols('qty').flatMap((col) => [col - 1, col, col + 1]).filter((col) => col >= 1))]
+      for (const col of probe) {
+        const candidate = toFloat(rawValue(ws, row, col))
+        if (candidate === null || candidate <= 0) continue
+        if (extended !== null && Math.abs(candidate * unitPrice - extended) > Math.max(1, Math.abs(extended) * 0.01)) continue
+        qty = candidate
+        break
+      }
+    }
     const rowText = [group, description, part, reader.text(row, header.columns.item)].join(' ')
     if (/(小计|小計|合计|合計|总价|總價|subtotal|total|税金|稅金|優惠|优惠|未税|未稅|含税|含稅)/i.test(rowText) && unitPrice === null) continue
+    // 描述/料号本身就是汇总标签（“合计：”等，含合并单元格扩散）的行不是品项——错位探测可能为它凑出单价，须先拦下
+    const rowLabel = (description || part || group).replace(/\s+/g, '')
+    if (/^(小计|小計|合计|合計|总价|總價|未税|未稅|含税|含稅|税金|稅金|税额|稅額|优惠|優惠|折扣|人民币|人民幣)\s*[:：]?$/.test(rowLabel)) continue
     if (unitPrice !== null && qty !== null && (description || part || group)) {
       flush()
       const aggregateTitle = header.aggregate ? reader.text(header.row - 1, 1) : ''
@@ -275,7 +295,8 @@ function parseSheet(ws) {
     }
   }
   flush()
-  const financials = scanFinancials(reader, maxRow, maxCol)
+  const itemSum = items.reduce((sum, item) => sum + (item.extended ?? (item.unit_price || 0) * (item.qty || 1)), 0)
+  const financials = scanFinancials(reader, maxRow, maxCol, itemSum)
   const beforeText = []
   for (let row = 1; row < header.row; row += 1) {
     for (let col = 1; col <= maxCol; col += 1) {
