@@ -158,7 +158,12 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
    - `vision` 仅在主会话无视觉且必须看图时才派，一次调用合并所有问题。
    - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
 
-## 指挥官工作流：herdr 多 agent 并行（2026-08-12 起试用）
+## 指挥官工作流：herdr 多 agent 并行（2026-08-12 起试用，已废弃）
+
+> **已弃用。** 多 agent 模式增加了并行复杂度但未带来足够的实际收益。恢复原有规则：主会话自己干活，必要时用 subagent 工具派子代理。
+
+<details>
+<summary>原约定（保留备查）</summary>
 
 适用场景：用户一次提多个需求、或明确要“指挥官/并行”模式时启用。指挥官模式下主会话保持空闲随时响应船长：项目代码改动一律派小弟执行，主会话只做调度、验收与合并，不亲手修改项目代码（文档与流程约定除外）。
 
@@ -189,3 +194,4 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
 - 主会话是唯一的合并/提交/部署出口，小弟不直接提交到主分支、不部署。
 - 不关闭非自己创建的 tab/pane/agent；不动他人的 worktree 与 stash。
 - 所有给主会话/小弟的 herdr 命令以 `herdr --help` 与 `herdr --skill` 的当前语法为准，ID 从 JSON 返回里解析，不猜。
+</details>
