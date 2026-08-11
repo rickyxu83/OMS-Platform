@@ -260,7 +260,7 @@ function ScheduleEntriesEditor({
   return (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'] })}>
+        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'], ...(value === 'installments' && !entry.startMonth ? { startMonth: `${currentYear}-03` } : {}) })}>
           <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
