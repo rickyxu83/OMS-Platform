@@ -176,8 +176,8 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
 **ship 任务流程（防并行冲突的核心）**：
 1. `git worktree add <path> -b <branch>` 给任务开独立工作区与分支（如 `.worktrees/feat-x` / `feat-x`）。
 2. `herdr tab create --cwd <worktree-path> --label "<任务>" --no-focus` 开新 tab（**不切分 pane**），在其中 `herdr agent start <name> --kind pi --pane <pane-id>` 起小弟。
-3. 派任务：`herdr agent prompt <name> "<完整任务描述：仓库/分支/要改什么/验收标准/不要碰什么>"` —— **一律不加 `--wait`**，发了就走，主会话继续干别的或先回报船长；不空等。
-4. 收结果：下一轮或主会话需要时 `herdr agent wait/read` 拿结果（此时多已完成，秒回不卡）。
+3. 派任务：`herdr agent prompt <name> "<完整任务描述：仓库/分支/要改什么/验收标准/不要碰什么>"` —— **一律不加 `--wait`**，发了就走，主会话继续干别的或先回报船长；不空等。任务描述末尾固定带上完工通知指令：`完成后执行 herdr notification show "【完成】<任务名>" --body "<一句话结果>" --sound done 并汇报`，以便船长收到桌面提醒。
+4. 收结果：船长看到通知或主会话需要时 `herdr agent wait/read` 拿结果（此时多已完成，秒回不卡）。
 5. 验收与合并：主会话检查小弟产出（测试/build），`git merge` 回工作分支，**冲突由主会话统一解**，不让船长碰。
 6. 收尾：`git worktree remove <path>` + `herdr tab close <tab-id>`，删临时分支，保持工作区干净。
 
