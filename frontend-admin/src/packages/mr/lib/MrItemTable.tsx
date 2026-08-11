@@ -188,17 +188,13 @@ export function MrItemTable({
                         ) : index + 1}
                       </td>
                       <td className="min-w-0 px-3 py-3">
-                        <button
-                          type="button"
-                          disabled={!rowSelectionEnabled}
-                          onClick={(event) => { event.stopPropagation(); setSelectedIndex(index) }}
-                          className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                        <div
+                          className="block w-full min-w-0 text-left"
                           aria-label={`${editable ? '编辑' : '查看'}第 ${index + 1} 项`}
-                          aria-pressed={rowSelectionEnabled ? selected : undefined}
                         >
                           <span className="block break-words font-medium">{item.description || item.name || '未填写品名及描述'}</span>
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
-                        </button>
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
@@ -327,7 +323,7 @@ function ItemEditorPanel({
 
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)}>
-            <Textarea rows={1} value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" onChange={(event) => onChange({ oemSpec: event.target.value })} />
+            <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" onChange={(event) => onChange({ oemSpec: event.target.value })} />
           </Field>
           <Field label="公司料号" editable={editable} readonlyText={textValue(item.companyPartNo)}>
             <Input value={item.companyPartNo || ''} placeholder="公司内部产品料号，选填" onChange={(event) => onChange({ companyPartNo: event.target.value })} />
