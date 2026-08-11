@@ -355,6 +355,12 @@ function parsePdfText(text, layout = null) {
   }
   if (!items.length && layout) items.push(...coordinateItems(layout))
   if (!items.length) items.push(...parsePriceTailItems(lines))
+  // 汇总行（“税前金額總和： 含稅金額總和：”之类）不是品项，宽松模式下可能混入，统一剔除
+  const summaryTokens = /(稅前金額總和|税前金额总和|含稅金額總和|含税金额总和|未稅金額總和|未税金额总和|金額總和|金额总和|總和|总和|合計|合计|總計|总计|小計|小计|稅前|税前|含稅|含税|未稅|未税|subtotal|grand\s*total|total)/gi
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const text = String(items[index].description || items[index].part_no || '')
+    if (text && !text.replace(summaryTokens, '').replace(/[\s：:，,；;、.\-]/g, '')) items.splice(index, 1)
+  }
   const warnings = []
   let itemTotal = items.reduce((sum, item) => sum + (item.extended || 0), 0)
   const declaredTotal = untaxedTotal ?? totalAmount

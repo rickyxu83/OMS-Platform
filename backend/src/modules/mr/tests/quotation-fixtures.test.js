@@ -23,6 +23,9 @@ function summarize(parsed) {
   return (parsed.sheets || []).map((sheet) => ({
     title: sheet.title,
     documentType: parsed.documentType,
+    untaxed_total: sheet.untaxed_total ?? null,
+    total_amount: sheet.total_amount ?? null,
+    discounted_total: sheet.discounted_total ?? null,
     items: (sheet.items || []).map((item) => ({
       name: item.name || '',
       description: item.description || '',
@@ -32,6 +35,25 @@ function summarize(parsed) {
       part_no: item.part_no || '',
     })),
   }))
+}
+
+/** 算术自洽：文件自报总计时，品项合计必须能对上某个口径（未税/含税/优惠价及其税率折算）。 */
+function consistencyError(sheet) {
+  const sum = sheet.items.reduce((total, item) => total + (item.extended ?? (item.unit_price || 0) * (item.qty || 1)), 0)
+  if (!sheet.items.length) return null
+  const approx = (a, b) => a !== null && b !== null && b !== undefined && b !== 0 && Math.abs(a - b) <= Math.max(1, Math.abs(b) * 0.005)
+  const bases = []
+  for (const declared of [sheet.untaxed_total, sheet.total_amount, sheet.discounted_total]) {
+    if (declared === null || declared === undefined) continue
+    bases.push(declared)
+    for (const rate of [6, 13]) {
+      bases.push(declared * (1 + rate / 100))
+      bases.push(declared / (1 + rate / 100))
+    }
+  }
+  if (!bases.length) return null // 文件无自报总计，无法算术校验
+  if (bases.some((basis) => approx(sum, basis))) return null
+  return `品项合计 ${sum.toFixed(2)} 与文件自报总计对不上（未税=${sheet.untaxed_total}, 含税=${sheet.total_amount}, 优惠=${sheet.discounted_total}）`
 }
 
 async function main() {
@@ -65,6 +87,8 @@ async function main() {
           }
         }
       }
+      const error = consistencyError(sheet)
+      if (error) failures.push(`${name}：${error}`)
     }
 
     if (!snapshots[name]) {
