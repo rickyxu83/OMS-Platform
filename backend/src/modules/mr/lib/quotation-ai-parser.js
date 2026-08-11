@@ -185,8 +185,8 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
         messages,
         stream: false,
         max_tokens: 4000,
-        // 温度锁 0：同一报价文件重复识别时输出尽量一致，避免“AI 抽奖”
-        temperature: 0,
+        // 温度仅在显式配置时下发（部分模型如 kimi-for-coding 只允许固定温度 0.6）
+        ...(env.ai.quoteTemperature !== null && Number.isFinite(env.ai.quoteTemperature) ? { temperature: env.ai.quoteTemperature } : {}),
         thinking: { type: 'disabled' },
       }),
     })

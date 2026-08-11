@@ -68,6 +68,10 @@ const env = {
     summaryRetryDelayMs: Number(process.env.AI_SUMMARY_RETRY_DELAY_MS || 3000),
     quoteRecognitionEnabled: process.env.AI_QUOTE_RECOGNITION_ENABLED === 'true',
     quoteTimeoutMs: Number(process.env.AI_QUOTE_TIMEOUT_MS || 90000),
+    // 部分模型（如 kimi-for-coding）只允许固定温度；未配置时不下发该参数
+    quoteTemperature: process.env.AI_QUOTE_TEMPERATURE === undefined || process.env.AI_QUOTE_TEMPERATURE === ''
+      ? null
+      : Number(process.env.AI_QUOTE_TEMPERATURE),
     quoteMaxPages: Number(process.env.AI_QUOTE_MAX_PAGES || 3),
   },
   db: {
