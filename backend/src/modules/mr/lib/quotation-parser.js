@@ -50,9 +50,9 @@ function rangeSize(ws) {
 }
 
 const HEADER_ALIASES = {
-  item: ['item', 'no', '序号', '编号', '項次', '项次', '項目'],
+  item: ['item', 'no', '序号', '编号', '項次', '项次', '項目', '项目'],
   part: ['partno', 'partnumber', '产品编码', '产品編碼', '产品编号', '型号', '機型', '机型', '产品型号', '產品編號'],
-  description: ['description', 'product', '产品描述', '產品描述', '产品名称', '项目名称及说明', '品名', '描述', '项目', '項目名稱及說明', '產品', '產品名稱'],
+  description: ['description', 'product', '产品描述', '產品描述', '产品名称', '项目名称及说明', '品名', '描述', '項目名稱及說明', '產品', '產品名稱'],
   qty: ['qty', "q'ty", 'quantity', '数量', '總數', '总数', '采购量', '採購量', '數量'],
   unit: ['unitnetprice', 'unitprice', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价'],
   extended: ['extendednetprice', 'extendedprice', 'totalsellingprice', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
@@ -83,20 +83,27 @@ function findHeaderSpec(ws) {
       }
     }
     const columns = {}
+    const all = {}
     const productColumn = labels.findIndex((value) => value === normalizeLabel('product'))
     const descriptionColumn = labels.findIndex((value) => value === normalizeLabel('description'))
     if (productColumn >= 0 && descriptionColumn >= 0) {
       columns.part = productColumn + 1
       columns.description = descriptionColumn + 1
+      all.part = [productColumn + 1]
+      all.description = [descriptionColumn + 1]
     }
     for (let col = 1; col <= maxCol; col += 1) {
       const value = ws[XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })]?.v
       for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
-        if (columns[key] === undefined && headerMatches(value, aliases)) columns[key] = col
+        if (headerMatches(value, aliases)) {
+          if (columns[key] === undefined) columns[key] = col
+          // 同一字段可能有多个别名列（如 MR 单“采购量”与“Q'ty”并存），全部记录，取数时逐列回退
+          ;(all[key] = all[key] || []).push(col)
+        }
       }
     }
     const score = ['description', 'qty', 'unit'].filter((key) => columns[key] !== undefined).length + (columns.extended === undefined ? 0 : 1) + (columns.part === undefined ? 0 : 1)
-    if (score >= 3 && (!best || score > best.score)) best = { row, columns, score }
+    if (score >= 3 && (!best || score > best.score)) best = { row, columns, all, score }
   }
   return best
 }
@@ -160,10 +167,10 @@ function scanFinancials(reader, maxRow, maxCol) {
     const label = normalizeLabel(rowText)
     const untaxedValue = numberAfter(/(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/)
     const discountedValue = numberAfter(/(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/)
-    const totalValue = numberAfter(/(含税总计|含稅總計|含税金额|含稅金額|totalamount|total)/)
+    const totalValue = numberAfter(/(含税总计|含稅總計|含税金额|含稅金額|合计含税|合計含稅|totalamount|total)/)
     if (untaxedValue !== null && /(未税总计|未稅總計|未税金额|未稅金額|未税合计|未稅合計|合計未稅|合计未税|税前|稅前)/.test(label)) untaxedTotal = untaxedValue
     if (discountedValue !== null && /(优惠总[计計]|優惠[总總][计計]|优惠含[税稅]|優惠含[税稅]|折[后後]含[税稅])/.test(label)) discountedTotal = discountedValue
-    if (totalValue !== null && /(含税总计|含稅總計|含税金额|含稅金額|totalamount|total)/.test(label)) total = totalValue
+    if (totalValue !== null && /(含税总计|含稅總計|含税金额|含稅金額|合计含税|合計含稅|totalamount|total)/.test(label)) total = totalValue
   }
   return { notes: texts, taxRate, taxIncluded, untaxedTotal, discountedTotal, total }
 }
@@ -217,13 +224,28 @@ function parseSheet(ws) {
     items.push(current)
     current = null
   }
+  const pickCols = (key) => (header.all?.[key]?.length ? header.all[key] : [header.columns[key]].filter(Boolean))
+  const firstText = (row, key) => {
+    for (const col of pickCols(key)) {
+      const text = reader.text(row, col)
+      if (text) return text
+    }
+    return ''
+  }
+  const firstNumber = (row, key) => {
+    for (const col of pickCols(key)) {
+      const num = toFloat(rawValue(ws, row, col))
+      if (num !== null) return num
+    }
+    return null
+  }
   for (let row = header.row + 1; row <= maxRow; row += 1) {
     const group = header.columns.group ? reader.text(row, header.columns.group) : ''
-    const description = reader.text(row, header.columns.description)
-    const part = header.columns.part ? reader.text(row, header.columns.part) : ''
-    const qty = toFloat(rawValue(ws, row, header.columns.qty))
-    const unitPrice = toFloat(rawValue(ws, row, header.columns.unit))
-    const extended = header.columns.extended ? toFloat(rawValue(ws, row, header.columns.extended)) : null
+    const description = firstText(row, 'description')
+    const part = firstText(row, 'part')
+    const qty = firstNumber(row, 'qty')
+    const unitPrice = firstNumber(row, 'unit')
+    const extended = header.columns.extended ? firstNumber(row, 'extended') : null
     const rowText = [group, description, part, reader.text(row, header.columns.item)].join(' ')
     if (/(小计|小計|合计|合計|总价|總價|subtotal|total|税金|稅金|優惠|优惠|未税|未稅|含税|含稅)/i.test(rowText) && unitPrice === null) continue
     if (unitPrice !== null && qty !== null && (description || part || group)) {
