@@ -101,6 +101,8 @@ async function testEntityKeys() {
 function testStripPriceFieldClauses() {
   // AI 误把数量/单价/金额写入描述尾部时应剥离
   assert.equal(stripPriceFieldClauses('6类非屏蔽跳线，1米，数量8PC/BOX，单价10.50元，金额84.00元'), '6类非屏蔽跳线，1米')
+  // 字段片段出现在描述中部同样剥离（数量列的数字不进描述）
+  assert.equal(stripPriceFieldClauses('6类非屏蔽跳线，数量8PC/BOX，含运费'), '6类非屏蔽跳线，含运费')
   assert.equal(stripPriceFieldClauses('LC-LC OM4光纤跳线, 15米, 数量: 5, 单价: 156.00, 金额: 780.00'), 'LC-LC OM4光纤跳线，15米')
   assert.equal(stripPriceFieldClauses('HPE 960GB SATA RI SFF BC MV SSD'), 'HPE 960GB SATA RI SFF BC MV SSD')
   // 不含数字的“金额”表述（如“金额以合同为准”）不剥离

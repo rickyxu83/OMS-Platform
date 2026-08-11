@@ -199,9 +199,10 @@ function parseSheet(ws) {
   const flush = () => {
     if (!current) return
     if (current.components?.length) {
+      // 组件数量保留在结构化 components 字段，不写入描述（数量列的数字只进数量字段）
       const componentLines = current.components.map((component) => {
         const label = component.description || component.part || component.group
-        return `- ${label} × ${component.qty}`
+        return `- ${label}`
       })
       current.description = `${current.name || current.description}：\n${componentLines.join('\n')}`
     }

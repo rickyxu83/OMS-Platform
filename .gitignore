@@ -40,3 +40,4 @@ conversation-*.txt
 *.tar.gz
 *.zip
 __pycache__/
+backend/tests/fixtures/quotations/

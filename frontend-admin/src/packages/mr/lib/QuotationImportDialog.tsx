@@ -125,6 +125,7 @@ function FileDropZone({
 
 const IMPORT_STAGE_LABELS: Record<string, string> = {
   parsing: '系统解析文件结构',
+  cache: '复用历史识别结果',
   rendering: '渲染报价页为图片',
   ai: 'AI 识别中（通常 10-30 秒）',
   ocr: 'OCR 文字识别中',
@@ -134,7 +135,7 @@ const IMPORT_STAGE_LABELS: Record<string, string> = {
 
 function importStageIndex(stage?: string) {
   if (!stage) return 0
-  if (stage === 'rendering' || stage === 'parsing') return 0
+  if (stage === 'rendering' || stage === 'parsing' || stage === 'cache') return 0
   if (stage === 'normalizing' || stage === 'merging') return 2
   return 1
 }

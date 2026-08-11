@@ -1,7 +1,38 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const multer = require('multer')
 const env = require('../../../config/env')
+
+/** 报价识别解析器版本：识别逻辑变更时 +1，旧缓存自动失效。 */
+const RECOGNITION_PARSER_VERSION = 1
+
+async function readRecognitionCache(fileHash) {
+  try {
+    const rows = await query(
+      'SELECT result FROM mr_quote_recognition_cache WHERE file_hash = :hash AND parser_version = :version LIMIT 1',
+      { hash: fileHash, version: RECOGNITION_PARSER_VERSION },
+    )
+    if (!rows[0]?.result) return null
+    const cached = JSON.parse(rows[0].result)
+    return cached?.parsed?.sheets ? cached : null
+  } catch (_error) {
+    return null
+  }
+}
+
+async function writeRecognitionCache(fileHash, fileName, payload) {
+  try {
+    await query(
+      `INSERT INTO mr_quote_recognition_cache (file_hash, parser_version, file_name, result)
+       VALUES (:hash, :version, :name, :result)
+       ON DUPLICATE KEY UPDATE result = VALUES(result), file_name = VALUES(file_name)`,
+      { hash: fileHash, version: RECOGNITION_PARSER_VERSION, name: fileName, result: JSON.stringify(payload) },
+    )
+  } catch (_error) {
+    // 缓存写入失败不影响导入
+  }
+}
 
 /** 报价导入进度（内存态，用于前端“第 x/N 份”提示）；识别结束后延迟清理。 */
 const importProgress = new Map()
@@ -231,8 +262,18 @@ async function ensureTables() {
       CONSTRAINT fk_mr_approvals_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 报价识别缓存：同一文件内容（hash + 解析器版本一致）直接复用首次识别结果，避免重复调 AI 且结果稳定
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_quote_recognition_cache (
+      file_hash CHAR(64) NOT NULL,
+      parser_version INT NOT NULL,
+      file_name VARCHAR(255) NULL,
+      result LONGTEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (file_hash, parser_version)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   await ensureWorkflowTables()
-  // files 表为共享表，报价来源角色（quote_sales/quote_purchase）用于再次导入时恢复文件分区
   const quoteRoleColumn = await query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = 'files' AND column_name = 'quote_role' LIMIT 1`,
@@ -1146,28 +1187,36 @@ async function importQuotation(req, res) {
     const requestedRole = ['sales', 'purchase'].includes(effectiveRoles[index]) ? effectiveRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
     try {
+    const fileHash = crypto.createHash('sha256').update(file.buffer).digest('hex')
     let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
-      let parsed = extension === '.pdf'
+    let parsed = null
+    let systemItemCount = 0
+    let aiItemCount = 0
+    let aiDocumentType = null
+    const cached = await readRecognitionCache(fileHash)
+    if (cached) {
+      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached)
+      parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
+      progress.stage = 'cache'
+    } else {
+      parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
       recognitionMethod = parsed.recognitionMethod || recognitionMethod
-      const systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
-      let aiAdopted = null
+      systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
       const preferAi = extension === '.pdf' || systemItemCount === 0
       if (env.ai.quoteRecognitionEnabled && preferAi) {
         try {
           const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name, { onStage: (stage) => { progress.stage = stage } })
           if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
-            aiAdopted = aiResult
+            aiItemCount = aiResult.sheets[0].items.length
+            aiDocumentType = aiResult.documentType
             recognitionMethod = aiResult.recognitionMethod
             const modeLabel = aiResult.recognitionMethod === 'ai_vision' ? 'AI 视觉' : 'AI 文本'
             parsed = {
               ...parsed,
               ...aiResult,
               warnings: [...(parsed.warnings || []), `已通过${modeLabel}识别，请在预览中核对品项`],
-            }
-            if (requestedRole && aiResult.documentType !== requestedDocumentType) {
-              parsed.warnings.push(`AI 识别该文件为“${aiResult.documentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
             }
           } else {
             parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'AI 识别未返回有效品项，已保留系统识别结果'] }
@@ -1176,7 +1225,7 @@ async function importQuotation(req, res) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), `AI 识别失败（${error.message}），已保留系统识别结果`] }
         }
       }
-      if (parsed.documentType === 'scanned_pdf' && !aiAdopted) {
+      if (parsed.documentType === 'scanned_pdf' && !aiItemCount) {
         progress.stage = 'ocr'
         try {
           const ocr = await recognizePdf(file.buffer, name)
@@ -1188,6 +1237,12 @@ async function importQuotation(req, res) {
         } catch (_error) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'Linux OCR 暂时不可用，本次只保留内存中的识别结果，请人工确认'] }
         }
+      }
+      await writeRecognitionCache(fileHash, name, { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType })
+    }
+      // 分区冲突提示与请求角色相关，不随缓存复用，每次按本次分区重新判断
+      if (requestedRole && aiDocumentType && aiDocumentType !== requestedDocumentType) {
+        parsed.warnings.push(`AI 识别该文件为“${aiDocumentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
       }
       const hasExternalVendor = parsed.sheets.some((sheet) => sheet.vendor && !/(敦阳|敦陽|stark|dunyang)/i.test(String(sheet.vendor)))
       if (requestedRole === 'purchase' && !hasExternalVendor && ['.xls', '.xlsx'].includes(extension)) {
@@ -1213,8 +1268,8 @@ async function importQuotation(req, res) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), '工作簿图片识别失败，供应商请人工核对'] }
         }
       }
-      if (aiAdopted && systemItemCount > 0 && aiAdopted.sheets[0].items.length !== systemItemCount) {
-        parsed.warnings.push(`AI 识别 ${aiAdopted.sheets[0].items.length} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
+      if (aiItemCount && systemItemCount > 0 && aiItemCount !== systemItemCount) {
+        parsed.warnings.push(`AI 识别 ${aiItemCount} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
       }
       parsed = applyQuotationLayoutRule(parsed, name, requestedRole)
       parsed = validateParsedQuotation(parsed, recognitionMethod)

@@ -59,18 +59,18 @@ function extractJson(content) {
   return null
 }
 
-/** 剥除 AI 误写入 name/description 尾部的数量/单价/金额等字段片段（这些字段已有独立列）。 */
+/** 剥除 AI 误写入 name/description 的数量/单价/金额等字段片段（数量列的数字只进数量字段；描述自带的数量表述如“含3年维保”不受影响）。未命中片段时原文照返，不改写标点。 */
 function stripPriceFieldClauses(value) {
   const text = str(value)
   if (!text) return text
   const clause = /^(数量|數量|qty|quantity|单价|單價|unitprice|金额|金額|小计|小計|总价|總價|amount|extended)\s*[:：]?\s*[￥¥\d]/i
   const lines = text.split(/\r?\n/).map((line) => {
     const segments = line.split(/[，,；;、]/).map((segment) => segment.trim()).filter(Boolean)
-    let end = segments.length
-    while (end > 1 && clause.test(segments[end - 1].replace(/\s+/g, ''))) end -= 1
-    return segments.slice(0, end).join('，')
+    const kept = segments.filter((segment) => !clause.test(segment.replace(/\s+/g, '')))
+    if (kept.length === segments.length) return line
+    return (kept.length ? kept : segments).join('，')
   })
-  return lines.join('\n').trim()
+  return lines.join('\n')
 }
 
 /** 把 AI 返回的 JSON 规范化为系统 sheet 结构；items 为空时返回 null。 */
