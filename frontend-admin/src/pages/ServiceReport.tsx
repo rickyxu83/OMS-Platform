@@ -1606,6 +1606,16 @@ function SignaturePad({
     return Math.max(min, Math.min(max, value));
   }
 
+  // 竖屏手机打开「横屏全屏签名」时，弹窗整体被 CSS rotate-90 旋转，
+  // 画布视觉尺寸与布局尺寸互换。此时落笔坐标做了反向映射，位图本身是侧着的，
+  // 导出/回显都需要相应转正，否则存下来的签名会旋转 90°。
+  function isQuarterRotated(canvas: HTMLCanvasElement) {
+    const rect = canvas.getBoundingClientRect();
+    const { width, height } = canvasCssSize(canvas);
+    const hasTransformedBounds = Math.abs(rect.width - width) > 2 || Math.abs(rect.height - height) > 2;
+    return hasTransformedBounds && Math.abs(rect.width - height) < 2 && Math.abs(rect.height - width) < 2;
+  }
+
   function transformedCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
     const rect = canvas.getBoundingClientRect();
     const { width, height } = canvasCssSize(canvas);
@@ -1674,6 +1684,18 @@ function SignaturePad({
     if (snapshot) {
       const image = new Image();
       image.onload = () => {
+        if (isQuarterRotated(canvas)) {
+          // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
+          const scale = Math.min(height / image.width, width / image.height);
+          const drawWidth = image.width * scale;
+          const drawHeight = image.height * scale;
+          context.save();
+          context.translate(width / 2, height / 2);
+          context.rotate(-Math.PI / 2);
+          context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          context.restore();
+          return;
+        }
         const scale = Math.min(width / image.width, height / image.height);
         const drawWidth = image.width * scale;
         const drawHeight = image.height * scale;
@@ -1733,7 +1755,24 @@ function SignaturePad({
     drawingRef.current = false;
     lastPointRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const dataUrl = canvasRef.current?.toDataURL("image/png") || "";
+    const canvas = canvasRef.current;
+    let dataUrl = "";
+    if (canvas) {
+      if (isQuarterRotated(canvas)) {
+        // 画布被 CSS 旋转 90°：导出时把位图转正，保证存下来的签名是正的
+        const output = document.createElement("canvas");
+        output.width = canvas.height;
+        output.height = canvas.width;
+        const outputContext = output.getContext("2d");
+        if (outputContext) {
+          outputContext.translate(output.width / 2, output.height / 2);
+          outputContext.rotate(Math.PI / 2);
+          outputContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          dataUrl = output.toDataURL("image/png");
+        }
+      }
+      if (!dataUrl) dataUrl = canvas.toDataURL("image/png");
+    }
     onChange(dataUrl);
   }
 
