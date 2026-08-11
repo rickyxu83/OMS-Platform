@@ -157,3 +157,35 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
    - `executor` 仅在主会话是付费模型（如 k3）且想把重复性 grunt work 甩给免费子代理时才派。
    - `vision` 仅在主会话无视觉且必须看图时才派，一次调用合并所有问题。
    - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
+
+## 指挥官工作流：herdr 多 agent 并行（2026-08-12 起试用）
+
+适用场景：用户一次提多个需求、或明确要“指挥官/并行”模式时启用。单个小改动仍按上节规则由主会话直接处理，不必强行派单。
+
+**角色分工**：
+- 用户（船长）：只提需求、验收，不看代码、不解冲突。
+- 主会话（指挥官）：唯一对接口。负责拆解需求、判断并行/串行、派发与回收小弟、统一合并与解冲突、跑检查、提交、部署、向船长汇报。
+- 小弟（执行者）：主会话用 herdr 在**新 tab** 里起的 `pi` agent，在隔离 worktree 里干活，不直接与船长对话。
+
+**开工前**：
+1. 先 `git status` + `herdr agent list` 扫一遍，看是否有其他会话正在改的文件，避免撞车；发现别的会话占用某文件时，串行安排或先与船长确认。
+2. 把需求分类：
+   - **ship（交付型）**：要改代码提交的 → 走 worktree 隔离流程。
+   - **scout（侦察型）**：只调研出报告不改代码的 → 主会话自己查或派一个小弟查，出报告即可，不必开 worktree。
+
+**ship 任务流程（防并行冲突的核心）**：
+1. `git worktree add <path> -b <branch>` 给任务开独立工作区与分支（如 `.worktrees/feat-x` / `feat-x`）。
+2. `herdr tab create --cwd <worktree-path> --label "<任务>" --no-focus` 开新 tab（**不切分 pane**），在其中 `herdr agent start <name> --kind pi --pane <pane-id>` 起小弟。
+3. 派任务：`herdr agent prompt <name> "<完整任务描述：仓库/分支/要改什么/验收标准/不要碰什么>"` —— **一律不加 `--wait`**，发了就走，主会话继续干别的或先回报船长；不空等。
+4. 收结果：下一轮或主会话需要时 `herdr agent wait/read` 拿结果（此时多已完成，秒回不卡）。
+5. 验收与合并：主会话检查小弟产出（测试/build），`git merge` 回工作分支，**冲突由主会话统一解**，不让船长碰。
+6. 收尾：`git worktree remove <path>` + `herdr tab close <tab-id>`，删临时分支，保持工作区干净。
+
+**并行/串行判断**：改**不同文件/模块**的 ship 任务可并行（各自一个 worktree）；改**同一文件**的任务一律串行（一个合并完再开下一个），从源头杜绝冲突。
+
+**小弟命名**：按任务起语义名，小写字母/数字/连字符、≤32 字符且在 live agents 唯一（如 `ship-附件区`、`scout-签核`、`verify-构建`），仅作 herdr 寻址与展示；小弟具体干什么以任务 prompt 为准，无需另设固定人设。
+
+**纪律**：
+- 主会话是唯一的合并/提交/部署出口，小弟不直接提交到主分支、不部署。
+- 不关闭非自己创建的 tab/pane/agent；不动他人的 worktree 与 stash。
+- 所有给主会话/小弟的 herdr 命令以 `herdr --help` 与 `herdr --skill` 的当前语法为准，ID 从 JSON 返回里解析，不猜。
