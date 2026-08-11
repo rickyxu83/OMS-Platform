@@ -185,6 +185,8 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
         messages,
         stream: false,
         max_tokens: 4000,
+        // 温度锁 0：同一报价文件重复识别时输出尽量一致，避免“AI 抽奖”
+        temperature: 0,
         thinking: { type: 'disabled' },
       }),
     })
