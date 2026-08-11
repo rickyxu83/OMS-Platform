@@ -246,13 +246,13 @@ function ScheduleEntriesEditor({
 }) {
   const entry: ScheduleEntry = entries[0] || { businessName: withBusinessName ? '' : null, type: 'once', startMonth: null, periods: null, totalAmount: null }
   const type = entry.type || 'once'
-  const startYear = String(entry.startMonth || '').slice(0, 4)
   const startMonth = String(entry.startMonth || '').slice(5, 7)
   const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
   const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
   const perPeriod = periods && total !== null ? total / periods : null
   const patchEntry = (value: Partial<ScheduleEntry>) => onChange([{ ...entry, ...value }])
-  const patchStart = (year: string, month: string) => patchEntry({ startMonth: year && month ? `${year}-${month}` : null })
+  const currentYear = new Date().getFullYear()
+  const patchStart = (month: string) => patchEntry({ startMonth: `${currentYear}-${month}` })
   if (!editable) {
     const text = scheduleEntryText(entries[0], actionLabel, withBusinessName)
     return text ? <p className="text-sm text-foreground">{text}</p> : <span className="text-sm text-muted-foreground">-</span>
@@ -265,7 +265,7 @@ function ScheduleEntriesEditor({
           <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
-            <SelectItem value="installments">{actionLabel === '转拨' ? '每季转拨' : `分期${actionLabel}`}</SelectItem>
+            <SelectItem value="installments">{`分期${actionLabel}`}</SelectItem>
           </SelectContent>
         </Select>
         {withBusinessName ? (
@@ -273,14 +273,8 @@ function ScheduleEntriesEditor({
         ) : null}
         {type === 'installments' ? (
           <>
-            <Select value={startYear} onValueChange={(value) => patchStart(value, startMonth || '03')}>
-              <SelectTrigger aria-label="开始年份"><SelectValue placeholder="开始年份" /></SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 6 }, (_, offset) => String(currentYear - 1 + offset)).map((year) => <SelectItem key={year} value={year}>{year} 年</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : '03'} onValueChange={(value) => patchStart(startYear || String(currentYear), value)}>
-              <SelectTrigger aria-label="开始月份"><SelectValue /></SelectTrigger>
+            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : '03'} onValueChange={patchStart}>
+              <SelectTrigger aria-label="开始月份（当年）"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
               </SelectContent>
