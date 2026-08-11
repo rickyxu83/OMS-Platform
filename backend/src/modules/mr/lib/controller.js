@@ -1180,6 +1180,13 @@ async function importQuotation(req, res) {
   // 留存文件的角色来自入库时的 quote_role，新上传文件的角色来自本次请求的 sourceRoles
   const effectiveRoles = [...storedUploads.map((file) => file.storedRole), ...requestedRoles]
   const uploadHashes = uploads.map((file) => crypto.createHash('sha256').update(file.buffer).digest('hex'))
+  const persist = String(req.body?.persist || '') === '1'
+  const persistOnly = String(req.body?.persistOnly || '') === '1'
+  if (persist && persistOnly) {
+    // 确认导入：识别结果已在预览中，仅留存新上传的原始附件（留存文件本来就在库里），不重复识别
+    const files = await persistQuotationFiles(req.params.id, newUploads, req.user, false, requestedRoles)
+    return res.json({ files })
+  }
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
     progress.current = name
@@ -1353,7 +1360,6 @@ async function importQuotation(req, res) {
     } : {},
   }
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认销售报价或供应商报价角色')
-  const persist = String(req.body?.persist || '') === '1'
   const cleanupStoredFiles = String(req.body?.cleanupStoredFiles || '') === '1'
   const files = persist ? await persistQuotationFiles(req.params.id, newUploads, req.user, cleanupStoredFiles, requestedRoles) : []
   res.json({ files, ...payload })

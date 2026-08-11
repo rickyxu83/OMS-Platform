@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations } from '../client'
+import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations, persistQuotations } from '../client'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 import { AnimatedInteger, AnimatedMoney } from './mr-ui'
@@ -411,9 +411,9 @@ export function QuotationImportDialog({
     setLoading(true)
     setError('')
     try {
-      const saved = await importQuotations(orderId, files, true, roles, false, '', storedFiles.length > 0)
-      const editedSources = saved.sources.map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
-      onApply({ ...saved, items: previewItems, sources: editedSources }, effectivePricingMode)
+      const saved = await persistQuotations(orderId, files, roles)
+      const editedSources = (preview.sources || []).map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
+      onApply({ ...preview, items: previewItems, sources: editedSources, files: saved.files }, effectivePricingMode)
       onOpenChange(false)
       setSalesFiles([])
       setPurchaseFiles([])

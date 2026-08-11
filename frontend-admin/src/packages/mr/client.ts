@@ -38,6 +38,15 @@ export async function importQuotations(id: string | number, files: File[], persi
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }
 
+export async function persistQuotations(id: string | number, files: File[], roles?: Array<'sales' | 'purchase'>) {
+  const body = new FormData()
+  for (const file of files) body.append('files', file)
+  if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
+  body.set('persist', '1')
+  body.set('persistOnly', '1')
+  return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<{ files: QuotationFile[] }>
+}
+
 export async function getImportProgress(taskId: string) {
   return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string; stage?: string }>
 }
