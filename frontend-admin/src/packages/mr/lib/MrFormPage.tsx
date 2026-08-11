@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CopyPlus, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,6 +11,7 @@ import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
+  createMr,
   downloadMrDocument,
   getMr,
   getMrConstants,
@@ -643,6 +644,37 @@ export function MrFormPage() {
     }
   }
 
+  /** 从已作废 MR 复制全部业务内容，生成一张新的草稿申请（Ctrl.NO 与报价附件不复制） */
+  const duplicateAsNew = async () => {
+    if (!form) return
+    setBusy(true)
+    setError('')
+    try {
+      const {
+        id: _id, status: _status, createdAt: _createdAt, updatedAt: _updatedAt,
+        submittedAt: _submittedAt, approvedAt: _approvedAt, rejectedAt: _rejectedAt, voidedAt: _voidedAt,
+        voidReason: _voidReason, rejectReason: _rejectReason, withdrawReason: _withdrawReason, returnTarget: _returnTarget,
+        versionNo: _versionNo, archiveStatus: _archiveStatus, archiveError: _archiveError, archivedDocumentTypes: _archivedDocumentTypes,
+        autoApprovedStep: _autoApprovedStep, approvals: _approvals, approvalHistory: _approvalHistory,
+        currentVersion: _currentVersion, quotationFiles: _quotationFiles, permissions: _permissions,
+        fileName: _fileName, salesOwnerName: _salesOwnerName, salesOwnerRole: _salesOwnerRole,
+        assistantUserId: _assistantUserId, assistantName: _assistantName,
+        customerCode: _customerCode, customerAddress: _customerAddress, customerMapAddress: _customerMapAddress,
+        currentStepKey: _currentStepKey, currentStepLabel: _currentStepLabel,
+        currentAssigneeUserId: _currentAssigneeUserId, currentAssigneeName: _currentAssigneeName, assignmentError: _assignmentError,
+        quotationFileId: _quotationFileId,
+        ...payload
+      } = form
+      const next = await createMr({ ...payload, ctrlNo: null, quotationFileId: null })
+      toast.success('已复制原单内容，生成新的草稿申请；修改后可直接提交签核')
+      navigate(`/mr/${next.id}`)
+    } catch (err) {
+      setError((err as Error).message || '复制为新申请失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const errorCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const item of errors) {
@@ -698,6 +730,7 @@ export function MrFormPage() {
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
   const highValue = Number(calculated.totals?.salesExcludingTax) > 750000
+  const departmentSupervisorOwned = calculated.salesOwnerRole === 'sales_supervisor'
   const sectionCounts = { items: calculated.items?.length || 0 }
   const summary = (layout: 'rail' | 'bar') => (
     <SummaryPanel
@@ -753,8 +786,13 @@ export function MrFormPage() {
               </Button>
             ) : null}
             {status === 'voided' ? (
-              <Button variant="outline" disabled={!approvedDocumentReady} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
-                <FileDown className="mr-2 size-4" />原正式 PDF
+              <Button variant="outline" disabled={busy} onClick={() => void duplicateAsNew()} title="复制本单全部业务内容，生成新的草稿申请；Ctrl.NO 与报价附件需重新填写">
+                <CopyPlus className="mr-2 size-4" />复制为新申请
+              </Button>
+            ) : null}
+            {status === 'voided' ? (
+              <Button variant="outline" disabled={!approvedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                <FileDown className="mr-2 size-4" />{approvedDocumentReady ? '原正式 PDF' : calculated.archiveStatus === 'failed' ? '原 PDF 归档失败' : '原 PDF 处理中'}
               </Button>
             ) : null}
             {status === 'voided' ? (
@@ -824,10 +862,11 @@ export function MrFormPage() {
       ) : (
         <>
       <div className="mx-auto max-w-[1700px] space-y-6 px-4 py-5 sm:px-6">
-        {highValue || lowMargin ? (
+        {highValue || lowMargin || departmentSupervisorOwned ? (
           <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
             {highValue ? '未税总计超过 75 万元；' : ''}
             {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
+            {departmentSupervisorOwned ? '业务主管（处级）发起的申请；' : ''}
             签核流程将增加副总经理签核步骤。
           </div>
         ) : null}

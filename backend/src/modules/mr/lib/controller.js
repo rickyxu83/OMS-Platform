@@ -335,7 +335,7 @@ async function loadRawOrder(id, user = null) {
   await ensureTables()
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, updater.real_name AS updated_by_name,
-            sales.real_name AS sales_owner_name, sales.assistant_user_id, assistant.real_name AS assistant_name,
+            sales.real_name AS sales_owner_name, sales.role AS sales_owner_role, sales.assistant_user_id, assistant.real_name AS assistant_name,
             c.code AS customer_code,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, pending.assignment_error,
@@ -365,7 +365,7 @@ async function loadRawOrder(id, user = null) {
 
 async function loadLockedOrder(connection, id) {
   const [rows] = await connection.execute(
-    `SELECT o.*, sales.assistant_user_id
+    `SELECT o.*, sales.role AS sales_owner_role, sales.assistant_user_id
      FROM mr_orders o LEFT JOIN users sales ON sales.id = o.sales_owner_id
      WHERE o.id = :id LIMIT 1 FOR UPDATE`,
     { id },

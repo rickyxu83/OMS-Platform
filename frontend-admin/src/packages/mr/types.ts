@@ -56,6 +56,7 @@ export interface MrOrder {
   customerContactId?: string | number | null
   salesOwnerId?: string | number | null
   salesOwnerName?: string | null
+  salesOwnerRole?: string | null
   assistantUserId?: string | number | null
   assistantName?: string | null
   customerName?: string | null
@@ -119,6 +120,7 @@ export interface MrOrder {
   archivedDocumentTypes?: Array<'approved' | 'voided'>
   autoApprovedStep?: string | null
   assignmentError?: string | null
+  currentAssigneeUserId?: string | number | null
   currentAssigneeName?: string | null
   currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null
   currentStepKey?: string | null
@@ -126,7 +128,10 @@ export interface MrOrder {
   createdByName?: string | null
   createdAt?: string | null
   updatedAt?: string | null
+  submittedAt?: string | null
   approvedAt?: string | null
+  rejectedAt?: string | null
+  voidedAt?: string | null
   itemCount?: number
   items?: MrItem[]
   approvals?: MrApproval[]
