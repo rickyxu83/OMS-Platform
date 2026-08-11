@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { downloadQuotation, getImportProgress, importQuotations } from '../client'
+import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations } from '../client'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 import { AnimatedInteger, AnimatedMoney } from './mr-ui'
@@ -189,6 +189,7 @@ export function QuotationImportDialog({
   vendors = [],
   onOpenChange,
   onApply,
+  onStoredFilesChange,
 }: {
   orderId: string | number
   open: boolean
@@ -199,6 +200,7 @@ export function QuotationImportDialog({
   vendors?: VendorOption[]
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult, pricingMode: number) => void
+  onStoredFilesChange?: (files: QuotationFile[]) => void
 }) {
   const [salesFiles, setSalesFiles] = useState<File[]>([])
   const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
@@ -213,7 +215,10 @@ export function QuotationImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
+  const [deletingFileId, setDeletingFileId] = useState<string | number | null>(null)
+  const [removedStoredIds, setRemovedStoredIds] = useState<Set<string | number>>(new Set())
   const parseSeqRef = useRef(0)
+  const storedFiles = existingFiles.filter((file) => !removedStoredIds.has(file.id))
   const files = [...salesFiles, ...purchaseFiles]
   const roles: UploadRole[] = [...salesFiles.map(() => 'sales' as const), ...purchaseFiles.map(() => 'purchase' as const)]
   const effectivePricingMode = Number(pricingMode) || 0
@@ -307,7 +312,7 @@ export function QuotationImportDialog({
     const nextRoles: UploadRole[] = [...nextSales.map(() => 'sales' as const), ...nextPurchase.map(() => 'purchase' as const)]
     setPreview(null)
     setError('')
-    if (!nextFiles.length) { setLoading(false); return }
+    if (!nextFiles.length && !storedFiles.length) { setLoading(false); return }
     const seq = ++parseSeqRef.current
     setLoading(true)
     const taskId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
@@ -318,7 +323,7 @@ export function QuotationImportDialog({
       }).catch(() => { /* 进度接口暂不可用则保持通用提示 */ })
     }, 1200)
     try {
-      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId)
+      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId, storedFiles.length > 0)
       if (seq !== parseSeqRef.current) return
       setPreview(parsed)
       setPreviewAnimationKey((current) => current + 1)
@@ -367,12 +372,27 @@ export function QuotationImportDialog({
     void parse(nextSales, nextPurchase)
   }
 
+  const removeStoredFile = async (file: QuotationFile) => {
+    if (!window.confirm(`确定删除留存的报价文件「${file.name}」吗？该文件的识别结果将一并从当前预览中移除。`)) return
+    setDeletingFileId(file.id)
+    try {
+      const result = await deleteQuotationFile(orderId, file.id)
+      setRemovedStoredIds((current) => new Set([...current, file.id]))
+      onStoredFilesChange?.(result.files)
+      applyLocalRemoval([file.name])
+    } catch (err) {
+      toast.error((err as Error).message || '删除报价文件失败')
+    } finally {
+      setDeletingFileId(null)
+    }
+  }
+
   const apply = async () => {
     if (!files.length || !preview) return
     setLoading(true)
     setError('')
     try {
-      const saved = await importQuotations(orderId, files, true, roles, false)
+      const saved = await importQuotations(orderId, files, true, roles, false, '', storedFiles.length > 0)
       const editedSources = saved.sources.map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
       onApply({ ...saved, items: previewItems, sources: editedSources }, effectivePricingMode)
       onOpenChange(false)
@@ -394,15 +414,25 @@ export function QuotationImportDialog({
           <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
         </DialogHeader>
 
-        {existingFiles.length ? (
+        {storedFiles.length ? (
           <section className="border-y py-3">
-            <div className="mb-2 text-sm font-medium">已留存的报价文件</div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium">已留存的报价文件</div>
+              <span className="text-xs text-muted-foreground">再次导入时，留存文件会与新选择的文件一并重新识别。</span>
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {existingFiles.map((file) => (
-                <button key={file.id} type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 items-center justify-between gap-3 border px-3 py-2 text-left hover:bg-muted">
-                  <span className="min-w-0 truncate text-sm">{file.name}</span>
-                  <Download className="size-4 shrink-0 text-muted-foreground" />
-                </button>
+              {storedFiles.map((file) => (
+                <div key={file.id} className="flex min-w-0 items-center gap-1 border px-3 py-2 hover:bg-muted">
+                  <button type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
+                    <span className="min-w-0 truncate text-sm">{file.name}</span>
+                    <Download className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                  {editable ? (
+                    <button type="button" aria-label={`删除 ${file.name}`} disabled={deletingFileId === file.id} onClick={() => void removeStoredFile(file)} className="shrink-0 p-1 text-muted-foreground hover:text-destructive">
+                      {deletingFileId === file.id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           </section>

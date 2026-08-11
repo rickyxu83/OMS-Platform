@@ -14,6 +14,7 @@ const USER_PROMPT = [
   '1. items 按文件中的行顺序排列，只包含真正的报价明细行（跳过表头、汇总、备注、签字等非明细行）',
   '2. qty / unitPrice / extended 输出为数字（不要千分位逗号、不要货币符号）；extended 以文件中的小计/金额为准',
   '3. name 必须包含完整品名：若文件中“产品名称”与“型号及规格”分列，name 应组合为“产品名称 + 规格”（例如 “6类非屏蔽跳线 1米”、“LC-LC OM4光纤跳线 15米”），不得只填规格（如单独的 “1米”“15米”）；description 必须包含表格中的全部明细字段——如序列号、硬件配置、设备型号、月数、设备地点、服务级别等表格列内容，不得省略（例如 “DS224C 960G SSD*24, Qty 1; 序列号: 952145001351/952145001204; 月数: 12; 设备地点: 苏州; 服务级别: 4R”）；partNo 为型号/料号：优先填写文件中的料号、序列号或型号编码（多个编码用 / 连接）；若文件包含设备清单/资产清单/序列号列表（可能与价格表分离、位于文件其他区域），请按顺序把每台设备的序列号写入对应品项的 partNo（第 n 个报价品项对应第 n 台设备的序列号）；尤其是 NetApp 设备，每台通常有一组两个序列号（多份文件中前后顺序可能不同），必须把所有序列号全部写入 partNo，不得遗漏或留空；不要填 MISC、FAS2750、维修、维保等短词或品名，确实没有任何编码时才填空字符串',
+  '3a. name 和 description 均不得包含数量、单价、金额、小计等字段内容（如 “数量: 8PC/BOX”“单价: 10.50元”“金额: 84.00元”）——这些已有 qty / unitPrice / extended 独立字段，写入 name/description 会污染品名',
   '4. taxRate 用数字（如 13、6），无法判断填 null；taxIncluded 为布尔值，判断品项价格为含税还是未税——判定方法：先算品项小计（extended）合计，与文件中的未税总计、含税总计对比：品项合计≈未税总计→taxIncluded=false（品项为未税价）；品项合计≈含税总计→taxIncluded=true（品项为含税价）；文件写有“含税”字样但品项合计与未税总计一致时，以数字为准（填 false）',
   '5. untaxedTotal 为未税总计、totalAmount 为含税总计；如文件有“最终优惠价/优惠价/折后价”（在总价基础上再优惠的金额），填写 discountedTotal，没有则填 null',
   '6. documentType 取值 "sales_quote"（销售报价/客户 PO）或 "purchase_quote"（供应商报价）',
@@ -58,6 +59,20 @@ function extractJson(content) {
   return null
 }
 
+/** 剥除 AI 误写入 name/description 尾部的数量/单价/金额等字段片段（这些字段已有独立列）。 */
+function stripPriceFieldClauses(value) {
+  const text = str(value)
+  if (!text) return text
+  const clause = /^(数量|數量|qty|quantity|单价|單價|unitprice|金额|金額|小计|小計|总价|總價|amount|extended)\s*[:：]?\s*[￥¥\d]/i
+  const lines = text.split(/\r?\n/).map((line) => {
+    const segments = line.split(/[，,；;、]/).map((segment) => segment.trim()).filter(Boolean)
+    let end = segments.length
+    while (end > 1 && clause.test(segments[end - 1].replace(/\s+/g, ''))) end -= 1
+    return segments.slice(0, end).join('，')
+  })
+  return lines.join('\n').trim()
+}
+
 /** 把 AI 返回的 JSON 规范化为系统 sheet 结构；items 为空时返回 null。 */
 function normalizeAiResult(ai, fileName) {
   const rawItems = Array.isArray(ai?.items) ? ai.items : []
@@ -65,8 +80,8 @@ function normalizeAiResult(ai, fileName) {
     const qty = finiteNumber(item.qty)
     const unitPrice = finiteNumber(item.unitPrice)
     const extended = finiteNumber(item.extended)
-    const name = str(item.name)
-    const description = str(item.description) || name
+    const name = stripPriceFieldClauses(item.name)
+    const description = stripPriceFieldClauses(item.description) || name
     return {
       item_no: str(item.itemNo) || String(index + 1),
       part_no: str(item.partNo),
@@ -276,4 +291,4 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
   }
 }
 
-module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText, applyAiEntityKeys }
+module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText, applyAiEntityKeys, stripPriceFieldClauses }

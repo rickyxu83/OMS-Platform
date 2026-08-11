@@ -5,7 +5,7 @@ process.env.AI_API_URL = 'https://example.invalid/v1/chat/completions'
 process.env.AI_API_KEY = 'test-key'
 process.env.AI_MODEL = 'test-model'
 const XLSX = require('xlsx')
-const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi, applyAiEntityKeys } = require('../lib/quotation-ai-parser')
+const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi, applyAiEntityKeys, stripPriceFieldClauses } = require('../lib/quotation-ai-parser')
 
 const sampleAi = {
   documentType: 'purchase_quote',
@@ -98,9 +98,29 @@ async function testEntityKeys() {
   assert.equal(sources[1].sheets[0].items[0].entityKey, 'FAS2750 存储 SN:952145001351/952145001204')
 }
 
+function testStripPriceFieldClauses() {
+  // AI 误把数量/单价/金额写入描述尾部时应剥离
+  assert.equal(stripPriceFieldClauses('6类非屏蔽跳线，1米，数量8PC/BOX，单价10.50元，金额84.00元'), '6类非屏蔽跳线，1米')
+  assert.equal(stripPriceFieldClauses('LC-LC OM4光纤跳线, 15米, 数量: 5, 单价: 156.00, 金额: 780.00'), 'LC-LC OM4光纤跳线，15米')
+  assert.equal(stripPriceFieldClauses('HPE 960GB SATA RI SFF BC MV SSD'), 'HPE 960GB SATA RI SFF BC MV SSD')
+  // 不含数字的“金额”表述（如“金额以合同为准”）不剥离
+  assert.equal(stripPriceFieldClauses('光纤跳线，金额以合同为准'), '光纤跳线，金额以合同为准')
+  // 多行描述逐行处理，且不会把整行剥空
+  assert.equal(stripPriceFieldClauses('DS224C 960G SSD*24\n序列号: 952145001351'), 'DS224C 960G SSD*24\n序列号: 952145001351')
+  assert.equal(stripPriceFieldClauses('数量: 8'), '数量: 8')
+
+  const sheet = normalizeAiResult({
+    documentType: 'purchase_quote',
+    items: [{ itemNo: 1, name: '6类非屏蔽跳线 1米', description: '6类非屏蔽跳线，1米，数量8PC/BOX，单价10.50元，金额84.00元', qty: 8, unitPrice: 10.5, extended: 84 }],
+  }, '报价单.pdf')
+  assert.equal(sheet.items[0].name, '6类非屏蔽跳线 1米')
+  assert.equal(sheet.items[0].description, '6类非屏蔽跳线，1米')
+}
+
 async function main() {
   testExtractJson()
   testNormalize()
+  testStripPriceFieldClauses()
   testWorkbookText()
   await testRecognize()
   await testEntityKeys()

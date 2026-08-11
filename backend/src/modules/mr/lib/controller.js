@@ -232,6 +232,12 @@ async function ensureTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   await ensureWorkflowTables()
+  // files 表为共享表，报价来源角色（quote_sales/quote_purchase）用于再次导入时恢复文件分区
+  const quoteRoleColumn = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'files' AND column_name = 'quote_role' LIMIT 1`,
+  )
+  if (!quoteRoleColumn[0]) await query("ALTER TABLE files ADD COLUMN quote_role VARCHAR(16) NULL")
   tablesReady = true
   })()
   try {
@@ -1033,7 +1039,7 @@ function originalNameUtf8(file) {
 function uploadedFiles(req) {
   return Object.values(req.files || {}).flat()
 }
-async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
+async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, roles = []) {
   const written = []
   let oldFiles = []
   try {
@@ -1042,7 +1048,8 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
       const extension = path.extname(name).toLowerCase()
       const storagePath = path.join(quotationRoot, `${ownerId}-${Date.now()}-${index}-${Math.round(Math.random() * 1e9)}${extension}`)
       await fs.promises.writeFile(storagePath, file.buffer)
-      written.push({ name, storagePath, mimeType: file.mimetype || 'application/octet-stream', size: file.size })
+      const quoteRole = ['sales', 'purchase'].includes(roles[index]) ? `quote_${roles[index]}` : null
+      written.push({ name, storagePath, mimeType: file.mimetype || 'application/octet-stream', size: file.size, quoteRole })
     }
     await transaction(async (connection) => {
       const locked = await loadLockedOrder(connection, ownerId)
@@ -1053,18 +1060,19 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
           { ownerId },
         )
         await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId })
+        await connection.execute('UPDATE mr_orders SET quotation_file_id = NULL WHERE id = :ownerId', { ownerId })
       }
       let primaryFileId = null
       for (const file of written) {
         const [result] = await connection.execute(
-          `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by)
-           VALUES ('mr_order', :ownerId, :name, :storagePath, :mimeType, :size, :userId)`,
+          `INSERT INTO files (owner_type, owner_id, original_name, storage_path, mime_type, size, uploaded_by, quote_role)
+           VALUES ('mr_order', :ownerId, :name, :storagePath, :mimeType, :size, :userId, :quoteRole)`,
           { ownerId, userId: user.id, ...file },
         )
         if (!primaryFileId) primaryFileId = result.insertId
       }
       await connection.execute(
-        'UPDATE mr_orders SET quotation_file_id = :fileId WHERE id = :ownerId',
+        'UPDATE mr_orders SET quotation_file_id = :fileId WHERE id = :ownerId AND quotation_file_id IS NULL',
         { ownerId, fileId: primaryFileId },
       )
     })
@@ -1080,12 +1088,41 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting) {
   )
 }
 
+/** 读取已留存的报价原始附件，作为“再次导入一并识别”的来源文件；磁盘缺失的跳过。 */
+async function loadStoredQuotationUploads(ownerId) {
+  const rows = await query(
+    `SELECT original_name AS name, storage_path AS storagePath, quote_role AS quoteRole
+     FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
+    { ownerId },
+  )
+  const uploads = []
+  for (const row of rows) {
+    try {
+      const buffer = await fs.promises.readFile(row.storagePath)
+      uploads.push({
+        originalname: row.name,
+        buffer,
+        mimetype: '',
+        size: buffer.length,
+        stored: true,
+        storedRole: row.quoteRole === 'quote_sales' ? 'sales' : row.quoteRole === 'quote_purchase' ? 'purchase' : null,
+      })
+    } catch (_error) {
+      // 留存文件磁盘缺失时跳过，不阻断新文件识别
+    }
+  }
+  return uploads
+}
+
 async function importQuotation(req, res) {
-  const uploads = uploadedFiles(req)
-  if (!uploads.length) throw badRequest('请选择报价单或订单文件')
+  const newUploads = uploadedFiles(req)
+  const includeStored = String(req.body?.includeStored || '') === '1'
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
   if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
+  const storedUploads = includeStored ? await loadStoredQuotationUploads(req.params.id) : []
+  const uploads = [...storedUploads, ...newUploads]
+  if (!uploads.length) throw badRequest('请选择报价单或订单文件')
 
   const taskId = String(req.body?.taskId || '').trim()
   const progress = { done: 0, total: uploads.length, current: '', stage: 'parsing' }
@@ -1098,12 +1135,14 @@ async function importQuotation(req, res) {
   } catch (_error) {
     requestedRoles = []
   }
+  // 留存文件的角色来自入库时的 quote_role，新上传文件的角色来自本次请求的 sourceRoles
+  const effectiveRoles = [...storedUploads.map((file) => file.storedRole), ...requestedRoles]
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
     progress.current = name
     progress.stage = 'parsing'
     const extension = path.extname(name).toLowerCase()
-    const requestedRole = ['sales', 'purchase'].includes(requestedRoles[index]) ? requestedRoles[index] : null
+    const requestedRole = ['sales', 'purchase'].includes(effectiveRoles[index]) ? effectiveRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
     try {
     let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
@@ -1240,7 +1279,7 @@ async function importQuotation(req, res) {
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认销售报价或供应商报价角色')
   const persist = String(req.body?.persist || '') === '1'
   const cleanupStoredFiles = String(req.body?.cleanupStoredFiles || '') === '1'
-  const files = persist ? await persistQuotationFiles(req.params.id, uploads, req.user, cleanupStoredFiles) : []
+  const files = persist ? await persistQuotationFiles(req.params.id, newUploads, req.user, cleanupStoredFiles, requestedRoles) : []
   res.json({ files, ...payload })
   } finally {
     clearProgress()
@@ -1292,6 +1331,41 @@ async function downloadQuotation(req, res) {
   res.download(rows[0].storage_path, rows[0].original_name)
 }
 
+/** 删除单份已留存的报价原始附件；若主附件指针指向被删文件则改指剩余第一份。 */
+async function deleteQuotationFile(req, res) {
+  await ensureTables()
+  const order = await loadRawOrder(req.params.id)
+  if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许删除报价原始附件')
+  const fileId = Number(req.query.fileId || 0)
+  if (!fileId) throw badRequest('缺少 fileId')
+  let removed = null
+  await transaction(async (connection) => {
+    const [rows] = await connection.execute(
+      `SELECT id, storage_path FROM files
+       WHERE id = :fileId AND owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
+      { fileId, ownerId: req.params.id },
+    )
+    if (!rows[0]) throw notFound('报价原始附件不存在')
+    removed = rows[0]
+    await connection.execute('DELETE FROM files WHERE id = :fileId', { fileId })
+    const [remaining] = await connection.execute(
+      `SELECT id FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id LIMIT 1`,
+      { ownerId: req.params.id },
+    )
+    await connection.execute(
+      'UPDATE mr_orders SET quotation_file_id = :nextId WHERE id = :ownerId AND quotation_file_id = :deletedId',
+      { nextId: remaining[0]?.id || null, deletedId: fileId, ownerId: req.params.id },
+    )
+  })
+  await fs.promises.rm(removed.storage_path, { force: true })
+  const files = await query(
+    `SELECT id, original_name AS name, size, created_at AS createdAt
+     FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
+    { ownerId: req.params.id },
+  )
+  res.json({ files })
+}
+
 async function downloadDocument(req, res) {
   const order = await loadRawOrder(req.params.id, req.user)
   if (!canView(order, req.user)) throw forbidden('无权下载该 MR 归档文件')
@@ -1338,5 +1412,6 @@ module.exports = {
   importProgressHandler,
   vendorSuggestions,
   downloadQuotation,
+  deleteQuotationFile,
   downloadDocument,
 }

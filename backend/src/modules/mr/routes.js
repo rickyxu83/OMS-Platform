@@ -21,6 +21,7 @@ router.post('/:id/withdraw', requirePermission('mr.edit'), controller.withdraw)
 router.post('/:id/void', requirePermission('mr.void'), controller.voidOrder)
 router.post('/:id/import', requirePermission('mr.edit'), controller.quotationUpload, controller.importQuotation)
 router.get('/:id/quotation', requirePermission('mr.view'), controller.downloadQuotation)
+router.delete('/:id/quotation', requirePermission('mr.edit'), controller.deleteQuotationFile)
 router.get('/:id/document', requirePermission('mr.view'), controller.downloadDocument)
 router.delete('/:id', requirePermission('mr.delete'), controller.remove)
 

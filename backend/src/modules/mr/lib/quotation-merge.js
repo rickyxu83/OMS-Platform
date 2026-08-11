@@ -402,8 +402,8 @@ function mergeQuotations(inputSources, vendors = []) {
       items.push({
         companyPartNo: '',
         oemSpec: purchase.part_no || '',
-        name: fields.name,
-        description: fields.description || fields.name,
+        name: purchase.name || fields.name,
+        description: fields.description || purchase.name || fields.name,
         entityKey: purchase.entityKey || '',
         warrantyService: '',
         installBy: '',

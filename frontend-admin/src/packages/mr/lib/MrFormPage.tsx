@@ -1170,6 +1170,7 @@ export function MrFormPage() {
           vendors={vendors}
           onOpenChange={setImportOpen}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
+          onStoredFilesChange={(files) => patch({ quotationFiles: files })}
         />
       ) : null}
 
