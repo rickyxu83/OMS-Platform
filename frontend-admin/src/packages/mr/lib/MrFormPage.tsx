@@ -244,48 +244,66 @@ function ScheduleEntriesEditor({
   withBusinessName?: boolean
   onChange: (entries: ScheduleEntry[]) => void
 }) {
-  const entry: ScheduleEntry = entries[0] || { businessName: withBusinessName ? '' : null, type: 'once', startMonth: null, periods: null, totalAmount: null }
-  const type = entry.type || 'once'
-  const startMonth = String(entry.startMonth || '').slice(5, 7)
-  const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
-  const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
-  const perPeriod = periods && total !== null ? total / periods : null
-  const patchEntry = (value: Partial<ScheduleEntry>) => onChange([{ ...entry, ...value }])
   const currentYear = new Date().getFullYear()
   const defaultStartMonth = String(Math.ceil((new Date().getMonth() + 1) / 3) * 3).padStart(2, '0')
-  const patchStart = (month: string) => patchEntry({ startMonth: `${currentYear}-${month}` })
+  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
+  const remove = (index: number) => onChange(entries.filter((_, entryIndex) => entryIndex !== index))
+  const add = () => onChange([...entries, { businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }])
+
   if (!editable) {
-    const text = scheduleEntryText(entries[0], actionLabel, withBusinessName)
-    return text ? <p className="text-sm text-foreground">{text}</p> : <span className="text-sm text-muted-foreground">-</span>
+    const texts = entries.map((entry) => scheduleEntryText(entry, actionLabel, withBusinessName)).filter(Boolean)
+    if (!texts.length) return <span className="text-sm text-muted-foreground">-</span>
+    return <div className="space-y-1">{texts.map((text, index) => <p key={index} className="text-sm text-foreground">{text}</p>)}</div>
   }
+
   return (
-    <div className="space-y-2">
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'], ...(value === 'installments' && !entry.startMonth ? { startMonth: `${currentYear}-${defaultStartMonth}` } : {}) })}>
-          <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
-            <SelectItem value="installments">{`分期${actionLabel}`}</SelectItem>
-          </SelectContent>
-        </Select>
-        {withBusinessName ? (
-          <Input value={entry.businessName || ''} placeholder="转拨给（台湾业务，手动输入）" aria-label="台湾业务名称" onChange={(event) => patchEntry({ businessName: event.target.value })} />
-        ) : null}
-        {type === 'installments' ? (
-          <>
-            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth} onValueChange={patchStart}>
-              <SelectTrigger aria-label="开始月份（当年）"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Input type="number" min={1} step={1} value={entry.periods ?? ''} placeholder="期数（如 4 期）" aria-label={`${actionLabel}期数`} onChange={(event) => patchEntry({ periods: event.target.value === '' ? null : Number(event.target.value) })} />
-          </>
-        ) : null}
-        <Input type="number" min={0} step="0.01" value={entry.totalAmount ?? ''} placeholder={`${actionLabel}总金额`} aria-label={`${actionLabel}总金额`} onChange={(event) => patchEntry({ totalAmount: event.target.value === '' ? null : Number(event.target.value) })} />
-      </div>
-      {type === 'installments' && perPeriod !== null ? <p className="text-xs text-muted-foreground">每期 ¥ {money(perPeriod)}（总金额 ¥ {money(total)} ÷ {periods} 期）</p> : null}
-      {scheduleEntryText(entry, actionLabel, withBusinessName) ? <p className="rounded-md bg-muted/50 px-2 py-1.5 text-xs text-foreground">{scheduleEntryText(entry, actionLabel, withBusinessName)}</p> : null}
+    <div className="space-y-3">
+      {entries.map((entry, index) => {
+        const type = entry.type || 'once'
+        const startMonth = String(entry.startMonth || '').slice(5, 7)
+        const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
+        const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
+        const perPeriod = periods && total !== null ? total / periods : null
+        const patchEntry = (value: Partial<ScheduleEntry>) => update(index, value)
+        const patchStart = (month: string) => patchEntry({ startMonth: `${currentYear}-${month}` })
+        const entryText = scheduleEntryText(entry, actionLabel, withBusinessName)
+        return (
+          <div key={index} className="flex items-start gap-2 rounded-md border bg-muted/20 p-2">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'], ...(value === 'installments' && !entry.startMonth ? { startMonth: `${currentYear}-${defaultStartMonth}` } : {}) })}>
+                  <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
+                    <SelectItem value="installments">{`分期${actionLabel}`}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {withBusinessName ? (
+                  <Input value={entry.businessName || ''} placeholder="转拨给（台湾业务，手动输入）" aria-label="台湾业务名称" onChange={(event) => patchEntry({ businessName: event.target.value })} />
+                ) : null}
+                {type === 'installments' ? (
+                  <>
+                    <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth} onValueChange={patchStart}>
+                      <SelectTrigger aria-label="开始月份（当年）"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Input type="number" min={1} step={1} value={entry.periods ?? ''} placeholder="期数（如 4 期）" aria-label={`${actionLabel}期数`} onChange={(event) => patchEntry({ periods: event.target.value === '' ? null : Number(event.target.value) })} />
+                  </>
+                ) : null}
+                <Input type="number" min={0} step="0.01" value={entry.totalAmount ?? ''} placeholder={`${actionLabel}总金额`} aria-label={`${actionLabel}总金额`} onChange={(event) => patchEntry({ totalAmount: event.target.value === '' ? null : Number(event.target.value) })} />
+              </div>
+              {type === 'installments' && perPeriod !== null ? <p className="text-xs text-muted-foreground">每期 ¥ {money(perPeriod)}（总金额 ¥ {money(total)} ÷ {periods} 期）</p> : null}
+              {entryText ? <p className="rounded-md bg-muted/50 px-2 py-1.5 text-xs text-foreground">{entryText}</p> : null}
+            </div>
+            {entries.length > 1 ? (
+              <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-destructive" title="删除此笔" onClick={() => remove(index)}><Trash2 className="size-4" /></Button>
+            ) : null}
+          </div>
+        )
+      })}
+      <Button type="button" variant="outline" size="sm" onClick={add}><Plus className="mr-1 size-4" />增加一笔{actionLabel}</Button>
     </div>
   )
 }
