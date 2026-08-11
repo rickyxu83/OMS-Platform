@@ -961,11 +961,6 @@ export function MrFormPage() {
               </Button>
             ) : null}
             {status === 'voided' ? (
-              <Button variant="outline" disabled={!approvedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
-                <FileDown className="mr-2 size-4" />{approvedDocumentReady ? '原正式 PDF' : calculated.archiveStatus === 'failed' ? '原 PDF 归档失败' : '原 PDF 处理中'}
-              </Button>
-            ) : null}
-            {status === 'voided' ? (
               <Button variant="outline" disabled={!voidedDocumentReady} title={calculated.archiveError || undefined} onClick={() => { if (id) void downloadMrDocument(id, 'voided').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
                 <FileDown className="mr-2 size-4" />{voidedDocumentReady ? '作废归档 PDF' : calculated.archiveStatus === 'failed' ? '作废归档重试中' : '作废归档处理中'}
               </Button>
@@ -1448,7 +1443,7 @@ export function MrFormPage() {
                   ? '请选择退回对象并填写原因；完成修改后，签核流程将从助理步骤重新开始。'
                   : decision === 'withdraw'
                     ? '撤回后，当前待办将关闭，MR 申请将恢复为草稿；重新提交时，签核流程将从助理步骤开始。'
-                    : '作废后，原正式 PDF 将永久留存，并另行生成作废归档 PDF。'}
+                    : '作废后，将生成作废归档 PDF。'}
             </DialogDescription>
           </DialogHeader>
           {decision === 'reject' ? (
