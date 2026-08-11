@@ -277,7 +277,7 @@ export function QuotationImportDialog({
       reviewFields: [...reviewed],
       validationMessages: changedRecognitionField ? [] : item.validationMessages,
       confidence: changedRecognitionField ? { ...(item.confidence || {}), overall: reviewed.size ? Number(item.confidence?.overall || 70) : 100 } : item.confidence,
-      costReviewFields: patch.costInclTax !== undefined ? [] : item.costReviewFields,
+      costReviewFields: (patch.costInclTax !== undefined || patch.taxRate !== undefined) ? [] : item.costReviewFields,
     }
   }))
   const removeItem = (index: number) => {
@@ -543,6 +543,10 @@ export function QuotationImportDialog({
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={0} step={0.01} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="未税单价" aria-label={`第 ${index + 1} 项未税单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
+                          <Select value={String(invoiceTaxRate === 6 ? 6 : (item.taxRate ?? 13))} disabled={invoiceTaxRate === 6} onValueChange={(value) => patchItem(index, { taxRate: Number(value) })}>
+                            <SelectTrigger aria-label={`第 ${index + 1} 项采购税率`} title={invoiceTaxRate === 6 ? '当前发票类型的适用税率为 6%，采购税率固定为 6%' : undefined}><SelectValue placeholder="采购税率" /></SelectTrigger>
+                            <SelectContent><SelectItem value="13">采购税率 13%</SelectItem><SelectItem value="6">采购税率 6%</SelectItem></SelectContent>
+                          </Select>
                           {!item.purchaseOnly && item.costInclTax == null && purchaseOnlyCandidates.length ? (
                             <div className="md:col-span-2 xl:col-span-4">
                               <Select onValueChange={(value) => adoptCost(index, Number(value))}>
