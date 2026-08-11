@@ -188,7 +188,11 @@ export interface UserOption {
 }
 export interface ScheduleEntry {
   businessName?: string | null
+  type?: 'once' | 'installments' | null
   startMonth?: string | null
+  periods?: number | null
+  totalAmount?: number | null
+  /** 旧版遗留：频率 + 每期金额（无 type/totalAmount 的旧数据） */
   frequency?: 'monthly' | 'quarterly' | null
   amount?: number | null
 }

@@ -21,7 +21,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 37
+const PDF_FORMAT_VERSION = 38
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -60,8 +60,23 @@ function parseJsonList(input) {
 
 function entryText(entry, action) {
   if (!entry) return ''
-  const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
   const prefix = hasValue(entry.businessName) ? `${entry.businessName}：` : ''
+  const type = entry.type || (hasValue(entry.frequency) || hasValue(entry.amount) ? 'installments' : '')
+  // 新版：一次性（仅总金额）
+  if (type === 'once') return hasValue(entry.totalAmount) ? `${prefix}一次性${action}，总金额 ${moneyText(entry.totalAmount)}` : `${prefix}一次性${action}`
+  // 新版分期：开始月份 + 期数 + 总金额 → 自动每期金额（季度结算：每年 3、6、9、12 月）
+  if (hasValue(entry.totalAmount) || hasValue(entry.periods)) {
+    const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
+    const total = hasValue(entry.totalAmount) ? Number(entry.totalAmount) : null
+    const per = periods && total !== null ? total / periods : null
+    const head = hasValue(entry.startMonth) ? `自 ${dateText(entry.startMonth)}起` : ''
+    const count = periods ? `分 ${periods} 期${action}` : `分期${action}`
+    const perText = per !== null ? `，每期 ${moneyText(per)}` : ''
+    const totalText = total !== null ? `，总金额 ${moneyText(total)}` : ''
+    return `${prefix}${head}${count}（每年 3、6、9、12 月）${perText}${totalText}`
+  }
+  // 旧版：频率 + 每期金额
+  const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
   return [
     prefix + (hasValue(entry.startMonth) ? `${dateText(entry.startMonth)}起` : ''),
     hasValue(entry.amount) ? `${period}${action} ${moneyText(entry.amount)}` : '',

@@ -36,8 +36,20 @@ function scheduleEntriesText(entries: unknown, legacyStartMonth: unknown, legacy
   const list = Array.isArray(entries) ? entries : []
   if (list.length) {
     const lines = list.map((entry) => {
-      const period = entry?.frequency === 'quarterly' ? '每季度' : '每月'
       const prefix = hasValue(entry?.businessName) ? `${entry.businessName}：` : ''
+      const type = entry?.type || (hasValue(entry?.frequency) || hasValue(entry?.amount) ? 'installments' : '')
+      if (type === 'once') return hasValue(entry?.totalAmount) ? `${prefix}一次性${action}，总金额 ${moneyText(entry?.totalAmount, fallback)}` : `${prefix}一次性${action}`
+      if (hasValue(entry?.totalAmount) || hasValue(entry?.periods)) {
+        const periods = Number(entry?.periods) > 0 ? Number(entry?.periods) : null
+        const total = hasValue(entry?.totalAmount) ? Number(entry?.totalAmount) : null
+        const per = periods && total !== null ? total / periods : null
+        const head = hasValue(entry?.startMonth) ? `自 ${dateText(entry?.startMonth)}起` : ''
+        const count = periods ? `分 ${periods} 期${action}` : `分期${action}`
+        const perText = per !== null ? `，每期 ${moneyText(per, fallback)}` : ''
+        const totalText = total !== null ? `，总金额 ${moneyText(total, fallback)}` : ''
+        return `${prefix}${head}${count}（每年 3、6、9、12 月）${perText}${totalText}`
+      }
+      const period = entry?.frequency === 'quarterly' ? '每季度' : '每月'
       return [
         prefix + (hasValue(entry?.startMonth) ? `${dateText(entry?.startMonth)}起` : ''),
         hasValue(entry?.amount) ? `${period}${action} ${moneyText(entry?.amount, fallback)}` : '',

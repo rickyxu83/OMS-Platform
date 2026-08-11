@@ -70,13 +70,21 @@ function frequency(value) {
 
 function scheduleEntries(value, { withName = false } = {}) {
   const source = typeof value === 'string' ? parseJson(value) : value
-  if (!Array.isArray(source)) return []
-  return source.map((entry) => ({
-    ...(withName ? { businessName: text(entry?.businessName, 100) } : {}),
-    startMonth: month(entry?.startMonth),
-    frequency: frequency(entry?.frequency),
-    amount: optionalNumber(entry?.amount),
-  })).filter((entry) => entry.startMonth || entry.amount !== null || (withName && entry.businessName))
+  const list = Array.isArray(source) ? source : (source && typeof source === 'object' ? [source] : [])
+  return list.map((entry) => {
+    const normalized = {
+      ...(withName ? { businessName: text(entry?.businessName, 100) } : {}),
+      // 新版模型：一次性/分期 + 开始月份（季度月）+ 期数 + 总金额；旧版（frequency+每期金额）自动视为分期
+      type: ['once', 'installments'].includes(entry?.type) ? entry.type : null,
+      startMonth: month(entry?.startMonth),
+      periods: optionalNumber(entry?.periods),
+      totalAmount: optionalNumber(entry?.totalAmount),
+      frequency: frequency(entry?.frequency),
+      amount: optionalNumber(entry?.amount),
+    }
+    if (!normalized.type && (normalized.startMonth || normalized.amount !== null)) normalized.type = 'installments'
+    return normalized
+  }).filter((entry) => entry.type === 'once' || entry.startMonth || entry.totalAmount !== null || entry.amount !== null || entry.periods || (withName && entry.businessName))
 }
 
 function parseJson(value) {
@@ -232,10 +240,10 @@ function normalizeOrder(body = {}) {
   if (!order.hasContract) order.penaltyContent = null
   // 旧版单值认列/转拨字段自动升级为一笔排程（新版支持多笔）
   if (!order.grossProfitRecognitions.length && (order.grossProfitRecognitionStartMonth || order.grossProfitRecognitionAmount !== null)) {
-    order.grossProfitRecognitions = [{ startMonth: month(order.grossProfitRecognitionStartMonth), frequency: 'quarterly', amount: order.grossProfitRecognitionAmount }]
+    order.grossProfitRecognitions = [{ type: 'installments', startMonth: month(order.grossProfitRecognitionStartMonth), periods: null, totalAmount: null, frequency: 'quarterly', amount: order.grossProfitRecognitionAmount }]
   }
   if (!order.taiwanBusinessTransfers.length && (order.taiwanBusinessTransferStartMonth || order.taiwanBusinessTransferAmount !== null)) {
-    order.taiwanBusinessTransfers = [{ businessName: null, startMonth: month(order.taiwanBusinessTransferStartMonth), frequency: 'quarterly', amount: order.taiwanBusinessTransferAmount }]
+    order.taiwanBusinessTransfers = [{ businessName: null, type: 'installments', startMonth: month(order.taiwanBusinessTransferStartMonth), periods: null, totalAmount: null, frequency: 'quarterly', amount: order.taiwanBusinessTransferAmount }]
   }
   const bodyItems = Array.isArray(body.items) ? body.items : []
   const rawItems = String(order.invoiceType || '').startsWith('6%')

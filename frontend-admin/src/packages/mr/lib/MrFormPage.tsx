@@ -203,6 +203,34 @@ function MrAttachments({
   )
 }
 
+/** 认列/转拨排程的文字化展示（新版模型 + 旧版遗留格式）。 */
+function scheduleEntryText(entry: ScheduleEntry | undefined, actionLabel: string, withBusinessName = false) {
+  if (!entry) return ''
+  const prefix = withBusinessName && entry.businessName ? `${entry.businessName}：` : ''
+  const type = entry.type || (entry.frequency || entry.amount !== null && entry.amount !== undefined ? 'installments' : '')
+  if (type === 'once') {
+    return entry.totalAmount !== null && entry.totalAmount !== undefined
+      ? `${prefix}一次性${actionLabel}，总金额 ¥ ${money(entry.totalAmount)}`
+      : `${prefix}一次性${actionLabel}`
+  }
+  if ((entry.totalAmount !== null && entry.totalAmount !== undefined) || entry.periods) {
+    const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
+    const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
+    const per = periods && total !== null ? total / periods : null
+    const head = entry.startMonth ? `自 ${entry.startMonth} 起` : ''
+    const count = periods ? `分 ${periods} 期${actionLabel}` : `分期${actionLabel}`
+    return `${prefix}${head}${count}（每年 3、6、9、12 月）${per !== null ? `，每期 ¥ ${money(per)}` : ''}${total !== null ? `，总金额 ¥ ${money(total)}` : ''}`
+  }
+  // 旧版遗留：频率 + 每期金额
+  const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
+  return [
+    prefix + (entry.startMonth ? `${entry.startMonth} 起` : ''),
+    entry.amount !== null && entry.amount !== undefined ? `${period}${actionLabel} ¥ ${money(entry.amount)}` : '',
+  ].filter(Boolean).join('')
+}
+
+const QUARTER_MONTH_OPTIONS = ['03', '06', '09', '12']
+
 function ScheduleEntriesEditor({
   entries,
   editable,
@@ -216,41 +244,54 @@ function ScheduleEntriesEditor({
   withBusinessName?: boolean
   onChange: (entries: ScheduleEntry[]) => void
 }) {
-  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
-  const remove = (index: number) => onChange(entries.filter((_, entryIndex) => entryIndex !== index))
-  const add = () => onChange([...entries, { businessName: withBusinessName ? '' : null, startMonth: '', frequency: 'monthly', amount: null }])
-  const entryText = (entry: ScheduleEntry) => {
-    const parts = [
-      entry.startMonth ? `${entry.startMonth} 起` : '',
-      entry.frequency === 'quarterly' ? '每季度' : '每月',
-      entry.amount !== null && entry.amount !== undefined ? `${actionLabel} ¥ ${money(entry.amount)}` : '',
-    ].filter(Boolean)
-    return (withBusinessName && entry.businessName ? `${entry.businessName}：` : '') + (parts.join(' ') || '未填写')
-  }
+  const entry: ScheduleEntry = entries[0] || { businessName: withBusinessName ? '' : null, type: 'once', startMonth: null, periods: null, totalAmount: null }
+  const type = entry.type || 'once'
+  const startYear = String(entry.startMonth || '').slice(0, 4)
+  const startMonth = String(entry.startMonth || '').slice(5, 7)
+  const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
+  const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
+  const perPeriod = periods && total !== null ? total / periods : null
+  const patchEntry = (value: Partial<ScheduleEntry>) => onChange([{ ...entry, ...value }])
+  const patchStart = (year: string, month: string) => patchEntry({ startMonth: year && month ? `${year}-${month}` : null })
   if (!editable) {
-    return entries.length ? (
-      <ul className="space-y-1.5">
-        {entries.map((entry, index) => <li key={index} className="text-sm text-foreground">{entryText(entry)}</li>)}
-      </ul>
-    ) : <span className="text-sm text-muted-foreground">-</span>
+    const text = scheduleEntryText(entries[0], actionLabel, withBusinessName)
+    return text ? <p className="text-sm text-foreground">{text}</p> : <span className="text-sm text-muted-foreground">-</span>
   }
+  const currentYear = new Date().getFullYear()
   return (
     <div className="space-y-2">
-      {entries.map((entry, index) => (
-        <div key={index} className="grid gap-2 rounded-md border bg-muted/20 p-2 sm:grid-cols-[1fr_auto] sm:items-start">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {withBusinessName ? <Input value={entry.businessName || ''} placeholder="业务名字" aria-label={`第 ${index + 1} 笔业务名字`} onChange={(event) => update(index, { businessName: event.target.value })} /> : null}
-            <Input type="month" value={entry.startMonth || ''} aria-label={`第 ${index + 1} 笔起始月份`} onChange={(event) => update(index, { startMonth: event.target.value })} />
-            <Select value={entry.frequency || 'monthly'} onValueChange={(value) => update(index, { frequency: value as ScheduleEntry['frequency'] })}>
-              <SelectTrigger aria-label={`第 ${index + 1} 笔认列频率`}><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="monthly">每月</SelectItem><SelectItem value="quarterly">每季度</SelectItem></SelectContent>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'] })}>
+          <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
+            <SelectItem value="installments">{actionLabel === '转拨' ? '每季转拨' : `分期${actionLabel}`}</SelectItem>
+          </SelectContent>
+        </Select>
+        {withBusinessName ? (
+          <Input value={entry.businessName || ''} placeholder="转拨给（台湾业务，手动输入）" aria-label="台湾业务名称" onChange={(event) => patchEntry({ businessName: event.target.value })} />
+        ) : null}
+        {type === 'installments' ? (
+          <>
+            <Select value={startYear} onValueChange={(value) => patchStart(value, startMonth || '03')}>
+              <SelectTrigger aria-label="开始年份"><SelectValue placeholder="开始年份" /></SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 6 }, (_, offset) => String(currentYear - 1 + offset)).map((year) => <SelectItem key={year} value={year}>{year} 年</SelectItem>)}
+              </SelectContent>
             </Select>
-            <Input type="number" min={0} step="0.01" value={entry.amount ?? ''} placeholder={`每${entry.frequency === 'quarterly' ? '季度' : '月'}${actionLabel}金额`} aria-label={`第 ${index + 1} 笔金额`} onChange={(event) => update(index, { amount: event.target.value === '' ? null : Number(event.target.value) })} />
-          </div>
-          <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive" aria-label={`删除第 ${index + 1} 笔`} onClick={() => remove(index)}><Trash2 className="size-4" /></Button>
-        </div>
-      ))}
-      <Button type="button" variant="outline" size="sm" onClick={add}><Plus className="mr-1 size-4" />增加一笔{actionLabel}</Button>
+            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : '03'} onValueChange={(value) => patchStart(startYear || String(currentYear), value)}>
+              <SelectTrigger aria-label="开始月份"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input type="number" min={1} step={1} value={entry.periods ?? ''} placeholder="期数（如 4 期）" aria-label={`${actionLabel}期数`} onChange={(event) => patchEntry({ periods: event.target.value === '' ? null : Number(event.target.value) })} />
+          </>
+        ) : null}
+        <Input type="number" min={0} step="0.01" value={entry.totalAmount ?? ''} placeholder={`${actionLabel}总金额`} aria-label={`${actionLabel}总金额`} onChange={(event) => patchEntry({ totalAmount: event.target.value === '' ? null : Number(event.target.value) })} />
+      </div>
+      {type === 'installments' && perPeriod !== null ? <p className="text-xs text-muted-foreground">每期 ¥ {money(perPeriod)}（总金额 ¥ {money(total)} ÷ {periods} 期）</p> : null}
+      {scheduleEntryText(entry, actionLabel, withBusinessName) ? <p className="rounded-md bg-muted/50 px-2 py-1.5 text-xs text-foreground">{scheduleEntryText(entry, actionLabel, withBusinessName)}</p> : null}
     </div>
   )
 }
@@ -1302,6 +1343,21 @@ export function MrFormPage() {
                   withBusinessName
                   onChange={(next) => patch({ taiwanBusinessTransfers: next })}
                 />
+                {(() => {
+                  const transferTotal = (calculated.taiwanBusinessTransfers || []).reduce((sum, entry) => sum + (Number(entry.totalAmount) || 0), 0)
+                  const sales = calculated.totals?.salesExcludingTax
+                  const cost = calculated.totals?.costExcludingTax
+                  if (!sales || cost === null || cost === undefined) return null
+                  const margin = sales - cost
+                  const retention = margin - transferTotal
+                  const rate = sales > 0 ? retention / sales * 100 : null
+                  return (
+                    <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      扣除转拨后留存毛利 ¥ {money(retention)}{rate !== null ? ` · 留存毛利率 ${rate.toFixed(2)}%` : ''}
+                      <span className="ml-2 text-xs text-emerald-700">（毛利 ¥ {money(margin)} − 转拨 ¥ {money(transferTotal)}）</span>
+                    </div>
+                  )
+                })()}
               </SubPanel>
             </div>
             <Field label="备注" editable={editable} readonlyText={textValue(calculated.remark)} className="mt-4">

@@ -234,9 +234,21 @@ function validBody(overrides = {}) {
   assert.equal(schedule.order.taiwanBusinessTransfers[0].businessName, '存储项目A')
 
   const legacy = normalizeOrder(validBody({ grossProfitRecognitionStartMonth: '2026-08-12', grossProfitRecognitionAmount: 100.25, taiwanBusinessTransferStartMonth: '2026-09-18', taiwanBusinessTransferAmount: 300.5 }))
-  assert.deepStrictEqual(legacy.order.grossProfitRecognitions, [{ startMonth: '2026-08', frequency: 'quarterly', amount: 100.25 }], '旧版单值认列字段应升级为一笔排程')
+  assert.deepStrictEqual(legacy.order.grossProfitRecognitions, [{ type: 'installments', startMonth: '2026-08', periods: null, totalAmount: null, frequency: 'quarterly', amount: 100.25 }], '旧版单值认列字段应升级为一笔排程')
   assert.equal(legacy.order.taiwanBusinessTransfers.length, 1)
   assert.equal(legacy.order.taiwanBusinessTransfers[0].startMonth, '2026-09')
+
+  const modern = normalizeOrder(validBody({
+    grossProfitRecognitions: [{ type: 'once', totalAmount: 926600 }],
+    taiwanBusinessTransfers: [{ type: 'installments', businessName: '台湾存储业务', startMonth: '2026-03', periods: 4, totalAmount: 50000 }],
+  }))
+  assert.equal(modern.order.grossProfitRecognitions[0].type, 'once', '新版一次性认列应保留类型')
+  assert.equal(modern.order.grossProfitRecognitions[0].totalAmount, 926600)
+  assert.equal(modern.order.taiwanBusinessTransfers[0].periods, 4, '新版分期期数应保留')
+  assert.equal(modern.order.taiwanBusinessTransfers[0].businessName, '台湾存储业务')
+  // 旧版频率+每期金额的数据自动视为分期
+  assert.equal(schedule.order.grossProfitRecognitions[0].type, 'installments')
+  assert.equal(schedule.order.taiwanBusinessTransfers[0].type, 'installments')
 }
 
 console.log('mr domain OK')
