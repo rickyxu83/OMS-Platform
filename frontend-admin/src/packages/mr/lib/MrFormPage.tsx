@@ -252,6 +252,7 @@ function ScheduleEntriesEditor({
   const perPeriod = periods && total !== null ? total / periods : null
   const patchEntry = (value: Partial<ScheduleEntry>) => onChange([{ ...entry, ...value }])
   const currentYear = new Date().getFullYear()
+  const defaultStartMonth = String(Math.ceil((new Date().getMonth() + 1) / 3) * 3).padStart(2, '0')
   const patchStart = (month: string) => patchEntry({ startMonth: `${currentYear}-${month}` })
   if (!editable) {
     const text = scheduleEntryText(entries[0], actionLabel, withBusinessName)
@@ -260,7 +261,7 @@ function ScheduleEntriesEditor({
   return (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'], ...(value === 'installments' && !entry.startMonth ? { startMonth: `${currentYear}-03` } : {}) })}>
+        <Select value={type} onValueChange={(value) => patchEntry({ type: value as ScheduleEntry['type'], ...(value === 'installments' && !entry.startMonth ? { startMonth: `${currentYear}-${defaultStartMonth}` } : {}) })}>
           <SelectTrigger aria-label={`${actionLabel}方式`}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="once">{actionLabel === '转拨' ? '单次转拨' : `一次性${actionLabel}`}</SelectItem>
@@ -272,7 +273,7 @@ function ScheduleEntriesEditor({
         ) : null}
         {type === 'installments' ? (
           <>
-            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : '03'} onValueChange={patchStart}>
+            <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth} onValueChange={patchStart}>
               <SelectTrigger aria-label="开始月份（当年）"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
