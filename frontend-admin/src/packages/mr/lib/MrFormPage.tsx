@@ -32,7 +32,7 @@ import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, Quota
 import { PdfPreview } from '@/components/PdfPreview'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrDocumentView } from './MrPrintPage'
-import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
+import { calculateForm, blankItem, defaultCostTaxRate, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
@@ -836,6 +836,16 @@ export function MrFormPage() {
     }
   }
 
+  /** 品项明细顶部“添加品项”：追加空行并自动聚焦进入编辑。 */
+  const addItem = () => {
+    if (!calculated) return
+    const current = calculated.items || []
+    if (current.length >= 200) return
+    const next = [...current, { ...blankItem(defaultCostTaxRate(calculated.invoiceType)), installBy: (calculated.installOptions || []).filter((value) => value !== 'NO').join('、') }]
+    patch({ items: next })
+    setFocusItemIndex(next.length - 1)
+  }
+
   const errorCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const item of errors) {
@@ -1138,9 +1148,16 @@ export function MrFormPage() {
             icon={MR_SECTIONS[5].icon}
             description={`共 ${calculated.items?.length || 0} 个品项`}
           actions={editable || calculated.quotationFiles?.length ? (
-              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-                <FileSpreadsheet className="mr-2 size-4" />报价导入
-              </Button>
+              <div className="flex items-center gap-2">
+                {editable && itemSetupReady ? (
+                  <Button variant="outline" size="sm" onClick={addItem}>
+                    <Plus className="mr-2 size-4" />添加品项
+                  </Button>
+                ) : null}
+                <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                  <FileSpreadsheet className="mr-2 size-4" />报价导入
+                </Button>
+              </div>
             ) : null}
           >
             {editable && !itemSetupReady ? (

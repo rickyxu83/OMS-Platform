@@ -3,6 +3,7 @@ import { Check, Copy, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -47,6 +48,7 @@ export function MrItemTable({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [batchOpen, setBatchOpen] = useState(false)
   const [batchSourceIndex, setBatchSourceIndex] = useState(0)
   const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
   useEffect(() => {
@@ -118,11 +120,7 @@ export function MrItemTable({
         </div>
         {editable && mode !== 2 ? (
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={editMode ? leaveEditMode : enterEditMode}>
-              {editMode ? <Check className="mr-2 size-4" /> : <Pencil className="mr-2 size-4" />}
-              {editMode ? '完成编辑' : '编辑品项'}
-            </Button>
-            {editMode ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
+            <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} />
           </div>
         ) : null}
       </div>
@@ -137,11 +135,14 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{editMode ? '请选择品项以编辑完整资料；复选框用于批量复制、批量删除。' : '勾选序号旁的复选框可批量删除；选择“编辑品项”后可修改内容或批量复制。'}</p>
+          <p className="text-xs text-muted-foreground">{editMode ? '点击品项行弹出编辑；复选框用于批量复制、批量删除。' : '勾选序号旁的复选框可批量删除；选择“编辑品项”后点击品项行即可编辑。'}</p>
           <div className="flex items-center gap-2">
             {editable && selectedRows.size ? (
               <>
                 <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span>
+                {editMode ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setBatchOpen(true)}><SlidersHorizontal className="mr-1.5 size-4" />批量复制</Button>
+                ) : null}
                 <Button type="button" variant="destructive" size="sm" onClick={() => {
                   if (window.confirm(`确定删除选中的 ${selectedRows.size} 个品项吗？删除后不可恢复。`)) {
                     onChange(items.filter((_, index) => !selectedRows.has(index)))
@@ -159,7 +160,7 @@ export function MrItemTable({
         </div>
       ) : null}
 
-      <div className={editable && editMode ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]' : ''}>
+      <div>
         <div className="overflow-hidden rounded-lg border">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] table-fixed text-sm">
@@ -227,24 +228,6 @@ export function MrItemTable({
                         ) : null}
                       </td>
                       </tr>
-                      {selected && rowSelectionEnabled ? (
-                        <tr className="bg-background">
-                          <td colSpan={7} className="p-3 sm:p-4">
-                            <ItemEditorPanel
-                              item={item}
-                              index={index}
-                              editable={editable}
-                              mode={mode}
-                              vendors={vendors}
-                              workOptions={workOptions}
-                              allowedTaxRates={allowedTaxRates}
-                              onClose={() => setSelectedIndex(null)}
-                              onRemove={editable && mode !== 2 ? () => remove(index) : undefined}
-                              onChange={(patch) => setItem(index, patch)}
-                            />
-                          </td>
-                        </tr>
-                      ) : null}
                     </Fragment>
                   )
                 })}
@@ -252,28 +235,49 @@ export function MrItemTable({
             </table>
           </div>
         </div>
+      </div>
 
-        {editable && editMode ? (
-          <aside className="h-fit rounded-lg border bg-card p-4 xl:sticky xl:top-44">
-            <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" /><h3 className="font-semibold">批量复制</h3></div>
-            <p className="mb-3 text-sm text-muted-foreground">已选择 {selectedRows.size} 个品项。请选择复制来源及需要复制的字段。</p>
+      {/* 编辑品项弹窗：点击品项行弹出，不再在表格内下拉展开 */}
+      <Dialog open={Boolean(editMode && editable && selectedIndex !== null && items[selectedIndex])} onOpenChange={(open) => { if (!open) setSelectedIndex(null) }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-4xl overflow-y-auto sm:max-w-4xl">
+          {selectedIndex !== null && items[selectedIndex] ? (
+            <ItemEditorPanel
+              item={items[selectedIndex]}
+              index={selectedIndex}
+              editable={editable}
+              mode={mode}
+              vendors={vendors}
+              workOptions={workOptions}
+              allowedTaxRates={allowedTaxRates}
+              onClose={() => setSelectedIndex(null)}
+              onRemove={editable && mode !== 2 ? () => { remove(selectedIndex); setSelectedIndex(null) } : undefined}
+              onChange={(patch) => setItem(selectedIndex, patch)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量复制弹窗：选中品项后从顶部按钮弹出，不再占用右侧栏 */}
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" />批量复制</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">已选择 {selectedRows.size} 个品项。请选择复制来源及需要复制的字段。</p>
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="mr-batch-source">复制来源</label>
             <Select value={String(batchSourceIndex)} onValueChange={(value) => setBatchSourceIndex(Number(value))}>
               <SelectTrigger id="mr-batch-source"><SelectValue /></SelectTrigger>
               <SelectContent>{items.map((item, index) => <SelectItem key={item.id || index} value={String(index)}>第 {index + 1} 项：{item.name || item.oemSpec || '未命名'}</SelectItem>)}</SelectContent>
             </Select>
-            <div className="my-4 space-y-3 border-y py-4">
-              <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购成本。</p>
-              {([['vendor', '供应商'], ['purchaseOrderNo', '采购订单号'], ['warrantyService', '保固与服务'], ['installBy', '品项装机方']] as const).map(([field, label]) => (
-                <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
-              ))}
-            </div>
-            <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={applyBatch}><Check className="mr-2 size-4" />应用至已选品项</Button>
-          </aside>
-        ) : null}
-      </div>
-
-      {editable && editMode && mode !== 2 ? <AddItemButton order={order} items={items} onChange={onChange} setSelectedIndex={setSelectedIndex} /> : null}
+          </div>
+          <div className="space-y-3 border-y py-4">
+            <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购成本。</p>
+            {([['vendor', '供应商'], ['purchaseOrderNo', '采购订单号'], ['warrantyService', '保固与服务'], ['installBy', '品项装机方']] as const).map(([field, label]) => (
+              <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
+            ))}
+          </div>
+          <Button type="button" className="w-full" disabled={!selectedRows.size} onClick={() => { applyBatch(); setBatchOpen(false) }}><Check className="mr-2 size-4" />应用至已选品项</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -316,7 +320,7 @@ function ItemEditorPanel({
   }
 
   return (
-    <section className="rounded-xl border border-primary/20 bg-primary/[0.025] p-4 shadow-sm sm:p-5" aria-label={`编辑第 ${index + 1} 项`}>
+    <section aria-label={`编辑第 ${index + 1} 项`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-3">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-primary">编辑品项 {index + 1}</div>
