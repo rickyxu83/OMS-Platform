@@ -15,7 +15,7 @@ async function readRecognitionCache(fileHash) {
     )
     if (!rows[0]?.result) return null
     const cached = JSON.parse(rows[0].result)
-    return cached?.parsed?.sheets ? cached : null
+    return cached && typeof cached === 'object' ? cached : null
   } catch (_error) {
     return null
   }
@@ -1187,14 +1187,14 @@ async function importQuotation(req, res) {
     const requestedRole = ['sales', 'purchase'].includes(effectiveRoles[index]) ? effectiveRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
     try {
-    const fileHash = crypto.createHash('sha256').update(file.buffer).digest('hex')
+    const fileHash = uploadHashes[index]
     let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
     let parsed = null
     let systemItemCount = 0
     let aiItemCount = 0
     let aiDocumentType = null
     const cached = await readRecognitionCache(fileHash)
-    if (cached) {
+    if (cached?.parsed?.sheets) {
       ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached)
       parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
       progress.stage = 'cache'
@@ -1293,12 +1293,30 @@ async function importQuotation(req, res) {
     }
   }
   try {
+  const uploadHashes = uploads.map((file) => crypto.createHash('sha256').update(file.buffer).digest('hex'))
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
   progress.stage = 'normalizing'
-  try {
-    await applyAiEntityKeys(sources)
-  } catch (_error) {
-    // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
+  // 跨文件实体归一化按“文件集合”缓存：同一批文件重复导入直接复用，只有新增文件才重跑 AI
+  const setHash = crypto.createHash('sha256').update(uploadHashes.join(':')).digest('hex')
+  const cachedEntity = await readRecognitionCache(`set:${setHash}`)
+  if (cachedEntity?.entityMap) {
+    for (const entry of cachedEntity.entityMap) {
+      const item = sources[Number(entry.sourceIndex)]?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
+      if (item && entry.entityKey) item.entityKey = entry.entityKey
+    }
+  } else {
+    try {
+      await applyAiEntityKeys(sources)
+      const entityMap = []
+      sources.forEach((source, sourceIndex) => {
+        ;(source.sheets?.[0]?.items || []).forEach((item, itemIndex) => {
+          if (item.entityKey) entityMap.push({ sourceIndex, itemIndex, entityKey: item.entityKey })
+        })
+      })
+      if (entityMap.length) await writeRecognitionCache(`set:${setHash}`, '跨文件实体归一化', { entityMap })
+    } catch (_error) {
+      // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
+    }
   }
   progress.stage = 'merging'
 
