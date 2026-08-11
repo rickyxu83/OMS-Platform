@@ -346,9 +346,9 @@ function computeApprovalSteps(order, items) {
     { seq: 2, key: 'sales', label: '业务负责人', role: STEP_ROLES.sales },
   ]
   if (order.installOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
-  steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })
-  // 业务主管（处级主管）发起的 MR 单无条件签核至运营负责人，不受金额/毛利门槛限制
+  // 业务主管（处级主管）发起的 MR 单：跳过“处级单位”自签步骤（签核人即本人），无条件签核至运营负责人（副总经理）
   const isDepartmentSupervisor = order.salesOwnerRole === 'sales_supervisor'
+  if (!isDepartmentSupervisor) steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })
   if (isDepartmentSupervisor || result.salesExcludingTax > 750000 || (result.marginRate !== null && result.marginRate < 15)) {
     steps.push({ seq: steps.length + 1, key: 'vp', label: '副总经理', role: STEP_ROLES.vp })
   }

@@ -730,7 +730,6 @@ export function MrFormPage() {
   const marginRate = calculated.totals?.marginRate
   const lowMargin = marginRate !== null && marginRate !== undefined && Number(marginRate) < 15
   const highValue = Number(calculated.totals?.salesExcludingTax) > 750000
-  const departmentSupervisorOwned = calculated.salesOwnerRole === 'sales_supervisor'
   const sectionCounts = { items: calculated.items?.length || 0 }
   const summary = (layout: 'rail' | 'bar') => (
     <SummaryPanel
@@ -862,11 +861,10 @@ export function MrFormPage() {
       ) : (
         <>
       <div className="mx-auto max-w-[1700px] space-y-6 px-4 py-5 sm:px-6">
-        {highValue || lowMargin || departmentSupervisorOwned ? (
+        {highValue || lowMargin ? (
           <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
             {highValue ? '未税总计超过 75 万元；' : ''}
             {lowMargin ? `整单毛利率 ${percent(marginRate)} 低于 15%；` : ''}
-            {departmentSupervisorOwned ? '业务主管（处级）发起的申请；' : ''}
             签核流程将增加副总经理签核步骤。
           </div>
         ) : null}
