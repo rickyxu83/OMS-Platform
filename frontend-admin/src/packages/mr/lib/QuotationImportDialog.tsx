@@ -535,7 +535,6 @@ export function QuotationImportDialog({
                       <div className="flex gap-3">
                         <div className="flex shrink-0 flex-col items-center gap-2 pt-2">
                           <Checkbox checked={selectedRows.has(index)} onCheckedChange={(checked) => setSelectedRows((current) => { const next = new Set(current); checked ? next.add(index) : next.delete(index); return next })} />
-                          <Button type="button" variant="ghost" size="icon" className="size-6 text-destructive hover:text-destructive" aria-label={`删除第 ${index + 1} 项`} onClick={() => removeItem(index)}><Trash2 className="size-3.5" /></Button>
                           <span className="text-sm text-muted-foreground">{index + 1}</span>
                         </div>
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-3">
@@ -588,8 +587,11 @@ export function QuotationImportDialog({
                         </div>
                       </div>
                     ) : (
-                      <div className="grid gap-2 lg:grid-cols-[44px_minmax(320px,1fr)_90px_190px_190px] lg:items-start">
-                        <span className="text-sm text-muted-foreground">{index + 1}</span>
+                      <div className="grid gap-2 lg:grid-cols-[56px_minmax(320px,1fr)_90px_190px_190px] lg:items-start">
+                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Button type="button" variant="ghost" size="icon" disabled={!editable} className="size-6 text-destructive hover:text-destructive" aria-label={`删除第 ${index + 1} 项`} onClick={() => { if (window.confirm(`确定删除第 ${index + 1} 项「${item.name || item.oemSpec || '未命名品项'}」吗？`)) removeItem(index) }}><Trash2 className="size-3.5" /></Button>
+                          {index + 1}
+                        </span>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="break-words text-sm font-medium">{item.name || item.oemSpec || '未命名品项'}</span>
