@@ -304,13 +304,6 @@ function ItemEditorPanel({
           <div className="text-xs font-medium uppercase tracking-wide text-primary">{editable ? '编辑品项' : '查看品项'} {index + 1}</div>
           <div className="mt-1 text-sm text-muted-foreground">{editable ? '请在此编辑完整资料；关闭后，品项表仅显示摘要。' : '只读查看品项完整资料。'}</div>
         </div>
-        <div className="flex items-center gap-1">
-          {onRemove ? (
-            <Button type="button" variant="ghost" size="icon" title="删除品项" onClick={onRemove}>
-              <Trash2 className="size-4 text-destructive" />
-            </Button>
-          ) : null}
-        </div>
       </div>
 
       <div className="space-y-3">
