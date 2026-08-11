@@ -21,7 +21,7 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 36
+const PDF_FORMAT_VERSION = 37
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -450,24 +450,23 @@ function approvals(doc, fonts, rows, y) {
 
 function watermark(doc, fonts, label) {
   if (!label) return
-  // 作废水印铺满整页（3×3 均布）并加深，避免翻拍/涂改后难以辨认
-  const safeLabel = String(label).slice(0, 14)
-  const rows = 3
-  const cols = 3
+  // 作废水印整页铺满（5×5 均布）并加深，翻拍/涂改无法绕过；作废原因在正文“作废原因”字段展示
+  const rows = 5
+  const cols = 5
   const cellWidth = PAGE.width / cols
   const cellHeight = PAGE.height / rows
-  const size = 38
-  const boxWidth = 230
+  const size = 36
+  const boxWidth = 170
   doc.save().fillColor('#b91c1c').font(fonts.bold)
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const x = cellWidth * (col + 0.5)
       const y = cellHeight * (row + 0.5)
       doc.save()
-        .opacity(0.28)
+        .opacity(0.3)
         .rotate(-24, { origin: [x, y] })
         .fontSize(size)
-        .text(safeLabel, x - boxWidth / 2, y - size / 2, { width: boxWidth, align: 'center' })
+        .text('已作废', x - boxWidth / 2, y - size / 2, { width: boxWidth, align: 'center' })
         .restore()
     }
   }
