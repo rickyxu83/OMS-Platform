@@ -1100,7 +1100,8 @@ async function loadStoredQuotationUploads(ownerId) {
     try {
       const buffer = await fs.promises.readFile(row.storagePath)
       uploads.push({
-        originalname: row.name,
+        // originalname 按 multer 的 latin1 错位编码存储，供 originalNameUtf8 还原为 UTF-8
+        originalname: Buffer.from(String(row.name || ''), 'utf8').toString('latin1'),
         buffer,
         mimetype: '',
         size: buffer.length,
