@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { Check, Copy, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { Check, Copy, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -310,9 +310,6 @@ function ItemEditorPanel({
               <Trash2 className="size-4 text-destructive" />
             </Button>
           ) : null}
-          <Button type="button" variant="ghost" size="icon" title="关闭编辑面板" onClick={onClose}>
-            <X className="size-4" />
-          </Button>
         </div>
       </div>
 
