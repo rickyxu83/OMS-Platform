@@ -173,6 +173,9 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
   const grossProfit = Number.isFinite(sales) && Number.isFinite(cost) ? sales - cost : null
   const salesTotal = Number.isFinite(sales) ? sales : null
   const transferTotal = (order.taiwanBusinessTransfers || []).reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
+  const retentionSuffix = transferTotal > 0 && grossProfit !== null && salesTotal !== null && salesTotal > 0
+    ? `；扣除转拨后留存毛利 ${moneyText(grossProfit - transferTotal, emptyText)} · 留存毛利率 ${((grossProfit - transferTotal) / salesTotal * 100).toFixed(2)}%`
+    : ''
   const watermark = status === 'in_review' ? '签核中 · 非正式文件' : status === 'voided' ? '已作废' : ''
   const versionLabel = status === 'in_review' && order.currentStepKey === 'assistant'
     ? `${Number(order.versionNo || 0) + 1}（待签核确认）`
@@ -227,7 +230,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     {
       label: '台湾业务转拨',
       raw: [...(order.taiwanBusinessTransfers || []), order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount].filter(hasValue),
-      value: scheduleEntriesText(order.taiwanBusinessTransfers, order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer, '转拨', emptyText),
+      value: scheduleEntriesText(order.taiwanBusinessTransfers, order.taiwanBusinessTransferStartMonth, order.taiwanBusinessTransferAmount, order.remainingTaiwanBusinessTransfer, '转拨', emptyText) + retentionSuffix,
     },
     { label: '备注', raw: order.remark, value: text(order.remark, emptyText) },
     ...(order.rejectReason ? [{ label: '驳回原因', raw: order.rejectReason, value: order.rejectReason }] : []),
@@ -241,10 +244,6 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '采购成本（含税）', raw: totals.costIncludingTax, value: moneyText(totals.costIncludingTax, emptyText) },
     { label: '毛利额', raw: grossProfit, value: grossProfit === null ? emptyText : moneyText(grossProfit, emptyText) },
     { label: '整单毛利率', raw: totals.marginRate, value: percent(totals.marginRate, emptyText) },
-    ...(transferTotal > 0 && grossProfit !== null && salesTotal !== null && salesTotal > 0 ? [
-      { label: '留存毛利', raw: grossProfit - transferTotal, value: moneyText(grossProfit - transferTotal, emptyText) },
-      { label: '留存毛利率', raw: (grossProfit - transferTotal) / salesTotal * 100, value: `${((grossProfit - transferTotal) / salesTotal * 100).toFixed(2)}%` },
-    ] : []),
   ].filter((fact) => !formal || hasValue(fact.raw))
   const topLine = (label: string, value: unknown) => formal && !hasValue(value) ? null : <span>{hasValue(value) ? text(value, emptyText) : `${label} · ${emptyText}`}</span>
   return (

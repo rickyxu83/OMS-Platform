@@ -49,8 +49,22 @@ export function ApprovalPanel({ order, layout = 'vertical' }: { order: MrOrder; 
     )
   }
 
+  // 有台湾业务转拨时，签核人第一眼可见留存毛利情况（不占汇总条格位）
+  const transferTotal = (order.taiwanBusinessTransfers || []).reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
+  const sales = Number(order.totals?.salesExcludingTax)
+  const cost = Number(order.totals?.costExcludingTax)
+  const retentionBanner = transferTotal > 0 && Number.isFinite(sales) && Number.isFinite(cost) && sales > 0
+    ? { retention: sales - cost - transferTotal, rate: (sales - cost - transferTotal) / sales * 100, margin: sales - cost }
+    : null
+
   return (
     <div className="space-y-4">
+      {retentionBanner ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          本单有台湾业务转拨：扣除转拨后留存毛利 ¥ {retentionBanner.retention.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · 留存毛利率 {retentionBanner.rate.toFixed(2)}%
+          <span className="ml-2 text-xs text-emerald-700">（毛利 ¥ {retentionBanner.margin.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} − 转拨 ¥ {transferTotal.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}）</span>
+        </div>
+      ) : null}
       <ol className={layout === 'horizontal' ? `grid gap-3 md:grid-cols-2 ${horizontalColumns}` : 'relative space-y-1'}>
         {approvals.map((approval, index) => {
           const state = stepState(approval, order)

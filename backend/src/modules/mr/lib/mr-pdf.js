@@ -225,9 +225,6 @@ function totals(doc, fonts, order, items, y) {
     return sum + (Number.isFinite(amount) && Number.isFinite(rate) ? amount / (1 + rate / 100) : 0)
   }, 0))
   const margin = totalsValue.marginRate ?? (sales > 0 ? (sales - cost) / sales * 100 : null)
-  // 台湾业务转拨存在时追加“留存毛利/留存毛利率”（毛利 − 转拨总金额）
-  const transferTotal = parseJsonList(orderField(order, 'taiwanBusinessTransfers', 'taiwan_business_transfers'))
-    .reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
   const cells = [
     ['未税总计', moneyText(sales)],
     ['销售税额', moneyText(totalsValue.vat)],
@@ -236,10 +233,6 @@ function totals(doc, fonts, order, items, y) {
     ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
-    ...(transferTotal > 0 ? [
-      ['留存毛利', moneyText(sales - cost - transferTotal)],
-      ['留存毛利率', sales > 0 ? `${((sales - cost - transferTotal) / sales * 100).toFixed(2)}%` : ''],
-    ] : []),
   ].filter(([, content]) => hasValue(content))
   const totalWidth = PAGE.width - PAGE.margin * 2
   const width = totalWidth / Math.max(1, cells.length)
@@ -309,6 +302,18 @@ function detailEntries(order, items = []) {
   return entries.filter(([label, content]) => hasValue(content) && !HEADER_DUPLICATES.has(label))
 }
 
+/** 转拨后留存毛利/留存毛利率的附注文本（附在“台湾业务转拨”行后，不占汇总格）。 */
+function retentionSuffix(order) {
+  const transferTotal = parseJsonList(orderField(order, 'taiwanBusinessTransfers', 'taiwan_business_transfers'))
+    .reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
+  if (!(transferTotal > 0)) return ''
+  const totalsValue = order.totals || {}
+  const sales = Number(totalsValue.salesExcludingTax)
+  const cost = Number(totalsValue.costExcludingTax)
+  if (!Number.isFinite(sales) || !Number.isFinite(cost) || sales <= 0) return ''
+  return `；扣除转拨后留存毛利 ${moneyText(sales - cost - transferTotal)} · 留存毛利率 ${((sales - cost - transferTotal) / sales * 100).toFixed(2)}%`
+}
+
 function noteEntries(order, includeVoidReason) {
   return [
     ['毛利认列', scheduleEntriesText(
@@ -324,7 +329,7 @@ function noteEntries(order, includeVoidReason) {
       orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'),
       orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'),
       '转拨',
-    )],
+    ) + retentionSuffix(order)],,
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ].filter(([, content]) => hasValue(content))

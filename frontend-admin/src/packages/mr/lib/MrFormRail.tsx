@@ -65,24 +65,16 @@ export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; 
   const grossProfit = totals.salesExcludingTax !== null && totals.salesExcludingTax !== undefined && totals.costExcludingTax !== null && totals.costExcludingTax !== undefined
     ? Number(totals.salesExcludingTax) - Number(totals.costExcludingTax)
     : null
-  const transferTotal = (order.taiwanBusinessTransfers || []).reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
-  const retention = grossProfit !== null && transferTotal > 0 ? grossProfit - transferTotal : null
-  const salesTotal = Number(totals.salesExcludingTax) || 0
-  const retentionRate = retention !== null && salesTotal > 0 ? retention / salesTotal * 100 : null
   const metrics = [
     { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warning: false },
     { label: '含税合计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warning: false },
     { label: '毛利', value: <AnimatedMoney value={grossProfit} animationKey={animationKey} />, warning: grossProfit !== null && grossProfit < 0 },
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
     { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
-    ...(retention !== null ? [
-      { label: '留存毛利', value: <AnimatedMoney value={retention} animationKey={animationKey} />, warning: retention < 0 },
-      { label: '留存毛利率', value: <AnimatedPercent value={retentionRate} animationKey={animationKey} />, warning: retentionRate !== null && retentionRate < 15 },
-    ] : []),
     { label: '签核进度', value: order.currentStepLabel ? `${order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepKey === 'engineering' ? '工程会签' : order.currentStepLabel} · ${statusLabel(order.status)}` : statusLabel(order.status), warning: false },
   ]
   return (
-    <div className={`grid grid-cols-2 gap-px bg-border sm:grid-cols-3 ${retention !== null ? 'xl:grid-cols-8' : 'xl:grid-cols-6'}`}>
+    <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 xl:grid-cols-6">
       {metrics.map(({ label, value, warning }) => (
         <div key={`${label}-${animationKey}`} className={`min-w-0 bg-card px-4 py-3 sm:px-5 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
           <div className="text-xs text-muted-foreground">{label}</div>
@@ -121,18 +113,12 @@ export function SummaryPanel({
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
   const canApprove = Boolean(order.permissions?.canApprove)
   const rail = layout === 'rail'
-  const transferTotal = (order.taiwanBusinessTransfers || []).reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0)
-  const hasCosts = totals.salesExcludingTax !== null && totals.salesExcludingTax !== undefined && totals.costExcludingTax !== null && totals.costExcludingTax !== undefined
-  const retention = hasCosts && transferTotal > 0 ? Number(totals.salesExcludingTax) - Number(totals.costExcludingTax) - transferTotal : null
-  const retentionRate = retention !== null && Number(totals.salesExcludingTax) > 0 ? retention / Number(totals.salesExcludingTax) * 100 : null
-
   const rows = [
     { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warn: false },
     { label: '销售税额', value: <AnimatedMoney value={totals.vat} animationKey={animationKey} />, warn: false },
     { label: '含税总计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warn: false },
     { label: '采购成本（不含税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
-    ...(retention !== null ? [{ label: '留存毛利（率）', value: <span><AnimatedMoney value={retention} animationKey={animationKey} /> · <AnimatedPercent value={retentionRate} animationKey={animationKey} /></span>, warn: retention < 0 }] : []),
   ]
 
   return (
