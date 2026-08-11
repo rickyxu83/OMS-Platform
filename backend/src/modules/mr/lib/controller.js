@@ -5,7 +5,7 @@ const multer = require('multer')
 const env = require('../../../config/env')
 
 /** 报价识别解析器版本：识别逻辑/输出格式变更时 +1，旧缓存自动失效。 */
-const RECOGNITION_PARSER_VERSION = 2
+const RECOGNITION_PARSER_VERSION = 3
 
 async function readRecognitionCache(fileHash) {
   try {

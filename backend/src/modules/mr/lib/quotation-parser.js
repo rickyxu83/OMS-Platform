@@ -249,12 +249,20 @@ function parseSheet(ws) {
     const group = header.columns.group ? reader.text(row, header.columns.group) : ''
     const description = firstText(row, 'description')
     const part = firstText(row, 'part')
-    let qty = firstNumber(row, 'qty')
     const unitPrice = firstNumber(row, 'unit')
     const extended = header.columns.extended ? firstNumber(row, 'extended') : null
+    let qty = firstNumber(row, 'qty')
+    const qtyCols = pickCols('qty')
+    if (qtyCols.length > 1 && unitPrice !== null && extended !== null) {
+      // 多列数量别名并存（如“每套数量 D 列”与“套数 E 列”都是 Qty）：优先取能通过 数量×单价≈小计 验证的列
+      for (const col of qtyCols) {
+        const candidate = toFloat(rawValue(ws, row, col))
+        if (candidate !== null && Math.abs(candidate * unitPrice - extended) <= Math.max(1, Math.abs(extended) * 0.01)) { qty = candidate; break }
+      }
+    }
     if (qty === null && unitPrice !== null) {
       // 版式错位容错：数量列被“套/台”等单位文本占用、数量值错到邻列时，在数量列左右一格内找能通过 数量×单价≈小计 验证的数字
-      const probe = [...new Set(pickCols('qty').flatMap((col) => [col - 1, col, col + 1]).filter((col) => col >= 1))]
+      const probe = [...new Set(qtyCols.flatMap((col) => [col - 1, col, col + 1]).filter((col) => col >= 1))]
       for (const col of probe) {
         const candidate = toFloat(rawValue(ws, row, col))
         if (candidate === null || candidate <= 0) continue

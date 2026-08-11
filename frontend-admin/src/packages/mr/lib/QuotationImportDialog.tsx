@@ -329,7 +329,8 @@ export function QuotationImportDialog({
   const parse = async (nextSales: File[], nextPurchase: File[]) => {
     const nextFiles = [...nextSales, ...nextPurchase]
     const nextRoles: UploadRole[] = [...nextSales.map(() => 'sales' as const), ...nextPurchase.map(() => 'purchase' as const)]
-    setPreview(null)
+    // 保留已有预览直到新结果回来，避免追加文件时下方内容被清空
+    if (!nextFiles.length && !storedFiles.length) setPreview(null)
     setError('')
     if (!nextFiles.length && !storedFiles.length) { setLoading(false); return }
     const seq = ++parseSeqRef.current
@@ -473,7 +474,7 @@ export function QuotationImportDialog({
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
         {preview ? (
-          <div key={previewAnimationKey} className="space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500">
+          <div key={previewAnimationKey} className={`space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
         <datalist id="mr-import-vendor-options">{vendors.map((vendor) => <option key={vendor.id} value={vendor.name} />)}</datalist>
             <section>
               <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span></div>
