@@ -1673,7 +1673,12 @@ function SignaturePad({
     context.strokeStyle = foregroundColor;
     if (snapshot) {
       const image = new Image();
-      image.onload = () => context.drawImage(image, 0, 0, width, height);
+      image.onload = () => {
+        const scale = Math.min(width / image.width, height / image.height);
+        const drawWidth = image.width * scale;
+        const drawHeight = image.height * scale;
+        context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+      };
       image.src = snapshot;
     }
   }, [value]);

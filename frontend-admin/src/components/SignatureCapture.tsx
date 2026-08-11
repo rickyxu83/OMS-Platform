@@ -25,7 +25,12 @@ export function SignatureCapture({ value, onChange }: { value: string; onChange:
     context.strokeStyle = "#111827";
     if (value) {
       const image = new Image();
-      image.onload = () => context.drawImage(image, 0, 0, rect.width, rect.height);
+      image.onload = () => {
+        const scale = Math.min(rect.width / image.width, rect.height / image.height);
+        const drawWidth = image.width * scale;
+        const drawHeight = image.height * scale;
+        context.drawImage(image, (rect.width - drawWidth) / 2, (rect.height - drawHeight) / 2, drawWidth, drawHeight);
+      };
       image.src = value;
     }
   }, [value]);
