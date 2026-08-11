@@ -391,7 +391,7 @@ export function QuotationImportDialog({
       <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价文件与品项导入</DialogTitle>
-          <DialogDescription>请在左侧添加销售报价，在右侧添加供应商报价或采购订单。销售报价用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价或采购订单用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
+          <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
         </DialogHeader>
 
         {existingFiles.length ? (
@@ -410,8 +410,8 @@ export function QuotationImportDialog({
 
         {editable ? (
           <div className="grid gap-3 md:grid-cols-2">
-            <FileDropZone title="销售报价" hint="用于识别客户、销售金额、客户 P/O、交付与付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
-            <FileDropZone title="供应商报价或采购订单" hint="用于匹配各品项的采购成本；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+            <FileDropZone title="销售报价/客户订单" hint="用于识别客户、销售金额、客户 P/O、交付与付款信息" files={salesFiles} onFiles={(next) => updateFiles('sales', next)} />
+            <FileDropZone title="供应商报价" hint="用于匹配各品项的采购成本；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
           </div>
         ) : null}
 
