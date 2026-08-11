@@ -20,6 +20,7 @@ router.post('/:id/reassign-sales', requirePermission('mr.edit'), controller.reas
 router.post('/:id/withdraw', requirePermission('mr.edit'), controller.withdraw)
 router.post('/:id/void', requirePermission('mr.void'), controller.voidOrder)
 router.post('/:id/import', requirePermission('mr.edit'), controller.quotationUpload, controller.importQuotation)
+router.post('/:id/attachments', requirePermission('mr.edit'), controller.attachmentUpload, controller.uploadAttachments)
 router.get('/:id/quotation', requirePermission('mr.view'), controller.downloadQuotation)
 router.delete('/:id/quotation', requirePermission('mr.edit'), controller.deleteQuotationFile)
 router.get('/:id/document', requirePermission('mr.view'), controller.downloadDocument)

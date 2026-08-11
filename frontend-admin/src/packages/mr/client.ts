@@ -47,6 +47,18 @@ export async function persistQuotations(id: string | number, files: File[], role
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<{ files: QuotationFile[] }>
 }
 
+/** MR 通用附件上传（底部附件区）：不做报价识别，直接留存。 */
+export async function uploadMrAttachments(id: string | number, files: File[]) {
+  const body = new FormData()
+  for (const file of files) body.append('files', file)
+  return api.postForm(`/mr/${pathId(id)}/attachments`, body) as Promise<{ files: QuotationFile[] }>
+}
+
+/** 拉取附件 Blob（预览或自定义下载用）。 */
+export async function fetchQuotationBlob(id: string | number, fileId: string | number) {
+  return api.download(`/mr/${pathId(id)}/quotation?fileId=${fileId}`)
+}
+
 export async function getImportProgress(taskId: string) {
   return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string; stage?: string }>
 }

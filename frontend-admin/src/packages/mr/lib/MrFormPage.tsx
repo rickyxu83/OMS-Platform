@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CopyPlus, Eye, FileDown, FileSpreadsheet, Loader2, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,7 +12,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
   createMr,
+  deleteQuotationFile,
   downloadMrDocument,
+  downloadQuotation,
+  fetchQuotationBlob,
   getMr,
   getMrConstants,
   loadCustomer,
@@ -21,10 +24,12 @@ import {
   reassignMrSales,
   submitMr,
   updateMr,
+  uploadMrAttachments,
   voidMr,
   withdrawMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
+import { PdfPreview } from '@/components/PdfPreview'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
@@ -132,6 +137,72 @@ function changeValue(value: unknown) {
   return String(value)
 }
 
+const ATTACHMENT_ACCEPT = '.pdf,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.csv,.txt'
+
+function attachmentIcon(name: string) {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  if (ext === 'pdf') return FileText
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return FileSpreadsheet
+  if (['png', 'jpg', 'jpeg', 'gif'].includes(ext)) return ImageIcon
+  return File
+}
+
+function fileSizeText(size?: number) {
+  if (!size || size <= 0) return ''
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(size / 1024))} KB`
+}
+
+/** MR 附件列表（文件名+图标展示）；PDF 点击在浏览器内预览，其余类型点击下载。 */
+function MrAttachments({
+  files,
+  editable,
+  busy,
+  onUpload,
+  onDelete,
+  onOpen,
+}: {
+  files: QuotationFile[]
+  editable: boolean
+  busy: boolean
+  onUpload: (fileList: FileList | null) => void
+  onDelete: (file: QuotationFile) => void
+  onOpen: (file: QuotationFile) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  return (
+    <div className="space-y-3">
+      {files.length ? (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {files.map((file) => {
+            const Icon = attachmentIcon(file.name)
+            return (
+              <li key={file.id} className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => onOpen(file)} title="点击预览或下载">
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm hover:underline">{file.name}</span>
+                  {fileSizeText(file.size) ? <span className="shrink-0 text-xs text-muted-foreground">{fileSizeText(file.size)}</span> : null}
+                </button>
+                {editable ? (
+                  <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-destructive hover:text-destructive" aria-label={`删除附件 ${file.name}`} onClick={() => onDelete(file)}><X className="size-4" /></Button>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <div className="text-sm text-muted-foreground">暂无附件{editable ? '，可点击下方按钮上传' : ''}</div>
+      )}
+      {editable ? (
+        <div>
+          <input ref={inputRef} type="file" multiple className="hidden" accept={ATTACHMENT_ACCEPT} onChange={(event) => { onUpload(event.target.files); event.target.value = '' }} />
+          <Button type="button" variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}><Upload className="mr-2 size-4" />上传附件</Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ScheduleEntriesEditor({
   entries,
   editable,
@@ -207,6 +278,8 @@ export function MrFormPage() {
   const [editing, setEditing] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [reassignSalesId, setReassignSalesId] = useState('')
+  const [attachmentPreview, setAttachmentPreview] = useState<{ file: QuotationFile; data: Uint8Array } | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false)
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
@@ -675,6 +748,60 @@ export function MrFormPage() {
     }
   }
 
+  const refreshAttachments = (files: QuotationFile[]) => {
+    setForm((current) => current ? { ...current, quotationFiles: files } : current)
+  }
+
+  const uploadAttachments = async (fileList: FileList | null) => {
+    const files = fileList ? Array.from(fileList) : []
+    if (!files.length || !id) return
+    setBusy(true)
+    setError('')
+    try {
+      const result = await uploadMrAttachments(id, files)
+      refreshAttachments(result.files)
+      toast.success(`已上传 ${files.length} 个附件`)
+    } catch (err) {
+      setError((err as Error).message || '附件上传失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const deleteAttachment = async (file: QuotationFile) => {
+    if (!id) return
+    if (!window.confirm(`确定删除附件「${file.name}」吗？`)) return
+    setBusy(true)
+    try {
+      const result = await deleteQuotationFile(id, file.id)
+      refreshAttachments(result.files)
+      toast.success('附件已删除')
+    } catch (err) {
+      setError((err as Error).message || '附件删除失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 附件点击交互：PDF 在浏览器内预览，其余类型直接下载。 */
+  const openAttachment = async (file: QuotationFile) => {
+    if (!id) return
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (ext === 'pdf') {
+      setPreviewBusy(true)
+      try {
+        const blob = await fetchQuotationBlob(id, file.id)
+        setAttachmentPreview({ file, data: new Uint8Array(await blob.arrayBuffer()) })
+      } catch (err) {
+        setError((err as Error).message || '附件预览失败')
+      } finally {
+        setPreviewBusy(false)
+      }
+    } else {
+      downloadQuotation(id, file.id, file.name).catch((err) => setError((err as Error).message || '附件下载失败'))
+    }
+  }
+
   const errorCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const item of errors) {
@@ -852,9 +979,10 @@ export function MrFormPage() {
               </details>
             ) : null}
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
-            {calculated.quotationFiles?.length ? (
-              <Button className="w-full" variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 size-4" />查看报价原始附件（{calculated.quotationFiles.length}）</Button>
-            ) : null}
+            <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <h2 className="font-semibold">附件（{calculated.quotationFiles?.length || 0}）</h2>
+              <div className="mt-3"><MrAttachments files={calculated.quotationFiles || []} editable={false} busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
+            </div>
             <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
           </aside>
         </div>
@@ -1187,6 +1315,10 @@ export function MrFormPage() {
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
             ) : null}
           </SectionCard>
+
+          <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF 点击在浏览器内预览，其他类型点击下载。" flash={flashSection === 'attachments'}>
+            <MrAttachments files={calculated.quotationFiles || []} editable={editable} busy={busy} onUpload={(list) => void uploadAttachments(list)} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
+          </SectionCard>
         </div>
       </div>
 
@@ -1210,6 +1342,20 @@ export function MrFormPage() {
           onStoredFilesChange={(files) => patch({ quotationFiles: files })}
         />
       ) : null}
+
+      <Dialog open={Boolean(attachmentPreview)} onOpenChange={(open) => { if (!open) setAttachmentPreview(null) }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-5xl overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><FileText className="size-4" />{attachmentPreview?.file.name || '附件预览'}</DialogTitle>
+            <DialogDescription>浏览器内直接预览 PDF；如需保存或打开其他格式，请使用下方下载。</DialogDescription>
+          </DialogHeader>
+          {attachmentPreview ? <PdfPreview data={attachmentPreview.data} title={attachmentPreview.file.name} /> : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttachmentPreview(null)}>关闭</Button>
+            <Button variant="outline" onClick={() => { if (attachmentPreview && id) void downloadQuotation(id, attachmentPreview.file.id, attachmentPreview.file.name).catch((err) => setError((err as Error).message || '附件下载失败')) }}><Download className="mr-2 size-4" />下载</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
         <DialogContent>

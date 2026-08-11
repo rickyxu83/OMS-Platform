@@ -1469,6 +1469,28 @@ async function downloadDocument(req, res) {
   res.download(document.storage_path, document.original_name)
 }
 
+const ATTACHMENT_EXTENSIONS = new Set(['.pdf', '.xls', '.xlsx', '.doc', '.docx', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.csv', '.txt'])
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+  fileFilter(_req, file, callback) {
+    const extension = path.extname(originalNameUtf8(file)).toLowerCase()
+    if (!ATTACHMENT_EXTENSIONS.has(extension)) return callback(badRequest('附件仅支持常见办公文件（PDF、Office、图片、ZIP、CSV、TXT）'))
+    callback(null, true)
+  },
+}).fields([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }])
+
+/** 通用附件上传（MR 表单底部附件区）：不做报价识别，直接留存到 MR 单。 */
+async function uploadAttachments(req, res) {
+  await ensureTables()
+  const order = await loadRawOrder(req.params.id)
+  if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许上传附件')
+  const uploads = uploadedFiles(req)
+  if (!uploads.length) throw badRequest('请选择要上传的附件')
+  const files = await persistQuotationFiles(req.params.id, uploads, req.user, false)
+  res.json({ files })
+}
+
 function getConstants(_req, res) {
   res.json({ ...constants, pricingModes: [{ value: 1, label: '多项系统集成' }, { value: 2, label: '单项系统集成' }, { value: 3, label: '开明细' }] })
 }
@@ -1476,6 +1498,7 @@ function getConstants(_req, res) {
 module.exports = {
   ensureTables,
   quotationUpload,
+  attachmentUpload,
   getConstants,
   getAssistantSetting,
   setAssistantSetting,
@@ -1495,5 +1518,6 @@ module.exports = {
   vendorSuggestions,
   downloadQuotation,
   deleteQuotationFile,
+  uploadAttachments,
   downloadDocument,
 }
