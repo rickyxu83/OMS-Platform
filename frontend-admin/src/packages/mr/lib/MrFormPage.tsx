@@ -257,7 +257,6 @@ function ScheduleEntriesEditor({
     const text = scheduleEntryText(entries[0], actionLabel, withBusinessName)
     return text ? <p className="text-sm text-foreground">{text}</p> : <span className="text-sm text-muted-foreground">-</span>
   }
-  const currentYear = new Date().getFullYear()
   return (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
