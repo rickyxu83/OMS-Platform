@@ -610,7 +610,7 @@ export function QuotationImportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-          {editable ? <Button disabled={!preview || loading} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
+          {editable ? <Button disabled={!preview || loading || !files.length} title={!files.length && preview ? '当前为留存文件的识别结果，添加新文件后可再次导入' : undefined} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
