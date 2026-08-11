@@ -1095,6 +1095,7 @@ export function MrFormPage() {
                       step="0.01"
                       value={calculated.totalExcludingTax ?? ''}
                       disabled={!calculated.pricingMode || Number(calculated.pricingMode) === 3}
+                      placeholder="订单总金额（不含税）"
                       onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
                     />
                   </Field>
@@ -1189,7 +1190,7 @@ export function MrFormPage() {
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
               </Field>
               <Field label="客户 P/O" editable={editable} readonlyText={textValue(calculated.customerPo)}>
-                <Input value={calculated.customerPo || ''} onChange={(e) => patch({ customerPo: e.target.value })} />
+                <Input value={calculated.customerPo || ''} placeholder="客户采购订单(PO)编号，选填" onChange={(e) => patch({ customerPo: e.target.value })} />
               </Field>
             </div>
           </SectionCard>
@@ -1205,10 +1206,10 @@ export function MrFormPage() {
                     </Select>
                   </Field>
                   <Field label="开票/收款时间" editable={editable} readonlyText={textValue(calculated.billingTiming)}>
-                    <Input value={calculated.billingTiming || ''} onChange={(e) => patch({ billingTiming: e.target.value })} />
+                    <Input value={calculated.billingTiming || ''} placeholder="如：预计1月开票、4月收款" onChange={(e) => patch({ billingTiming: e.target.value })} />
                   </Field>
                   <Field label="开票内容" editable={editable} readonlyText={textValue(calculated.billingContent)} className="sm:col-span-2">
-                    <Input value={calculated.billingContent || ''} onChange={(e) => patch({ billingContent: e.target.value })} />
+                    <Input value={calculated.billingContent || ''} placeholder="如：系统集成服务费 / 设备销售" onChange={(e) => patch({ billingContent: e.target.value })} />
                   </Field>
                 </div>
               </SubPanel>
@@ -1222,7 +1223,7 @@ export function MrFormPage() {
                   </Field>
                   {calculated.paymentTerms === '其他' ? (
                     <Field required={calculated.paymentTerms === '其他'} label="付款条件说明" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
-                      <Input value={calculated.paymentOther || ''} onChange={(e) => patch({ paymentOther: e.target.value })} />
+                      <Input value={calculated.paymentOther || ''} placeholder="如：验收后 60 天" onChange={(e) => patch({ paymentOther: e.target.value })} />
                     </Field>
                   ) : null}
                 </div>
@@ -1292,7 +1293,7 @@ export function MrFormPage() {
               </Field>
               {calculated.acceptance === '其他' ? (
                 <Field required={calculated.acceptance === '其他'} label="验收说明" editable={editable} readonlyText={textValue(calculated.acceptanceOther)}>
-                  <Input value={calculated.acceptanceOther || ''} onChange={(e) => patch({ acceptanceOther: e.target.value })} />
+                  <Input value={calculated.acceptanceOther || ''} placeholder="请说明验收方式/标准" onChange={(e) => patch({ acceptanceOther: e.target.value })} />
                 </Field>
               ) : null}
               <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
@@ -1321,6 +1322,7 @@ export function MrFormPage() {
           <SectionCard id="remark" title="备注与其他" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="毛利认列">
+                {editable ? <p className="-mt-2 text-xs text-muted-foreground">按财务要求一次性或分期确认本单毛利；分期需选开始月份、填写期数与总金额。</p> : null}
                 <ScheduleEntriesEditor
                   entries={calculated.grossProfitRecognitions || []}
                   editable={editable}
@@ -1329,6 +1331,7 @@ export function MrFormPage() {
                 />
               </SubPanel>
               <SubPanel title="台湾业务转拨">
+                {editable ? <p className="-mt-2 text-xs text-muted-foreground">将部分毛利转拨给台湾业务方，需填写接收方名称与转拨金额。</p> : null}
                 <ScheduleEntriesEditor
                   entries={calculated.taiwanBusinessTransfers || []}
                   editable={editable}
@@ -1354,7 +1357,7 @@ export function MrFormPage() {
               </SubPanel>
             </div>
             <Field label="备注" editable={editable} readonlyText={textValue(calculated.remark)} className="mt-4">
-              <Textarea rows={4} value={calculated.remark || ''} onChange={(e) => patch({ remark: e.target.value })} />
+              <Textarea rows={4} value={calculated.remark || ''} placeholder="补充说明（选填）" onChange={(e) => patch({ remark: e.target.value })} />
             </Field>
           </SectionCard>
 

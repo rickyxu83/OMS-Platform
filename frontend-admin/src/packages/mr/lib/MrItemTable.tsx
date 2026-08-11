@@ -338,16 +338,16 @@ function ItemEditorPanel({
         <SubPanel title="品项信息">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Field label="品名及描述" editable={editable} readonlyText={textValue(item.description || item.name)} className="md:col-span-2 xl:col-span-4">
-              <Textarea rows={5} value={item.description || item.name || ''} disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+              <Textarea rows={5} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
             </Field>
             <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)} className="md:col-span-2">
-              <Textarea rows={2} value={item.oemSpec || ''} onChange={(event) => onChange({ oemSpec: event.target.value })} />
+              <Textarea rows={2} value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" onChange={(event) => onChange({ oemSpec: event.target.value })} />
             </Field>
             <Field label="公司料号" editable={editable} readonlyText={textValue(item.companyPartNo)}>
-              <Input value={item.companyPartNo || ''} onChange={(event) => onChange({ companyPartNo: event.target.value })} />
+              <Input value={item.companyPartNo || ''} placeholder="公司内部产品料号，选填" onChange={(event) => onChange({ companyPartNo: event.target.value })} />
             </Field>
             <Field label="保固与服务" editable={editable} readonlyText={textValue(item.warrantyService)}>
-              <Input value={item.warrantyService || ''} onChange={(event) => onChange({ warrantyService: event.target.value })} />
+              <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" onChange={(event) => onChange({ warrantyService: event.target.value })} />
             </Field>
           </div>
         </SubPanel>
@@ -375,7 +375,7 @@ function ItemEditorPanel({
                 {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="mt-1 block text-xs text-emerald-700">已关联 OMS 供应商目录</span> : null}
               </Field>
               <Field label="采购订单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
-                <Input value={item.purchaseOrderNo || ''} onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />
+                <Input value={item.purchaseOrderNo || ''} placeholder="向供应商下单的 PO 编号，选填" onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />
               </Field>
               <Field required={!serviceRow} label="采购成本（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
                 <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />

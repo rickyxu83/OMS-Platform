@@ -539,7 +539,7 @@ export function QuotationImportDialog({
                           <span className="text-sm text-muted-foreground">{index + 1}</span>
                         </div>
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                          <Textarea className={`md:col-span-2 xl:col-span-2 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} aria-label={`第 ${index + 1} 项品名及描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+                          <Textarea className={`md:col-span-2 xl:col-span-2 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" aria-label={`第 ${index + 1} 项品名及描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={0} step={0.01} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="未税单价" aria-label={`第 ${index + 1} 项未税单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
@@ -557,11 +557,11 @@ export function QuotationImportDialog({
                               </Select>
                             </div>
                           ) : null}
-                          <Input value={item.oemSpec || ''} placeholder="原厂规格" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
-                          <Input list="mr-import-vendor-options" value={item.vendor || ''} placeholder="供应商" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
-                          <Input value={item.purchaseOrderNo || ''} placeholder="采购订单号" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
-                          <Input value={item.warrantyService || ''} placeholder="保固与服务" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
-                          <Input className="md:col-span-2" value={item.installBy || ''} placeholder="品项装机方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
+                          <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
+                          <Input list="mr-import-vendor-options" value={item.vendor || ''} placeholder="供应商完整名称，选填" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
+                          <Input value={item.purchaseOrderNo || ''} placeholder="向供应商下单的 PO 编号，选填" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
+                          <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
+                          <Input className="md:col-span-2" value={item.installBy || ''} placeholder="如：敦阳 / 供应商 / 第三方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
                           {(item.reviewFields?.length || item.validationMessages?.length) ? <div className="md:col-span-2 xl:col-span-4 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">需要核对：{item.validationMessages?.join('；') || item.reviewFields?.map(reviewFieldLabel).join('、')}</div> : null}
                           {item.matchCandidates?.length ? (
                             <div className="space-y-2 md:col-span-2 xl:col-span-4 rounded border border-blue-200 bg-blue-50 p-3">
