@@ -357,6 +357,14 @@ export function QuotationImportDialog({
     }
   }
 
+  // 再次打开弹窗时自动载入留存文件的识别结果（缓存命中秒回），避免空列表只剩一行留存附件
+  useEffect(() => {
+    if (!open || !editable) return
+    if (!storedFiles.length || salesFiles.length || purchaseFiles.length || preview || loading) return
+    void parse([], [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   const applyLocalRemoval = (removedNames: string[]) => {
     setPreview((current) => {
       if (!current) return current
