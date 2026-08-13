@@ -1111,12 +1111,15 @@ async function submitPurchase(req, res) {
   await ensureTables()
   const note = String(req.body?.note || '').trim().slice(0, 500) || null
   const rows = Array.isArray(req.body?.items) ? req.body.items : []
+  let auditChanges = []
+  let wasDone = false
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以填写采购订单号')
     if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
     if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
-    const [itemRows] = await connection.execute('SELECT id FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
+    wasDone = String(order.purchaseStatus || '') === 'done'
+    const [itemRows] = await connection.execute('SELECT id, row_no, name, purchase_order_no FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
     const byId = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.purchaseOrderNo || '').trim().slice(0, 255)]))
     const updates = []
     for (const item of itemRows) {
@@ -1124,6 +1127,8 @@ async function submitPurchase(req, res) {
       if (value === undefined) throw badRequest('请完整提交所有品项的采购订单号')
       if (!value) throw badRequest('每个品项都需填写采购订单号；如整单无需采购，请使用「标记无需采购」')
       updates.push([value, Number(item.id)])
+      const before = String(item.purchase_order_no || '')
+      if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, before: before || null, after: value })
     }
     for (const [value, itemId] of updates) {
       await connection.execute('UPDATE mr_items SET purchase_order_no = :value WHERE id = :itemId AND mr_id = :mrId', { value, itemId, mrId: order.id })
@@ -1145,6 +1150,28 @@ async function submitPurchase(req, res) {
         { mrId: order.id, recipientId: order.salesOwnerId },
       )
     }
+    // 审计留痕：首次提交记 purchase_submit，完成后再次修改记 purchase_update（含旧值→新值）
+    await connection.execute(
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, :action, :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: order.id,
+        action: wasDone ? 'purchase_update' : 'purchase_submit',
+        detailJson: JSON.stringify({
+          customerName: order.customerName,
+          ctrlNo: order.ctrlNo,
+          note,
+          changes: auditChanges,
+        }),
+      },
+    )
+    // 触发重新归档：归档 PDF 取审批冻结快照 + 实时采购订单号
+    await connection.execute(
+      `UPDATE mr_orders SET archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL
+       WHERE id = :mrId`,
+      { mrId: order.id },
+    )
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -1166,6 +1193,15 @@ async function skipPurchase(req, res) {
       `UPDATE mr_purchase_tasks SET status = 'skipped', completed_at = NOW(), completed_by = :userId
        WHERE mr_id = :mrId AND status = 'pending'`,
       { mrId: order.id, userId: req.user.id },
+    )
+    await connection.execute(
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, 'purchase_skip', :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: order.id,
+        detailJson: JSON.stringify({ customerName: order.customerName, ctrlNo: order.ctrlNo, note }),
+      },
     )
     if (order.salesOwnerId) {
       await connection.execute(
