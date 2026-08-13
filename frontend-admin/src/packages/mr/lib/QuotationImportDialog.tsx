@@ -191,6 +191,7 @@ export function QuotationImportDialog({
   onOpenChange,
   onApply,
   onStoredFilesChange,
+  onLinkedItemsRemoved,
 }: {
   orderId: string | number
   open: boolean
@@ -202,6 +203,8 @@ export function QuotationImportDialog({
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult, pricingMode: number) => void
   onStoredFilesChange?: (files: QuotationFile[]) => void
+  /** 删除留存文件后通知外层同步移除该文件导入的品项（后端已联动删除，避免外层保存时写回） */
+  onLinkedItemsRemoved?: (fileName: string, removedItems: number) => void
 }) {
   const [salesFiles, setSalesFiles] = useState<File[]>([])
   const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
@@ -401,12 +404,13 @@ export function QuotationImportDialog({
   }
 
   const removeStoredFile = async (file: QuotationFile) => {
-    if (!window.confirm(`确定删除留存的报价文件「${file.name}」吗？该文件的识别结果将一并从当前预览中移除。`)) return
+    if (!window.confirm(`确定删除留存的报价文件「${file.name}」吗？该文件的识别结果将一并从当前预览中移除，已导入的关联品项也会同步移除。`)) return
     setDeletingFileId(file.id)
     try {
       const result = await deleteQuotationFile(orderId, file.id)
       setRemovedStoredIds((current) => new Set([...current, file.id]))
       onStoredFilesChange?.(result.files)
+      onLinkedItemsRemoved?.(file.name, result.removedItems || 0)
       applyLocalRemoval([file.name])
     } catch (err) {
       toast.error((err as Error).message || '删除报价文件失败')
@@ -622,7 +626,7 @@ export function QuotationImportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-          {editable ? <Button disabled={!preview || loading || !files.length} title={!files.length && preview ? '当前为留存文件的识别结果，添加新文件后可再次导入' : undefined} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
+          {editable ? <Button disabled={!preview || loading || !files.length} title={!files.length && preview ? '当前为留存文件的识别结果，添加新文件后可再次导入；删除留存文件后其关联品项已联动移除，无需重新导入' : undefined} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

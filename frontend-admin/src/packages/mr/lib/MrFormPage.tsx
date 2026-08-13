@@ -859,6 +859,17 @@ export function MrFormPage() {
     }
   }
 
+  /** 弹窗内删除留存报价文件后：外层同步移除该文件导入的品项（后端已联动删除，避免外层保存时把已删品项写回）。 */
+  const handleLinkedItemsRemoved = (fileName: string) => {
+    if (!form) return
+    const items = (form.items || []).filter((item) => item.costSource !== fileName && item.salesSource !== fileName)
+    const removed = (form.items || []).length - items.length
+    if (removed > 0) {
+      patch({ items })
+      toast.success(`已同步移除「${fileName}」导入的 ${removed} 个品项，保存后生效`)
+    }
+  }
+
   const deleteAttachment = async (file: QuotationFile) => {
     if (!id) return
     if (dirty) {
@@ -866,8 +877,10 @@ export function MrFormPage() {
       return
     }
     const linkedCount = (form?.items || []).filter((item) => item.costSource === file.name || item.salesSource === file.name).length
-    const linkageTip = linkedCount > 0 ? `，并同时删除从该文件导入的 ${linkedCount} 个品项` : ''
-    if (!window.confirm(`确定删除附件「${file.name}」吗${linkageTip}？`)) return
+    const message = linkedCount > 0
+      ? `确定删除附件「${file.name}」吗？将同时删除从该文件导入的 ${linkedCount} 个品项。`
+      : `确定删除附件「${file.name}」吗？该文件没有关联的导入品项。`
+    if (!window.confirm(message)) return
     setBusy(true)
     try {
       const result = await deleteQuotationFile(id, file.id)
@@ -1472,6 +1485,7 @@ export function MrFormPage() {
           onOpenChange={setImportOpen}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
           onStoredFilesChange={(files) => patch({ quotationFiles: files })}
+          onLinkedItemsRemoved={handleLinkedItemsRemoved}
         />
       ) : null}
 
