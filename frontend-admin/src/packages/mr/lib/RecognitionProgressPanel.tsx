@@ -74,8 +74,8 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
       setPercent(AI_START_PERCENT)
     }
     const ticker = window.setInterval(() => {
-      setPercent((current) => Math.min(AI_CAP_PERCENT, current + AI_RISE_PER_SECOND))
-    }, 1000)
+      setPercent((current) => Math.min(AI_CAP_PERCENT, current + 0.2))
+    }, 250)
     const message = window.setInterval(() => {
       setMessageIndex((index) => (index + 1) % AI_MESSAGES.length)
     }, AI_MESSAGE_INTERVAL_MS)
@@ -121,10 +121,11 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
       </div>
 
       <style>{`
-        /* AI 阶段进度条：基础渐变（primary → 天蓝 → primary → 天蓝）+ 白色光带层背景位置滚动（参考范例） */
+        /* AI 阶段进度条：基础渐变（primary → 天蓝 → primary → 天蓝）+ 白色光带层滚动。
+           光带背景固定 160px 宽，动画用像素移动 160px（恰好一个周期），保证无缝循环不跳帧。 */
         @keyframes mr-progress-roll {
-          0% { background-position: 0% 0, 0 0; }
-          100% { background-position: 40% 0, 0 0; }
+          0% { background-position: 0 0, 0 0; }
+          100% { background-position: 160px 0, 0 0; }
         }
         .mr-ai-progress-bar {
           position: relative;
@@ -132,8 +133,8 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
           background-image:
             linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%),
             linear-gradient(90deg, var(--primary), #38bdf8, var(--primary), #38bdf8);
-          background-size: 40% 100%, 100% 100%;
-          background-repeat: repeat, no-repeat;
+          background-size: 160px 100%, 100% 100%;
+          background-repeat: repeat-x, no-repeat;
           animation: mr-progress-roll 1.1s linear infinite;
         }
         @keyframes mr-progress-breathe {
