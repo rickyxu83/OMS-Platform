@@ -111,7 +111,7 @@ async function signatureRequestByToken(token, { connection = null, forUpdate = f
   const execute = connection ? connection.execute.bind(connection) : async (sql, params = {}) => [await query(sql, params)]
   const [rows] = await execute(
     `SELECT usr.id, usr.user_id, usr.status, usr.expires_at, usr.signed_at,
-            u.real_name, u.username, u.status AS user_status
+            u.real_name, u.username, u.role, u.status AS user_status
      FROM user_signature_requests usr
      JOIN users u ON u.id = usr.user_id
      WHERE usr.token_hash = :tokenHash
@@ -158,6 +158,7 @@ async function publicSignatureRequest(req, res) {
     item: {
       realName: row.real_name || row.username || '',
       username: row.username || '',
+      role: row.role || '',
       signed: Boolean(row.signed_at),
       signedAt: row.signed_at || null,
       expiresAt: row.expires_at || null,

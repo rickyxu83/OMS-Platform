@@ -9,10 +9,26 @@ import { api } from "@/services/api";
 interface EngineerSignatureItem {
   realName?: string;
   username?: string;
+  role?: string;
   signed?: boolean;
   signedAt?: string;
   expiresAt?: string;
 }
+
+// 与 Users.tsx 的 ROLE_LABELS 对齐：签名页文案随签署人角色显示，不再写死“工程师”
+const ROLE_LABELS: Record<string, string> = {
+  admin: "管理员",
+  assistant: "助理",
+  assistant_supervisor: "助理主管",
+  dispatcher: "调度",
+  operations_director: "运营负责人",
+  engineering_supervisor: "工程主管",
+  administrative_supervisor: "行政主管",
+  sales_supervisor: "业务主管",
+  sales: "业务",
+  engineer: "工程师",
+  purchaser: "采购",
+};
 
 function formatDateTime(value?: string) {
   return String(value || "").replace("T", " ").slice(0, 16) || "-";
@@ -70,13 +86,14 @@ export function EngineerSignature() {
   }
 
   const signerName = item?.realName || item?.username || "";
+  const roleLabel = ROLE_LABELS[item?.role || ""] || "";
 
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-5 text-foreground">
       <div className="mx-auto grid w-full max-w-xl gap-4">
         <header className="space-y-1 py-2">
           <div className="text-sm font-semibold text-muted-foreground">OMS Platform 运维智管</div>
-          <h1 className="text-3xl font-semibold tracking-normal">工程师签名</h1>
+          <h1 className="text-3xl font-semibold tracking-normal">{roleLabel ? `${roleLabel}签名` : "手写签名"}</h1>
         </header>
 
         {loading ? (
@@ -101,7 +118,7 @@ export function EngineerSignature() {
                   <div className="text-base font-semibold">正在为 {signerName || "本人"} 设置系统签名</div>
                   <div className="mt-1 text-sm text-muted-foreground">确认无误后，在下方手写签署。本次签名将作为该账号在系统中的电子签名，提交后立即生效。</div>
                 </div>
-                <Badge variant="outline">工程师签署</Badge>
+                <Badge variant="outline">{roleLabel ? `${roleLabel}签署` : "本人签署"}</Badge>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1 rounded-md border bg-slate-50 px-2 py-1">
