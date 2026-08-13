@@ -38,6 +38,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor, serviceItemsLabel, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
+import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
+import { Skeleton } from "@/components/Skeleton";
 
 interface ServiceOrder {
   id: string | number;
@@ -934,6 +936,7 @@ export function ServiceOrders() {
   const loadSeqRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ProgressState | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -1325,6 +1328,7 @@ export function ServiceOrders() {
     if (exporting) return;
     setExporting(true);
     setError("");
+    setExportProgress({ stage: "export", progress: 3, message: "正在准备导出…" });
     try {
       const effectiveIds = orderIds.length ? orderIds : selectedIds;
       let queryString: string;
@@ -1357,6 +1361,8 @@ export function ServiceOrders() {
       setError(e instanceof Error ? e.message : "PDF 导出失败");
     } finally {
       setExporting(false);
+      setExportProgress({ stage: "done", progress: 100, message: "导出完成" });
+      window.setTimeout(() => setExportProgress(null), 1200);
     }
   }
 
@@ -1771,6 +1777,16 @@ export function ServiceOrders() {
 
   return (
     <div className="p-6 space-y-6">
+      {exportProgress ? (
+        <div className="fixed right-4 top-4 z-[60] w-80 sm:right-6 sm:top-6">
+          <ProgressPanel
+            progress={exportProgress}
+            title="PDF 导出"
+            creep={{ from: 5, to: 90, perSecond: 5 }}
+            hints={["正在查询工单数据…", "正在排版生成 PDF…", "正在写入导出文件…"]}
+          />
+        </div>
+      ) : null}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">{t.title}</h1>
@@ -1961,11 +1977,19 @@ export function ServiceOrders() {
               </TableHeader>
               <TableBody>
                 {initialLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                      <Loader2 className="mr-2 inline-block h-5 w-5 animate-spin" /> {t.list.loading}
-                    </TableCell>
-                  </TableRow>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={`skeleton-${i}`}>
+                      <TableCell colSpan={8} className="py-1">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-4 flex-1" />
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-6 w-14 rounded-full" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
@@ -1973,7 +1997,7 @@ export function ServiceOrders() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredOrders.map((order) => {
+                  filteredOrders.map((order, rowIndex) => {
                     const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                     const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                     const workflowStatus = getWorkflowStatus(order);
@@ -1986,7 +2010,8 @@ export function ServiceOrders() {
                         key={order.id}
                         role="button"
                         tabIndex={0}
-                        className="cursor-pointer"
+                        className="list-row-enter cursor-pointer"
+                        style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                         onClick={() => openOrderDetailFromList(order)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;

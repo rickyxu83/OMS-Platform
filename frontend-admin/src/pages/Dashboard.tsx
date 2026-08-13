@@ -13,6 +13,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
+import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
+import { CountUp } from "@/components/CountUp";
+import { Skeleton } from "@/components/Skeleton";
 import { api, fetchSummaryStream } from "@/services/api";
 
 interface Summary {
@@ -686,75 +689,7 @@ function PreviewBlock({ label, value, markdown = false }: { label: string; value
   );
 }
 
-interface SummaryProgress {
-  stage: string;
-  progress: number;
-  message: string;
-}
-
-// AI 总结生成进度面板：平滑爬升的进度条 + 百分比 + 分步文字描述
-export function WorkSummaryProgress({ progress, t }: { progress: SummaryProgress; t: any }) {
-  const displayRef = useRef(progress.progress);
-  const [display, setDisplay] = useState(progress.progress);
-  const [hintIndex, setHintIndex] = useState(0);
-  const aiStartRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (progress.stage === "ai") aiStartRef.current = Date.now();
-  }, [progress.stage]);
-
-  // AI 阶段在服务端锚点（35%）与 89% 之间按时间平滑爬升，避免长时间看起来卡住
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      let target = progress.progress;
-      if (progress.stage === "ai") {
-        const elapsed = (Date.now() - aiStartRef.current) / 1000;
-        target = Math.max(target, Math.min(89, 35 + elapsed * 0.8));
-      }
-      displayRef.current += (target - displayRef.current) * 0.06;
-      if (Math.abs(target - displayRef.current) < 0.2) displayRef.current = target;
-      setDisplay(Math.min(100, Math.round(displayRef.current)));
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [progress]);
-
-  // AI 阶段轮换提示文案
-  useEffect(() => {
-    if (progress.stage !== "ai") return;
-    const hints = t?.reportDialog?.progress?.aiHints || [];
-    if (!hints.length) return;
-    const timer = window.setInterval(() => setHintIndex((i) => (i + 1) % hints.length), 4000);
-    return () => window.clearInterval(timer);
-  }, [progress.stage, t]);
-
-  const hints = t?.reportDialog?.progress?.aiHints || [];
-  const message =
-    progress.stage === "ai"
-      ? (hints[hintIndex] || progress.message || t?.reportDialog?.progress?.ai || "AI 正在分析…")
-      : (progress.message || t?.reportDialog?.progress?.query || "正在生成…");
-
-  return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          {t?.reportDialog?.progressTitle || "AI 总结生成中"}
-        </div>
-        <span className="font-mono text-sm font-semibold text-primary tabular-nums">{display}%</span>
-      </div>
-      <div className="relative h-2.5 overflow-hidden rounded-full bg-muted">
-        <div
-          className={`h-full rounded-full ${progress.stage === "ai" ? "ai-progress-bar" : "bg-primary"} transition-[width] duration-300 ease-out`}
-          style={{ width: `${display}%` }}
-        />
-      </div>
-      <p className="mt-2 min-h-5 text-sm text-muted-foreground animate-pulse">{message}</p>
-    </div>
-  );
-}
+interface SummaryProgress extends ProgressState {}
 
 // 通过 SSE 读取 AI 总结生成进度（复用 api.ts 的 resolveApiBase 与鉴权处理）
 // 进度面板组件见上方 WorkSummaryProgress
@@ -1022,8 +957,8 @@ export function Dashboard() {
               </CardHeader>
               <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-2xl font-bold sm:text-3xl">
-                    {loading ? <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /> : stat.value}
+                  <div className="text-2xl font-bold sm:text-3xl tabular-nums">
+                    {loading ? <Skeleton className="h-8 w-16" /> : <CountUp value={stat.value} />}
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
@@ -1250,9 +1185,11 @@ export function Dashboard() {
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
             {previewLoading ? (
-              <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
-                {t.recent.previewLoading}
+              <div className="mb-4 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-4 w-3/4" />
               </div>
             ) : null}
             {previewError ? (
@@ -1431,7 +1368,15 @@ export function Dashboard() {
               </label>
             </div>
           </div>
-          {summaryProgress ? <WorkSummaryProgress progress={summaryProgress} t={t} /> : null}
+          {summaryProgress ? (
+            <ProgressPanel
+              progress={summaryProgress}
+              title={t.reportDialog.progressTitle}
+              animated={summaryProgress.stage === "ai"}
+              creep={{ from: 35, to: 89, perSecond: 0.8 }}
+              hints={[...t.reportDialog.progress.aiHints]}
+            />
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReportDialogOpen(false)} disabled={exporting}>
               {t.reportDialog.cancel}

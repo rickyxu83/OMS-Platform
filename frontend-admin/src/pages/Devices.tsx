@@ -26,6 +26,8 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
+import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
+import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
@@ -1409,6 +1411,7 @@ export function Devices() {
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
+  const [normalizationProgress, setNormalizationProgress] = useState<ProgressState | null>(null);
   const [modelApplying, setModelApplying] = useState(false);
   const [modelCompareResult, setModelCompareResult] = useState<ExistingModelNormalizationResult | null>(null);
   const filteredMaintenanceParties = useMemo(
@@ -1525,22 +1528,30 @@ export function Devices() {
     const uniqueJobs = [...new Map(jobs.filter((job) => job.id).map((job) => [String(job.id), job])).values()];
     if (!uniqueJobs.length) return;
 
-    const toastId = toast.loading(
-      uniqueJobs.length === 1
-        ? `正在后台搜索型号：${uniqueJobs[0].inputModel || "设备型号"}`
-        : `正在后台搜索 ${uniqueJobs.length} 个设备型号`,
-      {
-        position: MODEL_NORMALIZATION_TOAST_POSITION,
-        duration: Infinity,
-      },
-    );
+    const total = uniqueJobs.length;
+    const firstInput = uniqueJobs[0].inputModel || "设备型号";
+    setNormalizationProgress({
+      stage: "task",
+      progress: 0,
+      message: total > 1 ? `正在后台搜索 ${total} 个设备型号…` : `正在后台搜索型号：${firstInput}`,
+    });
 
+    let doneCount = 0;
     void (async () => {
-      const results = await Promise.all(uniqueJobs.map(waitForModelNormalizationJob));
+      const results = await Promise.all(uniqueJobs.map(async (job) => {
+        const result = await waitForModelNormalizationJob(job);
+        doneCount += 1;
+        setNormalizationProgress({
+          stage: "task",
+          progress: Math.min(99, Math.round((doneCount / total) * 100)),
+          message: total > 1 ? `正在后台搜索型号…（${doneCount}/${total}）` : "正在后台搜索型号…",
+        });
+        return result;
+      }));
       if (!mountedRef.current) return;
+      setNormalizationProgress(null);
 
       const toastOptions = {
-        id: toastId,
         position: MODEL_NORMALIZATION_TOAST_POSITION,
         duration: 9000,
       };
@@ -2503,6 +2514,11 @@ export function Devices() {
 
   return (
     <div className="p-6 space-y-6">
+      {normalizationProgress ? (
+        <div className="fixed right-4 top-4 z-[60] w-80 sm:right-6 sm:top-6">
+          <ProgressPanel progress={normalizationProgress} title="型号后台搜索" />
+        </div>
+      ) : null}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold">设备资产</h1>
@@ -2722,8 +2738,17 @@ export function Devices() {
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             {initialLoading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <div className="p-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-6 w-14 rounded-full" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
@@ -2740,7 +2765,7 @@ export function Devices() {
                   <div className="text-center">状态</div>
                   {canManageDevices ? <div className="text-center">操作</div> : null}
                 </div>
-                {filtered.map((device) => {
+                {filtered.map((device, rowIndex) => {
                   const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
                   const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
                   const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
@@ -2750,7 +2775,8 @@ export function Devices() {
                       key={device.id}
                       role="button"
                       tabIndex={0}
-                      className={`grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
+                      className={`list-row-enter grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
+                      style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
                       onClick={() => openDeviceDetail(device)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
@@ -2956,9 +2982,12 @@ export function Devices() {
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
                   {detailLoading ? (
-                    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      正在加载完整设备详情…
+                    <div className="space-y-2">
+                      <Skeleton className="h-5 w-1/2" />
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
                     </div>
                   ) : null}
 
