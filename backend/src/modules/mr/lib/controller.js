@@ -62,6 +62,7 @@ const {
   assertAssistantMapping,
   resolveStepAssignee,
   activateCurrentStep,
+  activatePurchaseTask,
   completeTask,
   saveSubmissionBaseline,
   freezeVersion,
@@ -336,6 +337,7 @@ function canView(order, user) {
   if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
   if (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)) return true
   if (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)) return true
+  if (user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)) return true
   return Boolean(order.approvalParticipant)
 }
 
@@ -365,6 +367,13 @@ function canVoid(order, user) {
     || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
 }
 
+function canPurchase(order, user) {
+  if (order.status !== 'approved') return false
+  if (!['pending', 'done', 'skipped'].includes(String(order.purchaseStatus || ''))) return false
+  if (user.role === 'admin') return true
+  return user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)
+}
+
 function canApprove(order, user) {
   if (order.status !== 'in_review' || !order.currentStepKey || Number(order.currentAssigneeUserId) !== Number(user.id)) return false
   if (order.currentStepKey === 'sales') return SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)
@@ -382,6 +391,7 @@ async function loadRawOrder(id, user = null) {
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, updater.real_name AS updated_by_name,
             sales.real_name AS sales_owner_name, sales.role AS sales_owner_role, sales.assistant_user_id, assistant.real_name AS assistant_name,
+            purchase_assignee.real_name AS purchase_assignee_name, purchaser_done.real_name AS purchased_by_name,
             c.code AS customer_code,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, pending.assignment_error,
@@ -395,6 +405,8 @@ async function loadRawOrder(id, user = null) {
      LEFT JOIN users updater ON updater.id = o.updated_by
      LEFT JOIN users sales ON sales.id = o.sales_owner_id
      LEFT JOIN users assistant ON assistant.id = sales.assistant_user_id
+     LEFT JOIN users purchase_assignee ON purchase_assignee.id = o.purchase_assignee_user_id
+     LEFT JOIN users purchaser_done ON purchaser_done.id = o.purchased_by
      LEFT JOIN customers c ON c.id = o.customer_id
      LEFT JOIN mr_approvals pending ON pending.id = (
        SELECT a.id FROM mr_approvals a
@@ -487,8 +499,16 @@ async function loadDetail(id, user) {
     items: Array.isArray(frozenSnapshot.items) ? frozenSnapshot.items : items,
     totals: frozenSnapshot.totals || liveTotals,
   } : { ...merged, totals: liveTotals }
+  // 冻结快照的品项缺少数据库 id，且不含审批后由采购填写的采购订单号；
+  // 按 rowNo 叠加实时 id 与 purchaseOrderNo，归档 PDF 仍保持审批时快照不变
+  const liveItemByRowNo = new Map(rawItems.map((raw) => [Number(raw.rowNo), raw]))
+  const displayedItems = (displayed.items || []).map((item) => {
+    const live = liveItemByRowNo.get(Number(item.rowNo))
+    return live ? { ...item, id: live.id ?? item.id, purchaseOrderNo: live.purchaseOrderNo ?? item.purchaseOrderNo } : item
+  })
   return {
     ...displayed,
+    items: displayedItems,
     approvals,
     approvalHistory,
     currentVersion,
@@ -503,6 +523,7 @@ async function loadDetail(id, user) {
       canVoid: canVoid(order, user),
       canApprove: canApprove(order, user),
       canWithdraw: canWithdraw(order, user),
+      canPurchase: canPurchase(order, user),
     },
   }
 }
@@ -617,6 +638,11 @@ async function list(req, res) {
     where.push('o.status = :status')
     params.status = status
   }
+  const purchaseStatus = String(req.query.purchaseStatus || '').trim()
+  if (purchaseStatus) {
+    where.push('o.purchase_status = :purchaseStatus')
+    params.purchaseStatus = purchaseStatus
+  }
   const q = String(req.query.q || '').trim()
   if (q) {
     where.push('(o.customer_name LIKE :q OR o.ctrl_no LIKE :q OR c.code LIKE :q)')
@@ -626,6 +652,7 @@ async function list(req, res) {
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, sales.real_name AS sales_owner_name,
             sales.assistant_user_id, assistant.real_name AS assistant_name,
+            purchase_assignee.real_name AS purchase_assignee_name,
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, current_assignee.real_name AS current_assignee_name, pending.assignment_error,
@@ -634,6 +661,7 @@ async function list(req, res) {
      LEFT JOIN users creator ON creator.id = o.created_by
      LEFT JOIN users sales ON sales.id = o.sales_owner_id
      LEFT JOIN users assistant ON assistant.id = sales.assistant_user_id
+     LEFT JOIN users purchase_assignee ON purchase_assignee.id = o.purchase_assignee_user_id
      LEFT JOIN customers c ON c.id = o.customer_id
      LEFT JOIN mr_approvals pending ON pending.id = (
        SELECT a.id FROM mr_approvals a WHERE a.mr_id = o.id AND a.action IS NULL ORDER BY a.cycle DESC, a.seq LIMIT 1
@@ -646,7 +674,7 @@ async function list(req, res) {
   )
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: canWithdraw(order, req.user) } }
+    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user) } }
   }) })
 }
 
@@ -895,6 +923,8 @@ async function decide(req, res, action) {
       await connection.execute(
         `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
                 archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
+                purchase_status = 'pending', purchase_assignee_user_id = NULL, purchase_assignment_error = NULL,
+                purchased_at = NULL, purchased_by = NULL, purchase_note = NULL,
                 updated_by = :userId WHERE id = :id`,
         { id: req.params.id, userId: req.user.id },
       )
@@ -903,6 +933,12 @@ async function decide(req, res, action) {
          VALUES (:mrId, :recipientId, 'approved')`,
         { mrId: req.params.id, recipientId: order.salesOwnerId },
       )
+      await activatePurchaseTask(connection, {
+        id: Number(req.params.id),
+        customerName: order.customerName,
+        salesOwnerId: Number(order.salesOwnerId) || null,
+        createdBy: Number(order.createdBy) || req.user.id,
+      }, req.user.id)
     } else {
       await connection.execute('UPDATE mr_orders SET updated_by = :userId WHERE id = :id', { id: req.params.id, userId: req.user.id })
       await activateCurrentStep(connection, order, current.cycle, order.createdBy || req.user.id)
@@ -1041,10 +1077,91 @@ async function voidOrder(req, res) {
       { mrId: req.params.id },
     )
     await connection.execute(
+      `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
+       WHERE mr_id = :mrId AND status = 'pending'`,
+      { mrId: req.params.id },
+    )
+    await connection.execute(
+      `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
+       WHERE mr_id = :mrId AND event IN ('purchase_task', 'purchase_transfer') AND status IN ('pending', 'failed')`,
+      { mrId: req.params.id },
+    )
+    await connection.execute(
       `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
        VALUES (:mrId, :recipientId, 'void')`,
       { mrId: req.params.id, recipientId: order.salesOwnerId },
     )
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
+async function submitPurchase(req, res) {
+  await ensureTables()
+  const note = String(req.body?.note || '').trim().slice(0, 500) || null
+  const rows = Array.isArray(req.body?.items) ? req.body.items : []
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以填写采购订单号')
+    if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
+    if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
+    const [itemRows] = await connection.execute('SELECT id FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
+    const byId = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.purchaseOrderNo || '').trim().slice(0, 255)]))
+    const updates = []
+    for (const item of itemRows) {
+      const value = byId.get(Number(item.id))
+      if (value === undefined) throw badRequest('请完整提交所有品项的采购订单号')
+      if (!value) throw badRequest('每个品项都需填写采购订单号；如整单无需采购，请使用「标记无需采购」')
+      updates.push([value, Number(item.id)])
+    }
+    for (const [value, itemId] of updates) {
+      await connection.execute('UPDATE mr_items SET purchase_order_no = :value WHERE id = :itemId AND mr_id = :mrId', { value, itemId, mrId: order.id })
+    }
+    await connection.execute(
+      `UPDATE mr_orders SET purchase_status = 'done', purchased_at = NOW(), purchased_by = :userId,
+              purchase_note = :note, updated_by = :userId WHERE id = :mrId`,
+      { mrId: order.id, userId: req.user.id, note },
+    )
+    await connection.execute(
+      `UPDATE mr_purchase_tasks SET status = 'done', completed_at = NOW(), completed_by = :userId
+       WHERE mr_id = :mrId AND status = 'pending'`,
+      { mrId: order.id, userId: req.user.id },
+    )
+    if (order.salesOwnerId) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'purchase_done')`,
+        { mrId: order.id, recipientId: order.salesOwnerId },
+      )
+    }
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
+async function skipPurchase(req, res) {
+  await ensureTables()
+  const note = String(req.body?.note || '').trim().slice(0, 500) || null
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以标记无需采购')
+    if (String(order.purchaseStatus || '') !== 'pending') throw badRequest('当前 MR 不在待采购状态')
+    if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
+    await connection.execute(
+      `UPDATE mr_orders SET purchase_status = 'skipped', purchased_at = NOW(), purchased_by = :userId,
+              purchase_note = :note, updated_by = :userId WHERE id = :mrId`,
+      { mrId: order.id, userId: req.user.id, note },
+    )
+    await connection.execute(
+      `UPDATE mr_purchase_tasks SET status = 'skipped', completed_at = NOW(), completed_by = :userId
+       WHERE mr_id = :mrId AND status = 'pending'`,
+      { mrId: order.id, userId: req.user.id },
+    )
+    if (order.salesOwnerId) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'purchase_done')`,
+        { mrId: order.id, recipientId: order.salesOwnerId },
+      )
+    }
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -1524,6 +1641,8 @@ module.exports = {
   reassignSalesOwner,
   withdraw,
   voidOrder,
+  submitPurchase,
+  skipPurchase,
   remove,
   importQuotation,
   importProgressHandler,

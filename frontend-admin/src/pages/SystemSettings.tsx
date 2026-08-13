@@ -163,6 +163,7 @@ const roleOptions = [
   ["sales_supervisor", "业务主管"],
   ["sales", "业务"],
   ["engineer", "工程师"],
+  ["purchaser", "采购"],
 ];
 
 const quickEmoji = ["📣", "⚠️", "✅", "🛠️", "📌", "📝", "🚀", "💡"];

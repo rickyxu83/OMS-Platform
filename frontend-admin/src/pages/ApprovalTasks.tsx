@@ -26,7 +26,15 @@ function status(task: ApprovalTask) {
   if (task.status === 'withdrawn') return ['已撤回', 'outline'] as const
   if (task.status === 'reassigned') return ['已转交', 'outline'] as const
   if (task.status === 'paused') return ['配置暂停', 'destructive'] as const
+  if (task.status === 'done') return ['采购完成', 'success'] as const
+  if (task.status === 'skipped') return ['无需采购', 'outline'] as const
+  if (task.status === 'cancelled') return ['已取消', 'outline'] as const
   return [task.status || '-', 'outline'] as const
+}
+
+function businessLabel(task: ApprovalTask) {
+  if (task.businessType === 'mr_purchase') return 'MR·采购'
+  return task.businessType.toUpperCase()
 }
 
 export function ApprovalTasks() {
@@ -96,7 +104,7 @@ export function ApprovalTasks() {
               const canOpen = !['reassigned', 'paused'].includes(task.status)
               return (
                 <TableRow key={task.id} className={canOpen ? 'cursor-pointer' : 'opacity-70'} onClick={() => { if (canOpen) navigate(task.detailPath) }}>
-                  <TableCell><Badge variant="outline">{task.businessType.toUpperCase()}</Badge></TableCell>
+                  <TableCell><Badge variant="outline">{businessLabel(task)}</Badge></TableCell>
                   <TableCell><div className="font-medium">{task.title}</div><div className="text-xs text-muted-foreground">{task.customerName || '-'} · {task.ctrlNo || '未填 Ctrl.NO'}</div></TableCell>
                   <TableCell>{task.currentStepLabel || '-'}</TableCell>
                   <TableCell>{task.initiatorName || '-'}</TableCell>

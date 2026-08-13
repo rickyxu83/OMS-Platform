@@ -1,5 +1,5 @@
 const { query } = require('../config/db')
-const { ensureWorkflowTables, reconcilePendingMrAssignments } = require('../modules/mr/workflow')
+const { ensureWorkflowTables, reconcilePendingMrAssignments, reconcilePendingPurchaseAssignments } = require('../modules/mr/workflow')
 const { sendMrApprovalMail } = require('./mail')
 
 async function notificationContext(mrId, recipientUserId) {
@@ -36,6 +36,7 @@ async function processMrNotifications(limit = 20) {
   await require('../modules/mr/controller').ensureTables()
   await ensureWorkflowTables()
   await reconcilePendingMrAssignments()
+  await reconcilePendingPurchaseAssignments()
   await query(
     `UPDATE mr_notification_outbox
      SET status = 'failed', last_error = '发送任务超时，自动重试'

@@ -31,6 +31,7 @@ import {
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
 import { PdfPreview } from '@/components/PdfPreview'
 import { ApprovalPanel } from './ApprovalPanel'
+import { MrPurchaseCard } from './MrPurchaseCard'
 import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, blankItem, defaultCostTaxRate, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
@@ -1436,6 +1437,10 @@ export function MrFormPage() {
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
             ) : null}
           </SectionCard>
+
+          {status === 'approved' && id ? (
+            <MrPurchaseCard order={calculated} onChanged={() => void load()} />
+          ) : null}
 
           <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF 点击在浏览器内预览，其他类型点击下载。" flash={flashSection === 'attachments'}>
             <MrAttachments files={calculated.quotationFiles || []} editable={editable} busy={busy} onUpload={(list) => void uploadAttachments(list)} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />

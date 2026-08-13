@@ -1,7 +1,7 @@
 const assert = require('assert')
 const { PDFParse } = require('pdf-parse')
 delete process.env.MR_APPROVAL_EMAIL_DOMAINS
-const { assertAssistantMapping, completeTask, resolveStepAssignee, _test } = require('../workflow')
+const { assertAssistantMapping, completeTask, resolveStepAssignee, resolvePurchaser, _test } = require('../workflow')
 const { normalizeOrder, validateSubmission } = require('../domain')
 const { buildMrPdf } = require('../mr-pdf')
 const { getDefaultPermissionMatrix } = require('../../../permissions/catalog')
@@ -33,6 +33,31 @@ async function main() {
   const permissions = getDefaultPermissionMatrix()
   assert.strictEqual(permissions.admin['mr.approve'], false)
   assert.strictEqual(permissions.assistant['mr.approve'], true)
+  assert.strictEqual(permissions.purchaser['mr.purchase'], true, '采购角色默认可填写采购订单号')
+  assert.strictEqual(permissions.purchaser['mr.view'], true, '采购角色默认可查看订购申请')
+  assert.strictEqual(permissions.purchaser['workspace.admin'], true, '采购角色默认可进入管理工作台')
+  assert.strictEqual(permissions.admin['mr.purchase'], true, '管理员默认可填写采购订单号')
+  assert.strictEqual(permissions.sales['mr.purchase'], false, '业务不可填写采购订单号')
+  assert.strictEqual(permissions.assistant['mr.purchase'], false, '助理不可填写采购订单号')
+  await assert.rejects(
+    resolvePurchaser({ async execute() { return [[]] } }),
+    /采购角色未配置在职人员/,
+  )
+  await assert.rejects(
+    resolvePurchaser({
+      async execute() {
+        return [[
+          { id: 31, name: '采购甲', email: 'buyer-a@example.com', role: 'purchaser' },
+          { id: 32, name: '采购乙', email: 'buyer-b@example.com', role: 'purchaser' },
+        ]]
+      },
+    }),
+    /采购角色在职人员有 2 位/,
+  )
+  const purchaser = await resolvePurchaser({
+    async execute() { return [[{ id: 31, name: '采购甲', email: 'buyer-a@example.com', role: 'purchaser' }]] },
+  })
+  assert.deepStrictEqual(purchaser, { id: 31, name: '采购甲', email: 'buyer-a@example.com', role: 'purchaser' })
   for (const [permission, enabled] of Object.entries(permissions.engineer)) {
     if (enabled) assert.strictEqual(permissions.engineering_supervisor[permission], true, `工程主管缺少工程师权限 ${permission}`)
   }

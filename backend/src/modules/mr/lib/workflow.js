@@ -42,6 +42,12 @@ async function ensureWorkflowTables() {
     ['archive_attempts', 'INT UNSIGNED NOT NULL DEFAULT 0 AFTER archive_status'],
     ['archive_next_attempt_at', 'DATETIME NULL AFTER archive_attempts'],
     ['archive_error', 'VARCHAR(500) NULL AFTER archive_next_attempt_at'],
+    ['purchase_status', 'VARCHAR(16) NULL AFTER archive_error'],
+    ['purchase_assignee_user_id', 'BIGINT UNSIGNED NULL AFTER purchase_status'],
+    ['purchase_assignment_error', 'VARCHAR(255) NULL AFTER purchase_assignee_user_id'],
+    ['purchased_at', 'DATETIME NULL AFTER purchase_assignment_error'],
+    ['purchased_by', 'BIGINT UNSIGNED NULL AFTER purchased_at'],
+    ['purchase_note', 'VARCHAR(500) NULL AFTER purchased_by'],
   ])
   await addMissingColumns('mr_approvals', [
     ['assignee_user_id', 'BIGINT UNSIGNED NULL AFTER step_label'],
@@ -108,6 +114,25 @@ async function ensureWorkflowTables() {
   if (!taskIndexNames.has('idx_approval_tasks_approval')) {
     await query('CREATE INDEX idx_approval_tasks_approval ON approval_tasks (business_type, approval_id)')
   }
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_purchase_tasks (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      mr_id BIGINT UNSIGNED NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      assignee_user_id BIGINT UNSIGNED NOT NULL,
+      initiator_user_id BIGINT UNSIGNED NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'pending',
+      detail_path VARCHAR(255) NOT NULL,
+      completed_at DATETIME NULL,
+      completed_by BIGINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mr_purchase_tasks_assignee (assignee_user_id, status, created_at),
+      KEY idx_mr_purchase_tasks_mr (mr_id, status),
+      CONSTRAINT fk_mr_purchase_tasks_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   await query(
     `CREATE TABLE IF NOT EXISTS mr_notification_outbox (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -525,28 +550,148 @@ async function reconcilePendingMrAssignments() {
   return { checked: rows.length, reassigned, paused }
 }
 
+async function resolvePurchaser(connection, { required = true } = {}) {
+  const [rows] = await connection.execute(
+    `SELECT id, real_name AS name, email, role FROM users
+     WHERE role = 'purchaser' AND status = 'active' ORDER BY id`,
+  )
+  if (rows.length !== 1) {
+    if (required) {
+      throw badRequest(rows.length
+        ? `采购角色在职人员有 ${rows.length} 位，请在用户管理中仅保留 1 位`
+        : '采购角色未配置在职人员，请先在用户管理中设置')
+    }
+    return null
+  }
+  assertApprovalEmail(rows[0], rows[0].name || '采购')
+  return { ...rows[0], id: Number(rows[0].id) }
+}
+
+async function createPurchaseTask(connection, order, purchaser, initiatorUserId, event = 'purchase_task') {
+  await connection.execute(
+    `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
+     WHERE mr_id = :mrId AND status = 'pending'`,
+    { mrId: order.id },
+  )
+  await connection.execute(
+    `UPDATE mr_orders SET purchase_assignee_user_id = :assigneeId, purchase_assignment_error = NULL WHERE id = :mrId`,
+    { assigneeId: purchaser.id, mrId: order.id },
+  )
+  await connection.execute(
+    `INSERT INTO mr_purchase_tasks (mr_id, title, assignee_user_id, initiator_user_id, detail_path)
+     VALUES (:mrId, :title, :assigneeId, :initiatorId, :detailPath)`,
+    {
+      mrId: order.id,
+      title: `${order.customerName || '未选客户'} · 采购订单号填写`.slice(0, 255),
+      assigneeId: purchaser.id,
+      initiatorId: initiatorUserId,
+      detailPath: `/mr/${order.id}`,
+    },
+  )
+  await connection.execute(
+    `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+     VALUES (:mrId, :recipientId, :event)`,
+    { mrId: order.id, recipientId: purchaser.id, event },
+  )
+}
+
+async function pausePurchaseTask(connection, order, message) {
+  await connection.execute(
+    'UPDATE mr_orders SET purchase_assignee_user_id = NULL, purchase_assignment_error = :message WHERE id = :mrId',
+    { mrId: order.id, message: String(message).slice(0, 255) },
+  )
+  if (order.salesOwnerId) {
+    await connection.execute(
+      `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+       VALUES (:mrId, :recipientId, 'purchase_assignment_error')`,
+      { mrId: order.id, recipientId: order.salesOwnerId },
+    )
+  }
+}
+
+async function activatePurchaseTask(connection, order, initiatorUserId) {
+  try {
+    const purchaser = await resolvePurchaser(connection, { required: true })
+    await createPurchaseTask(connection, order, purchaser, initiatorUserId)
+    return purchaser
+  } catch (error) {
+    await pausePurchaseTask(connection, order, error.message || '采购人配置异常')
+    return null
+  }
+}
+
+async function reconcilePendingPurchaseAssignments() {
+  await ensureWorkflowTables()
+  const rows = await query(
+    `SELECT o.id, o.sales_owner_id, o.customer_name, o.created_by, o.purchase_assignee_user_id, o.purchase_assignment_error
+     FROM mr_orders o
+     WHERE o.status = 'approved' AND o.purchase_status = 'pending'
+       AND NOT EXISTS (
+         SELECT 1 FROM mr_purchase_tasks t WHERE t.mr_id = o.id AND t.status = 'pending'
+       )`,
+  )
+  let reassigned = 0
+  let paused = 0
+  for (const row of rows) {
+    await transaction(async (connection) => {
+      const order = {
+        id: Number(row.id),
+        salesOwnerId: Number(row.sales_owner_id),
+        customerName: row.customer_name,
+        createdBy: Number(row.created_by),
+      }
+      try {
+        const purchaser = await resolvePurchaser(connection, { required: true })
+        await createPurchaseTask(connection, order, purchaser, order.createdBy, row.purchase_assignment_error ? 'purchase_transfer' : 'purchase_task')
+        reassigned += 1
+      } catch (error) {
+        if (!row.purchase_assignment_error) {
+          await pausePurchaseTask(connection, order, error.message || '采购人配置异常')
+        }
+        paused += 1
+      }
+    })
+  }
+  return { checked: rows.length, reassigned, paused }
+}
+
 async function listApprovalTasks(userId, view = 'pending') {
   await ensureWorkflowTables()
   const where = view === 'initiated'
-    ? 't.initiator_user_id = :userId'
+    ? 'merged.initiator_user_id = :userId'
     : view === 'completed'
-      ? "t.assignee_user_id = :userId AND t.status <> 'pending'"
-      : "t.assignee_user_id = :userId AND t.status = 'pending'"
+      ? "merged.assignee_user_id = :userId AND merged.status <> 'pending'"
+      : "merged.assignee_user_id = :userId AND merged.status = 'pending'"
   const rows = await query(
-    `SELECT t.*, assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-            o.status AS business_status, approval.step_label AS current_step_label, o.customer_name, o.ctrl_no
-     FROM approval_tasks t
-     LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
-     LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
-     LEFT JOIN mr_orders o ON t.business_type = 'mr' AND o.id = t.business_id
-     LEFT JOIN mr_approvals approval ON t.business_type = 'mr' AND approval.id = t.approval_id
+    `SELECT * FROM (
+       SELECT t.*, assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
+              o.status AS business_status, approval.step_label AS current_step_label, o.customer_name, o.ctrl_no
+       FROM approval_tasks t
+       LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
+       LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
+       LEFT JOIN mr_orders o ON t.business_type = 'mr' AND o.id = t.business_id
+       LEFT JOIN mr_approvals approval ON t.business_type = 'mr' AND approval.id = t.approval_id
+       UNION ALL
+       SELECT t.id, 'mr_purchase' AS business_type, t.mr_id AS business_id, NULL AS approval_id,
+              t.title, t.assignee_user_id, t.initiator_user_id, t.status, t.detail_path,
+              t.completed_at, t.created_at, t.updated_at,
+              assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
+              o.status AS business_status, '采购订单号填写' AS current_step_label, o.customer_name, o.ctrl_no
+       FROM mr_purchase_tasks t
+       LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
+       LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
+       LEFT JOIN mr_orders o ON o.id = t.mr_id
+     ) merged
      WHERE ${where}
-     ORDER BY CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END, t.updated_at DESC
+     ORDER BY CASE WHEN merged.status = 'pending' THEN 0 ELSE 1 END, merged.updated_at DESC
      LIMIT 500`,
     { userId },
   )
   const countRows = await query(
-    "SELECT COUNT(*) AS count FROM approval_tasks WHERE assignee_user_id = :userId AND status = 'pending'",
+    `SELECT (
+       (SELECT COUNT(*) FROM approval_tasks WHERE assignee_user_id = :userId AND status = 'pending')
+       + (SELECT COUNT(*) FROM mr_purchase_tasks WHERE assignee_user_id = :userId AND status = 'pending')
+     ) AS count`,
     { userId },
   )
   return { items: rows.map((row) => ({
@@ -583,7 +728,9 @@ module.exports = {
   assertAssistantMapping,
   salesWithAssistant,
   resolveStepAssignee,
+  resolvePurchaser,
   activateCurrentStep,
+  activatePurchaseTask,
   completeTask,
   saveSubmissionBaseline,
   freezeVersion,
@@ -591,6 +738,7 @@ module.exports = {
   updateAssistantSetting,
   listApprovalTasks,
   reconcilePendingMrAssignments,
+  reconcilePendingPurchaseAssignments,
   mrDocument,
   _test: { comparableSnapshot, diffValues, jsonValue },
 }

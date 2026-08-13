@@ -31,6 +31,18 @@ const STATUS_CLASSES: Record<MrStatus, string> = {
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 
+const PURCHASE_LABELS: Record<string, string> = {
+  pending: '待采购',
+  done: '采购完成',
+  skipped: '无需采购',
+}
+
+const PURCHASE_CLASSES: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800',
+  done: 'bg-emerald-100 text-emerald-800',
+  skipped: 'bg-zinc-100 text-zinc-500',
+}
+
 function money(value?: number | null) {
   return value === null || value === undefined ? '-' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -188,7 +200,7 @@ export function MrListPage() {
                   <TableCell>{order.salesOwnerName || '-'}</TableCell>
                   <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
-                  <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge></TableCell>
+                  <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge>{orderStatus === 'approved' && order.purchaseStatus ? <Badge className={`ml-1 ${PURCHASE_CLASSES[order.purchaseStatus] || ''}`}>{PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}</Badge> : null}</TableCell>
                   <TableCell><div>{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel || '-'}</div>{order.assignmentError ? <div className="mt-1 text-xs text-destructive">流程暂停：{order.assignmentError}</div> : order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{order.currentAssigneeName}</div> : null}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                   <TableCell>

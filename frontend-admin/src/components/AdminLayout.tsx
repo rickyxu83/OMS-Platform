@@ -150,6 +150,7 @@ const STRINGS: Record<AppLang, {
       sales_supervisor: "业务主管",
       sales: "业务",
       engineer: "工程师",
+      purchaser: "采购",
     },
   },
   "zh-TW": {
@@ -212,6 +213,7 @@ const STRINGS: Record<AppLang, {
       sales_supervisor: "業務主管",
       sales: "業務",
       engineer: "工程師",
+      purchaser: "採購",
     },
   },
 };

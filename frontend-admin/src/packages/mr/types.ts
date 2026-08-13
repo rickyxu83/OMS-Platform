@@ -1,4 +1,5 @@
 export type MrStatus = 'draft' | 'in_review' | 'approved' | 'rejected' | 'voided'
+export type MrPurchaseStatus = 'pending' | 'done' | 'skipped'
 
 export interface MrItem {
   id?: string | number
@@ -115,6 +116,14 @@ export interface MrOrder {
   withdrawReason?: string | null
   returnTarget?: 'sales' | 'assistant' | null
   versionNo?: number
+  purchaseStatus?: MrPurchaseStatus | null
+  purchaseAssigneeUserId?: string | number | null
+  purchaseAssigneeName?: string | null
+  purchaseAssignmentError?: string | null
+  purchasedAt?: string | null
+  purchasedBy?: string | number | null
+  purchasedByName?: string | null
+  purchaseNote?: string | null
   archiveStatus?: 'pending' | 'generating' | 'ready' | 'failed' | null
   archiveError?: string | null
   archivedDocumentTypes?: Array<'approved' | 'voided'>
@@ -151,6 +160,7 @@ export interface MrOrder {
     canVoid?: boolean
     canApprove?: boolean
     canWithdraw?: boolean
+    canPurchase?: boolean
   }
 }
 
