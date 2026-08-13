@@ -219,7 +219,9 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   async function generateSignatureLink() {
     setGeneratingLink(true);
     try {
-      const data = await api.post("/users/me/signature-links");
+      // 管理端可能部署在子路径（如 /admin/），把完整 base path 传给后端拼链接
+      const publicBaseUrl = new URL(String((import.meta as any).env.BASE_URL || "/"), window.location.origin).toString().replace(/\/+$/, "");
+      const data = await api.post("/users/me/signature-links", { publicBaseUrl });
       const url = String(data?.url || "");
       if (!url) {
         toast.error("链接生成失败，请稍后再试");

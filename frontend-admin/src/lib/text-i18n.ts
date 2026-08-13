@@ -308,10 +308,14 @@ function applyPhrases(value: string, replacements: Array<[string, string]>) {
   return output
 }
 
+// OpenCC 字符级映射会把业务词“签核/会签”转成“籤核/會籤”（竹籤的籤），词组级兜底掰回“簽”。
+// 只按词组替换，不误伤抽籤/竹籤等正确用法；前置简体词组表（phraseMap）已含签核/会签。
+const traditionalPostFixes: Array<[string, string]> = [["籤核", "簽核"], ["會籤", "會簽"]]
+
 export function toTraditional(value: unknown) {
   const normalized = applyPhrases(String(value ?? "").split("...").join("…"), phrases)
   const converted = toTraditionalConverter(japaneseToSimplifiedConverter(normalized))
-  return applyPhrases(converted, phrases)
+  return applyPhrases(applyPhrases(converted, phrases), traditionalPostFixes)
 }
 
 export function toSimplified(value: unknown) {
