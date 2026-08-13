@@ -1588,7 +1588,12 @@ async function importQuotation(req, res) {
     let aiDocumentType = null
     const cached = await readRecognitionCache(fileHash)
     if (cached?.result?.parsed?.sheets) {
-      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached.result.parsed)
+      // 缓存 payload 结构为 { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType }
+      parsed = cached.result.parsed
+      recognitionMethod = cached.result.recognitionMethod || recognitionMethod
+      systemItemCount = cached.result.systemItemCount || 0
+      aiItemCount = cached.result.aiItemCount || 0
+      aiDocumentType = cached.result.aiDocumentType || null
       parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
       progress.stage = 'cache'
     } else {
