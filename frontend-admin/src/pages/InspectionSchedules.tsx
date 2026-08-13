@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -780,7 +780,7 @@ export function InspectionSchedules() {
           {canManageSchedules ? (
             <>
               <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Play className="w-4 h-4 mr-2" />}
                 生成到期巡检单
               </Button>
               <Button onClick={openCreate} disabled={saving}>
@@ -800,7 +800,7 @@ export function InspectionSchedules() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {loading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -1419,7 +1419,7 @@ export function InspectionSchedules() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : "保存计划"}
             </Button>
           </DialogFooter>

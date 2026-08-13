@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
+import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1449,7 +1449,7 @@ export function Customers() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -1464,7 +1464,7 @@ export function Customers() {
                 <CardTitle>{t.list.title}</CardTitle>
                 {refreshing ? (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span className="btn-loader btn-loader-sm" aria-hidden="true" />
                     {t.list.loading}
                   </span>
                 ) : null}
@@ -1518,7 +1518,7 @@ export function Customers() {
                       onClick={openMergeDialog}
                       disabled={deleting || merging || selectedCustomerIds.length !== 2}
                     >
-                      {merging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                      {merging ? <span className="btn-loader mr-2" aria-hidden="true" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
                       {merging ? t.actions.merging : `${t.actions.merge}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                     </Button>
                   ) : null}
@@ -1528,7 +1528,7 @@ export function Customers() {
                     onClick={confirmBulkDelete}
                     disabled={deleting || merging || !selectedCustomerIds.length}
                   >
-                    {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    {deleting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Trash2 className="w-4 h-4 mr-2" />}
                     {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                   </Button>
                 </div>
@@ -1761,7 +1761,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button onClick={confirmMerge} disabled={merging || !mergeTarget || !mergeSource}>
-              {merging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+              {merging ? <span className="btn-loader mr-2" aria-hidden="true" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
               {merging ? t.actions.merging : t.dialog.mergeConfirm}
             </Button>
           </DialogFooter>
@@ -1844,13 +1844,13 @@ export function Customers() {
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.deviceCount}</div>
                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : devices.length}
+                          {detailInsightLoading ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : devices.length}
                         </div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.activeInspection}</div>
                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : activeSchedules.length}
+                          {detailInsightLoading ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : activeSchedules.length}
                         </div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
@@ -1862,7 +1862,7 @@ export function Customers() {
 
                   {detailInsightLoading ? (
                     <div className="rounded-lg border bg-slate-50 p-3 text-sm text-muted-foreground">
-                      <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                      <span className="btn-loader mr-2" aria-hidden="true" />
                       {t.dialog.loadingInsight}
                     </div>
                   ) : null}
@@ -2107,7 +2107,7 @@ export function Customers() {
                     className="w-full shrink-0 sm:w-auto"
                   >
                     {locating ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      <span className="btn-loader mr-1" aria-hidden="true" />
                     ) : (
                       <Crosshair className="w-4 h-4 mr-1" />
                     )}
@@ -2135,7 +2135,7 @@ export function Customers() {
                     className="w-full shrink-0 sm:w-auto"
                   >
                     {addressLocating ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      <span className="btn-loader mr-1" aria-hidden="true" />
                     ) : (
                       <MapPin className="w-4 h-4 mr-1" />
                     )}
@@ -2173,7 +2173,7 @@ export function Customers() {
               ) : null}
               {locationHint ? (
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  {geoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  {geoLoading ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : null}
                   {locationHint}
                 </div>
               ) : null}
@@ -2296,7 +2296,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? t.actions.saving : editingId != null ? t.actions.saveEdit : t.actions.saveNow}
             </Button>
           </DialogFooter>
@@ -2320,7 +2320,7 @@ export function Customers() {
               <div className="font-medium text-slate-900">{deleteTarget?.name || t.misc.unknown}</div>
               {deletePreviewLoading ? (
                 <div className="mt-2 text-muted-foreground">
-                  <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                  <span className="btn-loader mr-2" aria-hidden="true" />
                   {t.dialog.deleteChecking}
                 </div>
               ) : deletePreviewError ? (
@@ -2420,7 +2420,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting || !canDeleteCustomer}>
-              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deleting ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="w-4 h-4" />}
               {deleting ? t.actions.deleting : canForceDeleteCustomer ? t.actions.forceDelete : t.actions.delete}
             </Button>
           </DialogFooter>

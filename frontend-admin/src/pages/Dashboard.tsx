@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
+import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -933,7 +933,7 @@ export function Dashboard() {
           </Button>
           {canUseWorkSummary && (
             <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
-              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
           )}
@@ -982,7 +982,7 @@ export function Dashboard() {
                 </CardDescription>
               </div>
               <Button className="shrink-0 whitespace-nowrap" variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : null}
                 重新生成
               </Button>
             </div>
@@ -1118,7 +1118,7 @@ export function Dashboard() {
             <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
               {loading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
+                  <span className="btn-loader mr-2" aria-hidden="true" /> {t.recent.loading}
                 </div>
               ) : recentOrders.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.recent.empty}</div>
@@ -1382,7 +1382,7 @@ export function Dashboard() {
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>

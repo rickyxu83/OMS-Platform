@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { api } from "@/services/api";
 
 const ENV_AMAP_JSAPI_KEY =
@@ -459,7 +459,7 @@ export function Amap({
     <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
       {state === "loading" && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-muted-foreground text-sm">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> 地图正在加载…
+          <span className="btn-loader mr-2" aria-hidden="true" /> 地图正在加载…
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />

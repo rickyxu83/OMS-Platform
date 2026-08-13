@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, UserCheck, UserX, RefreshCw, Loader2, Pencil, Shield, Check, RotateCcw } from "lucide-react";
+import { Plus, Search, UserCheck, UserX, RefreshCw, Pencil, Shield, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -407,7 +407,7 @@ export function Users() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {loading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -501,7 +501,7 @@ export function Users() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+                <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无用户</div>
@@ -686,7 +686,7 @@ export function Users() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingUserId ? "保存修改" : "保存"}
             </Button>
           </DialogFooter>
@@ -703,7 +703,7 @@ export function Users() {
           </DialogHeader>
           {loadingPerms ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
             </div>
           ) : permData ? (
             <div className="overflow-x-auto">
@@ -753,7 +753,7 @@ export function Users() {
                 重新加载
               </Button>
               <Button onClick={savePermissions} disabled={savingPerms || loadingPerms}>
-                {savingPerms ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                {savingPerms ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
                 {savingPerms ? "保存中…" : "保存权限"}
               </Button>
             </DialogFooter>

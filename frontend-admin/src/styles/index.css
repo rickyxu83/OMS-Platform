@@ -27,3 +27,51 @@
 .list-row-enter {
   animation: list-row-in 0.35s ease-out both;
 }
+
+/* 按钮加载指示：三点脉冲（替代转圈 Loader2） */
+@keyframes loading-dot-pulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.75); }
+  40% { opacity: 1; transform: scale(1); }
+}
+.btn-loader {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 4px;
+  vertical-align: middle;
+}
+.btn-loader::before,
+.btn-loader::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: loading-dot-pulse 1.2s ease-in-out infinite;
+}
+.btn-loader::before { left: 0; animation-delay: 0s; }
+.btn-loader::after { right: 0; animation-delay: 0.3s; }
+.btn-loader {
+  animation: loading-dot-pulse 1.2s ease-in-out infinite;
+  animation-delay: 0.15s;
+}
+.btn-loader-sm {
+  width: 10px;
+  height: 3px;
+}
+.btn-loader-sm::before,
+.btn-loader-sm::after {
+  width: 3px;
+  height: 3px;
+}
+.btn-loader-xs {
+  width: 8px;
+  height: 2.5px;
+}
+.btn-loader-xs::before,
+.btn-loader-xs::after {
+  width: 2.5px;
+  height: 2.5px;
+}

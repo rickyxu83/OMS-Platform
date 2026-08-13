@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Circle, Loader2, MessageSquare, RefreshCw, Search } from "lucide-react";
+import { CheckCircle2, Circle, MessageSquare, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -157,7 +157,7 @@ export function Feedback() {
 
       {loading ? (
         <div className="flex h-48 items-center justify-center text-muted-foreground">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          <span className="btn-loader mr-2" aria-hidden="true" />
           正在加载…
         </div>
       ) : filtered.length === 0 ? (
@@ -204,7 +204,7 @@ export function Feedback() {
                       onClick={() => updateStatus(item, item.status === "open" ? "resolved" : "open")}
                     >
                       {updatingId === item.id ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <span className="btn-loader mr-2" aria-hidden="true" />
                       ) : item.status === "open" ? (
                         <CheckCircle2 className="mr-2 h-4 w-4" />
                       ) : (

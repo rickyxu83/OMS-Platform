@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -906,7 +906,7 @@ function DeviceCustomerSuggestions({
         <div className="max-h-80 overflow-y-auto p-2 pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="btn-loader" aria-hidden="true" />
               正在检索客户…
             </div>
           ) : null}
@@ -2087,7 +2087,7 @@ export function Devices() {
       <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
         {modelLoading ? (
           <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+            <span className="btn-loader" aria-hidden="true" /> 搜索型号中…
           </div>
         ) : null}
         {modelSuggestions.map((suggestion, index) => (
@@ -2533,7 +2533,7 @@ export function Devices() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing || maintenanceImporting}>
-                  {importing || maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  {importing || maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
                   批量导入
                   <ChevronDown className="w-4 h-4 ml-2" />
                 </Button>
@@ -2570,20 +2570,20 @@ export function Devices() {
             onClick={handleExportDevices}
             disabled={exporting || loading || !filtered.length}
           >
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+            {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
             批量导出
           </Button>
           {canEditDevices ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={loading}>
-                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
+                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
                   {modelComparing ? `校正 ${modelCompareProgress}%` : "其他"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
-                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -2606,7 +2606,7 @@ export function Devices() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -2688,7 +2688,7 @@ export function Devices() {
               <CardTitle>设备列表 ({filtered.length})</CardTitle>
               {refreshing ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="btn-loader btn-loader-sm" aria-hidden="true" />
                   正在更新
                 </span>
               ) : null}
@@ -3574,7 +3574,7 @@ export function Devices() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : createMode === "bulk" ? "批量保存" : "保存"}
             </Button>
           </DialogFooter>
@@ -3666,7 +3666,7 @@ export function Devices() {
               onClick={applyExistingModelNormalizations}
               disabled={modelApplying || !modelCompareResult?.correctableCount}
             >
-              {modelApplying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {modelApplying ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {modelApplying ? "纠正中…" : `应用纠正${modelCompareResult?.correctableCount ? ` (${modelCompareResult.correctableCount})` : ""}`}
             </Button>
           </DialogFooter>
@@ -3823,7 +3823,7 @@ export function Devices() {
             <Button variant="outline" onClick={() => setMaintenanceImportOpen(false)} disabled={maintenanceImporting}>关闭</Button>
             {maintenanceImportPreview ? (
               <Button variant="outline" onClick={() => previewMaintenanceImport(true)} disabled={maintenanceImporting || !maintenanceImportFile}>
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                 {maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation ? "按所选列重新分析" : "重新分析"}
               </Button>
             ) : null}
@@ -3832,12 +3832,12 @@ export function Devices() {
                 onClick={applyMaintenanceImport}
                 disabled={maintenanceImporting || maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation || !maintenanceImportSelectedIds.length}
               >
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
                 确认更新 ({maintenanceImportSelectedIds.length})
               </Button>
             ) : (
               <Button onClick={() => previewMaintenanceImport(false)} disabled={maintenanceImporting || !maintenanceImportFile}>
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                 自动识别并预览
               </Button>
             )}
@@ -4097,7 +4097,7 @@ export function Devices() {
               onClick={() => submitImport((importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "confirm" : "check")}
               disabled={importing || !importFile}
             >
-              {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+              {importing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
               {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认并导入可处理设备" : "开始导入"}
             </Button>
           </DialogFooter>
@@ -4271,7 +4271,7 @@ export function Devices() {
               取消
             </Button>
             <Button onClick={submitBatchEdit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : "批量保存"}
             </Button>
           </DialogFooter>

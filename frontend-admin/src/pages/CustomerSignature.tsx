@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { CheckCircle, Loader2, PenLine, Trash2 } from "lucide-react";
+import { CheckCircle, PenLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SignatureCapture } from "@/components/SignatureCapture";
@@ -121,7 +121,7 @@ export function CustomerSignature() {
 
         {loading ? (
           <div className="flex items-center gap-2 rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="btn-loader" aria-hidden="true" />
             正在读取确认函…
           </div>
         ) : error && !item ? (
@@ -207,7 +207,7 @@ export function CustomerSignature() {
                     清除
                   </Button>
                   <Button type="button" onClick={submitSignature} disabled={submitting}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+                    {submitting ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
                     {submitting ? "提交中" : "确认签署"}
                   </Button>
                 </div>
