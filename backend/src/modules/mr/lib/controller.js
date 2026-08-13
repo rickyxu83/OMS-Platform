@@ -1655,10 +1655,11 @@ async function importQuotation(req, res) {
     const extension = path.extname(name).toLowerCase()
     const requestedRole = ['sales', 'purchase'].includes(effectiveRoles[index]) ? effectiveRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
+    let parsed = null
     try {
     const fileHash = uploadHashes[index]
     let recognitionMethod = extension === '.pdf' ? 'pdf_text' : 'excel_cells'
-    let parsed = null
+    parsed = null
     let systemItemCount = 0
     let aiItemCount = 0
     let aiDocumentType = null
