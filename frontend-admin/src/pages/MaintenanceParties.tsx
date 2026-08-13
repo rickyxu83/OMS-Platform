@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Search, Wrench, Loader2, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Search, Wrench, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -622,7 +622,7 @@ export function MaintenanceParties() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -675,7 +675,7 @@ export function MaintenanceParties() {
               <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
               {refreshing ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="btn-loader btn-loader-sm" aria-hidden="true" />
                   {t.list.loading}
                 </span>
               ) : null}
@@ -713,7 +713,7 @@ export function MaintenanceParties() {
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             {initialLoading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.list.loading}
+                <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
@@ -1059,7 +1059,7 @@ export function MaintenanceParties() {
               {t.actions.cancel}
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? t.actions.saving : editingId ? t.actions.saveEdit : t.actions.save}
             </Button>
           </DialogFooter>

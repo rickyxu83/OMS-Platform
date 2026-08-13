@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileText, Image as ImageIcon, Send, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor, serviceItemsLabel, servicePartActionLabel as serviceItemPartActionLabel } from "@/lib/service-items";
 import { api } from "@/services/api";
-import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 
 interface ServiceOrder {
@@ -936,7 +935,6 @@ export function ServiceOrders() {
   const loadSeqRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState<ProgressState | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -1328,7 +1326,6 @@ export function ServiceOrders() {
     if (exporting) return;
     setExporting(true);
     setError("");
-    setExportProgress({ stage: "export", progress: 3, message: "正在准备导出…" });
     try {
       const effectiveIds = orderIds.length ? orderIds : selectedIds;
       let queryString: string;
@@ -1361,8 +1358,6 @@ export function ServiceOrders() {
       setError(e instanceof Error ? e.message : "PDF 导出失败");
     } finally {
       setExporting(false);
-      setExportProgress({ stage: "done", progress: 100, message: "导出完成" });
-      window.setTimeout(() => setExportProgress(null), 1200);
     }
   }
 
@@ -1777,16 +1772,6 @@ export function ServiceOrders() {
 
   return (
     <div className="p-6 space-y-6">
-      {exportProgress ? (
-        <div className="fixed right-4 top-4 z-[60] w-80 sm:right-6 sm:top-6">
-          <ProgressPanel
-            progress={exportProgress}
-            title="PDF 导出"
-            creep={{ from: 5, to: 90, perSecond: 5 }}
-            hints={["正在查询工单数据…", "正在排版生成 PDF…", "正在写入导出文件…"]}
-          />
-        </div>
-      ) : null}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">{t.title}</h1>
@@ -1800,7 +1785,7 @@ export function ServiceOrders() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" disabled={saving || exporting || loading}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
                 {exporting ? t.actions.exporting : t.actions.export}
                 <ChevronDown className="w-4 h-4 ml-2" />
               </Button>
@@ -1839,7 +1824,7 @@ export function ServiceOrders() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {initialLoading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -1947,7 +1932,7 @@ export function ServiceOrders() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
-            {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t.list.loading} />}
+            {refreshing && <span className="btn-loader" aria-hidden="true" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -2125,7 +2110,7 @@ export function ServiceOrders() {
                                     onClick={(event) => event.stopPropagation()}
                                     disabled={exporting}
                                   >
-                                    {exporting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+                                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
                                     {t.actions.export}
                                     <ChevronDown className="ml-1 h-4 w-4" />
                                   </Button>
@@ -2389,7 +2374,7 @@ export function ServiceOrders() {
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
             {filePreviewLoading ? (
-              <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在加载附件…</div>
+              <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground"><span className="btn-loader" aria-hidden="true" />正在加载附件…</div>
             ) : filePreviewError ? (
               <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-destructive">{filePreviewError}</div>
             ) : filePreviewUrl && filePreview && attachmentPreviewKind(filePreview) === "image" ? (
@@ -2408,7 +2393,7 @@ export function ServiceOrders() {
           </div>
           <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
             <Button variant="outline" onClick={clearFilePreview}>取消预览</Button>
-            {filePreview ? <Button variant="outline" onClick={() => downloadOrderFile(filePreview)} disabled={downloadingFileId === filePreview.id}>{downloadingFileId === filePreview.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}下载文件</Button> : null}
+            {filePreview ? <Button variant="outline" onClick={() => downloadOrderFile(filePreview)} disabled={downloadingFileId === filePreview.id}>{downloadingFileId === filePreview.id ? <span className="btn-loader" aria-hidden="true" /> : <Download className="h-4 w-4" />}下载文件</Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2539,7 +2524,7 @@ export function ServiceOrders() {
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={createOrder} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Plus className="w-4 h-4 mr-2" />}
               {saving ? "创建中…" : "创建工单"}
             </Button>
           </DialogFooter>
@@ -2612,7 +2597,7 @@ export function ServiceOrders() {
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={assignOrderToEngineer} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Send className="w-4 h-4 mr-2" />}
               {saving ? "派单中…" : "确认派单"}
             </Button>
           </DialogFooter>
@@ -2636,7 +2621,7 @@ export function ServiceOrders() {
             </div>
             {deletePreviewLoading ? (
               <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
-                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                <span className="btn-loader mr-2" aria-hidden="true" />
                 正在加载删除影响明细…
               </div>
             ) : deletePreviewError ? (
@@ -2712,7 +2697,7 @@ export function ServiceOrders() {
               onClick={confirmDeleteOrders}
               disabled={saving || deletePreviewLoading || Boolean(deletePreviewError) || !deletePreviewOrders.length}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {saving ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
               {saving ? "删除中…" : `确认删除 ${deletePreviewOrders.length || selectedIds.length} 张工单`}
             </Button>
           </DialogFooter>
@@ -2750,7 +2735,7 @@ export function ServiceOrders() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransitionOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={transitionSelectedOrder} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {saving ? "流转中…" : "确认流转"}
             </Button>
           </DialogFooter>

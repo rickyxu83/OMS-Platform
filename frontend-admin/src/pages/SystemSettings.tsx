@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bell, Loader2, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
+import { Bell, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -685,7 +685,7 @@ export function SystemSettings() {
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            <span className="btn-loader mr-2" aria-hidden="true" />
             正在加载…
           </CardContent>
         </Card>
@@ -699,7 +699,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>AI 与 API Key</CardTitle>
                 <Button variant="outline" size="sm" onClick={testAi} disabled={!canEditSettings || loading || saving || testingAi}>
-                  {testingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                  {testingAi ? <span className="btn-loader mr-2" aria-hidden="true" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                   测试 AI
                 </Button>
               </div>
@@ -749,7 +749,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>SMTP 邮件</CardTitle>
                 <Button variant="outline" size="sm" onClick={testMail} disabled={!canEditSettings || loading || saving || testingMail}>
-                  {testingMail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  {testingMail ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" />}
                   测试 SMTP
                 </Button>
               </div>
@@ -1010,7 +1010,7 @@ export function SystemSettings() {
                     </Button>
                   )}
                   <Button onClick={saveAnnouncement} disabled={!canManageAnnouncements || announcementSaving}>
-                    {announcementSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {announcementSaving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" />}
                     {editingAnnouncementId ? "更新公告" : "发布公告"}
                   </Button>
                 </div>
@@ -1316,7 +1316,7 @@ export function SystemSettings() {
                 刷新
               </Button>
               <Button size="sm" onClick={save} disabled={!canEditSettings || loading || saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" />}
                 保存设置
               </Button>
             </div>

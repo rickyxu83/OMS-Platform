@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw, Download, AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import { Search, RefreshCw, Download, AlertTriangle, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,7 +234,7 @@ export function AuditLogs() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                {loading ? <span className="btn-loader" aria-hidden="true" /> : stat.value}
               </div>
             </CardContent>
           </Card>
@@ -366,7 +366,7 @@ export function AuditLogs() {
             <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
               {loading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+                  <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无审计记录</div>
