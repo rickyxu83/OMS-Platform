@@ -62,7 +62,7 @@ const env = {
     model: process.env.AI_MODEL || '',
     maxInputItems: Number(process.env.AI_MAX_INPUT_ITEMS || 200),
     maxWorkContentChars: Number(process.env.AI_MAX_WORK_CONTENT_CHARS || 600),
-    summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 60000),
+    summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 120000),
     summaryRetryAttempts: Number(process.env.AI_SUMMARY_RETRY_ATTEMPTS || 5),
     summaryRetryDelayMs: Number(process.env.AI_SUMMARY_RETRY_DELAY_MS || 3000),
   },
