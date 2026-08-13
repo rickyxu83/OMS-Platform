@@ -2037,7 +2037,7 @@ async function timesheetMonthly(req, res) {
   }
 
   if (includeWorkSummary) {
-    response.workSummary = await generateTimesheetWorkSummary({
+    const summaryPayload = {
       ...response,
       ...(filterEngineerId ? {
         scope: {
@@ -2046,7 +2046,33 @@ async function timesheetMonthly(req, res) {
           description: '工程师工作月报',
         },
       } : {}),
-    })
+    }
+
+    // 客户端请求 text/event-stream 时，用 SSE 流式返回生成进度，避免用户干等
+    const wantsStream = String(req.headers.accept || '').includes('text/event-stream')
+    if (wantsStream) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      const writeEvent = (event, data) => {
+        if (res.writableEnded) return
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      }
+      writeEvent('progress', { stage: 'query', progress: 3, message: '正在准备数据…' })
+      try {
+        response.workSummary = await generateTimesheetWorkSummary(summaryPayload, (progress) => writeEvent('progress', progress))
+        writeEvent('result', response)
+      } catch (error) {
+        writeEvent('error', { message: error?.message || 'AI 总结生成失败' })
+      }
+      res.end()
+      return
+    }
+
+    response.workSummary = await generateTimesheetWorkSummary(summaryPayload)
   }
 
   res.json(response)
