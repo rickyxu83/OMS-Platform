@@ -62,6 +62,7 @@ import { MarkdownContent } from "@/lib/markdown";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
 import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 
 type ServiceMode = "onsite" | "remote" | "office";
 type AttachmentPurpose = "support_config" | "site_photo" | "screenshot_log" | "inspection_document" | "office_document";
@@ -4791,9 +4792,12 @@ export function ServiceReport() {
                 return (
                   <div className="space-y-5">
                     {previewLoading ? (
-                      <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        正在加载完整工单详情…
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Skeleton className="h-5 w-1/3" />
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
                       </div>
                     ) : null}
                     {previewError ? <InlineError message={previewError} /> : null}
@@ -5101,9 +5105,20 @@ export function ServiceReport() {
       <InlineError message={error} />
 
       {formLoading ? (
-        <div className="flex items-center justify-center gap-2 rounded-lg border bg-card py-20 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          正在加载工单信息…
+        <div className="space-y-3 rounded-lg border bg-card p-6">
+          <Skeleton className="h-6 w-40" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+          <Skeleton className="h-24 w-full" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
         </div>
       ) : (
         <>
