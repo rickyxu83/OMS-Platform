@@ -7,6 +7,11 @@ const RULES = [
 
 const OWN_COMPANY = /(敦阳|敦陽|stark|dunyang)/i
 
+/** 文件名/模式规范化：连字符与下划线统一为空格，避免提取模式与真实文件名分隔符不一致导致匹配失败。 */
+function normalizePatternText(input) {
+  return String(input || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 function applyVendorRule(parsed, vendor, ruleId, sourceLabel) {
   const sheets = (parsed.sheets || []).map((sheet) => {
     const existing = String(sheet.vendor || '').trim()
@@ -29,7 +34,8 @@ async function resolveLayoutRule(fileName) {
       `SELECT rule_key, file_pattern, vendor FROM mr_layout_rules
        WHERE enabled = 1 ORDER BY match_count DESC LIMIT 50`,
     )
-    const match = rows.find((row) => row.file_pattern && text.includes(row.file_pattern))
+    const normalizedFile = normalizePatternText(text)
+    const match = rows.find((row) => row.file_pattern && normalizedFile.includes(normalizePatternText(row.file_pattern)))
     if (match) return { vendor: match.vendor, id: match.rule_key, sourceLabel: '学习规则' }
   } catch (_error) {
     // 规则库不可用时静默降级为无规则
