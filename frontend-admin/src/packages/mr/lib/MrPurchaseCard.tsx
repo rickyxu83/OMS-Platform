@@ -108,13 +108,13 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
 
         {status !== 'skipped' ? (
           <div className="overflow-hidden rounded-lg border">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">项目</TableHead>
                   <TableHead>品名 / 描述</TableHead>
-                  <TableHead className="w-32">供应商</TableHead>
-                  <TableHead className="w-64">采购订单号</TableHead>
+                  <TableHead className="w-28">供应商</TableHead>
+                  <TableHead className="w-72">采购订单号</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,10 +122,10 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                   <TableRow key={item.id || index}>
                     <TableCell className="text-center">{index + 1}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{item.name || '-'}</div>
-                      {item.description ? <div className="text-xs text-muted-foreground">{item.description}</div> : null}
+                      <div className="break-words font-medium">{item.name || '-'}</div>
+                      {item.description ? <div className="line-clamp-2 break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
                     </TableCell>
-                    <TableCell>{item.vendor || '-'}</TableCell>
+                    <TableCell className="break-words">{item.vendor || '-'}</TableCell>
                     <TableCell>
                       {editable ? (
                         <Input
