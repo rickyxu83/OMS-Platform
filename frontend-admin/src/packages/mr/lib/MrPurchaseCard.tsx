@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Ban, CheckCircle2, ClipboardPen, Loader2, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,7 @@ function dateTime(value?: string | null) {
 export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged: (next: MrOrder) => void }) {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [batchNo, setBatchNo] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [skipOpen, setSkipOpen] = useState(false)
@@ -38,6 +39,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     for (const item of items) next[String(item.id)] = item.purchaseOrderNo || ''
     setDraft(next)
     setNote(order.purchaseNote || '')
+    setSelected(new Set())
   }, [order.id, order.purchaseStatus, order.purchasedAt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!status || order.status !== 'approved') return null
@@ -45,8 +47,70 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
 
   const applyBatch = () => {
     const value = batchNo.trim()
-    if (!value) return
-    setDraft((current) => Object.fromEntries(items.map((item) => [String(item.id), value])))
+    if (!value || selected.size === 0) return
+    setDraft((current) => {
+      const next = { ...current }
+      for (const key of selected) next[key] = value
+      return next
+    })
+  }
+
+  const toggleAll = (checked: boolean) => {
+    setSelected(checked ? new Set(items.map((item) => String(item.id))) : new Set())
+  }
+
+  const dragRef = useRef<{ active: boolean; mode: 'add' | 'remove' }>({ active: false, mode: 'add' })
+  const anchorRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const stop = () => { dragRef.current.active = false }
+    window.addEventListener('mouseup', stop)
+    return () => window.removeEventListener('mouseup', stop)
+  }, [])
+
+  const setItemSelected = (index: number, mode: 'add' | 'remove') => {
+    const itemId = items[index]?.id
+    if (itemId === undefined || itemId === null) return
+    const key = String(itemId)
+    setSelected((current) => {
+      const next = new Set(current)
+      if (mode === 'add') next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const selectRange = (from: number, to: number) => {
+    const [start, end] = from <= to ? [from, to] : [to, from]
+    setSelected((current) => {
+      const next = new Set(current)
+      for (let i = start; i <= end; i += 1) {
+        const itemId = items[i]?.id
+        if (itemId !== undefined && itemId !== null) next.add(String(itemId))
+      }
+      return next
+    })
+  }
+
+  const onRowMouseDown = (index: number, event: ReactMouseEvent<HTMLTableRowElement>) => {
+    if (!editable || event.button !== 0) return
+    if ((event.target as HTMLElement).closest('input, textarea, button, a')) return
+    if (event.shiftKey && anchorRef.current !== null) {
+      selectRange(anchorRef.current, index)
+      event.preventDefault()
+      return
+    }
+    const key = String(items[index]?.id)
+    const mode = selected.has(key) ? 'remove' : 'add'
+    dragRef.current = { active: true, mode }
+    anchorRef.current = index
+    setItemSelected(index, mode)
+    event.preventDefault()
+  }
+
+  const onRowMouseEnter = (index: number) => {
+    if (!dragRef.current.active) return
+    setItemSelected(index, dragRef.current.mode)
   }
 
   const submit = async () => {
@@ -119,7 +183,12 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
               </TableHeader>
               <TableBody>
                 {items.map((item, index) => (
-                  <TableRow key={item.id || index}>
+                  <TableRow
+                    key={item.id || index}
+                    className={`${selected.has(String(item.id)) ? 'bg-primary/10' : ''} ${editable ? 'cursor-pointer select-none' : ''}`}
+                    onMouseDown={(event) => onRowMouseDown(index, event)}
+                    onMouseEnter={() => onRowMouseEnter(index)}
+                  >
                     <TableCell className="text-center">{index + 1}</TableCell>
                     <TableCell>
                       <div className="break-words font-medium">{item.name || '-'}</div>
@@ -148,9 +217,14 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
         {editable ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Input value={batchNo} onChange={(event) => setBatchNo(event.target.value)} placeholder="整单同一采购订单号" className="w-64" />
-              <Button type="button" variant="outline" onClick={applyBatch} disabled={busy || !batchNo.trim()}>批量填入</Button>
+              <Input value={batchNo} onChange={(event) => setBatchNo(event.target.value)} placeholder="采购订单号" className="w-64" />
+              <Button type="button" variant="outline" onClick={applyBatch} disabled={busy || !batchNo.trim() || selected.size === 0}>
+                填入所选{selected.size > 0 ? `（已选 ${selected.size} 项）` : ''}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setSelected(new Set(items.map((item) => String(item.id))))}>全选</Button>
+              {selected.size > 0 ? <Button type="button" variant="ghost" onClick={() => setSelected(new Set())}>清除选择</Button> : null}
             </div>
+            <p className="text-xs text-muted-foreground">按住鼠标左键拖过品项行即可多选（再次拖过已选行可取消），Shift+点击可选连续区间。</p>
             <Textarea rows={2} value={note} placeholder="采购备注（选填）" onChange={(event) => setNote(event.target.value)} />
             <div className="flex flex-wrap gap-2">
               <Button type="button" disabled={busy} onClick={() => void submit()}>
