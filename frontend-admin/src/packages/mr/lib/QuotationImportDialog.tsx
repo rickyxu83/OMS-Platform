@@ -424,9 +424,15 @@ export function QuotationImportDialog({
     setLoading(true)
     setError('')
     try {
-      const saved = await persistQuotations(orderId, files, roles)
+      const sourceHashes = Object.fromEntries(
+        (preview.sources || []).filter((source) => source.hash).map((source) => [source.name, String(source.hash)]),
+      )
+      const saved = await persistQuotations(orderId, files, roles, { correctedItems: previewItems, sourceHashes })
       const editedSources = (preview.sources || []).map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
       onApply({ ...preview, items: previewItems, sources: editedSources, files: saved.files }, effectivePricingMode)
+      if (saved.corrections && (saved.corrections.applied > 0 || saved.corrections.feedback > 0)) {
+        toast.success(`已回写识别学习：${saved.corrections.applied} 个文件应用修正，${saved.corrections.feedback} 份纠错样本已入库`)
+      }
       onOpenChange(false)
       setSalesFiles([])
       setPurchaseFiles([])

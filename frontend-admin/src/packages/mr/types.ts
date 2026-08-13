@@ -236,6 +236,7 @@ export interface QuotationSource {
   confidence?: number | null
   reviewCount?: number
   method?: string
+  hash?: string
 }
 
 export interface QuotationImportResult {

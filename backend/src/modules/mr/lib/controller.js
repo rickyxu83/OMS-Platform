@@ -10,12 +10,25 @@ const RECOGNITION_PARSER_VERSION = 3
 async function readRecognitionCache(fileHash) {
   try {
     const rows = await query(
-      'SELECT result FROM mr_quote_recognition_cache WHERE file_hash = :hash AND parser_version = :version LIMIT 1',
+      `SELECT result, corrected_result, corrected_by, corrected_at, correction_count
+       FROM mr_quote_recognition_cache WHERE file_hash = :hash AND parser_version = :version LIMIT 1`,
       { hash: fileHash, version: RECOGNITION_PARSER_VERSION },
     )
-    if (!rows[0]?.result) return null
-    const cached = JSON.parse(rows[0].result)
-    return cached && typeof cached === 'object' ? cached : null
+    if (!rows[0]) return null
+    const parse = (input) => {
+      if (!input) return null
+      try {
+        const value = JSON.parse(input)
+        return value && typeof value === 'object' ? value : null
+      } catch { return null }
+    }
+    return {
+      result: parse(rows[0].result),
+      corrected: parse(rows[0].corrected_result) || null,
+      correctedBy: rows[0].corrected_by || null,
+      correctedAt: rows[0].corrected_at || null,
+      correctionCount: Number(rows[0].correction_count || 0),
+    }
   } catch (_error) {
     return null
   }
@@ -279,6 +292,38 @@ async function ensureTables() {
       result LONGTEXT NOT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (file_hash, parser_version)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  // 人工修正回写：同一文件命中缓存时，优先应用用户上次修正后的识别结果（提升准确率）
+  const cacheColumns = new Set((await query(
+    `SELECT column_name AS name FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_quote_recognition_cache'`,
+  )).map((row) => row.name))
+  for (const [name, definition] of [
+    ['corrected_result', 'LONGTEXT NULL'],
+    ['corrected_by', 'BIGINT UNSIGNED NULL'],
+    ['corrected_at', 'DATETIME NULL'],
+    ['correction_count', 'INT UNSIGNED NOT NULL DEFAULT 0'],
+  ]) {
+    if (!cacheColumns.has(name)) await query(`ALTER TABLE mr_quote_recognition_cache ADD COLUMN ${name} ${definition}`)
+  }
+  // 纠错样本库：记录“自动识别结果 vs 人工修正结果”的差异，供规则自学习与人工抽检
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_recognition_feedback (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      mr_id BIGINT UNSIGNED NOT NULL,
+      file_hash CHAR(64) NOT NULL,
+      parser_version INT NOT NULL,
+      file_name VARCHAR(255) NULL,
+      role VARCHAR(16) NULL,
+      original_result LONGTEXT NOT NULL,
+      corrected_result LONGTEXT NOT NULL,
+      diff JSON NULL,
+      created_by BIGINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mr_feedback_hash (file_hash, parser_version),
+      KEY idx_mr_feedback_name (file_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   await ensureWorkflowTables()
@@ -1329,6 +1374,136 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
   )
 }
 
+/** 对比自动识别品项与人工修正品项的差异（纠错样本用）。 */
+function diffItems(originalItems = [], correctedItems = []) {
+  const COMPARE_FIELDS = ['companyPartNo', 'oemSpec', 'name', 'description', 'qty', 'unitPrice', 'vendor', 'costInclTax', 'taxRate']
+  const diff = []
+  const max = Math.max(originalItems.length, correctedItems.length)
+  for (let index = 0; index < max; index += 1) {
+    const before = originalItems[index] || {}
+    const after = correctedItems[index] || {}
+    for (const field of COMPARE_FIELDS) {
+      const beforeValue = before[field] ?? null
+      const afterValue = after[field] ?? null
+      if (String(beforeValue ?? '') !== String(afterValue ?? '')) {
+        diff.push({ rowNo: index + 1, field, before: beforeValue, after: afterValue })
+      }
+    }
+  }
+  return diff
+}
+
+/**
+ * 学习回写（确认导入时触发）：把用户修正后的品项按来源文件分组回写识别缓存，
+ * 使同一文件下次导入直接应用修正结果；同时将“自动识别 vs 人工修正”差异落纠错样本库。
+ */
+async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], storedUploads = [], user }) {
+  let correctedItems = []
+  try {
+    correctedItems = JSON.parse(String(body?.correctedItems || '[]'))
+    if (!Array.isArray(correctedItems)) correctedItems = []
+  } catch (_error) {
+    correctedItems = []
+  }
+  if (!correctedItems.length) return { applied: 0, feedback: 0 }
+
+  let sourceHashes = {}
+  try {
+    sourceHashes = JSON.parse(String(body?.sourceHashes || '{}'))
+    if (!sourceHashes || typeof sourceHashes !== 'object' || Array.isArray(sourceHashes)) sourceHashes = {}
+  } catch (_error) {
+    sourceHashes = {}
+  }
+
+  // 文件 → 内容 hash：优先用识别时返回的 hash；新上传/留存文件缺失时重算
+  const hashByName = { ...sourceHashes }
+  for (const file of uploads) {
+    const name = originalNameUtf8(file)
+    if (!hashByName[name]) hashByName[name] = crypto.createHash('sha256').update(file.buffer).digest('hex')
+  }
+  for (const stored of storedUploads) {
+    const name = String(stored?.name || '')
+    if (name && !hashByName[name]) {
+      try {
+        const buffer = await fs.promises.readFile(stored.storagePath)
+        hashByName[name] = crypto.createHash('sha256').update(buffer).digest('hex')
+      } catch (_error) { /* 磁盘缺失跳过 */ }
+    }
+  }
+
+  // 按来源文件名分组修正品项，并标记文件角色：costSource 命中为供应商报价，salesSource 命中为销售报价
+  const byFile = new Map()
+  for (const item of correctedItems) {
+    const costName = String(item?.costSource || '')
+    const salesName = String(item?.salesSource || '')
+    if (costName && hashByName[costName]) {
+      if (!byFile.has(costName)) byFile.set(costName, { role: 'purchase', items: [] })
+      byFile.get(costName).items.push(item)
+    }
+    if (salesName && hashByName[salesName] && salesName !== costName) {
+      if (!byFile.has(salesName)) byFile.set(salesName, { role: 'sales', items: [] })
+      byFile.get(salesName).items.push(item)
+    }
+  }
+
+  let applied = 0
+  let feedback = 0
+  for (const [fileName, { role, items }] of byFile) {
+    const fileHash = hashByName[fileName]
+    const normalized = items
+      .map((item) => ({
+        rowNo: Number(item?.rowNo) || 0,
+        companyPartNo: String(item?.companyPartNo || '').trim().slice(0, 100) || null,
+        oemSpec: String(item?.oemSpec || '').trim().slice(0, 255) || null,
+        name: String(item?.name || '').trim().slice(0, 255) || null,
+        description: String(item?.description || '').trim().slice(0, 4000) || null,
+        qty: Number.isFinite(Number(item?.qty)) ? Number(item.qty) : null,
+        unitPrice: Number.isFinite(Number(item?.unitPrice)) ? Number(item.unitPrice) : null,
+        vendor: String(item?.vendor || '').trim().slice(0, 255) || null,
+        costInclTax: Number.isFinite(Number(item?.costInclTax)) ? Number(item.costInclTax) : null,
+        taxRate: Number.isFinite(Number(item?.taxRate)) ? Number(item.taxRate) : null,
+      }))
+      .filter((item) => item.name || item.oemSpec || item.companyPartNo || item.description)
+    if (!normalized.length) continue
+
+    const corrected = { sheets: [{ items: normalized }], source: 'user_corrected' }
+    await query(
+      `INSERT INTO mr_quote_recognition_cache
+         (file_hash, parser_version, file_name, result, corrected_result, corrected_by, corrected_at, correction_count)
+       VALUES (:hash, :version, :name, :result, :corrected, :userId, NOW(), 1)
+       ON DUPLICATE KEY UPDATE
+         corrected_result = :corrected, corrected_by = :userId, corrected_at = NOW(), correction_count = correction_count + 1`,
+      { hash: fileHash, version: RECOGNITION_PARSER_VERSION, name: fileName, result: JSON.stringify({}), corrected: JSON.stringify(corrected), userId: user?.id || null },
+    )
+    applied += 1
+
+    // 纠错样本：对比自动识别结果与修正结果，有差异才落库
+    const cached = await readRecognitionCache(fileHash)
+    const originalItems = cached?.result?.sheets?.[0]?.items || []
+    if (!originalItems.length) continue
+    const diff = diffItems(originalItems, normalized)
+    if (!diff.length) continue
+    await query(
+      `INSERT INTO mr_recognition_feedback
+         (mr_id, file_hash, parser_version, file_name, role, original_result, corrected_result, diff, created_by)
+       VALUES (:mrId, :hash, :version, :name, :role, :original, :corrected, :diff, :userId)`,
+      {
+        mrId,
+        hash: fileHash,
+        version: RECOGNITION_PARSER_VERSION,
+        name: fileName,
+        role,
+        original: JSON.stringify(cached.result),
+        corrected: JSON.stringify(corrected),
+        diff: JSON.stringify(diff),
+        userId: user?.id || null,
+      },
+    )
+    feedback += 1
+  }
+  return { applied, feedback }
+}
+
 /** 读取已留存的报价原始附件，作为“再次导入一并识别”的来源文件；磁盘缺失的跳过。 */
 async function loadStoredQuotationUploads(ownerId) {
   const rows = await query(
@@ -1386,7 +1561,9 @@ async function importQuotation(req, res) {
   if (persist && persistOnly) {
     // 确认导入：识别结果已在预览中，仅留存新上传的原始附件（留存文件本来就在库里），不重复识别
     const files = await persistQuotationFiles(req.params.id, newUploads, req.user, false, requestedRoles)
-    return res.json({ files })
+    // 学习回写：把用户修正后的品项写入识别缓存（同文件下次导入自动应用），并落纠错样本
+    const corrections = await recordRecognitionFeedback(req.params.id, { body: req.body, uploads: newUploads, storedUploads, user: req.user })
+    return res.json({ files, corrections })
   }
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
@@ -1403,8 +1580,8 @@ async function importQuotation(req, res) {
     let aiItemCount = 0
     let aiDocumentType = null
     const cached = await readRecognitionCache(fileHash)
-    if (cached?.parsed?.sheets) {
-      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached)
+    if (cached?.result?.sheets) {
+      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached.result)
       parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
       progress.stage = 'cache'
     } else {
@@ -1449,6 +1626,14 @@ async function importQuotation(req, res) {
       }
       await writeRecognitionCache(fileHash, name, { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType })
     }
+      // 人工修正回写：同一文件存在用户修正结果时，以修正结果为该文件的识别基准
+      if (cached?.corrected?.sheets?.length) {
+        parsed = {
+          ...parsed,
+          sheets: cached.corrected.sheets,
+          warnings: [...(parsed.warnings || []), `已应用上次人工修正结果（历史修正 ${cached.correctionCount || 0} 次）`],
+        }
+      }
       // 分区冲突提示与请求角色相关，不随缓存复用，每次按本次分区重新判断
       if (requestedRole && aiDocumentType && aiDocumentType !== requestedDocumentType) {
         parsed.warnings.push(`AI 识别该文件为“${aiDocumentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
@@ -1486,7 +1671,7 @@ async function importQuotation(req, res) {
       const warnings = [...(parsed.warnings || [])]
       if (!sheets.length) warnings.push(`${name} 未找到可识别的报价明细表；已保留其他来源的识别结果`)
       const documentType = requestedRole ? requestedDocumentType : parsed.documentType
-      return { name, sheets, documentType, requestedRole, warnings, reviewCount: parsed.reviewCount || 0 }
+      return { name, sheets, documentType, requestedRole, warnings, reviewCount: parsed.reviewCount || 0, hash: fileHash }
     } catch (error) {
       return {
         name,
@@ -1508,8 +1693,8 @@ async function importQuotation(req, res) {
   // key 直接取命名空间输入的 sha256，保证 64 字符不超过 file_hash CHAR(64)
   const setHash = crypto.createHash('sha256').update(`entity-set:${uploadHashes.join(':')}`).digest('hex')
   const cachedEntity = await readRecognitionCache(setHash)
-  if (cachedEntity?.entityMap) {
-    for (const entry of cachedEntity.entityMap) {
+  if (cachedEntity?.result?.entityMap) {
+    for (const entry of cachedEntity.result.entityMap) {
       const item = sources[Number(entry.sourceIndex)]?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
       if (item && entry.entityKey) item.entityKey = entry.entityKey
     }

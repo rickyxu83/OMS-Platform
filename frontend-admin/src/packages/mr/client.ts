@@ -39,13 +39,16 @@ export async function importQuotations(id: string | number, files: File[], persi
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }
 
-export async function persistQuotations(id: string | number, files: File[], roles?: Array<'sales' | 'purchase'>) {
+export async function persistQuotations(id: string | number, files: File[], roles?: Array<'sales' | 'purchase'>, corrections?: { correctedItems?: object[]; sourceHashes?: Record<string, string> }) {
   const body = new FormData()
   for (const file of files) body.append('files', file)
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
   body.set('persist', '1')
   body.set('persistOnly', '1')
-  return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<{ files: QuotationFile[] }>
+  // 学习回写：确认导入时把人工修正后的品项与来源文件 hash 一并提交，供后端回写识别缓存与纠错样本库
+  if (corrections?.correctedItems?.length) body.set('correctedItems', JSON.stringify(corrections.correctedItems))
+  if (corrections?.sourceHashes && Object.keys(corrections.sourceHashes).length) body.set('sourceHashes', JSON.stringify(corrections.sourceHashes))
+  return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<{ files: QuotationFile[]; corrections?: { applied: number; feedback: number } }>
 }
 
 /** MR 通用附件上传（底部附件区）：不做报价识别，直接留存。 */
