@@ -4,9 +4,28 @@ const toTraditionalConverter = OpenCC.Converter({ from: 'cn', to: 'tw' })
 const toSimplifiedConverter = OpenCC.Converter({ from: 'tw', to: 'cn' })
 const japaneseToSimplifiedConverter = OpenCC.Converter({ from: 'jp', to: 'cn' })
 
+// 业务词组手动修正：OpenCC 字符级映射把“签”转成“籤”（竹籤的籤），业务用词需用“簽”。
+// 前置：转换前直接替换简体词组；后置：接住任何绕过前置的拼接文本。只按词组替换，不误伤抽籤/竹籤等正确用法。
+const TRADITIONAL_PRE_FIXES = [
+  ['签核', '簽核'],
+  ['会签', '會簽'],
+]
+const TRADITIONAL_POST_FIXES = [
+  ['籤核', '簽核'],
+  ['會籤', '會簽'],
+]
+
+function applyPhraseFixes(value, fixes) {
+  let output = value
+  for (const [source, target] of fixes) output = output.split(source).join(target)
+  return output
+}
+
 function toTraditional(value) {
   if (value === null || value === undefined) return value
-  return typeof value === 'string' ? toTraditionalConverter(japaneseToSimplifiedConverter(value)) : value
+  if (typeof value !== 'string') return value
+  const normalized = applyPhraseFixes(value, TRADITIONAL_PRE_FIXES)
+  return applyPhraseFixes(toTraditionalConverter(japaneseToSimplifiedConverter(normalized)), TRADITIONAL_POST_FIXES)
 }
 
 function toSimplified(value) {
