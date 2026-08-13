@@ -1461,6 +1461,11 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
         warranty_service: String(item?.warrantyService || '').trim().slice(0, 255) || null,
         qty: Number.isFinite(Number(item?.qty)) ? Number(item.qty) : null,
         unit_price: Number.isFinite(Number(item?.unitPrice)) ? Number(item.unitPrice) : null,
+        // 小计：前端修正品项通常不带 extended，缺省时用 qty × unit_price 补齐（校验依赖）
+        extended: Number.isFinite(Number(item?.extended)) ? Number(item.extended)
+          : Number.isFinite(Number(item?.qty)) && Number.isFinite(Number(item?.unitPrice))
+            ? Math.round(Number(item.qty) * Number(item.unitPrice) * 100) / 100
+            : null,
         vendor: String(item?.vendor || '').trim().slice(0, 255) || null,
         cost_incl_tax: Number.isFinite(Number(item?.costInclTax)) ? Number(item.costInclTax) : null,
         tax_rate: Number.isFinite(Number(item?.taxRate)) ? Number(item.taxRate) : null,
