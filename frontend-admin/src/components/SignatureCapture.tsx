@@ -1,15 +1,28 @@
-import { useCallback, useEffect, useRef, type PointerEvent } from "react";
-import { RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
+import { Maximize2, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function SignatureCapture({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+interface SignatureCanvasProps {
+  value: string;
+  onChange: (value: string) => void;
+  wrapperClassName: string;
+  canvasClassName: string;
+  placeholder?: string;
+}
+
+/** 手写签名画布：笔迹在每次落笔结束时通过 onChange 输出 PNG dataURL；value 变化时整体重绘。 */
+function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, placeholder }: SignatureCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免"清除后残影复活"
+  const drawTokenRef = useRef(0);
 
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const token = ++drawTokenRef.current;
     const rect = canvas.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(rect.width * ratio));
@@ -26,6 +39,7 @@ export function SignatureCapture({ value, onChange }: { value: string; onChange:
     if (value) {
       const image = new Image();
       image.onload = () => {
+        if (drawTokenRef.current !== token) return;
         const scale = Math.min(rect.width / image.width, rect.height / image.height);
         const drawWidth = image.width * scale;
         const drawHeight = image.height * scale;
@@ -77,32 +91,97 @@ export function SignatureCapture({ value, onChange }: { value: string; onChange:
     onChange(canvasRef.current?.toDataURL("image/png") || "");
   }
 
-  function clear() {
-    onChange("");
-    window.requestAnimationFrame(setupCanvas);
-  }
+  return (
+    <div className={wrapperClassName}>
+      <canvas
+        ref={canvasRef}
+        className={canvasClassName}
+        onPointerDown={begin}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+      />
+      {!value && placeholder ? (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-medium text-slate-400">
+          {placeholder}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function SignatureCapture({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [landscapeOpen, setLandscapeOpen] = useState(false);
+  const [portrait, setPortrait] = useState(() => window.innerHeight >= window.innerWidth);
+
+  useEffect(() => {
+    if (!landscapeOpen) return;
+    const syncOrientation = () => setPortrait(window.innerHeight >= window.innerWidth);
+    syncOrientation();
+    window.addEventListener("resize", syncOrientation);
+    window.addEventListener("orientationchange", syncOrientation);
+    return () => {
+      window.removeEventListener("resize", syncOrientation);
+      window.removeEventListener("orientationchange", syncOrientation);
+    };
+  }, [landscapeOpen]);
+
+  // 清除只改 value：各画布靠 value 变化整体重绘为空白（旧版 rAF 调用旧闭包 + 异步图片回画，导致需点两次）
+  const clear = () => onChange("");
 
   return (
     <div className="space-y-2">
-      <div className="relative overflow-hidden rounded-lg border border-dashed bg-white">
-        <canvas
-          ref={canvasRef}
-          className="block h-56 w-full touch-none"
-          onPointerDown={begin}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={end}
-        />
-        {!value ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-medium text-slate-400">
-            请在此处手写签名
-          </div>
-        ) : null}
+      <SignatureCanvas
+        value={value}
+        onChange={onChange}
+        wrapperClassName="relative overflow-hidden rounded-lg border border-dashed bg-white"
+        canvasClassName="block h-56 w-full touch-none"
+        placeholder="请在此处手写签名"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={clear}>
+          <RotateCcw className="h-4 w-4" />
+          清除签名
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setLandscapeOpen(true)}>
+          <Maximize2 className="h-4 w-4" />
+          横屏签名
+        </Button>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={clear}>
-        <RotateCcw className="h-4 w-4" />
-        清除签名
-      </Button>
+      {landscapeOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[100] flex flex-col bg-background">
+              <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
+                <span className="text-sm font-medium">横屏签名</span>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={clear}>
+                    <RotateCcw className="h-4 w-4" />
+                    清除
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => setLandscapeOpen(false)}>
+                    <X className="h-4 w-4" />
+                    完成
+                  </Button>
+                </div>
+              </div>
+              {portrait ? (
+                <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                  当前为竖屏，将手机旋转至横屏可获得更大的签名空间。
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1 p-3">
+                <SignatureCanvas
+                  value={value}
+                  onChange={onChange}
+                  wrapperClassName="relative h-full w-full overflow-hidden rounded-lg border bg-white"
+                  canvasClassName="block h-full w-full touch-none"
+                  placeholder="请在此处手写签名"
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
