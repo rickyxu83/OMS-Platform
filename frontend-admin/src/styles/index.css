@@ -75,3 +75,12 @@
   width: 2.5px;
   height: 2.5px;
 }
+
+/* 统计数字加载完成后的缓慢浮现：淡入 + 上移 */
+@keyframes stat-value-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stat-value-enter {
+  animation: stat-value-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
