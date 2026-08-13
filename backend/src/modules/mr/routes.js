@@ -20,7 +20,6 @@ router.post('/:id/reassign-sales', requirePermission('mr.edit'), controller.reas
 router.post('/:id/withdraw', requirePermission('mr.edit'), controller.withdraw)
 router.post('/:id/void', requirePermission('mr.void'), controller.voidOrder)
 router.put('/:id/purchase', requirePermission('mr.purchase'), controller.submitPurchase)
-router.post('/:id/purchase/skip', requirePermission('mr.purchase'), controller.skipPurchase)
 router.post('/:id/import', requirePermission('mr.edit'), controller.quotationUpload, controller.importQuotation)
 router.post('/:id/attachments', requirePermission('mr.edit'), controller.attachmentUpload, controller.uploadAttachments)
 router.get('/:id/quotation', requirePermission('mr.view'), controller.downloadQuotation)

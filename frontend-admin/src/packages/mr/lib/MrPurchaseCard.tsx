@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Ban, CheckCircle2, ClipboardPen, Loader2, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { skipMrPurchase, submitMrPurchase } from '../client'
+import { submitMrPurchase } from '../client'
 import type { MrOrder } from '../types'
 import { SectionCard } from './mr-ui'
 
@@ -27,8 +25,6 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [skipOpen, setSkipOpen] = useState(false)
-  const [skipNote, setSkipNote] = useState('')
 
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
@@ -148,22 +144,6 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     }
   }
 
-  const skip = async () => {
-    if (!order.id) return
-    setBusy(true)
-    try {
-      const next = await skipMrPurchase(order.id, skipNote.trim() || undefined)
-      toast.success('已标记为无需采购')
-      setSkipOpen(false)
-      window.dispatchEvent(new Event('mr:approval-changed'))
-      onChanged(next)
-    } catch (error) {
-      toast.error((error as Error).message || '操作失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <div ref={cardRef}>
     <SectionCard
@@ -253,27 +233,10 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
               <Button type="button" disabled={busy} onClick={() => void submit()}>
                 {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购订单号
               </Button>
-              {status === 'pending' ? (
-                <Button type="button" variant="outline" disabled={busy} onClick={() => setSkipOpen(true)}>标记无需采购</Button>
-              ) : null}
             </div>
           </div>
         ) : null}
       </div>
-
-      <Dialog open={skipOpen} onOpenChange={setSkipOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>标记无需采购</DialogTitle>
-            <DialogDescription>确认该 MR 整单无需向供应商下单？标记后采购任务关闭，业务负责人会收到知会。</DialogDescription>
-          </DialogHeader>
-          <Textarea rows={3} value={skipNote} placeholder="说明（选填）" onChange={(event) => setSkipNote(event.target.value)} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSkipOpen(false)}>取消</Button>
-            <Button disabled={busy} onClick={() => void skip()}>{busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}确认无需采购</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </SectionCard>
     </div>
   )

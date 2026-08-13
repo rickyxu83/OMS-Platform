@@ -981,25 +981,39 @@ async function decide(req, res, action) {
     )
     if (!pending[0]) {
       becameApproved = true
+      // 全部品项均无供应商时自动标记无需采购，不再派发采购待办
+      const [vendorRows] = await connection.execute(
+        'SELECT COUNT(*) AS count FROM mr_items WHERE mr_id = :id AND TRIM(COALESCE(vendor, \'\')) <> \'\'',
+        { id: req.params.id },
+      )
+      const needsPurchase = Number(vendorRows[0]?.count || 0) > 0
       await connection.execute(
         `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
                 archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
-                purchase_status = 'pending', purchase_assignee_user_id = NULL, purchase_assignment_error = NULL,
-                purchased_at = NULL, purchased_by = NULL, purchase_note = NULL,
+                purchase_status = :purchaseStatus, purchase_assignee_user_id = NULL, purchase_assignment_error = NULL,
+                purchased_at = NULL, purchased_by = NULL,
+                purchase_note = :purchaseNote,
                 updated_by = :userId WHERE id = :id`,
-        { id: req.params.id, userId: req.user.id },
+        {
+          id: req.params.id,
+          userId: req.user.id,
+          purchaseStatus: needsPurchase ? 'pending' : 'skipped',
+          purchaseNote: needsPurchase ? null : '全部品项均无供应商，系统自动标记无需采购',
+        },
       )
       await connection.execute(
         `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
          VALUES (:mrId, :recipientId, 'approved')`,
         { mrId: req.params.id, recipientId: order.salesOwnerId },
       )
-      await activatePurchaseTask(connection, {
-        id: Number(req.params.id),
-        customerName: order.customerName,
-        salesOwnerId: Number(order.salesOwnerId) || null,
-        createdBy: Number(order.createdBy) || req.user.id,
-      }, req.user.id)
+      if (needsPurchase) {
+        await activatePurchaseTask(connection, {
+          id: Number(req.params.id),
+          customerName: order.customerName,
+          salesOwnerId: Number(order.salesOwnerId) || null,
+          createdBy: Number(order.createdBy) || req.user.id,
+        }, req.user.id)
+      }
     } else {
       await connection.execute('UPDATE mr_orders SET updated_by = :userId WHERE id = :id', { id: req.params.id, userId: req.user.id })
       await activateCurrentStep(connection, order, current.cycle, order.createdBy || req.user.id)
@@ -1225,44 +1239,6 @@ async function submitPurchase(req, res) {
        WHERE id = :mrId`,
       { mrId: order.id },
     )
-  })
-  res.json(await loadDetail(req.params.id, req.user))
-}
-
-async function skipPurchase(req, res) {
-  await ensureTables()
-  const note = String(req.body?.note || '').trim().slice(0, 500) || null
-  await transaction(async (connection) => {
-    const order = await loadLockedOrder(connection, req.params.id)
-    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以标记无需采购')
-    if (String(order.purchaseStatus || '') !== 'pending') throw badRequest('当前 MR 不在待采购状态')
-    if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
-    await connection.execute(
-      `UPDATE mr_orders SET purchase_status = 'skipped', purchased_at = NOW(), purchased_by = :userId,
-              purchase_note = :note, updated_by = :userId WHERE id = :mrId`,
-      { mrId: order.id, userId: req.user.id, note },
-    )
-    await connection.execute(
-      `UPDATE mr_purchase_tasks SET status = 'skipped', completed_at = NOW(), completed_by = :userId
-       WHERE mr_id = :mrId AND status = 'pending'`,
-      { mrId: order.id, userId: req.user.id },
-    )
-    await connection.execute(
-      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
-       VALUES (:actorId, 'mr', :targetId, 'purchase_skip', :detailJson)`,
-      {
-        actorId: req.user.id,
-        targetId: order.id,
-        detailJson: JSON.stringify({ customerName: order.customerName, ctrlNo: order.ctrlNo, note }),
-      },
-    )
-    if (order.salesOwnerId) {
-      await connection.execute(
-        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
-         VALUES (:mrId, :recipientId, 'purchase_done')`,
-        { mrId: order.id, recipientId: order.salesOwnerId },
-      )
-    }
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -1748,7 +1724,6 @@ module.exports = {
   withdraw,
   voidOrder,
   submitPurchase,
-  skipPurchase,
   remove,
   importQuotation,
   importProgressHandler,
