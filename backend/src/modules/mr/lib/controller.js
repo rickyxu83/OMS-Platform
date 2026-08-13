@@ -1169,13 +1169,16 @@ async function submitPurchase(req, res) {
     if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
     if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
     wasDone = String(order.purchaseStatus || '') === 'done'
-    const [itemRows] = await connection.execute('SELECT id, row_no, name, purchase_order_no FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
+    const [itemRows] = await connection.execute('SELECT id, row_no, name, vendor, purchase_order_no FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
     const byId = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.purchaseOrderNo || '').trim().slice(0, 255)]))
     const updates = []
     for (const item of itemRows) {
       const value = byId.get(Number(item.id))
       if (value === undefined) throw badRequest('请完整提交所有品项的采购订单号')
-      if (!value) throw badRequest('每个品项都需填写采购订单号；如整单无需采购，请使用「标记无需采购」')
+      const hasVendor = String(item.vendor || '').trim() !== ''
+      // 无供应商的品项没有采购对象，视为无需采购，不强制填写采购订单号
+      if (hasVendor && !value) throw badRequest('有供应商的品项都需填写采购订单号；无供应商的品项视为无需采购')
+      if (!hasVendor && !value) continue
       updates.push([value, Number(item.id)])
       const before = String(item.purchase_order_no || '')
       if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, before: before || null, after: value })

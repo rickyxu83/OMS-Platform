@@ -33,6 +33,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
   const editable = Boolean(order.permissions?.canPurchase) && ['pending', 'done'].includes(status)
+  // 无供应商的品项没有采购对象，视为无需采购，不参与填写与多选
+  const hasVendor = (item: { vendor?: string | null }) => String(item.vendor || '').trim() !== ''
+  const vendorItemCount = items.filter(hasVendor).length
 
   useEffect(() => {
     const next: Record<string, string> = {}
@@ -81,8 +84,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   }, [selected.size])
 
   const setItemSelected = (index: number, mode: 'add' | 'remove') => {
-    const itemId = items[index]?.id
-    if (itemId === undefined || itemId === null) return
+    const item = items[index]
+    const itemId = item?.id
+    if (itemId === undefined || itemId === null || !hasVendor(item)) return
     const key = String(itemId)
     setSelected((current) => {
       const next = new Set(current)
@@ -97,8 +101,8 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     setSelected((current) => {
       const next = new Set(current)
       for (let i = start; i <= end; i += 1) {
-        const itemId = items[i]?.id
-        if (itemId !== undefined && itemId !== null) next.add(String(itemId))
+        const item = items[i]
+        if (item?.id !== undefined && item?.id !== null && hasVendor(item)) next.add(String(item.id))
       }
       return next
     })
@@ -107,6 +111,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const onRowMouseDown = (index: number, event: ReactMouseEvent<HTMLTableRowElement>) => {
     if (!editable || event.button !== 0) return
     if ((event.target as HTMLElement).closest('input, textarea, button, a')) return
+    if (!hasVendor(items[index])) return
     if (event.shiftKey && anchorRef.current !== null) {
       selectRange(anchorRef.current, index)
       event.preventDefault()
@@ -195,10 +200,12 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const noVendor = !hasVendor(item)
+                  return (
                   <TableRow
                     key={item.id || index}
-                    className={`${selected.has(String(item.id)) ? 'bg-primary/10' : ''} ${editable ? 'cursor-pointer select-none' : ''}`}
+                    className={`${selected.has(String(item.id)) ? 'bg-primary/10' : ''} ${editable && !noVendor ? 'cursor-pointer select-none' : ''} ${noVendor ? 'opacity-60' : ''}`}
                     onMouseDown={(event) => onRowMouseDown(index, event)}
                     onMouseEnter={() => onRowMouseEnter(index)}
                   >
@@ -209,7 +216,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                     </TableCell>
                     <TableCell className="truncate" title={item.vendor || ''}>{item.vendor || '-'}</TableCell>
                     <TableCell>
-                      {editable ? (
+                      {noVendor ? (
+                        <span className="text-xs text-muted-foreground">无需采购</span>
+                      ) : editable ? (
                         <Input
                           value={draft[String(item.id)] ?? ''}
                           placeholder="采购订单号"
@@ -221,7 +230,8 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
@@ -234,7 +244,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
               <Button type="button" variant="outline" onClick={applyBatch} disabled={busy || !batchNo.trim() || selected.size === 0}>
                 填入所选{selected.size > 0 ? `（已选 ${selected.size} 项）` : ''}
               </Button>
-              <Button type="button" variant="ghost" onClick={() => setSelected(new Set(items.map((item) => String(item.id))))}>全选</Button>
+              <Button type="button" variant="ghost" onClick={() => setSelected(new Set(items.filter(hasVendor).map((item) => String(item.id))))}>全选</Button>
               {selected.size > 0 ? <Button type="button" variant="ghost" onClick={() => setSelected(new Set())}>清除选择</Button> : null}
             </div>
             <p className="text-xs text-muted-foreground">按住鼠标左键拖过品项行即可多选（再次拖过已选行可取消），Shift+点击可选连续区间。</p>
