@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { Fragment, useEffect, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction } from 'react'
 import { Check, Copy, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,74 @@ export function MrItemTable({
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchSourceIndex, setBatchSourceIndex] = useState(0)
   const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
+  // 拖选多选：点击行打开编辑弹窗；按住左键拖过多行才算多选（started 区分点击与拖拽）
+  const dragRef = useRef({ active: false, started: false, startIndex: 0, mode: 'add' as 'add' | 'remove' })
+  const anchorRef = useRef<number | null>(null)
+  const suppressClickRef = useRef(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const stop = () => {
+      if (dragRef.current.started) suppressClickRef.current = true
+      dragRef.current.active = false
+      dragRef.current.started = false
+    }
+    window.addEventListener('mouseup', stop)
+    return () => window.removeEventListener('mouseup', stop)
+  }, [])
+  // 点击表格外的页面空白处清除多选（弹窗内点击除外）
+  useEffect(() => {
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      if (!selectedRows.size) return
+      const target = event.target as HTMLElement
+      if (target.closest('[role="dialog"]')) return
+      if (containerRef.current && !containerRef.current.contains(target)) setSelectedRows(new Set())
+    }
+    document.addEventListener('mousedown', onDocumentMouseDown)
+    return () => document.removeEventListener('mousedown', onDocumentMouseDown)
+  }, [selectedRows.size])
+
+  const applyRowSelection = (index: number, mode: 'add' | 'remove') => {
+    setSelectedRows((current) => {
+      const next = new Set(current)
+      if (mode === 'add') next.add(index)
+      else next.delete(index)
+      return next
+    })
+  }
+  const onRowMouseDown = (index: number, event: ReactMouseEvent<HTMLTableRowElement>) => {
+    if (!editable || event.button !== 0) return
+    if ((event.target as HTMLElement).closest('input, textarea, button, a, select')) return
+    suppressClickRef.current = false
+    if (event.shiftKey && anchorRef.current !== null) {
+      const [start, end] = [Math.min(anchorRef.current, index), Math.max(anchorRef.current, index)]
+      setSelectedRows((current) => {
+        const next = new Set(current)
+        for (let i = start; i <= end; i += 1) next.add(i)
+        return next
+      })
+      suppressClickRef.current = true
+      event.preventDefault()
+      return
+    }
+    dragRef.current = { active: true, started: false, startIndex: index, mode: selectedRows.has(index) ? 'remove' : 'add' }
+    anchorRef.current = index
+    event.preventDefault()
+  }
+  const onRowMouseEnter = (index: number) => {
+    if (!editable || !dragRef.current.active) return
+    if (!dragRef.current.started) {
+      dragRef.current.started = true
+      applyRowSelection(dragRef.current.startIndex, dragRef.current.mode)
+    }
+    applyRowSelection(index, dragRef.current.mode)
+  }
+  const onRowClick = (index: number) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
+    setSelectedIndex(index)
+  }
   useEffect(() => {
     setSelectedIndex((current) => current !== null && current < items.length ? current : null)
   }, [items.length])
@@ -123,11 +191,13 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">点击品项行即可编辑；复选框用于批量复制、批量删除。</p>
+          <p className="text-xs text-muted-foreground">点击品项行即可编辑；按住左键拖过品项行可多选，Shift+点击选连续区间，用于批量复制、批量删除。</p>
           <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set(items.map((_, index) => index)))}>全选</Button>
             {editable && selectedRows.size ? (
               <>
                 <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>清除</Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => setBatchOpen(true)}><SlidersHorizontal className="mr-1.5 size-4" />批量复制</Button>
                 <Button type="button" variant="destructive" size="sm" onClick={() => {
                   if (window.confirm(`确定删除选中的 ${selectedRows.size} 个品项吗？删除后不可恢复。`)) {
@@ -148,7 +218,7 @@ export function MrItemTable({
             <table className="w-full min-w-[760px] table-fixed text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
-                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">{editable ? '选择 / 序号' : '序号'}</th>
+                  <th scope="col" className="w-16 px-3 py-2 text-left font-medium">序号</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
                   <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
                   <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
@@ -164,28 +234,18 @@ export function MrItemTable({
                   return (
                     <Fragment key={item.id || `row-${index}`}>
                       <tr
-                      onClick={rowSelectionEnabled ? () => setSelectedIndex(index) : undefined}
-                      className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${low ? 'border-l-2 border-l-red-500' : ''} ${rowSelectionEnabled ? 'cursor-pointer' : ''}`}
+                      onClick={rowSelectionEnabled ? () => onRowClick(index) : undefined}
+                      onMouseDown={rowSelectionEnabled && editable ? (event) => onRowMouseDown(index, event) : undefined}
+                      onMouseEnter={rowSelectionEnabled && editable ? () => onRowMouseEnter(index) : undefined}
+                      className={`align-top transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-muted/20'} ${selectedRows.has(index) ? 'bg-primary/10' : ''} ${low ? 'border-l-2 border-l-red-500' : ''} ${rowSelectionEnabled ? 'cursor-pointer' : ''} ${editable ? 'select-none' : ''}`}
                     >
                       <td className="px-3 py-3 text-muted-foreground tabular-nums">
-                        {editable ? (
-                          <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-                            <Checkbox
-                              aria-label={`选择第 ${index + 1} 项用于批量操作`}
-                              checked={selectedRows.has(index)}
-                              onCheckedChange={(checked) => setSelectedRows((current) => {
-                                const next = new Set(current)
-                                if (checked) next.add(index)
-                                else next.delete(index)
-                                return next
-                              })}
-                            />
-                            <span className="tabular-nums">{index + 1}</span>
-                            {editable ? (
-                              <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
-                            ) : null}
-                          </div>
-                        ) : index + 1}
+                        <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                          <span className="tabular-nums">{index + 1}</span>
+                          {editable ? (
+                            <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="min-w-0 px-3 py-3">
                         <div
