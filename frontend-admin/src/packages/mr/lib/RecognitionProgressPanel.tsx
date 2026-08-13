@@ -102,19 +102,18 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
     <div role="status" aria-live="polite" className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
-          <span className="truncate text-sm font-semibold">AI 报价识别中</span>
+          <Loader2 className="size-5 shrink-0 animate-spin text-primary" />
+          <span className="truncate text-base font-semibold">AI 报价识别中</span>
         </div>
         <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-primary">{displayPercent}%</span>
       </div>
 
-      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
+      {/* 轨道：稍粗，浅色衬底；填充按阶段：AI 阶段双层背景渐变+光带滚动（参考范例），其他阶段纯主色+轻辉光 */}
+      <div className="mt-3 h-3.5 overflow-hidden rounded-full bg-muted">
         <div
-          className={`relative h-full rounded-full transition-[width] duration-300 ease-out ${isAiBar ? 'bg-gradient-to-r from-violet-500 to-sky-400' : 'bg-primary'}`}
-          style={{ width: `${displayPercent}%` }}
-        >
-          {isAiBar ? <span aria-hidden="true" className="absolute inset-y-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-white/50 to-transparent" style={{ animation: 'mr-progress-shine 1s linear infinite' }} /> : null}
-        </div>
+          className={`relative h-full rounded-full transition-[width] duration-300 ease-out ${isAiBar ? 'mr-ai-progress-bar' : 'bg-primary'}`}
+          style={{ width: `${displayPercent}%`, boxShadow: isAiBar ? '0 0 14px rgba(124,58,237,0.45), 0 0 6px rgba(56,189,248,0.35)' : '0 0 8px rgba(109,91,208,0.28)' }}
+        />
       </div>
 
       <div className="mt-2.5 text-xs text-muted-foreground" style={{ animation: 'mr-progress-breathe 2.4s ease-in-out infinite' }}>
@@ -122,9 +121,20 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
       </div>
 
       <style>{`
-        @keyframes mr-progress-shine {
-          0% { transform: translateX(-120%); }
-          100% { transform: translateX(420%); }
+        /* AI 阶段进度条：基础渐变（primary → 天蓝 → primary → 天蓝）+ 白色光带层背景位置滚动（参考范例） */
+        @keyframes mr-progress-roll {
+          0% { background-position: 0% 0, 0 0; }
+          100% { background-position: 40% 0, 0 0; }
+        }
+        .mr-ai-progress-bar {
+          position: relative;
+          overflow: hidden;
+          background-image:
+            linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%),
+            linear-gradient(90deg, var(--primary), #38bdf8, var(--primary), #38bdf8);
+          background-size: 40% 100%, 100% 100%;
+          background-repeat: repeat, no-repeat;
+          animation: mr-progress-roll 1.1s linear infinite;
         }
         @keyframes mr-progress-breathe {
           0%, 100% { opacity: 0.45; }
