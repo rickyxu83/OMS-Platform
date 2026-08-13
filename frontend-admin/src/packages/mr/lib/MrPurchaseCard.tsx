@@ -177,7 +177,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                 <TableRow>
                   <TableHead className="w-12">项目</TableHead>
                   <TableHead>品名 / 描述</TableHead>
-                  <TableHead className="w-28">供应商</TableHead>
+                  <TableHead className="w-36">供应商</TableHead>
                   <TableHead className="w-72">采购订单号</TableHead>
                 </TableRow>
               </TableHeader>
@@ -190,11 +190,11 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                     onMouseEnter={() => onRowMouseEnter(index)}
                   >
                     <TableCell className="text-center">{index + 1}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-normal">
                       <div className="break-words font-medium">{item.name || '-'}</div>
                       {item.description ? <div className="line-clamp-2 break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
                     </TableCell>
-                    <TableCell className="break-words">{item.vendor || '-'}</TableCell>
+                    <TableCell className="truncate" title={item.vendor || ''}>{item.vendor || '-'}</TableCell>
                     <TableCell>
                       {editable ? (
                         <Input
