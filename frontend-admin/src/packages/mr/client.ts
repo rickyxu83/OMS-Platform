@@ -70,7 +70,7 @@ export async function fetchQuotationBlob(id: string | number, fileId: string | n
 }
 
 export async function getImportProgress(taskId: string) {
-  return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string; stage?: string }>
+  return api.get(`/mr/import-progress?taskId=${encodeURIComponent(taskId)}`) as Promise<{ done: number; total: number; current: string; stage?: string; stagePercent?: number; itemCount?: number }>
 }
 
 export async function downloadQuotation(id: string | number, fileId: string | number, name: string) {

@@ -1621,7 +1621,12 @@ async function importQuotation(req, res) {
   if (!uploads.length) throw badRequest('请选择报价单或订单文件')
 
   const taskId = String(req.body?.taskId || '').trim()
-  const progress = { done: 0, total: uploads.length, current: '', stage: 'parsing' }
+  // 分阶段进度：stagePercent 为服务端真实锚点，前端在锚点间平滑补间
+  const progress = { done: 0, total: uploads.length, current: '', stage: 'preparing', stagePercent: 3, itemCount: 0 }
+  const setStage = (stage, stagePercent) => {
+    progress.stage = stage
+    progress.stagePercent = stagePercent
+  }
   if (taskId) importProgress.set(taskId, progress)
   const clearProgress = () => { if (taskId) setTimeout(() => importProgress.delete(taskId), 60000) }
   let requestedRoles = []
@@ -1646,7 +1651,7 @@ async function importQuotation(req, res) {
   const processSource = async (file, index) => {
     const name = originalNameUtf8(file)
     progress.current = name
-    progress.stage = 'parsing'
+    setStage('parsing', 8)
     const extension = path.extname(name).toLowerCase()
     const requestedRole = ['sales', 'purchase'].includes(effectiveRoles[index]) ? effectiveRoles[index] : null
     const requestedDocumentType = requestedRole === 'sales' ? 'sales_quote' : requestedRole === 'purchase' ? 'purchase_quote' : 'unknown'
@@ -1666,6 +1671,7 @@ async function importQuotation(req, res) {
       aiItemCount = cached.result.aiItemCount || 0
       aiDocumentType = cached.result.aiDocumentType || null
       parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
+      setStage('cache', 8)
       progress.stage = 'cache'
     } else {
       parsed = extension === '.pdf'
@@ -1676,7 +1682,10 @@ async function importQuotation(req, res) {
       const preferAi = extension === '.pdf' || systemItemCount === 0
       if (env.ai.quoteRecognitionEnabled && preferAi) {
         try {
-          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name, { onStage: (stage) => { progress.stage = stage } })
+          const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name, { onStage: (stage) => {
+            // AI 识别阶段（rendering/ai）锚点 35%，前端在此平滑爬升
+            setStage(stage === 'rendering' ? 'rendering' : 'ai', 35)
+          } })
           if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
             aiItemCount = aiResult.sheets[0].items.length
             aiDocumentType = aiResult.documentType
@@ -1695,7 +1704,7 @@ async function importQuotation(req, res) {
         }
       }
       if (parsed.documentType === 'scanned_pdf' && !aiItemCount) {
-        progress.stage = 'ocr'
+        setStage('ocr', 20)
         try {
           const ocr = await recognizePdf(file.buffer, name)
           if (ocr?.text) {
@@ -1772,11 +1781,16 @@ async function importQuotation(req, res) {
     } finally {
       progress.done += 1
       progress.current = name
+      // 整理完成锚点：按已识别品项条数上报真实数据
+      const sheetItems = (parsed?.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
+      if (sheetItems > 0) progress.itemCount = Number(progress.itemCount || 0) + sheetItems
+      setStage('ready', 28)
     }
   }
   try {
   const sources = await Promise.all(uploads.map((file, index) => processSource(file, index)))
   progress.stage = 'normalizing'
+  progress.stagePercent = 92
   // 跨文件实体归一化按“文件集合”缓存：同一批文件重复导入直接复用，只有新增文件才重跑 AI
   // key 直接取命名空间输入的 sha256，保证 64 字符不超过 file_hash CHAR(64)
   const setHash = crypto.createHash('sha256').update(`entity-set:${uploadHashes.join(':')}`).digest('hex')
@@ -1802,6 +1816,7 @@ async function importQuotation(req, res) {
     }
   }
   progress.stage = 'merging'
+  progress.stagePercent = 95
 
   const vendors = await query(
     `SELECT name, official_website AS officialWebsite
@@ -1872,8 +1887,15 @@ async function importProgressHandler(req, res) {
   const taskId = String(req.query.taskId || '').trim()
   if (!taskId) throw badRequest('缺少 taskId')
   const progress = importProgress.get(taskId)
-  if (!progress) return res.json({ done: 0, total: 0, current: '' })
-  res.json({ done: progress.done, total: progress.total, current: progress.current, stage: progress.stage })
+  if (!progress) return res.json({ done: 0, total: 0, current: '', stage: 'preparing', stagePercent: 3, itemCount: 0 })
+  res.json({
+    done: progress.done,
+    total: progress.total,
+    current: progress.current,
+    stage: progress.stage,
+    stagePercent: Number(progress.stagePercent || 0),
+    itemCount: Number(progress.itemCount || 0),
+  })
 }
 
 async function downloadQuotation(req, res) {

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations, persistQuotations } from '../client'
+import { RecognitionProgressPanel, type RecognitionProgress } from './RecognitionProgressPanel'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 import { AnimatedInteger, AnimatedMoney } from './mr-ui'
@@ -140,7 +141,7 @@ function importStageIndex(stage?: string) {
   return 1
 }
 
-function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; fileCount?: number; progress?: { done: number; total: number; current: string; stage?: string } | null }) {
+function ImportActivity({ saving, fileCount = 1, progress }: { saving: boolean; fileCount?: number; progress?: RecognitionProgress | null }) {
   const stages = saving ? ['留存附件', '写入品项', '计算金额'] : ['读取文件', '识别字段', '匹配品项']
   const activeIndex = saving ? 1 : importStageIndex(progress?.stage)
   const stageLabel = progress?.stage ? IMPORT_STAGE_LABELS[progress.stage] || progress.stage : ''
@@ -218,7 +219,8 @@ export function QuotationImportDialog({
   const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
+  const [progress, setProgress] = useState<RecognitionProgress | null>(null)
+  const saving = Boolean(preview)
   const [deletingFileId, setDeletingFileId] = useState<string | number | null>(null)
   const [removedStoredIds, setRemovedStoredIds] = useState<Set<string | number>>(new Set())
   const parseSeqRef = useRef(0)
@@ -479,7 +481,7 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-                {loading ? <ImportActivity saving={Boolean(preview)} fileCount={files.length} progress={progress} /> : null}
+                {loading ? (saving ? <ImportActivity saving fileCount={files.length} progress={progress} /> : <RecognitionProgressPanel progress={progress} fileCount={files.length} />) : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件，其中销售报价 {salesFiles.length} 份、采购来源文件 {purchaseFiles.length} 份。</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
