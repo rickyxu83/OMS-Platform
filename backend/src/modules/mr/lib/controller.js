@@ -1328,13 +1328,13 @@ async function remove(req, res) {
 
 const quotationUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+  limits: { fileSize: 20 * 1024 * 1024, files: 30 },
   fileFilter(_req, file, callback) {
     const extension = path.extname(file.originalname || '').toLowerCase()
     if (!['.xls', '.xlsx', '.pdf'].includes(extension)) return callback(badRequest('请上传 Excel 或 PDF 报价/订单文件（.xls、.xlsx、.pdf）'))
     callback(null, true)
   }
-}).fields([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }])
+}).fields([{ name: 'files', maxCount: 30 }, { name: 'file', maxCount: 1 }])
 
 function originalNameUtf8(file) {
   return Buffer.from(file?.originalname || '', 'latin1').toString('utf8') || 'quotation.xlsx'
