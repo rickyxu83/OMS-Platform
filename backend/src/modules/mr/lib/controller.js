@@ -1479,7 +1479,7 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
 
     // 纠错样本：对比自动识别结果与修正结果，有差异才落库
     const cached = await readRecognitionCache(fileHash)
-    const originalItems = cached?.result?.sheets?.[0]?.items || []
+    const originalItems = cached?.result?.parsed?.sheets?.[0]?.items || []
     if (!originalItems.length) continue
     const diff = diffItems(originalItems, normalized)
     if (!diff.length) continue
@@ -1580,8 +1580,8 @@ async function importQuotation(req, res) {
     let aiItemCount = 0
     let aiDocumentType = null
     const cached = await readRecognitionCache(fileHash)
-    if (cached?.result?.sheets) {
-      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached.result)
+    if (cached?.result?.parsed?.sheets) {
+      ;({ parsed, recognitionMethod, systemItemCount, aiItemCount = 0, aiDocumentType = null } = cached.result.parsed)
       parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
       progress.stage = 'cache'
     } else {
@@ -1626,11 +1626,16 @@ async function importQuotation(req, res) {
       }
       await writeRecognitionCache(fileHash, name, { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType })
     }
-      // 人工修正回写：同一文件存在用户修正结果时，以修正结果为该文件的识别基准
-      if (cached?.corrected?.sheets?.length) {
+      // 人工修正回写：同一文件存在用户修正结果时，用修正品项替换自动识别品项（保留 sheet 级元数据）
+      if (cached?.corrected?.sheets?.length && Array.isArray(parsed.sheets)) {
         parsed = {
           ...parsed,
-          sheets: cached.corrected.sheets,
+          sheets: parsed.sheets.map((sheet, sheetIndex) => {
+            const correctedItems = cached.corrected.sheets[sheetIndex]?.items
+            return correctedItems && correctedItems.length
+              ? { ...sheet, items: correctedItems }
+              : sheet
+          }),
           warnings: [...(parsed.warnings || []), `已应用上次人工修正结果（历史修正 ${cached.correctionCount || 0} 次）`],
         }
       }
@@ -1745,6 +1750,9 @@ async function importQuotation(req, res) {
       matchedCustomer: matchedCustomer ? { ...camelizeRow(matchedCustomer), contacts: matchedContacts.map(camelizeRow) } : null,
     } : {},
   }
+  // 透传每份来源文件的识别 hash：确认导入时前端据此回写人工修正学习数据
+  const sourceHashByName = new Map(uploads.map((file, index) => [originalNameUtf8(file), uploadHashes[index]]))
+  payload.sources = (merged.sources || []).map((source) => ({ ...source, hash: sourceHashByName.get(String(source.name)) || null }))
   if (uploads.length === 1) payload.warnings.unshift('只识别到一份来源文件，请确认销售报价或供应商报价角色')
   const cleanupStoredFiles = String(req.body?.cleanupStoredFiles || '') === '1'
   const files = persist ? await persistQuotationFiles(req.params.id, newUploads, req.user, cleanupStoredFiles, requestedRoles) : []
