@@ -21,6 +21,7 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
@@ -905,14 +906,22 @@ export function InspectionSchedules() {
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <div className="space-y-3 p-1">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-5 w-14 rounded-full" />
+                    </div>
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无巡检计划</div>
             ) : (
               <div className="space-y-3">
-              {filtered.map((s) => {
+              {filtered.map((s, rowIndex) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
                 const planName = String(s.name || "").trim();
                 const customerName = String(s.customerName || "").trim();
@@ -925,11 +934,12 @@ export function InspectionSchedules() {
                     key={s.id}
                     role="button"
                     tabIndex={0}
-                    className={`grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:items-center ${
+                    className={`list-row-enter grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:items-center ${
                       canManageSchedules
                         ? "lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px]"
                         : "lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px]"
                     }`}
+                    style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                     onClick={() => openScheduleDetail(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;

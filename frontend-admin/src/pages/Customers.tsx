@@ -21,6 +21,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 import { toast } from "sonner";
 
 interface Customer {
@@ -1538,8 +1539,16 @@ export function Customers() {
         <CardContent className="min-w-0 pt-6">
           <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain rounded-md border">
             {initialLoading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t.list.loading}
+              <div className="p-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b px-2 py-3 last:border-b-0">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
@@ -1559,7 +1568,7 @@ export function Customers() {
                   <div>{t.list.address}</div>
                   <div className="pr-3 text-right">{t.list.action}</div>
                 </div>
-                {filtered.map((c) => {
+                {filtered.map((c, rowIndex) => {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     const selected = selectedCustomerIds.includes(String(c.id));
@@ -1568,7 +1577,8 @@ export function Customers() {
                         key={c.id}
                         role="button"
                         tabIndex={0}
-                        className={`grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
+                        className={`list-row-enter grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
+                        style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
                         onClick={() => openCustomerDetail(c)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;

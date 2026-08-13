@@ -18,3 +18,12 @@
   background-repeat: repeat, no-repeat;
   animation: ai-progress-roll 1.1s linear infinite;
 }
+
+/* 列表行入场动画：淡入 + 上移 */
+@keyframes list-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.list-row-enter {
+  animation: list-row-in 0.35s ease-out both;
+}
