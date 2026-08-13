@@ -343,7 +343,7 @@ function ScheduleEntriesEditor({
 export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const [form, setForm] = useState<MrOrder | null>(null)
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -388,8 +388,14 @@ export function MrFormPage() {
     setLoading(true)
     setError('')
     try {
-      const [order, optionData, references] = await Promise.all([getMr(id), getMrConstants(), loadMrReferences()])
-      const customer = order.customerId ? await loadCustomer(order.customerId) : null
+      // 采购等只读角色没有客户/业务名录权限，跳过引用数据加载（编辑表单才需要）
+      const canLoadReferences = hasPermission('customer.view')
+      const [order, optionData, references] = await Promise.all([
+        getMr(id),
+        getMrConstants(),
+        canLoadReferences ? loadMrReferences() : Promise.resolve({ customers: [], salespeople: [], vendors: [] }),
+      ])
+      const customer = canLoadReferences && order.customerId ? await loadCustomer(order.customerId) : null
       const customerContacts = customer?.contacts || []
       const defaultContact = (order.customerContactId ? customerContacts.find((item) => String(item.id) === String(order.customerContactId)) : undefined)
         || contactByName(customerContacts, order.contactName || order.purchaser || order.recipient || customer?.contactName)
@@ -423,7 +429,7 @@ export function MrFormPage() {
     } finally {
       if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [id])
+  }, [id, hasPermission])
 
   useEffect(() => {
     void load()
