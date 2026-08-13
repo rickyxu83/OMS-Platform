@@ -217,7 +217,8 @@ async function main() {
   assert(voidedText.text.includes('审批后作废原因'), '作废 PDF 应保留作废原因')
 
   assert(!extracted.text.includes('客户名称'), '正式 PDF 明细区不应重复汇总行已展示的客户名称')
-  assert.strictEqual(extracted.text.split('最晚交付日期').length - 1, 1, '最晚交付日期应只在汇总行出现一次，明细区不重复')
+  assert(!extracted.text.includes('最晚交付日期'), '明细区不应重复最晚交付日期（汇总条以「交付 / DELIVERY」格展示）')
+  assert.strictEqual(extracted.text.split('交付 / DELIVERY').length - 1, 1, '汇总条应包含交付日期格')
   assert(extracted.text.includes('交易与开票') && extracted.text.includes('交付与验收'), '正式 PDF 资料区应按分组小标题展示')
   console.log('mr workflow and PDF tests passed')
 }
