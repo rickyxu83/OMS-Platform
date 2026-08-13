@@ -380,12 +380,16 @@ async function callProvider(payload, aiSettings) {
   return callCompatibleProvider(payload, aiSettings)
 }
 
-async function generateTimesheetWorkSummary(payload) {
+async function generateTimesheetWorkSummary(payload, onProgress = null) {
+  const emit = (stage, progress, message) => {
+    try { onProgress?.({ stage, progress, message }) } catch { /* 进度回调异常不影响主流程 */ }
+  }
   const settings = await effectiveSettings()
   const aiSettings = settings.ai
   if (aiSettings.workSummaryEnabled !== 'true') return fallback('AI 摘要未生成：当前未启用 AI 工作内容总结。')
   if (!aiSettings.apiUrl || !aiSettings.apiKey || !aiSettings.model) return fallback('AI 摘要未生成：当前未完整配置 AI API 地址、Key 或模型。')
 
+  emit('query', 8, '正在查询并整理工单与工时记录…')
   const normalized = normalizeRecords(payload.items)
   if (!normalized.records.length) return fallback('AI 摘要未生成：所选范围内没有可总结的工作内容。')
 
@@ -409,7 +413,9 @@ async function generateTimesheetWorkSummary(payload) {
 
   const attempts = retryAttempts()
   let lastError = null
+  emit('query', 28, `已整理 ${normalized.records.length} 条工作记录，准备生成总结…`)
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    emit('ai', 35, `AI 正在分析 ${normalized.records.length} 条记录（第 ${attempt}/${attempts} 次尝试）…`)
     try {
       const { data, text } = await callProvider(requestPayload, aiSettings)
       const rawContent = extractTextFromProviderResponse(data) || text
@@ -419,8 +425,10 @@ async function generateTimesheetWorkSummary(payload) {
       const parsed = parseJsonText(rawContent)
       const summarySource = parsed || { executiveSummary: rawContent }
       const summary = normalizeSummary(summarySource, coverageNotes, payload.scope || {})
+      emit('validate', 92, 'AI 总结已生成，正在校验完整性…')
       const incompleteReason = summaryCompletenessError(summary, payload.scope || {})
       if (incompleteReason) throw new Error(incompleteReason)
+      emit('done', 100, '总结生成完成')
       return {
         ok: true,
         available: true,

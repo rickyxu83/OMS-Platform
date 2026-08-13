@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -293,6 +293,18 @@ const I18N = {
       cancel: "取消",
       submit: "生成总结",
       invalidRange: "开始日期不能晚于结束日期",
+      progressTitle: "AI 总结生成中",
+      progress: {
+        query: "正在查询并整理工单与工时记录…",
+        ai: "AI 正在分析工单记录…",
+        aiHints: [
+          "正在提取各客户服务要点…",
+          "正在归纳关键主题…",
+          "正在评估客户影响…",
+          "正在识别风险信号…",
+          "正在整理后续建议…",
+        ],
+      },
     },
     stats: {
       todayTotal: "今日服务总数",
@@ -395,6 +407,18 @@ const I18N = {
       cancel: "取消",
       submit: "生成總結",
       invalidRange: "開始日期不能晚於結束日期",
+      progressTitle: "AI 總結產生中",
+      progress: {
+        query: "正在查詢並整理工單與工時記錄…",
+        ai: "AI 正在分析工單記錄…",
+        aiHints: [
+          "正在提取各客戶服務要點…",
+          "正在歸納關鍵主題…",
+          "正在評估客戶影響…",
+          "正在識別風險訊號…",
+          "正在整理後續建議…",
+        ],
+      },
     },
     stats: {
       todayTotal: "今日服務總數",
@@ -662,6 +686,138 @@ function PreviewBlock({ label, value, markdown = false }: { label: string; value
   );
 }
 
+interface SummaryProgress {
+  stage: string;
+  progress: number;
+  message: string;
+}
+
+// AI 总结生成进度面板：平滑爬升的进度条 + 百分比 + 分步文字描述
+export function WorkSummaryProgress({ progress, t }: { progress: SummaryProgress; t: any }) {
+  const displayRef = useRef(progress.progress);
+  const [display, setDisplay] = useState(progress.progress);
+  const [hintIndex, setHintIndex] = useState(0);
+  const aiStartRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (progress.stage === "ai") aiStartRef.current = Date.now();
+  }, [progress.stage]);
+
+  // AI 阶段在服务端锚点（35%）与 89% 之间按时间平滑爬升，避免长时间看起来卡住
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      let target = progress.progress;
+      if (progress.stage === "ai") {
+        const elapsed = (Date.now() - aiStartRef.current) / 1000;
+        target = Math.max(target, Math.min(89, 35 + elapsed * 0.8));
+      }
+      displayRef.current += (target - displayRef.current) * 0.06;
+      if (Math.abs(target - displayRef.current) < 0.2) displayRef.current = target;
+      setDisplay(Math.min(100, Math.round(displayRef.current)));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [progress]);
+
+  // AI 阶段轮换提示文案
+  useEffect(() => {
+    if (progress.stage !== "ai") return;
+    const hints = t?.reportDialog?.progress?.aiHints || [];
+    if (!hints.length) return;
+    const timer = window.setInterval(() => setHintIndex((i) => (i + 1) % hints.length), 4000);
+    return () => window.clearInterval(timer);
+  }, [progress.stage, t]);
+
+  const hints = t?.reportDialog?.progress?.aiHints || [];
+  const message =
+    progress.stage === "ai"
+      ? (hints[hintIndex] || progress.message || t?.reportDialog?.progress?.ai || "AI 正在分析…")
+      : (progress.message || t?.reportDialog?.progress?.query || "正在生成…");
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          {t?.reportDialog?.progressTitle || "AI 总结生成中"}
+        </div>
+        <span className="font-mono text-sm font-semibold text-primary tabular-nums">{display}%</span>
+      </div>
+      <div className="relative h-2.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`h-full rounded-full ${progress.stage === "ai" ? "ai-progress-bar" : "bg-primary"} transition-[width] duration-300 ease-out`}
+          style={{ width: `${display}%` }}
+        />
+      </div>
+      <p className="mt-2 min-h-5 text-sm text-muted-foreground animate-pulse">{message}</p>
+    </div>
+  );
+}
+
+// 通过 SSE 读取 AI 总结生成进度，最后返回完整结果（与后端 timesheet/monthly 的流式响应配套）
+async function fetchWorkSummaryWithProgress(url: string, onProgress: (p: SummaryProgress) => void): Promise<any> {
+  const configured = (import.meta as any).env.VITE_API_BASE_URL;
+  const API_BASE = configured ? String(configured).replace(/\/+$/, "") : `${window.location.origin}/api/v1`;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      headers: { Accept: "text/event-stream" },
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("无法连接服务器");
+  }
+
+  if (!response.ok) {
+    let message = `请求失败（${response.status}）`;
+    try {
+      const payload = await response.json();
+      message = payload?.error?.message || payload?.message || message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    // 后端未走 SSE（例如被限流/网关拦截），按普通 JSON 处理
+    return response.json();
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("无法读取服务器进度流");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: any = null;
+  let errorMessage = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const eventName = /^event: (.+)$/m.exec(frame)?.[1] || "message";
+      const dataLine = /^data: (.+)$/m.exec(frame)?.[1] || "";
+      if (!dataLine) continue;
+      let parsed: any = null;
+      try { parsed = JSON.parse(dataLine); } catch { continue; }
+      if (eventName === "progress" && parsed && typeof parsed.progress === "number") {
+        onProgress({ stage: parsed.stage || "ai", progress: parsed.progress, message: parsed.message || "" });
+      } else if (eventName === "result") {
+        result = parsed;
+      } else if (eventName === "error") {
+        errorMessage = parsed?.message || "AI 总结生成失败";
+      }
+    }
+  }
+  if (errorMessage) throw new Error(errorMessage);
+  if (!result) throw new Error("AI 总结生成失败：未收到结果");
+  return result;
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { lang } = useLanguage();
@@ -681,6 +837,7 @@ export function Dashboard() {
   const [exporting, setExporting] = useState(false);
   const [workSummary, setWorkSummary] = useState<WorkSummaryResponse | null>(null);
   const [workSummaryRange, setWorkSummaryRange] = useState("");
+  const [summaryProgress, setSummaryProgress] = useState<SummaryProgress | null>(null);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
@@ -811,6 +968,7 @@ export function Dashboard() {
     }
     setExporting(true);
     setError("");
+    setSummaryProgress({ stage: "query", progress: 2, message: t.reportDialog.progress.query });
     try {
       const params = new URLSearchParams({
         startDate: reportStartDate,
@@ -821,7 +979,7 @@ export function Dashboard() {
       if (useOwnScope) params.set("mine", "1");
       if (canSelectReportSalesperson && reportSalesperson !== "all") params.set("salesperson", reportSalesperson);
       if (reportCustomerId !== "all") params.set("customerId", reportCustomerId);
-      const data = await api.get(`/service-orders/timesheet/monthly?${params.toString()}`);
+      const data = await fetchWorkSummaryWithProgress(`/service-orders/timesheet/monthly?${params.toString()}`, setSummaryProgress);
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
       setWorkSummary((data?.workSummary || null) as WorkSummaryResponse | null);
       setWorkSummaryRange(rangeLabel);
@@ -831,6 +989,7 @@ export function Dashboard() {
       setError(e instanceof Error ? e.message : t.errors.loadFailed);
     } finally {
       setExporting(false);
+      setSummaryProgress(null);
     }
   }
 
@@ -1331,6 +1490,7 @@ export function Dashboard() {
               </label>
             </div>
           </div>
+          {summaryProgress ? <WorkSummaryProgress progress={summaryProgress} t={t} /> : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReportDialogOpen(false)} disabled={exporting}>
               {t.reportDialog.cancel}
