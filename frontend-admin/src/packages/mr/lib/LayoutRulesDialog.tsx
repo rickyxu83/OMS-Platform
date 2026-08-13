@@ -83,7 +83,7 @@ export function LayoutRulesDialog({ open, onOpenChange }: { open: boolean; onOpe
         <DialogHeader>
           <DialogTitle>识别版式规则</DialogTitle>
           <DialogDescription>
-            系统会从人工修正记录中自动学习「文件名模式 → 供应商」规则；候选规则（来源：学习）需确认启用后才会作用于后续识别。也可手动新增规则（新增即启用）。
+            系统会从人工修正记录中自动学习「文件名模式 → 供应商」规则；同一模式被修正满 3 次后自动生效于后续识别。也可手动新增规则（新增即启用）。发现误配时可随时停用或删除。
           </DialogDescription>
         </DialogHeader>
 
@@ -116,7 +116,7 @@ export function LayoutRulesDialog({ open, onOpenChange }: { open: boolean; onOpe
                 <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />加载中…</TableCell></TableRow>
               ) : null}
               {!loading && !items.length ? (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">暂无规则；人工修正识别结果达到 3 次后会自动生成候选规则</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">暂无规则；人工修正识别结果达到 3 次后会自动生成并启用规则</TableCell></TableRow>
               ) : null}
               {items.map((rule) => (
                 <TableRow key={rule.id}>
@@ -127,7 +127,7 @@ export function LayoutRulesDialog({ open, onOpenChange }: { open: boolean; onOpe
                     <Badge variant={rule.source === 'auto' ? 'secondary' : 'default'}>{rule.source === 'auto' ? '学习' : '手动'}</Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={rule.enabled ? 'default' : 'secondary'}>{rule.enabled ? '已启用' : '待确认'}</Badge>
+                    <Badge variant={rule.enabled ? 'default' : 'secondary'}>{rule.enabled ? '已启用' : '已停用'}</Badge>
                   </TableCell>
                   <TableCell className="text-center">
                     <Button variant="outline" size="sm" disabled={saving} onClick={() => void toggle(rule)}>

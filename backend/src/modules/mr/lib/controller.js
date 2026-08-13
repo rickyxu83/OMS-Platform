@@ -1432,7 +1432,7 @@ async function learnLayoutRulesFromFeedback() {
     if (count < 3) continue
     await query(
       `INSERT INTO mr_layout_rules (rule_key, file_pattern, vendor, match_count, source, enabled)
-       VALUES (:ruleKey, :pattern, :vendor, :count, 'auto', 0)
+       VALUES (:ruleKey, :pattern, :vendor, :count, 'auto', 1)
        ON DUPLICATE KEY UPDATE match_count = :count, updated_at = NOW()`,
       { ruleKey: `auto:${pattern}|${vendor}`.slice(0, 128), pattern, vendor, count },
     )
