@@ -74,6 +74,8 @@ function scheduleEntries(value, { withName = false } = {}) {
   return list.map((entry) => {
     const normalized = {
       ...(withName ? { businessName: text(entry?.businessName, 100) } : {}),
+      // 认列费用类别（仅毛利认列使用；转拨忽略该字段）
+      category: ['service', 'subscription'].includes(entry?.category) ? entry.category : null,
       // 新版模型：一次性/分期 + 开始月份（季度月）+ 期数 + 总金额；旧版（frequency+每期金额）自动视为分期
       type: ['once', 'installments'].includes(entry?.type) ? entry.type : null,
       startMonth: month(entry?.startMonth),
@@ -109,6 +111,7 @@ function normalizeItem(item = {}, index = 0) {
     quotedUnitPrice: optionalNumber(item.quotedUnitPrice ?? item.quoted_unit_price),
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
     costSource: text(item.costSource ?? item.cost_source, 255),
+    salesSource: text(item.salesSource ?? item.sales_source, 255),
     purchaseOnly: item.purchaseOnly === true || item.purchaseOnly === 1 || item.purchase_only === 1,
   }
 }

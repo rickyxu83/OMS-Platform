@@ -204,9 +204,10 @@ function MrAttachments({
 }
 
 /** 认列/转拨排程的文字化展示（新版模型 + 旧版遗留格式）。 */
-function scheduleEntryText(entry: ScheduleEntry | undefined, actionLabel: string, withBusinessName = false) {
+function scheduleEntryText(entry: ScheduleEntry | undefined, actionLabel: string, withBusinessName = false, withCategory = false) {
   if (!entry) return ''
-  const prefix = withBusinessName && entry.businessName ? `${entry.businessName}：` : ''
+  const categoryLabel = withCategory ? (entry.category === 'subscription' ? '订阅费用：' : entry.category === 'service' ? '服务费用：' : '') : ''
+  const prefix = categoryLabel + (withBusinessName && entry.businessName ? `${entry.businessName}：` : '')
   const type = entry.type || (entry.frequency || entry.amount !== null && entry.amount !== undefined ? 'installments' : '')
   if (type === 'once') {
     return entry.totalAmount !== null && entry.totalAmount !== undefined
@@ -236,24 +237,27 @@ function ScheduleEntriesEditor({
   editable,
   actionLabel,
   withBusinessName = false,
+  withCategory = false,
   onChange,
 }: {
   entries: ScheduleEntry[]
   editable: boolean
   actionLabel: string
   withBusinessName?: boolean
+  withCategory?: boolean
   onChange: (entries: ScheduleEntry[]) => void
 }) {
   const currentYear = new Date().getFullYear()
   const defaultStartMonth = String(Math.ceil((new Date().getMonth() + 1) / 3) * 3).padStart(2, '0')
-  const list: ScheduleEntry[] = entries.length ? entries : [{ businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }]
+  const blankEntry = (): ScheduleEntry => ({ businessName: withBusinessName ? '' : null, category: withCategory ? 'service' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null })
+  const list: ScheduleEntry[] = entries.length ? entries : [blankEntry()]
   // 注意：空数据时展示的是默认占位行，增删改必须基于 list，否则对占位行的编辑会丢失
   const update = (index: number, value: Partial<ScheduleEntry>) => onChange(list.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
   const remove = (index: number) => onChange(list.filter((_, entryIndex) => entryIndex !== index))
-  const add = () => onChange([...list, { businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }])
+  const add = () => onChange([...list, blankEntry()])
 
   if (!editable) {
-    const texts = entries.map((entry) => scheduleEntryText(entry, actionLabel, withBusinessName)).filter(Boolean)
+    const texts = entries.map((entry) => scheduleEntryText(entry, actionLabel, withBusinessName, withCategory)).filter(Boolean)
     if (!texts.length) return <span className="text-sm text-muted-foreground">-</span>
     return <div className="space-y-1">{texts.map((text, index) => <p key={index} className="text-sm text-foreground">{text}</p>)}</div>
   }
@@ -266,13 +270,17 @@ function ScheduleEntriesEditor({
       </div>
       {list.map((entry, index) => {
         const type = entry.type || 'once'
+        const startYear = String(entry.startMonth || '').slice(0, 4)
         const startMonth = String(entry.startMonth || '').slice(5, 7)
+        // 年份选项：当年起往后 3 年（跨年分期），已有的其他年份自动并入
+        const yearOptions = [...new Set([String(currentYear), String(currentYear + 1), String(currentYear + 2), startYear].filter((year) => /^\d{4}$/.test(year)))]
+        const effectiveYear = /^\d{4}$/.test(startYear) ? startYear : String(currentYear)
         const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
         const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
         const perPeriod = periods && total !== null ? total / periods : null
         const patchEntry = (value: Partial<ScheduleEntry>) => update(index, value)
-        const patchStart = (month: string) => patchEntry({ startMonth: `${currentYear}-${month}` })
-        const entryText = scheduleEntryText(entry, actionLabel, withBusinessName)
+        const patchStart = (year: string, month: string) => patchEntry({ startMonth: `${year}-${month}` })
+        const entryText = scheduleEntryText(entry, actionLabel, withBusinessName, withCategory)
         return (
           <div key={index} className={index > 0 ? 'border-t pt-3' : ''}>
             <div className="flex items-start gap-2">
@@ -285,13 +293,28 @@ function ScheduleEntriesEditor({
                       <SelectItem value="installments">{`分期${actionLabel}`}</SelectItem>
                     </SelectContent>
                   </Select>
+                  {withCategory ? (
+                    <Select value={entry.category === 'subscription' ? 'subscription' : 'service'} onValueChange={(value) => patchEntry({ category: value as ScheduleEntry['category'] })}>
+                      <SelectTrigger aria-label="认列费用类别"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="service">服务费用</SelectItem>
+                        <SelectItem value="subscription">订阅费用</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
                   {withBusinessName ? (
                     <Input value={entry.businessName || ''} placeholder="转拨给（台湾业务，手动输入）" aria-label="台湾业务名称" onChange={(event) => patchEntry({ businessName: event.target.value })} />
                   ) : null}
                   {type === 'installments' ? (
                     <>
-                      <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth} onValueChange={patchStart}>
-                        <SelectTrigger aria-label="开始月份（当年）"><SelectValue /></SelectTrigger>
+                      <Select value={effectiveYear} onValueChange={(year) => patchStart(year, QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth)}>
+                        <SelectTrigger aria-label="开始年份"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {yearOptions.map((year) => <SelectItem key={year} value={year}>{year} 年</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Select value={QUARTER_MONTH_OPTIONS.includes(startMonth) ? startMonth : defaultStartMonth} onValueChange={(month) => patchStart(effectiveYear, month)}>
+                        <SelectTrigger aria-label="开始月份"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {QUARTER_MONTH_OPTIONS.map((month) => <SelectItem key={month} value={month}>{Number(month)} 月</SelectItem>)}
                         </SelectContent>
@@ -830,12 +853,18 @@ export function MrFormPage() {
 
   const deleteAttachment = async (file: QuotationFile) => {
     if (!id) return
-    if (!window.confirm(`确定删除附件「${file.name}」吗？`)) return
+    if (dirty) {
+      setError('有未保存的修改，请先保存后再删除附件（删除会联动移除导入品项并重新加载单据）')
+      return
+    }
+    const linkedCount = (form?.items || []).filter((item) => item.costSource === file.name || item.salesSource === file.name).length
+    const linkageTip = linkedCount > 0 ? `，并同时删除从该文件导入的 ${linkedCount} 个品项` : ''
+    if (!window.confirm(`确定删除附件「${file.name}」吗${linkageTip}？`)) return
     setBusy(true)
     try {
       const result = await deleteQuotationFile(id, file.id)
-      refreshAttachments(result.files)
-      toast.success('附件已删除')
+      toast.success(result.removedItems ? `附件已删除，同时移除 ${result.removedItems} 个导入品项` : '附件已删除')
+      await load()
     } catch (err) {
       setError((err as Error).message || '附件删除失败')
     } finally {
@@ -1365,6 +1394,7 @@ export function MrFormPage() {
                   entries={calculated.grossProfitRecognitions || []}
                   editable={editable}
                   actionLabel="认列"
+                  withCategory
                   onChange={(next) => patch({ grossProfitRecognitions: next })}
                 />
               </SubPanel>

@@ -74,7 +74,7 @@ export async function downloadQuotation(id: string | number, fileId: string | nu
 }
 
 export async function deleteQuotationFile(id: string | number, fileId: string | number) {
-  return api.delete(`/mr/${pathId(id)}/quotation?fileId=${fileId}`) as Promise<{ files: QuotationFile[] }>
+  return api.delete(`/mr/${pathId(id)}/quotation?fileId=${fileId}`) as Promise<{ files: QuotationFile[]; removedItems?: number }>
 }
 
 export async function downloadMrDocument(id: string | number, type?: 'approved' | 'voided') {

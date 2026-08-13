@@ -188,6 +188,8 @@ export interface UserOption {
 }
 export interface ScheduleEntry {
   businessName?: string | null
+  /** 认列费用类别：service 服务费用 / subscription 订阅费用（仅毛利认列使用） */
+  category?: 'service' | 'subscription' | null
   type?: 'once' | 'installments' | null
   startMonth?: string | null
   periods?: number | null

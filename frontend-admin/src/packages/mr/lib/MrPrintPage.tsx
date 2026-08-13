@@ -36,7 +36,8 @@ function scheduleEntriesText(entries: unknown, legacyStartMonth: unknown, legacy
   const list = Array.isArray(entries) ? entries : []
   if (list.length) {
     const lines = list.map((entry) => {
-      const prefix = hasValue(entry?.businessName) ? `${entry.businessName}：` : ''
+      const categoryLabel = entry?.category === 'subscription' ? '订阅费用：' : entry?.category === 'service' ? '服务费用：' : ''
+      const prefix = categoryLabel + (hasValue(entry?.businessName) ? `${entry.businessName}：` : '')
       const type = entry?.type || (hasValue(entry?.frequency) || hasValue(entry?.amount) ? 'installments' : '')
       if (type === 'once') return hasValue(entry?.totalAmount) ? `${prefix}一次性${action}，总金额 ${moneyText(entry?.totalAmount, fallback)}` : `${prefix}一次性${action}`
       if (hasValue(entry?.totalAmount) || hasValue(entry?.periods)) {

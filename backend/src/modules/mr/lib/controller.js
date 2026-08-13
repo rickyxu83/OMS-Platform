@@ -245,6 +245,11 @@ async function ensureTables() {
      WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'purchase_only' LIMIT 1`,
   )
   if (!purchaseOnlyColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN purchase_only TINYINT(1) NULL AFTER cost_source')
+  const salesSourceColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'sales_source' LIMIT 1`,
+  )
+  if (!salesSourceColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN sales_source VARCHAR(255) NULL AFTER cost_source')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_approvals (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -573,10 +578,10 @@ async function replaceItems(connection, mrId, items) {
     await connection.execute(
       `INSERT INTO mr_items
         (mr_id, row_no, company_part_no, oem_spec, name, description, warranty_service,
-         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, quoted_unit_price, purchase_order_no, cost_source, purchase_only)
+         install_by, qty, unit_price, subtotal, vendor, cost_incl_tax, tax_rate, quoted_unit_price, purchase_order_no, cost_source, sales_source, purchase_only)
        VALUES
         (:mrId, :rowNo, :companyPartNo, :oemSpec, :name, :description, :warrantyService,
-         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :quotedUnitPrice, :purchaseOrderNo, :costSource, :purchaseOnly)`,
+         :installBy, :qty, :unitPrice, :subtotal, :vendor, :costInclTax, :taxRate, :quotedUnitPrice, :purchaseOrderNo, :costSource, :salesSource, :purchaseOnly)`,
       { mrId, ...item }
     )
   }
@@ -1421,15 +1426,22 @@ async function deleteQuotationFile(req, res) {
   const fileId = Number(req.query.fileId || 0)
   if (!fileId) throw badRequest('缺少 fileId')
   let removed = null
+  let removedItems = 0
   await transaction(async (connection) => {
     const [rows] = await connection.execute(
-      `SELECT id, storage_path FROM files
+      `SELECT id, storage_path, original_name FROM files
        WHERE id = :fileId AND owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
       { fileId, ownerId: req.params.id },
     )
     if (!rows[0]) throw notFound('报价原始附件不存在')
     removed = rows[0]
     await connection.execute('DELETE FROM files WHERE id = :fileId', { fileId })
+    // 联动删除从该文件导入的品项（销售来源或采购成本来源文件名匹配）
+    const [deleteResult] = await connection.execute(
+      'DELETE FROM mr_items WHERE mr_id = :ownerId AND (cost_source = :fileName OR sales_source = :fileName)',
+      { ownerId: req.params.id, fileName: removed.original_name },
+    )
+    removedItems = Number(deleteResult?.affectedRows || 0)
     const [remaining] = await connection.execute(
       `SELECT id FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id LIMIT 1`,
       { ownerId: req.params.id },
@@ -1445,7 +1457,7 @@ async function deleteQuotationFile(req, res) {
      FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
     { ownerId: req.params.id },
   )
-  res.json({ files })
+  res.json({ files, removedItems })
 }
 
 async function downloadDocument(req, res) {
