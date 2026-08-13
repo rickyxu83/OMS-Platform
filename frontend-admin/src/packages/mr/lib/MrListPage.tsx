@@ -98,14 +98,19 @@ export function MrListPage() {
   }
 
   const createDraft = async () => {
-    if (user?.role !== 'assistant') {
+    if (user?.role !== 'assistant' && user?.role !== 'assistant_supervisor') {
       await createForSales()
       return
     }
     setCreating(true)
     try {
       const data = await listSalespeople()
-      const assigned = (data.items || []).filter((sales) => ['sales', 'sales_supervisor'].includes(sales.role || '') && String(sales.assistantUserId || '') === String(user.id || ''))
+      const assigned = (data.items || []).filter((sales) => {
+        if (!['sales', 'sales_supervisor'].includes(sales.role || '')) return false
+        // 助理：仅限与自己建立助理关系的业务负责人；助理主管：可为已配置在职助理的业务负责人代建
+        if (user?.role === 'assistant') return String(sales.assistantUserId || '') === String(user.id || '')
+        return Boolean(sales.assistantUserId)
+      })
       if (!assigned.length) {
         setError('当前未关联任何业务负责人；请由业务负责人先在“我的设置”中指定对应助理。')
         return

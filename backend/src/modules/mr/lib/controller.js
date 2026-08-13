@@ -74,6 +74,8 @@ const { PDF_FORMAT_VERSION } = require('./mr-pdf')
 
 const EDITABLE_STATUSES = new Set(['draft', 'rejected'])
 const SALES_ROLES = new Set(['sales', 'sales_supervisor'])
+// 助理及助理主管：助理主管可见/可操作所有在职助理负责的内容
+const ASSISTANT_LIKE_ROLES = new Set(['assistant', 'assistant_supervisor'])
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const quotationRoot = path.join(uploadRoot, 'mr-quotations')
 fs.mkdirSync(quotationRoot, { recursive: true })
@@ -302,6 +304,18 @@ function camelizeRow(row) {
   ]))
 }
 
+/** 助理类角色的可操作助理范围：助理本人仅自己；助理主管为全部在职助理。 */
+async function assistantIdsFor(user) {
+  if (user.role === 'assistant') return [Number(user.id)]
+  if (user.role === 'assistant_supervisor') {
+    const rows = await query("SELECT id FROM users WHERE role = 'assistant' AND status = 'active'")
+    return rows.map((row) => Number(row.id))
+  }
+  return []
+}
+
+const ASSISTANT_SCOPE_SQL = `SELECT id FROM users WHERE role = 'assistant' AND status = 'active'`
+
 function parseOptions(value) {
   if (Array.isArray(value)) return value
   if (!value) return []
@@ -332,39 +346,43 @@ function orderPayload(row) {
   return payload
 }
 
-function canView(order, user) {
+function canView(order, user, assistantIds = []) {
   if (user.role === 'admin') return true
   if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
   if (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)) return true
-  if (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)) return true
+  if (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId))) return true
   if (user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)) return true
   return Boolean(order.approvalParticipant)
 }
 
-function canEdit(order, user) {
+function canEdit(order, user, assistantIds = []) {
   if (order.status === 'in_review') {
-    return user.role === 'assistant' && order.currentStepKey === 'assistant' && Number(order.currentAssigneeUserId) === Number(user.id)
+    return ASSISTANT_LIKE_ROLES.has(user.role)
+      && order.currentStepKey === 'assistant'
+      && assistantIds.includes(Number(order.currentAssigneeUserId))
   }
   if (!EDITABLE_STATUSES.has(order.status)) return false
   if (user.role === 'admin') return true
   if (order.status === 'rejected') {
-    if (order.returnTarget === 'assistant') return user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id)
+    if (order.returnTarget === 'assistant') {
+      return ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId))
+    }
     return SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)
   }
   return (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id))
-    || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
+    || (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId)))
 }
 
-function canDelete(order, user) {
+function canDelete(order, user, assistantIds = []) {
   if (user.role === 'admin') return EDITABLE_STATUSES.has(order.status)
-  return EDITABLE_STATUSES.has(order.status) && Number(order.createdBy) === Number(user.id) && canEdit(order, user)
+  return EDITABLE_STATUSES.has(order.status) && Number(order.createdBy) === Number(user.id) && canEdit(order, user, assistantIds)
 }
 
-function canVoid(order, user) {
+function canVoid(order, user, assistantIds = []) {
   if (order.status !== 'approved') return false
   if (['admin', 'operations_director', 'sales_supervisor'].includes(user.role)) return true
   return (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id))
-    || (user.role === 'assistant' && Number(order.assistantUserId) === Number(user.id))
+    || (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId)))
 }
 
 function canPurchase(order, user) {
@@ -374,8 +392,12 @@ function canPurchase(order, user) {
   return user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)
 }
 
-function canApprove(order, user) {
-  if (order.status !== 'in_review' || !order.currentStepKey || Number(order.currentAssigneeUserId) !== Number(user.id)) return false
+function canApprove(order, user, assistantIds = []) {
+  if (order.status !== 'in_review' || !order.currentStepKey) return false
+  if (order.currentStepKey === 'assistant') {
+    return ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.currentAssigneeUserId))
+  }
+  if (Number(order.currentAssigneeUserId) !== Number(user.id)) return false
   if (order.currentStepKey === 'sales') return SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)
   return STEP_ROLES[order.currentStepKey] === user.role
 }
@@ -448,7 +470,8 @@ async function loadCalculatedOrder(connection, order) {
 async function loadDetail(id, user) {
   await ensureTables()
   const order = await loadRawOrder(id, user)
-  if (!canView(order, user)) throw forbidden('无权查看该 MR 申请')
+  const assistantIds = await assistantIdsFor(user)
+  if (!canView(order, user, assistantIds)) throw forbidden('无权查看该 MR 申请')
   const [itemRows, approvalRows, fileRows, versionRows, documentRows] = await Promise.all([
     query('SELECT * FROM mr_items WHERE mr_id = :id ORDER BY row_no, id', { id }),
     query(
@@ -530,10 +553,10 @@ async function loadDetail(id, user) {
     archivedDocumentTypes: documentRows.map((row) => row.document_type),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
-      canEdit: canEdit(order, user),
-      canDelete: canDelete(order, user),
-      canVoid: canVoid(order, user),
-      canApprove: canApprove(order, user),
+      canEdit: canEdit(order, user, assistantIds),
+      canDelete: canDelete(order, user, assistantIds),
+      canVoid: canVoid(order, user, assistantIds),
+      canApprove: canApprove(order, user, assistantIds),
       canWithdraw: canWithdraw(order, user),
       canPurchase: canPurchase(order, user),
     },
@@ -567,14 +590,25 @@ async function resolveReferences(order, user) {
 
 async function assertCreateOwner(order, user) {
   if (user.role === 'admin' || SALES_ROLES.has(user.role)) return
-  if (user.role !== 'assistant') throw forbidden('仅业务人员、业务主管或其对应助理可以创建 MR 申请')
+  if (!ASSISTANT_LIKE_ROLES.has(user.role)) throw forbidden('仅业务人员、业务主管或其对应助理可以创建 MR 申请')
   if (!order.salesOwnerId) throw badRequest('助理代建 MR 申请时，请选择业务负责人')
   const rows = await query(
     `SELECT assistant_user_id FROM users
      WHERE id = :salesId AND role IN ('sales', 'sales_supervisor') AND status = 'active' LIMIT 1`,
     { salesId: order.salesOwnerId },
   )
-  if (Number(rows[0]?.assistant_user_id) !== Number(user.id)) throw forbidden('仅可为与你建立助理对应关系的业务负责人代建 MR 申请')
+  const assistantId = Number(rows[0]?.assistant_user_id || 0)
+  if (user.role === 'assistant') {
+    if (assistantId !== Number(user.id)) throw forbidden('仅可为与你建立助理对应关系的业务负责人代建 MR 申请')
+    return
+  }
+  // 助理主管：可为已配置在职助理的业务负责人代建
+  if (!assistantId) throw badRequest('请选择已配置在职助理的业务负责人')
+  const assistant = await query(
+    "SELECT id FROM users WHERE id = :assistantId AND role = 'assistant' AND status = 'active' LIMIT 1",
+    { assistantId },
+  )
+  if (!assistant[0]) throw badRequest('请选择已配置在职助理的业务负责人')
 }
 
 const ORDER_COLUMNS = [
@@ -639,6 +673,13 @@ async function list(req, res) {
       WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId)
     ))`)
     params.userId = req.user.id
+  } else if (req.user.role === 'assistant_supervisor') {
+    // 助理主管：可见所有在职助理负责/经手的内容（新增助理自动纳入）
+    where.push(`(sales.assistant_user_id IN (${ASSISTANT_SCOPE_SQL}) OR EXISTS (
+      SELECT 1 FROM mr_approvals visible
+      WHERE visible.mr_id = o.id
+        AND (visible.assignee_user_id IN (${ASSISTANT_SCOPE_SQL}) OR visible.approver_id IN (${ASSISTANT_SCOPE_SQL}))
+    ))`)
   } else if (req.user.role !== 'admin') {
     const participantClause = `EXISTS (SELECT 1 FROM mr_approvals visible
       WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId))`
@@ -661,6 +702,7 @@ async function list(req, res) {
     params.q = `%${q}%`
   }
   params.permissionUserId = req.user.id
+  const assistantIds = await assistantIdsFor(req.user)
   const rows = await query(
     `SELECT o.*, creator.real_name AS created_by_name, sales.real_name AS sales_owner_name,
             sales.assistant_user_id, assistant.real_name AS assistant_name,
@@ -686,7 +728,7 @@ async function list(req, res) {
   )
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user), canDelete: canDelete(order, req.user), canVoid: canVoid(order, req.user), canApprove: canApprove(order, req.user), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user) } }
+    return { ...order, permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user) } }
   }) })
 }
 
@@ -725,12 +767,13 @@ async function create(req, res) {
 
 async function update(req, res) {
   await ensureTables()
+  const assistantIds = await assistantIdsFor(req.user)
   const normalized = normalizeOrder(req.body || {})
   await resolveReferences(normalized.order, req.user)
   const params = dbParams(normalized.order)
   await transaction(async (connection) => {
     const existing = await loadLockedOrder(connection, req.params.id)
-    if (!canEdit(existing, req.user)) throw forbidden('当前状态或身份不允许编辑该 MR 申请')
+    if (!canEdit(existing, req.user, assistantIds)) throw forbidden('当前状态或身份不允许编辑该 MR 申请')
     if (req.user.role !== 'admin' || existing.status !== 'draft') params.sales_owner_id = existing.salesOwnerId
     await connection.execute(
       `UPDATE mr_orders SET
@@ -760,9 +803,10 @@ async function ensureMrVendors(connection, items = []) {
 
 async function submit(req, res) {
   await ensureTables()
+  const assistantIds = await assistantIdsFor(req.user)
   await transaction(async (connection) => {
     const locked = await loadLockedOrder(connection, req.params.id)
-    if (!canEdit(locked, req.user)) throw forbidden('当前状态或身份不允许提交该 MR 申请')
+    if (!canEdit(locked, req.user, assistantIds)) throw forbidden('当前状态或身份不允许提交该 MR 申请')
     if (locked.status === 'in_review') throw badRequest('请先保存修改，再通过助理会签推进流程')
     const detailValue = await loadCalculatedOrder(connection, locked)
     await resolveSubmissionCustomer(connection, detailValue, req.user)
@@ -803,6 +847,7 @@ async function decide(req, res, action) {
   await ensureTables()
   let autoApprovedLabel = null
   let becameApproved = false
+  const assistantIds = await assistantIdsFor(req.user)
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     const [steps] = await connection.execute(
@@ -815,9 +860,13 @@ async function decide(req, res, action) {
     order.currentStepKey = current.step_key
     order.currentStepLabel = current.step_label
     order.currentAssigneeUserId = current.assignee_user_id
-    if (!canApprove(order, req.user)) throw forbidden('当前签核步骤不属于你')
+    if (!canApprove(order, req.user, assistantIds)) throw forbidden('当前签核步骤不属于你')
     const expectedCurrentAssignee = await resolveStepAssignee(connection, order, current.step_key, { required: true })
-    if (expectedCurrentAssignee.id !== Number(req.user.id)) throw forbidden('该签核待办已转交')
+    // 助理主管替签：当前是助理步骤且签核人属于其管辖助理范围时放行
+    const supervisorReplacing = current.step_key === 'assistant'
+      && req.user.role === 'assistant_supervisor'
+      && assistantIds.includes(Number(expectedCurrentAssignee.id))
+    if (!supervisorReplacing && expectedCurrentAssignee.id !== Number(req.user.id)) throw forbidden('该签核待办已转交')
     if (action === 'approve' && current.step_key !== 'assistant' && Number(order.versionNo || 0) === 0) {
       const legacyDetail = await loadCalculatedOrder(connection, order)
       const legacySteps = computeApprovalSteps(legacyDetail, legacyDetail.items)
@@ -1074,9 +1123,10 @@ async function voidOrder(req, res) {
   const reason = String(req.body?.reason || '').trim().slice(0, 500)
   if (!reason) throw badRequest('作废时必须填写原因')
   await ensureTables()
+  const assistantIds = await assistantIdsFor(req.user)
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (!canVoid(order, req.user)) throw forbidden('当前状态或身份不允许作废该 MR 申请')
+    if (!canVoid(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许作废该 MR 申请')
     await connection.execute(
       `UPDATE mr_orders SET status = 'voided', voided_at = NOW(), void_reason = :reason,
               archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
@@ -1216,10 +1266,11 @@ async function skipPurchase(req, res) {
 
 async function remove(req, res) {
   await ensureTables()
+  const assistantIds = await assistantIdsFor(req.user)
   let files = []
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (!canDelete(order, req.user)) throw forbidden('只能删除本人创建的草稿或被驳回单据')
+    if (!canDelete(order, req.user, assistantIds)) throw forbidden('只能删除本人创建的草稿或被驳回单据')
     const [rows] = await connection.execute(
       `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
       { ownerId: req.params.id },
@@ -1264,7 +1315,7 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
     }
     await transaction(async (connection) => {
       const locked = await loadLockedOrder(connection, ownerId)
-      if (!canEdit(locked, user)) throw forbidden('当前状态或身份不允许保存报价原始附件')
+      if (!canEdit(locked, user, await assistantIdsFor(user))) throw forbidden('当前状态或身份不允许保存报价原始附件')
       if (cleanupExisting) {
         ;[oldFiles] = await connection.execute(
           `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
@@ -1331,7 +1382,8 @@ async function importQuotation(req, res) {
   const includeStored = String(req.body?.includeStored || '') === '1'
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
-  if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许导入报价单')
+  const assistantIds = await assistantIdsFor(req.user)
+  if (!canEdit(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许导入报价单')
   const storedUploads = includeStored ? await loadStoredQuotationUploads(req.params.id) : []
   const uploads = [...storedUploads, ...newUploads]
   if (!uploads.length) throw badRequest('请选择报价单或订单文件')
@@ -1587,7 +1639,8 @@ async function downloadQuotation(req, res) {
 async function deleteQuotationFile(req, res) {
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
-  if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许删除报价原始附件')
+  const assistantIds = await assistantIdsFor(req.user)
+  if (!canEdit(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许删除报价原始附件')
   const fileId = Number(req.query.fileId || 0)
   if (!fileId) throw badRequest('缺少 fileId')
   let removed = null
@@ -1661,7 +1714,8 @@ const attachmentUpload = multer({
 async function uploadAttachments(req, res) {
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
-  if (!canEdit(order, req.user)) throw forbidden('当前状态或身份不允许上传附件')
+  const assistantIds = await assistantIdsFor(req.user)
+  if (!canEdit(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许上传附件')
   const uploads = uploadedFiles(req)
   if (!uploads.length) throw badRequest('请选择要上传的附件')
   const files = await persistQuotationFiles(req.params.id, uploads, req.user, false)

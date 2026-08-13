@@ -1,6 +1,7 @@
 const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'admin',
   'assistant',
+  'assistant_supervisor',
   'dispatcher',
   'operations_director',
   'engineering_supervisor',
@@ -11,7 +12,7 @@ const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'purchaser',
 ])
 const ENGINEER_WORKSPACE_ROLES = Object.freeze(['engineer', 'engineering_supervisor'])
-const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor'])
+const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'assistant_supervisor', 'dispatcher', 'operations_director', 'engineering_supervisor'])
 const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor'])
 const ALL_SIGNED_IN_ROLES = Object.freeze([...new Set([...ADMIN_WORKSPACE_ROLES, ...ENGINEER_WORKSPACE_ROLES])])
 
@@ -30,6 +31,7 @@ const ROLE_GROUPS = Object.freeze({
   salesDirectory: Object.freeze([
     'admin',
     'assistant',
+    'assistant_supervisor',
     'dispatcher',
     'operations_director',
     'engineering_supervisor',
@@ -40,7 +42,7 @@ const ROLE_GROUPS = Object.freeze({
   ]),
   auditLogs: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
   settings: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
-  feedbackManage: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']),
+  feedbackManage: Object.freeze(['admin', 'assistant', 'assistant_supervisor', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']),
   customerWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerDelete: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerMerge: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),
