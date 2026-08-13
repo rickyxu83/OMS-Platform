@@ -108,11 +108,11 @@ export function RecognitionProgressPanel({ progress, fileCount = 1 }: { progress
         <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-primary">{displayPercent}%</span>
       </div>
 
-      {/* 轨道：稍粗，浅色衬底；填充按阶段：AI 阶段双层背景渐变+光带滚动（参考范例），其他阶段纯主色+轻辉光 */}
+      {/* 进度条：全程渐变华丽风格（基础渐变 + 光带滚动），不随阶段切换纯色/渐变，避免风格跳动 */}
       <div className="mt-3 h-3.5 overflow-hidden rounded-full bg-muted">
         <div
-          className={`relative h-full rounded-full transition-[width] duration-300 ease-out ${isAiBar ? 'mr-ai-progress-bar' : 'bg-primary'}`}
-          style={{ width: `${displayPercent}%`, boxShadow: isAiBar ? '0 0 14px rgba(124,58,237,0.45), 0 0 6px rgba(56,189,248,0.35)' : '0 0 8px rgba(109,91,208,0.28)' }}
+          className="relative h-full rounded-full transition-[width] duration-300 ease-out mr-ai-progress-bar"
+          style={{ width: `${displayPercent}%`, boxShadow: '0 0 14px rgba(124,58,237,0.45), 0 0 6px rgba(56,189,248,0.35)' }}
         />
       </div>
 

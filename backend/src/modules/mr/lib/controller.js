@@ -1625,7 +1625,8 @@ async function importQuotation(req, res) {
   const progress = { done: 0, total: uploads.length, current: '', stage: 'preparing', stagePercent: 3, itemCount: 0 }
   const setStage = (stage, stagePercent) => {
     progress.stage = stage
-    progress.stagePercent = stagePercent
+    // 锚点只升不降：多文件逐份解析时不会回到较低锚点，避免前端进度条回跳
+    progress.stagePercent = Math.max(Number(progress.stagePercent || 0), stagePercent)
   }
   if (taskId) importProgress.set(taskId, progress)
   const clearProgress = () => { if (taskId) setTimeout(() => importProgress.delete(taskId), 60000) }
