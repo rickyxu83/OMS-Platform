@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
-import { api } from "@/services/api";
+import { api, fetchSummaryStream } from "@/services/api";
 
 interface Summary {
   todayTotal?: number;
@@ -756,67 +756,8 @@ export function WorkSummaryProgress({ progress, t }: { progress: SummaryProgress
   );
 }
 
-// 通过 SSE 读取 AI 总结生成进度，最后返回完整结果（与后端 timesheet/monthly 的流式响应配套）
-async function fetchWorkSummaryWithProgress(url: string, onProgress: (p: SummaryProgress) => void): Promise<any> {
-  const configured = (import.meta as any).env.VITE_API_BASE_URL;
-  const API_BASE = configured ? String(configured).replace(/\/+$/, "") : `${window.location.origin}/api/v1`;
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${url}`, {
-      headers: { Accept: "text/event-stream" },
-      credentials: "include",
-    });
-  } catch {
-    throw new Error("无法连接服务器");
-  }
-
-  if (!response.ok) {
-    let message = `请求失败（${response.status}）`;
-    try {
-      const payload = await response.json();
-      message = payload?.error?.message || payload?.message || message;
-    } catch {}
-    throw new Error(message);
-  }
-
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("text/event-stream")) {
-    // 后端未走 SSE（例如被限流/网关拦截），按普通 JSON 处理
-    return response.json();
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("无法读取服务器进度流");
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: any = null;
-  let errorMessage = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const eventName = /^event: (.+)$/m.exec(frame)?.[1] || "message";
-      const dataLine = /^data: (.+)$/m.exec(frame)?.[1] || "";
-      if (!dataLine) continue;
-      let parsed: any = null;
-      try { parsed = JSON.parse(dataLine); } catch { continue; }
-      if (eventName === "progress" && parsed && typeof parsed.progress === "number") {
-        onProgress({ stage: parsed.stage || "ai", progress: parsed.progress, message: parsed.message || "" });
-      } else if (eventName === "result") {
-        result = parsed;
-      } else if (eventName === "error") {
-        errorMessage = parsed?.message || "AI 总结生成失败";
-      }
-    }
-  }
-  if (errorMessage) throw new Error(errorMessage);
-  if (!result) throw new Error("AI 总结生成失败：未收到结果");
-  return result;
-}
+// 通过 SSE 读取 AI 总结生成进度（复用 api.ts 的 resolveApiBase 与鉴权处理）
+// 进度面板组件见上方 WorkSummaryProgress
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -979,7 +920,7 @@ export function Dashboard() {
       if (useOwnScope) params.set("mine", "1");
       if (canSelectReportSalesperson && reportSalesperson !== "all") params.set("salesperson", reportSalesperson);
       if (reportCustomerId !== "all") params.set("customerId", reportCustomerId);
-      const data = await fetchWorkSummaryWithProgress(`/service-orders/timesheet/monthly?${params.toString()}`, setSummaryProgress);
+      const data = await fetchSummaryStream(`/service-orders/timesheet/monthly?${params.toString()}`, setSummaryProgress);
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
       setWorkSummary((data?.workSummary || null) as WorkSummaryResponse | null);
       setWorkSummaryRange(rangeLabel);
