@@ -101,7 +101,26 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)
-  return <table className="a-items"><thead><tr>{columns.map((column) => <th key={column.key} style={{ width: `${column.weight / totalWeight * 100}%`, textAlign: column.align as 'left' | 'center' | 'right', whiteSpace: column.nowrap ? 'nowrap' : undefined }}>{column.label}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={item.id || index}>{columns.map((column) => <td key={column.key} data-label={column.label} className={`a-align-${column.align} ${column.key === 'subtotal' ? 'a-strong' : ''}`} title={column.key === 'vendor' ? text(item.vendor, emptyText) : undefined}>{column.render(item, index)}</td>)}</tr>)}</tbody></table>
+  // 连续相同采购订单号合并为一个单元格（rowSpan），避免整列重复同一个单号
+  const purchaseValue = (item: MrItem) => (hasValue(item.purchaseOrderNo) ? String(item.purchaseOrderNo) : '')
+  const purchaseMergedIntoPrev = (index: number) => index > 0 && purchaseValue(items[index]) !== '' && purchaseValue(items[index]) === purchaseValue(items[index - 1])
+  const purchaseSpan = (index: number) => {
+    const current = purchaseValue(items[index])
+    if (!current) return 1
+    let span = 1
+    for (let next = index + 1; next < items.length; next += 1) {
+      if (purchaseValue(items[next]) !== current) break
+      span += 1
+    }
+    return span
+  }
+  return <table className="a-items"><thead><tr>{columns.map((column) => <th key={column.key} style={{ width: `${column.weight / totalWeight * 100}%`, textAlign: column.align as 'left' | 'center' | 'right', whiteSpace: column.nowrap ? 'nowrap' : undefined }}>{column.label}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={item.id || index}>{columns.map((column) => {
+    if (column.key === 'purchase') {
+      if (purchaseMergedIntoPrev(index)) return null
+      return <td key={column.key} data-label={column.label} rowSpan={purchaseSpan(index)} className={`a-align-${column.align} a-purchase-merged`}>{column.render(item, index)}</td>
+    }
+    return <td key={column.key} data-label={column.label} className={`a-align-${column.align} ${column.key === 'subtotal' ? 'a-strong' : ''}`} title={column.key === 'vendor' ? text(item.vendor, emptyText) : undefined}>{column.render(item, index)}</td>
+  })}</tr>)}</tbody></table>
 }
 function Signatures({ order, formal }: { order: MrOrder; formal: boolean }) {
   const approvals = order.approvals || []
