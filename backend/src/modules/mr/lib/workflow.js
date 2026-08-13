@@ -366,6 +366,8 @@ function comparableSnapshot(value) {
     'submittedAt', 'approvedAt', 'rejectedAt', 'rejectReason', 'returnTarget',
     'withdrawnAt', 'withdrawReason', 'voidedAt', 'voidReason', 'archiveStatus',
     'archiveAttempts', 'archiveNextAttemptAt', 'archiveError', 'archivedDocumentTypes',
+    'purchaseStatus', 'purchaseAssigneeUserId', 'purchaseAssigneeName', 'purchaseAssignmentError',
+    'purchasedAt', 'purchasedBy', 'purchasedByName', 'purchaseNote',
     'assistantUserId', 'assistantName', 'currentStepKey', 'currentStepLabel',
     'currentAssigneeUserId', 'currentAssigneeName', 'assignmentError', 'approvalParticipant',
     'permissions', 'approvals', 'approvalHistory', 'currentVersion',

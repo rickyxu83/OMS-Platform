@@ -506,8 +506,20 @@ async function loadDetail(id, user) {
     const live = liveItemByRowNo.get(Number(item.rowNo))
     return live ? { ...item, id: live.id ?? item.id, purchaseOrderNo: live.purchaseOrderNo ?? item.purchaseOrderNo } : item
   })
+  // 采购环节属于审批后的生命周期数据：始终以 mr_orders 实时值为准，不被冻结快照覆盖
+  const purchaseLive = {
+    purchaseStatus: order.purchaseStatus ?? null,
+    purchaseAssigneeUserId: order.purchaseAssigneeUserId ?? null,
+    purchaseAssigneeName: order.purchaseAssigneeName ?? null,
+    purchaseAssignmentError: order.purchaseAssignmentError ?? null,
+    purchasedAt: order.purchasedAt ?? null,
+    purchasedBy: order.purchasedBy ?? null,
+    purchasedByName: order.purchasedByName ?? null,
+    purchaseNote: order.purchaseNote ?? null,
+  }
   return {
     ...displayed,
+    ...purchaseLive,
     items: displayedItems,
     approvals,
     approvalHistory,
