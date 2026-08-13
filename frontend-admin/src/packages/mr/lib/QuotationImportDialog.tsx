@@ -220,7 +220,8 @@ export function QuotationImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<RecognitionProgress | null>(null)
-  const saving = Boolean(preview)
+  // applying：确认导入（persist）阶段为 true；识别阶段为 false，用于区分展示保存动画还是识别进度面板
+  const [applying, setApplying] = useState(false)
   const [deletingFileId, setDeletingFileId] = useState<string | number | null>(null)
   const [removedStoredIds, setRemovedStoredIds] = useState<Set<string | number>>(new Set())
   const parseSeqRef = useRef(0)
@@ -339,6 +340,7 @@ export function QuotationImportDialog({
     setError('')
     if (!nextFiles.length && !storedFiles.length) { setLoading(false); return }
     const seq = ++parseSeqRef.current
+    setApplying(false)
     setLoading(true)
     const taskId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
     const poll = setInterval(() => {
@@ -423,6 +425,7 @@ export function QuotationImportDialog({
 
   const apply = async () => {
     if (!files.length || !preview) return
+    setApplying(true)
     setLoading(true)
     setError('')
     try {
@@ -481,7 +484,7 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-                {loading ? (saving ? <ImportActivity saving fileCount={files.length} progress={progress} /> : <RecognitionProgressPanel progress={progress} fileCount={files.length} />) : null}
+                {loading ? (applying ? <ImportActivity saving fileCount={files.length} progress={progress} /> : <RecognitionProgressPanel progress={progress} fileCount={files.length} />) : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件，其中销售报价 {salesFiles.length} 份、采购来源文件 {purchaseFiles.length} 份。</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
