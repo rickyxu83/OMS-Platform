@@ -246,10 +246,11 @@ function ScheduleEntriesEditor({
 }) {
   const currentYear = new Date().getFullYear()
   const defaultStartMonth = String(Math.ceil((new Date().getMonth() + 1) / 3) * 3).padStart(2, '0')
-  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
-  const remove = (index: number) => onChange(entries.filter((_, entryIndex) => entryIndex !== index))
-  const add = () => onChange([...entries, { businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }])
   const list: ScheduleEntry[] = entries.length ? entries : [{ businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }]
+  // 注意：空数据时展示的是默认占位行，增删改必须基于 list，否则对占位行的编辑会丢失
+  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(list.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
+  const remove = (index: number) => onChange(list.filter((_, entryIndex) => entryIndex !== index))
+  const add = () => onChange([...list, { businessName: withBusinessName ? '' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null }])
 
   if (!editable) {
     const texts = entries.map((entry) => scheduleEntryText(entry, actionLabel, withBusinessName)).filter(Boolean)
