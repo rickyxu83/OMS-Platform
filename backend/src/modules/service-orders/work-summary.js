@@ -358,8 +358,8 @@ async function callCompatibleProvider(payload, aiSettings) {
           { role: 'user', content: buildPrompt(payload) },
         ],
         stream: false,
-        max_tokens: payload.scope?.type === 'engineer' ? 4000 : 3000,
-        ...(String(aiSettings.model || '').includes('deepseek') ? { thinking: { type: 'disabled' } } : {}),
+        max_tokens: 8000,
+        ...(/(deepseek|kimi)/i.test(String(aiSettings.model || '')) ? { thinking: { type: 'disabled' } } : {}),
       }),
     })
 
