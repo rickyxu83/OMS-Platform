@@ -143,6 +143,7 @@ const STRINGS: Record<AppLang, {
     roles: {
       admin: "管理员",
       assistant: "助理",
+      assistant_supervisor: "助理主管",
       dispatcher: "调度",
       operations_director: "运营负责人",
       engineering_supervisor: "工程主管",
@@ -206,6 +207,7 @@ const STRINGS: Record<AppLang, {
     roles: {
       admin: "管理員",
       assistant: "助理",
+      assistant_supervisor: "助理主管",
       dispatcher: "調度",
       operations_director: "營運負責人",
       engineering_supervisor: "工程主管",

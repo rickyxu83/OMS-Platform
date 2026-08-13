@@ -1728,6 +1728,7 @@ function getConstants(_req, res) {
 
 module.exports = {
   ensureTables,
+  assistantIdsFor,
   quotationUpload,
   attachmentUpload,
   getConstants,

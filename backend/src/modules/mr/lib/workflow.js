@@ -657,13 +657,19 @@ async function reconcilePendingPurchaseAssignments() {
   return { checked: rows.length, reassigned, paused }
 }
 
-async function listApprovalTasks(userId, view = 'pending') {
+async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []) {
   await ensureWorkflowTables()
+  // 助理主管可聚合查看管辖助理的待办/已办；本人发起的视图仍只看本人
+  const assigneeIds = view === 'initiated'
+    ? [Number(userId)]
+    : [...new Set([Number(userId), ...extraAssigneeIds.map(Number)])]
+  const assigneePlaceholders = assigneeIds.map((_, index) => `:assignee${index}`).join(', ')
+  const assigneeParams = Object.fromEntries(assigneeIds.map((id, index) => [`assignee${index}`, id]))
   const where = view === 'initiated'
     ? 'merged.initiator_user_id = :userId'
     : view === 'completed'
-      ? "merged.assignee_user_id = :userId AND merged.status <> 'pending'"
-      : "merged.assignee_user_id = :userId AND merged.status = 'pending'"
+      ? `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status <> 'pending'`
+      : `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status = 'pending'`
   const rows = await query(
     `SELECT * FROM (
        SELECT t.*, assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
@@ -687,14 +693,14 @@ async function listApprovalTasks(userId, view = 'pending') {
      WHERE ${where}
      ORDER BY CASE WHEN merged.status = 'pending' THEN 0 ELSE 1 END, merged.updated_at DESC
      LIMIT 500`,
-    { userId },
+    { userId, ...assigneeParams },
   )
   const countRows = await query(
     `SELECT (
-       (SELECT COUNT(*) FROM approval_tasks WHERE assignee_user_id = :userId AND status = 'pending')
+       (SELECT COUNT(*) FROM approval_tasks WHERE assignee_user_id IN (${assigneePlaceholders}) AND status = 'pending')
        + (SELECT COUNT(*) FROM mr_purchase_tasks WHERE assignee_user_id = :userId AND status = 'pending')
      ) AS count`,
-    { userId },
+    { userId, ...assigneeParams },
   )
   return { items: rows.map((row) => ({
     id: row.id,
