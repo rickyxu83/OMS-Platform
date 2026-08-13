@@ -63,20 +63,21 @@ function entryText(entry, action) {
   const categoryLabel = entry.category === 'subscription' ? '订阅费用：' : entry.category === 'service' ? '服务费用：' : ''
   const prefix = categoryLabel + (hasValue(entry.businessName) ? `${entry.businessName}：` : '')
   const type = entry.type || (hasValue(entry.frequency) || hasValue(entry.amount) ? 'installments' : '')
+  // 无有效总金额（未填或为 0）视为未填写
+  const total = hasValue(entry.totalAmount) && Number(entry.totalAmount) > 0 ? Number(entry.totalAmount) : null
   // 新版：一次性（仅总金额）
-  if (type === 'once') return hasValue(entry.totalAmount) ? `${prefix}一次性${action}，总金额 ${moneyText(entry.totalAmount)}` : `${prefix}一次性${action}`
+  if (type === 'once') return total !== null ? `${prefix}一次性${action}，总金额 ${moneyText(total)}` : ''
   // 新版分期：开始月份 + 期数 + 总金额 → 自动每期金额（季度结算：每年 3、6、9、12 月）
-  if (hasValue(entry.totalAmount) || hasValue(entry.periods)) {
+  if (total !== null) {
     const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
-    const total = hasValue(entry.totalAmount) ? Number(entry.totalAmount) : null
-    const per = periods && total !== null ? total / periods : null
+    const per = periods ? total / periods : null
     const head = hasValue(entry.startMonth) ? `自 ${dateText(entry.startMonth)}起` : ''
     const count = periods ? `分 ${periods} 期${action}` : `分期${action}`
     const perText = per !== null ? `，每期 ${moneyText(per)}` : ''
-    const totalText = total !== null ? `，总金额 ${moneyText(total)}` : ''
-    return `${prefix}${head}${count}${perText}${totalText}`
+    return `${prefix}${head}${count}${perText}，总金额 ${moneyText(total)}`
   }
   // 旧版：频率 + 每期金额
+  if (!hasValue(entry.amount) || Number(entry.amount) <= 0) return ''
   const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
   return [
     prefix + (hasValue(entry.startMonth) ? `${dateText(entry.startMonth)}起` : ''),

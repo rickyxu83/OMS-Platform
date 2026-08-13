@@ -209,24 +209,25 @@ function scheduleEntryText(entry: ScheduleEntry | undefined, actionLabel: string
   const categoryLabel = withCategory ? (entry.category === 'subscription' ? '订阅费用：' : entry.category === 'service' ? '服务费用：' : '') : ''
   const prefix = categoryLabel + (withBusinessName && entry.businessName ? `${entry.businessName}：` : '')
   const type = entry.type || (entry.frequency || entry.amount !== null && entry.amount !== undefined ? 'installments' : '')
+  // 无有效总金额（未填或为 0）视为未填写：占位行被触碰后不应残留“一次性认列”字样
+  const total = entry.totalAmount !== null && entry.totalAmount !== undefined && Number(entry.totalAmount) > 0 ? Number(entry.totalAmount) : null
   if (type === 'once') {
-    return entry.totalAmount !== null && entry.totalAmount !== undefined
-      ? `${prefix}一次性${actionLabel}，总金额 ¥ ${money(entry.totalAmount)}`
-      : `${prefix}一次性${actionLabel}`
+    return total !== null ? `${prefix}一次性${actionLabel}，总金额 ¥ ${money(total)}` : ''
   }
-  if ((entry.totalAmount !== null && entry.totalAmount !== undefined) || entry.periods) {
+  if (total !== null) {
     const periods = Number(entry.periods) > 0 ? Number(entry.periods) : null
-    const total = entry.totalAmount !== null && entry.totalAmount !== undefined ? Number(entry.totalAmount) : null
-    const per = periods && total !== null ? total / periods : null
+    const per = periods ? total / periods : null
     const head = entry.startMonth ? `自 ${entry.startMonth} 起` : ''
     const count = periods ? `分 ${periods} 期${actionLabel}` : `分期${actionLabel}`
-    return `${prefix}${head}${count}${per !== null ? `，每期 ¥ ${money(per)}` : ''}${total !== null ? `，总金额 ¥ ${money(total)}` : ''}`
+    return `${prefix}${head}${count}${per !== null ? `，每期 ¥ ${money(per)}` : ''}，总金额 ¥ ${money(total)}`
   }
   // 旧版遗留：频率 + 每期金额
+  const legacyAmount = entry.amount !== null && entry.amount !== undefined && Number(entry.amount) > 0 ? Number(entry.amount) : null
+  if (legacyAmount === null) return ''
   const period = entry.frequency === 'quarterly' ? '每季度' : '每月'
   return [
     prefix + (entry.startMonth ? `${entry.startMonth} 起` : ''),
-    entry.amount !== null && entry.amount !== undefined ? `${period}${actionLabel} ¥ ${money(entry.amount)}` : '',
+    `${period}${actionLabel} ¥ ${money(legacyAmount)}`,
   ].filter(Boolean).join('')
 }
 

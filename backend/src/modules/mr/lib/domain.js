@@ -86,7 +86,8 @@ function scheduleEntries(value, { withName = false } = {}) {
     }
     if (!normalized.type && (normalized.startMonth || normalized.amount !== null)) normalized.type = 'installments'
     return normalized
-  }).filter((entry) => entry.type === 'once' || entry.startMonth || entry.totalAmount !== null || entry.amount !== null || entry.periods || (withName && entry.businessName))
+    // 无有效金额（未填或为 0）的条目视为未填写直接丢弃：占位行被触碰后不应残留空条目
+  }).filter((entry) => (entry.totalAmount !== null && Number(entry.totalAmount) > 0) || (entry.amount !== null && Number(entry.amount) > 0))
 }
 
 function parseJson(value) {
