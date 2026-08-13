@@ -14,7 +14,6 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
-import { CountUp } from "@/components/CountUp";
 import { Skeleton } from "@/components/Skeleton";
 import { api, fetchSummaryStream } from "@/services/api";
 
@@ -943,7 +942,7 @@ export function Dashboard() {
       <ErrorToast message={error} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
-        {stats.map((stat) => {
+        {stats.map((stat, statIndex) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
@@ -958,7 +957,16 @@ export function Dashboard() {
               <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
                 <div className="flex items-baseline gap-2">
                   <div className="text-2xl font-bold sm:text-3xl tabular-nums">
-                    {loading ? <Skeleton className="h-8 w-16" /> : <CountUp value={stat.value} />}
+                    {loading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <span
+                        className="stat-value-enter inline-block"
+                        style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
+                      >
+                        {stat.value}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
