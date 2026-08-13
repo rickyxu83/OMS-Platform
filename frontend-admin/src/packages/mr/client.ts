@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrOrder, QuotationFile, QuotationImportResult, UserOption, VendorOption } from './types'
+import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLayoutRule, MrOrder, QuotationFile, QuotationImportResult, UserOption, VendorOption } from './types'
 
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
@@ -27,6 +27,12 @@ export const getAssistantSetting = () => api.get('/mr/assistant-setting') as Pro
 export const setAssistantSetting = (assistantUserId: string | number) => api.put('/mr/assistant-setting', { assistantUserId }) as Promise<AssistantSetting>
 export const listApprovalTasks = (view: 'pending' | 'initiated' | 'completed') => api.get(`/approval-tasks?view=${view}`) as Promise<{ items: ApprovalTask[]; pendingCount: number }>
 export const listSalespeople = () => api.get('/users/salespeople') as Promise<{ items: UserOption[] }>
+
+// 识别版式规则（学习闭环 · 阶段B）：管理员维护候选/自学习规则
+export const listMrLayoutRules = () => api.get('/mr/layout-rules') as Promise<{ items: MrLayoutRule[] }>
+export const createMrLayoutRule = (body: { filePattern: string; vendor: string }) => api.post('/mr/layout-rules', body) as Promise<{ ok: boolean }>
+export const updateMrLayoutRule = (id: string | number, body: { enabled?: boolean; vendor?: string; filePattern?: string }) => api.put(`/mr/layout-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
+export const deleteMrLayoutRule = (id: string | number) => api.delete(`/mr/layout-rules/${pathId(id)}`)
 
 export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false, taskId = '', includeStored = false) {
   const body = new FormData()

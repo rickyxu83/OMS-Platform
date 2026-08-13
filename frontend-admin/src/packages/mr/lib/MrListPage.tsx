@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FilePenLine, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { FilePenLine, Loader2, Plus, RefreshCw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createMr, deleteMr, listMr, listSalespeople } from '../client'
+import { LayoutRulesDialog } from './LayoutRulesDialog'
 import type { MrOrder, MrStatus, UserOption } from '../types'
 
 const STATUS_LABELS: Record<MrStatus, string> = {
@@ -60,6 +61,7 @@ export function MrListPage() {
   const [status, setStatus] = useState('all')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
   const [error, setError] = useState('')
   const [salesOptions, setSalesOptions] = useState<UserOption[]>([])
   const [selectedSalesId, setSelectedSalesId] = useState('')
@@ -148,13 +150,22 @@ export function MrListPage() {
           <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
           <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档输出</p>
         </div>
-        {hasPermission('mr.create') ? (
-          <Button onClick={createDraft} disabled={creating}>
-            {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
-            新建 MR 申请
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {user?.role === 'admin' ? (
+            <Button variant="outline" onClick={() => setRulesOpen(true)}>
+              <SlidersHorizontal className="mr-2 size-4" />
+              识别规则
+            </Button>
+          ) : null}
+          {hasPermission('mr.create') ? (
+            <Button onClick={createDraft} disabled={creating}>
+              {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
+              新建 MR 申请
+            </Button>
+          ) : null}
+        </div>
       </header>
+      <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
       <div className="flex flex-wrap items-center gap-2 border-y bg-background py-3">
         <div className="relative min-w-[240px] flex-1 sm:max-w-md">

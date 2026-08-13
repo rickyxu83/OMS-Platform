@@ -326,6 +326,24 @@ async function ensureTables() {
       KEY idx_mr_feedback_name (file_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 布局规则自学习：从纠错样本统计“文件名模式 → 供应商”沉淀规则（候选默认待确认）
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_layout_rules (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      rule_key VARCHAR(128) NOT NULL,
+      file_pattern VARCHAR(128) NOT NULL,
+      vendor VARCHAR(128) NOT NULL,
+      match_count INT UNSIGNED NOT NULL DEFAULT 0,
+      source VARCHAR(16) NOT NULL DEFAULT 'manual',
+      enabled TINYINT(1) NOT NULL DEFAULT 0,
+      created_by BIGINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_mr_layout_rules_key (rule_key),
+      KEY idx_mr_layout_rules_enabled (enabled, match_count)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   await ensureWorkflowTables()
   const quoteRoleColumn = await query(
     `SELECT 1 FROM information_schema.columns
@@ -1374,6 +1392,53 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
   )
 }
 
+/** 文件名提取稳定模式 token：去掉日期/大数字/扩展名，用于规则匹配与统计。 */
+function extractFilePattern(fileName) {
+  const base = String(fileName || '').replace(/\.[^.]+$/, '')
+  const cleaned = base
+    .replace(/20\d{2}[-./年]?\d{0,2}[-./月]?\d{0,2}日?/g, ' ')
+    .replace(/\d{3,}/g, ' ')
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned.slice(0, 64) || null
+}
+
+/**
+ * 布局规则自学习：从纠错样本统计“文件名模式 + 修正后供应商”的出现频次，
+ * 达到阈值（默认 3 次）自动生成候选规则（source=auto，enabled=0 待管理员确认启用）。
+ */
+async function learnLayoutRulesFromFeedback() {
+  const rows = await query(
+    'SELECT file_name, diff FROM mr_recognition_feedback ORDER BY created_at',
+  )
+  const stats = new Map()
+  for (const row of rows) {
+    const pattern = extractFilePattern(row.file_name)
+    if (!pattern) continue
+    let diff = null
+    try { diff = typeof row.diff === 'string' ? JSON.parse(row.diff) : row.diff } catch { diff = null }
+    const entries = Array.isArray(diff) ? diff : []
+    for (const entry of entries) {
+      if (entry?.field !== 'vendor' || !entry.after) continue
+      const vendor = String(entry.after).trim().slice(0, 128)
+      if (!vendor) continue
+      const key = `${pattern}|${vendor}`
+      if (!stats.has(key)) stats.set(key, { pattern, vendor, count: 0 })
+      stats.get(key).count += 1
+    }
+  }
+  for (const { pattern, vendor, count } of stats.values()) {
+    if (count < 3) continue
+    await query(
+      `INSERT INTO mr_layout_rules (rule_key, file_pattern, vendor, match_count, source, enabled)
+       VALUES (:ruleKey, :pattern, :vendor, :count, 'auto', 0)
+       ON DUPLICATE KEY UPDATE match_count = :count, updated_at = NOW()`,
+      { ruleKey: `auto:${pattern}|${vendor}`.slice(0, 128), pattern, vendor, count },
+    )
+  }
+}
+
 /** 对比自动识别品项与人工修正品项的差异（纠错样本用）。识别流水线内部品项为 snake_case。 */
 function diffItems(originalItems = [], correctedItems = []) {
   const COMPARE_FIELDS = ['company_part_no', 'part_no', 'name', 'description', 'qty', 'unit_price', 'vendor', 'cost_incl_tax', 'tax_rate']
@@ -1507,6 +1572,12 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
       },
     )
     feedback += 1
+  }
+  // 布局规则自学习：根据本次纠错样本实时沉淀候选规则（量小，同步执行）
+  try {
+    await learnLayoutRulesFromFeedback()
+  } catch (error) {
+    console.warn('[mr] 布局规则自学习失败：', error?.message || error)
   }
   return { applied, feedback }
 }
@@ -1682,7 +1753,7 @@ async function importQuotation(req, res) {
       if (aiItemCount && systemItemCount > 0 && aiItemCount !== systemItemCount) {
         parsed.warnings.push(`AI 识别 ${aiItemCount} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
       }
-      parsed = applyQuotationLayoutRule(parsed, name, requestedRole)
+      parsed = await applyQuotationLayoutRule(parsed, name, requestedRole)
       parsed = validateParsedQuotation(parsed, recognitionMethod)
       const sheets = (parsed.sheets || []).map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       const warnings = [...(parsed.warnings || [])]
@@ -1910,9 +1981,77 @@ function getConstants(_req, res) {
   res.json({ ...constants, pricingModes: [{ value: 1, label: '多项系统集成' }, { value: 2, label: '单项系统集成' }, { value: 3, label: '开明细' }] })
 }
 
+async function listLayoutRules(_req, res) {
+  await ensureTables()
+  const rows = await query(
+    `SELECT id, rule_key, file_pattern, vendor, match_count, source, enabled, created_by, created_at, updated_at
+     FROM mr_layout_rules ORDER BY enabled DESC, match_count DESC, id DESC LIMIT 500`,
+  )
+  res.json({ items: rows.map((row) => ({
+    id: row.id,
+    ruleKey: row.rule_key,
+    filePattern: row.file_pattern,
+    vendor: row.vendor,
+    matchCount: Number(row.match_count || 0),
+    source: row.source,
+    enabled: Boolean(row.enabled),
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })) })
+}
+
+function assertAdmin(req) {
+  if (req.user?.role !== 'admin') throw forbidden('仅管理员可以管理识别版式规则')
+}
+
+async function createLayoutRule(req, res) {
+  assertAdmin(req)
+  await ensureTables()
+  const filePattern = String(req.body?.filePattern || '').trim().slice(0, 128)
+  const vendor = String(req.body?.vendor || '').trim().slice(0, 128)
+  if (!filePattern) throw badRequest('请填写文件名模式')
+  if (!vendor) throw badRequest('请填写供应商')
+  const ruleKey = `manual:${filePattern}|${vendor}`.slice(0, 128)
+  await query(
+    `INSERT INTO mr_layout_rules (rule_key, file_pattern, vendor, match_count, source, enabled, created_by)
+     VALUES (:ruleKey, :filePattern, :vendor, 0, 'manual', 1, :userId)
+     ON DUPLICATE KEY UPDATE file_pattern = :filePattern, vendor = :vendor, source = 'manual', enabled = 1, updated_at = NOW()`,
+    { ruleKey, filePattern, vendor, userId: req.user.id },
+  )
+  res.status(201).json({ ok: true })
+}
+
+async function updateLayoutRule(req, res) {
+  assertAdmin(req)
+  await ensureTables()
+  const id = Number(req.params.id)
+  const rows = await query('SELECT id FROM mr_layout_rules WHERE id = :id LIMIT 1', { id })
+  if (!rows[0]) throw notFound('规则不存在')
+  const updates = []
+  const params = { id }
+  if (req.body?.enabled !== undefined) { updates.push('enabled = :enabled'); params.enabled = req.body.enabled ? 1 : 0 }
+  if (req.body?.vendor !== undefined) { updates.push('vendor = :vendor'); params.vendor = String(req.body.vendor).trim().slice(0, 128) }
+  if (req.body?.filePattern !== undefined) { updates.push('file_pattern = :filePattern'); params.filePattern = String(req.body.filePattern).trim().slice(0, 128) }
+  if (updates.length) await query(`UPDATE mr_layout_rules SET ${updates.join(', ')} WHERE id = :id`, params)
+  res.json({ ok: true })
+}
+
+async function deleteLayoutRule(req, res) {
+  assertAdmin(req)
+  await ensureTables()
+  const id = Number(req.params.id)
+  await query('DELETE FROM mr_layout_rules WHERE id = :id', { id })
+  res.status(204).end()
+}
+
 module.exports = {
   ensureTables,
   assistantIdsFor,
+  listLayoutRules,
+  createLayoutRule,
+  updateLayoutRule,
+  deleteLayoutRule,
   quotationUpload,
   attachmentUpload,
   getConstants,

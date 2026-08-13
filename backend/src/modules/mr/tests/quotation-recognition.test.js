@@ -39,7 +39,7 @@ async function main() {
   assert.deepStrictEqual(validated.sheets[0].items[0].review_fields, ['extended', 'unitPrice'])
   assert(validated.sheets[0].items[0].validation_messages[0].includes('数量 × 单价'))
 
-  const ruled = applyQuotationLayoutRule({ sheets: [{ title: '报价', vendor: '敦阳宁波有限公司', items: [] }], warnings: [] }, '宽泰报价单.xlsx', 'purchase')
+  const ruled = await applyQuotationLayoutRule({ sheets: [{ title: '报价', vendor: '敦阳宁波有限公司', items: [] }], warnings: [] }, '宽泰报价单.xlsx', 'purchase')
   assert.equal(ruled.sheets[0].vendor, '上海宽泰信息科技有限公司')
 
   const coordinatePdf = parsePdfText('Qty Unit Price Amount\nFN-TRAN-SFP+SR 4 442 1,770 500 2,000\nC9500-24Y4C-E 1 54,867 62,000 62,000', { pages: [{ page: 1, width: 2481, height: 3508, lines: [

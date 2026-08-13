@@ -249,6 +249,19 @@ export interface QuotationImportResult {
   metadata?: { customer?: string; attn?: string; payment?: string; delivery?: string; taxRate?: number | null; customerPo?: string; latestDeliveryDate?: string; deliveryLocation?: string; matchedCustomer?: CustomerOption | null }
 }
 
+export interface MrLayoutRule {
+  id: number
+  ruleKey: string
+  filePattern: string
+  vendor: string
+  matchCount: number
+  source: 'auto' | 'manual'
+  enabled: boolean
+  createdBy?: number | null
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface ParsedQuotationSheet {
   title: string
   customer?: string
