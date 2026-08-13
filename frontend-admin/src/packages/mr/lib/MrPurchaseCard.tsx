@@ -53,6 +53,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
       for (const key of selected) next[key] = value
       return next
     })
+    setSelected(new Set())
   }
 
   const toggleAll = (checked: boolean) => {
@@ -61,12 +62,23 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
 
   const dragRef = useRef<{ active: boolean; mode: 'add' | 'remove' }>({ active: false, mode: 'add' })
   const anchorRef = useRef<number | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const stop = () => { dragRef.current.active = false }
     window.addEventListener('mouseup', stop)
     return () => window.removeEventListener('mouseup', stop)
   }, [])
+
+  // 点击卡片外的页面空白处时清除已选
+  useEffect(() => {
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      if (!selected.size) return
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) setSelected(new Set())
+    }
+    document.addEventListener('mousedown', onDocumentMouseDown)
+    return () => document.removeEventListener('mousedown', onDocumentMouseDown)
+  }, [selected.size])
 
   const setItemSelected = (index: number, mode: 'add' | 'remove') => {
     const itemId = items[index]?.id
@@ -148,6 +160,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   }
 
   return (
+    <div ref={cardRef}>
     <SectionCard
       id="purchase"
       title="采购订单号"
@@ -190,9 +203,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                     onMouseEnter={() => onRowMouseEnter(index)}
                   >
                     <TableCell className="text-center">{index + 1}</TableCell>
-                    <TableCell className="whitespace-normal">
-                      <div className="break-words font-medium">{item.name || '-'}</div>
-                      {item.description ? <div className="line-clamp-2 break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
+                    <TableCell className="whitespace-normal py-1.5">
+                      <div className="truncate break-words font-medium" title={item.name || ''}>{item.name || '-'}</div>
+                      {item.description ? <div className="truncate break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
                     </TableCell>
                     <TableCell className="truncate" title={item.vendor || ''}>{item.vendor || '-'}</TableCell>
                     <TableCell>
@@ -252,5 +265,6 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
         </DialogContent>
       </Dialog>
     </SectionCard>
+    </div>
   )
 }
