@@ -1374,9 +1374,9 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
   )
 }
 
-/** 对比自动识别品项与人工修正品项的差异（纠错样本用）。 */
+/** 对比自动识别品项与人工修正品项的差异（纠错样本用）。识别流水线内部品项为 snake_case。 */
 function diffItems(originalItems = [], correctedItems = []) {
-  const COMPARE_FIELDS = ['companyPartNo', 'oemSpec', 'name', 'description', 'qty', 'unitPrice', 'vendor', 'costInclTax', 'taxRate']
+  const COMPARE_FIELDS = ['company_part_no', 'part_no', 'name', 'description', 'qty', 'unit_price', 'vendor', 'cost_incl_tax', 'tax_rate']
   const diff = []
   const max = Math.max(originalItems.length, correctedItems.length)
   for (let index = 0; index < max; index += 1) {
@@ -1453,17 +1453,19 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
     const normalized = items
       .map((item) => ({
         rowNo: Number(item?.rowNo) || 0,
-        companyPartNo: String(item?.companyPartNo || '').trim().slice(0, 100) || null,
-        oemSpec: String(item?.oemSpec || '').trim().slice(0, 255) || null,
+        // 识别流水线内部品项为 snake_case，回写时保持同构以被 merge 正确处理
+        company_part_no: String(item?.companyPartNo || item?.company_part_no || '').trim().slice(0, 100) || null,
+        part_no: String(item?.oemSpec || item?.partNo || item?.part_no || '').trim().slice(0, 255) || null,
         name: String(item?.name || '').trim().slice(0, 255) || null,
         description: String(item?.description || '').trim().slice(0, 4000) || null,
+        warranty_service: String(item?.warrantyService || '').trim().slice(0, 255) || null,
         qty: Number.isFinite(Number(item?.qty)) ? Number(item.qty) : null,
-        unitPrice: Number.isFinite(Number(item?.unitPrice)) ? Number(item.unitPrice) : null,
+        unit_price: Number.isFinite(Number(item?.unitPrice)) ? Number(item.unitPrice) : null,
         vendor: String(item?.vendor || '').trim().slice(0, 255) || null,
-        costInclTax: Number.isFinite(Number(item?.costInclTax)) ? Number(item.costInclTax) : null,
-        taxRate: Number.isFinite(Number(item?.taxRate)) ? Number(item.taxRate) : null,
+        cost_incl_tax: Number.isFinite(Number(item?.costInclTax)) ? Number(item.costInclTax) : null,
+        tax_rate: Number.isFinite(Number(item?.taxRate)) ? Number(item.taxRate) : null,
       }))
-      .filter((item) => item.name || item.oemSpec || item.companyPartNo || item.description)
+      .filter((item) => item.name || item.part_no || item.company_part_no || item.description)
     if (!normalized.length) continue
 
     const corrected = { sheets: [{ items: normalized }], source: 'user_corrected' }
