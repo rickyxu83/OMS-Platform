@@ -190,6 +190,8 @@ function normalizeOrder(body = {}) {
     customerId: optionalNumber(body.customerId ?? body.customer_id),
     customerContactId: optionalNumber(body.customerContactId ?? body.customer_contact_id),
     salesOwnerId: optionalNumber(body.salesOwnerId ?? body.sales_owner_id),
+    // 业务负责人角色（sales_supervisor 跳处级自签）：仅供 computeApprovalSteps 使用，不入库
+    salesOwnerRole: text(body.salesOwnerRole ?? body.sales_owner_role, 32),
     customerName: text(body.customerName ?? body.customer_name, 255),
     contactName: text(body.contactName ?? body.contact_name, 255),
     caseCategory: normalizedLabel(body.caseCategory ?? body.case_category),
