@@ -299,6 +299,27 @@ function fortinetFortiGateModel(model, aliases = []) {
   ])
 }
 
+// Check Point 防火墙：canonical 如 "Check Point Quantum 5200" / "Check Point Quantum Force 4200" / "Check Point Quantum Spark 1530"
+function checkpointFirewallModel(series, model, aliases = []) {
+  const canonical = `Check Point ${series} ${model}`
+  const compact = model.replace(/\s+/g, '')
+  return networkModel('Check Point', canonical, model, [
+    `Check Point ${model}`,
+    `CheckPoint ${model}`,
+    `CheckPoint${compact}`,
+    `CP ${model}`,
+    `${canonical} 防火墙`,
+    `Check Point ${series} ${model} 防火墙`,
+    `Check Point ${model} 防火墙`,
+    `CheckPoint ${model} 防火墙`,
+    `${model} 防火墙`,
+    `Check Point 防火墙 ${model}`,
+    `CheckPoint防火墙${model}`,
+    `CP 防火墙 ${model}`,
+    ...(Array.isArray(aliases) ? aliases : []),
+  ])
+}
+
 function sangforNetworkModel(productLine, model, aliases = []) {
   const normalizedLine = String(productLine || '').trim()
   const normalizedModel = String(model || '').trim()
@@ -2276,6 +2297,44 @@ const BASE_FIXTURE_DATA = [
   },
 ]
 
+const CHECKPOINT_NETWORK_FIXTURE_DATA = [
+  // Quantum Spark 1500 系列（2021 首发）
+  ...[ '1530', '1540', '1550', '1560', '1570', '1580', '1590', '1600' ]
+    .map((model) => checkpointFirewallModel('Quantum Spark', model)),
+  // Quantum Spark 1500/1600 系列（2023 换代）
+  ...[ '1555', '1565', '1575', '1585', '1595', '1605' ]
+    .map((model) => checkpointFirewallModel('Quantum Spark', model)),
+  // Quantum Spark 1600 系列（2022-2024）
+  ...[ '1620', '1630', '1640', '1650', '1660', '1670', '1680', '1690', '1695' ]
+    .map((model) => checkpointFirewallModel('Quantum Spark', model)),
+  // Quantum 3000 系列（2021）
+  ...[ '3100', '3200', '3300', '3400', '3500', '3600', '3800' ]
+    .map((model) => checkpointFirewallModel('Quantum', model)),
+  // Quantum 5000 系列（2021）
+  ...[ '5100', '5200', '5300', '5400', '5600', '5800', '5900', '5905' ]
+    .map((model) => checkpointFirewallModel('Quantum', model)),
+  // Quantum 6000 系列（2021）
+  ...[ '6100', '6200', '6300', '6400', '6500', '6600', '6700', '6900' ]
+    .map((model) => checkpointFirewallModel('Quantum', model)),
+  // Quantum 8000 系列（2021，数据中心级）
+  ...[ '8100', '8200', '8300', '8500', '8600', '8700', '8900', '8905' ]
+    .map((model) => checkpointFirewallModel('Quantum', model)),
+  // Quantum Force 系列（2024 新一代旗舰）
+  ...[ '4200', '4600', '4900', '5200', '5800', '6200', '6400', '6900', '7200', '7800', '9200', '9600', '9900' ]
+    .map((model) => checkpointFirewallModel('Quantum Force', model)),
+  // Quantum Maestro 集群编排器（2021+）
+  ...[ 'M1', 'M2', 'M3', 'M4', 'M5' ]
+    .map((model) => checkpointFirewallModel('Quantum Maestro', model, [`Maestro ${model}`, `Maestro-${model}`])),
+  // 虚拟化
+  networkModel('Check Point', 'Check Point Quantum vSEC', 'vSEC', [
+    'Quantum vSEC',
+    'vSX',
+    'Check Point 虚拟防火墙',
+    'Check Point vSEC 防火墙',
+    'CP vSEC',
+  ]),
+]
+
 module.exports = mergeFixtureData([
   ...BASE_FIXTURE_DATA,
   ...HPE_ADDITIONAL_SERVER_FIXTURE_DATA,
@@ -2321,5 +2380,6 @@ module.exports = mergeFixtureData([
   ...ARUBA_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...BROCADE_ADDITIONAL_NETWORK_FIXTURE_DATA,
   ...F5_ADDITIONAL_NETWORK_FIXTURE_DATA,
+  ...CHECKPOINT_NETWORK_FIXTURE_DATA,
   ...IMPORTED_FIXTURE_DATA,
 ])
