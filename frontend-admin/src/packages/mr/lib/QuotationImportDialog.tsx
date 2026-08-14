@@ -132,6 +132,58 @@ function FileDropZone({
   )
 }
 
+/** 供应商选择框：可输入过滤 + 点选；下拉用主题 token（bg-popover/text-popover-foreground）渲染，深浅色主题均可读，替代原生 datalist 弹层（白底白字问题） */
+function VendorCombobox({
+  value,
+  onChange,
+  placeholder,
+  vendors,
+  'aria-label': ariaLabel,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  vendors: VendorOption[]
+  'aria-label'?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const filtered = vendors.filter((vendor) => !query || vendor.name.toLowerCase().includes(query.toLowerCase()))
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        value={value}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={(event) => { setQuery(event.target.value); onChange(event.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && filtered.length > 0 ? (
+        <div className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+          {filtered.map((vendor) => (
+            <button
+              key={vendor.id}
+              type="button"
+              className="block w-full truncate rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              onClick={() => { onChange(vendor.name); setQuery(''); setOpen(false) }}
+            >
+              {vendor.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 const IMPORT_STAGE_LABELS: Record<string, string> = {
   parsing: '系统解析文件结构',
   cache: '复用历史识别结果',
@@ -512,7 +564,6 @@ export function QuotationImportDialog({
 
         {preview ? (
           <div key={previewAnimationKey} className={`space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
-        <datalist id="mr-import-vendor-options">{vendors.map((vendor) => <option key={vendor.id} value={vendor.name} />)}</datalist>
             <section>
               <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span></div>
               {preview.metadata?.matchedCustomer ? (
@@ -535,7 +586,7 @@ export function QuotationImportDialog({
                       <div className="text-xs text-muted-foreground">确认导入后，原始文件将随 MR 申请一并留存。</div>
                     </div>
                     <div className="min-w-0">
-                      {source.role === 'purchase' ? <Input list="mr-import-vendor-options" value={sourceVendors[source.index] ?? source.vendor ?? ''} placeholder="未识别；请从下拉选择或手动填写供应商" onChange={(event) => patchSourceVendor(source.index, event.target.value)} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
+                      {source.role === 'purchase' ? <VendorCombobox value={sourceVendors[source.index] ?? source.vendor ?? ''} onChange={(vendorName) => patchSourceVendor(source.index, vendorName)} placeholder="未识别；请从下拉选择或手动填写供应商" vendors={vendors} /> : <span className="text-sm text-muted-foreground">{source.vendor || '不适用'}</span>}
                     </div>
                     <div className="text-sm tabular-nums">
                       <div><AnimatedMoney value={source.total} animationKey={previewAnimationKey} /></div>
@@ -586,7 +637,7 @@ export function QuotationImportDialog({
                             <SelectContent><SelectItem value="13">采购税率 13%</SelectItem><SelectItem value="6">采购税率 6%</SelectItem></SelectContent>
                           </Select>
                           <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
-                          <Input list="mr-import-vendor-options" value={item.vendor || ''} placeholder="供应商完整名称，选填" aria-label={`第 ${index + 1} 项供应商`} onChange={(event) => patchItem(index, { vendor: event.target.value })} />
+                          <VendorCombobox value={item.vendor || ''} onChange={(vendorName) => patchItem(index, { vendor: vendorName })} placeholder="供应商完整名称，选填" vendors={vendors} aria-label={`第 ${index + 1} 项供应商`} />
                           <Input value={item.purchaseOrderNo || ''} placeholder="向供应商下单的 PO 编号，选填" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
                           <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
                           <Input value={item.installBy || ''} placeholder="如：敦阳 / 供应商 / 第三方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
