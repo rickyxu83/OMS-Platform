@@ -382,4 +382,14 @@ const forcedSpec = { row: 2, columns: { item: 1, description: 3, qty: 4, unit: 4
 const forcedParsed = parseSheet(templateWorkbook.Sheets['Sheet1'], forcedSpec)
 assert.equal(forcedParsed.items[0].unit_price, 1)
 assert.equal(forcedParsed.items[0].extended, 75000)
+// Unit pricing 表头：unit 应取单价列（9850）而非 Subtotal 列（19700），extended 取小计列
+const unitPricingBook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(unitPricingBook, XLSX.utils.aoa_to_sheet([
+  ['Part Number', 'Description', 'Qty', 'Unit pricing', 'Discounted', 'Subtotal pricing   (RMB)', 'Remarks'],
+  ['CS-P-SPL-NBU', 'PREMIUM SUPPORT FOR NETBACKUP PLATFORM', 2, 9850, 9850, 19700, '2025-11-1/2026-10-31'],
+]), 'Sheet1')
+const unitPricingParsed = parseWorkbookWithMetadata(XLSX.write(unitPricingBook, { type: 'buffer', bookType: 'xlsx' }), 'NBU.xlsx')
+assert.equal(unitPricingParsed.sheets[0].items[0].qty, 2)
+assert.equal(unitPricingParsed.sheets[0].items[0].unit_price, 9850)
+assert.equal(unitPricingParsed.sheets[0].items[0].extended, 19700)
 console.log('quotation parser OCR loose-row tests passed')

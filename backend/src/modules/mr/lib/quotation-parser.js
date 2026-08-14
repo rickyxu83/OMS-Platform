@@ -54,8 +54,8 @@ const HEADER_ALIASES = {
   part: ['partno', 'partnumber', '产品编码', '产品編碼', '产品编号', '型号', '機型', '机型', '产品型号', '產品編號'],
   description: ['description', 'product', '产品描述', '產品描述', '产品名称', '项目名称及说明', '品名', '描述', '項目名稱及說明', '產品', '產品名稱'],
   qty: ['qty', "q'ty", 'quantity', '数量', '總數', '总数', '采购量', '採購量', '數量'],
-  unit: ['unitnetprice', 'unitprice', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价', '售价', '售價'],
-  extended: ['extendednetprice', 'extendedprice', 'totalsellingprice', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
+  unit: ['unitnetprice', 'unitprice', 'unitpricing', 'unitsellingprice', 'rmb', '人民币单价', '年单价', 'annual list price', '單價', '单价', '售价', '售價'],
+  extended: ['extendednetprice', 'extendedprice', 'totalsellingprice', 'subtotalpricing', 'subtotal', '金额', '金額', '小计', '小計', '总价', '總價', '人民币合计', '合计', '合計'],
 }
 
 function headerMatches(value, aliases) {
