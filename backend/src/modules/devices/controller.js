@@ -269,9 +269,11 @@ function similarSerialNo(left, rawRight) {
   const right = normalizeSerialNo(rawRight)
   if (!left || !right) return false
   if (left === right) return true
-  if (Math.abs(left.length - right.length) > 1) return false
+  // 仅“尾部多/少 0”这类结构差异视为疑似（如 AB123 与 AB1230，多写一个 0）。
+  // 不再用编辑距离 ≤1：同批采购的连续序列号（如 …0001 与 …0002）末位只差 1，
+  // 是正常现象，不应误判为重复。
   if (left.replace(/0+$/, '') === right.replace(/0+$/, '') && left !== right) return true
-  return levenshteinDistance(left, right) <= 1
+  return false
 }
 
 // L2：型号宽松相似（紧凑化后相等/包含/编辑距离 ≤2），如 12800 与 12824
@@ -1468,9 +1470,8 @@ async function list(req, res) {
   const statsRow = statsRows[0] || {}
 
   const total = Number(countRows[0]?.total || 0)
-  const duplicateCounts = computeDuplicateCounts(rows)
   res.json({
-    items: rows.map((row) => ({ ...devicePayload(row), duplicateCount: duplicateCounts.get(row.id) || 0 })),
+    items: rows.map(devicePayload),
     total,
     page,
     pageSize,
@@ -2256,20 +2257,6 @@ function devicesSimilar(left, right) {
   const leftSerial = normalizeSerialNo(left.serial_no)
   if (!leftSerial || !similarSerialNo(leftSerial, right.serial_no)) return false
   return similarModels(left.model, right.model)
-}
-
-// 列表接口给每台设备标注当前页内疑似重复数（用于列表行 badge）
-function computeDuplicateCounts(items) {
-  const counts = new Map()
-  for (let i = 0; i < items.length; i += 1) {
-    for (let j = i + 1; j < items.length; j += 1) {
-      if (devicesSimilar(items[i], items[j])) {
-        counts.set(items[i].id, (counts.get(items[i].id) || 0) + 1)
-        counts.set(items[j].id, (counts.get(items[j].id) || 0) + 1)
-      }
-    }
-  }
-  return counts
 }
 
 // 全量疑似重复分组：按客户两两比较，连通分量归组
