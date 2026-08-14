@@ -432,7 +432,9 @@ export function QuotationImportDialog({
   }
 
   const apply = async () => {
-    if (!files.length || !preview) return
+    // 允许仅留存文件（无新上传）时保存：第二次打开补漏校对场景
+    if (!preview) return
+    if (!files.length && !storedFiles.length) return
     setApplying(true)
     setLoading(true)
     setError('')
@@ -492,7 +494,19 @@ export function QuotationImportDialog({
           </div>
         ) : null}
 
-                {loading ? (applying ? <ImportActivity saving fileCount={files.length} progress={progress} /> : <RecognitionProgressPanel progress={progress} fileCount={files.length} />) : null}
+                {loading ? (applying ? <ImportActivity saving fileCount={files.length} progress={progress} /> : files.length ? <RecognitionProgressPanel progress={progress} fileCount={files.length} /> : (
+                  <div role="status" aria-live="polite" className="relative overflow-hidden rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <div aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-background text-primary shadow-sm">
+                        <FileSpreadsheet className="size-5 animate-pulse motion-reduce:animate-none" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">正在载入已识别结果…</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">识别结果已缓存，通常 1-2 秒；可直接校对并保存，无需重新上传文件。</div>
+                      </div>
+                    </div>
+                  </div>
+                )) : null}
         {files.length ? <div className="text-sm text-muted-foreground">已选择 {files.length} 份来源文件，其中销售报价 {salesFiles.length} 份、采购来源文件 {purchaseFiles.length} 份。</div> : null}
         {error ? <div className="border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
@@ -647,7 +661,7 @@ export function QuotationImportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-          {editable ? <Button disabled={!preview || loading || !files.length} title={!files.length && preview ? '当前为留存文件的识别结果，添加新文件后可再次导入；删除留存文件后其关联品项已联动移除，无需重新导入' : undefined} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
+          {editable ? <Button disabled={!preview || loading} title={files.length ? undefined : '正在校对已导入报价的识别结果：直接保存校对内容，无需重新上传文件'} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
