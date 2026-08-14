@@ -17,6 +17,7 @@ router.post('/merge-preview', requirePermission('device.edit'), controller.merge
 router.post('/merge', requirePermission('device.edit'), controller.mergeDevices)
 router.get('/:id', requirePermission('device.view'), controller.detail)
 router.get('/:id/similar', requirePermission('device.view'), controller.similarDevices)
+router.get('/suspected-duplicates', requirePermission('device.view'), controller.suspectedDuplicates)
 router.put('/:id', requirePermission('device.edit'), controller.update)
 router.delete('/:id', requirePermission('device.delete'), controller.remove)
 
