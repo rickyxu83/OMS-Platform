@@ -1,6 +1,6 @@
 const assert = require('assert')
 const XLSX = require('xlsx')
-const { parseWorkbook, parseWorkbookWithMetadata, sheetTotal, mergeQuotations, parsePdfText } = require('../quotation-parser')
+const { parseWorkbook, parseWorkbookWithMetadata, parseSheet, sheetTotal, mergeQuotations, parsePdfText } = require('../quotation-parser')
 
 
 const rows = [
@@ -367,4 +367,19 @@ assert.equal(layoutParsed.sheets[0].items[0].extended, 43000)
 assert.equal(layoutParsed.sheets[0].items[0].confidence.overall, 89)
 assert.deepStrictEqual(layoutParsed.sheets[0].items[0].review_fields, [])
 assert.equal(ocrParsed.sheets[0].tax_included, false)
+// Excel 表头模板元数据：header_signature 与 columns_json 供模板学习使用
+const templateWorkbook = XLSX.utils.book_new()
+XLSX.utils.book_append_sheet(templateWorkbook, XLSX.utils.aoa_to_sheet([
+  ['报价单'],
+  ['编号', '产品', '描述', '数量', '单位', '含税单价(RMB)', '含税小计(RMB)', '备注'],
+  [1, 'Vmware技术服务', 'VMWARE软件年度服务', 1, '年', '75,000.00', '75,000.00', '服务周期：2025'],
+]), 'Sheet1')
+const templateParsed = parseWorkbookWithMetadata(XLSX.write(templateWorkbook, { type: 'buffer', bookType: 'xlsx' }), '模板测试.xlsx')
+assert.equal(templateParsed.sheets[0].header_signature, '编号|产品|描述|数量|单位|含税单价rmb|含税小计rmb|备注')
+assert.deepStrictEqual(JSON.parse(templateParsed.sheets[0].columns_json), { item: 1, description: 3, qty: 4, unit: 6, extended: 7 })
+// 模板列映射（knownSpec）优先于启发式识别：unit 指到数量列时单价强制取数量列的值
+const forcedSpec = { row: 2, columns: { item: 1, description: 3, qty: 4, unit: 4, extended: 6 }, all: { item: [1], description: [3], qty: [4], unit: [4], extended: [6] } }
+const forcedParsed = parseSheet(templateWorkbook.Sheets['Sheet1'], forcedSpec)
+assert.equal(forcedParsed.items[0].unit_price, 1)
+assert.equal(forcedParsed.items[0].extended, 75000)
 console.log('quotation parser OCR loose-row tests passed')

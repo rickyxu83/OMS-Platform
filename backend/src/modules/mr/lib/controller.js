@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const multer = require('multer')
+const XLSX = require('xlsx')
 const env = require('../../../config/env')
 
 /** 报价识别解析器版本：识别逻辑/输出格式变更时 +1，旧缓存自动失效。 */
@@ -51,7 +52,7 @@ async function writeRecognitionCache(fileHash, fileName, payload) {
 const importProgress = new Map()
 const { query, transaction } = require('../../../config/db')
 const { badRequest, forbidden, notFound } = require('../../../utils/http-error')
-const { parseWorkbookWithMetadata, sheetTotal } = require('./quotation-parser')
+const { parseWorkbookWithMetadata, parseSheet, sheetTotal } = require('./quotation-parser')
 const { parsePdf, parsePdfText } = require('./quotation-pdf-parser')
 const { recognizePdf } = require('./ocr-client')
 const { extractWorkbookImages, companyCandidates } = require('./workbook-images')
@@ -342,6 +343,26 @@ async function ensureTables() {
       PRIMARY KEY (id),
       UNIQUE KEY uk_mr_layout_rules_key (rule_key),
       KEY idx_mr_layout_rules_enabled (enabled, match_count)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  // 报价表头布局模板：从纠错样本学习“文件模式 + 表头签名 → 列语义映射”，同模板新文件识别时按模板取数
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_layout_templates (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      rule_key VARCHAR(160) NOT NULL,
+      file_pattern VARCHAR(128) NOT NULL,
+      header_signature VARCHAR(512) NOT NULL,
+      columns_json TEXT NOT NULL,
+      header_row INT UNSIGNED NOT NULL DEFAULT 0,
+      match_count INT UNSIGNED NOT NULL DEFAULT 0,
+      source VARCHAR(16) NOT NULL DEFAULT 'auto',
+      enabled TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_mr_templates_key (rule_key),
+      KEY idx_mr_templates_pattern (file_pattern),
+      KEY idx_mr_templates_signature (header_signature(128))
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   await ensureWorkflowTables()
@@ -1601,10 +1622,47 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
   // 布局规则自学习：根据本次纠错样本实时沉淀候选规则（量小，同步执行）
   try {
     await learnLayoutRulesFromFeedback()
+    await learnLayoutTemplatesFromFeedback()
   } catch (error) {
     console.warn('[mr] 布局规则自学习失败：', error?.message || error)
   }
   return { applied, feedback }
+}
+
+/**
+ * 表头布局模板自学习：从纠错样本统计“文件名模式 + 表头签名”的出现频次，
+ * 达到阈值（默认 3 次）自动生成模板规则（source=auto，enabled=1），
+ * 同模板新文件识别时按模板列映射取数（见 applyLayoutTemplate）。
+ * 仅系统解析结果（含 header_signature/columns_json 元数据）参与学习，AI 结果自动跳过。
+ */
+async function learnLayoutTemplatesFromFeedback() {
+  const rows = await query(
+    'SELECT file_name, original_result FROM mr_recognition_feedback ORDER BY created_at',
+  )
+  const stats = new Map()
+  for (const row of rows) {
+    const pattern = extractFilePattern(row.file_name)
+    if (!pattern) continue
+    let original = null
+    try { original = typeof row.original_result === 'string' ? JSON.parse(row.original_result) : row.original_result } catch (_error) { continue }
+    const sheet = original?.parsed?.sheets?.[0]
+    const signature = String(sheet?.header_signature || '').trim()
+    const columnsJson = String(sheet?.columns_json || '').trim()
+    const headerRow = Number(sheet?.header_row || 0)
+    if (!signature || !columnsJson || columnsJson === '{}') continue
+    const key = `${pattern}|${signature}`
+    if (!stats.has(key)) stats.set(key, { pattern, signature, columnsJson, headerRow, count: 0 })
+    stats.get(key).count += 1
+  }
+  for (const { pattern, signature, columnsJson, headerRow, count } of stats.values()) {
+    if (count < 3) continue
+    await query(
+      `INSERT INTO mr_layout_templates (rule_key, file_pattern, header_signature, columns_json, header_row, match_count, source, enabled)
+       VALUES (:ruleKey, :pattern, :signature, :columnsJson, :headerRow, :count, 'auto', 1)
+       ON DUPLICATE KEY UPDATE match_count = :count, header_row = :headerRow, updated_at = NOW()`,
+      { ruleKey: `template:${pattern}|${signature}`.slice(0, 160), pattern, signature, columnsJson, headerRow, count },
+    )
+  }
 }
 
 /** 读取已留存的报价原始附件，作为“再次导入一并识别”的来源文件；磁盘缺失的跳过。 */
@@ -1704,6 +1762,45 @@ async function importQuotation(req, res) {
       parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
+      // 表头模板应用：同文件模式 + 表头签名命中已学模板时，用模板列映射重新解析（覆盖启发式识别）
+      if (extension === '.xls' || extension === '.xlsx') {
+        try {
+          const pattern = extractFilePattern(name)
+          if (pattern && parsed.sheets?.length) {
+            const templates = await query(
+              'SELECT header_signature, columns_json, header_row FROM mr_layout_templates WHERE file_pattern = :pattern AND enabled = 1',
+              { pattern },
+            )
+            if (templates.length) {
+              const bySignature = new Map(templates.map((tpl) => [tpl.header_signature, tpl]))
+              const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true })
+              let applied = 0
+              parsed.sheets = parsed.sheets.map((sheet, sheetIndex) => {
+                const tpl = bySignature.get(sheet.header_signature)
+                if (!tpl) return sheet
+                let columns = null
+                try { columns = JSON.parse(tpl.columns_json) } catch (_error) { return sheet }
+                if (!columns || typeof columns !== 'object' || Array.isArray(columns)) return sheet
+                const worksheet = workbook.Sheets[workbook.SheetNames[sheetIndex]]
+                if (!worksheet) return sheet
+                const knownSpec = {
+                  row: Number(tpl.header_row) || 0,
+                  columns,
+                  all: Object.fromEntries(Object.entries(columns).map(([key, col]) => [key, [Number(col)]])),
+                }
+                const reParsed = parseSheet(worksheet, knownSpec)
+                // 模板解析为空（模板已不匹配当前文件）时回退原结果
+                if (!reParsed || !reParsed.items?.length) return sheet
+                applied += 1
+                return { ...sheet, ...reParsed }
+              })
+              if (applied) parsed.warnings.push(`已应用供应商表头模板（${applied} 个 sheet），请核对识别结果`)
+            }
+          }
+        } catch (error) {
+          console.warn('[mr] 表头模板应用失败：', error?.message || error)
+        }
+      }
       recognitionMethod = parsed.recognitionMethod || recognitionMethod
       systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
       const preferAi = extension === '.pdf' || systemItemCount === 0

@@ -98,7 +98,16 @@ async function main() {
     filename: dbPath,
     loaded: true,
     exports: {
-      query: async (sql) => /FROM mr_orders o/.test(sql) ? [{ id: 32, status: 'draft', created_by: 1, sales_owner_id: 1, pricing_mode: 1 }] : [],
+      query: async (sql) => {
+        if (/FROM mr_orders o/.test(sql)) return [{ id: 32, status: 'draft', created_by: 1, sales_owner_id: 1, pricing_mode: 1 }]
+        // 模板学习应用：mock 一份“VM 技术服务”表头模板，unit 列故意指向数量列以验证模板强制生效
+        if (/FROM mr_layout_templates/.test(sql)) return [{
+          header_signature: '编号|产品|描述|数量|单位|含税单价rmb|含税小计rmb|备注',
+          columns_json: JSON.stringify({ item: 2, description: 4, qty: 4, unit: 4, extended: 7 }),
+          header_row: 9,
+        }]
+        return []
+      },
       transaction: async (callback) => callback({ execute: async () => [[]] }),
     },
   }
@@ -127,6 +136,25 @@ async function main() {
   assert.equal(importPayload.sources[1].itemCount, 0)
   assert.equal(importPayload.sources[1].taxIncluded, null)
   assert(importPayload.warnings.some((warning) => warning.includes('无法识别.xlsx') && warning.includes('已保留其他来源')))
+  // 模板应用集成测试：VM 表头文件命中已学模板（unit 列被模板指到数量列）→ 重解析按模板取数并提示
+  const templateBook = XLSX.utils.book_new()
+  const templateRows = []
+  for (let i = 0; i < 8; i += 1) templateRows.push([''])
+  templateRows.push(['编号', '产品', '描述', '数量', '单位', '含税单价(RMB)', '含税小计(RMB)', '备注'])
+  templateRows.push([1, 'Vmware技术服务', 'VMWARE软件年度服务', 1, '年', 75000, 75000, '服务周期'])
+  XLSX.utils.book_append_sheet(templateBook, XLSX.utils.aoa_to_sheet(templateRows), '报价')
+  let templatePayload
+  await importQuotation({
+    params: { id: '32' },
+    user: { id: 1, role: 'admin' },
+    body: { sourceRoles: JSON.stringify(['purchase']) },
+    files: { files: [upload(XLSX.write(templateBook, { type: 'buffer', bookType: 'xlsx' }), '20251001-VM技术服务-敦阳.xlsx')] },
+  }, { json(value) { templatePayload = value } })
+  assert(templatePayload.warnings.some((warning) => warning.includes('已应用供应商表头模板')))
+  // 模板把 description/qty/unit 列都指向数量列（col 4）→ 描述取自数量列，证明模板列映射覆盖启发式识别
+  assert.equal(templatePayload.items[0].description, '1')
+  assert.equal(templatePayload.items[0].qty, 1)
+  assert.equal(templatePayload.items[0].costInclTax, 75000)
   console.log('quotation recognition tests passed')
 }
 

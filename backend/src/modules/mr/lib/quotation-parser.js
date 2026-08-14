@@ -199,8 +199,9 @@ function rawValue(ws, row, col) {
   const cell = ws[XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })]
   return cell?.v
 }
-function parseSheet(ws) {
-  const header = findHeaderSpec(ws)
+function parseSheet(ws, knownSpec = null) {
+  // 模板学习应用：外部列映射（knownSpec，来自 mr_layout_templates）优先，未命中时走启发式表头识别
+  const header = knownSpec && knownSpec.row && knownSpec.columns ? knownSpec : findHeaderSpec(ws)
   if (!header) return null
   const reader = makeReader(ws)
   const range = rangeSize(ws)
@@ -360,6 +361,9 @@ function parseSheet(ws) {
     items,
     header_row: header.row,
     last_item_row: lastItemRow,
+    // 模板学习元数据：表头行各列文本签名（识别布局模板用）+ 表头列语义映射
+    header_signature: Array.from({ length: maxCol }, (_, colIndex) => normalizeLabel(rawValue(ws, header.row, colIndex + 1))).filter(Boolean).join('|'),
+    columns_json: header.columns ? JSON.stringify(header.columns) : '{}',
   }
 }
 
@@ -394,4 +398,4 @@ function sheetTotal(sheetData) {
   return sheetData.discounted_total ?? sheetData.total_amount ?? sheetData.untaxed_total ?? sheetData.items.reduce((sum, item) => sum + (item.extended || 0), 0)
 }
 const { mergeQuotations } = require('./quotation-merge')
-module.exports = { parseWorkbook, parseWorkbookWithMetadata, sheetTotal, toFloat, cellText, mergeQuotations }
+module.exports = { parseWorkbook, parseWorkbookWithMetadata, parseSheet, sheetTotal, toFloat, cellText, mergeQuotations }
