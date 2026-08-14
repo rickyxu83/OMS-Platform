@@ -1482,6 +1482,7 @@ export function MrFormPage() {
           pricingMode={calculated.pricingMode}
           existingFiles={calculated.quotationFiles || []}
           vendors={vendors}
+          initialItems={calculated.items || []}
           onOpenChange={setImportOpen}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
           onStoredFilesChange={(files) => patch({ quotationFiles: files })}

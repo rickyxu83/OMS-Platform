@@ -249,6 +249,7 @@ export function QuotationImportDialog({
   pricingMode,
   existingFiles,
   vendors = [],
+  initialItems = [],
   onOpenChange,
   onApply,
   onStoredFilesChange,
@@ -261,6 +262,8 @@ export function QuotationImportDialog({
   pricingMode?: number | null
   existingFiles: QuotationFile[]
   vendors?: VendorOption[]
+  /** MR 单当前已导入品项：二次打开（仅留存文件）时直接用作校对基础，不触发后端识别 */
+  initialItems?: MrItem[]
   onOpenChange: (open: boolean) => void
   onApply: (result: QuotationImportResult, pricingMode: number) => void
   onStoredFilesChange?: (files: QuotationFile[]) => void
@@ -425,11 +428,31 @@ export function QuotationImportDialog({
     }
   }
 
-  // 再次打开弹窗时自动载入留存文件的识别结果（缓存命中秒回），避免空列表只剩一行留存附件
+  // 再次打开弹窗（仅留存文件）：直接用 MR 单已导入品项构建校对预览，不触发后端识别（已去除识别缓存）
   useEffect(() => {
     if (!open || !editable) return
     if (!storedFiles.length || salesFiles.length || purchaseFiles.length || preview || loading) return
-    void parse([], [])
+    setPreview({
+      files: storedFiles,
+      sources: storedFiles.map((file, index) => ({
+        index,
+        name: file.name,
+        role: file.quoteRole === 'quote_sales' ? 'sales' as const : 'purchase' as const,
+        total: 0,
+        itemCount: 0,
+        vendor: '',
+        documentType: 'unknown',
+        taxIncluded: null,
+        taxRate: null,
+        method: '已导入',
+      })),
+      salesSourceIndex: -1,
+      salesTotalExcludingTax: null,
+      items: initialItems.map((item, rowIndex) => ({ ...item, rowNo: rowIndex + 1 })),
+      warnings: ['已载入当前 MR 单的品项，可直接校对并保存；如需重新识别请重新上传报价文件'],
+      metadata: {},
+    })
+    setPreviewAnimationKey((current) => current + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -494,7 +517,7 @@ export function QuotationImportDialog({
       const sourceHashes = Object.fromEntries(
         (preview.sources || []).filter((source) => source.hash).map((source) => [source.name, String(source.hash)]),
       )
-      const saved = await persistQuotations(orderId, files, roles, { correctedItems: previewItems, sourceHashes })
+      const saved = await persistQuotations(orderId, files, roles, { correctedItems: previewItems, sourceHashes }, true)
       const editedSources = (preview.sources || []).map((source) => ({ ...source, vendor: sourceVendors[source.index] ?? source.vendor }))
       onApply({ ...preview, items: previewItems, sources: editedSources, files: saved.files }, effectivePricingMode)
       if (saved.corrections && (saved.corrections.applied > 0 || saved.corrections.feedback > 0)) {

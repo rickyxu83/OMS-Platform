@@ -45,10 +45,11 @@ export async function importQuotations(id: string | number, files: File[], persi
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }
 
-export async function persistQuotations(id: string | number, files: File[], roles?: Array<'sales' | 'purchase'>, corrections?: { correctedItems?: object[]; sourceHashes?: Record<string, string> }) {
+export async function persistQuotations(id: string | number, files: File[], roles?: Array<'sales' | 'purchase'>, corrections?: { correctedItems?: object[]; sourceHashes?: Record<string, string> }, includeStored = false) {
   const body = new FormData()
   for (const file of files) body.append('files', file)
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
+  if (includeStored) body.set('includeStored', '1')
   body.set('persist', '1')
   body.set('persistOnly', '1')
   // 学习回写：确认导入时把人工修正后的品项与来源文件 hash 一并提交，供后端回写识别缓存与纠错样本库

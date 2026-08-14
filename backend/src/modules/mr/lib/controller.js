@@ -1813,19 +1813,7 @@ async function importQuotation(req, res) {
     let systemItemCount = 0
     let aiItemCount = 0
     let aiDocumentType = null
-    const cached = await readRecognitionCache(fileHash)
-    if (cached?.result?.parsed?.sheets) {
-      // 缓存 payload 结构为 { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType }
-      parsed = cached.result.parsed
-      recognitionMethod = cached.result.recognitionMethod || recognitionMethod
-      systemItemCount = cached.result.systemItemCount || 0
-      aiItemCount = cached.result.aiItemCount || 0
-      aiDocumentType = cached.result.aiDocumentType || null
-      parsed = { ...parsed, warnings: [...(parsed.warnings || []), '已复用该文件的历史识别结果（文件内容一致）'] }
-      setStage('cache', 8)
-      progress.stage = 'cache'
-    } else {
-      parsed = extension === '.pdf'
+    parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
         : parseWorkbookWithMetadata(file.buffer, name)
       // 表头模板应用：同文件模式 + 表头签名命中已学模板时，用模板列映射重新解析（覆盖启发式识别）
@@ -1922,22 +1910,9 @@ async function importQuotation(req, res) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'Linux OCR 暂时不可用，本次只保留内存中的识别结果，请人工确认'] }
         }
       }
+      // 识别缓存仅写不读：每次导入总是重新识别（避免旧识别结果污染）；写入原始识别结果供纠错样本 diff（三期学习）使用
       await writeRecognitionCache(fileHash, name, { parsed, recognitionMethod, systemItemCount, aiItemCount, aiDocumentType })
-    }
-      // 人工修正回写：同一文件存在用户修正结果时，用修正品项替换自动识别品项（保留 sheet 级元数据）
-      if (cached?.corrected?.sheets?.length && Array.isArray(parsed.sheets)) {
-        parsed = {
-          ...parsed,
-          sheets: parsed.sheets.map((sheet, sheetIndex) => {
-            const correctedItems = cached.corrected.sheets[sheetIndex]?.items
-            return correctedItems && correctedItems.length
-              ? { ...sheet, items: correctedItems }
-              : sheet
-          }),
-          warnings: [...(parsed.warnings || []), `已应用上次人工修正结果（历史修正 ${cached.correctionCount || 0} 次）`],
-        }
-      }
-      // 分区冲突提示与请求角色相关，不随缓存复用，每次按本次分区重新判断
+      // 分区冲突提示与请求角色相关，每次按本次分区重新判断
       if (requestedRole && aiDocumentType && aiDocumentType !== requestedDocumentType) {
         parsed.warnings.push(`AI 识别该文件为“${aiDocumentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
       }

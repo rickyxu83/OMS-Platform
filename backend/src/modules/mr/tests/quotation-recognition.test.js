@@ -113,6 +113,14 @@ async function main() {
           { cost_incl_tax: 69000, qty: 1 },
           { cost_incl_tax: 71000, qty: 1 },
         ]
+        // 旧识别缓存：mock 一份错误结果，验证去缓存后识别不再复用（总是重新识别）
+        if (/FROM mr_quote_recognition_cache/.test(sql)) return [{
+          result: JSON.stringify({ parsed: { sheets: [{ items: [{ name: '错误缓存品项', qty: 1, unit_price: 1, extended: 1 }] }] } }),
+          corrected_result: null,
+          corrected_by: null,
+          corrected_at: null,
+          correction_count: 4,
+        }]
         return []
       },
       transaction: async (callback) => callback({ execute: async () => [[{ id: 32, status: 'draft', created_by: 1, sales_owner_id: 1, pricing_mode: 1 }]] }),
@@ -192,6 +200,19 @@ async function main() {
   }, { json(value) { persistPayload = value } })
   assert.equal(persistPayload.corrections.applied, 0)
   assert(Array.isArray(persistPayload.files))
+  // 去缓存：mock 存在旧识别缓存（错误结果）时，importQuotation 仍走新识别（不复用缓存、无“已复用”警告）
+  let freshPayload
+  await importQuotation({
+    params: { id: '32' },
+    user: { id: 1, role: 'admin' },
+    body: { sourceRoles: JSON.stringify(['purchase']) },
+    files: { files: [upload(XLSX.write(templateBook, { type: 'buffer', bookType: 'xlsx' }), '20250922-VM技术服务-敦阳.xlsx')] },
+  }, { json(value) { freshPayload = value } })
+  assert(freshPayload.items.length > 0)
+  // 缓存中的错误品项（name='错误缓存品项'）不得出现在新识别结果中
+  assert(!freshPayload.items.some((item) => String(item.name || '').includes('错误缓存品项')))
+  assert(!freshPayload.warnings.some((warning) => warning.includes('已复用该文件的历史识别结果')))
+  assert(!freshPayload.warnings.some((warning) => warning.includes('已应用上次人工修正结果')))
   console.log('quotation recognition tests passed')
 }
 
