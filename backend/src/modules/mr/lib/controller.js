@@ -1766,7 +1766,10 @@ async function importQuotation(req, res) {
   if (!canEdit(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许导入报价单')
   const storedUploads = includeStored ? await loadStoredQuotationUploads(req.params.id) : []
   const uploads = [...storedUploads, ...newUploads]
-  if (!uploads.length) throw badRequest('请选择报价单或订单文件')
+  // persist 回写场景（仅留存文件、无新上传，确认导入补漏校对）：凭 sourceHashes 回写修正，允许 uploads 为空
+  const persistOnly = String(req.body?.persistOnly || '') === '1'
+  const persist = String(req.body?.persist || '') === '1'
+  if (!uploads.length && !(persist && persistOnly)) throw badRequest('请选择报价单或订单文件')
 
   const taskId = String(req.body?.taskId || '').trim()
   // 分阶段进度：stagePercent 为服务端真实锚点，前端在锚点间平滑补间
@@ -1788,8 +1791,6 @@ async function importQuotation(req, res) {
   // 留存文件的角色来自入库时的 quote_role，新上传文件的角色来自本次请求的 sourceRoles
   const effectiveRoles = [...storedUploads.map((file) => file.storedRole), ...requestedRoles]
   const uploadHashes = uploads.map((file) => crypto.createHash('sha256').update(file.buffer).digest('hex'))
-  const persist = String(req.body?.persist || '') === '1'
-  const persistOnly = String(req.body?.persistOnly || '') === '1'
   if (persist && persistOnly) {
     // 确认导入：识别结果已在预览中，仅留存新上传的原始附件（留存文件本来就在库里），不重复识别
     const files = await persistQuotationFiles(req.params.id, newUploads, req.user, false, requestedRoles)

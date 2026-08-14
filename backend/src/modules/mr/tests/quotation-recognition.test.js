@@ -115,7 +115,7 @@ async function main() {
         ]
         return []
       },
-      transaction: async (callback) => callback({ execute: async () => [[]] }),
+      transaction: async (callback) => callback({ execute: async () => [[{ id: 32, status: 'draft', created_by: 1, sales_owner_id: 1, pricing_mode: 1 }]] }),
     },
   }
   const { importQuotation, normalizeCorrectedItem } = require('../controller')
@@ -182,6 +182,16 @@ async function main() {
   assert(cheapPayload.warnings.some((warning) => warning.includes('疑似识别错误')))
   // 正常价格（模板测试文件 costInclTax=75000 ≈ 历史 70000）不生成异常警告
   assert(!templatePayload.warnings.some((warning) => warning.includes('疑似识别错误')))
+  // persist 无文件回写：确认导入补漏校对（仅留存文件）不应报“请选择报价单或订单文件”
+  let persistPayload
+  await importQuotation({
+    params: { id: '32' },
+    user: { id: 1, role: 'admin' },
+    body: { persist: '1', persistOnly: '1', correctedItems: JSON.stringify([]), sourceHashes: JSON.stringify({}) },
+    files: { files: [] },
+  }, { json(value) { persistPayload = value } })
+  assert.equal(persistPayload.corrections.applied, 0)
+  assert(Array.isArray(persistPayload.files))
   console.log('quotation recognition tests passed')
 }
 
