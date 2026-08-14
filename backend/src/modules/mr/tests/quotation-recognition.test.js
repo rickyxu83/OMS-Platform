@@ -104,6 +104,7 @@ async function main() {
         if (/FROM mr_layout_templates/.test(sql)) return [{
           header_signature: '编号|产品|描述|数量|单位|含税单价rmb|含税小计rmb|备注',
           columns_json: JSON.stringify({ item: 2, description: 4, qty: 4, unit: 4, extended: 7 }),
+          review_fields_json: JSON.stringify(['unit_price']),
           header_row: 9,
         }]
         // 历史价格校验：mock 上海可明同名品历史成本（中位 70000）
@@ -161,6 +162,9 @@ async function main() {
   assert.equal(templatePayload.items[0].description, '1')
   assert.equal(templatePayload.items[0].qty, 1)
   assert.equal(templatePayload.items[0].costInclTax, 75000)
+  // 样本反哺：模板 review_fields_json=['unit_price'] → 品项标记 unitPrice 需重点核对 + 警告
+  assert(templatePayload.warnings.some((warning) => warning.includes('请重点核对')))
+  assert((templatePayload.items[0].reviewFields || []).includes('unitPrice'))
   // 历史价格校验：识别价格 700 vs 历史中位 70000 → 应生成“疑似识别错误”警告；正常价不打扰
   const cheapBook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(cheapBook, XLSX.utils.aoa_to_sheet([

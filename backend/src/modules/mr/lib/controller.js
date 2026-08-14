@@ -353,6 +353,7 @@ async function ensureTables() {
       file_pattern VARCHAR(128) NOT NULL,
       header_signature VARCHAR(512) NOT NULL,
       columns_json TEXT NOT NULL,
+      review_fields_json TEXT NULL,
       header_row INT UNSIGNED NOT NULL DEFAULT 0,
       match_count INT UNSIGNED NOT NULL DEFAULT 0,
       source VARCHAR(16) NOT NULL DEFAULT 'auto',
@@ -365,6 +366,14 @@ async function ensureTables() {
       KEY idx_mr_templates_signature (header_signature(128))
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 惰性迁移：为已有 mr_layout_templates 表补充 review_fields_json（记录该模板高频被人工修正的字段）
+  const reviewFieldsColumn = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_layout_templates' AND column_name = 'review_fields_json' LIMIT 1`,
+  )
+  if (!reviewFieldsColumn[0]) {
+    await query('ALTER TABLE mr_layout_templates ADD COLUMN review_fields_json TEXT NULL')
+  }
   await ensureWorkflowTables()
   const quoteRoleColumn = await query(
     `SELECT 1 FROM information_schema.columns
@@ -1651,16 +1660,27 @@ async function learnLayoutTemplatesFromFeedback() {
     const headerRow = Number(sheet?.header_row || 0)
     if (!signature || !columnsJson || columnsJson === '{}') continue
     const key = `${pattern}|${signature}`
-    if (!stats.has(key)) stats.set(key, { pattern, signature, columnsJson, headerRow, count: 0 })
+    if (!stats.has(key)) stats.set(key, { pattern, signature, columnsJson, headerRow, count: 0, fieldCounts: {} })
     stats.get(key).count += 1
+    // 统计纠错样本 diff 中被人工修正的字段（sample 反哺：同一模板反复被改的字段标记为易错）
+    let diff = null
+    try { diff = typeof row.diff === 'string' ? JSON.parse(row.diff) : row.diff } catch (_error) { diff = null }
+    for (const entry of Array.isArray(diff) ? diff : []) {
+      const field = String(entry?.field || '')
+      if (field) stats.get(key).fieldCounts[field] = (stats.get(key).fieldCounts[field] || 0) + 1
+    }
   }
-  for (const { pattern, signature, columnsJson, headerRow, count } of stats.values()) {
+  for (const { pattern, signature, columnsJson, headerRow, count, fieldCounts } of stats.values()) {
     if (count < 3) continue
+    // 高频被人工修正字段（≥3 次）→ 模板标记为需重点核对字段
+    const reviewFields = Object.entries(fieldCounts)
+      .filter(([, freq]) => freq >= 3)
+      .map(([field]) => field)
     await query(
-      `INSERT INTO mr_layout_templates (rule_key, file_pattern, header_signature, columns_json, header_row, match_count, source, enabled)
-       VALUES (:ruleKey, :pattern, :signature, :columnsJson, :headerRow, :count, 'auto', 1)
-       ON DUPLICATE KEY UPDATE match_count = :count, header_row = :headerRow, updated_at = NOW()`,
-      { ruleKey: `template:${pattern}|${signature}`.slice(0, 160), pattern, signature, columnsJson, headerRow, count },
+      `INSERT INTO mr_layout_templates (rule_key, file_pattern, header_signature, columns_json, review_fields_json, header_row, match_count, source, enabled)
+       VALUES (:ruleKey, :pattern, :signature, :columnsJson, :reviewFields, :headerRow, :count, 'auto', 1)
+       ON DUPLICATE KEY UPDATE match_count = :count, header_row = :headerRow, review_fields_json = :reviewFields, updated_at = NOW()`,
+      { ruleKey: `template:${pattern}|${signature}`.slice(0, 160), pattern, signature, columnsJson, reviewFields: JSON.stringify(reviewFields), headerRow, count },
     )
   }
 }
@@ -1813,13 +1833,14 @@ async function importQuotation(req, res) {
           const pattern = extractFilePattern(name)
           if (pattern && parsed.sheets?.length) {
             const templates = await query(
-              'SELECT header_signature, columns_json, header_row FROM mr_layout_templates WHERE file_pattern = :pattern AND enabled = 1',
+              'SELECT header_signature, columns_json, review_fields_json, header_row FROM mr_layout_templates WHERE file_pattern = :pattern AND enabled = 1',
               { pattern },
             )
             if (templates.length) {
               const bySignature = new Map(templates.map((tpl) => [tpl.header_signature, tpl]))
               const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true })
               let applied = 0
+              const reviewHints = new Set()
               parsed.sheets = parsed.sheets.map((sheet, sheetIndex) => {
                 const tpl = bySignature.get(sheet.header_signature)
                 if (!tpl) return sheet
@@ -1836,10 +1857,25 @@ async function importQuotation(req, res) {
                 const reParsed = parseSheet(worksheet, knownSpec)
                 // 模板解析为空（模板已不匹配当前文件）时回退原结果
                 if (!reParsed || !reParsed.items?.length) return sheet
+                // 样本反哺：模板记录的易错字段 → 标记为需重点核对（diff 字段名 → 前端 review_fields 名）
+                let reviewFields = []
+                try { reviewFields = JSON.parse(tpl.review_fields_json || '[]') } catch (_error) { reviewFields = [] }
+                if (reviewFields.length) {
+                  const mapped = [...new Set(reviewFields
+                    .map((field) => ({ unit_price: 'unitPrice', extended: 'extended', qty: 'qty', name: 'description', description: 'description', cost_incl_tax: 'extended', tax_rate: 'taxRate' }[field] || field))
+                    .filter(Boolean))]
+                  if (mapped.length) {
+                    reParsed.items = reParsed.items.map((item) => ({ ...item, review_fields: [...new Set([...(item.review_fields || []), ...mapped])] }))
+                    mapped.forEach((field) => reviewHints.add(field))
+                  }
+                }
                 applied += 1
                 return { ...sheet, ...reParsed }
               })
-              if (applied) parsed.warnings.push(`已应用供应商表头模板（${applied} 个 sheet），请核对识别结果`)
+              if (applied) {
+                parsed.warnings.push(`已应用供应商表头模板（${applied} 个 sheet），请核对识别结果`)
+                if (reviewHints.size) parsed.warnings.push(`该表头模板的 ${[...reviewHints].join('、')} 字段历史常被人工修正，请重点核对`)
+              }
             }
           }
         } catch (error) {
@@ -2259,6 +2295,7 @@ module.exports = {
   normalizeCorrectedItem,
   historyUnitCostStats,
   priceAnomalyWarning,
+  learnLayoutTemplatesFromFeedback,
   namePrefixKey,
   listLayoutRules,
   createLayoutRule,
