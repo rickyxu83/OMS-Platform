@@ -28,6 +28,14 @@ function includingTax(value: number | null | undefined, taxRate: number) {
   return value === null || value === undefined ? null : Number(value) * (1 + taxRate / 100)
 }
 
+/** 含税单价显示值：内部未税单价 × (1+税率)，报价单均为含税价，直接按含税展示与填写（round 2 位避免浮点尾巴） */
+function inclUnitPrice(item: MrItem, taxRate: number) {
+  const unit = item.quotedUnitPrice ?? item.unitPrice
+  if (unit === null || unit === undefined) return ''
+  const incl = Number(unit) * (1 + taxRate / 100)
+  return Math.round(incl * 100) / 100
+}
+
 function excludingTax(item: MrItem) {
   if (item.costExcludingTax !== null && item.costExcludingTax !== undefined) return item.costExcludingTax
   if (item.costInclTax === null || item.costInclTax === undefined || item.taxRate === null || item.taxRate === undefined) return null
@@ -60,7 +68,7 @@ function confidenceText(confidence?: number | null, reviewCount = 0) {
 }
 
 function reviewFieldLabel(field: string) {
-  return ({ description: '品名及描述', oemSpec: '原厂规格（根据供应商报价推断）', qty: '数量', unitPrice: '未税单价', extended: '未税小计' } as Record<string, string>)[field] || field
+  return ({ description: '品名及描述', oemSpec: '原厂规格（根据供应商报价推断）', qty: '数量', unitPrice: '含税单价', extended: '未税小计' } as Record<string, string>)[field] || field
 }
 
 function acceptedFiles(files: File[]) {
@@ -555,7 +563,7 @@ export function QuotationImportDialog({
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-3">
                           <Textarea className={`md:col-span-3 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" aria-label={`第 ${index + 1} 项品名及描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={0} step={0.01} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
-                          <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.quotedUnitPrice ?? item.unitPrice ?? ''} placeholder="未税单价" aria-label={`第 ${index + 1} 项未税单价`} onChange={(event) => patchItem(index, { unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
+                          <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={inclUnitPrice(item, invoiceTaxRate)} placeholder="含税单价" title="报价单为含税价时直接填含税单价，系统自动折算未税核算；供应商报价品项请填“采购成本（含税）”" aria-label={`第 ${index + 1} 项含税单价`} onChange={(event) => { const raw = event.target.value; const incl = raw === '' ? null : Number(raw); patchItem(index, { unitPrice: incl === null ? null : Math.round((incl / (1 + invoiceTaxRate / 100)) * 1000000) / 1000000 }) }} />
                           <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Select value={String(invoiceTaxRate === 6 ? 6 : (item.taxRate ?? 13))} disabled={invoiceTaxRate === 6} onValueChange={(value) => patchItem(index, { taxRate: Number(value) })}>
                             <SelectTrigger aria-label={`第 ${index + 1} 项采购税率`} title={invoiceTaxRate === 6 ? '当前发票类型的适用税率为 6%，采购税率固定为 6%' : undefined}><SelectValue placeholder="采购税率" /></SelectTrigger>

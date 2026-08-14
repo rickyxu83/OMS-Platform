@@ -35,7 +35,8 @@ const USER_PROMPT = [
 
 function finiteNumber(value) {
   if (value === null || value === undefined || value === '') return null
-  const parsed = Number(value)
+  // AI 常把价格原样输出为带千分位逗号的字符串（如 "75,000.00"），直接 Number() 会得 NaN 导致价格归 0，先剥掉逗号与货币符号
+  const parsed = Number(String(value).replace(/,/g, '').replace(/[￥¥]/g, ''))
   return Number.isFinite(parsed) ? parsed : null
 }
 

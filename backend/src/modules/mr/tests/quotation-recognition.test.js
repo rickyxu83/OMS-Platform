@@ -73,6 +73,15 @@ async function main() {
   assert.equal(merged.items[0].matchCandidates[0].costInclTax, 60)
   assert(merged.warnings.some((warning) => warning.includes('未自动采用')))
 
+  // 人工修正回写（corrected）携带的含税成本 cost_incl_tax 应被 merge 直接采用，不再按税率口径二次折算
+  const correctedPurchase = mergeQuotations([{
+    name: '供应商-修正.xlsx',
+    requestedRole: 'purchase',
+    documentType: 'purchase_quote',
+    sheets: [{ items: [{ item_no: '1', name: 'VMware 服务', description: 'VMware 服务', qty: 1, unit_price: 66371.68, extended: 66371.68, cost_incl_tax: 75000, tax_rate: 13 }] }],
+  }], [])
+  assert.equal(correctedPurchase.items[0].costInclTax, 75000)
+
   const batchSalesBook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(batchSalesBook, XLSX.utils.aoa_to_sheet([
     ['Item', 'Part_no', 'Description', 'Qty', 'Unit Net Price', 'Extended Net price'],
@@ -93,7 +102,14 @@ async function main() {
       transaction: async (callback) => callback({ execute: async () => [[]] }),
     },
   }
-  const { importQuotation } = require('../controller')
+  const { importQuotation, normalizeCorrectedItem } = require('../controller')
+  // 修正回写归一化：只填“采购成本（含税）”时按税率反推未税单价/小计；缺省字段不得被 Number(null)=0 坑成 0
+  const correctedOnlyCost = normalizeCorrectedItem({ rowNo: 1, name: 'VMware 服务', qty: 1, unitPrice: null, costInclTax: 75000, taxRate: 13 })
+  assert.deepStrictEqual([correctedOnlyCost.qty, correctedOnlyCost.unit_price, correctedOnlyCost.extended, correctedOnlyCost.cost_incl_tax], [1, 66371.68, 66371.68, 75000])
+  const correctedEmpty = normalizeCorrectedItem({ rowNo: 1, name: 'X', qty: null, unitPrice: null, costInclTax: null })
+  assert.deepStrictEqual([correctedEmpty.qty, correctedEmpty.unit_price, correctedEmpty.extended], [null, null, null])
+  const correctedNormal = normalizeCorrectedItem({ rowNo: 1, name: 'Y', qty: 2, unitPrice: 100, extended: 200, taxRate: 13 })
+  assert.deepStrictEqual([correctedNormal.qty, correctedNormal.unit_price, correctedNormal.extended], [2, 100, 200])
   const upload = (buffer, name) => ({ buffer, originalname: Buffer.from(name, 'utf8').toString('latin1'), size: buffer.length })
   const request = {
     params: { id: '32' },

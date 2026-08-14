@@ -1458,6 +1458,49 @@ function diffItems(originalItems = [], correctedItems = []) {
   return diff
 }
 
+/** 有效数字判定：null/undefined/''/NaN 都视为无效（避免 Number(null)=0 把缺省单价/数量坑成 0）。 */
+function hasNumber(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+}
+
+/**
+ * 人工修正品项归一化（前端 camelCase → 识别流水线 snake_case）。
+ * 用户在校对中只填了“采购成本（含税）”而未填单价/小计时（供应商报价场景），
+ * 按税率反推未税单价与小计，保证修正数据完整可被 merge 正确消费；含税成本原样保留供 merge 直接取值。
+ */
+function normalizeCorrectedItem(item) {
+  const qty = hasNumber(item?.qty) ? Number(item.qty) : null
+  const unitPrice = hasNumber(item?.unitPrice) ? Number(item.unitPrice) : null
+  const extended = hasNumber(item?.extended) ? Number(item.extended)
+    : qty !== null && unitPrice !== null ? Math.round(qty * unitPrice * 100) / 100
+    : null
+  const costInclTax = hasNumber(item?.costInclTax) ? Number(item.costInclTax) : null
+  const taxRate = hasNumber(item?.taxRate) ? Number(item.taxRate) : null
+  const normalized = {
+    rowNo: Number(item?.rowNo) || 0,
+    // 识别流水线内部品项为 snake_case，回写时保持同构以被 merge 正确处理
+    company_part_no: String(item?.companyPartNo || item?.company_part_no || '').trim().slice(0, 100) || null,
+    part_no: String(item?.oemSpec || item?.partNo || item?.part_no || '').trim().slice(0, 255) || null,
+    name: String(item?.name || '').trim().slice(0, 255) || null,
+    description: String(item?.description || '').trim().slice(0, 4000) || null,
+    warranty_service: String(item?.warrantyService || '').trim().slice(0, 255) || null,
+    qty,
+    unit_price: unitPrice,
+    extended,
+    vendor: String(item?.vendor || '').trim().slice(0, 255) || null,
+    cost_incl_tax: costInclTax,
+    tax_rate: taxRate,
+  }
+  // 反推：只填了含税成本、没有单价/小计时，按税率折算未税单价与小计（单位成本保留到 6 位避免除不尽误差）
+  if (unitPrice === null && extended === null && costInclTax !== null) {
+    const rate = taxRate === null ? 13 : taxRate
+    const untaxed = Math.round((costInclTax / (1 + rate / 100)) * 100) / 100
+    normalized.extended = untaxed
+    normalized.unit_price = qty !== null && qty > 0 ? Math.round((untaxed / qty) * 1000000) / 1000000 : null
+  }
+  return normalized
+}
+
 /**
  * 学习回写（确认导入时触发）：把用户修正后的品项按来源文件分组回写识别缓存，
  * 使同一文件下次导入直接应用修正结果；同时将“自动识别 vs 人工修正”差异落纠错样本库。
@@ -1516,25 +1559,7 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
   for (const [fileName, { role, items }] of byFile) {
     const fileHash = hashByName[fileName]
     const normalized = items
-      .map((item) => ({
-        rowNo: Number(item?.rowNo) || 0,
-        // 识别流水线内部品项为 snake_case，回写时保持同构以被 merge 正确处理
-        company_part_no: String(item?.companyPartNo || item?.company_part_no || '').trim().slice(0, 100) || null,
-        part_no: String(item?.oemSpec || item?.partNo || item?.part_no || '').trim().slice(0, 255) || null,
-        name: String(item?.name || '').trim().slice(0, 255) || null,
-        description: String(item?.description || '').trim().slice(0, 4000) || null,
-        warranty_service: String(item?.warrantyService || '').trim().slice(0, 255) || null,
-        qty: Number.isFinite(Number(item?.qty)) ? Number(item.qty) : null,
-        unit_price: Number.isFinite(Number(item?.unitPrice)) ? Number(item.unitPrice) : null,
-        // 小计：前端修正品项通常不带 extended，缺省时用 qty × unit_price 补齐（校验依赖）
-        extended: Number.isFinite(Number(item?.extended)) ? Number(item.extended)
-          : Number.isFinite(Number(item?.qty)) && Number.isFinite(Number(item?.unitPrice))
-            ? Math.round(Number(item.qty) * Number(item.unitPrice) * 100) / 100
-            : null,
-        vendor: String(item?.vendor || '').trim().slice(0, 255) || null,
-        cost_incl_tax: Number.isFinite(Number(item?.costInclTax)) ? Number(item.costInclTax) : null,
-        tax_rate: Number.isFinite(Number(item?.taxRate)) ? Number(item.taxRate) : null,
-      }))
+      .map(normalizeCorrectedItem)
       .filter((item) => item.name || item.part_no || item.company_part_no || item.description)
     if (!normalized.length) continue
 
@@ -2072,6 +2097,7 @@ async function deleteLayoutRule(req, res) {
 module.exports = {
   ensureTables,
   assistantIdsFor,
+  normalizeCorrectedItem,
   listLayoutRules,
   createLayoutRule,
   updateLayoutRule,

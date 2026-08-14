@@ -44,6 +44,12 @@ function testNormalize() {
   assert.equal(sheet.items[1].part_no, '')
   assert.equal(normalizeAiResult({ items: [] }, 'x.pdf'), null)
   assert.equal(normalizeAiResult(null, 'x.pdf'), null)
+  // AI 把价格原样输出为带千分位逗号的字符串（如 "75,000.00"）时，必须归一化为数字而非归 0
+  const commaSheet = normalizeAiResult({
+    items: [{ itemNo: 1, name: 'VMware 服务', qty: '1', unitPrice: '75,000.00', extended: '75,000.00' }],
+  }, 'x.pdf')
+  assert.equal(commaSheet.items[0].unit_price, 75000)
+  assert.equal(commaSheet.items[0].extended, 75000)
 }
 
 function testWorkbookText() {
