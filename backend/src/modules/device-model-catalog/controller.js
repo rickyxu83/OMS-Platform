@@ -2,6 +2,23 @@ const { query } = require('../../config/db')
 const { searchTextVariants } = require('../../utils/chinese')
 const { normalizeAlias, deduplicateAliases } = require('./normalize')
 
+function levenshteinDistance(left, right) {
+  if (left === right) return 0
+  const aLen = left.length
+  const bLen = right.length
+  if (!aLen) return bLen
+  if (!bLen) return aLen
+  const matrix = Array.from({ length: aLen + 1 }, (_, i) => [i, ...Array(bLen).fill(0)])
+  for (let j = 0; j <= bLen; j += 1) matrix[0][j] = j
+  for (let i = 1; i <= aLen; i += 1) {
+    for (let j = 1; j <= bLen; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost)
+    }
+  }
+  return matrix[aLen][bLen]
+}
+
 const catalogCategories = new Set(['server', 'storage', 'network'])
 
 async function suggest(req, res, next) {
@@ -175,6 +192,46 @@ async function suggest(req, res, next) {
 
       if (dedupedItems.length >= 10) {
         break
+      }
+    }
+
+    // L3：精确/前缀/包含结果不足时，补编辑距离相近的模糊候选（如 12800 → 12824）
+    if (dedupedItems.length < 6 && normalizedKeyword.length >= 3) {
+      const fuzzyRows = await query(
+        `SELECT id, brand, category, canonical_model, part_number, source_provider, confidence, priority
+         FROM device_model_catalog
+         WHERE is_active = 1`,
+      )
+      const existingIds = new Set(dedupedItems.map((item) => String(item.canonicalModel)))
+      const fuzzyMatches = []
+      for (const row of fuzzyRows) {
+        if (existingIds.has(String(row.canonical_model))) continue
+        const candidates = [row.part_number, row.canonical_model]
+        let bestDistance = Infinity
+        for (const candidate of candidates) {
+          const compact = String(candidate || '').normalize('NFKC').toUpperCase().replace(/[\s\-_.:/]+/g, '')
+          if (!compact) continue
+          const distance = levenshteinDistance(normalizedKeyword, compact)
+          if (distance < bestDistance) bestDistance = distance
+        }
+        if (bestDistance <= 2) {
+          fuzzyMatches.push({ row, distance: bestDistance })
+        }
+      }
+      fuzzyMatches.sort((left, right) => left.distance - right.distance)
+      for (const { row } of fuzzyMatches.slice(0, 5)) {
+        dedupedItems.push({
+          canonicalModel: row.canonical_model,
+          partNumber: String(row.part_number || '').trim(),
+          brand: row.brand,
+          category: row.category,
+          sourceProvider: row.source_provider,
+          rank: 2,
+          confidence: Number(row.confidence),
+          fuzzy: true,
+        })
+        existingIds.add(String(row.canonical_model))
+        if (dedupedItems.length >= 10) break
       }
     }
 

@@ -51,6 +51,8 @@ interface Device {
   remark?: string;
   createdAt?: string;
   updatedAt?: string;
+  createdBy?: number | string | null;
+  createdByName?: string;
   relatedServiceOrders?: DeviceRelatedServiceOrder[];
   partHistory?: DevicePartHistory[];
 }
@@ -1349,6 +1351,8 @@ export function Devices() {
   const [saving, setSaving] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [similarDevices, setSimilarDevices] = useState<Array<{ id: string | number; model?: string; serialNo?: string; customerName?: string; createdByName?: string }>>([]);
+  const [similarDevicesLoading, setSimilarDevicesLoading] = useState(false);
   const [attachmentFormat, setAttachmentFormat] = useState("all");
   const [attachmentKeyword, setAttachmentKeyword] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1416,6 +1420,10 @@ export function Devices() {
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
   const [normalizationProgress, setNormalizationProgress] = useState<ProgressState | null>(null);
+  const [duplicateConfirm, setDuplicateConfirm] = useState<{
+    items: Array<{ id: string | number; customerName?: string; model?: string; serialNo?: string; createdByName?: string }>;
+    payloads: Record<string, unknown>[];
+  } | null>(null);
   const [modelApplying, setModelApplying] = useState(false);
   const [modelCompareResult, setModelCompareResult] = useState<ExistingModelNormalizationResult | null>(null);
   const filteredMaintenanceParties = useMemo(
@@ -1836,6 +1844,7 @@ export function Devices() {
     setDetailTarget(device);
     if (!device.id) return;
     setDetailLoading(true);
+    setSimilarDevices([]);
     try {
       const data = await api.get(`/devices/${device.id}`);
       setDetailTarget((data?.item || device) as Device);
@@ -1843,6 +1852,17 @@ export function Devices() {
       setError(e instanceof Error ? e.message : "加载设备详情失败");
     } finally {
       setDetailLoading(false);
+    }
+    if (device.id) {
+      setSimilarDevicesLoading(true);
+      try {
+        const data = await api.get(`/devices/${device.id}/similar`);
+        setSimilarDevices((data?.items || []) as never);
+      } catch {
+        setSimilarDevices([]);
+      } finally {
+        setSimilarDevicesLoading(false);
+      }
     }
   }
 
@@ -1901,6 +1921,34 @@ export function Devices() {
     }
   }
 
+  // 创建设备（单条/批量统一入口）：L1 后端硬拦截，L2 疑似重复时弹确认框
+  async function createDevices(payloads: Record<string, unknown>[], force: boolean) {
+    const normalizationNotices: ModelNormalizationNotice[] = [];
+    const normalizationJobs: ModelNormalizationJob[] = [];
+    let createdCount = 0;
+    for (const payload of payloads) {
+      try {
+        const data = await api.post("/devices", force ? { ...payload, force: "1" } : payload);
+        const notice = modelNormalizationNotice(data);
+        if (notice) normalizationNotices.push(notice);
+        const job = extractModelNormalizationJob(data);
+        if (job) normalizationJobs.push(job);
+        createdCount += 1;
+      } catch (e) {
+        const warning = (e as { details?: { duplicateWarning?: Array<{ id: string | number }> } })?.details?.duplicateWarning;
+        if (!force && Array.isArray(warning) && warning.length) {
+          setDuplicateConfirm({ items: warning, payloads: payloads.slice(createdCount) });
+          const marker = new Error("__duplicate_confirm__");
+          (marker as Error & { __duplicate?: boolean }).__duplicate = true;
+          throw marker;
+        }
+        throw e;
+      }
+    }
+    showModelNormalizationNotices(normalizationNotices);
+    trackModelNormalizationJobs(normalizationJobs);
+  }
+
   async function submit() {
     let effectiveCustomerId = form.customerId;
     if (!effectiveCustomerId && customerInput.trim()) {
@@ -1920,8 +1968,6 @@ export function Devices() {
     setSaving(true);
     setError("");
     let createdCount = 0;
-    const normalizationNotices: ModelNormalizationNotice[] = [];
-    const normalizationJobs: ModelNormalizationJob[] = [];
     try {
       const maintenanceType = canonicalMaintenanceType(form.maintenanceType);
       const commonPayload: Record<string, unknown> = {
@@ -1963,20 +2009,15 @@ export function Devices() {
           return;
         }
 
-        for (const row of rows) {
-          const data = await api.post("/devices", {
-            ...commonPayload,
-            name: row.name || null,
-            model: row.model,
-            serialNo: row.serialNo || undefined,
-            mrNo: row.mrNo || undefined,
-          });
-          const notice = modelNormalizationNotice(data);
-          if (notice) normalizationNotices.push(notice);
-          const job = extractModelNormalizationJob(data);
-          if (job) normalizationJobs.push(job);
-          createdCount += 1;
-        }
+        const bulkPayloads = rows.map((row) => ({
+          ...commonPayload,
+          name: row.name || null,
+          model: row.model,
+          serialNo: row.serialNo || undefined,
+          mrNo: row.mrNo || undefined,
+        }));
+        await createDevices(bulkPayloads, false);
+        createdCount = bulkPayloads.length;
       } else {
         if (!form.model.trim()) {
           setError("请输入设备型号");
@@ -1997,18 +2038,14 @@ export function Devices() {
         if (editingId) {
           await api.put(`/devices/${editingId}`, payload);
         } else {
-          const data = await api.post("/devices", payload);
-          const notice = modelNormalizationNotice(data);
-          if (notice) normalizationNotices.push(notice);
-          const job = extractModelNormalizationJob(data);
-          if (job) normalizationJobs.push(job);
+          await createDevices([payload], false);
+          createdCount = 1;
         }
       }
       setDialogOpen(false);
-      showModelNormalizationNotices(normalizationNotices);
-      trackModelNormalizationJobs(normalizationJobs);
       await load();
     } catch (e) {
+      if ((e as Error & { __duplicate?: boolean })?.__duplicate) return;
       const msg = e instanceof Error ? e.message : "保存失败";
       setError(createdCount ? `已新增 ${createdCount} 台设备，后续保存失败：${msg}` : msg);
       if (createdCount) await load();
@@ -3126,6 +3163,10 @@ export function Devices() {
                           <div className="mt-1">{formatDate(detailTarget.createdAt)}</div>
                         </div>
                         <div>
+                          <div className="text-xs text-muted-foreground">创建人</div>
+                          <div className="mt-1">{detailTarget.createdByName || "-"}</div>
+                        </div>
+                        <div>
                           <div className="text-xs text-muted-foreground">最近更新</div>
                           <div className="mt-1">{formatDate(detailTarget.updatedAt)}</div>
                         </div>
@@ -3268,6 +3309,34 @@ export function Devices() {
                       </div>
                     )}
                   </details>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">疑似重复设备</div>
+                        <div className="mt-1 text-xs text-muted-foreground">同客户下 SN 或型号相似的设备（基于归一化与编辑距离）</div>
+                      </div>
+                      {similarDevices.length ? <Badge variant="warning">{similarDevices.length} 台</Badge> : <Badge variant="outline">无</Badge>}
+                    </div>
+                    {similarDevicesLoading ? (
+                      <div className="mt-3 space-y-2">
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                      </div>
+                    ) : similarDevices.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {similarDevices.map((item) => (
+                          <div key={String(item.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2 text-sm">
+                            <span className="font-medium">设备 #{item.id}</span>
+                            <span className="text-muted-foreground">
+                              {item.model || "-"} · {item.serialNo || "-"}
+                              {item.createdByName ? ` · ${item.createdByName}` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -4321,6 +4390,56 @@ export function Devices() {
             <Button onClick={submitBatchEdit} disabled={saving}>
               {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : "批量保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(duplicateConfirm)} onOpenChange={(open) => { if (!open) setDuplicateConfirm(null); }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>检测到疑似重复设备</DialogTitle>
+            <DialogDescription>
+              系统发现同客户下存在 SN 或型号相似的设备，请核对后确认是否仍要创建。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[40vh] space-y-2 overflow-y-auto py-2">
+            {(duplicateConfirm?.items || []).map((item) => (
+              <div key={String(item.id)} className="rounded-lg border bg-amber-50/50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">设备 #{item.id}</span>
+                  {item.customerName ? <span className="text-xs text-muted-foreground">{item.customerName}</span> : null}
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  型号：{item.model || "-"} · S/N：{item.serialNo || "-"}
+                  {item.createdByName ? ` · 创建人：${item.createdByName}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateConfirm(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                const pending = duplicateConfirm;
+                setDuplicateConfirm(null);
+                if (!pending) return;
+                setSaving(true);
+                try {
+                  await createDevices(pending.payloads, true);
+                  setDialogOpen(false);
+                  await load();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "保存失败");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <Check className="w-4 h-4 mr-2" />
+              仍要创建
             </Button>
           </DialogFooter>
         </DialogContent>

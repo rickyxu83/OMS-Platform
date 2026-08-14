@@ -2,7 +2,7 @@ const path = require('path')
 const multer = require('multer')
 const ExcelJS = require('exceljs')
 const { query, transaction } = require('../../config/db')
-const { badRequest, forbidden, notFound } = require('../../utils/http-error')
+const { badRequest, forbidden, notFound, HttpError } = require('../../utils/http-error')
 const { assertSalesCanAccessSalesperson, buildSalesCustomerScope } = require('../../permissions/sales-scope')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { buildLikeSearch, buildLikeSearchTerms, customerNameKey, toSimplified } = require('../../utils/chinese')
@@ -236,6 +236,85 @@ function normalizeDate(value) {
 function normalizeText(value) {
   const text = String(toSimplified(value) || '').trim()
   return text || null
+}
+
+// L0：序列号归一化（繁转简、全角转半角、大写、去空白与常见分隔符）
+function normalizeSerialNo(value) {
+  const text = String(toSimplified(value) || '')
+    .normalize('NFKC')
+    .toUpperCase()
+    .replace(/[\s\-_./\\:：,，;；]+/g, '')
+  return text || null
+}
+
+function levenshteinDistance(left, right) {
+  if (left === right) return 0
+  const aLen = left.length
+  const bLen = right.length
+  if (!aLen) return bLen
+  if (!bLen) return aLen
+  const matrix = Array.from({ length: aLen + 1 }, (_, i) => [i, ...Array(bLen).fill(0)])
+  for (let j = 0; j <= bLen; j += 1) matrix[0][j] = j
+  for (let i = 1; i <= aLen; i += 1) {
+    for (let j = 1; j <= bLen; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost)
+    }
+  }
+  return matrix[aLen][bLen]
+}
+
+// L2：宽松 SN 相似（尾 0 差异、长度差 ≤1、编辑距离 ≤1）
+function similarSerialNo(left, rawRight) {
+  const right = normalizeSerialNo(rawRight)
+  if (!left || !right) return false
+  if (left === right) return true
+  if (Math.abs(left.length - right.length) > 1) return false
+  if (left.replace(/0+$/, '') === right.replace(/0+$/, '') && left !== right) return true
+  return levenshteinDistance(left, right) <= 1
+}
+
+// L2：型号宽松相似（紧凑化后相等/包含/编辑距离 ≤2），如 12800 与 12824
+function similarModels(left, right) {
+  const compact = (value) => String(value || '').normalize('NFKC').toUpperCase().replace(/[\s\-_./\\:：,，]+/g, '')
+  const a = compact(left)
+  const b = compact(right)
+  if (!a || !b) return false
+  if (a === b) return true
+  if (a.includes(b) || b.includes(a)) return true
+  return levenshteinDistance(a, b) <= 2
+}
+
+// L2：查同客户下的疑似重复设备（SN 归一化精确相同由 L1 全局拦截，此处只返回宽松相似）
+async function findSimilarDevices(customerId, serialNo, model) {
+  const normalized = normalizeSerialNo(serialNo)
+  if (!normalized) return []
+  const rows = await query(
+    `SELECT d.id, d.model, d.serial_no, d.created_at, c.name AS customer_name,
+            u.real_name AS created_by_name
+     FROM devices d
+     LEFT JOIN customers c ON c.id = d.customer_id
+     LEFT JOIN users u ON u.id = d.created_by
+     WHERE d.customer_id = :customerId AND d.serial_no IS NOT NULL
+     ORDER BY d.id DESC
+     LIMIT 300`,
+    { customerId },
+  )
+  return rows
+    .filter((row) => {
+      if (normalized === normalizeSerialNo(row.serial_no)) return false // L1 已拦，无需在此重复
+      if (!similarSerialNo(normalized, row.serial_no)) return false
+      return similarModels(model, row.model)
+    })
+    .slice(0, 5)
+    .map((row) => ({
+      id: row.id,
+      customerName: row.customer_name || '',
+      model: row.model || '',
+      serialNo: row.serial_no || '',
+      createdAt: row.created_at || null,
+      createdByName: row.created_by_name || '',
+    }))
 }
 
 function normalizeHeader(value) {
@@ -875,7 +954,7 @@ async function ensureDeviceIdentityColumns() {
      FROM information_schema.COLUMNS
      WHERE table_schema = DATABASE()
        AND table_name = 'devices'
-       AND column_name IN ('name', 'mr_no', 'maintenance_type')`,
+       AND column_name IN ('name', 'mr_no', 'maintenance_type', 'created_by')`,
   )
   const nameColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'name')
   if (nameColumn && String(nameColumn.is_nullable || '').toUpperCase() !== 'YES') {
@@ -884,6 +963,10 @@ async function ensureDeviceIdentityColumns() {
   const mrNoColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'mr_no')
   if (!mrNoColumn) {
     await query('ALTER TABLE devices ADD COLUMN mr_no VARCHAR(128) NULL AFTER serial_no')
+  }
+  const createdByColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'created_by')
+  if (!createdByColumn) {
+    await query('ALTER TABLE devices ADD COLUMN created_by BIGINT UNSIGNED NULL AFTER maintenance_party_id')
   }
   const maintenanceTypeColumn = rows.find((row) => String(row.column_name).toLowerCase() === 'maintenance_type')
   if (maintenanceTypeColumn && !String(maintenanceTypeColumn.column_type || '').includes('pending_confirmation')) {
@@ -1026,6 +1109,8 @@ function devicePayload(row) {
     location: row.location,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    createdBy: row.created_by || null,
+    createdByName: row.created_by_name || '',
   }
 }
 
@@ -1353,10 +1438,12 @@ async function list(req, res) {
     SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
            d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
            mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
-           d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
+           d.installation_source_service_order_id, d.location, d.created_at, d.updated_at,
+           d.created_by, u2.real_name AS created_by_name
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
+     LEFT JOIN users u2 ON u2.id = d.created_by
      ${whereSql}
      ORDER BY d.id DESC
      LIMIT :pageSize OFFSET :offset`
@@ -1411,7 +1498,7 @@ async function create(req, res) {
     location,
   } = req.body || {}
   const normalizedModel = normalizeText(model)
-  const normalizedSerialNo = normalizeText(serialNo)
+  const normalizedSerialNo = normalizeSerialNo(serialNo)
   if (!customerId || !normalizedModel || !normalizedSerialNo) {
     throw badRequest('客户、设备型号和 S/N 序列号不能为空')
   }
@@ -1420,9 +1507,25 @@ async function create(req, res) {
   const normalizedMaintenanceType = normalizeMaintenanceType(maintenanceType)
   const normalizedMaintenancePartyId = normalizeMaintenancePartyId(maintenancePartyId, normalizedMaintenanceType)
   await ensureMaintenancePartyExists(normalizedMaintenancePartyId)
-  const existingDevice = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: normalizedSerialNo })
+
+  // L1：全局精确去重（归一化比对，覆盖大小写/分隔符/全角差异）
+  let existingDevice = await query('SELECT id FROM devices WHERE serial_no = :serialNo LIMIT 1', { serialNo: normalizedSerialNo })
+  if (!existingDevice[0]) {
+    const serialCandidates = await query(
+      `SELECT id, serial_no FROM devices WHERE LOWER(serial_no) LIKE :pattern LIMIT 50`,
+      { pattern: `%${normalizedSerialNo.toLowerCase().slice(0, 12)}%` },
+    )
+    existingDevice = serialCandidates.filter((row) => normalizeSerialNo(row.serial_no) === normalizedSerialNo)
+  }
   if (existingDevice[0]) {
     throw badRequest(await duplicateSerialNoMessage(existingDevice[0].id, normalizedSerialNo))
+  }
+
+  // L2：同客户疑似重复（SN 宽松相似 + 型号相似），软拦截需 force 确认
+  const force = String(req.body?.force || req.query?.force || '') === '1'
+  const similarDevices = force ? [] : await findSimilarDevices(customerId, normalizedSerialNo, normalizedModel)
+  if (similarDevices.length) {
+    throw new HttpError(409, `检测到 ${similarDevices.length} 台疑似重复设备，请核对后确认`, { duplicateWarning: similarDevices })
   }
   const catalogMatch = await findCatalogMatch(normalizedModel)
   const modelNormalizationResult = catalogMatch
@@ -1433,11 +1536,11 @@ async function create(req, res) {
   const result = await query(
     `INSERT INTO devices (
        customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
-       mr_no, maintenance_start, maintenance_end, location
+       mr_no, maintenance_start, maintenance_end, location, created_by
      )
      VALUES (
        :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
-       :mrNo, :maintenanceStart, :maintenanceEnd, :location
+       :mrNo, :maintenanceStart, :maintenanceEnd, :location, :createdBy
      )`,
     {
       customerId,
@@ -1452,6 +1555,7 @@ async function create(req, res) {
       maintenanceStart: normalizeDate(maintenanceStart),
       maintenanceEnd: normalizeDate(maintenanceEnd),
       location: location || null,
+      createdBy: req.user?.id || null,
     },
   )
 
@@ -1508,14 +1612,15 @@ async function importDevices(req, res) {
   }
 
   const snCounts = rows.reduce((counts, row) => {
-    const key = row.serialNo.toLowerCase()
-    counts.set(key, (counts.get(key) || 0) + 1)
+    const key = normalizeSerialNo(row.serialNo)
+    if (key) counts.set(key, (counts.get(key) || 0) + 1)
     return counts
   }, new Map())
   const duplicateSnKeys = new Set([...snCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key))
   const confirmModelCorrections = shouldConfirmModelCorrections(req.body?.confirmModelCorrections)
   const skipModelCorrections = shouldConfirmModelCorrections(req.body?.skipModelCorrections)
   const confirmImportCorrections = shouldConfirmModelCorrections(req.body?.confirmImportCorrections) || confirmModelCorrections
+  const skipSimilarCheck = shouldConfirmModelCorrections(req.body?.confirmSimilarDevices)
   const customerMappings = importCustomerMappings(req.body)
   const importCustomers = await loadImportCustomers(req.user)
   const customerResolution = resolveCustomerImportRows(rows, importCustomers, customerMappings)
@@ -1608,7 +1713,7 @@ async function importDevices(req, res) {
         const confirmedNormalization = await normalizeDeviceModelForAsset(row.model, { confirmAiSuggestion: true })
         row.model = confirmedNormalization.model || row.correctedModel
       }
-      if (duplicateSnKeys.has(row.serialNo.toLowerCase())) {
+      if (duplicateSnKeys.has(normalizeSerialNo(row.serialNo))) {
         throw badRequest('导入文件内 SN 重复')
       }
       const customer = await findImportCustomer(row, req.user)
@@ -1621,15 +1726,22 @@ async function importDevices(req, res) {
         else unchanged += 1
         continue
       }
+      if (!skipSimilarCheck) {
+        const similar = await findSimilarDevices(customer.id, row.serialNo, row.model)
+        if (similar.length) {
+          const hit = similar[0]
+          throw badRequest(`SN/型号与设备 #${hit.id}（${hit.model} / ${hit.serialNo}）疑似重复，已跳过；确认无误可用“仍要导入”参数`)
+        }
+      }
       const maintenanceParty = await findImportMaintenanceParty(row)
       const result = await query(
         `INSERT INTO devices (
            customer_id, name, model, pn, serial_no, remark, maintenance_type, maintenance_party_id,
-           mr_no, maintenance_start, maintenance_end, location
+           mr_no, maintenance_start, maintenance_end, location, created_by
          )
          VALUES (
            :customerId, :name, :model, :pn, :serialNo, :remark, :maintenanceType, :maintenancePartyId,
-           :mrNo, :maintenanceStart, :maintenanceEnd, :location
+           :mrNo, :maintenanceStart, :maintenanceEnd, :location, :createdBy
          )`,
         {
           customerId: customer.id,
@@ -1644,6 +1756,7 @@ async function importDevices(req, res) {
           maintenanceStart: row.maintenanceStart,
           maintenanceEnd: row.maintenanceEnd,
           location: row.location,
+          createdBy: req.user?.id || null,
         },
       )
       if (result.insertId) created += 1
@@ -1835,10 +1948,12 @@ async function detail(req, res) {
     `SELECT d.id, d.customer_id, c.name AS customer_name, c.salesperson AS customer_salesperson, d.name, d.model, d.pn, d.serial_no, d.mr_no,
             d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
             mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
-            d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
+            d.installation_source_service_order_id, d.location, d.created_at, d.updated_at,
+            d.created_by, u2.real_name AS created_by_name
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
+     LEFT JOIN users u2 ON u2.id = d.created_by
      WHERE d.id = :id
      LIMIT 1`,
     { id: req.params.id },
@@ -2120,6 +2235,20 @@ async function remove(req, res) {
   res.json({ deleted: true, forced: true, ...result })
 }
 
+async function similarDevices(req, res) {
+  await ensureDeviceIdentityColumns()
+  const rows = await query(
+    `SELECT d.id, d.customer_id, d.model, d.serial_no FROM devices d WHERE d.id = :id LIMIT 1`,
+    { id: req.params.id },
+  )
+  if (!rows[0]) {
+    throw notFound('设备不存在')
+  }
+  const device = rows[0]
+  const similar = await findSimilarDevices(device.customer_id, device.serial_no, device.model)
+  res.json({ items: similar })
+}
+
 module.exports = {
   uploadImportMiddleware,
   uploadMaintenanceImportMiddleware,
@@ -2132,6 +2261,7 @@ module.exports = {
   applyModelNormalizations,
   modelNormalizationJob,
   detail,
+  similarDevices,
   batchUpdate,
   update,
   remove,
