@@ -2249,6 +2249,94 @@ async function similarDevices(req, res) {
   res.json({ items: similar })
 }
 
+async function mergeDevices(req, res) {
+  const { keepId, mergeId } = req.body || {}
+  if (!keepId || !mergeId || String(keepId) === String(mergeId)) {
+    throw badRequest('请选择保留设备与待合并设备')
+  }
+  const [keepRows, mergeRows] = await Promise.all([
+    query('SELECT id, customer_id, model, serial_no, name FROM devices WHERE id = :id LIMIT 1', { id: keepId }),
+    query('SELECT id, customer_id, model, serial_no, name FROM devices WHERE id = :id LIMIT 1', { id: mergeId }),
+  ])
+  const keep = keepRows[0]
+  const merge = mergeRows[0]
+  if (!keep || !merge) throw notFound('设备不存在')
+  if (String(keep.customer_id) !== String(merge.customer_id)) {
+    throw badRequest('只能合并同一客户下的设备')
+  }
+
+  // 迁移摘要（供确认后返回/审计）
+  const migration = await countDeviceReferences(merge.id)
+
+  await transaction(async (connection) => {
+    // 多对多表去重：与保留设备已有关联的合并行先删除，避免唯一键冲突
+    await connection.execute(
+      `DELETE FROM service_order_devices
+       WHERE device_id = :mergeId
+         AND service_order_id IN (SELECT service_order_id FROM service_order_devices WHERE device_id = :keepId)`,
+      { mergeId, keepId },
+    )
+    await connection.execute(
+      `DELETE FROM inspection_schedule_devices
+       WHERE device_id = :mergeId
+         AND schedule_id IN (SELECT schedule_id FROM inspection_schedule_devices WHERE device_id = :keepId)`,
+      { mergeId, keepId },
+    )
+    // 迁移引用
+    await connection.execute('UPDATE service_orders SET device_id = :keepId WHERE device_id = :mergeId', { keepId, mergeId })
+    await connection.execute('UPDATE service_order_devices SET device_id = :keepId WHERE device_id = :mergeId', { keepId, mergeId })
+    await connection.execute('UPDATE inspection_schedule_devices SET device_id = :keepId WHERE device_id = :mergeId', { keepId, mergeId })
+    await connection.execute('UPDATE inspection_schedule_assignments SET device_id = :keepId WHERE device_id = :mergeId', { keepId, mergeId })
+    await connection.execute('UPDATE service_parts SET device_id = :keepId WHERE device_id = :mergeId', { keepId, mergeId })
+    // 删除被合并设备
+    await connection.execute('DELETE FROM devices WHERE id = :mergeId', { mergeId })
+  })
+
+  res.json({
+    merged: true,
+    keepId,
+    mergeId,
+    migration,
+  })
+}
+
+async function countDeviceReferences(deviceId) {
+  const specs = [
+    ['service_orders', '工单', 'SELECT COUNT(*) c FROM service_orders WHERE device_id = :deviceId'],
+    ['service_order_devices', '工单关联', 'SELECT COUNT(*) c FROM service_order_devices WHERE device_id = :deviceId'],
+    ['inspection_schedule_devices', '巡检计划关联', 'SELECT COUNT(*) c FROM inspection_schedule_devices WHERE device_id = :deviceId'],
+    ['inspection_schedule_assignments', '巡检任务', 'SELECT COUNT(*) c FROM inspection_schedule_assignments WHERE device_id = :deviceId'],
+    ['service_parts', '备件记录', 'SELECT COUNT(*) c FROM service_parts WHERE device_id = :deviceId'],
+  ]
+  const counts = {}
+  for (const [key, label, sql] of specs) {
+    const rows = await query(sql, { deviceId })
+    counts[key] = { label, count: Number(rows[0]?.c || 0) }
+  }
+  return counts
+}
+
+async function mergePreview(req, res) {
+  const { keepId, mergeId } = req.body || {}
+  if (!keepId || !mergeId || String(keepId) === String(mergeId)) {
+    throw badRequest('请选择保留设备与待合并设备')
+  }
+  const keep = await query('SELECT id, customer_id, model, serial_no, name FROM devices WHERE id = :id LIMIT 1', { id: keepId })
+  const merge = await query('SELECT id, customer_id, model, serial_no, name FROM devices WHERE id = :id LIMIT 1', { id: mergeId })
+  if (!keep[0] || !merge[0]) throw notFound('设备不存在')
+  if (String(keep[0].customer_id) !== String(merge[0].customer_id)) {
+    throw badRequest('只能合并同一客户下的设备')
+  }
+  const summary = await loadDeviceDeleteSummary(merge[0].id)
+  const migration = await countDeviceReferences(merge[0].id)
+  res.json({
+    keep: { id: keep[0].id, name: keep[0].name, model: keep[0].model, serialNo: keep[0].serial_no },
+    merge: { id: merge[0].id, name: merge[0].name, model: merge[0].model, serialNo: merge[0].serial_no },
+    counts: summary?.counts || {},
+    migration,
+  })
+}
+
 module.exports = {
   uploadImportMiddleware,
   uploadMaintenanceImportMiddleware,
@@ -2262,6 +2350,8 @@ module.exports = {
   modelNormalizationJob,
   detail,
   similarDevices,
+  mergePreview,
+  mergeDevices,
   batchUpdate,
   update,
   remove,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip, Merge, TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1353,6 +1353,11 @@ export function Devices() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [similarDevices, setSimilarDevices] = useState<Array<{ id: string | number; model?: string; serialNo?: string; customerName?: string; createdByName?: string }>>([]);
   const [similarDevicesLoading, setSimilarDevicesLoading] = useState(false);
+  const [mergeConfirm, setMergeConfirm] = useState<{
+    mergeId: string | number;
+    preview: { keep: { id: string | number; model?: string; serialNo?: string }; merge: { id: string | number; model?: string; serialNo?: string }; counts: Record<string, number> } | null;
+    loading: boolean;
+  } | null>(null);
   const [attachmentFormat, setAttachmentFormat] = useState("all");
   const [attachmentKeyword, setAttachmentKeyword] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1947,6 +1952,37 @@ export function Devices() {
     }
     showModelNormalizationNotices(normalizationNotices);
     trackModelNormalizationJobs(normalizationJobs);
+  }
+
+  function openMergeConfirm(item: { id: string | number; model?: string; serialNo?: string }) {
+    const keepId = detailTarget?.id;
+    if (!keepId) return;
+    setMergeConfirm({ mergeId: item.id, preview: null, loading: true });
+    void api.post("/devices/merge-preview", { keepId, mergeId: item.id })
+      .then((data) => setMergeConfirm((current) => current ? { ...current, preview: data, loading: false } : current))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "合并预览失败");
+        setMergeConfirm(null);
+      });
+  }
+
+  async function confirmMerge() {
+    if (!mergeConfirm) return;
+    const keepId = detailTarget?.id;
+    if (!keepId) return;
+    setSaving(true);
+    setError("");
+    try {
+      const data = await api.post("/devices/merge", { keepId, mergeId: mergeConfirm.mergeId });
+      toast.success(`设备 #${mergeConfirm.mergeId} 已合并到 #${keepId}`);
+      setMergeConfirm(null);
+      if (detailTarget) await openDetail(detailTarget);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "合并失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function submit() {
@@ -3332,6 +3368,17 @@ export function Devices() {
                               {item.model || "-"} · {item.serialNo || "-"}
                               {item.createdByName ? ` · ${item.createdByName}` : ""}
                             </span>
+                            {canManageDevices ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => openMergeConfirm(item)}
+                              >
+                                <Merge className="w-3.5 h-3.5 mr-1" />
+                                合并到本设备
+                              </Button>
+                            ) : null}
                           </div>
                         ))}
                       </div>
@@ -4440,6 +4487,69 @@ export function Devices() {
             >
               <Check className="w-4 h-4 mr-2" />
               仍要创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(mergeConfirm)} onOpenChange={(open) => { if (!open && !saving) setMergeConfirm(null); }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>合并设备（手动确认）</DialogTitle>
+            <DialogDescription>
+              将待合并设备的关联记录迁移到保留设备后删除，<b>此操作不可撤销</b>，请核对无误后手动确认。
+            </DialogDescription>
+          </DialogHeader>
+          {mergeConfirm?.loading ? (
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : mergeConfirm?.preview ? (
+            <div className="space-y-3 py-2">
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm">
+                  <div className="text-xs font-medium text-emerald-700">保留设备</div>
+                  <div className="mt-1 font-medium">#{mergeConfirm.preview.keep.id}</div>
+                  <div className="text-muted-foreground">
+                    {mergeConfirm.preview.keep.model || "-"} · {mergeConfirm.preview.keep.serialNo || "-"}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm">
+                  <div className="text-xs font-medium text-amber-700">待合并（将删除）</div>
+                  <div className="mt-1 font-medium">#{mergeConfirm.preview.merge.id}</div>
+                  <div className="text-muted-foreground">
+                    {mergeConfirm.preview.merge.model || "-"} · {mergeConfirm.preview.merge.serialNo || "-"}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <TriangleAlert className="h-4 w-4 text-amber-600" />
+                  将迁移到保留设备：
+                </div>
+                <div className="mt-1 grid gap-1 text-muted-foreground">
+                  {Object.entries(mergeConfirm.preview.counts || {}).map(([key, value]) => (
+                    <span key={key}>
+                      {({ mainServiceOrders: "工单", targetServiceOrders: "工单关联", inspectionSchedules: "巡检计划", serviceParts: "备件记录" } as Record<string, string>)[key] || key}：{value} 条
+                    </span>
+                  ))}
+                  {!Object.values(mergeConfirm.preview.counts || {}).some((v) => v > 0) ? "（无关联记录）" : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMergeConfirm(null)} disabled={saving}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmMerge}
+              disabled={saving || !mergeConfirm?.preview}
+            >
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="w-4 h-4 mr-2" />}
+              确认合并
             </Button>
           </DialogFooter>
         </DialogContent>
