@@ -288,7 +288,7 @@ function similarModels(left, right) {
 }
 
 // L2：查同客户下的疑似重复设备（SN 归一化精确相同由 L1 全局拦截，此处只返回宽松相似）
-async function findSimilarDevices(customerId, serialNo, model) {
+async function findSimilarDevices(customerId, serialNo, model, excludeId = null) {
   const normalized = normalizeSerialNo(serialNo)
   if (!normalized) return []
   const rows = await query(
@@ -297,10 +297,12 @@ async function findSimilarDevices(customerId, serialNo, model) {
      FROM devices d
      LEFT JOIN customers c ON c.id = d.customer_id
      LEFT JOIN users u ON u.id = d.created_by
-     WHERE d.customer_id = :customerId AND d.serial_no IS NOT NULL
+     WHERE d.customer_id = :customerId
+       AND d.serial_no IS NOT NULL
+       ${excludeId ? 'AND d.id <> :excludeId' : ''}
      ORDER BY d.id DESC
      LIMIT 300`,
-    { customerId },
+    { customerId, ...(excludeId ? { excludeId } : {}) },
   )
   return rows
     .filter((row) => {
@@ -2248,7 +2250,7 @@ async function similarDevices(req, res) {
     throw notFound('设备不存在')
   }
   const device = rows[0]
-  const similar = await findSimilarDevices(device.customer_id, device.serial_no, device.model)
+  const similar = await findSimilarDevices(device.customer_id, device.serial_no, device.model, device.id)
   res.json({ items: similar })
 }
 
