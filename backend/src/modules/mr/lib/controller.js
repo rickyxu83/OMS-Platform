@@ -1685,6 +1685,16 @@ async function learnLayoutTemplatesFromFeedback() {
   }
 }
 
+/**
+ * 模板列映射与当前识别结果的一致性判断（数量/单价/小计/品名前 30 字符）。
+ * 用于防固化：模板列映射与本次识别不一致时不覆盖识别结果，仅提示核对。
+ */
+function templateResultConsistent(currentItems, templateItems) {
+  if (!Array.isArray(currentItems) || !Array.isArray(templateItems) || currentItems.length !== templateItems.length) return false
+  const key = (item) => [item.qty, item.unit_price, item.extended, String(item.name || item.description || '').slice(0, 30)].join('|')
+  return currentItems.every((item, index) => key(item) === key(templateItems[index]))
+}
+
 /** 品名匹配 key：小写 + 去空白标点，取前 20 字符作为同名品匹配前缀 */
 function namePrefixKey(value) {
   return String(value || '').toLowerCase().replace(/[\s，,。.;；:：()（）'"“”【】\[\]\-]/g, '').slice(0, 20)
@@ -1829,6 +1839,7 @@ async function importQuotation(req, res) {
               const bySignature = new Map(templates.map((tpl) => [tpl.header_signature, tpl]))
               const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true })
               let applied = 0
+              let mismatchCount = 0
               const reviewHints = new Set()
               parsed.sheets = parsed.sheets.map((sheet, sheetIndex) => {
                 const tpl = bySignature.get(sheet.header_signature)
@@ -1844,9 +1855,14 @@ async function importQuotation(req, res) {
                   all: Object.fromEntries(Object.entries(columns).map(([key, col]) => [key, [Number(col)]])),
                 }
                 const reParsed = parseSheet(worksheet, knownSpec)
-                // 模板解析为空（模板已不匹配当前文件）时回退原结果
+                // 模板解析为空（模板已不匹配当前文件）时忽略
                 if (!reParsed || !reParsed.items?.length) return sheet
-                // 样本反哺：模板记录的易错字段 → 标记为需重点核对（diff 字段名 → 前端 review_fields 名）
+                // 防固化：模板列映射与本次识别不一致时，不覆盖本次识别结果（以当前识别为准），仅提示核对
+                if (!templateResultConsistent(sheet.items || [], reParsed.items)) {
+                  mismatchCount += 1
+                  return sheet
+                }
+                // 模板与本次识别一致：保留当前识别结果（不覆盖），仅标记模板记录的易错字段（样本反哺提示）
                 let reviewFields = []
                 try { reviewFields = JSON.parse(tpl.review_fields_json || '[]') } catch (_error) { reviewFields = [] }
                 if (reviewFields.length) {
@@ -1854,17 +1870,18 @@ async function importQuotation(req, res) {
                     .map((field) => ({ unit_price: 'unitPrice', extended: 'extended', qty: 'qty', name: 'description', description: 'description', cost_incl_tax: 'extended', tax_rate: 'taxRate' }[field] || field))
                     .filter(Boolean))]
                   if (mapped.length) {
-                    reParsed.items = reParsed.items.map((item) => ({ ...item, review_fields: [...new Set([...(item.review_fields || []), ...mapped])] }))
+                    sheet.items = (sheet.items || []).map((item) => ({ ...item, review_fields: [...new Set([...(item.review_fields || []), ...mapped])] }))
                     mapped.forEach((field) => reviewHints.add(field))
                   }
                 }
                 applied += 1
-                return { ...sheet, ...reParsed }
+                return sheet
               })
               if (applied) {
-                parsed.warnings.push(`已应用供应商表头模板（${applied} 个 sheet），请核对识别结果`)
+                parsed.warnings.push(`已命中供应商表头模板（${applied} 个 sheet），识别结果与模板一致`)
                 if (reviewHints.size) parsed.warnings.push(`该表头模板的 ${[...reviewHints].join('、')} 字段历史常被人工修正，请重点核对`)
               }
+              if (mismatchCount) parsed.warnings.push(`${mismatchCount} 个 sheet 命中表头模板但列映射与本次识别不一致，已按本次识别结果为准，请核对`)
             }
           }
         } catch (error) {

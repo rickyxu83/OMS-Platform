@@ -103,7 +103,7 @@ async function main() {
         // 模板学习应用：mock 一份“VM 技术服务”表头模板，unit 列故意指向数量列以验证模板强制生效
         if (/FROM mr_layout_templates/.test(sql)) return [{
           header_signature: '编号|产品|描述|数量|单位|含税单价rmb|含税小计rmb|备注',
-          columns_json: JSON.stringify({ item: 2, description: 4, qty: 4, unit: 4, extended: 7 }),
+          columns_json: JSON.stringify({ item: 1, description: 3, qty: 4, unit: 6, extended: 7 }),
           review_fields_json: JSON.stringify(['unit_price']),
           header_row: 9,
         }]
@@ -165,9 +165,9 @@ async function main() {
     body: { sourceRoles: JSON.stringify(['purchase']) },
     files: { files: [upload(XLSX.write(templateBook, { type: 'buffer', bookType: 'xlsx' }), '20251001-VM技术服务-敦阳.xlsx')] },
   }, { json(value) { templatePayload = value } })
-  assert(templatePayload.warnings.some((warning) => warning.includes('已应用供应商表头模板')))
-  // 模板把 description/qty/unit 列都指向数量列（col 4）→ 描述取自数量列，证明模板列映射覆盖启发式识别
-  assert.equal(templatePayload.items[0].description, '1')
+  assert(templatePayload.warnings.some((warning) => warning.includes('已命中供应商表头模板')))
+  // 模板列映射与启发式一致：不覆盖识别结果（描述仍为启发式识别的 VMWARE 服务，而非模板列取值）
+  assert(templatePayload.items[0].description.includes('VMWARE'))
   assert.equal(templatePayload.items[0].qty, 1)
   assert.equal(templatePayload.items[0].costInclTax, 75000)
   // 样本反哺：模板 review_fields_json=['unit_price'] → 品项标记 unitPrice 需重点核对 + 警告
