@@ -1468,8 +1468,9 @@ async function list(req, res) {
   const statsRow = statsRows[0] || {}
 
   const total = Number(countRows[0]?.total || 0)
+  const duplicateCounts = computeDuplicateCounts(rows)
   res.json({
-    items: rows.map(devicePayload),
+    items: rows.map((row) => ({ ...devicePayload(row), duplicateCount: duplicateCounts.get(row.id) || 0 })),
     total,
     page,
     pageSize,
@@ -2249,6 +2250,84 @@ async function similarDevices(req, res) {
   res.json({ items: similar })
 }
 
+// 两台设备是否判定为疑似重复：同客户 + SN 相似（含归一化精确）+ 型号相似
+function devicesSimilar(left, right) {
+  if (String(left.customer_id) !== String(right.customer_id)) return false
+  const leftSerial = normalizeSerialNo(left.serial_no)
+  if (!leftSerial || !similarSerialNo(leftSerial, right.serial_no)) return false
+  return similarModels(left.model, right.model)
+}
+
+// 列表接口给每台设备标注当前页内疑似重复数（用于列表行 badge）
+function computeDuplicateCounts(items) {
+  const counts = new Map()
+  for (let i = 0; i < items.length; i += 1) {
+    for (let j = i + 1; j < items.length; j += 1) {
+      if (devicesSimilar(items[i], items[j])) {
+        counts.set(items[i].id, (counts.get(items[i].id) || 0) + 1)
+        counts.set(items[j].id, (counts.get(items[j].id) || 0) + 1)
+      }
+    }
+  }
+  return counts
+}
+
+// 全量疑似重复分组：按客户两两比较，连通分量归组
+async function suspectedDuplicates(req, res) {
+  await ensureDeviceIdentityColumns()
+  const rows = await query(
+    `SELECT d.id, d.customer_id, d.model, d.serial_no, d.created_at, d.created_by,
+            c.name AS customer_name, u.real_name AS created_by_name
+     FROM devices d
+     LEFT JOIN customers c ON c.id = d.customer_id
+     LEFT JOIN users u ON u.id = d.created_by
+     ORDER BY d.id ASC`,
+  )
+  const byCustomer = new Map()
+  for (const row of rows) {
+    const key = String(row.customer_id || '')
+    if (!byCustomer.has(key)) byCustomer.set(key, [])
+    byCustomer.get(key).push(row)
+  }
+
+  const groups = []
+  for (const customerRows of byCustomer.values()) {
+    if (customerRows.length < 2) continue
+    // 并查集
+    const parent = customerRows.map((_, index) => index)
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x] } return x }
+    const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[rb] = ra }
+    for (let i = 0; i < customerRows.length; i += 1) {
+      for (let j = i + 1; j < customerRows.length; j += 1) {
+        if (devicesSimilar(customerRows[i], customerRows[j])) union(i, j)
+      }
+    }
+    const buckets = new Map()
+    customerRows.forEach((row, index) => {
+      const root = find(index)
+      if (!buckets.has(root)) buckets.set(root, [])
+      buckets.get(root).push(row)
+    })
+    for (const bucket of buckets.values()) {
+      if (bucket.length < 2) continue
+      groups.push({
+        customerId: bucket[0].customer_id,
+        customerName: bucket[0].customer_name || '',
+        items: bucket.map((row) => ({
+          id: row.id,
+          model: row.model || '',
+          serialNo: row.serial_no || '',
+          createdAt: row.created_at || null,
+          createdByName: row.created_by_name || '',
+        })),
+      })
+    }
+  }
+
+  groups.sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'zh-Hans-CN'))
+  res.json({ total: groups.length, groups })
+}
+
 async function mergeDevices(req, res) {
   const { keepId, mergeId } = req.body || {}
   if (!keepId || !mergeId || String(keepId) === String(mergeId)) {
@@ -2350,6 +2429,7 @@ module.exports = {
   modelNormalizationJob,
   detail,
   similarDevices,
+  suspectedDuplicates,
   mergePreview,
   mergeDevices,
   batchUpdate,

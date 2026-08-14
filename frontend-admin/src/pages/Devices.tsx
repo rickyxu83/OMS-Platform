@@ -53,6 +53,7 @@ interface Device {
   updatedAt?: string;
   createdBy?: number | string | null;
   createdByName?: string;
+  duplicateCount?: number;
   relatedServiceOrders?: DeviceRelatedServiceOrder[];
   partHistory?: DevicePartHistory[];
 }
@@ -1353,6 +1354,14 @@ export function Devices() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [similarDevices, setSimilarDevices] = useState<Array<{ id: string | number; model?: string; serialNo?: string; customerName?: string; createdByName?: string }>>([]);
   const [similarDevicesLoading, setSimilarDevicesLoading] = useState(false);
+  const [suspectedOpen, setSuspectedOpen] = useState(false);
+  const [suspectedLoading, setSuspectedLoading] = useState(false);
+  const [suspectedTotal, setSuspectedTotal] = useState(0);
+  const [suspectedGroups, setSuspectedGroups] = useState<Array<{
+    customerId: string | number;
+    customerName: string;
+    items: Array<{ id: string | number; model?: string; serialNo?: string; createdAt?: string; createdByName?: string }>;
+  }>>([]);
   const [mergeConfirm, setMergeConfirm] = useState<{
     mergeId: string | number;
     preview: { keep: { id: string | number; model?: string; serialNo?: string }; merge: { id: string | number; model?: string; serialNo?: string }; counts: Record<string, number> } | null;
@@ -1507,6 +1516,7 @@ export function Devices() {
   useEffect(() => {
     loadCustomers();
     loadParties();
+    loadSuspected();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1952,6 +1962,25 @@ export function Devices() {
     }
     showModelNormalizationNotices(normalizationNotices);
     trackModelNormalizationJobs(normalizationJobs);
+  }
+
+  async function loadSuspected() {
+    setSuspectedLoading(true);
+    try {
+      const data = await api.get("/devices/suspected-duplicates");
+      setSuspectedTotal(Number(data?.total || 0));
+      setSuspectedGroups((data?.groups || []) as never);
+    } catch {
+      setSuspectedTotal(0);
+      setSuspectedGroups([]);
+    } finally {
+      setSuspectedLoading(false);
+    }
+  }
+
+  function openSuspectedDialog() {
+    if (!suspectedOpen) void loadSuspected();
+    setSuspectedOpen(true);
   }
 
   function openMergeConfirm(item: { id: string | number; model?: string; serialNo?: string }) {
@@ -2697,7 +2726,7 @@ export function Devices() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
@@ -2712,6 +2741,21 @@ export function Devices() {
             </CardContent>
           </Card>
         ))}
+        <Card
+          className="cursor-pointer overflow-hidden border-none shadow-sm ring-1 ring-amber-200 transition-shadow hover:ring-amber-400"
+          onClick={openSuspectedDialog}
+        >
+          <CardContent className="pt-6">
+            <div className="text-sm text-amber-600">疑似重复设备</div>
+            <div className="text-2xl font-bold mt-1 text-amber-600">
+              {suspectedLoading && !suspectedOpen ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <span className="stat-value-enter inline-block" style={{ animationDelay: "480ms" }}>{suspectedTotal} 组</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -2956,6 +3000,18 @@ export function Devices() {
                             {typeLabel}
                           </Badge>
                         </button>
+                        {device.duplicateCount ? (
+                          <button
+                            type="button"
+                            className="inline-flex"
+                            onClick={(event) => { event.stopPropagation(); openSuspectedDialog(); }}
+                            title="该设备疑似存在重复记录，点击查看"
+                          >
+                            <Badge variant="warning" className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20`}>
+                              疑似重复
+                            </Badge>
+                          </button>
+                        ) : null}
                       </div>
                       <div className="min-w-0">
                         {device.maintenancePartyName ? (
@@ -4550,6 +4606,63 @@ export function Devices() {
             >
               {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="w-4 h-4 mr-2" />}
               确认合并
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={suspectedOpen} onOpenChange={setSuspectedOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>疑似重复设备（{suspectedTotal} 组）</DialogTitle>
+            <DialogDescription>
+              按同客户 + SN/型号相似自动聚合，点击设备可查看详情并在详情内手动合并。
+            </DialogDescription>
+          </DialogHeader>
+          {suspectedLoading ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : suspectedGroups.length ? (
+            <div className="space-y-4 py-2">
+              {suspectedGroups.map((group, index) => (
+                <div key={`${group.customerId}-${index}`} className="rounded-lg border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-medium">{group.customerName || `客户 #${group.customerId}`}</span>
+                    <Badge variant="warning">{group.items.length} 台</Badge>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.items.map((item) => (
+                      <div key={String(item.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                        <span className="font-medium">#{item.id}</span>
+                        <span className="min-w-0 flex-1 text-muted-foreground">
+                          {item.model || "-"} · {item.serialNo || "-"}
+                          {item.createdByName ? ` · ${item.createdByName}` : ""}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSuspectedOpen(false);
+                            const device = { id: item.id, model: item.model, serialNo: item.serialNo } as Device;
+                            openDetail(device);
+                          }}
+                        >
+                          查看详情
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-sm text-muted-foreground">未发现疑似重复设备</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuspectedOpen(false)}>
+              关闭
             </Button>
           </DialogFooter>
         </DialogContent>
