@@ -18,6 +18,8 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免"清除后残影复活"
   const drawTokenRef = useRef(0);
+  // 旋转/尺寸变化防抖定时器：等 iOS 旋转动画结束后再重设画布，避免读到中间尺寸
+  const resizeTimerRef = useRef<number | null>(null);
 
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -49,10 +51,33 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
     }
   }, [value]);
 
+  // 落笔前校验画布像素尺寸与当前实际尺寸一致：不一致说明经历旋转/布局变化后未重设，立即重设，避免第一笔坐标系漂移
+  const ensureCanvasSize = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    const targetW = Math.max(1, Math.round(rect.width * ratio));
+    const targetH = Math.max(1, Math.round(rect.height * ratio));
+    if (canvas.width !== targetW || canvas.height !== targetH) setupCanvas();
+  }, [setupCanvas]);
+
   useEffect(() => {
     setupCanvas();
-    window.addEventListener("resize", setupCanvas);
-    return () => window.removeEventListener("resize", setupCanvas);
+    const scheduleSetup = () => {
+      if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current);
+      resizeTimerRef.current = window.setTimeout(() => {
+        resizeTimerRef.current = null;
+        setupCanvas();
+      }, 300);
+    };
+    window.addEventListener("resize", scheduleSetup);
+    window.addEventListener("orientationchange", scheduleSetup);
+    return () => {
+      window.removeEventListener("resize", scheduleSetup);
+      window.removeEventListener("orientationchange", scheduleSetup);
+      if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current);
+    };
   }, [setupCanvas]);
 
   function point(event: PointerEvent<HTMLCanvasElement>) {
@@ -64,6 +89,8 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
 
   function begin(event: PointerEvent<HTMLCanvasElement>) {
     event.preventDefault();
+    // 落笔前强制坐标系对齐（旋转后第一笔漂移的兜底修复）
+    ensureCanvasSize();
     drawingRef.current = true;
     lastPointRef.current = point(event);
     event.currentTarget.setPointerCapture(event.pointerId);
