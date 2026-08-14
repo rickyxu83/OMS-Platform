@@ -1998,27 +1998,29 @@ async function importQuotation(req, res) {
   progress.stage = 'normalizing'
   progress.stagePercent = 92
   // 跨文件实体归一化按“文件集合”缓存：同一批文件重复导入直接复用，只有新增文件才重跑 AI
-  // key 直接取命名空间输入的 sha256，保证 64 字符不超过 file_hash CHAR(64)
-  const setHash = crypto.createHash('sha256').update(`entity-set:${uploadHashes.join(':')}`).digest('hex')
-  const cachedEntity = await readRecognitionCache(setHash)
-  if (cachedEntity?.result?.entityMap) {
-    for (const entry of cachedEntity.result.entityMap) {
-      const item = sources[Number(entry.sourceIndex)]?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
-      if (item && entry.entityKey) item.entityKey = entry.entityKey
-    }
-  } else {
-    try {
-      await applyAiEntityKeys(sources)
-      const entityMap = []
-      sources.forEach((source, sourceIndex) => {
-        ;(source.sheets?.[0]?.items || []).forEach((item, itemIndex) => {
-          if (item.entityKey) entityMap.push({ sourceIndex, itemIndex, entityKey: item.entityKey })
+  // 单份来源文件无需跨文件实体配对（无销售/采购对照），跳过该步避免无谓的 AI 调用（二次打开秒开）
+  if (sources.length > 1) {
+    const setHash = crypto.createHash('sha256').update(`entity-set:${uploadHashes.join(':')}`).digest('hex')
+    const cachedEntity = await readRecognitionCache(setHash)
+    if (cachedEntity?.result?.entityMap) {
+      for (const entry of cachedEntity.result.entityMap) {
+        const item = sources[Number(entry.sourceIndex)]?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
+        if (item && entry.entityKey) item.entityKey = entry.entityKey
+      }
+    } else {
+      try {
+        await applyAiEntityKeys(sources)
+        const entityMap = []
+        sources.forEach((source, sourceIndex) => {
+          ;(source.sheets?.[0]?.items || []).forEach((item, itemIndex) => {
+            if (item.entityKey) entityMap.push({ sourceIndex, itemIndex, entityKey: item.entityKey })
+          })
         })
-      })
-      if (entityMap.length) await writeRecognitionCache(setHash, '跨文件实体归一化', { entityMap })
-    } catch (error) {
-      // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
-      console.warn('[mr] 跨文件实体归一化失败：', error?.message || error)
+        if (entityMap.length) await writeRecognitionCache(setHash, '跨文件实体归一化', { entityMap })
+      } catch (error) {
+        // 实体归一化失败不影响识别结果，保持各文件原始 entityKey
+        console.warn('[mr] 跨文件实体归一化失败：', error?.message || error)
+      }
     }
   }
   progress.stage = 'merging'
