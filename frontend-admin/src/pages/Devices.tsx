@@ -53,7 +53,6 @@ interface Device {
   updatedAt?: string;
   createdBy?: number | string | null;
   createdByName?: string;
-  duplicateCount?: number;
   relatedServiceOrders?: DeviceRelatedServiceOrder[];
   partHistory?: DevicePartHistory[];
 }
@@ -3000,18 +2999,6 @@ export function Devices() {
                             {typeLabel}
                           </Badge>
                         </button>
-                        {device.duplicateCount ? (
-                          <button
-                            type="button"
-                            className="inline-flex"
-                            onClick={(event) => { event.stopPropagation(); openSuspectedDialog(); }}
-                            title="该设备疑似存在重复记录，点击查看"
-                          >
-                            <Badge variant="warning" className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20`}>
-                              疑似重复
-                            </Badge>
-                          </button>
-                        ) : null}
                       </div>
                       <div className="min-w-0">
                         {device.maintenancePartyName ? (

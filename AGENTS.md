@@ -52,6 +52,39 @@ bash scripts/deploy.sh <profile> admin
 - 部署即发布：推送到 `origin/main` 的内容会被部署脚本带上生产，不要推半成品
 - 每次可见功能、页面展示、交互或发布内容变更，都必须同步提升管理端版本号。至少更新 `frontend-admin/package.json`、`frontend-admin/package-lock.json` 顶层版本，以及 `frontend-admin/src/config/app.ts` 中 `APP_VERSION` 的 fallback，确保登录页和左下角"系统版本"会变化。仅文档、注释、部署脚本或后端内部不可见修复可不提升前端版本；如后端包本身发布语义变化，再同步更新 `backend/package.json` 与 `backend/package-lock.json`。
 
+## 提交与发布流程（main 已开启分支保护）
+
+`main` 已开启 GitHub 分支保护：**禁止直接 push、禁止 force push**（含管理员）。所有变更必须走 PR，任何提交都不能直接落在 main 上。
+
+```bash
+# 1. 从 main 切新分支
+git checkout main && git pull --ff-only origin main
+git checkout -b fix/简短描述
+
+# 2. 提交（中文，按上方提交规范）
+git add <文件> && git commit -m "主题：要点"
+
+# 3. 推送并建 PR（title/body 用中文）
+git push -u origin <分支名>
+gh pr create --base main --head <分支名> --title "主题" --body "说明"
+
+# 4. 合并（--merge 生成合并提交，--delete-branch 删分支）
+gh pr merge --merge --delete-branch
+
+# 5. 回到 main 同步
+# gh pr merge 会自动切回原分支；若在分支上则手动切回：
+git checkout main && git pull --ff-only origin main
+
+# 6. 最后才执行部署（deploy.sh 会先 push main，此时为空操作，正常通过）
+bash scripts/deploy.sh <profile> <target>
+```
+
+**注意：**
+- 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
+- `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
+- 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
+- 部署前 `git status` 确认工作区干净（含 `.playwright-cli/` 等临时目录，需要先清理）
+
 ## 部署前后检查（AI 执行部署时必做）
 
 **部署前：**
