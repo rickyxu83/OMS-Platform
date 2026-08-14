@@ -1665,6 +1665,51 @@ async function learnLayoutTemplatesFromFeedback() {
   }
 }
 
+/** 品名匹配 key：小写 + 去空白标点，取前 20 字符作为同名品匹配前缀 */
+function namePrefixKey(value) {
+  return String(value || '').toLowerCase().replace(/[\s，,。.;；:：()（）'"“”【】\[\]\-]/g, '').slice(0, 20)
+}
+
+/**
+ * 历史价格统计：按“供应商 + 名称前缀”查 mr_items 历史品项，
+ * 返回单位含税成本（cost_incl_tax/qty）中位数与样本数；无历史或样本 <3 返回 null。
+ * 中位数比均值抗异常（历史中偶有误填价格）。
+ */
+async function historyUnitCostStats(vendor, name, { queryImpl = query, limit = 50 } = {}) {
+  const prefix = namePrefixKey(name)
+  if (!vendor || !prefix) return null
+  const rows = await queryImpl(
+    `SELECT cost_incl_tax, qty FROM mr_items
+     WHERE vendor = :vendor AND cost_incl_tax > 0 AND qty > 0
+       AND (REPLACE(LOWER(name), ' ', '') LIKE :prefix OR REPLACE(LOWER(description), ' ', '') LIKE :prefix)
+     ORDER BY id DESC LIMIT :limit`,
+    { vendor, prefix: `${prefix}%`, limit },
+  )
+  const values = (rows || [])
+    .map((row) => Number(row.cost_incl_tax) / Math.max(Number(row.qty) || 1, 1))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right)
+  if (values.length < 3) return null
+  const median = values.length % 2
+    ? values[(values.length - 1) / 2]
+    : (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+  return { median, count: values.length }
+}
+
+/**
+ * 历史价格偏差判断：当前单位成本偏离历史中位数 >50% 时返回核对警告文案，否则 null。
+ * 无历史、样本不足、中位数无效或价格在正常范围均不打扰。
+ */
+function priceAnomalyWarning(itemName, currentUnitCost, stats, { threshold = 0.5 } = {}) {
+  if (!stats || stats.count < 3 || currentUnitCost === null || currentUnitCost === undefined || currentUnitCost <= 0) return null
+  const median = Number(stats.median)
+  if (!Number.isFinite(median) || median <= 0) return null
+  const deviation = Math.abs(currentUnitCost - median) / median
+  if (deviation <= threshold) return null
+  const fmt = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+  return `“${String(itemName || '').slice(0, 40)}”识别单位成本 ¥${fmt(currentUnitCost)} 与历史中位 ¥${fmt(median)} 偏差 ${Math.round(deviation * 100)}%，疑似识别错误，请核对`
+}
+
 /** 读取已留存的报价原始附件，作为“再次导入一并识别”的来源文件；磁盘缺失的跳过。 */
 async function loadStoredQuotationUploads(ownerId) {
   const rows = await query(
@@ -1947,6 +1992,23 @@ async function importQuotation(req, res) {
      FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
   )
   const merged = mergeQuotations(sources, vendors)
+  // 历史价格校验：对每个有供应商和成本的品项，对比该供应商同名品历史价格，明显偏离时追加核对警告
+  try {
+    const anomalyWarnings = []
+    for (const item of merged.items || []) {
+      if (!item.vendor) continue
+      const unitCost = item.costInclTax === null || item.costInclTax === undefined
+        ? null
+        : Number(item.costInclTax) / Math.max(Number(item.qty) || 1, 1)
+      if (unitCost === null || unitCost <= 0) continue
+      const stats = await historyUnitCostStats(item.vendor, item.name || item.description)
+      const warning = priceAnomalyWarning(item.name || item.description, unitCost, stats)
+      if (warning) anomalyWarnings.push(warning)
+    }
+    if (anomalyWarnings.length) merged.warnings.push(...anomalyWarnings)
+  } catch (error) {
+    console.warn('[mr] 历史价格校验失败：', error?.message || error)
+  }
   const sourceIndex = merged.salesSourceIndex
   const primarySheet = sourceIndex >= 0 ? sources[sourceIndex]?.sheets[0] : null
   const customerName = String(primarySheet?.customer || '').replace(/^客户名称[：:]?\s*/i, '').trim()
@@ -2195,6 +2257,9 @@ module.exports = {
   ensureTables,
   assistantIdsFor,
   normalizeCorrectedItem,
+  historyUnitCostStats,
+  priceAnomalyWarning,
+  namePrefixKey,
   listLayoutRules,
   createLayoutRule,
   updateLayoutRule,

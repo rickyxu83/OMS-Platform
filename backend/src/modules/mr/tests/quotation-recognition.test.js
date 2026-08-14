@@ -106,6 +106,12 @@ async function main() {
           columns_json: JSON.stringify({ item: 2, description: 4, qty: 4, unit: 4, extended: 7 }),
           header_row: 9,
         }]
+        // 历史价格校验：mock 上海可明同名品历史成本（中位 70000）
+        if (/REPLACE\(LOWER\(name\)/.test(sql)) return [
+          { cost_incl_tax: 70000, qty: 1 },
+          { cost_incl_tax: 69000, qty: 1 },
+          { cost_incl_tax: 71000, qty: 1 },
+        ]
         return []
       },
       transaction: async (callback) => callback({ execute: async () => [[]] }),
@@ -155,6 +161,23 @@ async function main() {
   assert.equal(templatePayload.items[0].description, '1')
   assert.equal(templatePayload.items[0].qty, 1)
   assert.equal(templatePayload.items[0].costInclTax, 75000)
+  // 历史价格校验：识别价格 700 vs 历史中位 70000 → 应生成“疑似识别错误”警告；正常价不打扰
+  const cheapBook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(cheapBook, XLSX.utils.aoa_to_sheet([
+    ['公司名称：上海可明信息科技有限公司'],
+    ['Item', 'Description', 'Qty', 'Unit Price', 'Amount'],
+    [1, 'VMWARE软件年度服务', 1, 700, 700],
+  ]), '报价')
+  let cheapPayload
+  await importQuotation({
+    params: { id: '32' },
+    user: { id: 1, role: 'admin' },
+    body: { sourceRoles: JSON.stringify(['purchase']) },
+    files: { files: [upload(XLSX.write(cheapBook, { type: 'buffer', bookType: 'xlsx' }), '异常价报价.xlsx')] },
+  }, { json(value) { cheapPayload = value } })
+  assert(cheapPayload.warnings.some((warning) => warning.includes('疑似识别错误')))
+  // 正常价格（模板测试文件 costInclTax=75000 ≈ 历史 70000）不生成异常警告
+  assert(!templatePayload.warnings.some((warning) => warning.includes('疑似识别错误')))
   console.log('quotation recognition tests passed')
 }
 
