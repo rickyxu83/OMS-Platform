@@ -304,7 +304,8 @@ async function findSimilarDevices(customerId, serialNo, model) {
   )
   return rows
     .filter((row) => {
-      if (normalized === normalizeSerialNo(row.serial_no)) return false // L1 已拦，无需在此重复
+      // 归一化后精确相同是最强的重复证据（如分隔符差异），必须返回；
+      // 创建入口的 L1 已在前面全局拦截 exact，不影响 L2 流程
       if (!similarSerialNo(normalized, row.serial_no)) return false
       return similarModels(model, row.model)
     })
