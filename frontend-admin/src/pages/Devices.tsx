@@ -1357,6 +1357,10 @@ export function Devices() {
   const [customerFilter, setCustomerFilter] = useState("all");
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const [deviceTotal, setDeviceTotal] = useState(0);
+  const [deviceStats, setDeviceStats] = useState<{ total: number; ourMaintenance: number; originalManufacturer: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -1430,8 +1434,20 @@ export function Devices() {
       const params = new URLSearchParams();
       if (customerFilter !== "all") params.set("customerId", customerFilter);
       if (keyword.trim()) params.set("keyword", keyword.trim());
-      const data = await api.get(`/devices${params.toString() ? `?${params}` : ""}`);
-      setDevices((data?.items || []) as Device[]);
+      if (maintenanceFilter !== "all") params.set("maintenanceType", maintenanceFilter);
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      const data = await api.get(`/devices?${params.toString()}`);
+      const items = (data?.items || []) as Device[];
+      // 当前页被删空时自动回退一页
+      if (!items.length && page > 1) {
+        setPage((p) => Math.max(1, p - 1));
+        setLoading(false);
+        return;
+      }
+      setDevices(items);
+      setDeviceTotal(Number(data?.total || 0));
+      setDeviceStats(data?.stats || null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
@@ -1487,7 +1503,7 @@ export function Devices() {
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerFilter, searchQuery]);
+  }, [customerFilter, maintenanceFilter, page, searchQuery]);
 
   function delayModelNormalizationJobPoll(ms: number) {
     if (!mountedRef.current) return Promise.resolve();
@@ -1579,27 +1595,25 @@ export function Devices() {
   }
 
   const filtered = useMemo(() => {
-    // keyword 已发给后端搜索(字段集更全,含位置/备注),前端只做维保类型/状态过滤,
-    // 不再用更窄的字段集做本地关键词二次过滤
+    // 维保类型已由后端过滤分页；keyword/客户同后端。
+    // 设备表无 status 列（状态筛选为前端残留），此处仅保留状态过滤行为。
     return devices.filter((d) => {
-      const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
       const status = d.status || "active";
-      if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
       return true;
     });
-  }, [devices, maintenanceFilter, statusFilter]);
+  }, [devices, statusFilter]);
 
   const stats = useMemo(() => {
-    const total = filtered.length;
-    const ours = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "our_maintenance").length;
-    const vendor = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "original_manufacturer").length;
+    const s = deviceStats;
     return [
-      { label: "设备总数", value: total },
-      { label: "我方维保", value: ours },
-      { label: "原厂维保", value: vendor },
+      { label: "设备总数", value: s?.total ?? 0 },
+      { label: "我方维保", value: s?.ourMaintenance ?? 0 },
+      { label: "原厂维保", value: s?.originalManufacturer ?? 0 },
     ];
-  }, [filtered]);
+  }, [deviceStats]);
+
+  const totalPages = Math.max(1, Math.ceil(deviceTotal / pageSize));
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
 
@@ -1613,15 +1627,24 @@ export function Devices() {
   }
 
   async function handleExportDevices() {
-    if (!filtered.length) {
-      setError("当前没有可导出的设备");
-      return;
-    }
     setExporting(true);
     setError("");
     try {
-      await exportDevicesToExcel(filtered);
-      toast.success(`已导出 ${filtered.length} 台设备`);
+      // 导出与列表同一筛选口径的全部匹配（至多 200 台），不受当前分页影响
+      const params = new URLSearchParams();
+      if (customerFilter !== "all") params.set("customerId", customerFilter);
+      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+      if (maintenanceFilter !== "all") params.set("maintenanceType", maintenanceFilter);
+      params.set("page", "1");
+      params.set("pageSize", "200");
+      const data = await api.get(`/devices?${params.toString()}`);
+      const items = (data?.items || []) as Device[];
+      if (!items.length) {
+        setError("当前没有可导出的设备");
+        return;
+      }
+      await exportDevicesToExcel(items);
+      toast.success(`已导出 ${items.length} 台设备`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "设备导出失败");
     } finally {
@@ -1697,6 +1720,7 @@ export function Devices() {
     event.stopPropagation();
     const value = canonicalMaintenanceType(maintenanceType);
     if (!value) return;
+    setPage(1);
     setMaintenanceFilter(value);
   }
 
@@ -2645,7 +2669,7 @@ export function Devices() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={maintenanceFilter} onValueChange={setMaintenanceFilter}>
+            <Select value={maintenanceFilter} onValueChange={(value) => { setPage(1); setMaintenanceFilter(value); }}>
               <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="维保类型" />
               </SelectTrigger>
@@ -2676,6 +2700,7 @@ export function Devices() {
                 setCustomerFilter("all");
                 setMaintenanceFilter("all");
                 setStatusFilter("all");
+                setPage(1);
               }}
             >
               <RotateCcw className="w-4 h-4 mr-2" />
@@ -2689,7 +2714,7 @@ export function Devices() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
-              <CardTitle>设备列表 ({filtered.length})</CardTitle>
+              <CardTitle>设备列表（共 {deviceTotal} 台）</CardTitle>
               {refreshing ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <span className="btn-loader btn-loader-sm" aria-hidden="true" />
@@ -2907,6 +2932,25 @@ export function Devices() {
                 })}
               </div>
             )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
+                  第一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
+                  上一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
+                  下一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
+                  最后一页
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

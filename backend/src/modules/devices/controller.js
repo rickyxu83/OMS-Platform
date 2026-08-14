@@ -1317,16 +1317,13 @@ async function list(req, res) {
   await ensureDeviceIdentityColumns()
   const { customerId = null } = req.query
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
+  const maintenanceType = String(req.query.maintenanceType || '').trim()
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+  const pageSize = Math.min(200, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 50))
   const keywordSearch = buildLikeSearchTerms(keyword, 'deviceTerm')
   const salesScope = buildSalesCustomerScope(req.user, 'c')
-  const rows = await query(
-    `SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
-            d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
-            mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
-            d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
-     FROM devices d
-     JOIN customers c ON c.id = d.customer_id
-     LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
+
+  const whereSql = `
      WHERE (:customerId IS NULL OR d.customer_id = :customerId)
        ${salesScope.sql}
        AND (
@@ -1343,17 +1340,58 @@ async function list(req, res) {
            'd.remark',
          ])}
        )
-     ORDER BY d.id DESC
-     LIMIT 200`,
-    {
-      customerId: customerId || null,
-      keyword,
-      ...keywordSearch.params,
-      ...salesScope.params,
-    },
-  )
+       ${maintenanceType ? 'AND d.maintenance_type = :maintenanceType' : ''}`
+  const baseParams = {
+    customerId: customerId || null,
+    keyword,
+    maintenanceType: maintenanceType || null,
+    ...keywordSearch.params,
+    ...salesScope.params,
+  }
 
-  res.json({ items: rows.map(devicePayload) })
+  const selectSql = `
+    SELECT d.id, d.customer_id, c.name AS customer_name, d.name, d.model, d.pn, d.serial_no, d.mr_no,
+           d.remark, d.maintenance_type, d.maintenance_party_id, mp.name AS maintenance_party_name,
+           mp.phone AS maintenance_party_phone, d.maintenance_start, d.maintenance_end,
+           d.installation_source_service_order_id, d.location, d.created_at, d.updated_at
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
+     ${whereSql}
+     ORDER BY d.id DESC
+     LIMIT :pageSize OFFSET :offset`
+
+  const [rows, countRows] = await Promise.all([
+    query(selectSql, { ...baseParams, pageSize, offset: (page - 1) * pageSize }),
+    query(`SELECT COUNT(*) AS total FROM devices d JOIN customers c ON c.id = d.customer_id LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id ${whereSql}`, baseParams),
+  ])
+
+  // 统计卡片：总数/我方维保/原厂维保（与列表同一筛选口径，含维保类型过滤）
+  const statsRows = await query(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(d.maintenance_type = 'our_maintenance') AS our_maintenance,
+       SUM(d.maintenance_type = 'original_manufacturer') AS original_manufacturer
+     FROM devices d
+     JOIN customers c ON c.id = d.customer_id
+     LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
+     ${whereSql}`,
+    baseParams,
+  )
+  const statsRow = statsRows[0] || {}
+
+  const total = Number(countRows[0]?.total || 0)
+  res.json({
+    items: rows.map(devicePayload),
+    total,
+    page,
+    pageSize,
+    stats: {
+      total: Number(statsRow.total || 0),
+      ourMaintenance: Number(statsRow.our_maintenance || 0),
+      originalManufacturer: Number(statsRow.original_manufacturer || 0),
+    },
+  })
 }
 
 async function create(req, res) {
