@@ -1113,6 +1113,12 @@ export function Dashboard() {
             height={isCompactViewport ? 300 : 440}
             fitView={false}
             fullscreenable
+            fullscreenStats={[
+              { label: "今日工单", value: summary.todayTotal ?? 0 },
+              { label: "本月工单", value: summary.monthTotal ?? 0, tone: "accent" },
+              { label: "本月服务客户", value: summary.monthCustomers ?? 0, tone: "green" },
+              { label: "本月工程师出勤", value: summary.monthEngineerVisits ?? 0, tone: "red" },
+            ]}
           />
         </section>
 
