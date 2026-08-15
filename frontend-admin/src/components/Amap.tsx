@@ -25,6 +25,12 @@ interface AmapPoint {
   [k: string]: any;
 }
 
+interface FullscreenStat {
+  label: string;
+  value: string | number;
+  tone?: "default" | "accent" | "red" | "green";
+}
+
 interface AmapProps {
   center?: { lng: number; lat: number; name?: string };
   points?: AmapPoint[];
@@ -37,6 +43,10 @@ interface AmapProps {
   fullscreenable?: boolean;
   /** 飞行动画保留的 top 客户数（默认 20） */
   maxFlightAnimations?: number;
+  /** 全屏大屏模式四角指标卡数据（运营看板） */
+  fullscreenStats?: FullscreenStat[];
+  /** 深色地图样式（大屏模式使用） */
+  dark?: boolean;
 }
 
 let amapLoaderPromise: Promise<any> | null = null;
@@ -324,6 +334,8 @@ export function Amap({
   className = "",
   fullscreenable = false,
   maxFlightAnimations = MAX_FLIGHT_ANIMATIONS,
+  fullscreenStats,
+  dark = false,
 }: AmapProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -387,7 +399,7 @@ export function Amap({
         const map = new AMap.Map(containerRef.current, {
           zoom,
           center: [center.lng, center.lat],
-          mapStyle: "amap://styles/light",
+          mapStyle: dark ? "amap://styles/dark" : "amap://styles/light",
           features: ["bg", "point", "road", "building"],
           showLabel: true,
           viewMode: "2D",
@@ -529,7 +541,7 @@ export function Amap({
   return (
     <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
       {state === "loading" && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-muted-foreground text-sm">
+        <div className={`absolute inset-0 z-10 flex items-center justify-center text-sm ${dark ? "bg-slate-900/80 text-slate-300" : "bg-white/70 text-muted-foreground"}`}>
           <span className="btn-loader mr-2" aria-hidden="true" /> 地图正在加载…
         </div>
       )}
@@ -548,15 +560,26 @@ export function Amap({
       )}
       <style>{AMAP_MARKER_CSS}</style>
       {fullscreen && createPortal(
-        <div className={`ops-map-fullscreen${fsShown ? " ops-map-fs-shown" : ""}`} role="dialog" aria-modal="true" aria-label="客户分布全屏">
+        <div className={`ops-map-fullscreen${fsShown ? " ops-map-fs-shown" : ""}`} role="dialog" aria-modal="true" aria-label="运维运营看板">
           <div className="ops-map-fs-topbar">
-            <span className="ops-map-fs-title">客户分布</span>
-            <span className="ops-map-fs-stats">共 {points.length} 家客户 · 年服务 top {FULLSCREEN_FLIGHT_ANIMATIONS}</span>
+            <span className="ops-map-fs-title">运维运营看板</span>
+            <span className="ops-map-fs-date">
+              {new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}
+            </span>
             <button type="button" className="ops-map-fs-close" onClick={closeFullscreen}>
-              退出全屏 <span className="ops-map-fs-esc">Esc</span>
+              退出 <span className="ops-map-fs-esc">Esc</span>
             </button>
           </div>
           <div className="ops-map-fs-body">
+            {(fullscreenStats || []).map((stat, index) => (
+              <div
+                key={stat.label}
+                className={`ops-map-fs-stat ops-map-fs-stat-${index % 4}${stat.tone ? ` ops-map-fs-tone-${stat.tone}` : ""}`}
+              >
+                <div className="ops-map-fs-stat-value">{stat.value}</div>
+                <div className="ops-map-fs-stat-label">{stat.label}</div>
+              </div>
+            ))}
             <Amap
               center={center}
               points={points}
@@ -566,6 +589,7 @@ export function Amap({
               onPointClick={onPointClick}
               fullscreenable={false}
               maxFlightAnimations={FULLSCREEN_FLIGHT_ANIMATIONS}
+              dark
             />
           </div>
         </div>,
@@ -614,15 +638,25 @@ const AMAP_MARKER_CSS = `
 /* —— 全屏模式（方案 B：页面内 overlay） —— */
 .ops-map-fs-toggle { position: absolute; top: 12px; right: 12px; z-index: 50; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0; background: rgba(255,255,255,.92); display: flex; align-items: center; justify-content: center; cursor: pointer; color: #334155; box-shadow: 0 3px 10px rgba(15,23,42,.14); transition: transform .15s ease, color .15s ease; }
 .ops-map-fs-toggle:hover { color: #582B8B; transform: scale(1.06); }
-.ops-map-fullscreen { position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; flex-direction: column; opacity: 0; transform: scale(.965); transition: opacity .26s ease, transform .26s cubic-bezier(.2,.8,.2,1); }
+.ops-map-fullscreen { position: fixed; inset: 0; z-index: 1000; background: #0b1220; display: flex; flex-direction: column; opacity: 0; transform: scale(.965); transition: opacity .26s ease, transform .26s cubic-bezier(.2,.8,.2,1); }
 .ops-map-fullscreen.ops-map-fs-shown { opacity: 1; transform: scale(1); }
-.ops-map-fs-topbar { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid #eef1f6; background: rgba(255,255,255,.96); }
-.ops-map-fs-title { font-weight: 700; font-size: 14px; color: #582B8B; }
-.ops-map-fs-stats { font-size: 12.5px; color: #64748b; }
-.ops-map-fs-close { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #e2e8f0; background: #fff; color: #475569; border-radius: 8px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
-.ops-map-fs-close:hover { border-color: #c4b5fd; color: #582B8B; background: #faf7ff; }
+.ops-map-fs-topbar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid #1e293b; background: linear-gradient(180deg, rgba(88,43,139,.25), transparent); }
+.ops-map-fs-title { font-weight: 800; font-size: 16px; letter-spacing: 2px; color: #fff; }
+.ops-map-fs-date { font-size: 12px; color: #94a3b8; }
+.ops-map-fs-close { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(148,163,184,.3); background: rgba(15,23,42,.6); color: #cbd5e1; border-radius: 8px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.ops-map-fs-close:hover { border-color: #c4b5fd; color: #fff; background: rgba(88,43,139,.4); }
 .ops-map-fs-esc { opacity: .55; font-size: 11px; }
 .ops-map-fs-body { flex: 1; min-height: 0; position: relative; }
+.ops-map-fs-stat { position: absolute; z-index: 1000; width: 172px; background: rgba(15,23,42,.78); border: 1px solid rgba(148,163,184,.22); border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(4px); }
+.ops-map-fs-stat-0 { top: 14px; left: 14px; }
+.ops-map-fs-stat-1 { top: 14px; right: 14px; }
+.ops-map-fs-stat-2 { bottom: 14px; left: 14px; }
+.ops-map-fs-stat-3 { bottom: 14px; right: 14px; }
+.ops-map-fs-stat-value { font-size: 24px; font-weight: 800; color: #fff; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ops-map-fs-stat-label { font-size: 11.5px; color: #94a3b8; margin-top: 2px; }
+.ops-map-fs-tone-accent .ops-map-fs-stat-value { color: #fbbf24; }
+.ops-map-fs-tone-red .ops-map-fs-stat-value { color: #f87171; }
+.ops-map-fs-tone-green .ops-map-fs-stat-value { color: #4ade80; }
 .ops-map-fs-suspended * { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   .ops-map-fullscreen { transition: none; }
