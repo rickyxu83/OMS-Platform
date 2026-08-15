@@ -26,7 +26,7 @@ const USER_PROMPT = [
   '{',
   '  "documentType": "purchase_quote",',
   '  "customer": "", "vendor": "", "attn": "", "payment": "", "delivery": "",',
-  '  "taxRate": null, "taxIncluded": true, "untaxedTotal": null, "totalAmount": null, "discountedTotal": null,',,
+  '  "taxRate": null, "taxIncluded": true, "untaxedTotal": null, "totalAmount": null, "discountedTotal": null,',
   '  "items": [{ "itemNo": 1, "partNo": "", "name": "", "description": "", "entityKey": "", "qty": 1, "unitPrice": 0, "extended": 0 }]',
   '}',
   '',
