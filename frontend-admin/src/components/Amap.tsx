@@ -37,7 +37,10 @@ interface AmapProps {
 let amapLoaderPromise: Promise<any> | null = null;
 let amapLoadedKey = "";
 let amapLoadedSecurityJsCode = "";
-const MAX_FLIGHT_LINES = 120;
+// 静态弧线数量上限（覆盖绝大多数客户，一次性绘制无动画成本）
+const MAX_FLIGHT_LINES = 300;
+// 保留黄点飞行动画的 top 客户数（分级渲染：静态线全部，仅高频客户带动画）
+const MAX_FLIGHT_ANIMATIONS = 20;
 const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
 const COVERAGE_FIT_MAX_ZOOM = 12;
 
@@ -253,6 +256,7 @@ function renderFlightOverlay(
   map: any,
   center: { lng: number; lat: number },
   points: AmapPoint[],
+  animated = true,
 ) {
   if (!overlay || !map?.lngLatToContainer) return;
   const width = overlay.clientWidth;
@@ -267,25 +271,37 @@ function renderFlightOverlay(
     .slice(0, MAX_FLIGHT_LINES);
   const pulseDuration = heartbeatDuration(rankedPoints);
 
-  const paths = rankedPoints.map((point, index) => {
+  // 静态弧线：覆盖全部客户，无动画无滤镜（一次性绘制，零持续成本）
+  const parts = rankedPoints.map((point, index) => {
     const pixel = map.lngLatToContainer([point.lng, point.lat]);
     const target = { x: Number(pixel.x), y: Number(pixel.y) };
     const path = flightPath(centerPoint, target, index);
-    const count = serviceCount(point);
-    const tier = point.level || getTier(count);
-    const delay = flightDelay(index, count);
-    const duration = flightDuration(count);
-    return [
-      `<path class="ops-map-flight-line ops-map-flight-line-${tier}" d="${path}" style="animation-delay:${delay}" />`,
-      `<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`,
-    ].join("");
-  }).join("");
+    const tier = point.level || getTier(serviceCount(point));
+    return `<path class="ops-map-flight-line ops-map-flight-line-${tier}" d="${path}" />`;
+  });
+
+  // 动画层：仅 top N 高频客户保留黄点飞行；光晕用双层 stroke（glow 粗半透明 + core 细亮）模拟，无 SVG 滤镜
+  if (animated) {
+    rankedPoints.slice(0, MAX_FLIGHT_ANIMATIONS).forEach((point, index) => {
+      const pixel = map.lngLatToContainer([point.lng, point.lat]);
+      const target = { x: Number(pixel.x), y: Number(pixel.y) };
+      const path = flightPath(centerPoint, target, index);
+      const count = serviceCount(point);
+      const tier = point.level || getTier(count);
+      const delay = flightDelay(index, count);
+      const duration = flightDuration(count);
+      parts.push(`<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`);
+      parts.push(`<path class="ops-map-flight-core ops-map-flight-core-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`);
+    });
+    parts.push(`<circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s" />`);
+    parts.push(`<circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s;animation-delay:${(pulseDuration / 2).toFixed(2)}s" />`);
+  }
+  // 中心静态光晕（始终存在，无滤镜）
+  parts.push(`<circle class="ops-map-heartbeat-halo" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="30" />`);
 
   overlay.innerHTML = `
     <svg class="ops-map-flight-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
-      ${paths}
-      <circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s" />
-      <circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s;animation-delay:${(pulseDuration / 2).toFixed(2)}s" />
+      ${parts.join("")}
     </svg>
   `;
 }
@@ -397,42 +413,51 @@ export function Amap({
     let flightFrame = 0;
     let settleTimer = 0;
     let settled = false;
-    const renderFlights = () => {
+    // animated=false：仅静态弧线（地图移动/缩放中，降低重绘成本）
+    // animated=true：静态弧线 + top N 飞行动画 + 中心脉冲（停稳后）
+    const renderFlights = (animated: boolean) => {
       if (flightFrame) return;
       flightFrame = window.requestAnimationFrame(() => {
         flightFrame = 0;
-        renderFlightOverlay(overlayRef.current, map, center, validPoints);
+        renderFlightOverlay(overlayRef.current, map, center, validPoints, animated);
       });
     };
+    const renderLite = () => renderFlights(false);
+    const renderFull = () => renderFlights(true);
     const settleMap = () => {
       if (settled) return;
       settled = true;
       shell?.classList.remove("ops-map-preparing");
       shell?.classList.add("ops-map-settled");
-      renderFlights();
+      renderFull();
+    };
+    const onViewportMove = () => {
+      overlayRef.current?.classList.add("ops-map-flight-moving");
+      renderLite();
     };
     const settleAfterViewportChange = () => {
-      renderFlights();
+      overlayRef.current?.classList.remove("ops-map-flight-moving");
+      renderFull();
       if (settleTimer) window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(settleMap, 120);
     };
 
-    renderFlights();
-    map.on("mapmove", renderFlights);
+    renderFull();
+    map.on("mapmove", onViewportMove);
     map.on("moveend", settleAfterViewportChange);
-    map.on("zoomchange", renderFlights);
+    map.on("zoomchange", onViewportMove);
     map.on("zoomend", settleAfterViewportChange);
 
     if (!fitView) {
       try {
         map.setZoomAndCenter(zoom, [center.lng, center.lat]);
-        renderFlights();
+        renderFull();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 320);
     } else if (validPoints.length > 0) {
       try {
         map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING], COVERAGE_FIT_MAX_ZOOM);
-        renderFlights();
+        renderFull();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 900);
     } else {
@@ -440,9 +465,9 @@ export function Amap({
     }
 
     return () => {
-      map.off("mapmove", renderFlights);
+      map.off("mapmove", onViewportMove);
       map.off("moveend", settleAfterViewportChange);
-      map.off("zoomchange", renderFlights);
+      map.off("zoomchange", onViewportMove);
       map.off("zoomend", settleAfterViewportChange);
       if (flightFrame) window.cancelAnimationFrame(flightFrame);
       if (settleTimer) window.clearTimeout(settleTimer);
@@ -490,12 +515,19 @@ const AMAP_MARKER_CSS = `
 .ops-map-flight-line-peak { stroke: rgba(245,158,11,0.46); stroke-width: 2.4; }
 .ops-map-flight-line-high { stroke: rgba(234,179,8,0.4); stroke-width: 2.1; }
 .ops-map-flight-line-quiet { stroke: rgba(180,83,9,0.24); stroke-width: 1.45; }
-.ops-map-flight-glow { fill: none; stroke: rgba(250,204,21,0.98); stroke-width: 3.8; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; filter: drop-shadow(0 0 5px rgba(251,191,36,0.95)) drop-shadow(0 0 13px rgba(245,158,11,0.65)); }
-.ops-map-flight-glow-peak { stroke: rgba(251,191,36,1); }
-.ops-map-flight-glow-high { stroke: rgba(253,224,71,0.96); }
-.ops-map-flight-glow-quiet { stroke: rgba(245,158,11,0.72); }
-.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.86); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; filter: drop-shadow(0 0 7px rgba(251,191,36,0.9)); }
+.ops-map-flight-glow { fill: none; stroke: rgba(251,191,36,0.32); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; }
+.ops-map-flight-glow-peak { stroke: rgba(251,191,36,0.42); stroke-width: 8; }
+.ops-map-flight-glow-high { stroke: rgba(253,224,71,0.36); stroke-width: 7; }
+.ops-map-flight-glow-quiet { stroke: rgba(245,158,11,0.26); stroke-width: 6; }
+.ops-map-flight-core { fill: none; stroke: rgba(250,204,21,0.98); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; }
+.ops-map-flight-core-peak { stroke: rgba(251,191,36,1); }
+.ops-map-flight-core-high { stroke: rgba(253,224,71,0.98); }
+.ops-map-flight-core-quiet { stroke: rgba(245,158,11,0.85); }
+.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.55); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; }
 .ops-map-heartbeat-two { animation-delay: 1.1s; }
+.ops-map-heartbeat-halo { fill: rgba(251,191,36,0.16); }
+/* 地图移动/缩放中降级为静态线 */
+.ops-map-flight-overlay.ops-map-flight-moving { opacity: 0.55; transition: opacity 0.18s ease; }
 @keyframes ops-map-fly { from { stroke-dashoffset: 280; } to { stroke-dashoffset: 0; } }
 @keyframes ops-map-heartbeat { 0% { opacity: 0.75; transform: scale(0.4); } 80%, 100% { opacity: 0; transform: scale(3.2); } }
 `;
