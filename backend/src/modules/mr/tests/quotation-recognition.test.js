@@ -107,11 +107,11 @@ async function main() {
           review_fields_json: JSON.stringify(['unit_price']),
           header_row: 9,
         }]
-        // 历史价格校验：mock 上海可明同名品历史成本（中位 70000）
-        if (/REPLACE\(LOWER\(name\)/.test(sql)) return [
-          { cost_incl_tax: 70000, qty: 1 },
-          { cost_incl_tax: 69000, qty: 1 },
-          { cost_incl_tax: 71000, qty: 1 },
+        // 历史价格校验：mock 上海可明同名品历史成本（中位 70000）—— 批量查询按供应商一次取数（含 name 供前缀匹配）
+        if (/cost_incl_tax > 0 AND qty > 0/.test(sql)) return [
+          { name: 'VMWARE软件年度服务', description: '', cost_incl_tax: 70000, qty: 1 },
+          { name: 'VMWARE软件年度服务', description: '', cost_incl_tax: 69000, qty: 1 },
+          { name: 'VMWARE软件年度服务', description: '', cost_incl_tax: 71000, qty: 1 },
         ]
         // 旧识别缓存：mock 一份错误结果，验证去缓存后识别不再复用（总是重新识别）
         if (/FROM mr_quote_recognition_cache/.test(sql)) return [{

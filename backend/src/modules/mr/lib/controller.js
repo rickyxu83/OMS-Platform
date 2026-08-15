@@ -1593,20 +1593,25 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
       .filter((item) => item.name || item.part_no || item.company_part_no || item.description)
     if (!normalized.length) continue
 
+    // 写前读取原始识别结果：diff 基准必须用修正前的 result（记录不存在时 INSERT 分支会写入占位 result，写后读会读空导致纠错样本永不落库）
+    const cached = await readRecognitionCache(fileHash)
+    const originalItems = cached?.result?.parsed?.sheets?.[0]?.items || []
+
     const corrected = { sheets: [{ items: normalized }], source: 'user_corrected' }
+    // 已有缓存时 result 保持原始识别结果不变（ON DUPLICATE KEY UPDATE 的 UPDATE 分支不触碰 result，仅修正字段）；
+    // 缓存缺失时写入占位，不伪造原始识别数据
+    const originalResult = cached?.result ? JSON.stringify(cached.result) : JSON.stringify({})
     await query(
       `INSERT INTO mr_quote_recognition_cache
          (file_hash, parser_version, file_name, result, corrected_result, corrected_by, corrected_at, correction_count)
        VALUES (:hash, :version, :name, :result, :corrected, :userId, NOW(), 1)
        ON DUPLICATE KEY UPDATE
          corrected_result = :corrected, corrected_by = :userId, corrected_at = NOW(), correction_count = correction_count + 1`,
-      { hash: fileHash, version: RECOGNITION_PARSER_VERSION, name: fileName, result: JSON.stringify({}), corrected: JSON.stringify(corrected), userId: user?.id || null },
+      { hash: fileHash, version: RECOGNITION_PARSER_VERSION, name: fileName, result: originalResult, corrected: JSON.stringify(corrected), userId: user?.id || null },
     )
     applied += 1
 
     // 纠错样本：对比自动识别结果与修正结果，有差异才落库
-    const cached = await readRecognitionCache(fileHash)
-    const originalItems = cached?.result?.parsed?.sheets?.[0]?.items || []
     if (!originalItems.length) continue
     const diff = diffItems(originalItems, normalized)
     if (!diff.length) continue
@@ -1724,6 +1729,51 @@ async function historyUnitCostStats(vendor, name, { queryImpl = query, limit = 5
     ? values[(values.length - 1) / 2]
     : (values[values.length / 2 - 1] + values[values.length / 2]) / 2
   return { median, count: values.length }
+}
+
+/**
+ * 历史价格统计（按供应商批量）：一次查询该供应商全部历史品项，内存中按名称规范化前缀匹配，
+ * 返回 statsFor(name) 闭包；样本 <3 的前缀不收录（返回 null）。
+ * 与原 historyUnitCostStats 的 LIKE ':prefix%' 语义等价，但同一供应商只发一条 SQL，
+ * 避免导入时对每个品项逐条全表 LIKE 扫描。
+ */
+async function historyUnitCostStatsByVendor(vendor, { queryImpl = query, limit = 200 } = {}) {
+  // 规范化前缀 → 该前缀下各历史品项的单位成本（原实现按 LIKE 前缀聚合，同一供应商下“6类跳线 1米/2米/3米”
+  // 都是同一前缀的样本，须合并统计中位数）
+  const byPrefix = new Map()
+  if (vendor) {
+    const rows = await queryImpl(
+      `SELECT name, description, cost_incl_tax, qty FROM mr_items
+       WHERE vendor = :vendor AND cost_incl_tax > 0 AND qty > 0
+       ORDER BY id DESC LIMIT :limit`,
+      { vendor, limit },
+    )
+    for (const row of rows || []) {
+      const prefix = namePrefixKey(row.name) || namePrefixKey(row.description)
+      if (!prefix) continue
+      const unitCost = Number(row.cost_incl_tax) / Math.max(Number(row.qty) || 1, 1)
+      if (!Number.isFinite(unitCost) || unitCost <= 0) continue
+      if (!byPrefix.has(prefix)) byPrefix.set(prefix, [])
+      byPrefix.get(prefix).push(unitCost)
+    }
+  }
+  return {
+    statsFor(name) {
+      const prefix = namePrefixKey(name)
+      if (!prefix) return null
+      // 与原 LIKE ':prefix%' 语义一致：合并所有以当前品名前缀开头的历史品项计算中位数；样本 <3 返回 null
+      const values = []
+      for (const [candidate, costs] of byPrefix) {
+        if (candidate.startsWith(prefix)) values.push(...costs)
+      }
+      if (values.length < 3) return null
+      const sorted = values.sort((left, right) => left - right)
+      const median = sorted.length % 2
+        ? sorted[(sorted.length - 1) / 2]
+        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      return { median, count: sorted.length }
+    },
+  }
 }
 
 /**
@@ -1847,7 +1897,9 @@ async function importQuotation(req, res) {
                 let columns = null
                 try { columns = JSON.parse(tpl.columns_json) } catch (_error) { return sheet }
                 if (!columns || typeof columns !== 'object' || Array.isArray(columns)) return sheet
-                const worksheet = workbook.Sheets[workbook.SheetNames[sheetIndex]]
+                // 用 sheet.title 定位 worksheet：parsed.sheets 可能跳过无法解析的 sheet（封面页等），
+                // 其索引与 workbook.SheetNames 并不一一对应，用 SheetNames[sheetIndex] 会取错 sheet
+                const worksheet = workbook.Sheets[sheet.title]
                 if (!worksheet) return sheet
                 const knownSpec = {
                   row: Number(tpl.header_row) || 0,
@@ -2024,17 +2076,31 @@ async function importQuotation(req, res) {
   )
   const merged = mergeQuotations(sources, vendors)
   // 历史价格校验：对每个有供应商和成本的品项，对比该供应商同名品历史价格，明显偏离时追加核对警告
+  // 按供应商批量取一次历史品项（内存前缀匹配），避免逐品项全表 LIKE 扫描
   try {
     const anomalyWarnings = []
+    const byVendor = new Map()
     for (const item of merged.items || []) {
       if (!item.vendor) continue
       const unitCost = item.costInclTax === null || item.costInclTax === undefined
         ? null
         : Number(item.costInclTax) / Math.max(Number(item.qty) || 1, 1)
       if (unitCost === null || unitCost <= 0) continue
-      const stats = await historyUnitCostStats(item.vendor, item.name || item.description)
-      const warning = priceAnomalyWarning(item.name || item.description, unitCost, stats)
-      if (warning) anomalyWarnings.push(warning)
+      if (!byVendor.has(item.vendor)) byVendor.set(item.vendor, [])
+      byVendor.get(item.vendor).push({ name: item.name || item.description, unitCost })
+    }
+    const vendorStats = new Map()
+    for (const [vendor, entries] of byVendor) {
+      let statsByVendor = vendorStats.get(vendor)
+      if (!statsByVendor) {
+        statsByVendor = await historyUnitCostStatsByVendor(vendor)
+        vendorStats.set(vendor, statsByVendor)
+      }
+      for (const entry of entries) {
+        const stats = statsByVendor.statsFor(entry.name)
+        const warning = priceAnomalyWarning(entry.name, entry.unitCost, stats)
+        if (warning) anomalyWarnings.push(warning)
+      }
     }
     if (anomalyWarnings.length) merged.warnings.push(...anomalyWarnings)
   } catch (error) {
@@ -2289,6 +2355,7 @@ module.exports = {
   assistantIdsFor,
   normalizeCorrectedItem,
   historyUnitCostStats,
+  historyUnitCostStatsByVendor,
   priceAnomalyWarning,
   learnLayoutTemplatesFromFeedback,
   namePrefixKey,
