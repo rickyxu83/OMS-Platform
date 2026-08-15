@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { MapPin } from "lucide-react";
+import { createPortal } from "react-dom";
+import { MapPin, Maximize } from "lucide-react";
 import { api } from "@/services/api";
 
 const ENV_AMAP_JSAPI_KEY =
@@ -32,6 +33,10 @@ interface AmapProps {
   fitView?: boolean;
   onPointClick?: (point: AmapPoint) => void;
   className?: string;
+  /** 是否显示右上角全屏入口（方案 B：overlay 全屏） */
+  fullscreenable?: boolean;
+  /** 飞行动画保留的 top 客户数（默认 20） */
+  maxFlightAnimations?: number;
 }
 
 let amapLoaderPromise: Promise<any> | null = null;
@@ -41,6 +46,8 @@ let amapLoadedSecurityJsCode = "";
 const MAX_FLIGHT_LINES = 300;
 // 保留黄点飞行动画的 top 客户数（分级渲染：静态线全部，仅高频客户带动画）
 const MAX_FLIGHT_ANIMATIONS = 20;
+// 全屏模式下保留飞行动画的 top 客户数（空间大，可多展示）
+const FULLSCREEN_FLIGHT_ANIMATIONS = 40;
 const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
 const COVERAGE_FIT_MAX_ZOOM = 12;
 
@@ -257,6 +264,7 @@ function renderFlightOverlay(
   center: { lng: number; lat: number },
   points: AmapPoint[],
   animated = true,
+  maxAnimations = MAX_FLIGHT_ANIMATIONS,
 ) {
   if (!overlay || !map?.lngLatToContainer) return;
   const width = overlay.clientWidth;
@@ -282,7 +290,7 @@ function renderFlightOverlay(
 
   // 动画层：仅 top N 高频客户保留黄点飞行；光晕用双层 stroke（glow 粗半透明 + core 细亮）模拟，无 SVG 滤镜
   if (animated) {
-    rankedPoints.slice(0, MAX_FLIGHT_ANIMATIONS).forEach((point, index) => {
+    rankedPoints.slice(0, maxAnimations).forEach((point, index) => {
       const pixel = map.lngLatToContainer([point.lng, point.lat]);
       const target = { x: Number(pixel.x), y: Number(pixel.y) };
       const path = flightPath(centerPoint, target, index);
@@ -314,6 +322,8 @@ export function Amap({
   fitView = true,
   onPointClick,
   className = "",
+  fullscreenable = false,
+  maxFlightAnimations = MAX_FLIGHT_ANIMATIONS,
 }: AmapProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -323,6 +333,42 @@ export function Amap({
   const infoWindowRef = useRef<any>(null);
   const [state, setState] = useState<"loading" | "ready" | "fallback" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fsShown, setFsShown] = useState(false);
+
+  // —— 全屏控制（方案 B：页面内 overlay 全屏）——
+  const openFullscreen = () => {
+    setFullscreen(true);
+    document.body.style.overflow = "hidden";
+  };
+  const closeFullscreen = () => {
+    setFsShown(false);
+    window.setTimeout(() => {
+      setFullscreen(false);
+      document.body.style.overflow = "";
+    }, 240);
+  };
+  useEffect(() => {
+    if (!fullscreen) return;
+    const raf = window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => setFsShown(true)),
+    );
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fullscreen]);
+  // 全屏时暂停预览实例动画（被遮罩盖住，不浪费 GPU）
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    if (fullscreen) shell.classList.add("ops-map-fs-suspended");
+    else shell.classList.remove("ops-map-fs-suspended");
+  }, [fullscreen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -419,7 +465,7 @@ export function Amap({
       if (flightFrame) return;
       flightFrame = window.requestAnimationFrame(() => {
         flightFrame = 0;
-        renderFlightOverlay(overlayRef.current, map, center, validPoints, animated);
+        renderFlightOverlay(overlayRef.current, map, center, validPoints, animated, maxFlightAnimations);
       });
     };
     const renderLite = () => renderFlights(false);
@@ -489,7 +535,42 @@ export function Amap({
       )}
       <div ref={containerRef} className="w-full h-full" />
       <div ref={overlayRef} className="ops-map-flight-overlay" />
+      {fullscreenable && (
+        <button
+          type="button"
+          className="ops-map-fs-toggle"
+          onClick={openFullscreen}
+          title="全屏查看"
+          aria-label="全屏查看"
+        >
+          <Maximize className="w-4 h-4" />
+        </button>
+      )}
       <style>{AMAP_MARKER_CSS}</style>
+      {fullscreen && createPortal(
+        <div className={`ops-map-fullscreen${fsShown ? " ops-map-fs-shown" : ""}`} role="dialog" aria-modal="true" aria-label="客户分布全屏">
+          <div className="ops-map-fs-topbar">
+            <span className="ops-map-fs-title">客户分布</span>
+            <span className="ops-map-fs-stats">共 {points.length} 家客户 · 年服务 top {FULLSCREEN_FLIGHT_ANIMATIONS}</span>
+            <button type="button" className="ops-map-fs-close" onClick={closeFullscreen}>
+              退出全屏 <span className="ops-map-fs-esc">Esc</span>
+            </button>
+          </div>
+          <div className="ops-map-fs-body">
+            <Amap
+              center={center}
+              points={points}
+              zoom={zoom}
+              height="100%"
+              fitView
+              onPointClick={onPointClick}
+              fullscreenable={false}
+              maxFlightAnimations={FULLSCREEN_FLIGHT_ANIMATIONS}
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -530,6 +611,22 @@ const AMAP_MARKER_CSS = `
 .ops-map-flight-overlay.ops-map-flight-moving { opacity: 0.55; transition: opacity 0.18s ease; }
 @keyframes ops-map-fly { from { stroke-dashoffset: 280; } to { stroke-dashoffset: 0; } }
 @keyframes ops-map-heartbeat { 0% { opacity: 0.75; transform: scale(0.4); } 80%, 100% { opacity: 0; transform: scale(3.2); } }
+/* —— 全屏模式（方案 B：页面内 overlay） —— */
+.ops-map-fs-toggle { position: absolute; top: 12px; right: 12px; z-index: 50; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0; background: rgba(255,255,255,.92); display: flex; align-items: center; justify-content: center; cursor: pointer; color: #334155; box-shadow: 0 3px 10px rgba(15,23,42,.14); transition: transform .15s ease, color .15s ease; }
+.ops-map-fs-toggle:hover { color: #582B8B; transform: scale(1.06); }
+.ops-map-fullscreen { position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; flex-direction: column; opacity: 0; transform: scale(.965); transition: opacity .26s ease, transform .26s cubic-bezier(.2,.8,.2,1); }
+.ops-map-fullscreen.ops-map-fs-shown { opacity: 1; transform: scale(1); }
+.ops-map-fs-topbar { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid #eef1f6; background: rgba(255,255,255,.96); }
+.ops-map-fs-title { font-weight: 700; font-size: 14px; color: #582B8B; }
+.ops-map-fs-stats { font-size: 12.5px; color: #64748b; }
+.ops-map-fs-close { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #e2e8f0; background: #fff; color: #475569; border-radius: 8px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.ops-map-fs-close:hover { border-color: #c4b5fd; color: #582B8B; background: #faf7ff; }
+.ops-map-fs-esc { opacity: .55; font-size: 11px; }
+.ops-map-fs-body { flex: 1; min-height: 0; position: relative; }
+.ops-map-fs-suspended * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ops-map-fullscreen { transition: none; }
+}
 `;
 
 interface FallbackProps {

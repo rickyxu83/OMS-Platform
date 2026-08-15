@@ -1112,6 +1112,7 @@ export function Dashboard() {
             zoom={7}
             height={isCompactViewport ? 300 : 440}
             fitView={false}
+            fullscreenable
           />
         </section>
 
