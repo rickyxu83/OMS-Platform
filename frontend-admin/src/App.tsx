@@ -15,9 +15,6 @@ const EngineerSignature = lazy(() => import("@/pages/EngineerSignature").then((m
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
 const MrListPage = lazy(() => import("@/packages/mr/MrListPage").then((module) => ({ default: module.MrListPage })))
 const MrFormPage = lazy(() => import("@/packages/mr/MrFormPage").then((module) => ({ default: module.MrFormPage })))
-const MrPrototypePage = lazy(() => import("@/packages/mr/PrototypePage").then((module) => ({ default: module.MrPrototypePage })))
-const MrItemEditPrototypePage = lazy(() => import("@/packages/mr/ItemEditPrototypePage").then((module) => ({ default: module.MrItemEditPrototypePage })))
-const MrPrintPrototypePage = lazy(() => import("@/packages/mr/PrintPrototypePage").then((module) => ({ default: module.MrPrintPrototypePage })))
 const MrPrintPage = lazy(() => import("@/packages/mr/MrPrintPage").then((module) => ({ default: module.MrPrintPage })))
 const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
 const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
@@ -241,26 +238,6 @@ export default function App() {
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
                 <MrListPage />
               </ProtectedAdminPage>
-            }
-          />
-          <Route
-            path="/mr/prototype"
-            element={
-              <Suspense fallback={<PageLoading />}>
-                <MrPrototypePage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/mr/item-edit-prototype"
-            element={
-              <Suspense fallback={<PageLoading />}><MrItemEditPrototypePage /></Suspense>
-            }
-          />
-          <Route
-            path="/mr/print-prototype"
-            element={
-              <Suspense fallback={<PageLoading />}><MrPrintPrototypePage /></Suspense>
             }
           />
           <Route
