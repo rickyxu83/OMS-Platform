@@ -183,24 +183,23 @@ interface ServiceOrderDeletePreview {
 }
 
 const ORDER_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
-const ORDER_ATTACHMENT_HINT = "支持 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 图片、ZIP，单个文件不超过 20MB。";
 const ORDER_ATTACHMENT_EXTENSIONS = new Set(ORDER_ATTACHMENT_ACCEPT.split(","));
 const ORDER_ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024;
 
-function deviceOptionLabel(device: DeviceOption) {
-  return device.model || device.name || device.serialNo || `设备 #${device.id}`;
+function deviceOptionLabel(device: DeviceOption, df: DeleteFlowStrings) {
+  return device.model || device.name || device.serialNo || fill(df.deviceFallback, { id: device.id });
 }
 
-function validateOrderFiles(files: File[]) {
+function validateOrderFiles(files: File[], attachment: AttachmentStrings) {
   const invalidType = files.find((file) => {
     const name = file.name || "";
     const dotIndex = name.lastIndexOf(".");
     const extension = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
     return !ORDER_ATTACHMENT_EXTENSIONS.has(extension);
   });
-  if (invalidType) return `附件类型不支持：${invalidType.name}。${ORDER_ATTACHMENT_HINT}`;
+  if (invalidType) return `${fill(attachment.invalidType, { name: invalidType.name })}${attachment.hint}`;
   const oversized = files.find((file) => file.size > ORDER_ATTACHMENT_MAX_SIZE);
-  if (oversized) return `附件超过 20MB：${oversized.name}`;
+  if (oversized) return fill(attachment.tooLarge, { name: oversized.name });
   return "";
 }
 
@@ -274,11 +273,166 @@ const I18N = {
       unnamedEngineer: "未指定",
       unnamedContact: "未维护联系人",
     },
+    priority: {
+      low: "低",
+      normal: "普通",
+      high: "高",
+      urgent: "紧急",
+      help: "优先级用于提示工程师和调度处理顺序：普通按常规安排，高和紧急需要优先关注；它不会改变工单状态，也不代表审批结果。",
+    },
+    attachment: {
+      hint: "支持 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 图片、ZIP，单个文件不超过 20MB。",
+      invalidType: "附件类型不支持：{name}。",
+      tooLarge: "附件超过 20MB：{name}",
+    },
+    exportData: {
+      sheetName: "工单导出",
+      fileName: "工单导出",
+      unlimited: "不限",
+      pdfFileName: "服务记录",
+      pdfTo: "-至",
+      pdfSelected: "-已选{count}张",
+      colOrderNo: "工单编号",
+      colCustomerName: "客户名称",
+      colContactName: "联系人",
+      colContactPhone: "联系电话",
+      colCustomerAddress: "客户地址",
+      colDeviceName: "设备",
+      colServiceMode: "服务方式",
+      colServiceType: "服务事项",
+      colPriority: "优先级",
+      colEngineerName: "工程师",
+      colPlannedStartAt: "计划开始",
+      colPlannedEndAt: "计划结束",
+      colStatus: "状态",
+      colCreatedAt: "创建时间",
+      colUpdatedAt: "更新时间",
+      colIssueDescription: "问题描述",
+      colWorkContent: "处理记录",
+      colPartRecords: "备件与硬件部件",
+      colInternalNote: "内部备注",
+    },
+    bulk: {
+      delete: "批量删除",
+      selectAll: "全选当前列表",
+      selectAllAria: "全选当前工单列表",
+      selectedHint: "已勾选 {count} 张；导出（Excel / PDF）仅包含勾选的工单。",
+      matchedHint: "当前条件匹配 {count} 张工单；未勾选时，导出会包含所有匹配记录，不只当前页。",
+    },
+    dialogs: {
+      createDesc: "可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。",
+      customer: "客户",
+      customerFallback: "客户 #{id}",
+      selectCustomer: "选择客户",
+      device: "设备",
+      noDevice: "不指定设备",
+      serviceModeLabel: "服务方式",
+      serviceTypeLabel: "服务类型",
+      timesheetCategoryLabel: "工时类别",
+      timesheetRemotePlaceholder: "排障 / 调配 / 协调 / 会议 / 其他",
+      timesheetOfficePlaceholder: "方案准备 / 文档整理 / 网络会议 / 培训学习 / 其他",
+      priorityLabel: "优先级",
+      assignEngineer: "派发工程师",
+      engineerFallback: "工程师 #{id}",
+      noAssign: "创建后暂不派发",
+      plannedStart: "计划开始",
+      plannedEnd: "计划结束",
+      issueDescription: "问题描述",
+      internalNote: "内部备注",
+      attachments: "附件",
+      createAttachmentNote: "选择工程师后可随工单派发给工程师查看；未派发时附件会先保存到工单中。",
+      createRequired: "请选择客户、服务类型并填写问题描述",
+      creating: "创建中…",
+      createSubmit: "创建工单",
+      assignDesc: "选择工程师后，工单会进入已派发状态并同步到工程师端。",
+      engineerLabel: "工程师",
+      primaryBadge: "主",
+      assignMultiHint: "可选择多位工程师；第一位选中的工程师作为主工程师。",
+      assignRequired: "请至少选择一位派发工程师",
+      assignNote: "派单说明",
+      assignAttachmentNote: "可上传装机设备清单、报错截图、客户资料等，工程师可在工单详情中下载查看。",
+      assigning: "派单中…",
+      assignSubmit: "确认派单",
+      transitionTitle: "状态流转",
+      transitionDesc: "后台状态变更会写入操作审计。",
+      targetStatus: "目标状态",
+      transitionReason: "流转原因 / 备注",
+      transitioning: "流转中…",
+      transitionSubmit: "确认流转",
+    },
+    deleteFlow: {
+      title: "删除工单",
+      desc: "删除后工单主体及下列关联内容不可恢复；目标设备只会解除关联，安装来源设备会按下方预览处理。",
+      confirmHint: "请确认这些工单及关联内容都不再需要。删除操作会写入审计日志。",
+      loading: "正在加载删除影响明细…",
+      empty: "未加载到删除影响明细。",
+      loadDetailFailed: "未能加载所选工单的删除影响明细",
+      loadFailed: "删除影响明细加载失败",
+      deleting: "删除中…",
+      confirmDelete: "确认删除 {count} 张工单",
+      sumReports: "服务记录",
+      sumParts: "部件记录",
+      sumFiles: "附件",
+      sumTargetDevices: "目标设备关联",
+      sumInstalledDelete: "将删除安装设备",
+      sumInstalledKeep: "保留安装设备",
+      sumSignatures: "签署请求",
+      sumDrafts: "编辑草稿",
+      secReport: "服务记录",
+      reportBody: "服务记录正文、处理结果、客户确认信息",
+      workEntryEngineer: "工程师",
+      workEntryContent: "工时明细",
+      secParts: "备件与硬件部件记录",
+      unnamedPart: "未命名部件",
+      partDevice: "（设备：{name}）",
+      secFiles: "附件文件",
+      fileFallback: "附件 #{id}",
+      secTargetDevices: "目标设备关联",
+      secTargetDevicesDesc: "只解除工单与设备的关联，不删除这些既有设备。",
+      secInstalled: "安装来源设备",
+      secInstalledDesc: "没有被其他工单、部件记录或巡检计划引用的安装设备会随工单删除；仍被引用的设备会保留。",
+      secEngineers: "派单工程师关联",
+      engineerFallback: "工程师 #{id}",
+      unnamedEngineer: "未命名工程师",
+      secSignatures: "客户签署请求",
+      sigNoEmail: "未填写邮箱",
+      sigLatest: "最新请求：{email} / {status}",
+      sigCount: "客户签署请求 {count} 条",
+      secDrafts: "工程师编辑草稿",
+      draftsCount: "编辑草稿 {count} 份",
+      secOrder: "工单主体",
+      orderOnly: "仅删除工单主体记录",
+      deviceFallback: "设备 #{id}",
+      unnamedDevice: "未命名设备",
+      keepReasons: "仍关联：{reasons}",
+      keepGeneric: "仍有关联数据",
+      keepLabel: "（保留，{reasons}）",
+      willDeleteLabel: "（将删除）",
+      recheckLabel: "（删除时再次检查是否有关联）",
+      sigCreated: "已创建",
+      sigSent: "已发送",
+      sigSigned: "已签署",
+      sigRevoked: "已撤销",
+      sigExpired: "已过期",
+      sigUnknown: "未知状态",
+    },
     errors: {
       loadFailed: "加载失败",
       saveFailed: "保存失败",
       exportFailed: "导出失败",
       exportEmpty: "当前筛选条件下暂无可导出的工单",
+      downloadFailed: "附件下载失败",
+      pdfExportFailed: "PDF 导出失败",
+      createNoOrderNo: "工单创建后未返回编号，附件未上传",
+      postCreateFailed: "附件上传或派单失败",
+      rollbackFailed: "自动删除失败",
+      createRollbackFailed: "{postCreate}；工单已创建但自动删除失败：{rollback}",
+      createRolledBack: "{postCreate}；工单已自动取消创建",
+      createFailed: "创建工单失败",
+      confirmInspectionFailed: "确认巡检失败",
+      bulkDeleteFailed: "批量删除失败",
+      assignFailed: "派单失败",
+      transitionFailed: "状态流转失败",
     },
     status: {
       draft: "草稿",
@@ -376,11 +530,166 @@ const I18N = {
       unnamedEngineer: "未指定",
       unnamedContact: "未維護聯絡人",
     },
+    priority: {
+      low: "低",
+      normal: "普通",
+      high: "高",
+      urgent: "緊急",
+      help: "優先級用於提示工程師和調度處理順序：普通按常規安排，高和緊急需要優先關注；它不會改變工單狀態，也不代表審批結果。",
+    },
+    attachment: {
+      hint: "支援 PDF、Word、Excel、CSV、TXT、JPG/PNG/WebP/HEIC 圖片、ZIP，單個檔案不超過 20MB。",
+      invalidType: "附件類型不支援：{name}。",
+      tooLarge: "附件超過 20MB：{name}",
+    },
+    exportData: {
+      sheetName: "工單匯出",
+      fileName: "工單匯出",
+      unlimited: "不限",
+      pdfFileName: "服務記錄",
+      pdfTo: "-至",
+      pdfSelected: "-已選{count}張",
+      colOrderNo: "工單編號",
+      colCustomerName: "客戶名稱",
+      colContactName: "聯絡人",
+      colContactPhone: "聯絡電話",
+      colCustomerAddress: "客戶地址",
+      colDeviceName: "設備",
+      colServiceMode: "服務方式",
+      colServiceType: "服務事項",
+      colPriority: "優先級",
+      colEngineerName: "工程師",
+      colPlannedStartAt: "計畫開始",
+      colPlannedEndAt: "計畫結束",
+      colStatus: "狀態",
+      colCreatedAt: "建立時間",
+      colUpdatedAt: "更新時間",
+      colIssueDescription: "問題描述",
+      colWorkContent: "處理紀錄",
+      colPartRecords: "備件與硬體部件",
+      colInternalNote: "內部備註",
+    },
+    bulk: {
+      delete: "批量刪除",
+      selectAll: "全選當前列表",
+      selectAllAria: "全選當前工單列表",
+      selectedHint: "已勾選 {count} 張；匯出（Excel / PDF）僅包含勾選的工單。",
+      matchedHint: "當前條件匹配 {count} 張工單；未勾選時，匯出會包含所有匹配記錄，不只當前頁。",
+    },
+    dialogs: {
+      createDesc: "可先儲存為草稿；選擇工程師後會立即派發到對應工程師的工作台。",
+      customer: "客戶",
+      customerFallback: "客戶 #{id}",
+      selectCustomer: "選擇客戶",
+      device: "設備",
+      noDevice: "不指定設備",
+      serviceModeLabel: "服務方式",
+      serviceTypeLabel: "服務類型",
+      timesheetCategoryLabel: "工時類別",
+      timesheetRemotePlaceholder: "排障 / 調配 / 協調 / 會議 / 其他",
+      timesheetOfficePlaceholder: "方案準備 / 文件整理 / 網路會議 / 培訓學習 / 其他",
+      priorityLabel: "優先級",
+      assignEngineer: "派發工程師",
+      engineerFallback: "工程師 #{id}",
+      noAssign: "建立後暫不派發",
+      plannedStart: "計畫開始",
+      plannedEnd: "計畫結束",
+      issueDescription: "問題描述",
+      internalNote: "內部備註",
+      attachments: "附件",
+      createAttachmentNote: "選擇工程師後可隨工單派發給工程師查看；未派發時附件會先儲存到工單中。",
+      createRequired: "請選擇客戶、服務類型並填寫問題描述",
+      creating: "建立中…",
+      createSubmit: "建立工單",
+      assignDesc: "選擇工程師後，工單會進入已派發狀態並同步到工程師端。",
+      engineerLabel: "工程師",
+      primaryBadge: "主",
+      assignMultiHint: "可選擇多位工程師；第一位選中的工程師作為主工程師。",
+      assignRequired: "請至少選擇一位派發工程師",
+      assignNote: "派單說明",
+      assignAttachmentNote: "可上傳裝機設備清單、報錯截圖、客戶資料等，工程師可在工單詳情中下載查看。",
+      assigning: "派單中…",
+      assignSubmit: "確認派單",
+      transitionTitle: "狀態流轉",
+      transitionDesc: "後台狀態變更會寫入操作稽核。",
+      targetStatus: "目標狀態",
+      transitionReason: "流轉原因 / 備註",
+      transitioning: "流轉中…",
+      transitionSubmit: "確認流轉",
+    },
+    deleteFlow: {
+      title: "刪除工單",
+      desc: "刪除後工單主體及下列關聯內容不可恢復；目標設備只會解除關聯，安裝來源設備會依下方預覽處理。",
+      confirmHint: "請確認這些工單及關聯內容都不再需要。刪除操作會寫入稽核日誌。",
+      loading: "正在載入刪除影響明細…",
+      empty: "未載入到刪除影響明細。",
+      loadDetailFailed: "未能載入所選工單的刪除影響明細",
+      loadFailed: "刪除影響明細載入失敗",
+      deleting: "刪除中…",
+      confirmDelete: "確認刪除 {count} 張工單",
+      sumReports: "服務記錄",
+      sumParts: "部件記錄",
+      sumFiles: "附件",
+      sumTargetDevices: "目標設備關聯",
+      sumInstalledDelete: "將刪除安裝設備",
+      sumInstalledKeep: "保留安裝設備",
+      sumSignatures: "簽署請求",
+      sumDrafts: "編輯草稿",
+      secReport: "服務記錄",
+      reportBody: "服務記錄正文、處理結果、客戶確認資訊",
+      workEntryEngineer: "工程師",
+      workEntryContent: "工時明細",
+      secParts: "備件與硬體部件記錄",
+      unnamedPart: "未命名部件",
+      partDevice: "（設備：{name}）",
+      secFiles: "附件檔案",
+      fileFallback: "附件 #{id}",
+      secTargetDevices: "目標設備關聯",
+      secTargetDevicesDesc: "只解除工單與設備的關聯，不刪除這些既有設備。",
+      secInstalled: "安裝來源設備",
+      secInstalledDesc: "沒有被其他工單、部件記錄或巡檢計畫引用的安裝設備會隨工單刪除；仍被引用的設備會保留。",
+      secEngineers: "派單工程師關聯",
+      engineerFallback: "工程師 #{id}",
+      unnamedEngineer: "未命名工程師",
+      secSignatures: "客戶簽署請求",
+      sigNoEmail: "未填寫郵箱",
+      sigLatest: "最新請求：{email} / {status}",
+      sigCount: "客戶簽署請求 {count} 條",
+      secDrafts: "工程師編輯草稿",
+      draftsCount: "編輯草稿 {count} 份",
+      secOrder: "工單主體",
+      orderOnly: "僅刪除工單主體記錄",
+      deviceFallback: "設備 #{id}",
+      unnamedDevice: "未命名設備",
+      keepReasons: "仍關聯：{reasons}",
+      keepGeneric: "仍有關聯資料",
+      keepLabel: "（保留，{reasons}）",
+      willDeleteLabel: "（將刪除）",
+      recheckLabel: "（刪除時再次檢查是否有關聯）",
+      sigCreated: "已建立",
+      sigSent: "已發送",
+      sigSigned: "已簽署",
+      sigRevoked: "已撤銷",
+      sigExpired: "已過期",
+      sigUnknown: "未知狀態",
+    },
     errors: {
       loadFailed: "載入失敗",
       saveFailed: "儲存失敗",
       exportFailed: "匯出失敗",
       exportEmpty: "當前篩選條件下暫無可匯出的工單",
+      downloadFailed: "附件下載失敗",
+      pdfExportFailed: "PDF 匯出失敗",
+      createNoOrderNo: "工單建立後未返回編號，附件未上傳",
+      postCreateFailed: "附件上傳或派發失敗",
+      rollbackFailed: "自動刪除失敗",
+      createRollbackFailed: "{postCreate}；工單已建立但自動刪除失敗：{rollback}",
+      createRolledBack: "{postCreate}；工單已自動取消建立",
+      createFailed: "建立工單失敗",
+      confirmInspectionFailed: "確認巡檢失敗",
+      bulkDeleteFailed: "批量刪除失敗",
+      assignFailed: "派單失敗",
+      transitionFailed: "狀態流轉失敗",
     },
     status: {
       draft: "草稿",
@@ -411,6 +720,14 @@ const I18N = {
   },
 } as const;
 
+type DeleteFlowStrings = { [K in keyof (typeof I18N)["zh-CN"]["deleteFlow"]]: string };
+type AttachmentStrings = { [K in keyof (typeof I18N)["zh-CN"]["attachment"]]: string };
+
+/** 用 {key} 占位符填充 i18n 模板（如 "确认删除 {count} 张工单"） */
+function fill(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce((text, [key, value]) => text.split(`{${key}}`).join(String(value)), template);
+}
+
 const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "success" | "warning" | "destructive"> = {
   draft: "draft",
   assigned: "warning",
@@ -440,15 +757,6 @@ const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destruct
   high: "warning",
   urgent: "destructive",
 };
-
-const PRIORITY_LABELS: Record<string, string> = {
-  low: "低",
-  normal: "普通",
-  high: "高",
-  urgent: "紧急",
-};
-
-const PRIORITY_HELP = "优先级用于提示工程师和调度处理顺序：普通按常规安排，高和紧急需要优先关注；它不会改变工单状态，也不代表审批结果。";
 
 const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "secondary"> = {
   onsite: "success",
@@ -575,16 +883,16 @@ function orderMainContent(order: ServiceOrder, fallback = "-") {
 
 
 
-function installedDeviceLabel(device: InstalledDevice | DeviceOption) {
+function installedDeviceLabel(device: InstalledDevice | DeviceOption, df: DeleteFlowStrings) {
   return [
-    device.model || device.name || (device.id ? `设备 #${device.id}` : "未命名设备"),
+    device.model || device.name || (device.id ? fill(df.deviceFallback, { id: device.id }) : df.unnamedDevice),
     device.serialNo ? `SN ${device.serialNo}` : "",
     "pn" in device && device.pn ? `PN ${device.pn}` : "",
   ].filter(Boolean).join(" / ");
 }
 
-function fileDeleteLabel(file: OrderFile) {
-  return `${file.originalName || `附件 #${file.id}`}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
+function fileDeleteLabel(file: OrderFile, df: DeleteFlowStrings) {
+  return `${file.originalName || fill(df.fileFallback, { id: file.id })}${file.size ? `（${formatFileSize(file.size)}）` : ""}`;
 }
 
 async function loadDeleteConfirmationOrders(ids: Array<string | number>) {
@@ -595,97 +903,97 @@ async function loadDeleteConfirmationOrders(ids: Array<string | number>) {
   return details.filter(Boolean);
 }
 
-function signatureRequestStatusLabel(value?: string) {
+function signatureRequestStatusLabel(value: string | undefined, df: DeleteFlowStrings) {
   const labels: Record<string, string> = {
-    created: "已创建",
-    sent: "已发送",
-    signed: "已签署",
-    revoked: "已撤销",
-    expired: "已过期",
+    created: df.sigCreated,
+    sent: df.sigSent,
+    signed: df.sigSigned,
+    revoked: df.sigRevoked,
+    expired: df.sigExpired,
   };
-  return labels[value || ""] || value || "未知状态";
+  return labels[value || ""] || value || df.sigUnknown;
 }
 
-function engineerDeleteLabel(engineer: NonNullable<ServiceOrder["engineers"]>[number]) {
-  return engineer.realName || engineer.name || engineer.username || (engineer.id ? `工程师 #${engineer.id}` : "未命名工程师");
+function engineerDeleteLabel(engineer: NonNullable<ServiceOrder["engineers"]>[number], df: DeleteFlowStrings) {
+  return engineer.realName || engineer.name || engineer.username || (engineer.id ? fill(df.engineerFallback, { id: engineer.id }) : df.unnamedEngineer);
 }
 
-function installedDeviceDeleteLabel(device: InstalledDevice) {
-  const label = installedDeviceLabel(device);
+function installedDeviceDeleteLabel(device: InstalledDevice, df: DeleteFlowStrings) {
+  const label = installedDeviceLabel(device, df);
   if (device.willDelete === false) {
     const reasons = Array.isArray(device.blockedReasons) && device.blockedReasons.length
-      ? `仍关联：${device.blockedReasons.join("、")}`
-      : "仍有关联数据";
-    return `${label}（保留，${reasons}）`;
+      ? fill(df.keepReasons, { reasons: device.blockedReasons.join("、") })
+      : df.keepGeneric;
+    return `${label}${fill(df.keepLabel, { reasons })}`;
   }
-  if (device.willDelete === true) return `${label}（将删除）`;
-  return `${label}（删除时再次检查是否有关联）`;
+  if (device.willDelete === true) return `${label}${df.willDeleteLabel}`;
+  return `${label}${df.recheckLabel}`;
 }
 
-function orderDeleteImpactSections(order: ServiceOrder) {
+function orderDeleteImpactSections(order: ServiceOrder, df: DeleteFlowStrings) {
   const sections: Array<{ key: string; title: string; count: number; description?: string; items: string[] }> = [];
   const reportItems = [
-    order.report ? "服务记录正文、处理结果、客户确认信息" : "",
-    ...(order.report?.workEntries || []).map((entry) => `${entry.engineerName || entry.engineer_name || entry.engineerUsername || entry.engineer_username || "工程师"}：${compactText(entry.workContent || entry.work_content, "工时明细")}`),
+    order.report ? df.reportBody : "",
+    ...(order.report?.workEntries || []).map((entry) => `${entry.engineerName || entry.engineer_name || entry.engineerUsername || entry.engineer_username || df.workEntryEngineer}：${compactText(entry.workContent || entry.work_content, df.workEntryContent)}`),
   ].filter(Boolean);
   if (reportItems.length) {
-    sections.push({ key: "report", title: "服务记录", count: reportItems.length, items: reportItems });
+    sections.push({ key: "report", title: df.secReport, count: reportItems.length, items: reportItems });
   }
   const parts = order.parts || [];
   if (parts.length) {
     sections.push({
       key: "parts",
-      title: "备件与硬件部件记录",
+      title: df.secParts,
       count: parts.length,
-      items: parts.map((part) => `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || "未命名部件"}${part.deviceName || part.device_name ? `（设备：${part.deviceName || part.device_name}）` : ""}`),
+      items: parts.map((part) => `${servicePartActionLabel(part.actionType || part.action_type)} ${part.partName || part.part_name || df.unnamedPart}${part.deviceName || part.device_name ? fill(df.partDevice, { name: part.deviceName || part.device_name || "" }) : ""}`),
     });
   }
   const files = order.files || [];
   if (files.length) {
-    sections.push({ key: "files", title: "附件文件", count: files.length, items: files.map(fileDeleteLabel) });
+    sections.push({ key: "files", title: df.secFiles, count: files.length, items: files.map((file) => fileDeleteLabel(file, df)) });
   }
   const targetDevices = order.targetDevices || [];
   if (targetDevices.length) {
     sections.push({
       key: "target-devices",
-      title: "目标设备关联",
+      title: df.secTargetDevices,
       count: targetDevices.length,
-      description: "只解除工单与设备的关联，不删除这些既有设备。",
-      items: targetDevices.map(installedDeviceLabel),
+      description: df.secTargetDevicesDesc,
+      items: targetDevices.map((device) => installedDeviceLabel(device, df)),
     });
   }
   const installedDevices = order.installedDevices || [];
   if (installedDevices.length) {
     sections.push({
       key: "installed-devices",
-      title: "安装来源设备",
+      title: df.secInstalled,
       count: installedDevices.length,
-      description: "没有被其他工单、部件记录或巡检计划引用的安装设备会随工单删除；仍被引用的设备会保留。",
-      items: installedDevices.map(installedDeviceDeleteLabel),
+      description: df.secInstalledDesc,
+      items: installedDevices.map((device) => installedDeviceDeleteLabel(device, df)),
     });
   }
   const engineers = order.engineers || [];
   if (engineers.length) {
-    sections.push({ key: "engineers", title: "派单工程师关联", count: engineers.length, items: engineers.map(engineerDeleteLabel) });
+    sections.push({ key: "engineers", title: df.secEngineers, count: engineers.length, items: engineers.map((engineer) => engineerDeleteLabel(engineer, df)) });
   }
   const signatureRequestCount = Number(order.deletePreview?.customerSignatureRequestCount || 0);
   if (signatureRequestCount > 0) {
     const latest = order.customerSignatureRequest;
     sections.push({
       key: "signature-requests",
-      title: "客户签署请求",
+      title: df.secSignatures,
       count: signatureRequestCount,
       items: latest
-        ? [`最新请求：${latest.recipientEmail || "未填写邮箱"} / ${signatureRequestStatusLabel(latest.status)}${latest.createdAt ? ` / ${formatDateTime(latest.createdAt)}` : ""}`]
-        : [`客户签署请求 ${signatureRequestCount} 条`],
+        ? [`${fill(df.sigLatest, { email: latest.recipientEmail || df.sigNoEmail, status: signatureRequestStatusLabel(latest.status, df) })}${latest.createdAt ? ` / ${formatDateTime(latest.createdAt)}` : ""}`]
+        : [fill(df.sigCount, { count: signatureRequestCount })],
     });
   }
   const editDraftCount = Number(order.deletePreview?.editDraftCount || 0);
   if (editDraftCount > 0) {
-    sections.push({ key: "drafts", title: "工程师编辑草稿", count: editDraftCount, items: [`编辑草稿 ${editDraftCount} 份`] });
+    sections.push({ key: "drafts", title: df.secDrafts, count: editDraftCount, items: [fill(df.draftsCount, { count: editDraftCount })] });
   }
   if (!sections.length) {
-    sections.push({ key: "order", title: "工单主体", count: 1, items: ["仅删除工单主体记录"] });
+    sections.push({ key: "order", title: df.secOrder, count: 1, items: [df.orderOnly] });
   }
   return sections;
 }
@@ -715,42 +1023,6 @@ function orderDeleteImpactSummary(orders: ServiceOrder[]) {
   }
   return summary;
 }
-
-function buildDeleteConfirmationMessage(orders: ServiceOrder[]) {
-  const summary = orderDeleteImpactSummary(orders);
-  const lines = [
-    `确认删除 ${orders.length} 张工单？`,
-    "",
-    "将同时处理：",
-  ];
-  const impactLines = [
-    summary.reports ? `服务记录 ${summary.reports} 份` : "",
-    summary.parts ? `备件与硬件部件记录 ${summary.parts} 条` : "",
-    summary.files ? `附件文件 ${summary.files} 个` : "",
-    summary.targetDevices ? `目标设备关联 ${summary.targetDevices} 条（只解除关联，不删除既有设备）` : "",
-    summary.installedDevicesToDelete ? `安装来源设备 ${summary.installedDevicesToDelete} 台（无其他关联时随工单删除）` : "",
-    summary.installedDevicesToKeep ? `保留安装来源设备 ${summary.installedDevicesToKeep} 台（仍有关联）` : "",
-    summary.signatureRequests ? `客户签署请求 ${summary.signatureRequests} 条` : "",
-    summary.drafts ? `工程师编辑草稿 ${summary.drafts} 份` : "",
-  ].filter(Boolean);
-  if (impactLines.length) {
-    lines.push(...impactLines.map((line) => `- ${line}`));
-  } else {
-    lines.push("- 仅删除工单主体记录");
-  }
-  if (orders.length <= 3) {
-    lines.push("");
-    lines.push("工单：");
-    for (const order of orders) {
-      const sections = orderDeleteImpactSections(order);
-      lines.push(`- ${order.orderNo || `工单 #${order.id}`}: ${sections.map((section) => `${section.title} ${section.count}`).join("；")}`);
-    }
-  }
-  lines.push("");
-  lines.push("此操作不可恢复。");
-  return lines.join("\n");
-}
-
 
 function splitSearchTerms(value: string) {
   return value
@@ -1093,7 +1365,7 @@ export function ServiceOrders() {
       const { saveAs } = await import("file-saver");
       saveAs(blob, file.originalName || `attachment-${file.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "附件下载失败");
+      setError(e instanceof Error ? e.message : t.errors.downloadFailed);
     } finally {
       setDownloadingFileId(null);
     }
@@ -1120,19 +1392,19 @@ export function ServiceOrders() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const datePart = `-至${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
+      const datePart = `${t.exportData.pdfTo}${normalizedDateRange(startDate, endDate).endDate || new Date().toISOString().slice(0, 10)}`;
       const namePart = orderIds.length === 1
         ? `-${safeFilenamePart(fileLabel || String(orderIds[0]))}`
         : effectiveIds.length
-        ? `-已选${effectiveIds.length}张`
+        ? fill(t.exportData.pdfSelected, { count: effectiveIds.length })
         : selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
-      link.download = `服务记录${namePart}${datePart}.pdf`;
+      link.download = `${t.exportData.pdfFileName}${namePart}${datePart}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "PDF 导出失败");
+      setError(e instanceof Error ? e.message : t.errors.pdfExportFailed);
     } finally {
       setExporting(false);
     }
@@ -1213,30 +1485,30 @@ export function ServiceOrders() {
       workbook.creator = "Service Sheet RC";
       workbook.created = new Date();
       workbook.modified = new Date();
-      const worksheet = workbook.addWorksheet(safeSheetName(selectedCustomerName || "工单导出", "工单导出"), {
+      const worksheet = workbook.addWorksheet(safeSheetName(selectedCustomerName || t.exportData.sheetName, t.exportData.sheetName), {
         views: [{ state: "frozen", ySplit: 1 }],
         pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
       });
       worksheet.columns = [
-        { header: "工单编号", key: "orderNo", width: 20 },
-        { header: "客户名称", key: "customerName", width: 26 },
-        { header: "联系人", key: "contactName", width: 14 },
-        { header: "联系电话", key: "contactPhone", width: 16 },
-        { header: "客户地址", key: "customerAddress", width: 30 },
-        { header: "设备", key: "deviceName", width: 18 },
-        { header: "服务方式", key: "serviceMode", width: 12 },
-        { header: "服务事项", key: "serviceType", width: 18 },
-        { header: "优先级", key: "priority", width: 10 },
-        { header: "工程师", key: "engineerName", width: 18 },
-        { header: "计划开始", key: "plannedStartAt", width: 18 },
-        { header: "计划结束", key: "plannedEndAt", width: 18 },
-        { header: "状态", key: "status", width: 12 },
-        { header: "创建时间", key: "createdAt", width: 18 },
-        { header: "更新时间", key: "updatedAt", width: 18 },
-        { header: "问题描述", key: "issueDescription", width: 42 },
-        { header: "处理记录", key: "workContent", width: 50 },
-        { header: "备件与硬件部件", key: "partRecords", width: 44 },
-        { header: "内部备注", key: "internalNote", width: 28 },
+        { header: t.exportData.colOrderNo, key: "orderNo", width: 20 },
+        { header: t.exportData.colCustomerName, key: "customerName", width: 26 },
+        { header: t.exportData.colContactName, key: "contactName", width: 14 },
+        { header: t.exportData.colContactPhone, key: "contactPhone", width: 16 },
+        { header: t.exportData.colCustomerAddress, key: "customerAddress", width: 30 },
+        { header: t.exportData.colDeviceName, key: "deviceName", width: 18 },
+        { header: t.exportData.colServiceMode, key: "serviceMode", width: 12 },
+        { header: t.exportData.colServiceType, key: "serviceType", width: 18 },
+        { header: t.exportData.colPriority, key: "priority", width: 10 },
+        { header: t.exportData.colEngineerName, key: "engineerName", width: 18 },
+        { header: t.exportData.colPlannedStartAt, key: "plannedStartAt", width: 18 },
+        { header: t.exportData.colPlannedEndAt, key: "plannedEndAt", width: 18 },
+        { header: t.exportData.colStatus, key: "status", width: 12 },
+        { header: t.exportData.colCreatedAt, key: "createdAt", width: 18 },
+        { header: t.exportData.colUpdatedAt, key: "updatedAt", width: 18 },
+        { header: t.exportData.colIssueDescription, key: "issueDescription", width: 42 },
+        { header: t.exportData.colWorkContent, key: "workContent", width: 50 },
+        { header: t.exportData.colPartRecords, key: "partRecords", width: 44 },
+        { header: t.exportData.colInternalNote, key: "internalNote", width: 28 },
       ];
 
       items.forEach((order) => {
@@ -1249,7 +1521,7 @@ export function ServiceOrders() {
           deviceName: order.deviceName || "",
           serviceMode: t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "",
           serviceType: serviceItemsLabel(order, ""),
-          priority: PRIORITY_LABELS[order.priority || ""] || order.priority || "",
+          priority: (t.priority as Record<string, string>)[order.priority || ""] || order.priority || "",
           engineerName: engineerText(order, ""),
           plannedStartAt: formatDateTime(order.plannedStartAt),
           plannedEndAt: formatDateTime(order.plannedEndAt),
@@ -1301,14 +1573,14 @@ export function ServiceOrders() {
       });
 
       const range = normalizedDateRange(startDate, endDate);
-      const datePart = range.startDate || range.endDate ? `${range.startDate || "不限"}-至-${range.endDate || "不限"}` : new Date().toISOString().slice(0, 10);
+      const datePart = range.startDate || range.endDate ? `${range.startDate || t.exportData.unlimited}${t.exportData.pdfTo}${range.endDate || t.exportData.unlimited}` : new Date().toISOString().slice(0, 10);
       const customerPart = orderIds.length === 1
         ? `-${safeFilenamePart(displayId(items[0]))}`
         : selectedCustomerName ? `-${safeFilenamePart(selectedCustomerName)}` : "";
       const buffer = await workbook.xlsx.writeBuffer();
       saveAs(
         new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-        `工单导出${customerPart}-${datePart}.xlsx`,
+        `${t.exportData.fileName}${customerPart}-${datePart}.xlsx`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.exportFailed);
@@ -1319,10 +1591,10 @@ export function ServiceOrders() {
 
   async function createOrder() {
     if (!createForm.customerId || !createForm.serviceType || !createForm.issueDescription.trim()) {
-      setError("请选择客户、服务类型并填写问题描述");
+      setError(t.dialogs.createRequired);
       return;
     }
-    const fileError = validateOrderFiles(createFiles);
+    const fileError = validateOrderFiles(createFiles, t.attachment);
     if (fileError) {
       setError(fileError);
       return;
@@ -1347,7 +1619,7 @@ export function ServiceOrders() {
       });
       createdOrderId = created?.id || null;
       if (createFiles.length && !createdOrderId) {
-        throw new Error("工单创建后未返回编号，附件未上传");
+        throw new Error(t.errors.createNoOrderNo);
       }
       if (createdOrderId && (createFiles.length || shouldAssignAfterFiles)) {
         try {
@@ -1364,19 +1636,19 @@ export function ServiceOrders() {
           try {
             await api.delete(`/service-orders/${createdOrderId}`);
           } catch (rollbackError) {
-            const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : "附件上传或派单失败";
-            const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : "自动删除失败";
-            throw new Error(`${postCreateMessage}；工单已创建但自动删除失败：${rollbackMessage}`);
+            const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : t.errors.postCreateFailed;
+            const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : t.errors.rollbackFailed;
+            throw new Error(fill(t.errors.createRollbackFailed, { postCreate: postCreateMessage, rollback: rollbackMessage }));
           }
-          const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : "附件上传或派单失败";
-          throw new Error(`${postCreateMessage}；工单已自动取消创建`);
+          const postCreateMessage = postCreateError instanceof Error ? postCreateError.message : t.errors.postCreateFailed;
+          throw new Error(fill(t.errors.createRolledBack, { postCreate: postCreateMessage }));
         }
       }
       setCreateOpen(false);
       setCreateFiles([]);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "创建工单失败");
+      setError(e instanceof Error ? e.message : t.errors.createFailed);
     } finally {
       setSaving(false);
     }
@@ -1390,7 +1662,7 @@ export function ServiceOrders() {
       await api.post(`/service-orders/${order.id}/confirm-inspection`, {});
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "确认巡检失败");
+      setError(e instanceof Error ? e.message : t.errors.confirmInspectionFailed);
     } finally {
       setSaving(false);
     }
@@ -1407,10 +1679,10 @@ export function ServiceOrders() {
       const confirmationOrders = await loadDeleteConfirmationOrders(selectedIds);
       setDeletePreviewOrders(confirmationOrders);
       if (!confirmationOrders.length) {
-        setDeletePreviewError("未能加载所选工单的删除影响明细");
+        setDeletePreviewError(t.deleteFlow.loadDetailFailed);
       }
     } catch (e) {
-      setDeletePreviewError(e instanceof Error ? e.message : "删除影响明细加载失败");
+      setDeletePreviewError(e instanceof Error ? e.message : t.deleteFlow.loadFailed);
     } finally {
       setDeletePreviewLoading(false);
     }
@@ -1442,7 +1714,7 @@ export function ServiceOrders() {
       setDeletePreviewOrders([]);
       await load();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "批量删除失败";
+      const message = e instanceof Error ? e.message : t.errors.bulkDeleteFailed;
       setDeletePreviewError(message);
       setError(message);
     } finally {
@@ -1632,10 +1904,10 @@ export function ServiceOrders() {
 
   async function assignOrderToEngineer() {
     if (!assignOrder?.id || !assignForm.engineerIds.length) {
-      setError("请至少选择一位派发工程师");
+      setError(t.dialogs.assignRequired);
       return;
     }
-    const fileError = validateOrderFiles(assignFiles);
+    const fileError = validateOrderFiles(assignFiles, t.attachment);
     if (fileError) {
       setError(fileError);
       return;
@@ -1658,7 +1930,7 @@ export function ServiceOrders() {
       setAssignFiles([]);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "派单失败");
+      setError(e instanceof Error ? e.message : t.errors.assignFailed);
     } finally {
       setSaving(false);
     }
@@ -1683,7 +1955,7 @@ export function ServiceOrders() {
       setTransitionOrder(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "状态流转失败");
+      setError(e instanceof Error ? e.message : t.errors.transitionFailed);
     } finally {
       setSaving(false);
     }
@@ -1727,7 +1999,7 @@ export function ServiceOrders() {
           {canDeleteOrders ? (
             <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
               <Trash2 className="w-4 h-4 mr-2" />
-              批量删除{selectedIds.length ? ` (${selectedIds.length})` : ""}
+              {t.bulk.delete}{selectedIds.length ? ` (${selectedIds.length})` : ""}
             </Button>
           ) : null}
           {canCreateOrders ? (
@@ -1798,7 +2070,7 @@ export function ServiceOrders() {
                   <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={String(customer.id)}>
-                      {customer.name || `客户 #${customer.id}`}
+                      {customer.name || fill(t.dialogs.customerFallback, { id: customer.id })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1843,14 +2115,14 @@ export function ServiceOrders() {
                 checked={allFilteredOrdersSelected}
                 onCheckedChange={toggleAllFilteredOrders}
                 disabled={saving || filteredOrders.length === 0}
-                aria-label="全选当前工单列表"
+                aria-label={t.bulk.selectAllAria}
               />
-              全选当前列表
+              {t.bulk.selectAll}
             </label>
             <span>
               {selectedIds.length
-                ? `已勾选 ${selectedIds.length} 张；导出（Excel / PDF）仅包含勾选的工单。`
-                : `当前条件匹配 ${total} 张工单；未勾选时，导出会包含所有匹配记录，不只当前页。`}
+                ? fill(t.bulk.selectedHint, { count: selectedIds.length })
+                : fill(t.bulk.matchedHint, { count: total })}
             </span>
           </div>
         </CardContent>
@@ -2082,118 +2354,118 @@ export function ServiceOrders() {
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>{t.actions.create}</DialogTitle>
-            <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
+            <DialogDescription>{t.dialogs.createDesc}</DialogDescription>
           </DialogHeader>
           {error && createOpen ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           ) : null}
           <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto py-2 pr-1 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>客户 *</Label>
+              <Label>{t.dialogs.customer} *</Label>
               <Select value={createForm.customerId} onValueChange={(v) => setCreateForm({ ...createForm, customerId: v, deviceId: "" })}>
-                <SelectTrigger><SelectValue placeholder="选择客户" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t.dialogs.selectCustomer} /></SelectTrigger>
                 <SelectContent>
                   {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={String(customer.id)}>{customer.name || `客户 #${customer.id}`}</SelectItem>
+                    <SelectItem key={customer.id} value={String(customer.id)}>{customer.name || fill(t.dialogs.customerFallback, { id: customer.id })}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>设备</Label>
+              <Label>{t.dialogs.device}</Label>
               <Select value={createForm.deviceId} onValueChange={(v) => setCreateForm({ ...createForm, deviceId: v })}>
-                <SelectTrigger><SelectValue placeholder="不指定设备" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t.dialogs.noDevice} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">不指定设备</SelectItem>
+                  <SelectItem value="none">{t.dialogs.noDevice}</SelectItem>
                   {deviceOptions.map((device) => (
-                    <SelectItem key={device.id} value={String(device.id)}>{deviceOptionLabel(device)}</SelectItem>
+                    <SelectItem key={device.id} value={String(device.id)}>{deviceOptionLabel(device, t.deleteFlow)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>服务方式</Label>
+              <Label>{t.dialogs.serviceModeLabel}</Label>
               <Select value={createForm.serviceMode} onValueChange={(v) => setCreateForm({ ...createForm, serviceMode: v, deviceId: createForm.deviceId === "none" ? "" : createForm.deviceId })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="onsite">现场服务</SelectItem>
-                  <SelectItem value="remote">远程服务</SelectItem>
-                  <SelectItem value="office">内勤工作</SelectItem>
+                  <SelectItem value="onsite">{t.mode.onsite}</SelectItem>
+                  <SelectItem value="remote">{t.mode.remote}</SelectItem>
+                  <SelectItem value="office">{t.mode.office}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{createForm.serviceMode === "onsite" ? "服务类型" : "工时类别"}</Label>
+              <Label>{createForm.serviceMode === "onsite" ? t.dialogs.serviceTypeLabel : t.dialogs.timesheetCategoryLabel}</Label>
               {createForm.serviceMode === "onsite" ? (
                 <Select value={createForm.serviceType} onValueChange={(v) => setCreateForm({ ...createForm, serviceType: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="install">安装</SelectItem>
-                    <SelectItem value="repair">排障</SelectItem>
-                    <SelectItem value="maintain">调优</SelectItem>
-                    <SelectItem value="inspect">巡检</SelectItem>
-                    <SelectItem value="training">培训</SelectItem>
-                    <SelectItem value="other">其他</SelectItem>
+                    <SelectItem value="install">{t.type.install}</SelectItem>
+                    <SelectItem value="repair">{t.type.repair}</SelectItem>
+                    <SelectItem value="maintain">{t.type.maintain}</SelectItem>
+                    <SelectItem value="inspect">{t.type.inspect}</SelectItem>
+                    <SelectItem value="training">{t.type.training}</SelectItem>
+                    <SelectItem value="other">{t.type.other}</SelectItem>
                   </SelectContent>
                 </Select>
               ) : (
-                <Input value={createForm.timesheetCategory} onChange={(e) => setCreateForm({ ...createForm, timesheetCategory: e.target.value })} placeholder={createForm.serviceMode === "remote" ? "排障 / 调配 / 协调 / 会议 / 其他" : "方案准备 / 文档整理 / 网络会议 / 培训学习 / 其他"} />
+                <Input value={createForm.timesheetCategory} onChange={(e) => setCreateForm({ ...createForm, timesheetCategory: e.target.value })} placeholder={createForm.serviceMode === "remote" ? t.dialogs.timesheetRemotePlaceholder : t.dialogs.timesheetOfficePlaceholder} />
               )}
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <Label>优先级</Label>
-                <HelpTooltip label={PRIORITY_HELP} />
+                <Label>{t.dialogs.priorityLabel}</Label>
+                <HelpTooltip label={t.priority.help} />
               </div>
               <Select value={createForm.priority} onValueChange={(v) => setCreateForm({ ...createForm, priority: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">低</SelectItem>
-                  <SelectItem value="normal">普通</SelectItem>
-                  <SelectItem value="high">高</SelectItem>
-                  <SelectItem value="urgent">紧急</SelectItem>
+                  <SelectItem value="low">{t.priority.low}</SelectItem>
+                  <SelectItem value="normal">{t.priority.normal}</SelectItem>
+                  <SelectItem value="high">{t.priority.high}</SelectItem>
+                  <SelectItem value="urgent">{t.priority.urgent}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>派发工程师</Label>
+              <Label>{t.dialogs.assignEngineer}</Label>
               <Select value={createForm.engineerId} onValueChange={(v) => setCreateForm({ ...createForm, engineerId: v })}>
-                <SelectTrigger><SelectValue placeholder="创建后暂不派发" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t.dialogs.noAssign} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">创建后暂不派发</SelectItem>
+                  <SelectItem value="none">{t.dialogs.noAssign}</SelectItem>
                   {engineers.map((engineer) => (
                     <SelectItem key={engineer.id} value={String(engineer.id)}>
-                      {engineer.realName || engineer.username || `工程师 #${engineer.id}`}
+                      {engineer.realName || engineer.username || fill(t.dialogs.engineerFallback, { id: engineer.id })}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>计划开始</Label>
+              <Label>{t.dialogs.plannedStart}</Label>
               <Input type="datetime-local" value={createForm.plannedStartAt} onChange={(e) => setCreateForm({ ...createForm, plannedStartAt: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>计划结束</Label>
+              <Label>{t.dialogs.plannedEnd}</Label>
               <Input type="datetime-local" value={createForm.plannedEndAt} onChange={(e) => setCreateForm({ ...createForm, plannedEndAt: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>问题描述 *</Label>
+              <Label>{t.dialogs.issueDescription} *</Label>
               <Textarea value={createForm.issueDescription} onChange={(e) => setCreateForm({ ...createForm, issueDescription: e.target.value })} rows={3} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>内部备注</Label>
+              <Label>{t.dialogs.internalNote}</Label>
               <Textarea value={createForm.internalNote} onChange={(e) => setCreateForm({ ...createForm, internalNote: e.target.value })} rows={2} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>附件</Label>
+              <Label>{t.dialogs.attachments}</Label>
               <Input
                 type="file"
                 multiple
                 accept={ORDER_ATTACHMENT_ACCEPT}
                 onChange={(event) => setCreateFiles(Array.from(event.target.files || []))}
               />
-              <p className="text-xs text-muted-foreground">选择工程师后可随工单派发给工程师查看；未派发时附件会先保存到工单中。{ORDER_ATTACHMENT_HINT}</p>
+              <p className="text-xs text-muted-foreground">{t.dialogs.createAttachmentNote}{t.attachment.hint}</p>
               {createFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {createFiles.map((file) => (
@@ -2204,10 +2476,10 @@ export function ServiceOrders() {
             </div>
           </div>
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>{t.actions.cancel}</Button>
             <Button onClick={createOrder} disabled={saving}>
               {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Plus className="w-4 h-4 mr-2" />}
-              {saving ? "创建中…" : "创建工单"}
+              {saving ? t.dialogs.creating : t.dialogs.createSubmit}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2217,14 +2489,14 @@ export function ServiceOrders() {
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{t.actions.assign}</DialogTitle>
-            <DialogDescription>选择工程师后，工单会进入已派发状态并同步到工程师端。</DialogDescription>
+            <DialogDescription>{t.dialogs.assignDesc}</DialogDescription>
           </DialogHeader>
           {error && assignOpen ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           ) : null}
           <div className="min-h-0 space-y-4 overflow-y-auto py-2 pr-1">
             <div className="space-y-2">
-              <Label>工程师 *</Label>
+              <Label>{t.dialogs.engineerLabel} *</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
                 {engineers.map((engineer) => {
                   const checked = assignForm.engineerIds.includes(String(engineer.id));
@@ -2234,39 +2506,39 @@ export function ServiceOrders() {
                         checked={checked}
                         onCheckedChange={(value) => toggleAssignEngineer(engineer.id, Boolean(value))}
                       />
-                      <span>{engineer.realName || engineer.username || `工程师 #${engineer.id}`}</span>
+                      <span>{engineer.realName || engineer.username || fill(t.dialogs.engineerFallback, { id: engineer.id })}</span>
                       {checked && assignForm.engineerIds[0] === String(engineer.id) && (
-                        <Badge variant="secondary">主</Badge>
+                        <Badge variant="secondary">{t.dialogs.primaryBadge}</Badge>
                       )}
                     </label>
                   );
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">可选择多位工程师；第一位选中的工程师作为主工程师。</p>
+              <p className="text-xs text-muted-foreground">{t.dialogs.assignMultiHint}</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>计划开始</Label>
+                <Label>{t.dialogs.plannedStart}</Label>
                 <Input type="datetime-local" value={assignForm.plannedStartAt} onChange={(e) => setAssignForm({ ...assignForm, plannedStartAt: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>计划结束</Label>
+                <Label>{t.dialogs.plannedEnd}</Label>
                 <Input type="datetime-local" value={assignForm.plannedEndAt} onChange={(e) => setAssignForm({ ...assignForm, plannedEndAt: e.target.value })} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>派单说明</Label>
+              <Label>{t.dialogs.assignNote}</Label>
               <Textarea value={assignForm.note} onChange={(e) => setAssignForm({ ...assignForm, note: e.target.value })} rows={2} />
             </div>
             <div className="space-y-2">
-              <Label>附件</Label>
+              <Label>{t.dialogs.attachments}</Label>
               <Input
                 type="file"
                 multiple
                 accept={ORDER_ATTACHMENT_ACCEPT}
                 onChange={(event) => setAssignFiles(Array.from(event.target.files || []))}
               />
-              <p className="text-xs text-muted-foreground">可上传装机设备清单、报错截图、客户资料等，工程师可在工单详情中下载查看。{ORDER_ATTACHMENT_HINT}</p>
+              <p className="text-xs text-muted-foreground">{t.dialogs.assignAttachmentNote}{t.attachment.hint}</p>
               {assignFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {assignFiles.map((file) => (
@@ -2277,10 +2549,10 @@ export function ServiceOrders() {
             </div>
           </div>
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
-            <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>取消</Button>
+            <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>{t.actions.cancel}</Button>
             <Button onClick={assignOrderToEngineer} disabled={saving}>
               {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Send className="w-4 h-4 mr-2" />}
-              {saving ? "派单中…" : "确认派单"}
+              {saving ? t.dialogs.assigning : t.dialogs.assignSubmit}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2291,20 +2563,20 @@ export function ServiceOrders() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-600" />
-              删除工单
+              {t.deleteFlow.title}
             </DialogTitle>
             <DialogDescription>
-              删除后工单主体及下列关联内容不可恢复；目标设备只会解除关联，安装来源设备会按下方预览处理。
+              {t.deleteFlow.desc}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-700">
-              请确认这些工单及关联内容都不再需要。删除操作会写入审计日志。
+              {t.deleteFlow.confirmHint}
             </div>
             {deletePreviewLoading ? (
               <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
                 <span className="btn-loader mr-2" aria-hidden="true" />
-                正在加载删除影响明细…
+                {t.deleteFlow.loading}
               </div>
             ) : deletePreviewError ? (
               <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-red-600">
@@ -2312,16 +2584,16 @@ export function ServiceOrders() {
               </div>
             ) : deletePreviewOrders.length ? (() => {
               const summary = orderDeleteImpactSummary(deletePreviewOrders);
-              const summaryItems = [
-                ["服务记录", summary.reports],
-                ["部件记录", summary.parts],
-                ["附件", summary.files],
-                ["目标设备关联", summary.targetDevices],
-                ["将删除安装设备", summary.installedDevicesToDelete],
-                ["保留安装设备", summary.installedDevicesToKeep],
-                ["签署请求", summary.signatureRequests],
-                ["编辑草稿", summary.drafts],
-              ] as const;
+              const summaryItems: Array<[string, number]> = [
+                [t.deleteFlow.sumReports, summary.reports],
+                [t.deleteFlow.sumParts, summary.parts],
+                [t.deleteFlow.sumFiles, summary.files],
+                [t.deleteFlow.sumTargetDevices, summary.targetDevices],
+                [t.deleteFlow.sumInstalledDelete, summary.installedDevicesToDelete],
+                [t.deleteFlow.sumInstalledKeep, summary.installedDevicesToKeep],
+                [t.deleteFlow.sumSignatures, summary.signatureRequests],
+                [t.deleteFlow.sumDrafts, summary.drafts],
+              ];
               return (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -2334,7 +2606,7 @@ export function ServiceOrders() {
                   </div>
                   <div className="space-y-3">
                     {deletePreviewOrders.map((order) => {
-                      const sections = orderDeleteImpactSections(order);
+                      const sections = orderDeleteImpactSections(order, t.deleteFlow);
                       return (
                         <details key={`delete-preview-${order.id}`} className="rounded-lg border bg-white" open={deletePreviewOrders.length === 1}>
                           <summary className="cursor-pointer px-3 py-2 font-medium">
@@ -2368,19 +2640,19 @@ export function ServiceOrders() {
               );
             })() : (
               <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
-                未加载到删除影响明细。
+                {t.deleteFlow.empty}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeDeleteDialog} disabled={saving}>取消</Button>
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={saving}>{t.actions.cancel}</Button>
             <Button
               variant="destructive"
               onClick={confirmDeleteOrders}
               disabled={saving || deletePreviewLoading || Boolean(deletePreviewError) || !deletePreviewOrders.length}
             >
               {saving ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
-              {saving ? "删除中…" : `确认删除 ${deletePreviewOrders.length || selectedIds.length} 张工单`}
+              {saving ? t.deleteFlow.deleting : fill(t.deleteFlow.confirmDelete, { count: deletePreviewOrders.length || selectedIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2389,36 +2661,36 @@ export function ServiceOrders() {
       <Dialog open={transitionOpen} onOpenChange={setTransitionOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>状态流转</DialogTitle>
-            <DialogDescription>后台状态变更会写入操作审计。</DialogDescription>
+            <DialogTitle>{t.dialogs.transitionTitle}</DialogTitle>
+            <DialogDescription>{t.dialogs.transitionDesc}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>目标状态</Label>
+              <Label>{t.dialogs.targetStatus}</Label>
               <Select value={transitionForm.status} onValueChange={(v) => setTransitionForm({ ...transitionForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="draft">草稿</SelectItem>
-                  <SelectItem value="assigned">已派发</SelectItem>
-                  <SelectItem value="in_progress">进行中</SelectItem>
-                  <SelectItem value="awaiting_customer_signature">待客户签署</SelectItem>
-                  <SelectItem value="submitted">已结案</SelectItem>
-                  <SelectItem value="approved">已审核</SelectItem>
-                  <SelectItem value="archived">已归档</SelectItem>
-                  <SelectItem value="cancelled">已作废</SelectItem>
+                  <SelectItem value="draft">{t.status.draft}</SelectItem>
+                  <SelectItem value="assigned">{t.status.assigned}</SelectItem>
+                  <SelectItem value="in_progress">{t.status.in_progress}</SelectItem>
+                  <SelectItem value="awaiting_customer_signature">{t.status.awaiting_customer_signature}</SelectItem>
+                  <SelectItem value="submitted">{t.status.submitted}</SelectItem>
+                  <SelectItem value="approved">{t.status.approved}</SelectItem>
+                  <SelectItem value="archived">{t.status.archived}</SelectItem>
+                  <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>流转原因 / 备注</Label>
+              <Label>{t.dialogs.transitionReason}</Label>
               <Textarea value={transitionForm.reason} onChange={(e) => setTransitionForm({ ...transitionForm, reason: e.target.value })} rows={3} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTransitionOpen(false)} disabled={saving}>取消</Button>
+            <Button variant="outline" onClick={() => setTransitionOpen(false)} disabled={saving}>{t.actions.cancel}</Button>
             <Button onClick={transitionSelectedOrder} disabled={saving}>
               {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-              {saving ? "流转中…" : "确认流转"}
+              {saving ? t.dialogs.transitioning : t.dialogs.transitionSubmit}
             </Button>
           </DialogFooter>
         </DialogContent>
