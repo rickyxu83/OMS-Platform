@@ -177,6 +177,13 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
   const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
+  const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
+  const annualBalance = annualBalanceDays(myProfile);
+  const balanceInsufficient = form.requestType === "comp_time"
+    ? Number(annualPreview?.hours || 0) > compBalance
+    : form.requestType === "leave" && form.leaveType === "annual"
+      ? Number(annualPreview?.workingDays || 0) > annualBalance
+      : false;
 
   const overtimeOrderMeta: Array<[string, string]> = selectedOvertimeOrder ? [
     ["工单", selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`],
@@ -235,6 +242,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     }
     if (annualPreview && !annualPreview.workingDays) {
       return naturalDayLeave ? "申请范围内没有有效日期" : "申请范围内没有工作日";
+    }
+    if (balanceInsufficient) {
+      return form.requestType === "comp_time" ? `调休余额不足（可用 ${hours(compBalance)} 小时）` : `特休余额不足（可用 ${days(annualBalance)} 天）`;
     }
     return "";
   }
@@ -645,6 +655,20 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       onChange={(event) => setProofFiles(Array.from(event.target.files || []))}
                     />
                     <p className="text-xs text-muted-foreground">必填，可上传图片、PDF 或 Word 文件</p>
+                  </div>
+                ) : null}
+
+                {annualPreview ? (
+                  <div className={balanceInsufficient
+                    ? "rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+                    : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>本次申请：<b>{form.requestType === "comp_time" ? `${hours(annualPreview.hours)} 小时` : `${days(annualPreview.workingDays)} 天`}</b></span>
+                      <span className="text-xs">可用：<b>{form.requestType === "comp_time" ? `${hours(compBalance)} 小时` : `${days(annualBalance)} 天`}</b></span>
+                    </div>
+                    {balanceInsufficient ? (
+                      <p className="mt-1 text-xs font-medium">{form.requestType === "comp_time" ? "调休余额不足，请减少时长或先加班积累" : "特休余额不足，请缩短请假天数"}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

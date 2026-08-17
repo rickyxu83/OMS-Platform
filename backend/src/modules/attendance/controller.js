@@ -1243,6 +1243,20 @@ async function createRequest(req, res) {
     }
   }
 
+  // 余额前置校验：申请提交即拦截，避免审批流走完才发现余额不足（终审仍会复核）
+  if (input.requestType === 'comp_time') {
+    const balance = await queryBalanceHours(employee.id, 'comp_time')
+    if (balance < Number(input.hours)) {
+      throw badRequest(`调休余额不足（当前可用 ${balance} 小时）`)
+    }
+  }
+  if (input.requestType === 'leave' && input.leaveType === 'annual') {
+    const balanceDays = await queryBalanceHours(employee.id, 'annual_leave')
+    if (balanceDays < Number(workingDays || 0)) {
+      throw badRequest(`特休余额不足（当前可用 ${balanceDays} 天）`)
+    }
+  }
+
   const result = await query(
     `INSERT INTO attendance_requests
        (workflow_version, employee_id, delegate_employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, working_days, reason, status, submitted_by)
@@ -2035,6 +2049,18 @@ async function insertLedger(connection, request, deltaHours, balanceType, action
 
 async function balanceHours(connection, employeeId, balanceType) {
   const [rows] = await connection.execute(
+    `SELECT COALESCE(SUM(delta_hours), 0) AS balance_hours
+     FROM attendance_balance_ledger
+     WHERE employee_id = :employeeId
+       AND balance_type = :balanceType`,
+    { employeeId, balanceType },
+  )
+  return Number(rows[0]?.balance_hours || 0)
+}
+
+// 非事务场景（如创建申请前置校验）使用的余额查询，口径与 balanceHours 一致
+async function queryBalanceHours(employeeId, balanceType) {
+  const rows = await query(
     `SELECT COALESCE(SUM(delta_hours), 0) AS balance_hours
      FROM attendance_balance_ledger
      WHERE employee_id = :employeeId
