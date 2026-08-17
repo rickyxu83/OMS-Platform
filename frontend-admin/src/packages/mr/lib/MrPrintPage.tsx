@@ -215,7 +215,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '发票类型', raw: order.invoiceType, value: text(order.invoiceType, emptyText) },
     { label: '未税总计', raw: order.totalExcludingTax ?? totals.salesExcludingTax, value: moneyText(order.totalExcludingTax ?? totals.salesExcludingTax, emptyText) },
     { label: '项目分类', raw: order.caseCategory, value: text(order.caseCategory, emptyText) },
-    { label: '合同编号', raw: order.contractNo, value: text(order.contractNo, emptyText) },
+    { label: '合同编号', raw: order.contractNo, value: text(order.contractNo, Number(order.hasContract) === 1 ? '合同流程中，待补编号' : emptyText) },
     { label: '罚则说明', raw: order.penaltyContent, value: text(order.penaltyContent, emptyText) },
     { label: '开票方式', raw: order.invoiceProcess, value: text(order.invoiceProcess, emptyText) },
     { label: '开票/收款时间', raw: order.billingTiming, value: text(order.billingTiming, emptyText) },

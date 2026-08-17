@@ -23,7 +23,7 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'trade',
     title: '交易信息',
     icon: CircleDollarSign,
-    fields: ['pricingMode', 'invoiceType', 'totalExcludingTax', 'caseCategory', 'contractNo', 'penaltyContent'],
+    fields: ['pricingMode', 'invoiceType', 'totalExcludingTax', 'caseCategory', 'hasContract', 'contractNo', 'penaltyContent'],
   },
   {
     id: 'billing',

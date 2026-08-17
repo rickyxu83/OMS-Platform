@@ -36,12 +36,14 @@ const PURCHASE_LABELS: Record<string, string> = {
   pending: '待采购',
   done: '采购完成',
   skipped: '无需采购',
+  waiting_contract: '待合同编号',
 }
 
 const PURCHASE_CLASSES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
   done: 'bg-emerald-100 text-emerald-800',
   skipped: 'bg-zinc-100 text-zinc-500',
+  waiting_contract: 'bg-orange-100 text-orange-800',
 }
 
 function money(value?: number | null) {

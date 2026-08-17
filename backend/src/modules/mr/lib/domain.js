@@ -241,10 +241,13 @@ function normalizeOrder(body = {}) {
     quotationFileId: optionalNumber(body.quotationFileId ?? body.quotation_file_id),
     remark: text(body.remark, 10000),
   }
-  order.hasContract = order.contractNo ? 1 : 0
+  // hasContract 由表单显式采集：有合同但合同流程未走完时可暂无编号，不能再由合同编号反推
   order.contractType = null
   order.hasPenalty = order.hasContract && order.penaltyContent ? 1 : 0
-  if (!order.hasContract) order.penaltyContent = null
+  if (!order.hasContract) {
+    order.penaltyContent = null
+    order.contractNo = null
+  }
   // 旧版单值认列/转拨字段自动升级为一笔排程（新版支持多笔）
   if (!order.grossProfitRecognitions.length && (order.grossProfitRecognitionStartMonth || order.grossProfitRecognitionAmount !== null)) {
     order.grossProfitRecognitions = [{ type: 'installments', startMonth: month(order.grossProfitRecognitionStartMonth), periods: null, totalAmount: null, frequency: 'quarterly', amount: order.grossProfitRecognitionAmount }]
@@ -299,6 +302,8 @@ function validateSubmission(order, items) {
   if (order.caseCategory && !CASE_CATEGORIES.includes(order.caseCategory)) errors.push({ field: 'caseCategory', message: '项目分类无效' })
   if (order.acceptance && !ACCEPTANCE_TYPES.includes(order.acceptance)) errors.push({ field: 'acceptance', message: '验收条件无效' })
   if (order.acceptance === '其他') requireValue('acceptanceOther', order.acceptanceOther, '请填写验收说明')
+  // 是否有合同为显式必选；有合同时合同编号允许暂空（流程未走完，签核通过后采购前补填）
+  if (order.hasContract === null || order.hasContract === undefined) errors.push({ field: 'hasContract', message: '请选择是否有合同' })
 
   validateWorkOptions('装机', order.installOptions, errors)
   validateWorkOptions('维护', order.maintenanceOptions, errors)

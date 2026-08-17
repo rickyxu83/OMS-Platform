@@ -52,6 +52,30 @@ function validBody(overrides = {}) {
   assert.equal(withoutContract.penaltyContent, null)
 }
 
+// hasContract 由表单显式传入：有合同但流程未走完时允许暂无编号
+{
+  const { order, items } = normalizeOrder(validBody({ hasContract: 1, contractNo: null }))
+  assert.equal(order.hasContract, 1)
+  assert.equal(order.contractNo, null)
+  const errors = validateSubmission(order, items)
+  assert(!errors.some((error) => error.field === 'hasContract' || error.field === 'contractNo'))
+}
+
+// 无合同时合同编号与罚则说明一律清空，不再由编号反推 hasContract
+{
+  const { order } = normalizeOrder(validBody({ hasContract: 0, contractNo: 'C-9', penaltyContent: '不应保留' }))
+  assert.equal(order.hasContract, 0)
+  assert.equal(order.contractNo, null)
+  assert.equal(order.penaltyContent, null)
+}
+
+// 未显式选择是否有合同时禁止提交
+{
+  const { order, items } = normalizeOrder(validBody({ hasContract: null }))
+  assert.equal(order.hasContract, null)
+  assert(validateSubmission(order, items).some((error) => error.field === 'hasContract'))
+}
+
 {
   const { order, items } = normalizeOrder(validBody({ fillDate: null }))
   assert(!validateSubmission(order, items).some((error) => error.field === 'fillDate'))

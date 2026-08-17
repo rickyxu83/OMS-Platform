@@ -133,6 +133,10 @@ async function ensureWorkflowTables() {
       CONSTRAINT fk_mr_purchase_tasks_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 任务类型：purchase=采购订单号填写；contract_no=合同编号补填（有合同但签核时暂无编号）
+  await addMissingColumns('mr_purchase_tasks', [
+    ['task_type', "VARCHAR(16) NOT NULL DEFAULT 'purchase' AFTER mr_id"],
+  ])
   await query(
     `CREATE TABLE IF NOT EXISTS mr_notification_outbox (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -572,7 +576,7 @@ async function resolvePurchaser(connection, { required = true } = {}) {
 async function createPurchaseTask(connection, order, purchaser, initiatorUserId, event = 'purchase_task') {
   await connection.execute(
     `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
-     WHERE mr_id = :mrId AND status = 'pending'`,
+     WHERE mr_id = :mrId AND status = 'pending' AND task_type = 'purchase'`,
     { mrId: order.id },
   )
   await connection.execute(
@@ -622,15 +626,59 @@ async function activatePurchaseTask(connection, order, initiatorUserId) {
   }
 }
 
+// 合同编号补填待办：有合同但签核时合同流程未走完（暂无编号），签核通过后先派给业务负责人的助理
+async function createContractNoTask(connection, order, assistant, initiatorUserId, event = 'contract_no_task') {
+  await connection.execute(
+    `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
+     WHERE mr_id = :mrId AND status = 'pending' AND task_type = 'contract_no'`,
+    { mrId: order.id },
+  )
+  await connection.execute(
+    `UPDATE mr_orders SET purchase_assignee_user_id = :assigneeId, purchase_assignment_error = NULL WHERE id = :mrId`,
+    { assigneeId: assistant.id, mrId: order.id },
+  )
+  await connection.execute(
+    `INSERT INTO mr_purchase_tasks (mr_id, task_type, title, assignee_user_id, initiator_user_id, detail_path)
+     VALUES (:mrId, 'contract_no', :title, :assigneeId, :initiatorId, :detailPath)`,
+    {
+      mrId: order.id,
+      title: `${order.customerName || '未选客户'} · 合同编号补填`.slice(0, 255),
+      assigneeId: assistant.id,
+      initiatorId: initiatorUserId,
+      detailPath: `/mr/${order.id}?fillContractNo=1`,
+    },
+  )
+  await connection.execute(
+    `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+     VALUES (:mrId, :recipientId, :event)`,
+    { mrId: order.id, recipientId: assistant.id, event },
+  )
+}
+
+async function activateContractNoTask(connection, order, initiatorUserId) {
+  try {
+    const assistant = await resolveStepAssignee(connection, order, 'assistant', { required: true })
+    await createContractNoTask(connection, order, assistant, initiatorUserId)
+    return assistant
+  } catch (error) {
+    await pausePurchaseTask(connection, order, error.message || '助理配置异常')
+    return null
+  }
+}
+
 async function reconcilePendingPurchaseAssignments() {
   await ensureWorkflowTables()
   const rows = await query(
-    `SELECT o.id, o.sales_owner_id, o.customer_name, o.created_by, o.purchase_assignee_user_id, o.purchase_assignment_error
+    `SELECT o.id, o.sales_owner_id, o.customer_name, o.created_by, o.purchase_status, o.purchase_assignee_user_id, o.purchase_assignment_error
      FROM mr_orders o
-     WHERE o.status = 'approved' AND o.purchase_status = 'pending'
-       AND NOT EXISTS (
-         SELECT 1 FROM mr_purchase_tasks t WHERE t.mr_id = o.id AND t.status = 'pending'
-       )`,
+     WHERE o.status = 'approved' AND (
+       (o.purchase_status = 'pending' AND NOT EXISTS (
+         SELECT 1 FROM mr_purchase_tasks t WHERE t.mr_id = o.id AND t.status = 'pending' AND t.task_type = 'purchase'
+       ))
+       OR (o.purchase_status = 'waiting_contract' AND NOT EXISTS (
+         SELECT 1 FROM mr_purchase_tasks t WHERE t.mr_id = o.id AND t.status = 'pending' AND t.task_type = 'contract_no'
+       ))
+     )`,
   )
   let reassigned = 0
   let paused = 0
@@ -643,8 +691,13 @@ async function reconcilePendingPurchaseAssignments() {
         createdBy: Number(row.created_by),
       }
       try {
-        const purchaser = await resolvePurchaser(connection, { required: true })
-        await createPurchaseTask(connection, order, purchaser, order.createdBy, row.purchase_assignment_error ? 'purchase_transfer' : 'purchase_task')
+        if (row.purchase_status === 'waiting_contract') {
+          const assistant = await resolveStepAssignee(connection, order, 'assistant', { required: true })
+          await createContractNoTask(connection, order, assistant, order.createdBy, row.purchase_assignment_error ? 'contract_no_transfer' : 'contract_no_task')
+        } else {
+          const purchaser = await resolvePurchaser(connection, { required: true })
+          await createPurchaseTask(connection, order, purchaser, order.createdBy, row.purchase_assignment_error ? 'purchase_transfer' : 'purchase_task')
+        }
         reassigned += 1
       } catch (error) {
         if (!row.purchase_assignment_error) {
@@ -680,11 +733,11 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
        LEFT JOIN mr_orders o ON t.business_type = 'mr' AND o.id = t.business_id
        LEFT JOIN mr_approvals approval ON t.business_type = 'mr' AND approval.id = t.approval_id
        UNION ALL
-       SELECT t.id, 'mr_purchase' AS business_type, t.mr_id AS business_id, NULL AS approval_id,
+       SELECT t.id, CASE WHEN t.task_type = 'contract_no' THEN 'mr_contract_no' ELSE 'mr_purchase' END AS business_type, t.mr_id AS business_id, NULL AS approval_id,
               t.title, t.assignee_user_id, t.initiator_user_id, t.status, t.detail_path,
               t.completed_at, t.created_at, t.updated_at,
               assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-              o.status AS business_status, '采购订单号填写' AS current_step_label, o.customer_name, o.ctrl_no
+              o.status AS business_status, CASE WHEN t.task_type = 'contract_no' THEN '合同编号补填' ELSE '采购订单号填写' END AS current_step_label, o.customer_name, o.ctrl_no
        FROM mr_purchase_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
@@ -739,6 +792,7 @@ module.exports = {
   resolvePurchaser,
   activateCurrentStep,
   activatePurchaseTask,
+  activateContractNoTask,
   completeTask,
   saveSubmissionBaseline,
   freezeVersion,

@@ -77,6 +77,7 @@ const {
   resolveStepAssignee,
   activateCurrentStep,
   activatePurchaseTask,
+  activateContractNoTask,
   completeTask,
   saveSubmissionBaseline,
   freezeVersion,
@@ -490,6 +491,16 @@ function canPurchase(order, user) {
   return user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)
 }
 
+// 待补合同编号期间，purchaseAssigneeUserId 记录的是被指派的助理；助理主管可代为补填
+function canFillContractNo(order, user, assistantIds = []) {
+  if (order.status !== 'approved') return false
+  if (String(order.purchaseStatus || '') !== 'waiting_contract') return false
+  if (user.role === 'admin') return true
+  const assigneeId = Number(order.purchaseAssigneeUserId || 0)
+  return ASSISTANT_LIKE_ROLES.has(user.role) && assigneeId > 0
+    && (Number(user.id) === assigneeId || assistantIds.includes(assigneeId))
+}
+
 function canApprove(order, user, assistantIds = []) {
   if (order.status !== 'in_review' || !order.currentStepKey) return false
   if (order.currentStepKey === 'assistant') {
@@ -663,6 +674,7 @@ async function loadDetail(id, user) {
       canApprove: canApprove(order, user, assistantIds),
       canWithdraw: canWithdraw(order, user),
       canPurchase: canPurchase(order, user),
+      canFillContractNo: canFillContractNo(order, user, assistantIds),
     },
   }
 }
@@ -832,7 +844,7 @@ async function list(req, res) {
   )
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user) } }
+    return { ...order, permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 
@@ -1091,6 +1103,8 @@ async function decide(req, res, action) {
         { id: req.params.id },
       )
       const needsPurchase = Number(vendorRows[0]?.count || 0) > 0
+      // 有合同但签核时合同流程未走完（暂无编号）：签核照常完成，采购挂起，待助理补填合同编号后流转
+      const waitingContract = needsPurchase && Number(order.hasContract) === 1 && !order.contractNo
       await connection.execute(
         `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
                 archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
@@ -1101,8 +1115,10 @@ async function decide(req, res, action) {
         {
           id: req.params.id,
           userId: req.user.id,
-          purchaseStatus: needsPurchase ? 'pending' : 'skipped',
-          purchaseNote: needsPurchase ? null : '全部品项均无供应商，系统自动标记无需采购',
+          purchaseStatus: waitingContract ? 'waiting_contract' : needsPurchase ? 'pending' : 'skipped',
+          purchaseNote: waitingContract
+            ? '有合同但合同编号未填写，待助理补填合同编号后流转采购'
+            : needsPurchase ? null : '全部品项均无供应商，系统自动标记无需采购',
         },
       )
       await connection.execute(
@@ -1110,7 +1126,14 @@ async function decide(req, res, action) {
          VALUES (:mrId, :recipientId, 'approved')`,
         { mrId: req.params.id, recipientId: order.salesOwnerId },
       )
-      if (needsPurchase) {
+      if (waitingContract) {
+        await activateContractNoTask(connection, {
+          id: Number(req.params.id),
+          customerName: order.customerName,
+          salesOwnerId: Number(order.salesOwnerId) || null,
+          createdBy: Number(order.createdBy) || req.user.id,
+        }, req.user.id)
+      } else if (needsPurchase) {
         await activatePurchaseTask(connection, {
           id: Number(req.params.id),
           customerName: order.customerName,
@@ -1263,7 +1286,7 @@ async function voidOrder(req, res) {
     )
     await connection.execute(
       `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
-       WHERE mr_id = :mrId AND event IN ('purchase_task', 'purchase_transfer') AND status IN ('pending', 'failed')`,
+       WHERE mr_id = :mrId AND event IN ('purchase_task', 'purchase_transfer', 'contract_no_task', 'contract_no_transfer') AND status IN ('pending', 'failed')`,
       { mrId: req.params.id },
     )
     await connection.execute(
@@ -1272,6 +1295,67 @@ async function voidOrder(req, res) {
       { mrId: req.params.id, recipientId: order.salesOwnerId },
     )
   })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
+async function submitContractNo(req, res) {
+  await ensureTables()
+  const contractNo = String(req.body?.contractNo ?? req.body?.contract_no ?? '').trim().slice(0, 255)
+  if (!contractNo) throw badRequest('请填写合同编号')
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (order.status !== 'approved') throw badRequest('仅签核通过的 MR 可以补填合同编号')
+    if (String(order.purchaseStatus || '') !== 'waiting_contract') throw badRequest('当前 MR 不在待补填合同编号环节')
+    if (!Number(order.hasContract)) throw badRequest('该 MR 为无合同单，无需补填合同编号')
+    // 合同编号由助理补填：补填期待 purchase_assignee_user_id 记录的是被指派的助理
+    const assigneeId = Number(order.purchaseAssigneeUserId || 0)
+    const assistantIds = await assistantIdsFor(req.user)
+    const allowed = req.user.role === 'admin'
+      || (assigneeId && Number(req.user.id) === assigneeId)
+      || (ASSISTANT_LIKE_ROLES.has(req.user.role) && assigneeId && assistantIds.includes(assigneeId))
+    if (!allowed) throw forbidden('合同编号由助理补填，当前补填待办不属于你')
+    await connection.execute(
+      `UPDATE mr_orders SET contract_no = :contractNo,
+              purchase_status = 'pending', purchase_assignment_error = NULL, purchase_note = NULL,
+              archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(),
+              archive_error = '合同编号补填，等待重新生成',
+              updated_by = :userId WHERE id = :mrId`,
+      { contractNo, userId: req.user.id, mrId: order.id },
+    )
+    await connection.execute(
+      `UPDATE mr_purchase_tasks SET status = 'done', completed_at = NOW(), completed_by = :userId
+       WHERE mr_id = :mrId AND status = 'pending' AND task_type = 'contract_no'`,
+      { mrId: order.id, userId: req.user.id },
+    )
+    if (order.salesOwnerId) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'contract_no_filled')`,
+        { mrId: order.id, recipientId: order.salesOwnerId },
+      )
+    }
+    await connection.execute(
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, 'contract_no_fill', :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: order.id,
+        detailJson: JSON.stringify({ contractNo }),
+      },
+    )
+    // 编号补齐后立即流转采购
+    await activatePurchaseTask(connection, {
+      id: Number(order.id),
+      customerName: order.customerName,
+      salesOwnerId: Number(order.salesOwnerId) || null,
+      createdBy: Number(order.createdBy) || req.user.id,
+    }, req.user.id)
+  })
+  try {
+    await archiveMrDocument(req.params.id, 'approved')
+  } catch (error) {
+    console.error('[mr] 合同编号补填后归档失败，等待后台重试', error?.message || error)
+  }
   res.json(await loadDetail(req.params.id, req.user))
 }
 
@@ -2398,6 +2482,7 @@ module.exports = {
   reassignSalesOwner,
   withdraw,
   voidOrder,
+  submitContractNo,
   submitPurchase,
   remove,
   importQuotation,

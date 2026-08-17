@@ -31,6 +31,7 @@ import {
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
 import { PdfPreview } from '@/components/PdfPreview'
 import { ApprovalPanel } from './ApprovalPanel'
+import { MrContractNoCard } from './MrContractNoCard'
 import { MrPurchaseCard } from './MrPurchaseCard'
 import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, blankItem, defaultCostTaxRate, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
@@ -116,7 +117,7 @@ const CHANGE_LABELS: Record<string, string> = {
   caseCategory: '项目分类', customerPo: '客户 P/O', ctrlNo: 'Ctrl.NO', invoiceType: '发票类型', pricingMode: '计价模式', totalExcludingTax: '未税总计',
   invoiceProcess: '开票方式', billingContent: '开票内容', invoiceRecipient: '发票收件人', invoiceRecipientTel: '发票收件电话', invoiceRecipientMail: '发票收件邮箱', billingTiming: '开票/收款时间', purchaser: '采购联系人', purchaserTel: '采购联系电话', purchaserMail: '采购联系邮箱',
   recipient: '收货人', recipientTel: '收货联系电话', recipientMail: '收货邮箱', paymentTerms: '付款条件', paymentOther: '付款条件说明', splitDelivery: '是否允许分批交付',
-  acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', contractNo: '合同编号', penaltyContent: '罚则说明',
+  acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', hasContract: '是否有合同', contractNo: '合同编号', penaltyContent: '罚则说明',
   fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
   grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）', grossProfitRecognitions: '毛利认列', taiwanBusinessTransfers: '台湾业务转拨',
   salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购成本（不含税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
@@ -1202,10 +1203,13 @@ export function MrFormPage() {
 
               <SubPanel title="合同与罚则">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="合同编号（选填）" editable={editable} readonlyText={textValue(calculated.contractNo)} className="sm:col-span-2">
-                    <Input value={calculated.contractNo || ''} placeholder="无合同时可留空" onChange={(e) => patch({ contractNo: e.target.value })} />
+                  <Field required label="是否有合同" editable={editable} readonlyText={choiceValue(calculated.hasContract, '有合同', '无合同')} className="sm:col-span-2">
+                    <BinaryChoice value={calculated.hasContract} yes="有合同" no="无合同" onChange={(value) => patch(Number(value) === 1 ? { hasContract: 1 } : { hasContract: 0, contractNo: '', penaltyContent: '' })} />
                   </Field>
-                  <Field label="罚则说明（选填）" editable={editable} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
+                  <Field label="合同编号（有合同时选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={calculated.contractNo ? textValue(calculated.contractNo) : (Number(calculated.hasContract) === 1 ? '合同流程中，待补编号' : '-')} className="sm:col-span-2">
+                    <Input value={calculated.contractNo || ''} placeholder="合同流程未走完可暂空；签核通过后、流转采购前由助理补填" onChange={(e) => patch({ contractNo: e.target.value })} />
+                  </Field>
+                  <Field label="罚则说明（选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
                     <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="无罚则时可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
                   </Field>
                 </div>
@@ -1456,6 +1460,10 @@ export function MrFormPage() {
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
             ) : null}
           </SectionCard>
+
+          {status === 'approved' && id ? (
+            <MrContractNoCard order={calculated} onChanged={() => void load()} />
+          ) : null}
 
           {status === 'approved' && id ? (
             <MrPurchaseCard order={calculated} onChanged={() => void load()} />

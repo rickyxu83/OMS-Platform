@@ -1,5 +1,5 @@
 export type MrStatus = 'draft' | 'in_review' | 'approved' | 'rejected' | 'voided'
-export type MrPurchaseStatus = 'pending' | 'done' | 'skipped'
+export type MrPurchaseStatus = 'pending' | 'done' | 'skipped' | 'waiting_contract'
 
 export interface MrItem {
   id?: string | number
@@ -162,6 +162,7 @@ export interface MrOrder {
     canApprove?: boolean
     canWithdraw?: boolean
     canPurchase?: boolean
+    canFillContractNo?: boolean
   }
 }
 

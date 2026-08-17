@@ -35,6 +35,7 @@ function status(task: ApprovalTask) {
 
 function businessLabel(task: ApprovalTask) {
   if (task.businessType === 'mr_purchase') return 'MR·采购'
+  if (task.businessType === 'mr_contract_no') return 'MR·合同'
   if (task.businessType === 'attendance') return '考勤'
   return task.businessType.toUpperCase()
 }

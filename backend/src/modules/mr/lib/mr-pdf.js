@@ -293,7 +293,8 @@ function detailEntries(order, items = []) {
     ['验收说明', orderField(order, 'acceptanceOther', 'acceptance_other')],
     ...(items.some((item) => hasValue(itemField(item, 'installBy', 'install_by'))) ? [] : [['装机承担方', options(order.installOptions || order.install_options)]]),
     ['维护承担方', options(order.maintenanceOptions || order.maintenance_options)],
-    ['合同编号', orderField(order, 'contractNo', 'contract_no')],
+    // 有合同但合同流程未走完时编号暂空，归档 PDF 上显式标注待补，避免空白歧义
+    ['合同编号', orderField(order, 'contractNo', 'contract_no') || (Number(order.hasContract ?? order.has_contract) === 1 ? '合同流程中，待补编号' : '')],
     ['罚则说明', orderField(order, 'penaltyContent', 'penalty_content')],
     ['填表日期', orderField(order, 'fillDate', 'fill_date')],
     ['最晚交付日期', orderField(order, 'latestDeliveryDate', 'latest_delivery_date')],
