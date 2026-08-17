@@ -253,11 +253,10 @@ function ScheduleEntriesEditor({
   const currentYear = new Date().getFullYear()
   const defaultStartMonth = String(Math.ceil((new Date().getMonth() + 1) / 3) * 3).padStart(2, '0')
   const blankEntry = (): ScheduleEntry => ({ businessName: withBusinessName ? '' : null, category: withCategory ? 'service' : null, type: 'once', startMonth: `${currentYear}-${defaultStartMonth}`, periods: null, totalAmount: null })
-  const list: ScheduleEntry[] = entries.length ? entries : [blankEntry()]
-  // 注意：空数据时展示的是默认占位行，增删改必须基于 list，否则对占位行的编辑会丢失
-  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(list.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
-  const remove = (index: number) => onChange(list.filter((_, entryIndex) => entryIndex !== index))
-  const add = () => onChange([...list, blankEntry()])
+  // 无数据时不渲染任何填写框，只保留「增加认列/转拨」按钮，点一下才新增一笔
+  const update = (index: number, value: Partial<ScheduleEntry>) => onChange(entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...value } : entry))
+  const remove = (index: number) => onChange(entries.filter((_, entryIndex) => entryIndex !== index))
+  const add = () => onChange([...entries, blankEntry()])
 
   if (!editable) {
     const texts = entries.map((entry) => scheduleEntryText(entry, actionLabel, withBusinessName, withCategory)).filter(Boolean)
@@ -271,7 +270,7 @@ function ScheduleEntriesEditor({
         <span className="text-sm text-muted-foreground">{entries.length ? `${entries.length} 笔${actionLabel}` : ''}</span>
         <Button type="button" variant="outline" size="sm" onClick={add}><Plus className="mr-1 size-4" />增加{actionLabel}</Button>
       </div>
-      {list.map((entry, index) => {
+      {entries.map((entry, index) => {
         const type = entry.type || 'once'
         const startYear = String(entry.startMonth || '').slice(0, 4)
         const startMonth = String(entry.startMonth || '').slice(5, 7)
@@ -330,7 +329,7 @@ function ScheduleEntriesEditor({
                 {type === 'installments' && perPeriod !== null ? <p className="mt-1 text-xs text-muted-foreground">每期 ¥ {money(perPeriod)}（总金额 ¥ {money(total)} ÷ {periods} 期）</p> : null}
                 {entryText ? <p className="mt-1 rounded-md bg-muted/50 px-2 py-1.5 text-xs text-foreground">{entryText}</p> : null}
               </div>
-              {entries.length > 1 ? (
+              {entries.length >= 1 ? (
                 <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive" title="删除此笔" onClick={() => remove(index)}><Trash2 className="size-4" /></Button>
               ) : null}
             </div>
