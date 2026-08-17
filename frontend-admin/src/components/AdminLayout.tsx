@@ -760,12 +760,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
 
-        {/* Page Content */}
+        {/* Page Content：key 随 pathname 变化触发进入动画，PUSH 右滑入、POP（返回）左滑入 */}
         <main
           ref={contentRef}
           className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
         >
-          {children}
+          <div key={location.pathname} className={navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
+            {children}
+          </div>
         </main>
 
         {!hideMobileChrome && mobileNavItems.length > 0 && (
