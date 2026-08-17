@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,12 @@ import { api } from "@/services/api";
 export type RequestType = "leave" | "overtime" | "comp_time";
 export type AnnualLeavePeriod = "morning" | "afternoon" | "day";
 type AttendanceTab = "approve" | "records" | "employees" | "settings" | "duty";
+
+// 待办中心等外部入口通过 ?tab=approve 深链定位考勤页签
+const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "records", "employees", "settings", "duty"];
+function parseTabParam(value: string | null): AttendanceTab {
+  return ATTENDANCE_TABS.includes(value as AttendanceTab) ? (value as AttendanceTab) : "approve";
+}
 
 export interface ServiceOrderSummary extends ServiceOrderDetailItem {
   serviceAt?: string | null;
@@ -531,8 +538,12 @@ export function Attendance() {
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const canViewDuty = hasPermission("attendance.duty.manage", "attendance.duty.admin.approve");
-  const [activeTab, setActiveTab] = useState<AttendanceTab>("approve");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<AttendanceTab>(() => parseTabParam(searchParams.get("tab")));
   const [recordView, setRecordView] = useState<"detail" | "summary">("detail");
+  // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
+  const [settingsView, setSettingsView] = useState<"rules" | "holidays">("rules");
+  const [expandedRuleRoles, setExpandedRuleRoles] = useState<Record<string, boolean>>({});
   const [applyOpen, setApplyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1313,8 +1324,21 @@ export function Attendance() {
             <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-4 w-4" />} />
             <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-4 w-4" />} />
           </div>
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
           {canManage ? (
+            <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+              <button
+                type="button"
+                onClick={() => setSettingsView("rules")}
+                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "rules" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >审批流程</button>
+              <button
+                type="button"
+                onClick={() => setSettingsView("holidays")}
+                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "holidays" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >工作日历</button>
+            </div>
+          ) : null}
+          {canManage && settingsView === "rules" ? (
             <Card>
               <CardHeader>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -1330,15 +1354,23 @@ export function Attendance() {
               <CardContent className="space-y-3">
                       {approvalRoleRules.map((rule) => {
                         const steps = approvalRoleDrafts[rule.applicantRole] || rule.steps.map((step) => step.approverRole);
+                        const ruleExpanded = Boolean(expandedRuleRoles[rule.applicantRole]);
                         return (
-                          <div key={rule.applicantRole} className="space-y-3 rounded-lg border p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
+                          <div key={rule.applicantRole} className="rounded-lg border">
+                            <button
+                              type="button"
+                              className="flex w-full flex-wrap items-center justify-between gap-2 p-4 text-left"
+                              onClick={() => setExpandedRuleRoles((current) => ({ ...current, [rule.applicantRole]: !ruleExpanded }))}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition ${ruleExpanded ? "" : "-rotate-90"}`} />
                                 <Badge variant="secondary">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
-                                <span className="text-xs text-muted-foreground">提交后依次审批</span>
+                                <span className="text-xs text-muted-foreground">{steps.map((role) => roleLabel(role)).join(" → ")}</span>
                               </div>
-                              <span className="text-xs text-muted-foreground">{steps.length} 级</span>
-                            </div>
+                              <span className="text-xs text-muted-foreground">{steps.length} 级 · 提交后依次审批</span>
+                            </button>
+                            {ruleExpanded ? (
+                            <div className="space-y-3 border-t p-4 pt-3">
                             <div className="space-y-2">
                               {steps.map((approverRole, index) => (
                                 <div key={`${rule.applicantRole}-${index}`} className="flex flex-col gap-2 rounded-md bg-muted/30 p-2.5 sm:flex-row sm:items-center">
@@ -1401,6 +1433,8 @@ export function Attendance() {
                             >
                               <Plus className="mr-1 h-4 w-4" /> 添加步骤
                             </Button>
+                            </div>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -1411,6 +1445,7 @@ export function Attendance() {
             </Card>
           ) : null}
 
+          {!canManage || settingsView === "holidays" ? (
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1501,7 +1536,7 @@ export function Attendance() {
               </div>
             </CardContent>
           </Card>
-          </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1853,6 +1888,47 @@ function AttendanceMetric({ label, value, note, icon }: { label: string; value: 
   );
 }
 
+// 审批链默认折叠为一行摘要（级数 + 当前/最终状态），点击展开完整签核过程。
+// 申请明细行信息密度高，全量审批历史属低频查档信息，不应默认占视觉面积。
+function ApprovalChain({ steps }: { steps: ApprovalStep[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!steps.length) return null;
+  const current = steps.find((step) => step.status === "pending");
+  const rejected = steps.find((step) => step.status === "rejected");
+  const summary = current
+    ? `${steps.length} 级审批 · 当前：${approvalStepLabel(current)}`
+    : rejected
+      ? `${steps.length} 级审批 · ${approvalStepLabel(rejected)}已驳回`
+      : `${steps.length} 级审批 · 已全部通过`;
+  return (
+    <div className="mt-1 text-xs leading-5 text-muted-foreground">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 font-medium text-muted-foreground transition hover:text-foreground"
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <ChevronDown className={`h-3.5 w-3.5 transition ${expanded ? "" : "-rotate-90"}`} />
+        {summary}
+      </button>
+      {expanded ? (
+        <div className="mt-0.5 border-l pl-3">
+          {steps.map((step) => (
+            <div key={step.id}>
+              {approvalStepLabel(step)}：{approvalStepStatus(step)}
+              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
+              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
+              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
+              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RequestList({
   title,
   description,
@@ -1938,21 +2014,7 @@ function RequestList({
                           ))}
                         </div>
                       ) : item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
-                      {item.approvals?.length ? (
-                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {item.approvals.map((step) => (
-                            <div key={step.id}>
-                              {approvalStepLabel(step)}：{approvalStepStatus(step)}
-                              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
-                              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
-                              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
-                              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
-                              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
-                              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
+                      {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
                     <TableCell>
                       <div>{formatDateTime(item.startAt)}</div>
