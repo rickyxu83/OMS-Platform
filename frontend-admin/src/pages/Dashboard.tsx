@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { Sparkline } from "@/components/Sparkline";
 import { api, fetchSummaryStream } from "@/services/api";
 import { formatCount } from "@/lib/format";
 
@@ -318,6 +319,8 @@ const I18N = {
       monthCustomers: "本月客户数量",
       monthEngineerVisits: "本月工程师拜访数",
       realtime: "实时统计",
+      trend14: "近 14 天工单量",
+      vsAvg: "较 14 日均值",
     },
     map: {
       title: "客户地理分布",
@@ -464,6 +467,8 @@ const I18N = {
       monthCustomers: "本月客戶數量",
       monthEngineerVisits: "本月工程師拜訪數",
       realtime: "即時統計",
+      trend14: "近 14 天工單量",
+      vsAvg: "較 14 日均值",
     },
     map: {
       title: "客戶地理分佈",
@@ -772,6 +777,7 @@ export function Dashboard() {
   const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales" && !useOwnScope;
   const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
+  const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -818,6 +824,7 @@ export function Dashboard() {
         ]);
         if (cancelled) return;
         setSummary(stats?.summary || {});
+        setTrend(Array.isArray(stats?.trend) ? stats.trend : []);
         const items = (stats?.recent || orderRes?.items || []) as Order[];
         setOrders(items);
         const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
@@ -859,11 +866,20 @@ export function Dashboard() {
     }).catch(() => undefined);
   }, [canSelectReportEngineer, canSelectReportSalesperson, canUseWorkSummary]);
 
+  const orderTrend = trend.map((point) => Number(point.total) || 0);
+  const todayTrendCount = trend.length ? Number(trend[trend.length - 1]?.total) || 0 : null;
+  const previousTrendDays = trend.slice(0, -1).map((point) => Number(point.total) || 0);
+  const avgPreviousTrend = previousTrendDays.length
+    ? previousTrendDays.reduce((sum, value) => sum + value, 0) / previousTrendDays.length
+    : 0;
+  const todayDelta = todayTrendCount !== null && avgPreviousTrend > 0
+    ? (todayTrendCount - avgPreviousTrend) / avgPreviousTrend
+    : null;
   const stats = [
-    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
-    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
+    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
+    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
+    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
+    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
   ];
   const displayWorkSummary = normalizeWorkSummaryForDisplay(workSummary?.summary);
 
@@ -1038,7 +1054,28 @@ export function Dashboard() {
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                {loading ? (
+                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                ) : stat.spark ? (
+                  <div className="mt-2">
+                    <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
+                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
+                  </div>
+                ) : stat.delta !== null && stat.delta !== undefined ? (
+                  <p className="mt-2 flex items-center gap-1 text-xs">
+                    {stat.delta >= 0 ? (
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                    ) : (
+                      <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                    )}
+                    <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
+                      {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
+                    </span>
+                    <span className="text-muted-foreground">{t.stats.vsAvg}</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                )}
               </CardContent>
             </Card>
           );
