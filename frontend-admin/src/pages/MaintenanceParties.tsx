@@ -294,7 +294,7 @@ export function MaintenanceParties() {
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [typeFilter, setTypeFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Party | null>(null);
@@ -382,6 +382,14 @@ export function MaintenanceParties() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       load(searchQuery, typeFilter);
+      // 关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+      setSearchParams((prev) => {
+        const keyword = searchQuery.trim();
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      });
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -643,6 +651,7 @@ export function MaintenanceParties() {
               <Input
                 className="pl-9"
                 placeholder={t.filters.searchPlaceholder}
+                aria-label={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {

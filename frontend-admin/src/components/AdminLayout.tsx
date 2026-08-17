@@ -256,7 +256,15 @@ const MOBILE_NAV_LABELS: Record<string, string> = {
   dashboard: "首页",
   "service-orders": "工单",
   "service-report": "填写",
+  attendance: "考勤",
+  "approval-tasks": "待办",
 };
+
+/** 移动端底栏入口按角色排序（无权限项会被 allNavItems 访问过滤自动去掉） */
+const MOBILE_NAV_PRIORITY_BY_ROLE: Record<string, string[]> = {
+  engineer: ["dashboard", "service-report", "service-orders", "attendance"],
+};
+const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "service-report", "attendance", "approval-tasks"];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -447,7 +455,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
-  const mobileNavPriority = ["dashboard", "service-orders", "service-report"];
+  const mobileNavPriority = MOBILE_NAV_PRIORITY_BY_ROLE[user?.role || ""] || MOBILE_NAV_PRIORITY_DEFAULT;
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
     .filter(Boolean) as NavItem[];

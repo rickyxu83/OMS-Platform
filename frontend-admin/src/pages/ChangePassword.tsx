@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LockKeyhole, Save } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,46 @@ const passwordRules = [
 
 function passwordComplex(value: string) {
   return passwordRules.every((rule) => rule.test(value));
+}
+
+/** 带可见性切换的密码输入框（密码管理器友好：autocomplete + 关联 Label） */
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  autoComplete,
+  describedBy,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  describedBy?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete={autoComplete}
+        aria-describedby={describedBy}
+        className="pr-10"
+        required
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={visible ? "隐藏密码" : "显示密码"}
+        onClick={() => setVisible((v) => !v)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {visible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+      </button>
+    </div>
+  );
 }
 
 export function ChangePassword() {
@@ -80,18 +120,12 @@ export function ChangePassword() {
 
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-2">
-            <Label>当前密码</Label>
-            <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+            <Label htmlFor="current-password">当前密码</Label>
+            <PasswordInput id="current-password" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
           </div>
           <div className="space-y-2">
-            <Label>新密码</Label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              aria-describedby="password-policy"
-              required
-            />
+            <Label htmlFor="new-password">新密码</Label>
+            <PasswordInput id="new-password" value={newPassword} onChange={setNewPassword} autoComplete="new-password" describedBy="password-policy" />
             <div id="password-policy" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <p className="mb-2 font-medium text-slate-700">密码要求</p>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -104,12 +138,13 @@ export function ChangePassword() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>确认新密码</Label>
-            <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
+            <Label htmlFor="confirm-password">确认新密码</Label>
+            <PasswordInput id="confirm-password" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
           </div>
           <div className="space-y-2">
-            <Label>登录别名</Label>
+            <Label htmlFor="login-alias">登录别名</Label>
             <Input
+              id="login-alias"
               value={loginAlias}
               onChange={(event) => setLoginAlias(event.target.value)}
               placeholder="可选，2-32 位字母/数字/._-"
