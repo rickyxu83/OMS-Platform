@@ -1888,35 +1888,170 @@ async function listRequests(req, res) {
   })) })
 }
 
-// 我的待审批数量：供导航栏徽标使用。口径与考勤页 approvalTodos 一致——
-// supervisor scope 的待办（已排除本人提交）+ 行政终审 pending_admin，两者按申请 ID 去重。
-async function pendingApprovalCount(req, res) {
-  await ensureSchema()
-  const employee = await currentEmployee(req.user.id)
-  const ids = new Set()
+// 我的待审批申请行：供导航栏徽标（数量）与待办中心（明细）共用。
+// 口径与考勤页 approvalTodos 一致——supervisor scope 的待办（已排除本人提交）+ 行政终审 pending_admin，两者按申请 ID 去重。
+async function pendingApprovalRequestRows(user) {
+  const employee = await currentEmployee(user.id)
+  const requests = new Map()
+
+  const pendingStepSelect = [
+    '(SELECT a.step_type FROM attendance_request_approvals a',
+    "  WHERE a.request_id = r.id AND a.status = 'pending' ORDER BY a.step_order ASC LIMIT 1) AS pending_step_type,",
+    '(SELECT a.assignee_role FROM attendance_request_approvals a',
+    "  WHERE a.request_id = r.id AND a.status = 'pending' ORDER BY a.step_order ASC LIMIT 1) AS pending_step_role",
+  ].join('\n')
 
   // supervisor 待办：与列表页 scope=supervisor + 前端 supervisorPending 状态过滤一致
   const supervisorPendingStatuses = ['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp']
-  const supervisorScoped = listScopeSql('supervisor', req.user, employee)
+  const supervisorScoped = listScopeSql('supervisor', user, employee)
   const supervisorRows = await query(
-    `SELECT r.id
+    `SELECT r.*, p.employee_name,\n${pendingStepSelect}
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      WHERE ${supervisorScoped.sql}
-       AND r.status IN (${supervisorPendingStatuses.map((status) => `'${status}'`).join(', ')})`,
+       AND r.status IN (${supervisorPendingStatuses.map((status) => `'${status}'`).join(', ')})
+     ORDER BY r.updated_at DESC, r.id DESC
+     LIMIT 500`,
     supervisorScoped.params,
   )
-  for (const row of supervisorRows) ids.add(Number(row.id))
+  for (const row of supervisorRows) requests.set(Number(row.id), row)
 
   // 行政终审：仅 attendance.admin.approve 可见 pending_admin
-  if (await hasPermission(req.user.role, 'attendance.admin.approve')) {
+  if (await hasPermission(user.role, 'attendance.admin.approve')) {
     const adminRows = await query(
-      "SELECT id FROM attendance_requests WHERE status = 'pending_admin'",
+      `SELECT r.*, p.employee_name, NULL AS pending_step_type, NULL AS pending_step_role
+       FROM attendance_requests r
+       JOIN attendance_employee_profiles p ON p.id = r.employee_id
+       WHERE r.status = 'pending_admin'
+       ORDER BY r.updated_at DESC, r.id DESC
+       LIMIT 500`,
     )
-    for (const row of adminRows) ids.add(Number(row.id))
+    for (const row of adminRows) {
+      if (!requests.has(Number(row.id))) requests.set(Number(row.id), row)
+    }
   }
 
-  res.json({ count: ids.size })
+  return [...requests.values()]
+}
+
+async function pendingApprovalCountValue(user) {
+  await ensureSchema()
+  const rows = await pendingApprovalRequestRows(user)
+  return rows.length
+}
+
+async function pendingApprovalCount(req, res) {
+  res.json({ count: await pendingApprovalCountValue(req.user) })
+}
+
+// ---- 待办中心（/api/v1/approval-tasks）考勤侧数据源 ----
+// 考勤审批不走 MR 的 approval_tasks 表，这里把 attendance_requests/attendance_request_approvals
+// 映射成与 MR ApprovalTask 同构的结构，由 approval-tasks 控制器合并返回。
+const ATTENDANCE_TASK_LEAVE_LABELS = Object.freeze({
+  annual: '特休', sick: '病假', personal: '事假', marriage: '婚假', bereavement: '丧假',
+})
+const ATTENDANCE_TASK_OVERTIME_KIND_LABELS = Object.freeze({ travel: '来回路上实际', work: '实际工作时间' })
+
+function approvalTaskTitle(row) {
+  const name = row.employee_name || '员工'
+  if (row.request_type === 'leave') {
+    const days = row.working_days === null || row.working_days === undefined
+      ? annualLeaveDaysFromHours(row.hours)
+      : Number(row.working_days)
+    return `${name} · ${ATTENDANCE_TASK_LEAVE_LABELS[row.leave_type] || '请假'} ${days} 天`
+  }
+  if (row.request_type === 'overtime') {
+    return `${name} · ${ATTENDANCE_TASK_OVERTIME_KIND_LABELS[row.overtime_kind] || '加班'} ${Number(row.hours || 0)} 小时`
+  }
+  const days = row.working_days === null || row.working_days === undefined
+    ? annualLeaveDaysFromHours(row.hours)
+    : Number(row.working_days)
+  return `${name} · 调休 ${days} 天`
+}
+
+function approvalTaskStepLabel(row) {
+  if (row.status === 'pending_admin') return '行政终审'
+  const stepType = row.pending_step_type
+  if (!stepType) return row.status === 'pending_supervisor' ? '主管审批' : '审批'
+  if (stepType === 'delegate') return '代理确认'
+  if (stepType === 'supervisor') return '主管审批'
+  if (stepType === 'hr') return '人事审批'
+  if (stepType === 'vp') return '副总审批'
+  if (stepType === 'role') return `${ROLE_LABELS[row.pending_step_role] || row.pending_step_role || '角色'}审批`
+  return '审批'
+}
+
+function approvalTaskStatus(row, view) {
+  if (view === 'pending') return 'pending'
+  const status = text(row.status)
+  if (status === 'voided') return 'cancelled'
+  if (status.startsWith('pending_')) return 'pending'
+  return status || 'pending'
+}
+
+function approvalTaskPayload(row, view) {
+  const actedAt = row.acted_at || row.rejected_at || row.admin_approved_at || row.supervisor_approved_at || row.voided_at || null
+  return {
+    // 与 MR approval_tasks 的数值主键区分，避免前端列表 key 冲突
+    id: `attendance-${row.id}`,
+    businessType: 'attendance',
+    businessId: Number(row.id),
+    title: approvalTaskTitle(row),
+    assigneeName: null,
+    initiatorName: row.employee_name || null,
+    status: approvalTaskStatus(row, view),
+    businessStatus: row.status,
+    currentStepLabel: view === 'pending' ? approvalTaskStepLabel(row) : null,
+    customerName: null,
+    ctrlNo: null,
+    timeLabel: `${toIsoMinute(row.start_at)} ~ ${toIsoMinute(row.end_at)}`,
+    detailPath: '/attendance?tab=approve',
+    createdAt: row.submitted_at || row.created_at,
+    completedAt: view === 'pending' ? null : actedAt || row.updated_at,
+  }
+}
+
+async function listApprovalTaskItems(user, view = 'pending') {
+  await ensureSchema()
+  if (view === 'initiated') {
+    const rows = await query(
+      `SELECT r.*, p.employee_name
+       FROM attendance_requests r
+       JOIN attendance_employee_profiles p ON p.id = r.employee_id
+       WHERE r.submitted_by = :userId
+       ORDER BY r.updated_at DESC, r.id DESC
+       LIMIT 200`,
+      { userId: user.id },
+    )
+    return rows.map((row) => approvalTaskPayload(row, view))
+  }
+  if (view === 'completed') {
+    // 我已处理：我签核/驳回过的审批步骤 + 旧流程的主管/行政/作废动作
+    const rows = await query(
+      `SELECT r.*, p.employee_name,
+              (SELECT MAX(COALESCE(a.approved_at, a.rejected_at))
+               FROM attendance_request_approvals a
+               WHERE a.request_id = r.id
+                 AND (a.approved_by = :userId OR a.rejected_by = :userId)) AS acted_at
+       FROM attendance_requests r
+       JOIN attendance_employee_profiles p ON p.id = r.employee_id
+       WHERE EXISTS (
+               SELECT 1 FROM attendance_request_approvals a
+               WHERE a.request_id = r.id
+                 AND (a.approved_by = :userId OR a.rejected_by = :userId)
+             )
+          OR r.supervisor_approved_by = :userId
+          OR r.admin_approved_by = :userId
+          OR r.rejected_by = :userId
+          OR r.voided_by = :userId
+       ORDER BY r.updated_at DESC, r.id DESC
+       LIMIT 200`,
+      { userId: user.id },
+    )
+    return rows.map((row) => approvalTaskPayload(row, view))
+  }
+  const rows = await pendingApprovalRequestRows(user)
+  return rows.map((row) => approvalTaskPayload(row, view))
 }
 
 async function requestForUpdate(connection, id) {
@@ -2484,6 +2619,8 @@ module.exports = {
   createServiceOrderOvertimeRequest,
   listRequests,
   pendingApprovalCount,
+  pendingApprovalCountValue,
+  listApprovalTaskItems,
   approveDelegate,
   approveSupervisor,
   approveHr,

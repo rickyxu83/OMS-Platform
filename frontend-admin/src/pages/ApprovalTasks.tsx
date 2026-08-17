@@ -29,11 +29,13 @@ function status(task: ApprovalTask) {
   if (task.status === 'done') return ['采购完成', 'success'] as const
   if (task.status === 'skipped') return ['无需采购', 'outline'] as const
   if (task.status === 'cancelled') return ['已取消', 'outline'] as const
+  if (task.status === 'draft') return ['草稿', 'outline'] as const
   return [task.status || '-', 'outline'] as const
 }
 
 function businessLabel(task: ApprovalTask) {
   if (task.businessType === 'mr_purchase') return 'MR·采购'
+  if (task.businessType === 'attendance') return '考勤'
   return task.businessType.toUpperCase()
 }
 
@@ -105,7 +107,7 @@ export function ApprovalTasks() {
               return (
                 <TableRow key={task.id} className={canOpen ? 'cursor-pointer' : 'opacity-70'} onClick={() => { if (canOpen) navigate(task.detailPath) }}>
                   <TableCell><Badge variant="outline">{businessLabel(task)}</Badge></TableCell>
-                  <TableCell><div className="font-medium">{task.title}</div><div className="text-xs text-muted-foreground">{task.customerName || '-'} · {task.ctrlNo || '未填 Ctrl.NO'}</div></TableCell>
+                  <TableCell><div className="font-medium">{task.title}</div><div className="text-xs text-muted-foreground">{task.businessType === 'attendance' ? (task.timeLabel || '-') : `${task.customerName || '-'} · ${task.ctrlNo || '未填 Ctrl.NO'}`}</div></TableCell>
                   <TableCell>{task.currentStepLabel || '-'}</TableCell>
                   <TableCell>{task.initiatorName || '-'}</TableCell>
                   <TableCell><Badge variant={variant}>{label}</Badge></TableCell>

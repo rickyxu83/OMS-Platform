@@ -294,6 +294,8 @@ export interface ApprovalTask {
   currentStepLabel?: string | null
   customerName?: string | null
   ctrlNo?: string | null
+  // 考勤任务的时间段展示（如 "2026-02-10 09:00 ~ 2026-02-12 18:00"），替代 MR 的客户/Ctrl.NO 副标题
+  timeLabel?: string | null
   detailPath: string
   createdAt?: string | null
   completedAt?: string | null
