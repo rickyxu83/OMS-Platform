@@ -645,7 +645,9 @@ async function loadDetail(id, user) {
     } : item
   })
   // 采购环节属于审批后的生命周期数据：始终以 mr_orders 实时值为准，不被冻结快照覆盖
+  // 合同编号同理：有合同但签核时暂无编号的单，由助理在签核通过后补填
   const purchaseLive = {
+    contractNo: order.contractNo ?? null,
     purchaseStatus: order.purchaseStatus ?? null,
     purchaseAssigneeUserId: order.purchaseAssigneeUserId ?? null,
     purchaseAssigneeName: order.purchaseAssigneeName ?? null,
