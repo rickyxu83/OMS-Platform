@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Button } from "@/components/ui/button";
@@ -145,7 +145,7 @@ export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps
       <div className="h-[64dvh] min-h-[300px] overflow-auto p-4">
         {loading ? (
           <div className="flex min-h-[300px] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="btn-loader" aria-hidden="true" />
             正在渲染 PDF…
           </div>
         ) : error ? (

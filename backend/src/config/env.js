@@ -53,6 +53,7 @@ const env = {
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',
   disableLoginAccountLockout: process.env.DISABLE_LOGIN_ACCOUNT_LOCKOUT === 'true',
+  mrApprovalEmailDomains: parseCsv(process.env.MR_APPROVAL_EMAIL_DOMAINS),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {
@@ -64,9 +65,16 @@ const env = {
     model: process.env.AI_MODEL || '',
     maxInputItems: Number(process.env.AI_MAX_INPUT_ITEMS || 200),
     maxWorkContentChars: Number(process.env.AI_MAX_WORK_CONTENT_CHARS || 600),
-    summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 60000),
+    summaryTimeoutMs: Number(process.env.AI_SUMMARY_TIMEOUT_MS || 120000),
     summaryRetryAttempts: Number(process.env.AI_SUMMARY_RETRY_ATTEMPTS || 5),
     summaryRetryDelayMs: Number(process.env.AI_SUMMARY_RETRY_DELAY_MS || 3000),
+    quoteRecognitionEnabled: process.env.AI_QUOTE_RECOGNITION_ENABLED === 'true',
+    quoteTimeoutMs: Number(process.env.AI_QUOTE_TIMEOUT_MS || 90000),
+    // 部分模型（如 kimi-for-coding）只允许固定温度；未配置时不下发该参数
+    quoteTemperature: process.env.AI_QUOTE_TEMPERATURE === undefined || process.env.AI_QUOTE_TEMPERATURE === ''
+      ? null
+      : Number(process.env.AI_QUOTE_TEMPERATURE),
+    quoteMaxPages: Number(process.env.AI_QUOTE_MAX_PAGES || 3),
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',

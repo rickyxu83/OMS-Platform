@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Loader2, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Search, Trash2, Play, Pencil, Check, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
@@ -79,30 +80,24 @@ interface FloatingDropdownBox {
 
 const CADENCE_LABELS: Record<string, string> = {
   monthly: "每月",
-  bimonthly: "每两月",
   "bi-monthly": "每两月",
   quarterly: "每季度",
-  weekly: "每周",
 };
 
 const CADENCE_HELP = "巡检周期用于控制系统生成巡检工单的频率；系统会结合下次生成日期，按每月、每两月或每季度继续安排后续巡检。";
 
 const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary"> = {
   monthly: "info",
-  bimonthly: "purple",
   "bi-monthly": "purple",
   quarterly: "success",
-  weekly: "secondary",
 };
 
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
+function inputDate(value?: string) {
+  return String(value || "").slice(0, 10);
 }
 
-function inputDate(value?: string) {
-  if (!value) return "";
-  return String(value).slice(0, 10);
+function formatDate(value?: string) {
+  return inputDate(value) || "-";
 }
 
 export function InspectionSchedules() {
@@ -491,7 +486,7 @@ export function InspectionSchedules() {
       nextRunAnchor: inputDate(schedule.nextRunAnchor),
       endDate: inputDate(schedule.endDate),
       active: Boolean(schedule.active),
-      remark: (schedule as { remark?: string }).remark || "",
+      remark: schedule.remark || "",
     });
     setDialogOpen(true);
   }
@@ -522,12 +517,22 @@ export function InspectionSchedules() {
         ? prev.targetEngineerIds.filter((id) => id !== engineerId)
         : [...prev.targetEngineerIds, engineerId];
       const replacementEngineerId = targetEngineerIds[0] || "";
-      const deviceEngineerIds = Object.fromEntries(Object.entries(prev.deviceEngineerIds).map(([deviceId, assignedEngineerId]) => [
-        deviceId,
-        removing && assignedEngineerId === engineerId ? replacementEngineerId : assignedEngineerId,
-      ]));
+      const deviceEngineerIds = Object.fromEntries(prev.deviceIds.map((deviceId) => {
+        const assignedEngineerId = prev.deviceEngineerIds[String(deviceId)] || "";
+        return [
+          String(deviceId),
+          removing && assignedEngineerId === engineerId ? replacementEngineerId : assignedEngineerId || replacementEngineerId,
+        ];
+      }));
       return { ...prev, targetEngineerIds, deviceEngineerIds };
     });
+  }
+
+  function assignAllSelectedDevices(targetEngineerId: string) {
+    setForm((prev) => ({
+      ...prev,
+      deviceEngineerIds: Object.fromEntries(prev.deviceIds.map((deviceId) => [String(deviceId), targetEngineerId])),
+    }));
   }
 
   async function submit() {
@@ -565,9 +570,6 @@ export function InspectionSchedules() {
       const payload: Record<string, unknown> = {
         name: form.name.trim() || undefined,
         customerId: form.customerId,
-        deviceIds: form.deviceIds,
-        targetEngineerId: form.targetEngineerIds[0],
-        targetEngineerIds: form.targetEngineerIds,
         assignments: form.deviceIds.map((deviceId) => ({
           deviceId,
           targetEngineerId: form.deviceEngineerIds[String(deviceId)],
@@ -576,7 +578,7 @@ export function InspectionSchedules() {
         nextRunAnchor: form.nextRunAnchor,
         endDate: form.endDate || null,
         active: form.active,
-        remark: form.remark.trim() || undefined,
+        remark: form.remark.trim() || null,
       };
       if (editingId) {
         await api.put(`/inspection-schedules/${editingId}`, payload);
@@ -778,7 +780,7 @@ export function InspectionSchedules() {
           {canManageSchedules ? (
             <>
               <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Play className="w-4 h-4 mr-2" />}
                 生成到期巡检单
               </Button>
               <Button onClick={openCreate} disabled={saving}>
@@ -793,12 +795,16 @@ export function InspectionSchedules() {
       <ErrorToast message={error} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
+        {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                                {loading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -904,14 +910,22 @@ export function InspectionSchedules() {
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
             {loading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <div className="space-y-3 p-1">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-5 w-14 rounded-full" />
+                    </div>
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无巡检计划</div>
             ) : (
               <div className="space-y-3">
-              {filtered.map((s) => {
+              {filtered.map((s, rowIndex) => {
                 const cadenceLabel = CADENCE_LABELS[s.cadence || ""] || s.cadence || "-";
                 const planName = String(s.name || "").trim();
                 const customerName = String(s.customerName || "").trim();
@@ -924,11 +938,12 @@ export function InspectionSchedules() {
                     key={s.id}
                     role="button"
                     tabIndex={0}
-                    className={`grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:items-center ${
+                    className={`list-row-enter grid cursor-pointer grid-cols-1 gap-4 rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-accent/30 lg:items-center ${
                       canManageSchedules
                         ? "lg:grid-cols-[24px_minmax(280px,1.8fr)_120px_96px_150px_132px_168px]"
                         : "lg:grid-cols-[minmax(280px,1.8fr)_120px_96px_150px_132px]"
                     }`}
+                    style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                     onClick={() => openScheduleDetail(s)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget) return;
@@ -1251,11 +1266,25 @@ export function InspectionSchedules() {
                 )}
               </div>
               <div className="md:col-span-2 space-y-2">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <Label>巡检设备与分工（至少选一台）</Label>
                   {form.customerId && customerDevices.length > 0 && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
                       <span>已选 {selectedDeviceCount} 台</span>
+                      {selectedDeviceCount > 0 && selectedEngineers.length > 0 && (
+                        <Select value="" onValueChange={assignAllSelectedDevices}>
+                          <SelectTrigger className="h-8 w-[150px]" aria-label="批量指派工程师">
+                            <SelectValue placeholder="批量指派给..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedEngineers.map((engineer) => (
+                              <SelectItem key={engineer.id} value={String(engineer.id)}>
+                                {engineer.realName || engineer.username || `工程师 #${engineer.id}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Button type="button" variant="ghost" size="sm" onClick={selectAllCustomerDevices}>
                         全选
                       </Button>
@@ -1394,7 +1423,7 @@ export function InspectionSchedules() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : "保存计划"}
             </Button>
           </DialogFooter>

@@ -10,7 +10,6 @@ const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification, deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
-const { generateSelfReportAiDraft, selfReportAiDraftStatus } = require('./ai-draft')
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
 const { ensureFilePurposeColumn } = require('../files/controller')
@@ -1910,7 +1909,7 @@ async function timesheetMonthly(req, res) {
        FROM service_orders
        WHERE assigned_engineer_id IS NOT NULL
      ) participants ON participants.service_order_id = so.id
-     JOIN users u ON u.id = participants.engineer_id AND u.role = 'engineer'
+     JOIN users u ON u.id = participants.engineer_id AND u.role IN ('engineer', 'engineering_supervisor')
      JOIN customers c ON c.id = so.customer_id
      LEFT JOIN devices d ON d.id = so.device_id
      LEFT JOIN service_reports sr ON sr.service_order_id = so.id
@@ -1947,7 +1946,7 @@ async function timesheetMonthly(req, res) {
         `SELECT tme.id, tme.engineer_id, tme.entry_date, tme.category, tme.customer_project,
                 tme.work_content, tme.progress, tme.remark, u.real_name AS engineer_name
          FROM timesheet_manual_entries tme
-         JOIN users u ON u.id = tme.engineer_id AND u.role = 'engineer'
+         JOIN users u ON u.id = tme.engineer_id AND u.role IN ('engineer', 'engineering_supervisor')
          WHERE tme.entry_date >= :startDate
            AND tme.entry_date <= :endDate
            ${filterEngineerId ? 'AND tme.engineer_id = :engineerId' : ''}
@@ -2038,7 +2037,7 @@ async function timesheetMonthly(req, res) {
   }
 
   if (includeWorkSummary) {
-    response.workSummary = await generateTimesheetWorkSummary({
+    const summaryPayload = {
       ...response,
       ...(filterEngineerId ? {
         scope: {
@@ -2047,7 +2046,33 @@ async function timesheetMonthly(req, res) {
           description: '工程师工作月报',
         },
       } : {}),
-    })
+    }
+
+    // 客户端请求 text/event-stream 时，用 SSE 流式返回生成进度，避免用户干等
+    const wantsStream = String(req.headers.accept || '').includes('text/event-stream')
+    if (wantsStream) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      const writeEvent = (event, data) => {
+        if (res.writableEnded) return
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      }
+      writeEvent('progress', { stage: 'query', progress: 3, message: '正在准备数据…' })
+      try {
+        response.workSummary = await generateTimesheetWorkSummary(summaryPayload, (progress) => writeEvent('progress', progress))
+        writeEvent('result', response)
+      } catch (error) {
+        writeEvent('error', { message: error?.message || 'AI 总结生成失败' })
+      }
+      res.end()
+      return
+    }
+
+    response.workSummary = await generateTimesheetWorkSummary(summaryPayload)
   }
 
   res.json(response)
@@ -3532,20 +3557,6 @@ async function deleteSelfReportDraft(req, res) {
   res.status(204).end()
 }
 
-async function aiSelfReportDraft(req, res) {
-  const result = await generateSelfReportAiDraft({
-    transcript: req.body?.transcript,
-    serviceMode: req.body?.serviceMode,
-    currentDraft: req.body?.currentDraft,
-    engineerId: req.user.id,
-  })
-  res.json(result)
-}
-
-async function aiSelfReportDraftStatus(_req, res) {
-  res.json({ item: await selfReportAiDraftStatus() })
-}
-
 async function updateSelfReport(req, res) {
   const order = await getOrder(req.params.id)
   if (!order) {
@@ -4242,7 +4253,7 @@ async function confirmInspectionOrder(req, res) {
     const [engineerRows] = await connection.execute(
       `SELECT id
        FROM users
-       WHERE id = :engineerId AND role = 'engineer' AND status = 'active'
+       WHERE id = :engineerId AND role IN ('engineer', 'engineering_supervisor') AND status = 'active'
        LIMIT 1`,
       { engineerId },
     )
@@ -4440,8 +4451,6 @@ module.exports = {
   createTimesheetManualEntry,
   deleteTimesheetManualEntry,
   create,
-  aiSelfReportDraft,
-  aiSelfReportDraftStatus,
   createSelfReport,
   updateSelfReport,
   createCustomerSignatureRequest,

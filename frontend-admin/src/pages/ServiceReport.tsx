@@ -20,7 +20,6 @@ import {
   Heading2,
   History,
   Link,
-  Loader2,
   List,
   ListOrdered,
   MapPin,
@@ -62,6 +61,7 @@ import { MarkdownContent } from "@/lib/markdown";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
 import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 
 type ServiceMode = "onsite" | "remote" | "office";
 type AttachmentPurpose = "support_config" | "site_photo" | "screenshot_log" | "inspection_document" | "office_document";
@@ -1606,6 +1606,16 @@ function SignaturePad({
     return Math.max(min, Math.min(max, value));
   }
 
+  // 竖屏手机打开「横屏全屏签名」时，弹窗整体被 CSS rotate-90 旋转，
+  // 画布视觉尺寸与布局尺寸互换。此时落笔坐标做了反向映射，位图本身是侧着的，
+  // 导出/回显都需要相应转正，否则存下来的签名会旋转 90°。
+  function isQuarterRotated(canvas: HTMLCanvasElement) {
+    const rect = canvas.getBoundingClientRect();
+    const { width, height } = canvasCssSize(canvas);
+    const hasTransformedBounds = Math.abs(rect.width - width) > 2 || Math.abs(rect.height - height) > 2;
+    return hasTransformedBounds && Math.abs(rect.width - height) < 2 && Math.abs(rect.height - width) < 2;
+  }
+
   function transformedCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
     const rect = canvas.getBoundingClientRect();
     const { width, height } = canvasCssSize(canvas);
@@ -1673,7 +1683,24 @@ function SignaturePad({
     context.strokeStyle = foregroundColor;
     if (snapshot) {
       const image = new Image();
-      image.onload = () => context.drawImage(image, 0, 0, width, height);
+      image.onload = () => {
+        if (isQuarterRotated(canvas)) {
+          // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
+          const scale = Math.min(height / image.width, width / image.height);
+          const drawWidth = image.width * scale;
+          const drawHeight = image.height * scale;
+          context.save();
+          context.translate(width / 2, height / 2);
+          context.rotate(-Math.PI / 2);
+          context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          context.restore();
+          return;
+        }
+        const scale = Math.min(width / image.width, height / image.height);
+        const drawWidth = image.width * scale;
+        const drawHeight = image.height * scale;
+        context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+      };
       image.src = snapshot;
     }
   }, [value]);
@@ -1728,7 +1755,24 @@ function SignaturePad({
     drawingRef.current = false;
     lastPointRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const dataUrl = canvasRef.current?.toDataURL("image/png") || "";
+    const canvas = canvasRef.current;
+    let dataUrl = "";
+    if (canvas) {
+      if (isQuarterRotated(canvas)) {
+        // 画布被 CSS 旋转 90°：导出时把位图转正，保证存下来的签名是正的
+        const output = document.createElement("canvas");
+        output.width = canvas.height;
+        output.height = canvas.width;
+        const outputContext = output.getContext("2d");
+        if (outputContext) {
+          outputContext.translate(output.width / 2, output.height / 2);
+          outputContext.rotate(Math.PI / 2);
+          outputContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          dataUrl = output.toDataURL("image/png");
+        }
+      }
+      if (!dataUrl) dataUrl = canvas.toDataURL("image/png");
+    }
     onChange(dataUrl);
   }
 
@@ -2141,7 +2185,7 @@ function CustomerInlineSuggestions({
         <div className="max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="btn-loader" aria-hidden="true" />
               正在检索客户…
             </div>
           ) : null}
@@ -2790,7 +2834,7 @@ export function ServiceReport() {
             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
             {loadingSuggestions ? (
               <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="btn-loader" aria-hidden="true" />
                 搜索型号中…
               </div>
             ) : null}
@@ -3112,9 +3156,8 @@ export function ServiceReport() {
     const keyword = device.inputMode === "existing" ? "" : device.model;
     return selectedCustomerDevices
       .filter((item) => deviceMatchesKeyword(item, keyword))
-      .slice(0, 8);
+      .slice(0, 50);
   }
-
   function targetDeviceValue(device: TargetDeviceDraft) {
     if (device.inputMode === "existing" && device.deviceId) {
       const selectedDevice = selectedCustomerDevices.find((item) => String(item.id) === device.deviceId);
@@ -3130,9 +3173,8 @@ export function ServiceReport() {
         targetDevice.id !== device.id && targetDevice.deviceId === String(item.id)
       )))
       .filter((item) => deviceMatchesKeyword(item, keyword))
-      .slice(0, 8);
+      .slice(0, 50);
   }
-
   function patchTargetDevices(devices: TargetDeviceDraft[], patch: Partial<ReportForm> = {}) {
     const targetDeviceIds = devices
       .filter((device) => device.inputMode === "existing" && device.deviceId)
@@ -4174,7 +4216,7 @@ export function ServiceReport() {
       <div className="min-h-[220px] overflow-auto pr-0 sm:max-h-[44vh] sm:pr-1">
         {loading ? (
           <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="btn-loader" aria-hidden="true" />
             正在加载工单…
           </div>
         ) : orderList.length ? (
@@ -4237,7 +4279,7 @@ export function ServiceReport() {
                               aria-label="工单操作"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              {isExportingRecord || isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                              {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
@@ -4276,7 +4318,7 @@ export function ServiceReport() {
                               }}
                               disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
                             >
-                              {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                              {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
                               {destructiveActionLabel}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -4333,7 +4375,7 @@ export function ServiceReport() {
                             title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
                             onClick={(event) => event.stopPropagation()}
                           >
-                            {isExportingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                            {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <FileText className="h-4 w-4" />}
                             <span>PDF</span>
                             <ChevronDown className="h-3.5 w-3.5" />
                           </Button>
@@ -4379,7 +4421,7 @@ export function ServiceReport() {
                           cancelServiceOrder(order);
                         }}
                       >
-                        {isDeletingRecord ? <Loader2 className="h-4 w-4 animate-spin" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                        {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
                         <span>{destructiveActionLabel}</span>
                       </Button>
                     </div>
@@ -4405,7 +4447,7 @@ export function ServiceReport() {
               <h1 className="truncate text-xl font-semibold tracking-normal text-foreground sm:mt-1 sm:text-2xl">工单填写</h1>
             </div>
             <Button className="h-9 shrink-0 px-3 sm:h-10" variant="outline" onClick={loadHome} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              {loading ? <span className="btn-loader" aria-hidden="true" /> : <RotateCcw className="h-4 w-4" />}
               刷新
             </Button>
           </div>
@@ -4511,7 +4553,7 @@ export function ServiceReport() {
                                       aria-label="草稿操作"
                                       onClick={(event) => event.stopPropagation()}
                                     >
-                                      {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                                      {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
@@ -4523,7 +4565,7 @@ export function ServiceReport() {
                                       onSelect={() => deleteCreateDraft(draftItem.draftKey)}
                                       disabled={deletingDraft}
                                     >
-                                      {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                      {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
                                       删除草稿
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
@@ -4593,7 +4635,7 @@ export function ServiceReport() {
                                   deleteCreateDraft(draftItem.draftKey);
                                 }}
                               >
-                                {deletingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
                                 <span>删除</span>
                               </Button>
                             </div>
@@ -4749,9 +4791,12 @@ export function ServiceReport() {
                 return (
                   <div className="space-y-5">
                     {previewLoading ? (
-                      <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        正在加载完整工单详情…
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Skeleton className="h-5 w-1/3" />
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
                       </div>
                     ) : null}
                     {previewError ? <InlineError message={previewError} /> : null}
@@ -4961,7 +5006,7 @@ export function ServiceReport() {
             <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
               {attachmentPreviewLoading ? (
                 <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="btn-loader" aria-hidden="true" />
                   正在加载附件…
                 </div>
               ) : attachmentPreviewError ? (
@@ -4997,7 +5042,7 @@ export function ServiceReport() {
                   onClick={() => downloadInspectionDocument(attachmentPreviewFile)}
                   disabled={downloadingFileId === attachmentPreviewFile.id}
                 >
-                  {downloadingFileId === attachmentPreviewFile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {downloadingFileId === attachmentPreviewFile.id ? <span className="btn-loader" aria-hidden="true" /> : <Download className="h-4 w-4" />}
                   下载文件
                 </Button>
               ) : null}
@@ -5044,11 +5089,11 @@ export function ServiceReport() {
           ) : null}
           <div className="hidden items-center gap-2 sm:flex">
             <Button className="h-10" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-4 w-4" />}
               保存草稿
             </Button>
             <Button className="h-10" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
-              {saving || uploadingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <Send className="h-4 w-4" />}
               提交记录
             </Button>
           </div>
@@ -5059,9 +5104,20 @@ export function ServiceReport() {
       <InlineError message={error} />
 
       {formLoading ? (
-        <div className="flex items-center justify-center gap-2 rounded-lg border bg-card py-20 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          正在加载工单信息…
+        <div className="space-y-3 rounded-lg border bg-card p-6">
+          <Skeleton className="h-6 w-40" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+          <Skeleton className="h-24 w-full" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
         </div>
       ) : (
         <>
@@ -5115,7 +5171,7 @@ export function ServiceReport() {
                             onClick={searchCustomerGeo}
                             disabled={geoLoading || (!form.customerName.trim() && !form.customerAddress.trim())}
                           >
-                            {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                            {geoLoading ? <span className="btn-loader" aria-hidden="true" /> : <MapPin className="h-4 w-4" />}
                             地图补全
                           </Button>
                         </div>
@@ -5435,7 +5491,7 @@ export function ServiceReport() {
                                     <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
                                       {loadingCustomerDevices ? (
                                         <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          <span className="btn-loader" aria-hidden="true" />
                                           正在加载客户设备…
                                         </div>
                                       ) : null}
@@ -5466,7 +5522,7 @@ export function ServiceReport() {
                                           <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
                                           {modelLoading ? (
                                             <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
-                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                              <span className="btn-loader" aria-hidden="true" />
                                               搜索型号中…
                                             </div>
                                           ) : null}
@@ -5597,7 +5653,7 @@ export function ServiceReport() {
 	                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
 	                                      {loadingCustomerDevices ? (
 	                                        <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-	                                          <Loader2 className="h-4 w-4 animate-spin" />
+	                                          <span className="btn-loader" aria-hidden="true" />
 	                                          正在加载客户设备…
 	                                        </div>
 	                                      ) : null}
@@ -5628,7 +5684,7 @@ export function ServiceReport() {
 		                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
 		                                          {modelLoading ? (
 		                                            <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
-		                                              <Loader2 className="h-4 w-4 animate-spin" />
+		                                              <span className="btn-loader" aria-hidden="true" />
 		                                              搜索型号中…
 		                                            </div>
 		                                          ) : null}
@@ -5918,7 +5974,7 @@ export function ServiceReport() {
                               <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
                             </button>
                             <Button type="button" variant="outline" size="sm" disabled={downloadingFileId === file.id} onClick={() => downloadInspectionDocument(file)}>
-                              {downloadingFileId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              {downloadingFileId === file.id ? <span className="btn-loader" aria-hidden="true" /> : <Download className="h-4 w-4" />}
                               下载
                             </Button>
                           </div>
@@ -5990,7 +6046,7 @@ export function ServiceReport() {
                         ) : (
                           <div className="flex flex-wrap items-end gap-2">
                             <Button type="button" variant="outline" onClick={useLatestCustomerSignature} disabled={loadingLatestSignature}>
-                              {loadingLatestSignature ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+                              {loadingLatestSignature ? <span className="btn-loader" aria-hidden="true" /> : <History className="h-4 w-4" />}
 	                              使用最近签名
                             </Button>
                             <Button
@@ -6049,7 +6105,7 @@ export function ServiceReport() {
                 disabled={saving || formLoading || uploadingFiles}
                 aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
               >
-                {saving || uploadingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+                {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
                 <span className="sm:hidden">提交</span>
 	                <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
               </Button>
@@ -6098,7 +6154,7 @@ export function ServiceReport() {
                 />
               </Field>
               <Button type="button" onClick={sendSignatureRequestMail} disabled={signatureRequestLoading}>
-                {signatureRequestLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {signatureRequestLoading ? <span className="btn-loader" aria-hidden="true" /> : <Send className="h-4 w-4" />}
                 发送邮件
               </Button>
               <Button type="button" variant="outline" onClick={nativeShareSignatureRequest} disabled={!signatureRequestUrl}>

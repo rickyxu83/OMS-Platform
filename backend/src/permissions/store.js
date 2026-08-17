@@ -21,10 +21,14 @@ const BUSINESS_ASSET_PERMISSIONS = Object.freeze([
   'maintenance-party.edit',
   'maintenance-party.delete',
 ])
+const inheritedPermissions = (role) => PERMISSION_ENTRIES
+  .filter(([, , roles]) => roles.includes(role))
+  .map(([key]) => key)
 const ROLE_PERMISSION_BASELINES = Object.freeze({
   engineer: Object.freeze(['workspace.admin']),
+  engineering_supervisor: Object.freeze(inheritedPermissions('engineer')),
   sales: BUSINESS_ASSET_PERMISSIONS,
-  sales_supervisor: BUSINESS_ASSET_PERMISSIONS,
+  sales_supervisor: Object.freeze([...new Set([...BUSINESS_ASSET_PERMISSIONS, ...inheritedPermissions('sales')])]),
 })
 const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = Object.freeze([
   'order.engineer.own',

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bell, Loader2, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
+import { Bell, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import { toast } from "sonner";
 interface SettingsForm {
   ai: {
     workSummaryEnabled: boolean;
-    serviceDraftEnabled: boolean;
     provider: string;
     apiUrl: string;
     apiKey: string;
@@ -48,6 +47,7 @@ interface SettingsForm {
     inspectionReminderRecipients: string;
     inspectionReminderSalesNotifyEnabled: boolean;
     inspectionScheduleDateMissingEnabled: boolean;
+    inspectionAutoGenerateEnabled: boolean;
     inspectionConfirmationEnabled: boolean;
     inspectionConfirmationRecipients: string;
     inspectionOverdueEnabled: boolean;
@@ -96,7 +96,6 @@ interface RecipientUser {
 const emptyForm: SettingsForm = {
   ai: {
     workSummaryEnabled: false,
-    serviceDraftEnabled: false,
     provider: "custom",
     apiUrl: "",
     apiKey: "",
@@ -125,6 +124,7 @@ const emptyForm: SettingsForm = {
     inspectionReminderRecipients: "",
     inspectionReminderSalesNotifyEnabled: true,
     inspectionScheduleDateMissingEnabled: true,
+    inspectionAutoGenerateEnabled: true,
     inspectionConfirmationEnabled: true,
     inspectionConfirmationRecipients: "",
     inspectionOverdueEnabled: true,
@@ -165,6 +165,7 @@ const roleOptions = [
   ["sales_supervisor", "业务主管"],
   ["sales", "业务"],
   ["engineer", "工程师"],
+  ["purchaser", "采购"],
 ];
 
 const quickEmoji = ["📣", "⚠️", "✅", "🛠️", "📌", "📝", "🚀", "💡"];
@@ -474,7 +475,6 @@ export function SystemSettings() {
       setForm({
         ai: {
           workSummaryEnabled: toBool(item.ai?.workSummaryEnabled),
-          serviceDraftEnabled: toBool(item.ai?.serviceDraftEnabled),
           provider: item.ai?.provider || "custom",
           apiUrl: item.ai?.apiUrl || "",
           apiKey: item.ai?.apiKey || "",
@@ -503,6 +503,7 @@ export function SystemSettings() {
           inspectionReminderRecipients: n.inspectionReminderRecipients || "",
           inspectionReminderSalesNotifyEnabled: toBool(n.inspectionReminderSalesNotifyEnabled ?? true),
           inspectionScheduleDateMissingEnabled: toBool(n.inspectionScheduleDateMissingEnabled ?? true),
+          inspectionAutoGenerateEnabled: toBool(n.inspectionAutoGenerateEnabled ?? true),
           inspectionConfirmationEnabled: toBool(n.inspectionConfirmationEnabled ?? true),
           inspectionConfirmationRecipients: n.inspectionConfirmationRecipients || "",
           inspectionOverdueEnabled: toBool(n.inspectionOverdueEnabled ?? true),
@@ -545,7 +546,6 @@ export function SystemSettings() {
         ai: {
           ...form.ai,
           workSummaryEnabled: form.ai.workSummaryEnabled,
-          serviceDraftEnabled: form.ai.serviceDraftEnabled,
         },
         mail: {
           ...form.mail,
@@ -690,7 +690,7 @@ export function SystemSettings() {
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            <span className="btn-loader mr-2" aria-hidden="true" />
             正在加载…
           </CardContent>
         </Card>
@@ -704,7 +704,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>AI 与 API Key</CardTitle>
                 <Button variant="outline" size="sm" onClick={testAi} disabled={!canEditSettings || loading || saving || testingAi}>
-                  {testingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                  {testingAi ? <span className="btn-loader mr-2" aria-hidden="true" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                   测试 AI
                 </Button>
               </div>
@@ -718,17 +718,6 @@ export function SystemSettings() {
                 <Switch
                   checked={form.ai.workSummaryEnabled}
                   onCheckedChange={(checked) => setForm({ ...form, ai: { ...form.ai, workSummaryEnabled: checked } })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <div className="font-medium">启用 AI 语音填单</div>
-                  <div className="text-sm text-muted-foreground">工程师端可用语音转写内容生成服务记录草稿。</div>
-                </div>
-                <Switch
-                  checked={form.ai.serviceDraftEnabled}
-                  onCheckedChange={(checked) => setForm({ ...form, ai: { ...form.ai, serviceDraftEnabled: checked } })}
                 />
               </div>
 
@@ -765,7 +754,7 @@ export function SystemSettings() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>SMTP 邮件</CardTitle>
                 <Button variant="outline" size="sm" onClick={testMail} disabled={!canEditSettings || loading || saving || testingMail}>
-                  {testingMail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  {testingMail ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" />}
                   测试 SMTP
                 </Button>
               </div>
@@ -1036,7 +1025,7 @@ export function SystemSettings() {
                     </Button>
                   )}
                   <Button onClick={saveAnnouncement} disabled={!canManageAnnouncements || announcementSaving}>
-                    {announcementSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {announcementSaving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" />}
                     {editingAnnouncementId ? "更新公告" : "发布公告"}
                   </Button>
                 </div>
@@ -1155,6 +1144,13 @@ export function SystemSettings() {
               </NotificationGroup>
 
               <NotificationGroup title="巡检" description="巡检计划、执行提醒、确认和逾期跟进集中放在这里。">
+                <NotificationRule
+                  title="自动生成巡检工单"
+                  description="每天 06:30 生成未来 14 天内的待确认巡检工单；确认后才会派给工程师。"
+                  checked={form.notification.inspectionAutoGenerateEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, inspectionAutoGenerateEnabled: c } })}
+                />
+
                 <NotificationRule
                   title="巡检执行提醒"
                   description="巡检计划执行前发送给工程师；可同步给客户销售和指定管理邮箱。"
@@ -1335,7 +1331,7 @@ export function SystemSettings() {
                 刷新
               </Button>
               <Button size="sm" onClick={save} disabled={!canEditSettings || loading || saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" />}
                 保存设置
               </Button>
             </div>

@@ -47,3 +47,7 @@ tmp/
 *.tgz
 *.tar.gz
 *.zip
+__pycache__/
+backend/tests/fixtures/quotations/
+
+# 指挥官工作流的并行 worktree 工作区（herdr 多 agent）

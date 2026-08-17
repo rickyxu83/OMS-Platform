@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, MapPin } from "lucide-react";
+import { createPortal } from "react-dom";
+import { MapPin, Maximize } from "lucide-react";
 import { api } from "@/services/api";
 
 const ENV_AMAP_JSAPI_KEY =
@@ -24,6 +25,12 @@ interface AmapPoint {
   [k: string]: any;
 }
 
+interface FullscreenStat {
+  label: string;
+  value: string | number;
+  tone?: "default" | "accent" | "red" | "green";
+}
+
 interface AmapProps {
   center?: { lng: number; lat: number; name?: string };
   points?: AmapPoint[];
@@ -32,12 +39,25 @@ interface AmapProps {
   fitView?: boolean;
   onPointClick?: (point: AmapPoint) => void;
   className?: string;
+  /** 是否显示右上角全屏入口（方案 B：overlay 全屏） */
+  fullscreenable?: boolean;
+  /** 飞行动画保留的 top 客户数（默认 20） */
+  maxFlightAnimations?: number;
+  /** 全屏大屏模式四角指标卡数据（运营看板） */
+  fullscreenStats?: FullscreenStat[];
+  /** 深色地图样式（大屏模式使用） */
+  dark?: boolean;
 }
 
 let amapLoaderPromise: Promise<any> | null = null;
 let amapLoadedKey = "";
 let amapLoadedSecurityJsCode = "";
-const MAX_FLIGHT_LINES = 120;
+// 静态弧线数量上限（覆盖绝大多数客户，一次性绘制无动画成本）
+const MAX_FLIGHT_LINES = 300;
+// 保留黄点飞行动画的 top 客户数（分级渲染：静态线全部，仅高频客户带动画）
+const MAX_FLIGHT_ANIMATIONS = 20;
+// 全屏模式下保留飞行动画的 top 客户数（空间大，可多展示）
+const FULLSCREEN_FLIGHT_ANIMATIONS = 40;
 const FIT_VIEW_PADDING = [60, 60, 60, 60] as const;
 const COVERAGE_FIT_MAX_ZOOM = 12;
 
@@ -253,6 +273,8 @@ function renderFlightOverlay(
   map: any,
   center: { lng: number; lat: number },
   points: AmapPoint[],
+  animated = true,
+  maxAnimations = MAX_FLIGHT_ANIMATIONS,
 ) {
   if (!overlay || !map?.lngLatToContainer) return;
   const width = overlay.clientWidth;
@@ -267,25 +289,37 @@ function renderFlightOverlay(
     .slice(0, MAX_FLIGHT_LINES);
   const pulseDuration = heartbeatDuration(rankedPoints);
 
-  const paths = rankedPoints.map((point, index) => {
+  // 静态弧线：覆盖全部客户，无动画无滤镜（一次性绘制，零持续成本）
+  const parts = rankedPoints.map((point, index) => {
     const pixel = map.lngLatToContainer([point.lng, point.lat]);
     const target = { x: Number(pixel.x), y: Number(pixel.y) };
     const path = flightPath(centerPoint, target, index);
-    const count = serviceCount(point);
-    const tier = point.level || getTier(count);
-    const delay = flightDelay(index, count);
-    const duration = flightDuration(count);
-    return [
-      `<path class="ops-map-flight-line ops-map-flight-line-${tier}" d="${path}" style="animation-delay:${delay}" />`,
-      `<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`,
-    ].join("");
-  }).join("");
+    const tier = point.level || getTier(serviceCount(point));
+    return `<path class="ops-map-flight-line ops-map-flight-line-${tier}" d="${path}" />`;
+  });
+
+  // 动画层：仅 top N 高频客户保留黄点飞行；光晕用双层 stroke（glow 粗半透明 + core 细亮）模拟，无 SVG 滤镜
+  if (animated) {
+    rankedPoints.slice(0, maxAnimations).forEach((point, index) => {
+      const pixel = map.lngLatToContainer([point.lng, point.lat]);
+      const target = { x: Number(pixel.x), y: Number(pixel.y) };
+      const path = flightPath(centerPoint, target, index);
+      const count = serviceCount(point);
+      const tier = point.level || getTier(count);
+      const delay = flightDelay(index, count);
+      const duration = flightDuration(count);
+      parts.push(`<path class="ops-map-flight-glow ops-map-flight-glow-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`);
+      parts.push(`<path class="ops-map-flight-core ops-map-flight-core-${tier}" d="${path}" style="animation-delay:${delay};animation-duration:${duration}" />`);
+    });
+    parts.push(`<circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s" />`);
+    parts.push(`<circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s;animation-delay:${(pulseDuration / 2).toFixed(2)}s" />`);
+  }
+  // 中心静态光晕（始终存在，无滤镜）
+  parts.push(`<circle class="ops-map-heartbeat-halo" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="30" />`);
 
   overlay.innerHTML = `
     <svg class="ops-map-flight-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
-      ${paths}
-      <circle class="ops-map-heartbeat ops-map-heartbeat-one" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s" />
-      <circle class="ops-map-heartbeat ops-map-heartbeat-two" cx="${centerPoint.x.toFixed(1)}" cy="${centerPoint.y.toFixed(1)}" r="10" style="animation-duration:${pulseDuration.toFixed(2)}s;animation-delay:${(pulseDuration / 2).toFixed(2)}s" />
+      ${parts.join("")}
     </svg>
   `;
 }
@@ -298,6 +332,10 @@ export function Amap({
   fitView = true,
   onPointClick,
   className = "",
+  fullscreenable = false,
+  maxFlightAnimations = MAX_FLIGHT_ANIMATIONS,
+  fullscreenStats,
+  dark = false,
 }: AmapProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -307,6 +345,42 @@ export function Amap({
   const infoWindowRef = useRef<any>(null);
   const [state, setState] = useState<"loading" | "ready" | "fallback" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fsShown, setFsShown] = useState(false);
+
+  // —— 全屏控制（方案 B：页面内 overlay 全屏）——
+  const openFullscreen = () => {
+    setFullscreen(true);
+    document.body.style.overflow = "hidden";
+  };
+  const closeFullscreen = () => {
+    setFsShown(false);
+    window.setTimeout(() => {
+      setFullscreen(false);
+      document.body.style.overflow = "";
+    }, 240);
+  };
+  useEffect(() => {
+    if (!fullscreen) return;
+    const raf = window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => setFsShown(true)),
+    );
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fullscreen]);
+  // 全屏时暂停预览实例动画（被遮罩盖住，不浪费 GPU）
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    if (fullscreen) shell.classList.add("ops-map-fs-suspended");
+    else shell.classList.remove("ops-map-fs-suspended");
+  }, [fullscreen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,7 +399,7 @@ export function Amap({
         const map = new AMap.Map(containerRef.current, {
           zoom,
           center: [center.lng, center.lat],
-          mapStyle: "amap://styles/light",
+          mapStyle: dark ? "amap://styles/dark" : "amap://styles/light",
           features: ["bg", "point", "road", "building"],
           showLabel: true,
           viewMode: "2D",
@@ -397,42 +471,51 @@ export function Amap({
     let flightFrame = 0;
     let settleTimer = 0;
     let settled = false;
-    const renderFlights = () => {
+    // animated=false：仅静态弧线（地图移动/缩放中，降低重绘成本）
+    // animated=true：静态弧线 + top N 飞行动画 + 中心脉冲（停稳后）
+    const renderFlights = (animated: boolean) => {
       if (flightFrame) return;
       flightFrame = window.requestAnimationFrame(() => {
         flightFrame = 0;
-        renderFlightOverlay(overlayRef.current, map, center, validPoints);
+        renderFlightOverlay(overlayRef.current, map, center, validPoints, animated, maxFlightAnimations);
       });
     };
+    const renderLite = () => renderFlights(false);
+    const renderFull = () => renderFlights(true);
     const settleMap = () => {
       if (settled) return;
       settled = true;
       shell?.classList.remove("ops-map-preparing");
       shell?.classList.add("ops-map-settled");
-      renderFlights();
+      renderFull();
+    };
+    const onViewportMove = () => {
+      overlayRef.current?.classList.add("ops-map-flight-moving");
+      renderLite();
     };
     const settleAfterViewportChange = () => {
-      renderFlights();
+      overlayRef.current?.classList.remove("ops-map-flight-moving");
+      renderFull();
       if (settleTimer) window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(settleMap, 120);
     };
 
-    renderFlights();
-    map.on("mapmove", renderFlights);
+    renderFull();
+    map.on("mapmove", onViewportMove);
     map.on("moveend", settleAfterViewportChange);
-    map.on("zoomchange", renderFlights);
+    map.on("zoomchange", onViewportMove);
     map.on("zoomend", settleAfterViewportChange);
 
     if (!fitView) {
       try {
         map.setZoomAndCenter(zoom, [center.lng, center.lat]);
-        renderFlights();
+        renderFull();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 320);
     } else if (validPoints.length > 0) {
       try {
         map.setFitView(markersRef.current, false, [...FIT_VIEW_PADDING], COVERAGE_FIT_MAX_ZOOM);
-        renderFlights();
+        renderFull();
       } catch {}
       settleTimer = window.setTimeout(settleMap, 900);
     } else {
@@ -440,9 +523,9 @@ export function Amap({
     }
 
     return () => {
-      map.off("mapmove", renderFlights);
+      map.off("mapmove", onViewportMove);
       map.off("moveend", settleAfterViewportChange);
-      map.off("zoomchange", renderFlights);
+      map.off("zoomchange", onViewportMove);
       map.off("zoomend", settleAfterViewportChange);
       if (flightFrame) window.cancelAnimationFrame(flightFrame);
       if (settleTimer) window.clearTimeout(settleTimer);
@@ -458,13 +541,60 @@ export function Amap({
   return (
     <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
       {state === "loading" && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-muted-foreground text-sm">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> 地图正在加载…
+        <div className={`absolute inset-0 z-10 flex items-center justify-center text-sm ${dark ? "bg-slate-900/80 text-slate-300" : "bg-white/70 text-muted-foreground"}`}>
+          <span className="btn-loader mr-2" aria-hidden="true" /> 地图正在加载…
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />
       <div ref={overlayRef} className="ops-map-flight-overlay" />
+      {fullscreenable && (
+        <button
+          type="button"
+          className="ops-map-fs-toggle"
+          onClick={openFullscreen}
+          title="全屏查看"
+          aria-label="全屏查看"
+        >
+          <Maximize className="w-4 h-4" />
+        </button>
+      )}
       <style>{AMAP_MARKER_CSS}</style>
+      {fullscreen && createPortal(
+        <div className={`ops-map-fullscreen${fsShown ? " ops-map-fs-shown" : ""}`} role="dialog" aria-modal="true" aria-label="运维运营看板">
+          <div className="ops-map-fs-topbar">
+            <span className="ops-map-fs-title">运维运营看板</span>
+            <span className="ops-map-fs-date">
+              {new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}
+            </span>
+            <button type="button" className="ops-map-fs-close" onClick={closeFullscreen}>
+              退出 <span className="ops-map-fs-esc">Esc</span>
+            </button>
+          </div>
+          <div className="ops-map-fs-body">
+            {(fullscreenStats || []).map((stat, index) => (
+              <div
+                key={stat.label}
+                className={`ops-map-fs-stat ops-map-fs-stat-${index % 4}${stat.tone ? ` ops-map-fs-tone-${stat.tone}` : ""}`}
+              >
+                <div className="ops-map-fs-stat-value">{stat.value}</div>
+                <div className="ops-map-fs-stat-label">{stat.label}</div>
+              </div>
+            ))}
+            <Amap
+              center={center}
+              points={points}
+              zoom={zoom}
+              height="100%"
+              fitView
+              onPointClick={onPointClick}
+              fullscreenable={false}
+              maxFlightAnimations={FULLSCREEN_FLIGHT_ANIMATIONS}
+              dark
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -490,14 +620,47 @@ const AMAP_MARKER_CSS = `
 .ops-map-flight-line-peak { stroke: rgba(245,158,11,0.46); stroke-width: 2.4; }
 .ops-map-flight-line-high { stroke: rgba(234,179,8,0.4); stroke-width: 2.1; }
 .ops-map-flight-line-quiet { stroke: rgba(180,83,9,0.24); stroke-width: 1.45; }
-.ops-map-flight-glow { fill: none; stroke: rgba(250,204,21,0.98); stroke-width: 3.8; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; filter: drop-shadow(0 0 5px rgba(251,191,36,0.95)) drop-shadow(0 0 13px rgba(245,158,11,0.65)); }
-.ops-map-flight-glow-peak { stroke: rgba(251,191,36,1); }
-.ops-map-flight-glow-high { stroke: rgba(253,224,71,0.96); }
-.ops-map-flight-glow-quiet { stroke: rgba(245,158,11,0.72); }
-.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.86); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; filter: drop-shadow(0 0 7px rgba(251,191,36,0.9)); }
+.ops-map-flight-glow { fill: none; stroke: rgba(251,191,36,0.32); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; }
+.ops-map-flight-glow-peak { stroke: rgba(251,191,36,0.42); stroke-width: 8; }
+.ops-map-flight-glow-high { stroke: rgba(253,224,71,0.36); stroke-width: 7; }
+.ops-map-flight-glow-quiet { stroke: rgba(245,158,11,0.26); stroke-width: 6; }
+.ops-map-flight-core { fill: none; stroke: rgba(250,204,21,0.98); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 280; animation: ops-map-fly 3.6s linear infinite; }
+.ops-map-flight-core-peak { stroke: rgba(251,191,36,1); }
+.ops-map-flight-core-high { stroke: rgba(253,224,71,0.98); }
+.ops-map-flight-core-quiet { stroke: rgba(245,158,11,0.85); }
+.ops-map-heartbeat { fill: none; stroke: rgba(250,204,21,0.55); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ops-map-heartbeat 2.2s ease-out infinite; }
 .ops-map-heartbeat-two { animation-delay: 1.1s; }
+.ops-map-heartbeat-halo { fill: rgba(251,191,36,0.16); }
+/* 地图移动/缩放中降级为静态线 */
+.ops-map-flight-overlay.ops-map-flight-moving { opacity: 0.55; transition: opacity 0.18s ease; }
 @keyframes ops-map-fly { from { stroke-dashoffset: 280; } to { stroke-dashoffset: 0; } }
 @keyframes ops-map-heartbeat { 0% { opacity: 0.75; transform: scale(0.4); } 80%, 100% { opacity: 0; transform: scale(3.2); } }
+/* —— 全屏模式（方案 B：页面内 overlay） —— */
+.ops-map-fs-toggle { position: absolute; top: 12px; right: 12px; z-index: 50; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0; background: rgba(255,255,255,.92); display: flex; align-items: center; justify-content: center; cursor: pointer; color: #334155; box-shadow: 0 3px 10px rgba(15,23,42,.14); transition: transform .15s ease, color .15s ease; }
+.ops-map-fs-toggle:hover { color: #582B8B; transform: scale(1.06); }
+.ops-map-fullscreen { position: fixed; inset: 0; z-index: 1000; background: #0b1220; display: flex; flex-direction: column; opacity: 0; transform: scale(.965); transition: opacity .26s ease, transform .26s cubic-bezier(.2,.8,.2,1); }
+.ops-map-fullscreen.ops-map-fs-shown { opacity: 1; transform: scale(1); }
+.ops-map-fs-topbar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid #1e293b; background: linear-gradient(180deg, rgba(88,43,139,.25), transparent); }
+.ops-map-fs-title { font-weight: 800; font-size: 16px; letter-spacing: 2px; color: #fff; }
+.ops-map-fs-date { font-size: 12px; color: #94a3b8; }
+.ops-map-fs-close { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(148,163,184,.3); background: rgba(15,23,42,.6); color: #cbd5e1; border-radius: 8px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.ops-map-fs-close:hover { border-color: #c4b5fd; color: #fff; background: rgba(88,43,139,.4); }
+.ops-map-fs-esc { opacity: .55; font-size: 11px; }
+.ops-map-fs-body { flex: 1; min-height: 0; position: relative; }
+.ops-map-fs-stat { position: absolute; z-index: 1000; width: 172px; background: rgba(15,23,42,.78); border: 1px solid rgba(148,163,184,.22); border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(4px); }
+.ops-map-fs-stat-0 { top: 14px; left: 14px; }
+.ops-map-fs-stat-1 { top: 14px; right: 14px; }
+.ops-map-fs-stat-2 { bottom: 14px; left: 14px; }
+.ops-map-fs-stat-3 { bottom: 14px; right: 14px; }
+.ops-map-fs-stat-value { font-size: 24px; font-weight: 800; color: #fff; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ops-map-fs-stat-label { font-size: 11.5px; color: #94a3b8; margin-top: 2px; }
+.ops-map-fs-tone-accent .ops-map-fs-stat-value { color: #fbbf24; }
+.ops-map-fs-tone-red .ops-map-fs-stat-value { color: #f87171; }
+.ops-map-fs-tone-green .ops-map-fs-stat-value { color: #4ade80; }
+.ops-map-fs-suspended * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ops-map-fullscreen { transition: none; }
+}
 `;
 
 interface FallbackProps {

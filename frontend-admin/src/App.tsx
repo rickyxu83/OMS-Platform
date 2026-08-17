@@ -8,9 +8,17 @@ import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })))
+const ApprovalTasks = lazy(() => import("@/pages/ApprovalTasks").then((module) => ({ default: module.ApprovalTasks })))
 const ServiceReport = lazy(() => import("@/pages/ServiceReport").then((module) => ({ default: module.ServiceReport })))
 const CustomerSignature = lazy(() => import("@/pages/CustomerSignature").then((module) => ({ default: module.CustomerSignature })))
+const EngineerSignature = lazy(() => import("@/pages/EngineerSignature").then((module) => ({ default: module.EngineerSignature })))
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
+const MrListPage = lazy(() => import("@/packages/mr/MrListPage").then((module) => ({ default: module.MrListPage })))
+const MrFormPage = lazy(() => import("@/packages/mr/MrFormPage").then((module) => ({ default: module.MrFormPage })))
+const MrPrototypePage = lazy(() => import("@/packages/mr/PrototypePage").then((module) => ({ default: module.MrPrototypePage })))
+const MrItemEditPrototypePage = lazy(() => import("@/packages/mr/ItemEditPrototypePage").then((module) => ({ default: module.MrItemEditPrototypePage })))
+const MrPrintPrototypePage = lazy(() => import("@/packages/mr/PrintPrototypePage").then((module) => ({ default: module.MrPrintPrototypePage })))
+const MrPrintPage = lazy(() => import("@/packages/mr/MrPrintPage").then((module) => ({ default: module.MrPrintPage })))
 const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
 const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
 const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default: module.Devices })))
@@ -28,6 +36,7 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   dashboard: ["order.view", "order.engineer.own"],
   "service-report": ["order.engineer.own"],
   "service-orders": ["order.view"],
+  mr: ["mr.view"],
   "inspection-schedules": ["inspection.view"],
   customers: ["customer.view"],
   devices: ["device.view"],
@@ -45,6 +54,7 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/service-report", permissions: ROUTE_ACCESS_PERMISSIONS["service-report"] },
   { path: "/dashboard", permissions: ROUTE_ACCESS_PERMISSIONS.dashboard },
   { path: "/service-orders", permissions: ROUTE_ACCESS_PERMISSIONS["service-orders"] },
+  { path: "/mr", permissions: ROUTE_ACCESS_PERMISSIONS.mr },
   { path: "/inspection-schedules", permissions: ROUTE_ACCESS_PERMISSIONS["inspection-schedules"] },
   { path: "/customers", permissions: ROUTE_ACCESS_PERMISSIONS.customers },
   { path: "/devices", permissions: ROUTE_ACCESS_PERMISSIONS.devices },
@@ -184,6 +194,14 @@ export default function App() {
             }
           />
           <Route
+            path="/engineer-signature/:token"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <EngineerSignature />
+              </Suspense>
+            }
+          />
+          <Route
             path="/change-password"
             element={
               <ProtectedRoute>
@@ -206,11 +224,61 @@ export default function App() {
             }
           />
           <Route
+            path="/approval-tasks"
+            element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
+          />
+          <Route
             path="/service-orders"
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["service-orders"]}>
                 <ServiceOrders />
               </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/mr"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                <MrListPage />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/mr/prototype"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <MrPrototypePage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/mr/item-edit-prototype"
+            element={
+              <Suspense fallback={<PageLoading />}><MrItemEditPrototypePage /></Suspense>
+            }
+          />
+          <Route
+            path="/mr/print-prototype"
+            element={
+              <Suspense fallback={<PageLoading />}><MrPrintPrototypePage /></Suspense>
+            }
+          />
+          <Route
+            path="/mr/:id"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                <MrFormPage />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/mr/:id/print"
+            element={
+              <ProtectedRoute allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                <Suspense fallback={<PageLoading />}>
+                  <MrPrintPage />
+                </Suspense>
+              </ProtectedRoute>
             }
           />
           <Route

@@ -2,6 +2,7 @@ const cron = require('node-cron')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
 const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
+const { generateDueOrders } = require('../modules/inspection-schedules/controller')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('../modules/customers/internal')
 const {
   sendMaintenanceExpiryMail,
@@ -14,11 +15,18 @@ const {
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 const { processDueAttendanceEmailNotifications } = require('./attendance-notifications')
+const { processMrNotifications } = require('./mr-notifications')
+const { processMrArchives } = require('../modules/mr/archive')
 
 const SCHEDULER_TIMEZONE = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
+const INSPECTION_AUTO_GENERATE_DAYS = 14
 
 function scheduleCron(expression, task) {
   return cron.schedule(expression, task, { timezone: SCHEDULER_TIMEZONE })
+}
+
+function shanghaiDateKeyAfter(days) {
+  return new Date(Date.now() + (8 * 60 + days * 24 * 60) * 60 * 1000).toISOString().slice(0, 10)
 }
 
 function deviceDisplaySql(alias = 'd') {
@@ -38,6 +46,7 @@ async function notificationSettings() {
     'notification.inspectionReminderRecipients',
     'notification.inspectionReminderSalesNotifyEnabled',
     'notification.inspectionScheduleDateMissingEnabled',
+    'notification.inspectionAutoGenerateEnabled',
     'notification.inspectionOverdueEnabled',
     'notification.inspectionOverdueDays',
     'notification.inspectionOverdueRecipients',
@@ -59,6 +68,7 @@ async function notificationSettings() {
     inspectionReminderRecipients: String(saved['notification.inspectionReminderRecipients'] || '').trim(),
     inspectionReminderSalesNotifyEnabled: saved['notification.inspectionReminderSalesNotifyEnabled'] !== 'false',
     inspectionScheduleDateMissingEnabled: saved['notification.inspectionScheduleDateMissingEnabled'] !== 'false',
+    inspectionAutoGenerateEnabled: saved['notification.inspectionAutoGenerateEnabled'] !== 'false',
     inspectionOverdueEnabled: saved['notification.inspectionOverdueEnabled'] !== 'false',
     inspectionOverdueDays: Math.max(1, Math.min(365, Number(saved['notification.inspectionOverdueDays'] || 1))),
     inspectionOverdueRecipients: String(saved['notification.inspectionOverdueRecipients'] || '').trim(),
@@ -686,11 +696,18 @@ function startScheduler() {
         const orderPlaceholders = sourceOrderIds.map((_, i) => `:so${i}`).join(',')
         const orderParams = {}
         sourceOrderIds.forEach((id, i) => { orderParams[`so${i}`] = id })
+        // 工程师取工单协作表 + 历史工单的 assigned_engineer_id(老数据可能没有关联表记录)
         const engineerRows = await query(
           `SELECT soe.service_order_id, u.email
            FROM service_order_engineers soe
            JOIN users u ON u.id = soe.engineer_id
            WHERE soe.service_order_id IN (${orderPlaceholders})
+             AND u.email IS NOT NULL AND u.email <> ''
+           UNION
+           SELECT so.id, u.email
+           FROM service_orders so
+           JOIN users u ON u.id = so.assigned_engineer_id
+           WHERE so.id IN (${orderPlaceholders})
              AND u.email IS NOT NULL AND u.email <> ''`,
           orderParams,
         )
@@ -698,7 +715,8 @@ function startScheduler() {
         for (const row of engineerRows) {
           const key = Number(row.service_order_id)
           if (!engineersByOrderId.has(key)) engineersByOrderId.set(key, [])
-          engineersByOrderId.get(key).push({ email: row.email })
+          const list = engineersByOrderId.get(key)
+          if (!list.some((engineer) => engineer.email === row.email)) list.push({ email: row.email })
         }
         for (const [orderId, engineers] of engineersByOrderId) {
           const engineerDevices = devices.filter((d) => Number(d.installation_source_service_order_id) === orderId)
@@ -834,6 +852,22 @@ function startScheduler() {
       console.log(`[scheduler] Inspection schedule date completeness notifications processed: sent=${sent}, skipped=${skipped}`)
     } catch (error) {
       console.error('[scheduler] Inspection schedule date completeness check failed', error?.message)
+    }
+  })
+
+  scheduleCron('30 6 * * *', async () => {
+    console.log('[scheduler] Running inspection auto-generation...')
+    try {
+      const nSettings = await notificationSettings()
+      if (!nSettings.inspectionAutoGenerateEnabled) {
+        console.log('[scheduler] Inspection auto-generation is disabled')
+        return
+      }
+      const dueDate = shanghaiDateKeyAfter(INSPECTION_AUTO_GENERATE_DAYS)
+      const result = await generateDueOrders({ dueDate, limit: 100 })
+      console.log(`[scheduler] Inspection auto-generation processed through ${dueDate}: generated=${result.generated}, skipped=${result.skipped}`)
+    } catch (error) {
+      console.error('[scheduler] Inspection auto-generation failed', error?.message)
     }
   })
 
@@ -1065,7 +1099,24 @@ function startScheduler() {
     }
   })
 
-  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), attendance notifications (every minute)`)
-}
+  scheduleCron('* * * * *', async () => {
+    try {
+      const result = await processMrNotifications(20)
+      if (result.processed) console.log(`[scheduler] MR notifications processed: sent=${result.sent}, failed=${result.failed}`)
+    } catch (error) {
+      console.error('[scheduler] MR notification check failed', error?.message)
+    }
+  })
+
+  scheduleCron('*/2 * * * *', async () => {
+    try {
+      const result = await processMrArchives(5)
+      if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}`)
+    } catch (error) {
+      console.error('[scheduler] MR archive check failed', error?.message)
+    }
+  })
+
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection auto-generation (06:30, 14 days ahead), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), attendance notifications (every minute), MR approval notifications (1m), MR PDF archive retry (2m)`)}
 
 module.exports = { startScheduler }

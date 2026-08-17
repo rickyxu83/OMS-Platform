@@ -38,6 +38,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel } from "@/lib/service-items";
 import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 
 interface ServiceOrder {
   id: string | number;
@@ -1509,7 +1510,7 @@ export function ServiceOrders() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" disabled={saving || exporting || loading}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
                 {exporting ? t.actions.exporting : t.actions.export}
                 <ChevronDown className="w-4 h-4 ml-2" />
               </Button>
@@ -1543,12 +1544,16 @@ export function ServiceOrders() {
       <ErrorToast message={error} />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {stats.map((stat) => (
+        {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                                {initialLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1656,7 +1661,7 @@ export function ServiceOrders() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
-            {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t.list.loading} />}
+            {refreshing && <span className="btn-loader" aria-hidden="true" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1686,11 +1691,19 @@ export function ServiceOrders() {
               </TableHeader>
               <TableBody>
                 {initialLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                      <Loader2 className="mr-2 inline-block h-5 w-5 animate-spin" /> {t.list.loading}
-                    </TableCell>
-                  </TableRow>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={`skeleton-${i}`}>
+                      <TableCell colSpan={8} className="py-1">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-4 flex-1" />
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-6 w-14 rounded-full" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
@@ -1698,7 +1711,7 @@ export function ServiceOrders() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredOrders.map((order) => {
+                  filteredOrders.map((order, rowIndex) => {
                     const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                     const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                     const itemsLabel = serviceItemsLabel(order);
@@ -1712,7 +1725,8 @@ export function ServiceOrders() {
                         key={order.id}
                         role="button"
                         tabIndex={0}
-                        className="cursor-pointer"
+                        className="list-row-enter cursor-pointer"
+                        style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                         onClick={() => openDetailOrder(order)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
@@ -1827,7 +1841,7 @@ export function ServiceOrders() {
                                     onClick={(event) => event.stopPropagation()}
                                     disabled={exporting}
                                   >
-                                    {exporting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+                                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
                                     {t.actions.export}
                                     <ChevronDown className="ml-1 h-4 w-4" />
                                   </Button>
@@ -1994,7 +2008,7 @@ export function ServiceOrders() {
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={createOrder} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Plus className="w-4 h-4 mr-2" />}
               {saving ? "创建中…" : "创建工单"}
             </Button>
           </DialogFooter>
@@ -2067,7 +2081,7 @@ export function ServiceOrders() {
           <DialogFooter className="shrink-0 border-t bg-background pt-4">
             <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={assignOrderToEngineer} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Send className="w-4 h-4 mr-2" />}
               {saving ? "派单中…" : "确认派单"}
             </Button>
           </DialogFooter>
@@ -2091,7 +2105,7 @@ export function ServiceOrders() {
             </div>
             {deletePreviewLoading ? (
               <div className="rounded-lg border bg-slate-50 p-3 text-muted-foreground">
-                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                <span className="btn-loader mr-2" aria-hidden="true" />
                 正在加载删除影响明细…
               </div>
             ) : deletePreviewError ? (
@@ -2167,7 +2181,7 @@ export function ServiceOrders() {
               onClick={confirmDeleteOrders}
               disabled={saving || deletePreviewLoading || Boolean(deletePreviewError) || !deletePreviewOrders.length}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {saving ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
               {saving ? "删除中…" : `确认删除 ${deletePreviewOrders.length || selectedIds.length} 张工单`}
             </Button>
           </DialogFooter>
@@ -2205,7 +2219,7 @@ export function ServiceOrders() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransitionOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={transitionSelectedOrder} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {saving ? "流转中…" : "确认流转"}
             </Button>
           </DialogFooter>

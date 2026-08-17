@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Loader2, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
+import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 import { toast } from "sonner";
 
 interface Customer {
@@ -31,6 +32,7 @@ interface Customer {
   contactPhone?: string;
   phone?: string;
   address?: string;
+  salesDeliveryAddress?: string;
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -42,7 +44,7 @@ interface Customer {
   salesperson?: string;
   updatedAt?: string;
   createdAt?: string;
-  contacts?: Array<{ id?: string | number; name?: string; phone?: string }>;
+  contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>;
 }
 
 interface CustomerDevice {
@@ -98,7 +100,7 @@ interface CustomerDeletePreview {
     devices: CustomerDevice[];
     serviceOrders: CustomerOrder[];
     inspectionSchedules: CustomerSchedule[];
-    contacts: Array<{ id: string | number; name?: string; phone?: string; useCount?: number }>;
+    contacts: Array<{ id: string | number; name?: string; phone?: string; email?: string; useCount?: number }>;
   };
   previewLimit?: number;
 }
@@ -111,7 +113,7 @@ interface GeoCandidate {
   location?: string;
   contactName?: string;
   contactPhone?: string;
-  contacts?: { name: string; phone?: string }[];
+  contacts?: { name: string; phone?: string; email?: string }[];
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -134,6 +136,7 @@ interface CustomerForm {
   code: string;
   salesperson: string;
   address: string;
+  salesDeliveryAddress: string;
   level: string;
   latitude: number | null;
   longitude: number | null;
@@ -141,7 +144,7 @@ interface CustomerForm {
   mapPoiId: string;
   mapPoiName: string;
   mapAddress: string;
-  contacts: Array<{ id?: string | number; name: string; phone: string }>;
+  contacts: Array<{ id?: string | number; name: string; phone: string; email: string }>;
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -149,6 +152,7 @@ const EMPTY_FORM: CustomerForm = {
   code: "",
   salesperson: "",
   address: "",
+  salesDeliveryAddress: "",
   level: "normal",
   latitude: null,
   longitude: null,
@@ -156,7 +160,7 @@ const EMPTY_FORM: CustomerForm = {
   mapPoiId: "",
   mapPoiName: "",
   mapAddress: "",
-  contacts: [{ name: "", phone: "" }],
+  contacts: [{ name: "", phone: "", email: "" }],
 };
 
 const I18N = {
@@ -215,13 +219,17 @@ const I18N = {
       salesperson: "对应销售",
       contact: "联系人",
       phone: "联系电话",
-      address: "客户地址",
+      address: "工程服务地址",
+      salesDeliveryAddress: "销售交付地址",
       namePlaceholder: "请输入企业全称",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "请选择对应销售",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "详细至街道门牌号",
+      salesDeliveryAddressPlaceholder: "填写销售订购时使用的收货地址",
+      salesDeliveryAddressHelp: "仅用于 MR 交付地点，不会覆盖工程工单使用的客户地址。",
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
       level: "客户等级",
@@ -230,6 +238,7 @@ const I18N = {
       contacts: "联系人列表",
       contactName: "联系人姓名",
       contactPhone: "联系人电话",
+      contactEmail: "联系人邮箱",
       badgeSystem: "系统",
       badgeMap: "地图",
       selectedCoordinate: "已选坐标",
@@ -391,13 +400,17 @@ const I18N = {
       salesperson: "對應銷售",
       contact: "聯絡人",
       phone: "聯絡電話",
-      address: "客戶地址",
+      address: "工程服務地址",
+      salesDeliveryAddress: "銷售交付地址",
       namePlaceholder: "請輸入企業全稱",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "請選擇對應銷售",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "詳細至街道路牌號",
+      salesDeliveryAddressPlaceholder: "填寫銷售訂購時使用的收貨地址",
+      salesDeliveryAddressHelp: "僅用於 MR 交付地點，不會覆蓋工程工單使用的客戶地址。",
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
       level: "客戶等級",
@@ -406,6 +419,7 @@ const I18N = {
       contacts: "聯絡人列表",
       contactName: "聯絡人姓名",
       contactPhone: "聯絡人電話",
+      contactEmail: "聯絡人信箱",
       badgeSystem: "系統",
       badgeMap: "地圖",
       selectedCoordinate: "已選座標",
@@ -553,6 +567,7 @@ const CADENCE_LABELS: Record<string, string> = {
   weekly: "每周",
 };
 
+const SALES_DELIVERY_ADDRESS_ROLES = new Set(["admin", "assistant", "operations_director", "sales_supervisor", "sales"]);
 const CUSTOMER_DELETE_ROLES = new Set([
   "admin",
   "assistant",
@@ -686,6 +701,7 @@ export function Customers() {
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const userRole = String(user?.role || "");
   const canManageCustomer = hasPermission("customer.create", "customer.edit");
+  const canManageSalesDeliveryAddress = SALES_DELIVERY_ADDRESS_ROLES.has(userRole);
   const canDeleteCustomer = hasPermission("customer.delete");
   const canForceDeleteCustomer = canDeleteCustomer;
   const canMergeCustomer = hasPermission("customer.merge");
@@ -693,7 +709,7 @@ export function Customers() {
   const customerListGrid = canDeleteCustomer ? CUSTOMER_LIST_GRID : CUSTOMER_LIST_READONLY_GRID;
   const customerListMinWidth = canDeleteCustomer ? "min-w-[1180px]" : "min-w-[1136px]";
 
-  const primaryContact = form.contacts[0] || { name: "", phone: "" };
+  const primaryContact = form.contacts[0] || { name: "", phone: "", email: "" };
   const salespersonOptions = useMemo(() => {
     const options = userRole === "sales"
       ? [currentSalespersonName].filter(Boolean)
@@ -986,8 +1002,9 @@ export function Customers() {
           id: contact.id,
           name: contact.name || "",
           phone: contact.phone || "",
+          email: contact.email || "",
         }))
-      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "" }]
+      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "", email: "" }]
     setEditingId(c.id);
     setForm({
       id: c.id,
@@ -995,6 +1012,7 @@ export function Customers() {
       code: c.code || "",
       salesperson: c.salesperson || "",
       address: c.address || "",
+      salesDeliveryAddress: c.salesDeliveryAddress || "",
       level: c.level || "normal",
       latitude,
       longitude,
@@ -1092,7 +1110,7 @@ export function Customers() {
   function applyCandidate(company: GeoCandidate) {
     const coordinates = candidateCoordinates(company);
     setForm((prev) => {
-      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "" }]
+      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "", email: "" }]
       if (company.contactName || company.contactPhone) {
         currentContacts[0] = {
           ...currentContacts[0],
@@ -1197,7 +1215,7 @@ export function Customers() {
     );
   }
 
-  function updateContact(index: number, field: "name" | "phone", value: string) {
+  function updateContact(index: number, field: "name" | "phone" | "email", value: string) {
     setForm((prev) => ({
       ...prev,
       contacts: prev.contacts.map((contact, contactIndex) => (
@@ -1209,7 +1227,7 @@ export function Customers() {
   function addContact() {
     setForm((prev) => ({
       ...prev,
-      contacts: [...prev.contacts, { name: "", phone: "" }],
+      contacts: [...prev.contacts, { name: "", phone: "", email: "" }],
     }));
   }
 
@@ -1218,7 +1236,7 @@ export function Customers() {
       const nextContacts = prev.contacts.filter((_, contactIndex) => contactIndex !== index)
       return {
         ...prev,
-        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "" }],
+        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "", email: "" }],
       };
     });
   }
@@ -1389,6 +1407,7 @@ export function Customers() {
         contactName: primaryContact.name.trim() || undefined,
         contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        ...(canManageSalesDeliveryAddress ? { salesDeliveryAddress: form.salesDeliveryAddress.trim() || null } : {}),
         latitude: form.latitude,
         longitude: form.longitude,
         mapProvider: form.mapProvider || null,
@@ -1401,6 +1420,7 @@ export function Customers() {
             ...(contact.id ? { id: contact.id } : {}),
             name: contact.name.trim(),
             phone: contact.phone.trim() || undefined,
+            email: contact.email.trim() || undefined,
           }))
           .filter((contact) => contact.name),
       };
@@ -1443,12 +1463,16 @@ export function Customers() {
       <ErrorToast message={error} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
+        {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                                {initialLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1463,7 +1487,7 @@ export function Customers() {
                 <CardTitle>{t.list.title}</CardTitle>
                 {refreshing ? (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span className="btn-loader btn-loader-sm" aria-hidden="true" />
                     {t.list.loading}
                   </span>
                 ) : null}
@@ -1517,7 +1541,7 @@ export function Customers() {
                       onClick={openMergeDialog}
                       disabled={deleting || merging || selectedCustomerIds.length !== 2}
                     >
-                      {merging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                      {merging ? <span className="btn-loader mr-2" aria-hidden="true" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
                       {merging ? t.actions.merging : `${t.actions.merge}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                     </Button>
                   ) : null}
@@ -1527,7 +1551,7 @@ export function Customers() {
                     onClick={confirmBulkDelete}
                     disabled={deleting || merging || !selectedCustomerIds.length}
                   >
-                    {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    {deleting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Trash2 className="w-4 h-4 mr-2" />}
                     {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                   </Button>
                 </div>
@@ -1538,8 +1562,16 @@ export function Customers() {
         <CardContent className="min-w-0 pt-6">
           <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain rounded-md border">
             {initialLoading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t.list.loading}
+              <div className="p-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b px-2 py-3 last:border-b-0">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
@@ -1559,7 +1591,7 @@ export function Customers() {
                   <div>{t.list.address}</div>
                   <div className="pr-3 text-right">{t.list.action}</div>
                 </div>
-                {filtered.map((c) => {
+                {filtered.map((c, rowIndex) => {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
                     const selected = selectedCustomerIds.includes(String(c.id));
@@ -1568,7 +1600,8 @@ export function Customers() {
                         key={c.id}
                         role="button"
                         tabIndex={0}
-                        className={`grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
+                        className={`list-row-enter grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
+                        style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
                         onClick={() => openCustomerDetail(c)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
@@ -1751,7 +1784,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button onClick={confirmMerge} disabled={merging || !mergeTarget || !mergeSource}>
-              {merging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+              {merging ? <span className="btn-loader mr-2" aria-hidden="true" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
               {merging ? t.actions.merging : t.dialog.mergeConfirm}
             </Button>
           </DialogFooter>
@@ -1769,7 +1802,7 @@ export function Customers() {
             const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
             const contacts = detailTarget.contacts?.length
               ? detailTarget.contacts
-              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "" }]
+              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "", email: "" }]
             const devices = detailInsight?.devices || [];
             const schedules = detailInsight?.schedules || [];
             const orders = detailInsight?.orders || [];
@@ -1834,13 +1867,13 @@ export function Customers() {
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.deviceCount}</div>
                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : devices.length}
+                          {detailInsightLoading ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : devices.length}
                         </div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.activeInspection}</div>
                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                          {detailInsightLoading ? <Loader2 className="inline-block h-3.5 w-3.5 animate-spin" /> : activeSchedules.length}
+                          {detailInsightLoading ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : activeSchedules.length}
                         </div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
@@ -1852,7 +1885,7 @@ export function Customers() {
 
                   {detailInsightLoading ? (
                     <div className="rounded-lg border bg-slate-50 p-3 text-sm text-muted-foreground">
-                      <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                      <span className="btn-loader mr-2" aria-hidden="true" />
                       {t.dialog.loadingInsight}
                     </div>
                   ) : null}
@@ -1869,10 +1902,11 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.contacts}</div>
                           <div className="mt-3 space-y-2">
-                            {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
+                            {contacts.some((contact) => contact.name || contact.phone || contact.email) ? contacts.map((contact, index) => (
                               <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
                                 <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
                                 <div className="text-xs text-muted-foreground">{renderPhoneLink(contact.phone)}</div>
+                                {contact.email ? <a className="text-xs text-primary hover:underline" href={`mailto:${contact.email}`}>{contact.email}</a> : null}
                               </div>
                             )) : (
                               <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
@@ -1883,6 +1917,12 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.address}</div>
                           <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
+                          {canManageSalesDeliveryAddress && detailTarget.salesDeliveryAddress ? (
+                            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                              <div className="text-xs font-medium text-amber-900">{t.dialog.salesDeliveryAddress}</div>
+                              <div className="mt-1 text-sm text-slate-700">{detailTarget.salesDeliveryAddress}</div>
+                            </div>
+                          ) : null}
                           <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
                             {detailTarget.latitude != null && detailTarget.longitude != null ? (
                               <div className="flex items-start gap-2">
@@ -2066,7 +2106,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
@@ -2097,7 +2137,7 @@ export function Customers() {
                     className="w-full shrink-0 sm:w-auto"
                   >
                     {locating ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      <span className="btn-loader mr-1" aria-hidden="true" />
                     ) : (
                       <Crosshair className="w-4 h-4 mr-1" />
                     )}
@@ -2125,7 +2165,7 @@ export function Customers() {
                     className="w-full shrink-0 sm:w-auto"
                   >
                     {addressLocating ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      <span className="btn-loader mr-1" aria-hidden="true" />
                     ) : (
                       <MapPin className="w-4 h-4 mr-1" />
                     )}
@@ -2133,6 +2173,19 @@ export function Customers() {
                   </Button>
                 </div>
               </div>
+
+              {canManageSalesDeliveryAddress ? (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                  <Label htmlFor="cust-sales-delivery-address">{t.dialog.salesDeliveryAddress}</Label>
+                  <Input
+                    id="cust-sales-delivery-address"
+                    value={form.salesDeliveryAddress}
+                    onChange={(e) => setForm({ ...form, salesDeliveryAddress: e.target.value })}
+                    placeholder={t.dialog.salesDeliveryAddressPlaceholder}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.dialog.salesDeliveryAddressHelp}</p>
+                </div>
+              ) : null}
 
               {showCandidates && candidates.length > 0 ? (
                 <div className="border rounded-lg bg-white shadow-sm max-h-[200px] overflow-y-auto">
@@ -2163,7 +2216,7 @@ export function Customers() {
               ) : null}
               {locationHint ? (
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  {geoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  {geoLoading ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : null}
                   {locationHint}
                 </div>
               ) : null}
@@ -2250,7 +2303,7 @@ export function Customers() {
               </div>
               <div className="space-y-3">
                 {form.contacts.map((contact, index) => (
-                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
+                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
                     <div className="space-y-2">
                       <Label>{t.dialog.contactName}</Label>
                       <Input
@@ -2265,6 +2318,16 @@ export function Customers() {
                         value={contact.phone}
                         onChange={(e) => updateContact(index, "phone", e.target.value)}
                         placeholder={t.dialog.phonePlaceholder}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t.dialog.contactEmail}</Label>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        value={contact.email}
+                        onChange={(e) => updateContact(index, "email", e.target.value)}
+                        placeholder={t.dialog.emailPlaceholder}
                       />
                     </div>
                     <Button
@@ -2286,7 +2349,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? t.actions.saving : editingId != null ? t.actions.saveEdit : t.actions.saveNow}
             </Button>
           </DialogFooter>
@@ -2310,7 +2373,7 @@ export function Customers() {
               <div className="font-medium text-slate-900">{deleteTarget?.name || t.misc.unknown}</div>
               {deletePreviewLoading ? (
                 <div className="mt-2 text-muted-foreground">
-                  <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
+                  <span className="btn-loader mr-2" aria-hidden="true" />
                   {t.dialog.deleteChecking}
                 </div>
               ) : deletePreviewError ? (
@@ -2384,6 +2447,7 @@ export function Customers() {
                             <div key={`delete-contact-${contact.id}`} className="rounded-md bg-slate-50 px-3 py-2">
                               <div className="font-medium text-slate-900">{contact.name || t.misc.unknown}</div>
                               <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                              {contact.email ? <div className="text-xs text-muted-foreground">{contact.email}</div> : null}
                             </div>
                           ))}
                         </div>
@@ -2410,7 +2474,7 @@ export function Customers() {
               {t.actions.cancel}
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting || !canDeleteCustomer}>
-              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deleting ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="w-4 h-4" />}
               {deleting ? t.actions.deleting : canForceDeleteCustomer ? t.actions.forceDelete : t.actions.delete}
             </Button>
           </DialogFooter>

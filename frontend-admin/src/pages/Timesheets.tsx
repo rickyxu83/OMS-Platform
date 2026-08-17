@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Loader2, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
+import { Skeleton } from "@/components/Skeleton";
 
 interface TimesheetItem {
   id?: string | number;
@@ -397,12 +398,16 @@ export function Timesheets() {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
+        {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                                {loading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -420,7 +425,7 @@ export function Timesheets() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm">暂无月报数据</div>

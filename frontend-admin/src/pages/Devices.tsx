@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Server, Loader2, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip, Merge, TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,8 @@ import {
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
+import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
+import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSearchText } from "@/lib/text-i18n";
 import { toast } from "sonner";
@@ -49,6 +51,8 @@ interface Device {
   remark?: string;
   createdAt?: string;
   updatedAt?: string;
+  createdBy?: number | string | null;
+  createdByName?: string;
   relatedServiceOrders?: DeviceRelatedServiceOrder[];
   partHistory?: DevicePartHistory[];
 }
@@ -904,7 +908,7 @@ function DeviceCustomerSuggestions({
         <div className="max-h-80 overflow-y-auto p-2 pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="btn-loader" aria-hidden="true" />
               正在检索客户…
             </div>
           ) : null}
@@ -1347,6 +1351,21 @@ export function Devices() {
   const [saving, setSaving] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Device | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [similarDevices, setSimilarDevices] = useState<Array<{ id: string | number; model?: string; serialNo?: string; customerName?: string; createdByName?: string }>>([]);
+  const [similarDevicesLoading, setSimilarDevicesLoading] = useState(false);
+  const [suspectedOpen, setSuspectedOpen] = useState(false);
+  const [suspectedLoading, setSuspectedLoading] = useState(false);
+  const [suspectedTotal, setSuspectedTotal] = useState(0);
+  const [suspectedGroups, setSuspectedGroups] = useState<Array<{
+    customerId: string | number;
+    customerName: string;
+    items: Array<{ id: string | number; model?: string; serialNo?: string; createdAt?: string; createdByName?: string }>;
+  }>>([]);
+  const [mergeConfirm, setMergeConfirm] = useState<{
+    mergeId: string | number;
+    preview: { keep: { id: string | number; model?: string; serialNo?: string }; merge: { id: string | number; model?: string; serialNo?: string }; counts: Record<string, number> } | null;
+    loading: boolean;
+  } | null>(null);
   const [attachmentFormat, setAttachmentFormat] = useState("all");
   const [attachmentKeyword, setAttachmentKeyword] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1355,6 +1374,10 @@ export function Devices() {
   const [customerFilter, setCustomerFilter] = useState("all");
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const [deviceTotal, setDeviceTotal] = useState(0);
+  const [deviceStats, setDeviceStats] = useState<{ total: number; ourMaintenance: number; originalManufacturer: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -1409,6 +1432,11 @@ export function Devices() {
   const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
+  const [normalizationProgress, setNormalizationProgress] = useState<ProgressState | null>(null);
+  const [duplicateConfirm, setDuplicateConfirm] = useState<{
+    items: Array<{ id: string | number; customerName?: string; model?: string; serialNo?: string; createdByName?: string }>;
+    payloads: Record<string, unknown>[];
+  } | null>(null);
   const [modelApplying, setModelApplying] = useState(false);
   const [modelCompareResult, setModelCompareResult] = useState<ExistingModelNormalizationResult | null>(null);
   const filteredMaintenanceParties = useMemo(
@@ -1427,8 +1455,20 @@ export function Devices() {
       const params = new URLSearchParams();
       if (customerFilter !== "all") params.set("customerId", customerFilter);
       if (keyword.trim()) params.set("keyword", keyword.trim());
-      const data = await api.get(`/devices${params.toString() ? `?${params}` : ""}`);
-      setDevices((data?.items || []) as Device[]);
+      if (maintenanceFilter !== "all") params.set("maintenanceType", maintenanceFilter);
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      const data = await api.get(`/devices?${params.toString()}`);
+      const items = (data?.items || []) as Device[];
+      // 当前页被删空时自动回退一页
+      if (!items.length && page > 1) {
+        setPage((p) => Math.max(1, p - 1));
+        setLoading(false);
+        return;
+      }
+      setDevices(items);
+      setDeviceTotal(Number(data?.total || 0));
+      setDeviceStats(data?.stats || null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
@@ -1475,6 +1515,7 @@ export function Devices() {
   useEffect(() => {
     loadCustomers();
     loadParties();
+    loadSuspected();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1484,7 +1525,7 @@ export function Devices() {
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerFilter, searchQuery]);
+  }, [customerFilter, maintenanceFilter, page, searchQuery]);
 
   function delayModelNormalizationJobPoll(ms: number) {
     if (!mountedRef.current) return Promise.resolve();
@@ -1525,22 +1566,30 @@ export function Devices() {
     const uniqueJobs = [...new Map(jobs.filter((job) => job.id).map((job) => [String(job.id), job])).values()];
     if (!uniqueJobs.length) return;
 
-    const toastId = toast.loading(
-      uniqueJobs.length === 1
-        ? `正在后台搜索型号：${uniqueJobs[0].inputModel || "设备型号"}`
-        : `正在后台搜索 ${uniqueJobs.length} 个设备型号`,
-      {
-        position: MODEL_NORMALIZATION_TOAST_POSITION,
-        duration: Infinity,
-      },
-    );
+    const total = uniqueJobs.length;
+    const firstInput = uniqueJobs[0].inputModel || "设备型号";
+    setNormalizationProgress({
+      stage: "task",
+      progress: 0,
+      message: total > 1 ? `正在后台搜索 ${total} 个设备型号…` : `正在后台搜索型号：${firstInput}`,
+    });
 
+    let doneCount = 0;
     void (async () => {
-      const results = await Promise.all(uniqueJobs.map(waitForModelNormalizationJob));
+      const results = await Promise.all(uniqueJobs.map(async (job) => {
+        const result = await waitForModelNormalizationJob(job);
+        doneCount += 1;
+        setNormalizationProgress({
+          stage: "task",
+          progress: Math.min(99, Math.round((doneCount / total) * 100)),
+          message: total > 1 ? `正在后台搜索型号…（${doneCount}/${total}）` : "正在后台搜索型号…",
+        });
+        return result;
+      }));
       if (!mountedRef.current) return;
+      setNormalizationProgress(null);
 
       const toastOptions = {
-        id: toastId,
         position: MODEL_NORMALIZATION_TOAST_POSITION,
         duration: 9000,
       };
@@ -1568,27 +1617,25 @@ export function Devices() {
   }
 
   const filtered = useMemo(() => {
-    // keyword 已发给后端搜索(字段集更全,含位置/备注),前端只做维保类型/状态过滤,
-    // 不再用更窄的字段集做本地关键词二次过滤
+    // 维保类型已由后端过滤分页；keyword/客户同后端。
+    // 设备表无 status 列（状态筛选为前端残留），此处仅保留状态过滤行为。
     return devices.filter((d) => {
-      const maintenanceType = canonicalMaintenanceType(d.maintenanceType);
       const status = d.status || "active";
-      if (maintenanceFilter !== "all" && maintenanceType !== maintenanceFilter) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
       return true;
     });
-  }, [devices, maintenanceFilter, statusFilter]);
+  }, [devices, statusFilter]);
 
   const stats = useMemo(() => {
-    const total = filtered.length;
-    const ours = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "our_maintenance").length;
-    const vendor = filtered.filter((d) => canonicalMaintenanceType(d.maintenanceType) === "original_manufacturer").length;
+    const s = deviceStats;
     return [
-      { label: "设备总数", value: total },
-      { label: "我方维保", value: ours },
-      { label: "原厂维保", value: vendor },
+      { label: "设备总数", value: s?.total ?? 0 },
+      { label: "我方维保", value: s?.ourMaintenance ?? 0 },
+      { label: "原厂维保", value: s?.originalManufacturer ?? 0 },
     ];
-  }, [filtered]);
+  }, [deviceStats]);
+
+  const totalPages = Math.max(1, Math.ceil(deviceTotal / pageSize));
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
 
@@ -1602,15 +1649,24 @@ export function Devices() {
   }
 
   async function handleExportDevices() {
-    if (!filtered.length) {
-      setError("当前没有可导出的设备");
-      return;
-    }
     setExporting(true);
     setError("");
     try {
-      await exportDevicesToExcel(filtered);
-      toast.success(`已导出 ${filtered.length} 台设备`);
+      // 导出与列表同一筛选口径的全部匹配（至多 200 台），不受当前分页影响
+      const params = new URLSearchParams();
+      if (customerFilter !== "all") params.set("customerId", customerFilter);
+      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+      if (maintenanceFilter !== "all") params.set("maintenanceType", maintenanceFilter);
+      params.set("page", "1");
+      params.set("pageSize", "200");
+      const data = await api.get(`/devices?${params.toString()}`);
+      const items = (data?.items || []) as Device[];
+      if (!items.length) {
+        setError("当前没有可导出的设备");
+        return;
+      }
+      await exportDevicesToExcel(items);
+      toast.success(`已导出 ${items.length} 台设备`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "设备导出失败");
     } finally {
@@ -1686,6 +1742,7 @@ export function Devices() {
     event.stopPropagation();
     const value = canonicalMaintenanceType(maintenanceType);
     if (!value) return;
+    setPage(1);
     setMaintenanceFilter(value);
   }
 
@@ -1801,6 +1858,7 @@ export function Devices() {
     setDetailTarget(device);
     if (!device.id) return;
     setDetailLoading(true);
+    setSimilarDevices([]);
     try {
       const data = await api.get(`/devices/${device.id}`);
       setDetailTarget((data?.item || device) as Device);
@@ -1808,6 +1866,17 @@ export function Devices() {
       setError(e instanceof Error ? e.message : "加载设备详情失败");
     } finally {
       setDetailLoading(false);
+    }
+    if (device.id) {
+      setSimilarDevicesLoading(true);
+      try {
+        const data = await api.get(`/devices/${device.id}/similar`);
+        setSimilarDevices((data?.items || []) as never);
+      } catch {
+        setSimilarDevices([]);
+      } finally {
+        setSimilarDevicesLoading(false);
+      }
     }
   }
 
@@ -1866,6 +1935,84 @@ export function Devices() {
     }
   }
 
+  // 创建设备（单条/批量统一入口）：L1 后端硬拦截，L2 疑似重复时弹确认框
+  async function createDevices(payloads: Record<string, unknown>[], force: boolean) {
+    const normalizationNotices: ModelNormalizationNotice[] = [];
+    const normalizationJobs: ModelNormalizationJob[] = [];
+    let createdCount = 0;
+    for (const payload of payloads) {
+      try {
+        const data = await api.post("/devices", force ? { ...payload, force: "1" } : payload);
+        const notice = modelNormalizationNotice(data);
+        if (notice) normalizationNotices.push(notice);
+        const job = extractModelNormalizationJob(data);
+        if (job) normalizationJobs.push(job);
+        createdCount += 1;
+      } catch (e) {
+        const warning = (e as { details?: { duplicateWarning?: Array<{ id: string | number }> } })?.details?.duplicateWarning;
+        if (!force && Array.isArray(warning) && warning.length) {
+          setDuplicateConfirm({ items: warning, payloads: payloads.slice(createdCount) });
+          const marker = new Error("__duplicate_confirm__");
+          (marker as Error & { __duplicate?: boolean }).__duplicate = true;
+          throw marker;
+        }
+        throw e;
+      }
+    }
+    showModelNormalizationNotices(normalizationNotices);
+    trackModelNormalizationJobs(normalizationJobs);
+  }
+
+  async function loadSuspected() {
+    setSuspectedLoading(true);
+    try {
+      const data = await api.get("/devices/suspected-duplicates");
+      setSuspectedTotal(Number(data?.total || 0));
+      setSuspectedGroups((data?.groups || []) as never);
+    } catch {
+      setSuspectedTotal(0);
+      setSuspectedGroups([]);
+    } finally {
+      setSuspectedLoading(false);
+    }
+  }
+
+  function openSuspectedDialog() {
+    if (!suspectedOpen) void loadSuspected();
+    setSuspectedOpen(true);
+  }
+
+  function openMergeConfirm(item: { id: string | number; model?: string; serialNo?: string }) {
+    const keepId = detailTarget?.id;
+    if (!keepId) return;
+    setMergeConfirm({ mergeId: item.id, preview: null, loading: true });
+    void api.post("/devices/merge-preview", { keepId, mergeId: item.id })
+      .then((data) => setMergeConfirm((current) => current ? { ...current, preview: data, loading: false } : current))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "合并预览失败");
+        setMergeConfirm(null);
+      });
+  }
+
+  async function confirmMerge() {
+    if (!mergeConfirm) return;
+    const keepId = detailTarget?.id;
+    if (!keepId) return;
+    setSaving(true);
+    setError("");
+    try {
+      const data = await api.post("/devices/merge", { keepId, mergeId: mergeConfirm.mergeId });
+      toast.success(`设备 #${mergeConfirm.mergeId} 已合并到 #${keepId}`);
+      setMergeConfirm(null);
+      if (detailTarget) await openDetail(detailTarget);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "合并失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function submit() {
     let effectiveCustomerId = form.customerId;
     if (!effectiveCustomerId && customerInput.trim()) {
@@ -1885,8 +2032,6 @@ export function Devices() {
     setSaving(true);
     setError("");
     let createdCount = 0;
-    const normalizationNotices: ModelNormalizationNotice[] = [];
-    const normalizationJobs: ModelNormalizationJob[] = [];
     try {
       const maintenanceType = canonicalMaintenanceType(form.maintenanceType);
       const commonPayload: Record<string, unknown> = {
@@ -1928,20 +2073,15 @@ export function Devices() {
           return;
         }
 
-        for (const row of rows) {
-          const data = await api.post("/devices", {
-            ...commonPayload,
-            name: row.name || null,
-            model: row.model,
-            serialNo: row.serialNo || undefined,
-            mrNo: row.mrNo || undefined,
-          });
-          const notice = modelNormalizationNotice(data);
-          if (notice) normalizationNotices.push(notice);
-          const job = extractModelNormalizationJob(data);
-          if (job) normalizationJobs.push(job);
-          createdCount += 1;
-        }
+        const bulkPayloads = rows.map((row) => ({
+          ...commonPayload,
+          name: row.name || null,
+          model: row.model,
+          serialNo: row.serialNo || undefined,
+          mrNo: row.mrNo || undefined,
+        }));
+        await createDevices(bulkPayloads, false);
+        createdCount = bulkPayloads.length;
       } else {
         if (!form.model.trim()) {
           setError("请输入设备型号");
@@ -1962,18 +2102,14 @@ export function Devices() {
         if (editingId) {
           await api.put(`/devices/${editingId}`, payload);
         } else {
-          const data = await api.post("/devices", payload);
-          const notice = modelNormalizationNotice(data);
-          if (notice) normalizationNotices.push(notice);
-          const job = extractModelNormalizationJob(data);
-          if (job) normalizationJobs.push(job);
+          await createDevices([payload], false);
+          createdCount = 1;
         }
       }
       setDialogOpen(false);
-      showModelNormalizationNotices(normalizationNotices);
-      trackModelNormalizationJobs(normalizationJobs);
       await load();
     } catch (e) {
+      if ((e as Error & { __duplicate?: boolean })?.__duplicate) return;
       const msg = e instanceof Error ? e.message : "保存失败";
       setError(createdCount ? `已新增 ${createdCount} 台设备，后续保存失败：${msg}` : msg);
       if (createdCount) await load();
@@ -2076,7 +2212,7 @@ export function Devices() {
       <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-md max-h-56 overflow-auto">
         {modelLoading ? (
           <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> 搜索型号中…
+            <span className="btn-loader" aria-hidden="true" /> 搜索型号中…
           </div>
         ) : null}
         {modelSuggestions.map((suggestion, index) => (
@@ -2503,6 +2639,11 @@ export function Devices() {
 
   return (
     <div className="p-6 space-y-6">
+      {normalizationProgress ? (
+        <div className="fixed right-4 top-4 z-[60] w-80 sm:right-6 sm:top-6">
+          <ProgressPanel progress={normalizationProgress} title="型号后台搜索" />
+        </div>
+      ) : null}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold">设备资产</h1>
@@ -2517,7 +2658,7 @@ export function Devices() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing || maintenanceImporting}>
-                  {importing || maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  {importing || maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
                   批量导入
                   <ChevronDown className="w-4 h-4 ml-2" />
                 </Button>
@@ -2554,20 +2695,20 @@ export function Devices() {
             onClick={handleExportDevices}
             disabled={exporting || loading || !filtered.length}
           >
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+            {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
             批量导出
           </Button>
           {canEditDevices ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={loading}>
-                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
+                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
                   {modelComparing ? `校正 ${modelCompareProgress}%` : "其他"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
-                  {modelComparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -2584,17 +2725,36 @@ export function Devices() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        {stats.map((stat, statIndex) => (
           <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{stat.label}</div>
               <div className="text-2xl font-bold mt-1">
-                {initialLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : stat.value}
+                                {initialLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                )}
               </div>
             </CardContent>
           </Card>
         ))}
+        <Card
+          className="cursor-pointer overflow-hidden border-none shadow-sm ring-1 ring-amber-200 transition-shadow hover:ring-amber-400"
+          onClick={openSuspectedDialog}
+        >
+          <CardContent className="pt-6">
+            <div className="text-sm text-amber-600">疑似重复设备</div>
+            <div className="text-2xl font-bold mt-1 text-amber-600">
+              {suspectedLoading && !suspectedOpen ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <span className="stat-value-enter inline-block" style={{ animationDelay: "480ms" }}>{suspectedTotal} 组</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -2625,7 +2785,7 @@ export function Devices() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={maintenanceFilter} onValueChange={setMaintenanceFilter}>
+            <Select value={maintenanceFilter} onValueChange={(value) => { setPage(1); setMaintenanceFilter(value); }}>
               <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="维保类型" />
               </SelectTrigger>
@@ -2656,6 +2816,7 @@ export function Devices() {
                 setCustomerFilter("all");
                 setMaintenanceFilter("all");
                 setStatusFilter("all");
+                setPage(1);
               }}
             >
               <RotateCcw className="w-4 h-4 mr-2" />
@@ -2669,10 +2830,10 @@ export function Devices() {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
-              <CardTitle>设备列表 ({filtered.length})</CardTitle>
+              <CardTitle>设备列表（共 {deviceTotal} 台）</CardTitle>
               {refreshing ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="btn-loader btn-loader-sm" aria-hidden="true" />
                   正在更新
                 </span>
               ) : null}
@@ -2722,8 +2883,17 @@ export function Devices() {
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             {initialLoading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> 正在加载…
+              <div className="p-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-6 w-14 rounded-full" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
@@ -2740,7 +2910,7 @@ export function Devices() {
                   <div className="text-center">状态</div>
                   {canManageDevices ? <div className="text-center">操作</div> : null}
                 </div>
-                {filtered.map((device) => {
+                {filtered.map((device, rowIndex) => {
                   const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
                   const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
                   const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
@@ -2750,7 +2920,8 @@ export function Devices() {
                       key={device.id}
                       role="button"
                       tabIndex={0}
-                      className={`grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
+                      className={`list-row-enter grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
+                      style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
                       onClick={() => openDeviceDetail(device)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
@@ -2877,6 +3048,25 @@ export function Devices() {
                 })}
               </div>
             )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
+                  第一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
+                  上一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
+                  下一页
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
+                  最后一页
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -2956,9 +3146,12 @@ export function Devices() {
               <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
                 <div className="space-y-5 py-2">
                   {detailLoading ? (
-                    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      正在加载完整设备详情…
+                    <div className="space-y-2">
+                      <Skeleton className="h-5 w-1/2" />
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
                     </div>
                   ) : null}
 
@@ -3047,6 +3240,10 @@ export function Devices() {
                         <div>
                           <div className="text-xs text-muted-foreground">创建时间</div>
                           <div className="mt-1">{formatDate(detailTarget.createdAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">创建人</div>
+                          <div className="mt-1">{detailTarget.createdByName || "-"}</div>
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">最近更新</div>
@@ -3191,6 +3388,45 @@ export function Devices() {
                       </div>
                     )}
                   </details>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">疑似重复设备</div>
+                        <div className="mt-1 text-xs text-muted-foreground">同客户下 SN 或型号相似的设备（基于归一化与编辑距离）</div>
+                      </div>
+                      {similarDevices.length ? <Badge variant="warning">{similarDevices.length} 台</Badge> : <Badge variant="outline">无</Badge>}
+                    </div>
+                    {similarDevicesLoading ? (
+                      <div className="mt-3 space-y-2">
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                      </div>
+                    ) : similarDevices.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {similarDevices.map((item) => (
+                          <div key={String(item.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2 text-sm">
+                            <span className="font-medium">设备 #{item.id}</span>
+                            <span className="text-muted-foreground">
+                              {item.model || "-"} · {item.serialNo || "-"}
+                              {item.createdByName ? ` · ${item.createdByName}` : ""}
+                            </span>
+                            {canManageDevices ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => openMergeConfirm(item)}
+                              >
+                                <Merge className="w-3.5 h-3.5 mr-1" />
+                                合并到本设备
+                              </Button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -3545,7 +3781,7 @@ export function Devices() {
               取消
             </Button>
             <Button onClick={submit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : editingId ? "保存修改" : createMode === "bulk" ? "批量保存" : "保存"}
             </Button>
           </DialogFooter>
@@ -3637,7 +3873,7 @@ export function Devices() {
               onClick={applyExistingModelNormalizations}
               disabled={modelApplying || !modelCompareResult?.correctableCount}
             >
-              {modelApplying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {modelApplying ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {modelApplying ? "纠正中…" : `应用纠正${modelCompareResult?.correctableCount ? ` (${modelCompareResult.correctableCount})` : ""}`}
             </Button>
           </DialogFooter>
@@ -3794,7 +4030,7 @@ export function Devices() {
             <Button variant="outline" onClick={() => setMaintenanceImportOpen(false)} disabled={maintenanceImporting}>关闭</Button>
             {maintenanceImportPreview ? (
               <Button variant="outline" onClick={() => previewMaintenanceImport(true)} disabled={maintenanceImporting || !maintenanceImportFile}>
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                 {maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation ? "按所选列重新分析" : "重新分析"}
               </Button>
             ) : null}
@@ -3803,12 +4039,12 @@ export function Devices() {
                 onClick={applyMaintenanceImport}
                 disabled={maintenanceImporting || maintenanceImportMappingDirty || maintenanceImportPreview.requiresColumnConfirmation || !maintenanceImportSelectedIds.length}
               >
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
                 确认更新 ({maintenanceImportSelectedIds.length})
               </Button>
             ) : (
               <Button onClick={() => previewMaintenanceImport(false)} disabled={maintenanceImporting || !maintenanceImportFile}>
-                {maintenanceImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                {maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                 自动识别并预览
               </Button>
             )}
@@ -4068,7 +4304,7 @@ export function Devices() {
               onClick={() => submitImport((importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "confirm" : "check")}
               disabled={importing || !importFile}
             >
-              {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+              {importing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
               {importing ? "导入中…" : (importResult?.requiresImportConfirmation || importResult?.requiresModelConfirmation) ? "确认并导入可处理设备" : "开始导入"}
             </Button>
           </DialogFooter>
@@ -4242,8 +4478,178 @@ export function Devices() {
               取消
             </Button>
             <Button onClick={submitBatchEdit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Check className="w-4 h-4 mr-2" />}
               {saving ? "保存中…" : "批量保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(duplicateConfirm)} onOpenChange={(open) => { if (!open) setDuplicateConfirm(null); }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>检测到疑似重复设备</DialogTitle>
+            <DialogDescription>
+              系统发现同客户下存在 SN 或型号相似的设备，请核对后确认是否仍要创建。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[40vh] space-y-2 overflow-y-auto py-2">
+            {(duplicateConfirm?.items || []).map((item) => (
+              <div key={String(item.id)} className="rounded-lg border bg-amber-50/50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">设备 #{item.id}</span>
+                  {item.customerName ? <span className="text-xs text-muted-foreground">{item.customerName}</span> : null}
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  型号：{item.model || "-"} · S/N：{item.serialNo || "-"}
+                  {item.createdByName ? ` · 创建人：${item.createdByName}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateConfirm(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                const pending = duplicateConfirm;
+                setDuplicateConfirm(null);
+                if (!pending) return;
+                setSaving(true);
+                try {
+                  await createDevices(pending.payloads, true);
+                  setDialogOpen(false);
+                  await load();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "保存失败");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <Check className="w-4 h-4 mr-2" />
+              仍要创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(mergeConfirm)} onOpenChange={(open) => { if (!open && !saving) setMergeConfirm(null); }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>合并设备（手动确认）</DialogTitle>
+            <DialogDescription>
+              将待合并设备的关联记录迁移到保留设备后删除，<b>此操作不可撤销</b>，请核对无误后手动确认。
+            </DialogDescription>
+          </DialogHeader>
+          {mergeConfirm?.loading ? (
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : mergeConfirm?.preview ? (
+            <div className="space-y-3 py-2">
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm">
+                  <div className="text-xs font-medium text-emerald-700">保留设备</div>
+                  <div className="mt-1 font-medium">#{mergeConfirm.preview.keep.id}</div>
+                  <div className="text-muted-foreground">
+                    {mergeConfirm.preview.keep.model || "-"} · {mergeConfirm.preview.keep.serialNo || "-"}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm">
+                  <div className="text-xs font-medium text-amber-700">待合并（将删除）</div>
+                  <div className="mt-1 font-medium">#{mergeConfirm.preview.merge.id}</div>
+                  <div className="text-muted-foreground">
+                    {mergeConfirm.preview.merge.model || "-"} · {mergeConfirm.preview.merge.serialNo || "-"}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <TriangleAlert className="h-4 w-4 text-amber-600" />
+                  将迁移到保留设备：
+                </div>
+                <div className="mt-1 grid gap-1 text-muted-foreground">
+                  {Object.entries(mergeConfirm.preview.counts || {}).map(([key, value]) => (
+                    <span key={key}>
+                      {({ mainServiceOrders: "工单", targetServiceOrders: "工单关联", inspectionSchedules: "巡检计划", serviceParts: "备件记录" } as Record<string, string>)[key] || key}：{value} 条
+                    </span>
+                  ))}
+                  {!Object.values(mergeConfirm.preview.counts || {}).some((v) => v > 0) ? "（无关联记录）" : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMergeConfirm(null)} disabled={saving}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmMerge}
+              disabled={saving || !mergeConfirm?.preview}
+            >
+              {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="w-4 h-4 mr-2" />}
+              确认合并
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={suspectedOpen} onOpenChange={setSuspectedOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>疑似重复设备（{suspectedTotal} 组）</DialogTitle>
+            <DialogDescription>
+              按同客户 + SN/型号相似自动聚合，点击设备可查看详情并在详情内手动合并。
+            </DialogDescription>
+          </DialogHeader>
+          {suspectedLoading ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : suspectedGroups.length ? (
+            <div className="space-y-4 py-2">
+              {suspectedGroups.map((group, index) => (
+                <div key={`${group.customerId}-${index}`} className="rounded-lg border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-medium">{group.customerName || `客户 #${group.customerId}`}</span>
+                    <Badge variant="warning">{group.items.length} 台</Badge>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.items.map((item) => (
+                      <div key={String(item.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                        <span className="font-medium">#{item.id}</span>
+                        <span className="min-w-0 flex-1 text-muted-foreground">
+                          {item.model || "-"} · {item.serialNo || "-"}
+                          {item.createdByName ? ` · ${item.createdByName}` : ""}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSuspectedOpen(false);
+                            const device = { id: item.id, model: item.model, serialNo: item.serialNo } as Device;
+                            openDetail(device);
+                          }}
+                        >
+                          查看详情
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-sm text-muted-foreground">未发现疑似重复设备</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuspectedOpen(false)}>
+              关闭
             </Button>
           </DialogFooter>
         </DialogContent>

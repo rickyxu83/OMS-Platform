@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, Globe } from "lucide-react";
+import { Eye, EyeOff, Globe, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,7 @@ const LOGIN_BACKGROUND_BLOBS = [
 ];
 
 const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
+const IS_TEST_SERVER = String(import.meta.env.VITE_APP_ENVIRONMENT || "").toLowerCase() === "test";
 const LOGIN_MOTION_EASE = 0.22;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
 const LOGIN_DEEP_BLOB_COUNT = 4;
@@ -335,6 +336,8 @@ export function Login() {
       welcome: "欢迎回来",
       subtitle: "运维智管",
       pleaseLogin: "请登录您的账户",
+      testServer: "测试开发服务器",
+      testServerNotice: "此环境仅供测试，请勿录入正式业务数据",
       username: "邮箱或别名",
       password: "密码",
       remember: "记住邮箱/别名",
@@ -362,6 +365,8 @@ export function Login() {
       welcome: "歡迎回來",
       subtitle: "運維智管",
       pleaseLogin: "請登錄您的賬戶",
+      testServer: "測試開發伺服器",
+      testServerNotice: "此環境僅供測試，請勿錄入正式業務資料",
       username: "信箱或別名",
       password: "密碼",
       remember: "記住信箱/別名",
@@ -501,8 +506,22 @@ export function Login() {
       }}
     >
       <LoginMotionBackground />
+      {IS_TEST_SERVER && (
+        <div
+          role="status"
+          className="fixed inset-x-0 top-0 z-30 flex min-h-16 items-center justify-center border-b-2 border-amber-700 bg-amber-300 px-4 py-2 text-amber-950 shadow-lg"
+        >
+          <div className="flex max-w-3xl items-center gap-3">
+            <TriangleAlert className="h-7 w-7 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-bold sm:text-base">{t.testServer}</p>
+              <p className="text-xs font-medium sm:text-sm">{t.testServerNotice}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
+      <div className={`absolute right-4 z-20 sm:right-6 ${IS_TEST_SERVER ? "top-20" : "top-4 sm:top-6"}`}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -532,7 +551,11 @@ export function Login() {
         </DropdownMenu>
       </div>
 
-      <div className="relative z-10 flex min-h-full items-center justify-center py-16 pb-28 sm:py-20">
+      <div
+        className={`relative z-10 flex min-h-full items-center justify-center pb-28 ${
+          IS_TEST_SERVER ? "pt-28" : "pt-16 sm:pt-20"
+        }`}
+      >
         <div className="w-full max-w-sm">
           <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
             <div className="mb-4 flex justify-center">

@@ -13,7 +13,12 @@ router.post('/model-normalizations/preview', requirePermission('device.edit'), c
 router.post('/model-normalizations/apply', requirePermission('device.edit'), controller.applyModelNormalizations)
 router.get('/model-normalization-jobs/:id', requirePermission('device.view'), controller.modelNormalizationJob)
 router.put('/batch', requirePermission('device.edit'), controller.batchUpdate)
+router.post('/merge-preview', requirePermission('device.edit'), controller.mergePreview)
+router.post('/merge', requirePermission('device.edit'), controller.mergeDevices)
+router.post('/merge', requirePermission('device.edit'), controller.mergeDevices)
+router.get('/suspected-duplicates', requirePermission('device.view'), controller.suspectedDuplicates)
 router.get('/:id', requirePermission('device.view'), controller.detail)
+router.get('/:id/similar', requirePermission('device.view'), controller.similarDevices)
 router.put('/:id', requirePermission('device.edit'), controller.update)
 router.delete('/:id', requirePermission('device.delete'), controller.remove)
 

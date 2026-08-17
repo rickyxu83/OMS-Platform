@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search, Loader2 } from "lucide-react";
+import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
-import { api } from "@/services/api";
+import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
+import { Skeleton } from "@/components/Skeleton";
+import { api, fetchSummaryStream } from "@/services/api";
 
 interface Summary {
   todayTotal?: number;
@@ -293,6 +295,18 @@ const I18N = {
       cancel: "取消",
       submit: "生成总结",
       invalidRange: "开始日期不能晚于结束日期",
+      progressTitle: "AI 总结生成中",
+      progress: {
+        query: "正在查询并整理工单与工时记录…",
+        ai: "AI 正在分析工单记录…",
+        aiHints: [
+          "正在提取各客户服务要点…",
+          "正在归纳关键主题…",
+          "正在评估客户影响…",
+          "正在识别风险信号…",
+          "正在整理后续建议…",
+        ],
+      },
     },
     stats: {
       todayTotal: "今日服务总数",
@@ -395,6 +409,18 @@ const I18N = {
       cancel: "取消",
       submit: "生成總結",
       invalidRange: "開始日期不能晚於結束日期",
+      progressTitle: "AI 總結產生中",
+      progress: {
+        query: "正在查詢並整理工單與工時記錄…",
+        ai: "AI 正在分析工單記錄…",
+        aiHints: [
+          "正在提取各客戶服務要點…",
+          "正在歸納關鍵主題…",
+          "正在評估客戶影響…",
+          "正在識別風險訊號…",
+          "正在整理後續建議…",
+        ],
+      },
     },
     stats: {
       todayTotal: "今日服務總數",
@@ -662,6 +688,11 @@ function PreviewBlock({ label, value, markdown = false }: { label: string; value
   );
 }
 
+interface SummaryProgress extends ProgressState {}
+
+// 通过 SSE 读取 AI 总结生成进度（复用 api.ts 的 resolveApiBase 与鉴权处理）
+// 进度面板组件见上方 WorkSummaryProgress
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { lang } = useLanguage();
@@ -681,6 +712,7 @@ export function Dashboard() {
   const [exporting, setExporting] = useState(false);
   const [workSummary, setWorkSummary] = useState<WorkSummaryResponse | null>(null);
   const [workSummaryRange, setWorkSummaryRange] = useState("");
+  const [summaryProgress, setSummaryProgress] = useState<SummaryProgress | null>(null);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
@@ -811,6 +843,7 @@ export function Dashboard() {
     }
     setExporting(true);
     setError("");
+    setSummaryProgress({ stage: "query", progress: 2, message: t.reportDialog.progress.query });
     try {
       const params = new URLSearchParams({
         startDate: reportStartDate,
@@ -821,7 +854,7 @@ export function Dashboard() {
       if (useOwnScope) params.set("mine", "1");
       if (canSelectReportSalesperson && reportSalesperson !== "all") params.set("salesperson", reportSalesperson);
       if (reportCustomerId !== "all") params.set("customerId", reportCustomerId);
-      const data = await api.get(`/service-orders/timesheet/monthly?${params.toString()}`);
+      const data = await fetchSummaryStream(`/service-orders/timesheet/monthly?${params.toString()}`, setSummaryProgress);
       const rangeLabel = data?.label || `${reportStartDate} 至 ${reportEndDate}`;
       setWorkSummary((data?.workSummary || null) as WorkSummaryResponse | null);
       setWorkSummaryRange(rangeLabel);
@@ -831,6 +864,7 @@ export function Dashboard() {
       setError(e instanceof Error ? e.message : t.errors.loadFailed);
     } finally {
       setExporting(false);
+      setSummaryProgress(null);
     }
   }
 
@@ -898,7 +932,7 @@ export function Dashboard() {
           </Button>
           {canUseWorkSummary && (
             <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
-              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
           )}
@@ -908,7 +942,7 @@ export function Dashboard() {
       <ErrorToast message={error} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
-        {stats.map((stat) => {
+        {stats.map((stat, statIndex) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
@@ -922,8 +956,17 @@ export function Dashboard() {
               </CardHeader>
               <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-2xl font-bold sm:text-3xl">
-                    {loading ? <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /> : stat.value}
+                  <div className="text-2xl font-bold sm:text-3xl tabular-nums">
+                    {loading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <span
+                        className="stat-value-enter inline-block"
+                        style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
+                      >
+                        {stat.value}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
@@ -947,7 +990,7 @@ export function Dashboard() {
                 </CardDescription>
               </div>
               <Button className="shrink-0 whitespace-nowrap" variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
-                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : null}
                 重新生成
               </Button>
             </div>
@@ -1069,6 +1112,13 @@ export function Dashboard() {
             zoom={7}
             height={isCompactViewport ? 300 : 440}
             fitView={false}
+            fullscreenable
+            fullscreenStats={[
+              { label: "今日工单", value: summary.todayTotal ?? 0 },
+              { label: "本月工单", value: summary.monthTotal ?? 0, tone: "accent" },
+              { label: "本月服务客户", value: summary.monthCustomers ?? 0, tone: "green" },
+              { label: "本月工程师出勤", value: summary.monthEngineerVisits ?? 0, tone: "red" },
+            ]}
           />
         </section>
 
@@ -1083,7 +1133,7 @@ export function Dashboard() {
             <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
               {loading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t.recent.loading}
+                  <span className="btn-loader mr-2" aria-hidden="true" /> {t.recent.loading}
                 </div>
               ) : recentOrders.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.recent.empty}</div>
@@ -1150,9 +1200,11 @@ export function Dashboard() {
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
             {previewLoading ? (
-              <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" />
-                {t.recent.previewLoading}
+              <div className="mb-4 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-4 w-3/4" />
               </div>
             ) : null}
             {previewError ? (
@@ -1331,12 +1383,21 @@ export function Dashboard() {
               </label>
             </div>
           </div>
+          {summaryProgress ? (
+            <ProgressPanel
+              progress={summaryProgress}
+              title={t.reportDialog.progressTitle}
+              animated={summaryProgress.stage === "ai"}
+              creep={{ from: 35, to: 89, perSecond: 0.8 }}
+              hints={[...t.reportDialog.progress.aiHints]}
+            />
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReportDialogOpen(false)} disabled={exporting}>
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>
