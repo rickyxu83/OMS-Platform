@@ -72,12 +72,11 @@ function approvalRolesForRequest({ requestType, workingDays, approvalRoles }) {
   ]
 }
 
-function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supervisorRole, approvalRoles, workflowVersion = 2 }) {
+// 代理人仅作为登记字段（冲突校验/通知知会），不再设确认环节：默认代理人同意，
+// 提交后直接进入角色审批链。历史 pending_delegate 申请仍可由代理人通过旧入口确认。
+function buildApprovalSteps({ requestType, workingDays, supervisorRole, approvalRoles, workflowVersion = 2 }) {
   if (Number(workflowVersion) >= 3) {
     const steps = []
-    if (requestType === 'comp_time') {
-      steps.push({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
-    }
     for (const role of approvalRolesForRequest({ requestType, workingDays, approvalRoles })) {
       steps.push({ stepType: 'role', assigneeEmployeeId: null, assigneeRole: role })
     }
@@ -92,9 +91,6 @@ function buildApprovalSteps({ requestType, workingDays, delegateEmployeeId, supe
   }
 
   const steps = []
-  if (requestType !== 'leave') {
-    steps.push({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
-  }
   steps.push({ stepType: 'supervisor', assigneeEmployeeId: null, assigneeRole: supervisorRole })
   if (Number(workingDays) >= 3) {
     steps.push({ stepType: 'hr', assigneeEmployeeId: null, assigneeRole: 'administrative_supervisor' })

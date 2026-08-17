@@ -67,7 +67,7 @@ assert.deepEqual(
     delegateEmployeeId: 9,
     supervisorRole: 'engineering_supervisor',
   }).map((item) => item.stepType),
-  ['delegate', 'supervisor', 'hr', 'vp'],
+  ['supervisor', 'hr', 'vp'],
 )
 
 assert.deepEqual(
@@ -144,7 +144,6 @@ assert.deepEqual(
     workflowVersion: 3,
   }),
   [
-    { stepType: 'delegate', assigneeEmployeeId: 9, assigneeRole: null },
     { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'engineering_supervisor' },
     { stepType: 'role', assigneeEmployeeId: null, assigneeRole: 'operations_director' },
   ],
