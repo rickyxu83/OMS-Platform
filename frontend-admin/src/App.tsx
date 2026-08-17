@@ -27,6 +27,7 @@ const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ def
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
 const NavPrototype = lazy(() => import("@/prototypes/NavPrototype").then((module) => ({ default: module.NavPrototype })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
+const NotFound = lazy(() => import("@/pages/NotFound").then((module) => ({ default: module.NotFound })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   dashboard: ["order.view", "order.engineer.own"],
@@ -157,6 +158,19 @@ function ProtectedAdminDefaultRedirect() {
   return (
     <ProtectedRoute>
       <Navigate to={defaultAdminPath(user, hasPermission)} replace />
+    </ProtectedRoute>
+  )
+}
+
+function ProtectedAdminNotFound() {
+  const { user, hasPermission } = useAuth()
+  return (
+    <ProtectedRoute>
+      <Suspense fallback={<PageLoading />}>
+        <AdminLayout>
+          <NotFound homePath={defaultAdminPath(user, hasPermission)} />
+        </AdminLayout>
+      </Suspense>
     </ProtectedRoute>
   )
 }
@@ -366,7 +380,7 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route path="*" element={<ProtectedAdminDefaultRedirect />} />
+          <Route path="*" element={<ProtectedAdminNotFound />} />
         </Routes>
       </RouteErrorBoundary>
       <Toaster />
