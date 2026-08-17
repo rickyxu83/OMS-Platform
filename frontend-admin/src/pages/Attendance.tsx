@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -947,13 +947,14 @@ export function Attendance() {
   const filteredAllRequests = useMemo(() => {
     const keyword = recordKeyword.trim().toLowerCase();
     return allRequests.filter((item) => {
-      if (recordStatus !== "all" && item.status !== recordStatus) return false;
+      if (recordStatus === "pending") {
+        if (!String(item.status || "").startsWith("pending_")) return false;
+      } else if (recordStatus !== "all" && item.status !== recordStatus) return false;
       if (recordType !== "all" && item.requestType !== recordType) return false;
       if (keyword && !String(item.employeeName || "").toLowerCase().includes(keyword)) return false;
       return true;
     });
   }, [allRequests, recordStatus, recordType, recordKeyword]);
-  const recordPendingCount = filteredAllRequests.filter((item) => String(item.status || "").startsWith("pending_")).length;
   const recordApprovedCount = filteredAllRequests.filter((item) => item.status === "approved").length;
   const activeEmployeeCount = employees.filter((item) => item.attendanceEnabled !== false).length;
   const totalCompBalanceHours = employees.reduce((sum, item) => sum + Number(item.compTimeBalanceHours || 0), 0);
@@ -1108,78 +1109,66 @@ export function Attendance() {
             >月度汇总</button>
           </div>
           {recordView === "detail" ? (<>
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">全员记录</h2>
-              <p className="mt-1 text-sm text-muted-foreground">先看审批状态与异常，再进入完整申请流水</p>
-            </div>
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <AttendanceMetric label="当前记录" value={String(filteredAllRequests.length)} note="当前筛选范围" icon={<Users className="h-4 w-4" />} />
-            <AttendanceMetric label="审批中" value={String(recordPendingCount)} note="仍在流程中的申请" icon={<Clock3 className="h-4 w-4" />} />
-            <AttendanceMetric label="已通过" value={String(recordApprovedCount)} note="已进入报表统计" icon={<CheckCircle2 className="h-4 w-4" />} />
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
             <RequestList
-              title="申请流水"
-              description="审批通过后可作废"
+              title="申请明细"
+              description="全员全部类型申请记录，审批通过后可作废"
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
-              toolbar={(
-                <>
-                  <Select value={recordStatus} onValueChange={setRecordStatus}>
-                    <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部状态</SelectItem>
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+              toolbar={(<>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { key: "all", label: "全部", count: allRequests.length },
+                    { key: "pending", label: "审批中", count: allRequests.filter((item) => String(item.status || "").startsWith("pending_")).length },
+                    { key: "approved", label: "已通过", count: allRequests.filter((item) => item.status === "approved").length },
+                    { key: "rejected", label: "已驳回", count: allRequests.filter((item) => item.status === "rejected").length },
+                    { key: "voided", label: "已作废", count: allRequests.filter((item) => item.status === "voided").length },
+                  ].map((chip) => {
+                    const active = recordStatus === chip.key;
+                    return (
+                      <button
+                        key={chip.key}
+                        type="button"
+                        onClick={() => setRecordStatus(chip.key)}
+                        className={active
+                          ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
+                          : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
+                      >
+                        {chip.label}
+                        <span className={active ? "font-semibold" : ""}>{chip.count}</span>
+                      </button>
+                    );
+                  })}
                   <Select value={recordType} onValueChange={setRecordType}>
-                    <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">全部类型</SelectItem>
                       {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                  </div>
                   {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); }}>重置</Button> : null}
-                </>
-              )}
+                </div>
+              </>)}
               actions={canAdminApprove ? (item) => item.status === "approved" ? (
                 <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}><X className="mr-1 h-4 w-4" /> 作废</Button>
               ) : null : undefined}
             />
-            <Card className="h-fit">
-              <CardHeader><CardTitle className="flex items-center gap-2"><Filter className="h-4 w-4" />快速聚焦</CardTitle><CardDescription>常用范围一键筛选</CardDescription></CardHeader>
-              <CardContent className="space-y-2">
-                <QuickRecordFilter label="待审批" count={allRequests.filter((item) => item.status === "pending_approval").length} active={recordStatus === "pending_approval" && recordType === "all"} onClick={() => { setRecordStatus("pending_approval"); setRecordType("all"); setRecordKeyword(""); }} />
-                <QuickRecordFilter label="全部加班" count={allRequests.filter((item) => item.requestType === "overtime").length} active={recordType === "overtime" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("overtime"); setRecordKeyword(""); }} />
-                <QuickRecordFilter label="全部请假" count={allRequests.filter((item) => item.requestType === "leave").length} active={recordType === "leave" && recordStatus === "all"} onClick={() => { setRecordStatus("all"); setRecordType("leave"); setRecordKeyword(""); }} />
-                <QuickRecordFilter label="已作废记录" count={allRequests.filter((item) => item.status === "voided").length} active={recordStatus === "voided" && recordType === "all"} onClick={() => { setRecordStatus("voided"); setRecordType("all"); setRecordKeyword(""); }} />
-              </CardContent>
-            </Card>
-          </div>
           </>) : (
         <Card className="gap-0 overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>月度数据矩阵</CardTitle>
-                <CardDescription>横向比较员工各类假勤、加班折算与当前余额</CardDescription>
+                <CardTitle>月度汇总</CardTitle>
+                <CardDescription>横向比较员工各类假勤与当前余额，加班费折算等财务明细请用导出</CardDescription>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="w-40 space-y-2">
-                  <Label>月份</Label>
-                  <Input type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
-                </div>
+              <div className="flex items-center gap-2">
+                <Input type="month" className="w-40" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
                 {canExportReport ? (
                   <Button onClick={() => {
                     setReportExportMonth(reportMonth);
@@ -1197,21 +1186,17 @@ export function Attendance() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto rounded-md border">
-              <Table className="min-w-[1160px]">
+              <Table className="min-w-[880px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
                     <TableHead>特休</TableHead>
                     <TableHead>病假</TableHead>
                     <TableHead>事假</TableHead>
-                    <TableHead>婚假</TableHead>
-                    <TableHead>丧假</TableHead>
-                    <TableHead>加班</TableHead>
-                    <TableHead>转调休</TableHead>
-                    <TableHead>加班费</TableHead>
-                    <TableHead>法定节假日加班费</TableHead>
-                    <TableHead>加班费折算</TableHead>
-                    <TableHead>调休</TableHead>
+                    <TableHead>其他假</TableHead>
+                    <TableHead>加班·转调休</TableHead>
+                    <TableHead>加班·付费</TableHead>
+                    <TableHead>调休使用</TableHead>
                     <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
                   </TableRow>
@@ -1223,20 +1208,16 @@ export function Attendance() {
                       <TableCell>{days(annualUsageDays(item))} 天</TableCell>
                       <TableCell>{hours(item.sickLeaveHours)}</TableCell>
                       <TableCell>{hours(item.personalLeaveHours)}</TableCell>
-                      <TableCell>{hours(item.marriageLeaveHours)}</TableCell>
-                      <TableCell>{hours(item.bereavementLeaveHours)}</TableCell>
-                      <TableCell>{hours(item.overtimeHours)}</TableCell>
+                      <TableCell>{hours(Number(item.marriageLeaveHours || 0) + Number(item.bereavementLeaveHours || 0))}</TableCell>
                       <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
                       <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
-                      <TableCell>{hours(item.legalHolidayOvertimePayHours)}</TableCell>
-                      <TableCell>{hours(item.overtimePayWeightedHours)}</TableCell>
                       <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
                       <TableCell>{days(annualBalanceDays(item))} 天</TableCell>
                       <TableCell>{hours(item.compTimeBalanceHours)}</TableCell>
                     </TableRow>
                   ))}
                   {reportItems.length === 0 ? (
-                    <TableRow><TableCell colSpan={14} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="py-8 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
@@ -1869,21 +1850,6 @@ function AttendanceMetric({ label, value, note, icon }: { label: string; value: 
         <div className="mt-1 text-xs text-muted-foreground">{note}</div>
       </CardContent>
     </Card>
-  );
-}
-
-function QuickRecordFilter({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={active
-        ? "flex w-full items-center justify-between rounded-lg border border-primary bg-primary/5 p-3 text-left text-sm text-primary ring-1 ring-primary/15"
-        : "flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm transition hover:bg-muted/50"}
-    >
-      <span className="font-medium">{label}</span>
-      <Badge variant={active ? "default" : "secondary"}>{count}</Badge>
-    </button>
   );
 }
 
