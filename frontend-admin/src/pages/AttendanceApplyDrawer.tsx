@@ -638,9 +638,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {form.requestType === "leave"
-                      ? "请假冲突人员不可选择；代理人无需确认，提交后直接进入配置的审批链。"
-                      : "调休仍需代理人确认后，再进入配置的审批链。"}
+                    所选时段请假冲突的人员不可选择；代理人无需确认，提交后直接进入配置的审批链。
                   </p>
                 </div>
 
@@ -750,11 +748,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                 )}
               </div>
               <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-                {form.requestType === "leave"
-                  ? "提交后直接进入配置的审批链，代理人无需确认"
-                  : form.requestType === "comp_time"
-                    ? "提交后先由代理人确认，再进入配置的审批链"
-                    : "提交后进入配置的审批链"}
+                {form.requestType === "overtime"
+                  ? "提交后进入配置的审批链"
+                  : "提交后直接进入配置的审批链，代理人无需确认"}
               </div>
             </div>
           ) : null}
