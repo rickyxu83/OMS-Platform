@@ -81,6 +81,10 @@ async function loadController({
       if (Number(params.employeeId) !== Number(delegateEmployeeId)) return []
       return [{ id: delegateEmployeeId, user_id: 77, employee_name: '代理人', attendance_enabled: 1 }]
     }
+    // 申请提交前置余额校验（特休按天、调休按小时）：mock 默认给足余额，避免拦截正常流程
+    if (/^\s*SELECT COALESCE\(SUM\(delta_hours\)/.test(sql) && /FROM attendance_balance_ledger/.test(sql)) {
+      return [{ balance_hours: 100 }]
+    }
     if (/FROM attendance_supervisor_role_rules/.test(sql) && /LIMIT 1/.test(sql)) {
       return [{ supervisor_role: 'engineering_supervisor' }]
     }
@@ -245,11 +249,13 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     await controller.listApprovalRoleRules(req, res)
     assert.deepEqual(res.body.items.map((item) => item.applicantRole), [
       'assistant',
+      'assistant_supervisor',
       'engineering_supervisor',
       'administrative_supervisor',
       'sales_supervisor',
       'sales',
       'engineer',
+      'purchaser',
     ])
     assert.ok(res.body.roles.some((item) => item.role === 'admin'))
     assert.ok(res.body.roles.some((item) => item.role === 'operations_director'))
@@ -1379,8 +1385,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
         if (/FROM attendance_requests r/.test(sql) && /r\.status IN \(/.test(sql) && !/FOR UPDATE/.test(sql)) {
           return [{ id: 501 }, { id: 502 }]
         }
-        // 行政 pending_admin count 查询（502 与 supervisor 重叠，应去重）
-        if (/WHERE status = 'pending_admin'/.test(sql)) {
+        // 行政 pending_admin 查询（502 与 supervisor 重叠，应去重）
+        if (/WHERE r\.status = 'pending_admin'/.test(sql)) {
           return [{ id: 502 }, { id: 503 }]
         }
         return undefined
@@ -1400,7 +1406,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
         if (/FROM attendance_requests r/.test(sql) && /r\.status IN \(/.test(sql) && !/FOR UPDATE/.test(sql)) {
           return [{ id: 601 }]
         }
-        if (/WHERE status = 'pending_admin'/.test(sql)) {
+        if (/WHERE r\.status = 'pending_admin'/.test(sql)) {
           throw new Error('无行政权限不应查询 pending_admin')
         }
         return undefined

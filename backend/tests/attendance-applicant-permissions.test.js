@@ -35,13 +35,17 @@ const {
 const { hasPermission } = require('../src/permissions/store')
 
 ;(async () => {
+  // 申请人角色 = ALL_ROLES 减去非申请角色（admin/dispatcher/operations_director），
+  // 新增角色（assistant_supervisor、purchaser）默认具备申请资格
   assert.deepEqual(ATTENDANCE_APPLICANT_ROLES, [
     'assistant',
+    'assistant_supervisor',
     'engineering_supervisor',
     'administrative_supervisor',
     'sales_supervisor',
     'sales',
     'engineer',
+    'purchaser',
   ])
 
   const defaults = getDefaultPermissionMatrix()
