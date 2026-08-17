@@ -25,6 +25,7 @@ const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ d
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
+const NavPrototype = lazy(() => import("@/prototypes/NavPrototype").then((module) => ({ default: module.NavPrototype })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
@@ -169,6 +170,14 @@ export default function App() {
       <RouteErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/prototype/admin-nav"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <NavPrototype />
+              </Suspense>
+            }
+          />
           <Route
             path="/customer-signature/:token"
             element={
