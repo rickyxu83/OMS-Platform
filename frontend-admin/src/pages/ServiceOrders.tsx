@@ -41,6 +41,7 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 
 interface ServiceOrder {
   id: string | number;
@@ -217,6 +218,9 @@ const I18N = {
       exporting: "导出中…",
       saving: "保存中…",
       cancel: "取消",
+      create: "新增工单",
+      confirmInspection: "确认巡检",
+      assign: "派单 / 改派",
     },
     filters: {
       searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合…",
@@ -237,6 +241,22 @@ const I18N = {
       title: "工单列表",
       loading: "正在加载…",
       empty: "暂无工单",
+      colCaseCustomer: "Case ID / 客户",
+      colServiceItems: "服务事项",
+      colMainContent: "主要内容",
+      colEngineer: "工程师",
+      colServiceTime: "服务时间",
+      colStatus: "状态",
+      colActions: "操作",
+      selectOrder: "选择工单",
+      filterByCustomer: "按客户过滤",
+      filterByEngineer: "按工程师过滤",
+      startShort: "开始",
+      endShort: "结束",
+      fieldCustomer: "客户",
+      fieldEngineer: "工程师",
+      fieldServiceItems: "服务事项",
+      fieldServiceTime: "服务时间",
     },
     detail: {
       orderNo: "工单编号",
@@ -300,6 +320,9 @@ const I18N = {
       exporting: "匯出中…",
       saving: "儲存中…",
       cancel: "取消",
+      create: "新增工單",
+      confirmInspection: "確認巡檢",
+      assign: "派單 / 改派",
     },
     filters: {
       searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合…",
@@ -320,6 +343,22 @@ const I18N = {
       title: "工單列表",
       loading: "正在載入…",
       empty: "暫無工單",
+      colCaseCustomer: "Case ID / 客戶",
+      colServiceItems: "服務事項",
+      colMainContent: "主要內容",
+      colEngineer: "工程師",
+      colServiceTime: "服務時間",
+      colStatus: "狀態",
+      colActions: "操作",
+      selectOrder: "選擇工單",
+      filterByCustomer: "按客戶過濾",
+      filterByEngineer: "按工程師過濾",
+      startShort: "開始",
+      endShort: "結束",
+      fieldCustomer: "客戶",
+      fieldEngineer: "工程師",
+      fieldServiceItems: "服務事項",
+      fieldServiceTime: "服務時間",
     },
     detail: {
       orderNo: "工單編號",
@@ -866,6 +905,17 @@ export function ServiceOrders() {
     const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
+
+  // 防抖后的关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const keyword = debouncedSearch.trim();
+      if ((prev.get("keyword") || "") === keyword) return prev;
+      const next = new URLSearchParams(prev);
+      if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+      return next;
+    });
+  }, [debouncedSearch, setSearchParams]);
 
   useEffect(() => {
     load();
@@ -1414,6 +1464,152 @@ export function ServiceOrders() {
     setAssignOpen(true);
   }
 
+  /** 移动端工单卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderOrderCard(order: ServiceOrder) {
+    const workflowStatus = getWorkflowStatus(order);
+    const statusLabel = order.displayStatus || t.status[workflowStatus as keyof typeof t.status] || workflowStatus || "-";
+    const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
+    const itemsLabel = serviceItemsLabel(order);
+    const serviceTime = serviceTimeRange(order);
+    const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
+    const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
+    const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
+    const engineerName = engineerText(order, t.detail.unnamedEngineer);
+    return (
+      <ResponsiveCard
+        onClick={() => openDetailOrder(order)}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+              <Checkbox
+                checked={selectedIds.some((id) => String(id) === String(order.id))}
+                onCheckedChange={(checked) => toggleOrderSelection(order.id, checked)}
+                aria-label={`${t.list.selectOrder} ${displayId(order)}`}
+              />
+            </span>
+            <span className="truncate" title={displayId(order)}>{displayId(order)}</span>
+          </span>
+        }
+        status={<Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{statusLabel}</Badge>}
+        subtitle={orderMainContent(order)}
+        fields={[
+          {
+            label: t.list.fieldCustomer,
+            value: (
+              <button
+                type="button"
+                className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline"
+                title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyNameFilter(order.customerName);
+                }}
+              >
+                {textValue(order.customerName)}
+              </button>
+            ),
+          },
+          {
+            label: t.list.fieldEngineer,
+            value: (
+              <button
+                type="button"
+                className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                title={`${t.list.filterByEngineer}：${engineerName}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyNameFilter(engineerText(order, ""));
+                }}
+                disabled={!engineerText(order, "")}
+              >
+                {engineerName}
+              </button>
+            ),
+          },
+          {
+            label: t.list.fieldServiceItems,
+            value: (
+              <span className="flex flex-wrap gap-1.5">
+                <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
+                <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+              </span>
+            ),
+          },
+          {
+            label: t.list.fieldServiceTime,
+            value: (
+              <span className="block space-y-0.5 text-xs">
+                <span className="block"><span className="text-muted-foreground">{t.list.startShort}：</span>{serviceTime.start}</span>
+                <span className="block"><span className="text-muted-foreground">{t.list.endShort}：</span>{serviceTime.end}</span>
+              </span>
+            ),
+          },
+        ]}
+        actions={
+          <>
+            {canConfirmInspection && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  confirmInspection(order);
+                }}
+                disabled={saving}
+              >
+                <CheckCircle className="mr-1 h-4 w-4" />
+                {t.actions.confirmInspection}
+              </Button>
+            )}
+            {canAssign && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openAssign(order);
+                }}
+                disabled={saving}
+              >
+                <Send className="mr-1 h-4 w-4" />
+                {t.actions.assign}
+              </Button>
+            )}
+            {canExport && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                    onClick={(event) => event.stopPropagation()}
+                    disabled={exporting}
+                  >
+                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
+                    {t.actions.export}
+                    <ChevronDown className="ml-1 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                  <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    {t.actions.exportExcel}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
+                    <FileDown className="mr-2 h-4 w-4" />
+                    {t.actions.exportPdf}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        }
+      />
+    );
+  }
+
   function toggleAssignEngineer(engineerId: string | number, checked: boolean) {
     const id = String(engineerId);
     setAssignForm((form) => ({
@@ -1537,7 +1733,7 @@ export function ServiceOrders() {
           {canCreateOrders ? (
             <Button onClick={openCreateOrder} disabled={saving}>
               <Plus className="w-4 h-4 mr-2" />
-              新增工单
+              {t.actions.create}
             </Button>
           ) : null}
         </div>
@@ -1570,6 +1766,7 @@ export function ServiceOrders() {
               <Input
                 className="pl-9"
                 placeholder={t.filters.searchPlaceholder}
+                aria-label={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -1668,6 +1865,25 @@ export function ServiceOrders() {
         </CardHeader>
         <CardContent>
           <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+            {initialLoading ? (
+              <div className="p-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={`skeleton-${i}`} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-6 w-14 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <EmptyState
+                title={t.list.empty}
+                {...(canCreateOrders ? { actionLabel: t.actions.create, onAction: openCreateOrder } : {})}
+              />
+            ) : (
+              <ResponsiveList items={filteredOrders} keyExtractor={(order) => order.id} renderCard={renderOrderCard}>
             <table className="w-full min-w-[1250px] table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-11" />
@@ -1682,41 +1898,17 @@ export function ServiceOrders() {
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
                   <TableHead className="w-11 text-center" />
-                  <TableHead>Case ID / 客户</TableHead>
-                  <TableHead>服务事项</TableHead>
-                  <TableHead>主要内容</TableHead>
-                  <TableHead>工程师</TableHead>
-                  <TableHead>服务时间</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="pr-5 text-right">操作</TableHead>
+                  <TableHead>{t.list.colCaseCustomer}</TableHead>
+                  <TableHead>{t.list.colServiceItems}</TableHead>
+                  <TableHead>{t.list.colMainContent}</TableHead>
+                  <TableHead>{t.list.colEngineer}</TableHead>
+                  <TableHead>{t.list.colServiceTime}</TableHead>
+                  <TableHead>{t.list.colStatus}</TableHead>
+                  <TableHead className="pr-5 text-right">{t.list.colActions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {initialLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={`skeleton-${i}`}>
-                      <TableCell colSpan={8} className="py-1">
-                        <div className="flex items-center gap-3">
-                          <Skeleton className="h-4 w-20" />
-                          <Skeleton className="h-4 flex-1" />
-                          <Skeleton className="h-4 w-16" />
-                          <Skeleton className="h-4 w-24" />
-                          <Skeleton className="h-6 w-14 rounded-full" />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : filteredOrders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="py-2">
-                      <EmptyState
-                        title={t.list.empty}
-                        {...(canCreateOrders ? { actionLabel: "新增工单", onAction: openCreateOrder } : {})}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredOrders.map((order, rowIndex) => {
+                {filteredOrders.map((order, rowIndex) => {
                     const statusLabel = order.displayStatus || t.status[getWorkflowStatus(order) as keyof typeof t.status] || getWorkflowStatus(order) || "-";
                     const modeLabel = t.mode[order.serviceMode as keyof typeof t.mode] || order.serviceMode || "-";
                     const itemsLabel = serviceItemsLabel(order);
@@ -1745,7 +1937,7 @@ export function ServiceOrders() {
                           <Checkbox
                             checked={selectedIds.some((id) => String(id) === String(order.id))}
                             onCheckedChange={(checked) => toggleOrderSelection(order.id, checked)}
-                            aria-label={`选择工单 ${displayId(order)}`}
+                            aria-label={`${t.list.selectOrder} ${displayId(order)}`}
                           />
                         </TableCell>
                         <TableCell className="min-w-0">
@@ -1754,7 +1946,7 @@ export function ServiceOrders() {
                             <button
                               type="button"
                               className="block max-w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
-                              title={`按客户过滤：${textValue(order.customerName)}`}
+                              title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 applyNameFilter(order.customerName);
@@ -1777,7 +1969,7 @@ export function ServiceOrders() {
                           <button
                             type="button"
                             className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
-                            title={`按工程师过滤：${engineerText(order, t.detail.unnamedEngineer)}`}
+                            title={`${t.list.filterByEngineer}：${engineerText(order, t.detail.unnamedEngineer)}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               applyNameFilter(engineerText(order, ""));
@@ -1790,11 +1982,11 @@ export function ServiceOrders() {
                         <TableCell>
                           <div className="space-y-0.5 text-xs">
                             <div>
-                              <span className="text-muted-foreground">开始：</span>
+                              <span className="text-muted-foreground">{t.list.startShort}：</span>
                               <span>{serviceTime.start}</span>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">结束：</span>
+                              <span className="text-muted-foreground">{t.list.endShort}：</span>
                               <span>{serviceTime.end}</span>
                             </div>
                           </div>
@@ -1818,7 +2010,7 @@ export function ServiceOrders() {
                                 disabled={saving}
                               >
                                 <CheckCircle className="mr-1 h-4 w-4" />
-                                确认巡检
+                                {t.actions.confirmInspection}
                               </Button>
                             )}
                             {canAssign && (
@@ -1833,7 +2025,7 @@ export function ServiceOrders() {
                                 disabled={saving}
                               >
                                 <Send className="mr-1 h-4 w-4" />
-                                派单 / 改派
+                                {t.actions.assign}
                               </Button>
                             )}
                             {canExport && (
@@ -1867,10 +2059,11 @@ export function ServiceOrders() {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
+                  })}
               </TableBody>
             </table>
+              </ResponsiveList>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1888,7 +2081,7 @@ export function ServiceOrders() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>新增工单</DialogTitle>
+            <DialogTitle>{t.actions.create}</DialogTitle>
             <DialogDescription>可先保存为草稿；选择工程师后会立即派发到对应工程师的工作台。</DialogDescription>
           </DialogHeader>
           {error && createOpen ? (
@@ -2023,7 +2216,7 @@ export function ServiceOrders() {
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>派单 / 改派</DialogTitle>
+            <DialogTitle>{t.actions.assign}</DialogTitle>
             <DialogDescription>选择工程师后，工单会进入已派发状态并同步到工程师端。</DialogDescription>
           </DialogHeader>
           {error && assignOpen ? (

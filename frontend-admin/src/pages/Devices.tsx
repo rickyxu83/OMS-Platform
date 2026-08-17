@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSearchText } from "@/lib/text-i18n";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { toast } from "sonner";
 
 interface Device {
@@ -1380,7 +1381,7 @@ export function Devices() {
   const pageSize = 50;
   const [deviceTotal, setDeviceTotal] = useState(0);
   const [deviceStats, setDeviceStats] = useState<{ total: number; ourMaintenance: number; originalManufacturer: number } | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -1524,6 +1525,14 @@ export function Devices() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       load(searchQuery);
+      // 关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+      setSearchParams((prev) => {
+        const keyword = searchQuery.trim();
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      });
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1913,6 +1922,134 @@ export function Devices() {
       next.delete("deviceId");
       setSearchParams(next, { replace: true });
     }
+  }
+
+  /** 移动端设备卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderDeviceCard(device: Device) {
+    const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
+    const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
+    const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
+    const selected = selectedDeviceIds.includes(String(device.id));
+    return (
+      <ResponsiveCard
+        onClick={() => openDeviceDetail(device)}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            {canSelectDevices ? (
+              <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
+                  disabled={saving}
+                  aria-label={`选择设备 ${deviceDisplayName(device)}`}
+                />
+              </span>
+            ) : null}
+            <Server className="h-4 w-4 shrink-0 text-primary" />
+            {device.model ? (
+              <button
+                type="button"
+                className="min-w-0 truncate text-left hover:text-primary hover:underline"
+                title={device.model}
+                onClick={(event) => filterByModel(event, device.model)}
+              >
+                {device.model}
+              </button>
+            ) : (
+              <span className="truncate">-</span>
+            )}
+          </span>
+        }
+        status={(
+          <button type="button" className="inline-flex" onClick={(event) => filterByStatus(event, device.status)}>
+            <Badge
+              variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
+              className={`${DEVICE_STATUS_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
+            >
+              {statusLabel}
+            </Badge>
+          </button>
+        )}
+        subtitle={device.customerName ? (
+          <button
+            type="button"
+            className="block max-w-full truncate text-left hover:text-primary hover:underline"
+            title={device.customerName}
+            onClick={(event) => filterByCustomer(event, device)}
+          >
+            {device.customerName}
+          </button>
+        ) : undefined}
+        fields={[
+          {
+            label: "SN",
+            value: device.serialNo ? (
+              <button
+                type="button"
+                className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline"
+                title="点击复制序列号"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void copySerialNo(device.serialNo);
+                }}
+              >
+                {device.serialNo}
+              </button>
+            ) : "-",
+          },
+          { label: "MR单", value: device.mrNo || "-" },
+          {
+            label: "维保类型",
+            value: (
+              <button type="button" className="inline-flex" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
+                <Badge
+                  variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
+                  className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
+                >
+                  {typeLabel}
+                </Badge>
+              </button>
+            ),
+          },
+          {
+            label: "维保方 / 截止",
+            value: (
+              <span className="block min-w-0">
+                {device.maintenancePartyName ? (
+                  <button
+                    type="button"
+                    className="block max-w-full truncate text-left font-medium hover:text-primary hover:underline"
+                    title={device.maintenancePartyName}
+                    onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
+                  >
+                    {device.maintenancePartyName}
+                  </button>
+                ) : (
+                  <span className="block truncate">-</span>
+                )}
+                <span className="block text-xs text-muted-foreground">截止 {formatDate(device.maintenanceEnd)}</span>
+              </span>
+            ),
+          },
+        ]}
+        actions={canManageDevices ? (
+          <>
+            {canEditDevices ? (
+              <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); openEdit(device); }}>
+                <Pencil className="w-4 h-4 mr-1" />
+                编辑
+              </Button>
+            ) : null}
+            {canDeleteDevices ? (
+              <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={(event) => { event.stopPropagation(); deleteDevice(device); }} disabled={saving}>
+                <Trash2 className="w-4 h-4 mr-1" />
+                删除
+              </Button>
+            ) : null}
+          </>
+        ) : undefined}
+      />
+    );
   }
 
   async function openAttachment(file: DeviceRelatedAttachment) {
@@ -2767,6 +2904,7 @@ export function Devices() {
               <Input
                 className="pl-9"
                 placeholder="搜索设备名称、型号、序列号、MR单…"
+                aria-label="搜索设备名称、型号、序列号、MR单"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -2900,6 +3038,7 @@ export function Devices() {
             ) : filtered.length === 0 ? (
               <EmptyState title="未找到匹配设备" description="可调整搜索关键词或筛选条件" />
             ) : (
+              <ResponsiveList items={filtered} keyExtractor={(device) => device.id} renderCard={renderDeviceCard}>
               <div className={deviceTableMinWidth}>
                 <div className={`sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:grid ${deviceTableGrid} md:items-center md:gap-4`}>
                   {canSelectDevices ? <div aria-hidden="true" /> : null}
@@ -3049,6 +3188,7 @@ export function Devices() {
                   );
                 })}
               </div>
+              </ResponsiveList>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
               <div className="text-sm text-muted-foreground">

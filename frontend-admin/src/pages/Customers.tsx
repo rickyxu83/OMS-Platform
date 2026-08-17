@@ -24,6 +24,7 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { toast } from "sonner";
 
 interface Customer {
@@ -209,6 +210,7 @@ const I18N = {
       address: "地址",
       salesperson: "业务",
       action: "操作",
+      coordsLabel: "坐标",
       selectAllCurrent: "全选当前列表",
     },
     dialog: {
@@ -390,6 +392,7 @@ const I18N = {
       address: "地址",
       salesperson: "業務",
       action: "操作",
+      coordsLabel: "座標",
       selectAllCurrent: "全選目前列表",
     },
     dialog: {
@@ -823,6 +826,14 @@ export function Customers() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       load(searchQuery);
+      // 关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+      setSearchParams((prev) => {
+        const keyword = searchQuery.trim();
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      });
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1265,6 +1276,115 @@ export function Customers() {
     loadDeletePreview(c.id).catch(() => undefined);
   }
 
+  /** 移动端客户卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderCustomerCard(c: Customer) {
+    const lv = levelOf(c);
+    const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+    const selected = selectedCustomerIds.includes(String(c.id));
+    return (
+      <ResponsiveCard
+        onClick={() => openCustomerDetail(c)}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            {canDeleteCustomer ? (
+              <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
+                  disabled={deleting}
+                  aria-label={`选择客户 ${c.name || c.id}`}
+                />
+              </span>
+            ) : null}
+            <Building2 className="h-4 w-4 shrink-0 text-primary" />
+            {c.name ? (
+              <button
+                type="button"
+                className="min-w-0 truncate text-left hover:text-primary hover:underline"
+                title={c.name}
+                onClick={(event) => filterByCustomerName(event, c.name)}
+              >
+                {c.name}
+              </button>
+            ) : (
+              <span className="truncate">{t.misc.unknown}</span>
+            )}
+          </span>
+        }
+        status={(
+          <Badge
+            role="button"
+            tabIndex={0}
+            variant={LEVEL_VARIANT[lv] || "secondary"}
+            className={`cursor-pointer ${levelFilter === lv ? "ring-2 ring-primary/30" : ""}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleLevelFilter(lv);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleLevelFilter(lv);
+              }
+            }}
+          >
+            {lvLabel}
+          </Badge>
+        )}
+        subtitle={c.salesperson ? `${t.list.salesperson}：${c.salesperson}` : undefined}
+        fields={[
+          { label: t.list.contact, value: c.contactName || t.misc.unknown },
+          { label: t.list.phone, value: renderPhoneLink(c.contactPhone || c.phone, true) },
+          { label: t.list.address, value: c.address || t.misc.unknown },
+          ...(c.latitude && c.longitude
+            ? [{
+                label: t.list.coordsLabel,
+                value: (
+                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                    <MapPin className="h-3 w-3" />
+                    {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
+                  </span>
+                ),
+              }]
+            : []),
+        ]}
+        actions={(
+          <>
+            {canManageCustomer ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(c);
+                }}
+              >
+                <Pencil className="w-4 h-4 mr-1" />
+                {t.actions.edit}
+              </Button>
+            ) : null}
+            {canDeleteCustomer ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDelete(c);
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                {t.actions.delete}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
+    );
+  }
+
   function openMergeDialog() {
     setError("");
     setMergeError("");
@@ -1513,6 +1633,7 @@ export function Customers() {
                 <Input
                   className="pl-9"
                   placeholder={t.list.searchPlaceholder}
+                  aria-label={t.list.searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => {
@@ -1581,6 +1702,7 @@ export function Customers() {
                 {...(canManageCustomer ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
               />
             ) : (
+              <ResponsiveList items={filtered} keyExtractor={(c) => c.id} renderCard={renderCustomerCard}>
               <div className={customerListMinWidth}>
                 <div className={`sticky top-0 z-10 grid border-b bg-muted/70 px-2 py-2 text-xs font-medium text-muted-foreground backdrop-blur ${customerListGrid} items-center gap-0`}>
                   {canDeleteCustomer ? <div className="text-center" aria-hidden="true" /> : null}
@@ -1718,6 +1840,7 @@ export function Customers() {
                     );
                   })}
               </div>
+              </ResponsiveList>
             )}
           </div>
         </CardContent>
