@@ -12,9 +12,7 @@
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
-const { parseWorkbookWithMetadata } = require('../lib/quotation-parser')
-const { parsePdf } = require('../lib/quotation-pdf-parser')
-const { stripPriceFieldClauses } = require('../lib/quotation-ai-parser')
+const { parseWorkbookWithMetadata, parsePdf, stripPriceFieldClauses } = require('../quotation-parser')
 
 const FIXTURE_DIR = path.join(__dirname, '../../../../tests/fixtures/quotations')
 const SNAPSHOT_FILE = path.join(FIXTURE_DIR, 'snapshots.local.json')

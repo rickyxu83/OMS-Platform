@@ -3,6 +3,7 @@ const path = require('path')
 const env = require('../../../config/env')
 const { query } = require('../../../config/db')
 const { ensureWorkflowTables, mrDocument } = require('./workflow')
+const { ensureTables } = require('./tables')
 const { buildMrPdf, PDF_FORMAT_VERSION } = require('./mr-pdf')
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 const documentRoot = path.join(uploadRoot, 'mr-documents')
@@ -141,7 +142,7 @@ async function archiveMrDocument(mrId, requestedType = null, markReady = true) {
 }
 
 async function processMrArchives(limit = 5) {
-  await require('./controller').ensureTables()
+  await ensureTables()
   await ensureWorkflowTables()
   await query(
     `UPDATE mr_orders SET archive_status = 'failed', archive_error = '生成任务超时，自动重试', archive_next_attempt_at = NOW()

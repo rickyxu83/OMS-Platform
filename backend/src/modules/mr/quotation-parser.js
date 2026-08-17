@@ -5,4 +5,5 @@ module.exports = {
   ...require('./lib/workbook-images'),
   ...require('./lib/quotation-validation'),
   ...require('./lib/quotation-layout-rules'),
+  ...require('./lib/quotation-ai-parser'),
 }

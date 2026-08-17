@@ -5,7 +5,7 @@ process.env.AI_API_URL = 'https://example.invalid/v1/chat/completions'
 process.env.AI_API_KEY = 'test-key'
 process.env.AI_MODEL = 'test-model'
 const XLSX = require('xlsx')
-const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi, applyAiEntityKeys, stripPriceFieldClauses } = require('../lib/quotation-ai-parser')
+const { normalizeAiResult, extractJson, workbookText, recognizeQuotationWithAi, applyAiEntityKeys, stripPriceFieldClauses } = require('../quotation-parser')
 
 const sampleAi = {
   documentType: 'purchase_quote',
