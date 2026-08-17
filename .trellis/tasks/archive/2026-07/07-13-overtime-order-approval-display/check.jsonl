@@ -1,3 +1,0 @@
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"复核 npm test、语法检查、控制器回归测试和权限范围。"}
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"复核管理端 TypeScript 零错误和生产构建门禁。"}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"复核快照优先、历史回退、缺失降级在各层保持一致。"}
