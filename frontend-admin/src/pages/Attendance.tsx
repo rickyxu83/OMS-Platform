@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Filter, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,15 +12,17 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
 import { ServiceOrderDetailDialog } from "@/components/ServiceOrderDetailDialog";
+import { AttendanceDuty } from "@/pages/AttendanceDuty";
+import { AttendanceApplyDrawer } from "@/pages/AttendanceApplyDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type ServiceOrderDetailItem } from "@/lib/service-order-detail";
 import { api } from "@/services/api";
 
-type RequestType = "leave" | "overtime" | "comp_time";
-type AnnualLeavePeriod = "morning" | "afternoon" | "day";
-type AttendanceTab = "apply" | "records" | "report" | "employees" | "settings";
+export type RequestType = "leave" | "overtime" | "comp_time";
+export type AnnualLeavePeriod = "morning" | "afternoon" | "day";
+type AttendanceTab = "approve" | "records" | "employees" | "settings" | "duty";
 
-interface ServiceOrderSummary extends ServiceOrderDetailItem {
+export interface ServiceOrderSummary extends ServiceOrderDetailItem {
   serviceAt?: string | null;
   unavailable?: boolean;
 }
@@ -69,7 +71,7 @@ interface ApprovalStep {
   rejectedReason?: string | null;
 }
 
-interface EmployeeProfile {
+export interface EmployeeProfile {
   id: number | string;
   userId?: number | string;
   employeeName?: string;
@@ -150,14 +152,14 @@ interface ApprovalRoleRulePayload {
   items?: ApprovalRoleRule[];
 }
 
-interface LegalHolidayItem {
+export interface LegalHolidayItem {
   date: string;
   name: string;
   source: string;
   active?: boolean;
 }
 
-interface OvertimeSegment {
+export interface OvertimeSegment {
   key: string;
   kind: "travel" | "work";
   label: string;
@@ -169,7 +171,7 @@ interface OvertimeSegment {
   allowedResults?: string[];
 }
 
-interface OvertimeServiceOrder extends ServiceOrderSummary {
+export interface OvertimeServiceOrder extends ServiceOrderSummary {
   status?: string;
   segments: OvertimeSegment[];
 }
@@ -180,7 +182,7 @@ const REQUEST_TYPE_LABELS: Record<string, string> = {
   comp_time: "调休",
 };
 
-const LEAVE_TYPE_LABELS: Record<string, string> = {
+export const LEAVE_TYPE_LABELS: Record<string, string> = {
   annual: "特休",
   sick: "病假",
   personal: "事假",
@@ -198,7 +200,7 @@ const OVERTIME_RESULT_LABELS: Record<string, string> = {
   pay: "加班费",
 };
 
-const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {
+export const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {
   workday: "工作日",
   rest_day: "休息日",
   legal_holiday: "法定节假日",
@@ -210,13 +212,13 @@ const HOLIDAY_SOURCE_LABELS: Record<string, string> = {
   auto: "自动",
 };
 
-const SERVICE_MODE_LABELS: Record<string, string> = {
+export const SERVICE_MODE_LABELS: Record<string, string> = {
   onsite: "现场",
   remote: "远程",
   office: "内勤",
 };
 
-const SERVICE_TYPE_LABELS: Record<string, string> = {
+export const SERVICE_TYPE_LABELS: Record<string, string> = {
   install: "安装",
   repair: "维修",
   maintain: "保养",
@@ -285,13 +287,13 @@ function todayYear() {
   return new Date().getFullYear().toString();
 }
 
-function nowLocalValue(offsetHours = 0) {
+export function nowLocalValue(offsetHours = 0) {
   const date = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
   return `${local.toISOString().slice(0, 13)}:00`;
 }
 
-function addHoursValue(value: string, amount: number) {
+export function addHoursValue(value: string, amount: number) {
   const base = new Date(String(value || nowLocalValue()).replace("T", " "));
   if (!Number.isFinite(base.getTime())) return nowLocalValue(amount);
   const next = new Date(base.getTime() + amount * 60 * 60 * 1000);
@@ -299,16 +301,16 @@ function addHoursValue(value: string, amount: number) {
   return `${local.toISOString().slice(0, 13)}:00`;
 }
 
-function dateValue(value?: string) {
+export function dateValue(value?: string) {
   return String(value || nowLocalValue()).slice(0, 10);
 }
 
-function dateIndex(value: string) {
+export function dateIndex(value: string) {
   const [year, month, day] = String(value).split("-").map(Number);
   return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
 }
 
-function annualLeaveRange(form: {
+export function annualLeaveRange(form: {
   annualStartDate?: string;
   annualEndDate?: string;
   annualPeriod?: string;
@@ -335,7 +337,7 @@ function annualLeaveRange(form: {
   };
 }
 
-function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holidays: Set<string>, includeNonWorkingDays = false) {
+export function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holidays: Set<string>, includeNonWorkingDays = false) {
   const range = annualLeaveRange(form);
   const startDate = range.startAt.slice(0, 10);
   const endDate = range.endAt.slice(0, 10);
@@ -354,7 +356,7 @@ function workingLeaveSummary(form: Parameters<typeof annualLeaveRange>[0], holid
   return { ...range, hours: halfDays * 4, workingDays: halfDays / 2 };
 }
 
-function applyAnnualLeaveRange<T extends {
+export function applyAnnualLeaveRange<T extends {
   annualStartDate?: string;
   annualEndDate?: string;
   annualPeriod?: string;
@@ -365,7 +367,7 @@ function applyAnnualLeaveRange<T extends {
   return { ...form, startAt: range.startAt, endAt: range.endAt, hours: String(range.hours) };
 }
 
-function formatDateTime(value?: string) {
+export function formatDateTime(value?: string) {
   if (!value) return "-";
   return String(value).replace("T", " ").slice(0, 16);
 }
@@ -379,16 +381,16 @@ function dateInputValue(value?: string) {
   return String(value || "").slice(0, 10);
 }
 
-function hours(value?: number) {
+export function hours(value?: number) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/\.?0+$/, "");
 }
 
-function days(value?: number) {
+export function days(value?: number) {
   return hours(value);
 }
 
-function annualBalanceDays(item?: { annualLeaveBalanceDays?: number; annualLeaveBalanceHours?: number } | null) {
+export function annualBalanceDays(item?: { annualLeaveBalanceDays?: number; annualLeaveBalanceHours?: number } | null) {
   if (!item) return 0;
   if (typeof item.annualLeaveBalanceDays === "number") return item.annualLeaveBalanceDays;
   return Number(item.annualLeaveBalanceHours || 0) / 8;
@@ -402,18 +404,18 @@ function annualUsageDays(item?: { annualLeaveDays?: number; annualLeaveHours?: n
 
 // 后端已把去程/回程合并成一条 travel 段返回（含 dayType），前端不再自行合并。
 // 时段顺序固定为 travel 在前、work 在后。参见 docs/adr/0002。
-function overtimeRows(order: OvertimeServiceOrder | null) {
+export function overtimeRows(order: OvertimeServiceOrder | null) {
   if (!order) return [];
   return order.segments || [];
 }
 
 // datetime-local 输入用 "YYYY-MM-DDTHH:mm"，工单/后端时间用空格分隔，做一次转换。
-function toDateTimeLocal(value?: string | null) {
+export function toDateTimeLocal(value?: string | null) {
   if (!value) return "";
   return String(value).replace(" ", "T").slice(0, 16);
 }
 
-function parseLocalDateTime(value?: string | null) {
+export function parseLocalDateTime(value?: string | null) {
   if (!value) return null;
   const date = new Date(String(value).replace(" ", "T"));
   return Number.isFinite(date.getTime()) ? date : null;
@@ -421,7 +423,7 @@ function parseLocalDateTime(value?: string | null) {
 
 // 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（掐平日 18:00、整点取整）。
 // dayType 取所选 travel 段（同城往返为同一天，边界情况以提交后端核算为准）。
-function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
+export function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
   const start = parseLocalDateTime(startAt);
   const end = parseLocalDateTime(endAt);
   if (!start || !end || end <= start) return 0;
@@ -458,7 +460,7 @@ function requestDetail(item: AttendanceRequest) {
   return "调休";
 }
 
-function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {
+export function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {
   const multiplier = Number(segment?.payMultiplier || 1);
   return multiplier > 1 ? `加班费（${hours(multiplier)}倍）` : "加班费";
 }
@@ -489,7 +491,7 @@ function roleLabel(role?: string | null) {
   return ROLE_LABELS[role || ""] || role || "-";
 }
 
-function createBlankForm() {
+export function createBlankForm() {
   const today = dateValue();
   return applyAnnualLeaveRange({
     requestType: "leave" as RequestType,
@@ -528,9 +530,10 @@ export function Attendance() {
   const canExportReport = hasPermission("attendance.report.export");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
-  const [activeTab, setActiveTab] = useState<AttendanceTab>("apply");
-  const [form, setForm] = useState(createBlankForm);
-  const [submitting, setSubmitting] = useState(false);
+  const canViewDuty = hasPermission("attendance.duty.manage", "attendance.duty.admin.approve");
+  const [activeTab, setActiveTab] = useState<AttendanceTab>("approve");
+  const [recordView, setRecordView] = useState<"detail" | "summary">("detail");
+  const [applyOpen, setApplyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
@@ -538,9 +541,6 @@ export function Attendance() {
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
-  const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
-  const [delegatesLoading, setDelegatesLoading] = useState(false);
-  const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [proofPreview, setProofPreview] = useState<ProofPreview | null>(null);
   const [proofImageSize, setProofImageSize] = useState<{ width: number; height: number } | null>(null);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
@@ -560,12 +560,6 @@ export function Attendance() {
   const [recordStatus, setRecordStatus] = useState("all");
   const [recordType, setRecordType] = useState("all");
   const [recordKeyword, setRecordKeyword] = useState("");
-  const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
-  const [overtimeLoading, setOvertimeLoading] = useState(false);
-  const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
-  // 路上时间可由工程师自报去程出发、回程返回（默认带工单值），只随本条申请提交。参见 docs/adr/0002。
-  const [travelDepartureAt, setTravelDepartureAt] = useState("");
-  const [travelReturnAt, setTravelReturnAt] = useState("");
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
   const [reportExportOpen, setReportExportOpen] = useState(false);
@@ -629,61 +623,6 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth, holidayYear]);
 
-  useEffect(() => {
-    if (!canApply) {
-      setDelegatesLoading(false);
-      setDelegates([]);
-      return;
-    }
-    if (!["leave", "comp_time"].includes(form.requestType)) {
-      setDelegatesLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    async function loadDelegates() {
-      setDelegatesLoading(true);
-      try {
-        const dateQuery = form.requestType === "leave"
-          ? "?startAt=" + encodeURIComponent(form.startAt) + "&endAt=" + encodeURIComponent(form.endAt)
-          : "";
-        const data = await api.get("/attendance/delegates" + dateQuery);
-        if (cancelled) return;
-        const items = (data?.items || []) as EmployeeProfile[];
-        setDelegates(items);
-        setForm((current) => {
-          const selected = items.find((item) => String(item.id) === current.delegateEmployeeId);
-          return selected?.unavailable ? { ...current, delegateEmployeeId: "" } : current;
-        });
-      } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : "加载代理人失败");
-      } finally {
-        if (!cancelled) setDelegatesLoading(false);
-      }
-    }
-    loadDelegates();
-    return () => {
-      cancelled = true;
-    };
-  }, [canApply, form.requestType, form.startAt, form.endAt]);
-
-  async function loadOvertimeOrders() {
-    setOvertimeLoading(true);
-    try {
-      const data = await api.get("/attendance/overtime/service-orders");
-      const items = (data?.items || []) as OvertimeServiceOrder[];
-      // 保持已选工单；若不在新列表里则回落到第一个
-      const keepId = items.some((item) => String(item.id) === selectedOvertimeOrderId)
-        ? selectedOvertimeOrderId
-        : (items[0] ? String(items[0].id) : "");
-      setOvertimeOrders(items);
-      setSelectedOvertimeOrderId(keepId);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
-    } finally {
-      setOvertimeLoading(false);
-    }
-  }
 
   async function exportAttendanceReport() {
     if (reportExporting) return;
@@ -724,11 +663,6 @@ export function Attendance() {
     }
   }
 
-  useEffect(() => {
-    if (canApply && form.requestType === "overtime") loadOvertimeOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canApply, form.requestType]);
-
   const pendingMine = useMemo(
     () => mine.filter((item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
     [mine],
@@ -749,158 +683,29 @@ export function Attendance() {
 
   const tabs = useMemo(() => {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
-      { key: "apply", label: canApply ? "申请与审批" : "审批待办", count: approvalTodos.length },
+      { key: "approve", label: canApply ? "申请与审批" : "审批待办", count: approvalTodos.length },
     ];
     if (canViewAll) {
-      items.push({ key: "records", label: "全员记录" });
-      items.push({ key: "report", label: "月度报表" });
+      items.push({ key: "records", label: "记录与报表" });
     }
     if (canManage) items.push({ key: "employees", label: "员工与余额" });
     if (canViewAll) items.push({ key: "settings", label: "考勤设置" });
+    if (canViewDuty) items.push({ key: "duty", label: "值班津贴" });
     return items;
-  }, [canApply, canViewAll, canManage, approvalTodos.length]);
+  }, [canApply, canViewAll, canManage, canViewDuty, approvalTodos.length]);
 
   useEffect(() => {
-    if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("apply");
+    if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("approve");
   }, [tabs, activeTab]);
 
-  const selectedOvertimeOrder = useMemo(
-    () => overtimeOrders.find((item) => String(item.id) === selectedOvertimeOrderId) || null,
-    [overtimeOrders, selectedOvertimeOrderId],
-  );
-  // 一个工单一把申请：路上 + 工作两段都报，不再单选时段。后端各生成一条申请。参见 docs/adr/0002。
-  const selectedOvertimeRows = useMemo(
-    () => overtimeRows(selectedOvertimeOrder),
-    [selectedOvertimeOrder],
-  );
-  const travelSegment = useMemo(
-    () => selectedOvertimeRows.find((item) => item.key === "travel") || null,
-    [selectedOvertimeRows],
-  );
-  const workSegment = useMemo(
-    () => selectedOvertimeRows.find((item) => item.key === "work") || null,
-    [selectedOvertimeRows],
-  );
 
-  // 切换工单时，去程/回程输入框回填工单默认时间，工程师可在此基础上改。参见 docs/adr/0002。
-  useEffect(() => {
-    setTravelDepartureAt(toDateTimeLocal(selectedOvertimeOrder?.departureAt));
-    setTravelReturnAt(toDateTimeLocal(selectedOvertimeOrder?.returnAt));
-  }, [selectedOvertimeOrderId, selectedOvertimeOrder?.departureAt, selectedOvertimeOrder?.returnAt]);
 
-  // 去程/回程改动后，前端按后端同样口径预览合并时长（提交后仍以后端核算为准）。
-  const travelPreview = useMemo(() => {
-    if (!selectedOvertimeOrder || !travelSegment) return null;
-    const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
-    const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
-    const dayType = travelSegment.dayType;
-    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
-    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
-    return { hours: Math.round((outbound + back) * 100) / 100, dayType };
-  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
-
-  const travelInvalid = useMemo(() => {
-    if (!travelSegment || !selectedOvertimeOrder) return "";
-    const arrival = parseLocalDateTime(selectedOvertimeOrder.actualStartAt);
-    const finish = parseLocalDateTime(selectedOvertimeOrder.actualEndAt);
-    const departure = parseLocalDateTime(travelDepartureAt);
-    const back = parseLocalDateTime(travelReturnAt);
-    if (departure && arrival && departure > arrival) return "去程出发时间不能晚于工单到达时间";
-    if (back && finish && back < finish) return "回程返回时间不能早于工单完工时间";
-    return "";
-  }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
-
-  function setAnnualDraft(patch: Partial<{
-    annualStartDate: string;
-    annualEndDate: string;
-    annualPeriod: AnnualLeavePeriod;
-    annualStartPeriod: AnnualLeavePeriod;
-    annualEndPeriod: AnnualLeavePeriod;
-  }>) {
-    setForm((current) => {
-      const next = { ...current, ...patch };
-      if (patch.annualStartDate && dateIndex(next.annualEndDate) < dateIndex(patch.annualStartDate)) {
-        next.annualEndDate = patch.annualStartDate;
-      }
-      if (patch.annualEndDate && dateIndex(patch.annualEndDate) < dateIndex(next.annualStartDate)) {
-        next.annualStartDate = patch.annualEndDate;
-      }
-      return applyAnnualLeaveRange(next);
-    });
-  }
-
-  function applyQuickDatePreset(offsetDays: number, period: AnnualLeavePeriod) {
-    const date = dateValue(nowLocalValue(offsetDays * 24));
-    setAnnualDraft({
-      annualStartDate: date,
-      annualEndDate: date,
-      annualPeriod: period,
-      annualStartPeriod: "morning",
-      annualEndPeriod: period === "morning" ? "morning" : "afternoon",
-    });
-  }
-
-  async function submitRequest() {
-    const requestType = form.requestType;
-    setSubmitting(true);
-    try {
-      if (requestType === "overtime") {
-        if (!selectedOvertimeOrder) throw new Error("请选择工单");
-        if (travelInvalid) throw new Error(travelInvalid);
-        // 一把提交路上 + 工作两段：不传 segmentKey，后端各生成一条申请。
-        // overtimeResult 只作用于工作段（路上固定转调休）；路上带上工程师自报的去程出发、回程返回（默认工单值）。
-        await api.post(`/attendance/overtime/service-orders/${selectedOvertimeOrder.id}/apply`, {
-          overtimeResult: form.overtimeResult,
-          departureAt: travelDepartureAt ? travelDepartureAt.replace("T", " ") : undefined,
-          returnAt: travelReturnAt ? travelReturnAt.replace("T", " ") : undefined,
-        });
-      } else {
-        if (!form.delegateEmployeeId) throw new Error("请选择代理人");
-        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
-          throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
-        }
-        const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
-        const leaveRange = workingLeaveSummary(form, applicationHolidayDates, includeNonWorkingDays);
-        if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
-        const draft = await api.post("/attendance/requests", {
-          requestType,
-          leaveType: requestType === "leave" ? form.leaveType : undefined,
-          delegateEmployeeId: form.delegateEmployeeId,
-          startAt: leaveRange.startAt,
-          endAt: leaveRange.endAt,
-          hours: leaveRange.hours,
-        });
-        for (const file of proofFiles) {
-          const body = new FormData();
-          body.append("file", file);
-          body.append("ownerType", "attendance_request");
-          body.append("ownerId", String(draft.id));
-          body.append("purpose", "leave_proof");
-          await api.postForm("/files", body);
-        }
-        await api.post(`/attendance/requests/${draft.id}/submit`);
-      }
-      toast.success("申请已提交");
-      setForm(createBlankForm());
-      setProofFiles([]);
-      setSelectedOvertimeOrderId("");
-      setTravelDepartureAt("");
-      setTravelReturnAt("");
-      await load();
-      if (requestType === "overtime") await loadOvertimeOrders();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "提交失败");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   async function action(path: string, success: string, body?: any) {
     try {
       await api.post(path, body);
       toast.success(success);
       await load();
-      if (form.requestType === "overtime") await loadOvertimeOrders();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     }
@@ -1161,24 +966,7 @@ export function Attendance() {
     () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
     [applicationHolidays],
   );
-  const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
-  const annualPreview = ["leave", "comp_time"].includes(form.requestType)
-    ? workingLeaveSummary(form, applicationHolidayDates, naturalDayLeave)
-    : null;
-  const annualSingleDay = form.annualStartDate === form.annualEndDate;
 
-  const overtimeOrderMeta: Array<[string, string]> = selectedOvertimeOrder ? [
-    ["工单", selectedOvertimeOrder.orderNo || `#${selectedOvertimeOrder.id}`],
-    ["客户", selectedOvertimeOrder.customerName || "-"],
-    ["设备", selectedOvertimeOrder.deviceName || "-"],
-    ["类型", `${SERVICE_MODE_LABELS[selectedOvertimeOrder.serviceMode || ""] || selectedOvertimeOrder.serviceMode || "-"} / ${SERVICE_TYPE_LABELS[selectedOvertimeOrder.serviceType || ""] || selectedOvertimeOrder.serviceType || "-"}`],
-    ["联系人", `${selectedOvertimeOrder.contactName || "-"}${selectedOvertimeOrder.contactPhone ? ` ${selectedOvertimeOrder.contactPhone}` : ""}`],
-    ["服务日", formatDateTime(selectedOvertimeOrder.serviceAt || undefined)],
-    ["出发", formatDateTime(selectedOvertimeOrder.departureAt || undefined)],
-    ["到达", formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)],
-    ["完成", formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)],
-    ["返回", formatDateTime(selectedOvertimeOrder.returnAt || undefined)],
-  ] : [];
 
   const statTiles = [
     ...(canApply ? [
@@ -1188,8 +976,6 @@ export function Attendance() {
     ] : []),
     ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length) }] : []),
   ];
-  const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
-  const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1197,10 +983,18 @@ export function Attendance() {
           <h1 className="text-2xl font-semibold md:text-3xl">考勤管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          {canApply ? (
+            <Button onClick={() => setApplyOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              新建申请
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={load} disabled={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
+        </div>
       </div>
 
       <ErrorToast message={error} />
@@ -1228,481 +1022,16 @@ export function Attendance() {
         </div>
       ) : null}
 
-      {activeTab === "apply" ? (
+      {activeTab === "approve" ? (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm">
             {statTiles.map((stat) => (
-              <Card key={stat.label}>
-                <CardContent className="pt-5">
-                  <div className="text-sm text-muted-foreground">{stat.label}</div>
-                  <div className="mt-1 text-2xl font-semibold">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : stat.value}</div>
-                </CardContent>
-              </Card>
+              <span key={stat.label} className="flex items-center gap-1.5 text-muted-foreground">
+                {stat.label}
+                <b className="font-semibold text-foreground">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : stat.value}</b>
+              </span>
             ))}
           </div>
-
-          {canApply ? <Card className="overflow-hidden border-border/80 shadow-sm">
-            <CardHeader className="border-b bg-card px-5 py-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Send className="h-5 w-5" />
-                    提交申请
-                  </CardTitle>
-                  <CardDescription>选择申请类型后，在同一屏完成日期、时段和交接信息</CardDescription>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">特休 {days(annualBalanceDays(myProfile))} 天</Badge>
-                  <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="border-b bg-muted/15 p-4">
-                <div className="grid gap-2 md:grid-cols-3">
-                    {[
-                      { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock },
-                      { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send },
-                      { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      const active = form.requestType === item.value;
-                      return (
-                        <button
-                          key={item.value}
-                          type="button"
-                          onClick={() => setForm((current) => {
-                            const value = item.value;
-                            const next = { ...current, requestType: value as RequestType, hours: value === "overtime" ? "1" : "4" };
-                            if (value !== "overtime") return applyAnnualLeaveRange(next);
-                            return { ...next, endAt: addHoursValue(next.startAt, 1) };
-                          })}
-                          className={active
-                            ? "flex min-h-16 items-center gap-3 rounded-lg border border-primary bg-background p-3 text-left ring-2 ring-primary/15 transition"
-                            : "flex min-h-16 items-center gap-3 rounded-lg border bg-background p-3 text-left transition hover:bg-muted/30"}
-                        >
-                          <span className={active ? "rounded-md bg-primary p-2 text-primary-foreground" : "rounded-md bg-muted p-2 text-muted-foreground"}>
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium">{item.label}</span>
-                            <span className="block text-xs text-muted-foreground">{item.description}</span>
-                          </span>
-                          {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-
-              <div className="grid lg:grid-cols-[minmax(0,1fr)_300px]">
-                <div className="p-4 md:p-5">
-                  {form.requestType === "overtime" ? (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 lg:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>工单</Label>
-                          <Select
-                            value={selectedOvertimeOrderId}
-                            onValueChange={(value) => setSelectedOvertimeOrderId(value)}
-                            disabled={overtimeLoading || overtimeOrders.length === 0}
-                          >
-                            <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
-                            <SelectContent>
-                              {overtimeOrders.map((order) => (
-                                <SelectItem key={order.id} value={String(order.id)}>
-                                  {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>工作时间加班结果</Label>
-                          <Select
-                            value={form.overtimeResult}
-                            onValueChange={(value) => setForm((current) => ({ ...current, overtimeResult: value }))}
-                            disabled={!workSegment}
-                          >
-                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="comp_time">转调休</SelectItem>
-                              {workSegment ? (
-                                <SelectItem value="pay">{overtimePayLabel(workSegment)}</SelectItem>
-                              ) : null}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">来回路上时间固定转调休，此处仅作用于实际工作时间</p>
-                        </div>
-                      </div>
-
-                      {selectedOvertimeOrder ? (
-                        <>
-                          <div className="space-y-2">
-                            <Label>加班时段</Label>
-                            <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，各生成一条申请（无有效加班时长的时段自动跳过）</p>
-                            <div className="grid gap-2 md:grid-cols-2">
-                              {selectedOvertimeRows.map((segment) => {
-                                const isTravel = segment.kind === "travel";
-                                const segHours = isTravel ? (travelPreview?.hours ?? segment.hours) : segment.hours;
-                                return (
-                                  <div
-                                    key={segment.key}
-                                    className="rounded-md border bg-background p-3 text-left text-sm"
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-medium">{segment.label}</span>
-                                      <Check className="h-4 w-4 shrink-0 text-primary" />
-                                    </div>
-                                    <div className="mt-1 text-xs text-muted-foreground">
-                                      {isTravel
-                                        ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
-                                        : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
-                                    </div>
-                                    <div className="mt-0.5 text-xs text-muted-foreground">
-                                      {hours(segHours)} 小时
-                                      {segment.dayType ? ` · ${OVERTIME_DAY_TYPE_LABELS[segment.dayType] || segment.dayType}` : ""}
-                                      {isTravel ? " · 固定转调休" : ` · ${form.overtimeResult === "pay" ? overtimePayLabel(segment) : "转调休"}`}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {selectedOvertimeRows.length === 0 ? (
-                                <div className="rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground md:col-span-2">暂无可申请时段</div>
-                              ) : null}
-                            </div>
-                          </div>
-                          {travelSegment ? (
-                            <div className="space-y-3 rounded-md border bg-muted/10 p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <Label className="text-sm">去程/回程时间</Label>
-                                <span className="text-xs text-muted-foreground">默认带入工单时间，可按本人实际往返修改</span>
-                              </div>
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                  <Label className="text-xs text-muted-foreground">去程出发</Label>
-                                  <Input
-                                    className="h-11"
-                                    type="datetime-local"
-                                    value={travelDepartureAt}
-                                    max={toDateTimeLocal(selectedOvertimeOrder.actualStartAt)}
-                                    onChange={(event) => setTravelDepartureAt(event.target.value)}
-                                  />
-                                  <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs text-muted-foreground">回程返回</Label>
-                                  <Input
-                                    className="h-11"
-                                    type="datetime-local"
-                                    value={travelReturnAt}
-                                    min={toDateTimeLocal(selectedOvertimeOrder.actualEndAt)}
-                                    onChange={(event) => setTravelReturnAt(event.target.value)}
-                                  />
-                                  <p className="text-xs text-muted-foreground">完工（工单）：{formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)}</p>
-                                </div>
-                              </div>
-                              {travelInvalid ? (
-                                <p className="text-xs text-destructive">{travelInvalid}</p>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">
-                                  预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
-                                </p>
-                              )}
-                            </div>
-                          ) : null}
-                          <div className="rounded-md border bg-muted/10 p-3">
-                            <div className="text-xs font-medium text-muted-foreground">工单信息</div>
-                            <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
-                              {overtimeOrderMeta.map(([label, value]) => (
-                                <div key={label}>{label}：{value}</div>
-                              ))}
-                              <div className="sm:col-span-2 xl:col-span-3">问题：{selectedOvertimeOrder.issueDescription || "-"}</div>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
-                          {overtimeLoading ? "正在加载…" : "暂无可申请加班的工单"}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-5">
-                      {form.requestType === "leave" ? (
-                        <div className="space-y-2">
-                          <Label>假别</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => {
-                              const active = form.leaveType === value;
-                              return (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  onClick={() => setForm((current) => {
-                                    const date = dateValue(current.startAt);
-                                    return applyAnnualLeaveRange({
-                                      ...current,
-                                      leaveType: value,
-                                      annualStartDate: current.annualStartDate || date,
-                                      annualEndDate: current.annualEndDate || date,
-                                    });
-                                  })}
-                                  className={active
-                                    ? "h-9 rounded-md border border-primary bg-primary/10 px-3 text-sm font-medium text-primary transition"
-                                    : "h-9 rounded-md border bg-background px-3 text-sm transition hover:bg-muted/50"}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "morning")}>今天上午</Button>
-                        <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "day")}>今天全天</Button>
-                        <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
-                      </div>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>开始日期</Label>
-                          <Input
-                            className="h-11"
-                            data-compact-date="true"
-                            type="date"
-                            value={form.annualStartDate}
-                            onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>结束日期</Label>
-                          <Input
-                            className="h-11"
-                            data-compact-date="true"
-                            type="date"
-                            min={form.annualStartDate}
-                            value={form.annualEndDate}
-                            onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })}
-                          />
-                        </div>
-                      </div>
-
-                      {annualSingleDay ? (
-                        <div className="space-y-2">
-                          <Label>时段</Label>
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            {[
-                              { value: "morning" as AnnualLeavePeriod, label: "上午", time: "09:00-14:00" },
-                              { value: "afternoon" as AnnualLeavePeriod, label: "下午", time: "14:00-18:00" },
-                              { value: "day" as AnnualLeavePeriod, label: "全天", time: "09:00-18:00" },
-                            ].map((item) => {
-                              const active = form.annualPeriod === item.value;
-                              return (
-                                <button
-                                  key={item.value}
-                                  type="button"
-                                  onClick={() => setAnnualDraft({ annualPeriod: item.value })}
-                                  className={active
-                                    ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
-                                    : "rounded-lg border p-3 text-left transition hover:bg-muted/40"}
-                                >
-                                  <div className="flex items-center justify-between gap-2 text-sm font-medium">
-                                    {item.label}
-                                    {active ? <Check className="h-4 w-4 text-primary" /> : null}
-                                  </div>
-                                  <div className="mt-1 text-xs text-muted-foreground">{item.time}</div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>开始时段</Label>
-                            <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
-                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="morning">上午 09:00 起</SelectItem>
-                                <SelectItem value="afternoon">下午 14:00 起</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>结束时段</Label>
-                            <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
-                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="morning">上午 14:00 止</SelectItem>
-                                <SelectItem value="afternoon">下午 18:00 止</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label>工作代理人</Label>
-                        <Select
-                          value={form.delegateEmployeeId}
-                          onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
-                          disabled={delegatesLoading}
-                        >
-                          <SelectTrigger className="h-11">
-                            <SelectValue
-                              placeholder={delegatesLoading
-                                ? "正在检查代理人状态"
-                                : form.requestType === "leave" ? "选择请假期间的代理人" : "选择调休期间的代理人"}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {delegates.map((item) => (
-                              <SelectItem key={item.id} value={String(item.id)} disabled={item.unavailable}>
-                                {item.employeeName || "员工 #" + item.id}
-                                {item.unavailable ? "（所选时段请假中）" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {form.requestType === "leave"
-                            ? "请假冲突人员不可选择；代理人无需确认，提交后直接进入配置的审批链。"
-                            : "调休仍需代理人确认后，再进入配置的审批链。"}
-                        </p>
-                      </div>
-
-                      {proofRequired ? (
-                        <div className="space-y-2">
-                          <Label>{form.leaveType === "sick" ? "病假证明" : "婚假证明"}</Label>
-                          <Input
-                            className="h-11"
-                            type="file"
-                            multiple
-                            accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
-                            onChange={(event) => setProofFiles(Array.from(event.target.files || []))}
-                          />
-                          <p className="text-xs text-muted-foreground">必填，可上传图片、PDF 或 Word 文件</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
-                  <div className="sticky top-4 space-y-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium">当前草稿</div>
-                      <Badge variant="secondary">
-                        {form.requestType === "leave"
-                          ? LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"
-                          : form.requestType === "overtime" ? "工单加班" : "调休"}
-                      </Badge>
-                    </div>
-
-                    <div className="space-y-3 rounded-lg border bg-background p-4">
-                      {form.requestType === "overtime" ? (
-                        <>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">工单</span>
-                            <span className="font-medium">{selectedOvertimeOrder?.orderNo || (selectedOvertimeOrder ? "工单 #" + selectedOvertimeOrder.id : "未选择")}</span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">客户</span>
-                            <span className="font-medium">{selectedOvertimeOrder?.customerName || "-"}</span>
-                          </div>
-                          {travelSegment ? (
-                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                              <span className="text-muted-foreground">来回路上</span>
-                              <span className="font-medium">
-                                {hours(travelPreview?.hours || 0)} 小时 · 固定转调休
-                                <span className="block text-xs text-muted-foreground">
-                                  {formatDateTime(travelDepartureAt) || "-"} 出发 / {formatDateTime(travelReturnAt) || "-"} 返回
-                                </span>
-                              </span>
-                            </div>
-                          ) : null}
-                          {workSegment ? (
-                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                              <span className="text-muted-foreground">实际工作</span>
-                              <span className="font-medium">
-                                {hours(workSegment.hours)} 小时 · {form.overtimeResult === "pay" ? overtimePayLabel(workSegment) : "转调休"}
-                                <span className="block text-xs text-muted-foreground">
-                                  {formatDateTime(workSegment.startAt)} - {formatDateTime(workSegment.endAt)}
-                                </span>
-                              </span>
-                            </div>
-                          ) : null}
-                          {!travelSegment && !workSegment ? (
-                            <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                              <span className="text-muted-foreground">时段</span>
-                              <span className="font-medium">未选择</span>
-                            </div>
-                          ) : null}
-                        </>
-                      ) : (
-                        <>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">申请类型</span>
-                            <span className="font-medium">
-                              {form.requestType === "leave" ? LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假" : "调休"}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">日期范围</span>
-                            <span className="font-medium">{form.annualStartDate} - {form.annualEndDate}</span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">申请时段</span>
-                            <span className="font-medium">
-                              {annualSingleDay
-                                ? form.annualPeriod === "day" ? "全天" : form.annualPeriod === "morning" ? "上午" : "下午"
-                                : (form.annualStartPeriod === "morning" ? "上午起" : "下午起") + " / " + (form.annualEndPeriod === "morning" ? "上午止" : "下午止")}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">核算时长</span>
-                            <span className="font-medium">{days(annualPreview?.workingDays)} {naturalDayLeave ? "自然日" : "工作日"} · {hours(annualPreview?.hours)} 小时</span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">工作代理</span>
-                            <span className="font-medium">{selectedDelegateName || "未选择"}</span>
-                          </div>
-                          <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-sm">
-                            <span className="text-muted-foreground">证明附件</span>
-                            <span className={proofRequired && proofFiles.length === 0 ? "font-medium text-destructive" : "font-medium"}>
-                              {proofFiles.length > 0 ? proofFiles.length + " 个文件" : proofRequired ? "未上传（必填）" : "无需附件"}
-                            </span>
-                          </div>
-                          <div className="pt-1 text-xs leading-5 text-muted-foreground">
-                            {naturalDayLeave ? "婚假、丧假按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <Button
-                      className="h-11 w-full"
-                      onClick={submitRequest}
-                      disabled={submitting || (form.requestType === "overtime" && (!selectedOvertimeOrder || selectedOvertimeRows.length === 0 || Boolean(travelInvalid)))}
-                    >
-                      {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                      提交申请
-                    </Button>
-                    <p className="text-center text-xs text-muted-foreground">
-                      {form.requestType === "leave"
-                        ? "提交后直接进入配置的审批链，代理人无需确认"
-                        : form.requestType === "comp_time"
-                          ? "提交后先由代理人确认，再进入配置的审批链"
-                          : "提交后进入配置的审批链"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card> : null}
 
           {isApprover ? (
             <RequestList
@@ -1766,6 +1095,19 @@ export function Attendance() {
 
       {activeTab === "records" && canViewAll ? (
         <div className="space-y-5">
+          <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setRecordView("detail")}
+              className={`h-8 rounded-md px-4 font-medium transition ${recordView === "detail" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >申请明细</button>
+            <button
+              type="button"
+              onClick={() => setRecordView("summary")}
+              className={`h-8 rounded-md px-4 font-medium transition ${recordView === "summary" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >月度汇总</button>
+          </div>
+          {recordView === "detail" ? (<>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-xl font-semibold">全员记录</h2>
@@ -1825,10 +1167,7 @@ export function Attendance() {
               </CardContent>
             </Card>
           </div>
-        </div>
-      ) : null}
-
-      {activeTab === "report" && canViewAll ? (
+          </>) : (
         <Card className="gap-0 overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1904,6 +1243,8 @@ export function Attendance() {
             </div>
           </CardContent>
         </Card>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "employees" && canManage ? (
@@ -2182,6 +1523,18 @@ export function Attendance() {
           </div>
         </div>
       ) : null}
+
+      {activeTab === "duty" && canViewDuty ? (
+        <AttendanceDuty embedded />
+      ) : null}
+
+      <AttendanceApplyDrawer
+        open={applyOpen}
+        onOpenChange={setApplyOpen}
+        onSubmitted={load}
+        myProfile={myProfile}
+        holidayDates={applicationHolidayDates}
+      />
 
       <ServiceOrderDetailDialog
         order={previewOrder}

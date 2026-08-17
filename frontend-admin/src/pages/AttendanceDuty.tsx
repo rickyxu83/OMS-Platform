@@ -24,7 +24,7 @@ const currentMonth = new Date().toISOString().slice(0, 7)
 const typeLabel: Record<string, string> = { weekend_on_call: "7×24 值班", legal_holiday_on_call: "法定节假日值班" }
 const statusLabel: Record<string, string> = { draft: "待主管确认", pending_admin: "待行政终审", approved: "已终审", rejected: "行政退回" }
 
-export function AttendanceDuty() {
+export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
   const { hasPermission } = useAuth()
   const canManage = hasPermission("attendance.duty.manage")
   const canApprove = hasPermission("attendance.duty.admin.approve")
@@ -102,11 +102,14 @@ export function AttendanceDuty() {
   }
 
   return <div className="space-y-6">
+    {embedded ? (
+      <div className="flex gap-2">{canManage && <Button variant={tab === "setup" ? "default" : "outline"} onClick={() => setTab("setup")}><CalendarDays className="size-4" />年度设置</Button>}<Button variant={tab === "monthly" ? "default" : "outline"} onClick={() => setTab("monthly")}><CheckCircle2 className="size-4" />月度审批</Button></div>
+    ) : (
     <div className="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
       <div><div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary"><ShieldCheck className="size-4" />工程主管专用</div><h1 className="text-2xl font-semibold tracking-tight">工程师值班津贴</h1><p className="mt-1 text-sm text-muted-foreground">年度安排 7×24 与法定节假日值班，按月确认后交行政主管终审。</p></div>
       <div className="flex gap-2">{canManage && <Button variant={tab === "setup" ? "default" : "outline"} onClick={() => setTab("setup")}><CalendarDays className="size-4" />年度设置</Button>}<Button variant={tab === "monthly" ? "default" : "outline"} onClick={() => setTab("monthly")}><CheckCircle2 className="size-4" />月度审批</Button></div>
     </div>
-
+    )}
     {tab === "setup" ? <div className="space-y-5">
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="size-5" />{year} 年 7×24 值班</CardTitle><CardDescription>系统自动计算全年周六、周日。轮值以一个周末为单位，同一周六、周日安排同一人；固定值班组则每天给所有选中工程师各记 1 次。</CardDescription></CardHeader><CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>年度</Label><Input type="number" min={2020} max={2099} value={year} onChange={(event) => setYear(Number(event.target.value))} /></div><div className="space-y-2"><Label>安排方式</Label><Select value={weekendMode} onValueChange={setWeekendMode}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rotation">按顺序轮值</SelectItem><SelectItem value="fixed">固定值班组</SelectItem></SelectContent></Select></div></div>

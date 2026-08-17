@@ -22,7 +22,6 @@ const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default
 const MaintenanceParties = lazy(() => import("@/pages/MaintenanceParties").then((module) => ({ default: module.MaintenanceParties })))
 const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ default: module.Timesheets })))
 const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ default: module.Attendance })))
-const AttendanceDuty = lazy(() => import("@/pages/AttendanceDuty").then((module) => ({ default: module.AttendanceDuty })))
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
@@ -326,7 +325,7 @@ export default function App() {
             path="/attendance-duty"
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
-                <AttendanceDuty />
+                <Navigate to="/attendance" replace />
               </ProtectedAdminPage>
             }
           />

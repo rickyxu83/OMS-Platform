@@ -12,7 +12,6 @@ import {
   Building2,
   BarChart3,
   CalendarClock,
-  CalendarDays,
   Settings,
   Shield,
   LogOut,
@@ -258,7 +257,6 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     groupKey: "reports",
     items: [
       { labelKey: "attendance", icon: CalendarClock, path: "attendance", requiredPermissions: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.report.export", "attendance.admin.approve", "attendance.manage"] },
-      { labelKey: "attendance-duty", icon: CalendarDays, path: "attendance-duty", requiredPermissions: ["attendance.duty.manage", "attendance.duty.admin.approve"] },
       { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
     ],
   },
