@@ -73,6 +73,9 @@ async function archiveContext(mrId) {
       versionNo: Number(version.version_no),
       customerCode: order.customer_code,
       salesOwnerName: order.sales_owner_name,
+      // 合同编号为签核通过后由助理补填的数据：归档时实时叠加到冻结快照上（与采购订单号同理），
+      // 保证补填后重新生成的归档 PDF 带上合同编号
+      contractNo: order.contract_no || snapshot.contractNo || null,
       quotationFiles: files,
       voidReason: order.void_reason,
       archiveAttempts: Number(order.archive_attempts || 0),
