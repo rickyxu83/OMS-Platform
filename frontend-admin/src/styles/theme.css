@@ -238,24 +238,6 @@
 }
 
 @layer components {
-  .service-report-time-input.ant-picker {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    border-color: rgb(203 213 225);
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
-  }
-
-  .service-report-time-input.ant-picker .ant-picker-input > input {
-    font-size: 0.875rem;
-  }
-
-  .service-report-time-picker .ant-picker-time-panel-column {
-    min-width: 4.25rem;
-  }
-
   .admin-brand-mark {
     position: relative;
     display: inline-grid;

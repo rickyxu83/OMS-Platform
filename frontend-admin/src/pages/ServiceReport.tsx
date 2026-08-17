@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -45,6 +45,8 @@ import QRCode from "qrcode";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SectionNav } from "@/packages/mr/SectionNav";
+import type { MrSection } from "@/packages/mr/SectionNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -631,20 +633,6 @@ function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
   openNativePicker(event.currentTarget);
 }
 
-function useDesktopTimePicker() {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)");
-    const update = () => setEnabled(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return enabled;
-}
-
 interface TimeInputProps {
   label: string;
   time: string;
@@ -656,6 +644,7 @@ function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
     <input
       aria-label={`${label}时间`}
       type="time"
+      step={300}
       value={time}
       onChange={(event) => onTimeChange(event.target.value)}
       onPointerDown={openPickerOnMouse}
@@ -663,35 +652,6 @@ function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
     />
   );
 }
-
-const DesktopTimePicker = lazy(async () => {
-  const [{ TimePicker }, dayjsModule] = await Promise.all([
-    import("antd"),
-    import("dayjs"),
-  ]);
-  const dayjs = dayjsModule.default;
-
-  function LoadedDesktopTimePicker({ label, time, onTimeChange }: TimeInputProps) {
-    const timeValue = time ? dayjs(time, "HH:mm") : null;
-    return (
-      <TimePicker
-        aria-label={`${label}时间`}
-        value={timeValue}
-        format="HH:mm"
-        minuteStep={5}
-        allowClear={false}
-        needConfirm={false}
-        showNow={false}
-        popupClassName="service-report-time-picker"
-        className="service-report-time-input h-9 w-full min-w-0 rounded-md border-slate-300 bg-white text-sm shadow-sm hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
-        placeholder="选择时间"
-        onChange={(nextTime) => onTimeChange(nextTime ? nextTime.format("HH:mm") : "")}
-      />
-    );
-  }
-
-  return { default: LoadedDesktopTimePicker };
-});
 
 function inputNow() {
   const date = new Date();
@@ -2040,7 +2000,6 @@ function DateTimeFieldControl({
 }) {
   const { date, time } = splitInputDateTime(value);
   const [draftDate, setDraftDate] = useState(date || inputToday());
-  const useDesktopPicker = useDesktopTimePicker();
 
   useEffect(() => {
     setDraftDate(date || inputToday());
@@ -2070,13 +2029,7 @@ function DateTimeFieldControl({
         onPointerDown={openPickerOnMouse}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
-      {useDesktopPicker ? (
-        <Suspense fallback={<NativeTimeInput label={label} time={time} onTimeChange={setTime} />}>
-          <DesktopTimePicker label={label} time={time} onTimeChange={setTime} />
-        </Suspense>
-      ) : (
-        <NativeTimeInput label={label} time={time} onTimeChange={setTime} />
-      )}
+      <NativeTimeInput label={label} time={time} onTimeChange={setTime} />
       {value ? (
         <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
           <X className="h-4 w-4" />
@@ -2103,6 +2056,7 @@ function ReportSection({
   step: _step,
   tag,
   action,
+  sectionId,
   children,
 }: {
   title: string;
@@ -2110,10 +2064,12 @@ function ReportSection({
   step?: number;
   tag?: string;
   action?: React.ReactNode;
+  /** 分区导航锚点（渲染为 report-section-{sectionId}），供 SectionNav 跳转与激活跟踪 */
+  sectionId?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border bg-card shadow-sm">
+    <section id={sectionId ? `report-section-${sectionId}` : undefined} className="scroll-mt-24 rounded-lg border bg-card shadow-sm">
       <div className="flex min-h-[52px] items-center justify-between gap-3 px-3 py-3 sm:min-h-[64px] sm:px-5 sm:py-4">
         <div className="flex min-w-0 items-center gap-3">
           {Icon ? (
@@ -3940,24 +3896,26 @@ export function ServiceReport() {
     };
   }
 
-  function validateBeforeSubmit() {
-    const missing: string[] = [];
-    if (!isOffice && !form.customerId && !form.customerName.trim()) missing.push("客户名称");
-    if (isOnsite && !form.customerAddress.trim()) missing.push("客户地址");
-    if (!isOffice && !form.contactName.trim() && !form.customerConfirmName.trim()) missing.push("客户联系人");
-    if (!isOffice && !form.contactPhone.trim()) missing.push("客户联系电话");
-    if (isOffice && !form.timesheetCategory.trim()) missing.push("内勤工作事项");
+  type MissingField = { label: string; section: string };
+
+  function validateBeforeSubmit(): MissingField[] {
+    const missing: MissingField[] = [];
+    if (!isOffice && !form.customerId && !form.customerName.trim()) missing.push({ label: "客户名称", section: "customer" });
+    if (isOnsite && !form.customerAddress.trim()) missing.push({ label: "客户地址", section: "customer" });
+    if (!isOffice && !form.contactName.trim() && !form.customerConfirmName.trim()) missing.push({ label: "客户联系人", section: "customer" });
+    if (!isOffice && !form.contactPhone.trim()) missing.push({ label: "客户联系电话", section: "customer" });
+    if (isOffice && !form.timesheetCategory.trim()) missing.push({ label: "内勤工作事项", section: "module" });
     if (isInstall) {
       const installTargets = form.installDevices.filter(installDeviceHasContent);
       if (!installTargets.length) {
-        missing.push("安装设备");
+        missing.push({ label: "安装设备", section: "asset" });
       }
       installTargets.forEach((device, index) => {
         const deviceLabelText = `安装设备 ${index + 1}`;
         if (device.inputMode === "existing") {
-          if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
+          if (!device.deviceId) missing.push({ label: `${deviceLabelText}关联设备`, section: "asset" });
         } else if (!device.model.trim()) {
-          missing.push(`${deviceLabelText}型号`);
+          missing.push({ label: `${deviceLabelText}型号`, section: "asset" });
         }
       });
     }
@@ -3966,10 +3924,10 @@ export function ServiceReport() {
       maintenanceTargets.forEach((device, index) => {
         const deviceLabelText = `${isRemote ? "远程目标设备" : "目标设备"} ${index + 1}`;
         if (device.inputMode === "existing") {
-          if (!device.deviceId) missing.push(`${deviceLabelText}关联设备`);
+          if (!device.deviceId) missing.push({ label: `${deviceLabelText}关联设备`, section: "asset" });
         } else {
-          if (!device.model.trim()) missing.push(`${deviceLabelText}型号`);
-          if (!device.serialNo.trim()) missing.push(`${deviceLabelText}序列号`);
+          if (!device.model.trim()) missing.push({ label: `${deviceLabelText}型号`, section: "asset" });
+          if (!device.serialNo.trim()) missing.push({ label: `${deviceLabelText}序列号`, section: "asset" });
         }
       });
     }
@@ -3984,23 +3942,68 @@ export function ServiceReport() {
       ));
       return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
     });
-    if (invalidPart) missing.push("备件或硬件部件明细（关联设备、名称、数量）");
+    if (invalidPart) missing.push({ label: "备件或硬件部件明细（关联设备、名称、数量）", section: "asset" });
     if (selectedServiceModules.includes("replacement")) {
       const hasReplacementPart = activeParts().some((part) => {
         const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
         return action === "replacement" && part.partName.trim() && Number(part.quantity || 0) > 0;
       });
-      if (!hasReplacementPart) missing.push("备件更换明细");
+      if (!hasReplacementPart) missing.push({ label: "备件更换明细", section: "asset" });
     }
-    if (!form.issueDescription.trim()) missing.push(issueFieldLabel);
-    if (!form.workContent.trim()) missing.push(workContentLabel);
-    if (!isOffice && !form.result) missing.push(isOnsite ? "服务结果" : "处理结果");
-    if (!form.actualStartAt) missing.push(isOnsite ? "到达时间" : "开始时间");
-    if (!form.actualEndAt) missing.push(isOnsite ? "完成时间" : "结束时间");
+    if (!form.issueDescription.trim()) missing.push({ label: issueFieldLabel, section: "module" });
+    if (!form.workContent.trim()) missing.push({ label: workContentLabel, section: "work" });
+    if (!isOffice && !form.result) missing.push({ label: isOnsite ? "服务结果" : "处理结果", section: "signoff" });
+    if (!form.actualStartAt) missing.push({ label: isOnsite ? "到达时间" : "开始时间", section: "work" });
+    if (!form.actualEndAt) missing.push({ label: isOnsite ? "完成时间" : "结束时间", section: "work" });
     if (isOnsite && form.customerSignatureMode !== "electronic" && !form.customerSignature && !form.customerSignatureFileId && !currentOrder?.report?.customerSignatureFileId) {
-      missing.push("客户现场签名或电子签署确认函");
+      missing.push({ label: "客户现场签名或电子签署确认函", section: "signoff" });
     }
     return missing;
+  }
+
+  /** 分区导航定义：与下方 ReportSection 的渲染条件一一对应（S4=showAssetSection / S5=shouldShowAttachments / S6=!isOffice） */
+  const reportSections = useMemo<MrSection[]>(() => [
+    { id: "customer", title: "客户信息", icon: User, fields: [] },
+    { id: "module", title: isOffice ? "内勤工作事项" : "服务模块", icon: Clock, fields: [] },
+    { id: "work", title: isOffice ? "工作内容" : "处理记录", icon: PenLine, fields: [] },
+    ...(showAssetSection
+      ? [{ id: "asset", title: isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备（可选）" : hasOfficeMaterialsModule ? "关联设备" : showTargetDeviceFields ? "目标设备与备件信息（可选）" : "设备与备件信息", icon: Wrench, fields: [] }]
+      : []),
+    ...(shouldShowAttachments ? [{ id: "attachment", title: "附件与支持信息", icon: Upload, fields: [] }] : []),
+    ...(!isOffice ? [{ id: "signoff", title: "完工确认", icon: CheckCircle, fields: [] }] : []),
+  ], [isOffice, isInstall, isRemote, hasOfficeMaterialsModule, showTargetDeviceFields, showAssetSection, shouldShowAttachments]);
+
+  /** 校验缺口按分区计数，驱动 SectionNav 错误徽章（沿用 MR 的实时计算模式） */
+  const reportErrorCounts: Record<string, number> = {};
+  for (const item of validateBeforeSubmit()) {
+    reportErrorCounts[item.section] = (reportErrorCounts[item.section] || 0) + 1;
+  }
+
+  const [activeReportSection, setActiveReportSection] = useState("customer");
+
+  // 跟踪视口内最靠顶的分区，高亮导航（复用 MR 的 IntersectionObserver 参数）
+  useEffect(() => {
+    if (formLoading) return;
+    const nodes = reportSections
+      .map(({ id: sectionId }) => document.getElementById(`report-section-${sectionId}`))
+      .filter((node): node is HTMLElement => Boolean(node));
+    if (!nodes.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActiveReportSection(visible.target.id.replace("report-section-", ""));
+      },
+      { rootMargin: "-96px 0px -60% 0px", threshold: 0 },
+    );
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, [formLoading, reportSections]);
+
+  function goToReportSection(sectionId: string) {
+    setActiveReportSection(sectionId);
+    document.getElementById(`report-section-${sectionId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function hasDraftContent() {
@@ -4155,7 +4158,7 @@ export function ServiceReport() {
   async function submit() {
     const missing = validateBeforeSubmit();
     if (missing.length) {
-      setError(`请先补充必填项：${missing.join("、")}`);
+      setError(`请先补充必填项：${missing.map((item) => item.label).join("、")}`);
       return;
     }
     setSaving(true);
@@ -5121,8 +5124,14 @@ export function ServiceReport() {
         </div>
       ) : (
         <>
-        <div className="space-y-4">
-          <ReportSection title="客户信息" icon={User} step={1} tag="客户、地址与联系人">
+        <div className="space-y-4 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start lg:gap-4 lg:space-y-0">
+          <aside className="sticky top-20 hidden self-start lg:block">
+            <div className="rounded-lg border bg-card py-2 shadow-sm">
+              <SectionNav sections={reportSections} activeId={activeReportSection} errorCounts={reportErrorCounts} counts={{}} orientation="vertical" onNavigate={goToReportSection} />
+            </div>
+          </aside>
+          <div className="space-y-4">
+          <ReportSection sectionId="customer" title="客户信息" icon={User} step={1} tag="客户、地址与联系人">
             <div className="space-y-4 p-3 sm:p-4">
               <div className="rounded-lg border bg-background p-3">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
@@ -5315,7 +5324,7 @@ export function ServiceReport() {
             </div>
           </ReportSection>
 
-              <ReportSection title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag="可选；按需选择对应字段">
+              <ReportSection sectionId="module" title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag="可选；按需选择对应字段">
               <div className="space-y-4 p-3 sm:p-4">
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
                     {moduleOptions.map((option) => {
@@ -5373,7 +5382,7 @@ export function ServiceReport() {
               </div>
               </ReportSection>
 
-	              <ReportSection title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
+	              <ReportSection sectionId="work" title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
               <div className="grid gap-4 p-4 md:grid-cols-2">
                 {isOnsite ? (
                   <Field label="出发时间">
@@ -5417,6 +5426,7 @@ export function ServiceReport() {
 
             {showAssetSection ? (
               <ReportSection
+                sectionId="asset"
                 title={isInstall ? "安装设备与硬件部件" : isRemote ? "远程目标设备（可选）" : hasOfficeMaterialsModule ? "关联设备" : showTargetDeviceFields ? "目标设备与备件信息（可选）" : "设备与备件信息"}
                 icon={Wrench}
                 step={assetSectionStep}
@@ -5900,7 +5910,7 @@ export function ServiceReport() {
             ) : null}
 
             {shouldShowAttachments ? (
-            <ReportSection title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
+            <ReportSection sectionId="attachment" title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
               <div className="grid gap-4 p-4 lg:grid-cols-2">
                 {visibleAttachmentPurposes.map((purpose) => {
                   const meta = ATTACHMENT_PURPOSES[purpose];
@@ -6002,7 +6012,7 @@ export function ServiceReport() {
             ) : null}
 
             {!isOffice ? (
-              <ReportSection title="完工确认" icon={CheckCircle} step={signoffSectionStep} tag={isOnsite ? "客户确认与签名" : "处理结果"}>
+              <ReportSection sectionId="signoff" title="完工确认" icon={CheckCircle} step={signoffSectionStep} tag={isOnsite ? "客户确认与签名" : "处理结果"}>
                 <div className="grid gap-4 p-4 md:grid-cols-2">
 	                  <Field label={isOnsite ? "服务结果" : "处理结果"} required>
                     <Select value={form.result || "resolved"} onValueChange={(value) => patchForm({ result: value })}>
@@ -6093,7 +6103,11 @@ export function ServiceReport() {
                 </div>
               </ReportSection>
             ) : null}
-            <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 -mx-3 flex gap-2 border-t bg-background/95 px-3 py-3 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0 lg:justify-end">
+            <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 -mx-3 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0">
+              <div className="border-b lg:hidden">
+                <SectionNav sections={reportSections} activeId={activeReportSection} errorCounts={reportErrorCounts} counts={{}} orientation="horizontal" onNavigate={goToReportSection} />
+              </div>
+              <div className="flex gap-2 px-3 py-3 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
                 <span className="sm:hidden">保存</span>
@@ -6109,7 +6123,9 @@ export function ServiceReport() {
                 <span className="sm:hidden">提交</span>
 	                <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
               </Button>
+              </div>
             </div>
+          </div>
           </div>
         </>
       )}
