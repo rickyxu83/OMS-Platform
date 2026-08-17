@@ -343,6 +343,8 @@ export function Login() {
       remember: "记住邮箱/别名",
       login: "登录",
       loggingIn: "登录中…",
+      showPassword: "显示密码",
+      hidePassword: "隐藏密码",
       chooseWorkspace: "请选择要进入的工作台",
       enterWorkspace: "进入",
       errorEmpty: "请输入邮箱/别名和密码",
@@ -372,6 +374,8 @@ export function Login() {
       remember: "記住信箱/別名",
       login: "登錄",
       loggingIn: "登錄中…",
+      showPassword: "顯示密碼",
+      hidePassword: "隱藏密碼",
       chooseWorkspace: "請選擇要進入的工作臺",
       enterWorkspace: "進入",
       errorEmpty: "請輸入信箱/別名和密碼",
@@ -530,20 +534,20 @@ export function Login() {
               className="h-9 gap-2 rounded-full border bg-white/80 px-3.5 shadow-md backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-lg"
               style={{ borderColor: "rgba(88, 43, 139, 0.2)" }}
             >
-              <Globe className="h-4 w-4" style={{ color: "#582B8B" }} />
+              <Globe className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium text-gray-700">{t.langLabel}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="mt-2 min-w-[120px] rounded-xl">
             <DropdownMenuItem
               onClick={() => setLang("zh-CN")}
-              className={`cursor-pointer ${lang === "zh-CN" ? "bg-purple-50 font-bold text-[#582B8B]" : ""}`}
+              className={`cursor-pointer ${lang === "zh-CN" ? "bg-primary/10 font-bold text-primary" : ""}`}
             >
               {t.langOptionCn}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setLang("zh-TW")}
-              className={`cursor-pointer ${lang === "zh-TW" ? "bg-purple-50 font-bold text-[#582B8B]" : ""}`}
+              className={`cursor-pointer ${lang === "zh-TW" ? "bg-primary/10 font-bold text-primary" : ""}`}
             >
               {t.langOptionTw}
             </DropdownMenuItem>
@@ -586,7 +590,7 @@ export function Login() {
             </div>
 
             <div className="mb-6 text-center">
-              <h1 className="mb-1.5 text-2xl font-bold" style={{ color: "#582B8B" }}>
+              <h1 className="mb-1.5 text-2xl font-bold text-primary">
                 {t.title}
               </h1>
               <p className="text-sm text-gray-500">{t.subtitle}</p>
@@ -595,7 +599,7 @@ export function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
+                <div role="alert" className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
@@ -606,11 +610,12 @@ export function Login() {
                 </Label>
                 <Input
                   id="username"
+                  name="username"
                   placeholder={t.usernamePlaceholder || t.username}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
-                  className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                  className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
               </div>
 
@@ -621,18 +626,19 @@ export function Login() {
                 <div className="relative">
                   <Input
                     id="password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
                     placeholder={t.passwordPlaceholder || t.password}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
-                    className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-[#582B8B] focus-visible:border-[#582B8B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#582B8B]/20"
+                    className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
                   />
                   <button
                     type="button"
-                    className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-purple-50 hover:text-[#582B8B]"
+                    className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
                     onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? t.hidePassword : t.showPassword}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -645,16 +651,16 @@ export function Login() {
                     id="remember"
                     checked={rememberMe}
                     onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                    className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-[#582B8B] data-[state=checked]:bg-[#582B8B]"
+                    className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                   />
-                  <span className="ml-2 text-gray-600 transition-colors group-hover:text-[#582B8B]">{t.remember}</span>
+                  <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
                 </label>
               </div>
 
               <Button
                 type="submit"
                 disabled={loading}
-                className="h-11 w-full rounded-[10px] bg-[#582B8B] text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[#4A2472] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
+                className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
               >
                 {loading ? t.loggingIn : t.login}
               </Button>
@@ -669,7 +675,7 @@ export function Login() {
                       key={workspace.key}
                       type="button"
                       variant="outline"
-                      className="h-11 justify-between rounded-[10px] border-purple-100 bg-white/70 hover:border-[#582B8B] hover:bg-purple-50"
+                      className="h-11 justify-between rounded-[10px] border-primary/20 bg-white/70 hover:border-primary hover:bg-primary/10"
                       onClick={() => enterWorkspace(workspace.key, workspace.home || "")}
                     >
                       <span>{workspaceLabel(workspace.key, workspace.label)}</span>

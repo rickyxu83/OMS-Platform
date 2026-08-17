@@ -24,6 +24,8 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 
 interface Schedule {
@@ -803,7 +805,7 @@ export function InspectionSchedules() {
                                 {loading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -922,7 +924,10 @@ export function InspectionSchedules() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无巡检计划</div>
+              <EmptyState
+                title="暂无巡检计划"
+                {...(canManageSchedules ? { actionLabel: "新增计划", onAction: openCreate } : {})}
+              />
             ) : (
               <div className="space-y-3">
               {filtered.map((s, rowIndex) => {

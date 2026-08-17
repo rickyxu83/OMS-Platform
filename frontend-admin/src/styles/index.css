@@ -107,3 +107,23 @@
     animation: none;
   }
 }
+
+/* 减少动态偏好：停用装饰性动画，状态指示（三点 loader 等）保持静态可见 */
+@media (prefers-reduced-motion: reduce) {
+  .list-row-enter,
+  .stat-value-enter {
+    animation: none;
+  }
+
+  .btn-loader,
+  .btn-loader::before,
+  .btn-loader::after {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .ai-progress-bar {
+    animation: none;
+  }
+}

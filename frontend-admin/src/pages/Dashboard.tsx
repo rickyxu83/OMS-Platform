@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,9 @@ import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { api, fetchSummaryStream } from "@/services/api";
+import { formatCount } from "@/lib/format";
 
 interface Summary {
   todayTotal?: number;
@@ -932,7 +934,7 @@ export function Dashboard() {
           </Button>
           {canUseWorkSummary && (
             <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
           )}
@@ -964,7 +966,7 @@ export function Dashboard() {
                         className="stat-value-enter inline-block"
                         style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
                       >
-                        {stat.value}
+                        {formatCount(stat.value)}
                       </span>
                     )}
                   </div>
@@ -1136,7 +1138,7 @@ export function Dashboard() {
                   <span className="btn-loader mr-2" aria-hidden="true" /> {t.recent.loading}
                 </div>
               ) : recentOrders.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.recent.empty}</div>
+                <EmptyState title={t.recent.empty} />
               ) : (
                 <div className="space-y-1.5">
                   {recentOrders.map((order) => (
@@ -1397,7 +1399,7 @@ export function Dashboard() {
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>

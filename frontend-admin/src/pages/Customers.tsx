@@ -22,6 +22,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 
 interface Customer {
@@ -1471,7 +1473,7 @@ export function Customers() {
                                 {initialLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -1574,7 +1576,10 @@ export function Customers() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+              <EmptyState
+                title={t.list.empty}
+                {...(canManageCustomer ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
+              />
             ) : (
               <div className={customerListMinWidth}>
                 <div className={`sticky top-0 z-10 grid border-b bg-muted/70 px-2 py-2 text-xs font-medium text-muted-foreground backdrop-blur ${customerListGrid} items-center gap-0`}>

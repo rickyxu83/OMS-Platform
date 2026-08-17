@@ -18,6 +18,8 @@ import { AttendanceApplyDrawer } from "@/pages/AttendanceApplyDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type ServiceOrderDetailItem } from "@/lib/service-order-detail";
 import { api } from "@/services/api";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 export type RequestType = "leave" | "overtime" | "comp_time";
 export type AnnualLeavePeriod = "morning" | "afternoon" | "day";
@@ -1040,7 +1042,7 @@ export function Attendance() {
             {statTiles.map((stat) => (
               <span key={stat.label} className="flex items-center gap-1.5 text-muted-foreground">
                 {stat.label}
-                <b className="font-semibold text-foreground">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : stat.value}</b>
+                <b className="font-semibold text-foreground">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
               </span>
             ))}
           </div>
@@ -1972,7 +1974,7 @@ function RequestList({
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在加载…
           </div>
         ) : items.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">{emptyText}</div>
+          <EmptyState title={emptyText} className="min-h-0" />
         ) : (
           <div className="overflow-x-auto rounded-md border">
             <Table className="min-w-[760px]">

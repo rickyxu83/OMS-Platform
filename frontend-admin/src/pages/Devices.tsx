@@ -30,6 +30,8 @@ import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSearchText } from "@/lib/text-i18n";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 
 interface Device {
@@ -2734,7 +2736,7 @@ export function Devices() {
                                 {initialLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -2750,7 +2752,7 @@ export function Devices() {
               {suspectedLoading && !suspectedOpen ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
-                <span className="stat-value-enter inline-block" style={{ animationDelay: "480ms" }}>{suspectedTotal} 组</span>
+                <span className="stat-value-enter inline-block" style={{ animationDelay: "480ms" }}>{formatCount(suspectedTotal)} 组</span>
               )}
             </div>
           </CardContent>
@@ -2896,7 +2898,7 @@ export function Devices() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未找到匹配设备</div>
+              <EmptyState title="未找到匹配设备" description="可调整搜索关键词或筛选条件" />
             ) : (
               <div className={deviceTableMinWidth}>
                 <div className={`sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:grid ${deviceTableGrid} md:items-center md:gap-4`}>
@@ -4601,7 +4603,7 @@ export function Devices() {
       <Dialog open={suspectedOpen} onOpenChange={setSuspectedOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[720px]">
           <DialogHeader>
-            <DialogTitle>疑似重复设备（{suspectedTotal} 组）</DialogTitle>
+            <DialogTitle>疑似重复设备（{formatCount(suspectedTotal)} 组）</DialogTitle>
             <DialogDescription>
               按同客户 + SN/型号相似自动聚合，点击设备可查看详情并在详情内手动合并。
             </DialogDescription>

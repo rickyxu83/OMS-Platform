@@ -535,6 +535,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             animation: admin-test-banner-sweep 3s ease-in-out infinite;
             pointer-events: none;
           }
+          @media (prefers-reduced-motion: reduce) {
+            .admin-test-banner::after {
+              animation: none;
+            }
+          }
         `}</style>
         <div className="h-full flex flex-col">
           {/* Logo */}

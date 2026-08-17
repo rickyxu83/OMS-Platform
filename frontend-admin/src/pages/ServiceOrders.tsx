@@ -39,6 +39,8 @@ import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel } fro
 import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 interface ServiceOrder {
   id: string | number;
@@ -1552,7 +1554,7 @@ export function ServiceOrders() {
                                 {initialLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -1706,8 +1708,11 @@ export function ServiceOrders() {
                   ))
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                      {t.list.empty}
+                    <TableCell colSpan={8} className="py-2">
+                      <EmptyState
+                        title={t.list.empty}
+                        {...(canCreateOrders ? { actionLabel: "新增工单", onAction: openCreateOrder } : {})}
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (

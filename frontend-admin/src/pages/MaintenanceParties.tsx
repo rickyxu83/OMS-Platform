@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Party {
   id: string | number;
@@ -721,7 +722,10 @@ export function MaintenanceParties() {
                 <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+              <EmptyState
+                title={t.list.empty}
+                {...(canCreateParties ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
+              />
             ) : (
                 <table className="w-full min-w-[1040px] table-fixed caption-bottom text-sm">
                   <colgroup>

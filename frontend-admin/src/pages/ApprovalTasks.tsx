@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { listApprovalTasks } from '@/packages/mr/client'
+import { EmptyState } from '@/components/EmptyState'
 import type { ApprovalTask } from '@/packages/mr/types'
 
 const VIEWS = [
@@ -101,12 +102,25 @@ export function ApprovalTasks() {
             {loading ? (
               <TableRow><TableCell colSpan={6} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin" /></TableCell></TableRow>
             ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">当前没有记录</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="h-40"><EmptyState title="当前没有记录" description={view === 'pending' ? '待办都处理完了' : undefined} /></TableCell></TableRow>
             ) : items.map((task) => {
               const [label, variant] = status(task)
               const canOpen = !['reassigned', 'paused'].includes(task.status)
               return (
-                <TableRow key={task.id} className={canOpen ? 'cursor-pointer' : 'opacity-70'} onClick={() => { if (canOpen) navigate(task.detailPath) }}>
+                <TableRow
+                  key={task.id}
+                  className={canOpen ? 'cursor-pointer' : 'opacity-70'}
+                  role={canOpen ? 'button' : undefined}
+                  tabIndex={canOpen ? 0 : undefined}
+                  onClick={() => { if (canOpen) navigate(task.detailPath) }}
+                  onKeyDown={(event) => {
+                    if (!canOpen || event.target !== event.currentTarget) return
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      navigate(task.detailPath)
+                    }
+                  }}
+                >
                   <TableCell><Badge variant="outline">{businessLabel(task)}</Badge></TableCell>
                   <TableCell><div className="font-medium">{task.title}</div><div className="text-xs text-muted-foreground">{task.businessType === 'attendance' ? (task.timeLabel || '-') : `${task.customerName || '-'} · ${task.ctrlNo || '未填 Ctrl.NO'}`}</div></TableCell>
                   <TableCell>{task.currentStepLabel || '-'}</TableCell>

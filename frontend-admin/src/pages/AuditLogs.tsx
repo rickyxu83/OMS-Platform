@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 interface AuditLog {
   id: string | number;
@@ -238,7 +240,7 @@ export function AuditLogs() {
                                 {loading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -374,7 +376,7 @@ export function AuditLogs() {
                   <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无审计记录</div>
+                <EmptyState title="暂无审计记录" description="当前筛选条件下没有操作日志" />
               ) : (
                 <div className="space-y-2">
                 {filtered.map((log, idx) => {
