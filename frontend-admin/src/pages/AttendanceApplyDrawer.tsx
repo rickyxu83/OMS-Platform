@@ -34,7 +34,7 @@ import {
   type LegalHolidayItem,
   type OvertimeServiceOrder,
   type RequestType,
-} from "@/pages/Attendance";
+} from "@/pages/attendance-shared";
 
 type ApplyForm = ReturnType<typeof createBlankForm>;
 
