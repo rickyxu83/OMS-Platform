@@ -15,7 +15,6 @@ import {
   Settings,
   Shield,
   LogOut,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Languages,
@@ -79,16 +78,6 @@ const STRINGS: Record<AppLang, {
     switchedToCn: string
     switchedToTw: string
     switchEngineer: string
-    feedback: string
-    feedbackTitle: string
-    feedbackType: string
-    feedbackProblem: string
-    feedbackSuggestion: string
-    feedbackContent: string
-    feedbackPlaceholder: string
-    feedbackSubmit: string
-    feedbackSuccess: string
-    feedbackEmpty: string
   }
   groups: Record<string, string>
   pages: Record<string, string>
@@ -110,16 +99,6 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切换至简体中文",
       switchedToTw: "已切换至繁體中文",
       switchEngineer: "工单填写",
-      feedback: "反馈",
-      feedbackTitle: "反馈",
-      feedbackType: "类型",
-      feedbackProblem: "遇到问题",
-      feedbackSuggestion: "功能建议",
-      feedbackContent: "内容",
-      feedbackPlaceholder: "简单写一下遇到的问题或想法…",
-      feedbackSubmit: "提交",
-      feedbackSuccess: "反馈已提交",
-      feedbackEmpty: "请填写反馈内容",
     },
     groups: {
       workspace: "工作台",
@@ -144,7 +123,6 @@ const STRINGS: Record<AppLang, {
       users: "成员与角色",
       "audit-logs": "操作审计",
       settings: "系统设置",
-      feedback: "反馈",
     },
     roles: {
       admin: "管理员",
@@ -176,16 +154,6 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切換至简体中文",
       switchedToTw: "已切換至繁體中文",
       switchEngineer: "工單填寫",
-      feedback: "回饋",
-      feedbackTitle: "回饋",
-      feedbackType: "類型",
-      feedbackProblem: "遇到問題",
-      feedbackSuggestion: "功能建議",
-      feedbackContent: "內容",
-      feedbackPlaceholder: "簡單寫一下遇到的問題或想法…",
-      feedbackSubmit: "提交",
-      feedbackSuccess: "回饋已提交",
-      feedbackEmpty: "請填寫回饋內容",
     },
     groups: {
       workspace: "工作臺",
@@ -210,7 +178,6 @@ const STRINGS: Record<AppLang, {
       users: "成員與角色",
       "audit-logs": "操作審計",
       settings: "系統設定",
-      feedback: "回饋",
     },
     roles: {
       admin: "管理員",
@@ -280,12 +247,6 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
         icon: Settings,
         path: "settings",
         requiredPermissions: ["settings.view"],
-      },
-      {
-        labelKey: "feedback",
-        icon: MessageSquare,
-        path: "feedback",
-        requiredPermissions: ["feedback.manage"],
       },
     ],
   },

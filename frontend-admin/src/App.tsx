@@ -25,7 +25,6 @@ const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ d
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
-const Feedback = lazy(() => import("@/pages/Feedback").then((module) => ({ default: module.Feedback })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
@@ -43,7 +42,6 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   users: ["user.view"],
   "audit-logs": ["audit-log.view"],
   settings: ["settings.view"],
-  feedback: ["feedback.manage"],
 }
 
 const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
@@ -58,9 +56,7 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/attendance", permissions: ROUTE_ACCESS_PERMISSIONS.attendance },
   { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
-  { path: "/feedback", permissions: ROUTE_ACCESS_PERMISSIONS.feedback },
 ]
-
 function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
   return ADMIN_ROUTE_FALLBACKS.find((route) => hasPermission(...route.permissions))?.path || "/login"
 }
@@ -358,14 +354,6 @@ export default function App() {
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.settings}>
                 <SystemSettings />
-              </ProtectedAdminPage>
-            }
-          />
-          <Route
-            path="/feedback"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.feedback}>
-                <Feedback />
               </ProtectedAdminPage>
             }
           />

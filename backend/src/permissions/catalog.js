@@ -69,7 +69,6 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['user.create', '创建用户', ['admin']],
   ['user.edit', '编辑用户', ['admin']],
   ['user.delete', '删除用户', ['admin']],
-  ['feedback.manage', '处理反馈', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']],
   ['announcement.manage', '管理公告', ['admin', 'operations_director', 'engineering_supervisor']],
   ['audit-log.view', '查看审计日志', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.view', '查看系统设置', ['admin', 'operations_director', 'engineering_supervisor']],

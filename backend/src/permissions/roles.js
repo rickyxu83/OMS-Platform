@@ -42,7 +42,6 @@ const ROLE_GROUPS = Object.freeze({
   ]),
   auditLogs: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
   settings: Object.freeze(['admin', 'operations_director', 'engineering_supervisor']),
-  feedbackManage: Object.freeze(['admin', 'assistant', 'assistant_supervisor', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']),
   customerWrite: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerDelete: Object.freeze([...OPERATION_ROLES, 'sales', 'sales_supervisor', 'engineer']),
   customerMerge: Object.freeze(['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']),
