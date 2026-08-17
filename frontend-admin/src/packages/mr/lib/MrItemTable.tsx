@@ -49,7 +49,7 @@ export function MrItemTable({
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchSourceIndex, setBatchSourceIndex] = useState(0)
-  const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
+  const [batchFields, setBatchFields] = useState({ vendor: true, warrantyService: true, installBy: true })
   // 拖选多选：点击行打开编辑弹窗；按住左键拖过多行才算多选（started 区分点击与拖拽）
   const dragRef = useRef({ active: false, started: false, startIndex: 0, mode: 'add' as 'add' | 'remove' })
   const anchorRef = useRef<number | null>(null)
@@ -162,7 +162,6 @@ export function MrItemTable({
     if (!affectedCount) return toast.info('请选择复制来源以外的品项')
     const patch: Partial<MrItem> = {}
     if (batchFields.vendor) patch.vendor = source.vendor
-    if (batchFields.purchaseOrderNo) patch.purchaseOrderNo = source.purchaseOrderNo
     if (batchFields.warrantyService) patch.warrantyService = source.warrantyService
     if (batchFields.installBy) patch.installBy = source.installBy
     onChange(items.map((item, index) => selectedRows.has(index) && index !== batchSourceIndex ? { ...item, ...patch } : item))
@@ -309,7 +308,7 @@ export function MrItemTable({
           </div>
           <div className="space-y-3 border-y py-4">
             <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购成本。</p>
-            {([['vendor', '供应商'], ['purchaseOrderNo', '采购订单号'], ['warrantyService', '保固与服务'], ['installBy', '品项装机方']] as const).map(([field, label]) => (
+            {([['vendor', '供应商'], ['warrantyService', '保固与服务'], ['installBy', '品项装机方']] as const).map(([field, label]) => (
               <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
             ))}
           </div>
@@ -371,12 +370,9 @@ function ItemEditorPanel({
           <Textarea rows={2} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
         </Field>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Field label="原厂规格" editable={editable} readonlyText={textValue(item.oemSpec)}>
             <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" onChange={(event) => onChange({ oemSpec: event.target.value })} />
-          </Field>
-          <Field label="公司料号" editable={editable} readonlyText={textValue(item.companyPartNo)}>
-            <Input value={item.companyPartNo || ''} placeholder="公司内部产品料号，选填" onChange={(event) => onChange({ companyPartNo: event.target.value })} />
           </Field>
           <Field label="保固与服务" editable={editable} readonlyText={textValue(item.warrantyService)}>
             <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" onChange={(event) => onChange({ warrantyService: event.target.value })} />
@@ -395,7 +391,7 @@ function ItemEditorPanel({
           </Field>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Field required={!serviceRow} label="采购成本（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
             <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
           </Field>
@@ -404,9 +400,6 @@ function ItemEditorPanel({
               <SelectTrigger><SelectValue placeholder="选择采购税率" /></SelectTrigger>
               <SelectContent>{allowedTaxRates.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}</SelectContent>
             </Select>
-          </Field>
-          <Field label="采购订单号" editable={editable} readonlyText={textValue(item.purchaseOrderNo)}>
-            <Input value={item.purchaseOrderNo || ''} placeholder="向供应商下单的 PO 编号，选填" onChange={(event) => onChange({ purchaseOrderNo: event.target.value })} />
           </Field>
         </div>
 

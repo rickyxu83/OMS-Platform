@@ -20,7 +20,9 @@ function dateTime(value?: string | null) {
 }
 
 export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged: (next: MrOrder) => void }) {
-  const [draft, setDraft] = useState<Record<string, string>>({})
+  type PurchaseDraft = { companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }
+  const blankDraft = (): PurchaseDraft => ({ companyPartNo: '', purchaseOrderNo: '', shipmentNo: '' })
+  const [draft, setDraft] = useState<Record<string, PurchaseDraft>>({})
   const [batchNo, setBatchNo] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
@@ -34,8 +36,8 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const vendorItemCount = items.filter(hasVendor).length
 
   useEffect(() => {
-    const next: Record<string, string> = {}
-    for (const item of items) next[String(item.id)] = item.purchaseOrderNo || ''
+    const next: Record<string, PurchaseDraft> = {}
+    for (const item of items) next[String(item.id)] = { companyPartNo: item.companyPartNo || '', purchaseOrderNo: item.purchaseOrderNo || '', shipmentNo: item.shipmentNo || '' }
     setDraft(next)
     setNote(order.purchaseNote || '')
     setSelected(new Set())
@@ -49,7 +51,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     if (!value || selected.size === 0) return
     setDraft((current) => {
       const next = { ...current }
-      for (const key of selected) next[key] = value
+      for (const key of selected) next[key] = { ...(next[key] || blankDraft()), purchaseOrderNo: value }
       return next
     })
     setSelected(new Set())
@@ -131,7 +133,15 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     setBusy(true)
     try {
       const next = await submitMrPurchase(order.id, {
-        items: items.map((item) => ({ id: item.id as string | number, purchaseOrderNo: (draft[String(item.id)] || '').trim() })),
+        items: items.map((item) => {
+          const entry = draft[String(item.id)]
+          return {
+            id: item.id as string | number,
+            companyPartNo: (entry?.companyPartNo || '').trim(),
+            purchaseOrderNo: (entry?.purchaseOrderNo || '').trim(),
+            shipmentNo: (entry?.shipmentNo || '').trim(),
+          }
+        }),
         note: note.trim() || undefined,
       })
       toast.success('采购订单号已提交')
@@ -175,8 +185,10 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                 <TableRow>
                   <TableHead className="w-12">项目</TableHead>
                   <TableHead>品名 / 描述</TableHead>
+                  <TableHead className="w-36">公司料号</TableHead>
                   <TableHead className="w-36">供应商</TableHead>
-                  <TableHead className="w-72">采购订单号</TableHead>
+                  <TableHead className="w-48">采购订单号</TableHead>
+                  <TableHead className="w-48">出货单号</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -194,19 +206,45 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                       <div className="truncate break-words font-medium" title={item.name || ''}>{item.name || '-'}</div>
                       {item.description ? <div className="truncate break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
                     </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {editable && !noVendor ? (
+                        <Input
+                          value={draft[String(item.id)]?.companyPartNo ?? ''}
+                          placeholder="公司料号"
+                          aria-label={`第 ${index + 1} 项公司料号`}
+                          onChange={(event) => setDraft((current) => ({ ...current, [String(item.id)]: { ...(current[String(item.id)] || blankDraft()), companyPartNo: event.target.value } }))}
+                        />
+                      ) : (
+                        <span>{item.companyPartNo || '-'}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="truncate" title={item.vendor || ''}>{item.vendor || '-'}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-normal">
                       {noVendor ? (
                         <span className="text-xs text-muted-foreground">无需采购</span>
                       ) : editable ? (
                         <Input
-                          value={draft[String(item.id)] ?? ''}
+                          value={draft[String(item.id)]?.purchaseOrderNo ?? ''}
                           placeholder="采购订单号"
                           aria-label={`第 ${index + 1} 项采购订单号`}
-                          onChange={(event) => setDraft((current) => ({ ...current, [String(item.id)]: event.target.value }))}
+                          onChange={(event) => setDraft((current) => ({ ...current, [String(item.id)]: { ...(current[String(item.id)] || blankDraft()), purchaseOrderNo: event.target.value } }))}
                         />
                       ) : (
                         <span>{item.purchaseOrderNo || '-'}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {noVendor ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : editable ? (
+                        <Input
+                          value={draft[String(item.id)]?.shipmentNo ?? ''}
+                          placeholder="出货单号"
+                          aria-label={`第 ${index + 1} 项出货单号`}
+                          onChange={(event) => setDraft((current) => ({ ...current, [String(item.id)]: { ...(current[String(item.id)] || blankDraft()), shipmentNo: event.target.value } }))}
+                        />
+                      ) : (
+                        <span>{item.shipmentNo || '-'}</span>
                       )}
                     </TableCell>
                   </TableRow>

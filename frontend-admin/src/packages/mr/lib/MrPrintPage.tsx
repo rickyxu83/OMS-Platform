@@ -98,6 +98,8 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
     { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax), render: (item: MrItem) => moneyText(item.costExcludingTax, emptyText) },
     { key: 'costInclTax', label: '采购成本（含税）', weight: 11, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => <span><strong>{moneyText(item.costInclTax, emptyText)}</strong><small>{hasValue(item.taxRate) ? `${item.taxRate}%` : emptyText}</small></span> },
     { key: 'purchase', label: '采购订单号', weight: 7, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.purchaseOrderNo), render: (item: MrItem) => text(item.purchaseOrderNo, emptyText) },
+    // 出货单号列留白：采购完成后打印，供相关人员手动填写实际出货单号
+    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, render: () => '' },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)

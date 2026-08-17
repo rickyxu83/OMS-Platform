@@ -279,7 +279,7 @@ export function QuotationImportDialog({
   const [editMode, setEditMode] = useState(false)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [batchSourceIndex, setBatchSourceIndex] = useState(0)
-  const [batchFields, setBatchFields] = useState({ vendor: true, purchaseOrderNo: true, warrantyService: true, installBy: true })
+  const [batchFields, setBatchFields] = useState({ vendor: true, warrantyService: true, installBy: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<RecognitionProgress | null>(null)
@@ -384,7 +384,6 @@ export function QuotationImportDialog({
     if (!affectedCount) return toast.info('请至少选择一个除复制来源外的目标品项')
     const patch: Partial<MrItem> = {}
     if (batchFields.vendor) patch.vendor = source.vendor
-    if (batchFields.purchaseOrderNo) patch.purchaseOrderNo = source.purchaseOrderNo
     if (batchFields.warrantyService) patch.warrantyService = source.warrantyService
     if (batchFields.installBy) patch.installBy = source.installBy
     setDraftItems((current) => current.map((item, index) => selectedRows.has(index) && index !== batchSourceIndex ? { ...item, ...patch } : item))
@@ -636,7 +635,7 @@ export function QuotationImportDialog({
                   <label className="text-sm font-medium" htmlFor="quotation-batch-source">复制来源</label>
                   <div className="flex flex-wrap gap-2"><select id="quotation-batch-source" className="h-9 min-w-56 border bg-background px-3 text-sm" value={batchSourceIndex} onChange={(event) => setBatchSourceIndex(Number(event.target.value))}>{previewItems.map((item, index) => <option key={`${item.oemSpec}-${index}`} value={index}>{index + 1} · {item.name || item.oemSpec || '未命名品项'}</option>)}</select><Button type="button" size="sm" onClick={applyBatch}><Check className="mr-2 size-4" />应用至 {selectedRows.size} 个品项</Button></div>
                   <span className="text-xs text-muted-foreground">复制字段</span>
-                  <div className="flex flex-wrap gap-4">{(['vendor', 'purchaseOrderNo', 'warrantyService', 'installBy'] as const).map((field) => <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{{ vendor: '供应商', purchaseOrderNo: '采购订单号', warrantyService: '保固与服务', installBy: '品项装机方' }[field]}</label>)}</div>
+                  <div className="flex flex-wrap gap-4">{(['vendor', 'warrantyService', 'installBy'] as const).map((field) => <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{{ vendor: '供应商', warrantyService: '保固与服务', installBy: '品项装机方' }[field]}</label>)}</div>
                 </div>
               ) : null}
               <div className="max-h-[480px] divide-y overflow-y-auto border">
@@ -661,7 +660,6 @@ export function QuotationImportDialog({
                           </Select>
                           <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
                           <VendorCombobox value={item.vendor || ''} onChange={(vendorName) => patchItem(index, { vendor: vendorName })} placeholder="供应商完整名称，选填" vendors={vendors} aria-label={`第 ${index + 1} 项供应商`} />
-                          <Input value={item.purchaseOrderNo || ''} placeholder="向供应商下单的 PO 编号，选填" aria-label={`第 ${index + 1} 项采购订单号`} onChange={(event) => patchItem(index, { purchaseOrderNo: event.target.value })} />
                           <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
                           <Input value={item.installBy || ''} placeholder="如：敦阳 / 供应商 / 第三方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
                           {!item.purchaseOnly && item.costInclTax == null && purchaseOnlyCandidates.length ? (

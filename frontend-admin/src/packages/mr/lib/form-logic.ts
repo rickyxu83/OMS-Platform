@@ -5,7 +5,7 @@ export function defaultCostTaxRate(invoiceType?: string | null) {
 }
 
 export function blankItem(taxRate = 13): MrItem {
-  return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate, warrantyService: '', installBy: '', purchaseOrderNo: '' }
+  return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate, warrantyService: '', installBy: '', purchaseOrderNo: '', shipmentNo: '' }
 }
 
 export function normalizeCostTaxRates(items: MrItem[], invoiceType?: string | null) {

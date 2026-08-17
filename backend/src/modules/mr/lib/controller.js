@@ -267,6 +267,11 @@ async function ensureTables() {
      WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'sales_source' LIMIT 1`,
   )
   if (!salesSourceColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN sales_source VARCHAR(255) NULL AFTER cost_source')
+  const shipmentNoColumns = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_items' AND column_name = 'shipment_no' LIMIT 1`,
+  )
+  if (!shipmentNoColumns[0]) await query('ALTER TABLE mr_items ADD COLUMN shipment_no VARCHAR(255) NULL AFTER purchase_order_no')
   await query(
     `CREATE TABLE IF NOT EXISTS mr_approvals (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -615,12 +620,18 @@ async function loadDetail(id, user) {
     items: Array.isArray(frozenSnapshot.items) ? frozenSnapshot.items : items,
     totals: frozenSnapshot.totals || liveTotals,
   } : { ...merged, totals: liveTotals }
-  // 冻结快照的品项缺少数据库 id，且不含审批后由采购填写的采购订单号；
-  // 按 rowNo 叠加实时 id 与 purchaseOrderNo，归档 PDF 仍保持审批时快照不变
+  // 冻结快照的品项缺少数据库 id，且不含审批后由采购填写的公司料号、采购订单号、出货单号；
+  // 按 rowNo 叠加实时 id 与执行数据，归档 PDF 仍保持审批时快照不变
   const liveItemByRowNo = new Map(rawItems.map((raw) => [Number(raw.rowNo), raw]))
   const displayedItems = (displayed.items || []).map((item) => {
     const live = liveItemByRowNo.get(Number(item.rowNo))
-    return live ? { ...item, id: live.id ?? item.id, purchaseOrderNo: live.purchaseOrderNo ?? item.purchaseOrderNo } : item
+    return live ? {
+      ...item,
+      id: live.id ?? item.id,
+      companyPartNo: live.companyPartNo ?? item.companyPartNo,
+      purchaseOrderNo: live.purchaseOrderNo ?? item.purchaseOrderNo,
+      shipmentNo: live.shipmentNo ?? item.shipmentNo,
+    } : item
   })
   // 采购环节属于审批后的生命周期数据：始终以 mr_orders 实时值为准，不被冻结快照覆盖
   const purchaseLive = {
@@ -1276,8 +1287,10 @@ async function submitPurchase(req, res) {
     if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
     if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
     wasDone = String(order.purchaseStatus || '') === 'done'
-    const [itemRows] = await connection.execute('SELECT id, row_no, name, vendor, purchase_order_no FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
+    const [itemRows] = await connection.execute('SELECT id, row_no, name, vendor, company_part_no, purchase_order_no, shipment_no FROM mr_items WHERE mr_id = :mrId ORDER BY row_no, id', { mrId: order.id })
     const byId = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.purchaseOrderNo || '').trim().slice(0, 255)]))
+    const byCompanyPartNo = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.companyPartNo || '').trim().slice(0, 100)]))
+    const byShipmentNo = new Map(rows.map((entry) => [Number(entry?.id), String(entry?.shipmentNo || '').trim().slice(0, 255)]))
     const updates = []
     for (const item of itemRows) {
       const value = byId.get(Number(item.id))
@@ -1286,12 +1299,19 @@ async function submitPurchase(req, res) {
       // 无供应商的品项没有采购对象，视为无需采购，不强制填写采购订单号
       if (hasVendor && !value) throw badRequest('有供应商的品项都需填写采购订单号；无供应商的品项视为无需采购')
       if (!hasVendor && !value) continue
-      updates.push([value, Number(item.id)])
+      const companyValue = byCompanyPartNo.get(Number(item.id)) || ''
+      const shipmentValue = byShipmentNo.get(Number(item.id)) || ''
+      // 公司料号、出货单号为采购执行数据，选填不校验
       const before = String(item.purchase_order_no || '')
-      if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, before: before || null, after: value })
+      if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'purchaseOrderNo', before: before || null, after: value })
+      const beforeCompany = String(item.company_part_no || '')
+      if (beforeCompany !== companyValue) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'companyPartNo', before: beforeCompany || null, after: companyValue || null })
+      const beforeShipment = String(item.shipment_no || '')
+      if (beforeShipment !== shipmentValue) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'shipmentNo', before: beforeShipment || null, after: shipmentValue || null })
+      updates.push([value, companyValue, shipmentValue, Number(item.id)])
     }
-    for (const [value, itemId] of updates) {
-      await connection.execute('UPDATE mr_items SET purchase_order_no = :value WHERE id = :itemId AND mr_id = :mrId', { value, itemId, mrId: order.id })
+    for (const [value, companyValue, shipmentValue, itemId] of updates) {
+      await connection.execute('UPDATE mr_items SET purchase_order_no = :value, company_part_no = :companyValue, shipment_no = :shipmentValue WHERE id = :itemId AND mr_id = :mrId', { value, companyValue, shipmentValue, itemId, mrId: order.id })
     }
     await connection.execute(
       `UPDATE mr_orders SET purchase_status = 'done', purchased_at = NOW(), purchased_by = :userId,

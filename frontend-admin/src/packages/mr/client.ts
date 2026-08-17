@@ -20,7 +20,7 @@ export const rejectMr = (id: string | number, reason: string, target: 'sales' | 
 export const reassignMrSales = (id: string | number, salesOwnerId: string | number) => api.post(`/mr/${pathId(id)}/reassign-sales`, { salesOwnerId }) as Promise<MrOrder>
 export const withdrawMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/withdraw`, { reason }) as Promise<MrOrder>
 export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/void`, { reason }) as Promise<MrOrder>
-export const submitMrPurchase = (id: string | number, body: { items: Array<{ id: string | number; purchaseOrderNo: string }>; note?: string }) => api.put(`/mr/${pathId(id)}/purchase`, body) as Promise<MrOrder>
+export const submitMrPurchase = (id: string | number, body: { items: Array<{ id: string | number; companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }>; note?: string }) => api.put(`/mr/${pathId(id)}/purchase`, body) as Promise<MrOrder>
 export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 export const getAssistantSetting = () => api.get('/mr/assistant-setting') as Promise<AssistantSetting>

@@ -111,6 +111,7 @@ function normalizeItem(item = {}, index = 0) {
     taxRate: taxRate(item.taxRate ?? item.tax_rate),
     quotedUnitPrice: optionalNumber(item.quotedUnitPrice ?? item.quoted_unit_price),
     purchaseOrderNo: text(item.purchaseOrderNo ?? item.purchase_order_no, 255),
+    shipmentNo: text(item.shipmentNo ?? item.shipment_no, 255),
     costSource: text(item.costSource ?? item.cost_source, 255),
     salesSource: text(item.salesSource ?? item.sales_source, 255),
     purchaseOnly: item.purchaseOnly === true || item.purchaseOnly === 1 || item.purchase_only === 1,

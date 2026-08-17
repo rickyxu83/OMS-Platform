@@ -38,7 +38,7 @@ async function archiveContext(mrId) {
        WHERE owner_type = 'mr_order' AND owner_id = :mrId ORDER BY id`,
       { mrId },
     ),
-    query('SELECT row_no, purchase_order_no FROM mr_items WHERE mr_id = :mrId', { mrId }),
+    query('SELECT row_no, company_part_no, purchase_order_no, shipment_no FROM mr_items WHERE mr_id = :mrId', { mrId }),
   ])
   const order = orders[0]
   const version = versions[0]
@@ -51,13 +51,18 @@ async function archiveContext(mrId) {
     { mrId, cycle: version.cycle },
   )
   const snapshot = jsonValue(version.snapshot, {})
-  // 采购订单号是审批后填写的执行数据：归档时从 mr_items 实时叠加到快照品项上（按 row_no 对应），
+  // 采购执行数据（公司料号/采购订单号/出货单号）是审批后填写的：归档时从 mr_items 实时叠加到快照品项上（按 row_no 对应），
   // 审批内容（品名/价格/签核）仍取冻结快照，保证归档 PDF 与审批一致
   if (Array.isArray(snapshot.items) && liveItems.length) {
-    const poByRowNo = new Map(liveItems.map((item) => [Number(item.row_no), item.purchase_order_no]))
+    const liveByRowNo = new Map(liveItems.map((item) => [Number(item.row_no), { companyPartNo: item.company_part_no, purchaseOrderNo: item.purchase_order_no, shipmentNo: item.shipment_no }]))
     snapshot.items = snapshot.items.map((item) => {
-      const po = poByRowNo.get(Number(item.rowNo))
-      return po !== undefined ? { ...item, purchaseOrderNo: po } : item
+      const live = liveByRowNo.get(Number(item.rowNo))
+      return live ? {
+        ...item,
+        companyPartNo: live.companyPartNo ?? item.companyPartNo,
+        purchaseOrderNo: live.purchaseOrderNo ?? item.purchaseOrderNo,
+        shipmentNo: live.shipmentNo ?? item.shipmentNo,
+      } : item
     })
   }
   return {
