@@ -1988,7 +1988,8 @@ async function importProgressHandler(req, res) {
 
 async function downloadQuotation(req, res) {
   const order = await loadRawOrder(req.params.id, req.user)
-  if (!canView(order, req.user)) throw forbidden('无权下载该报价原始附件')
+  const assistantIds = await assistantIdsFor(req.user)
+  if (!canView(order, req.user, assistantIds)) throw forbidden('无权下载该报价原始附件')
   const fileId = Number(req.query.fileId || order.quotationFileId)
   if (!fileId) throw notFound('该 MR 申请未上传报价原始附件')
   const rows = await query(
@@ -2045,7 +2046,8 @@ async function deleteQuotationFile(req, res) {
 
 async function downloadDocument(req, res) {
   const order = await loadRawOrder(req.params.id, req.user)
-  if (!canView(order, req.user)) throw forbidden('无权下载该 MR 归档文件')
+  const assistantIds = await assistantIdsFor(req.user)
+  if (!canView(order, req.user, assistantIds)) throw forbidden('无权下载该 MR 归档文件')
   const requestedType = ['approved', 'voided'].includes(req.query.type) ? req.query.type : null
   const document = await mrDocument(req.params.id, requestedType)
   const stale = document && Number(document.format_version || 0) < PDF_FORMAT_VERSION
