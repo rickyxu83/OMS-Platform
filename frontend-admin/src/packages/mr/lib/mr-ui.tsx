@@ -146,6 +146,10 @@ export function SubPanel({ title, actions, children }: { title: string; actions?
   )
 }
 
+/**
+ * MR 专用 Field：双模设计（editable 填写态 / readonlyText 只读展示态），必填星号由 REQUIRED_FIELD_LABELS 推断。
+ * 与 service-report/components 的 Field 是有意分化（那个仅填写态、预览走 ReportPreviewField），勿合并。
+ */
 export function Field({
   label,
   children,

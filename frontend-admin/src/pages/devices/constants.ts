@@ -66,7 +66,6 @@ export const DEVICE_BADGE_CLASS = "inline-flex h-6 min-w-[74px] justify-center p
 
 export const DEVICE_STATUS_BADGE_CLASS = "inline-flex h-6 min-w-[56px] justify-center px-2";
 
-export const CUSTOMER_INDEX_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
 
 export const ATTACHMENT_PURPOSE_LABELS: Record<string, string> = {
   general: "其他",

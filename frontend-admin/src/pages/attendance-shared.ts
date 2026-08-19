@@ -164,10 +164,7 @@ export function applyAnnualLeaveRange<T extends {
   return { ...form, startAt: range.startAt, endAt: range.endAt, hours: String(range.hours) };
 }
 
-export function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
-}
+export { formatDateTime } from "@/lib/format";
 
 export function hours(value?: number) {
   const number = Number(value || 0);

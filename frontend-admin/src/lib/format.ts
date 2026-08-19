@@ -8,3 +8,12 @@ export function formatCount(value: number | string | null | undefined): string {
   if (Number.isNaN(num)) return String(value);
   return num.toLocaleString("zh-CN");
 }
+
+/**
+ * 日期时间格式化：ISO 字符串 -> "YYYY-MM-DD HH:mm"（截到分钟）。
+ * 空值返回 "-"，供考勤/服务记录等页面表格展示统一使用。
+ */
+export function formatDateTime(value?: string) {
+  if (!value) return "-";
+  return String(value).replace("T", " ").slice(0, 16);
+}

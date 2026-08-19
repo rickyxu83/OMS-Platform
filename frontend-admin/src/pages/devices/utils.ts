@@ -5,7 +5,6 @@
  */
 import { toast } from "sonner";
 import { api } from "@/services/api";
-import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
 import type {
   BatchDeviceRow, BatchEditForm, BatchEditToggles, Customer, Device, DeviceDeleteBlockedDetails,
   DeviceForm, DevicePartHistory, DeviceRelatedAttachment, ExcelWorkbook, ExcelWorksheet, ExistingModelNormalizationItem,
@@ -15,7 +14,7 @@ import type {
   ModelNormalizationJob, ModelNormalizationNotice, ModelNormalizationResult,
 } from "./types";
 import {
-  ATTACHMENT_FORMAT_LABELS, ATTACHMENT_PURPOSE_LABELS, CUSTOMER_INDEX_LETTERS,
+  ATTACHMENT_FORMAT_LABELS, ATTACHMENT_PURPOSE_LABELS,
   DEVICE_STATUS_LABELS, IMPORT_TEMPLATE_MAINTENANCE_TYPES, IMPORT_TEMPLATE_MAX_ROWS,
   IMPORT_TEMPLATE_OPTIONS_SHEET, MAINTENANCE_IMPORT_STATUS_LABELS, MAINTENANCE_TYPE_ALIASES,
   MAINTENANCE_TYPE_LABELS, MODEL_NORMALIZATION_JOB_POLL_MS, MODEL_NORMALIZATION_JOB_TIMEOUT_MS,
@@ -157,66 +156,6 @@ export function resolveMaintenancePartyId(parties: MaintenanceParty[], type: str
   )) ? String(currentId) : "";
 }
 
-export function customerLabel(customer?: Customer | null) {
-  if (!customer) return "";
-  return customer.name || `客户 #${customer.id}`;
-}
-
-export function customerMeta(customer: Customer) {
-  return [customer.address || customer.mapAddress, customer.contactName, customer.contactPhone]
-    .filter(Boolean)
-    .join(" · ") || customer.code || `客户 #${customer.id}`;
-}
-
-export function normalizeCustomerSearchText(value?: string | number) {
-  return normalizeSearchText(value);
-}
-
-export function customerMatches(customer: Customer, keyword: string) {
-  const normalized = normalizeCustomerSearchText(keyword);
-  if (!normalized) return true;
-  return [
-    customer.name,
-    customer.code,
-    customer.address,
-    customer.mapAddress,
-    customer.contactName,
-    customer.contactPhone,
-    customer.id,
-  ].filter(Boolean).some((value) => normalizeCustomerSearchText(value).includes(normalized));
-}
-
-export function customerInitial(customer: Customer) {
-  const initial = String(customer.sortInitial || "").toUpperCase();
-  if (/^[A-Z]$/.test(initial)) return initial;
-  const first = customerLabel(customer).trim()[0]?.toUpperCase() || "";
-  return /^[A-Z]$/.test(first) ? first : "#";
-}
-
-export function customerSortKey(customer: Customer) {
-  return customer.sortKey || `${customerInitial(customer)}|${customerLabel(customer).trim().toLowerCase()}`;
-}
-
-export function groupCustomersByInitial(items: Customer[]) {
-  const collator = new Intl.Collator("zh-Hans-CN", { numeric: true, sensitivity: "base" });
-  const groups = new Map<string, Customer[]>();
-  const sortedItems = [...items].sort((a, b) => {
-    const groupA = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(a));
-    const groupB = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(b));
-    const rankA = groupA >= 0 ? groupA : CUSTOMER_INDEX_LETTERS.length;
-    const rankB = groupB >= 0 ? groupB : CUSTOMER_INDEX_LETTERS.length;
-    if (rankA !== rankB) return rankA - rankB;
-    return collator.compare(customerSortKey(a), customerSortKey(b));
-  });
-  sortedItems.forEach((customer) => {
-    const letter = customerInitial(customer);
-    groups.set(letter, [...(groups.get(letter) || []), customer]);
-  });
-  return CUSTOMER_INDEX_LETTERS
-    .filter((letter) => groups.has(letter))
-    .map((letter) => ({ letter, items: groups.get(letter) || [] }));
-}
-
 export function deviceDisplayName(device?: Device | null) {
   if (!device) return "";
   return device.model || device.name || device.serialNo || `设备 #${device.id}`;
@@ -226,34 +165,6 @@ export function partActionLabel(value?: string) {
   if (value === "replacement") return "备件更换";
   if (value === "installation") return "硬件部件安装";
   return "部件记录";
-}
-
-export function serviceTypeLabel(value?: string) {
-  const labels: Record<string, string> = {
-    install: "现场安装",
-    repair: "故障处理",
-    maintain: "保养维护",
-    inspect: "例行巡检",
-    training: "现场培训",
-    other: "其他事项",
-  };
-  return labels[value || ""] || value || "服务记录";
-}
-
-export function orderStatusLabel(value?: string) {
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    pending_confirmation: "待确认",
-    awaiting_customer_signature: "待客户签署",
-    assigned: "已派发",
-    in_progress: "处理中",
-    submitted: "已提交",
-    rejected: "已退回",
-    approved: "已审核",
-    archived: "已归档",
-    cancelled: "已作废",
-  };
-  return labels[value || ""] || value || "-";
 }
 
 export function orderRelationLabel(value?: string) {
@@ -417,17 +328,6 @@ export function formatDeviceDeleteBlockedDetails(details: DeviceDeleteBlockedDet
   const schedules = compactList((relations.inspectionSchedules || []).map((item) => item.name || `计划 #${item.id}`));
   if (schedules) lines.push(`巡检计划：${schedules}`);
   return lines.join("\n");
-}
-
-export function mergeCustomers(current: Customer[], incoming: Customer[]) {
-  const merged = new Map<string, Customer>();
-  [...current, ...incoming].forEach((customer) => {
-    if (!customer?.id) return;
-    const key = String(customer.id);
-    const existing = merged.get(key);
-    merged.set(key, { ...existing, ...customer });
-  });
-  return [...merged.values()];
 }
 
 export function extractMaintenancePartyNames(items: unknown) {

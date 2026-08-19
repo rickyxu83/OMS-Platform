@@ -29,7 +29,9 @@ import { api } from "@/services/api";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { normalizeSearchText } from "@/lib/text-i18n";
+import { orderStatusLabel, serviceTypeLabel } from "@/lib/service-items";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
@@ -41,24 +43,27 @@ import {
   groupImportCustomerCorrections, createEmptyDeviceForm, createEmptyBatchRow, createEmptyBatchEditForm,
   createEmptyBatchEditToggles, createInitialBatchRows, batchRowHasInput, formatDate, inputDate,
   copySerialNo, canonicalMaintenanceType, maintenanceTypeHasParty, maintenancePartyMatchesType,
-  resolveMaintenancePartyId, customerLabel, customerMeta, normalizeCustomerSearchText, customerMatches,
-  customerInitial, customerSortKey, groupCustomersByInitial, deviceDisplayName, partActionLabel,
-  serviceTypeLabel, orderStatusLabel, orderRelationLabel, attachmentFormatOf, partQuantityText,
+  resolveMaintenancePartyId, deviceDisplayName, partActionLabel,
+  orderRelationLabel, attachmentFormatOf, partQuantityText,
   compactText, modelNormalizationNotice, extractModelNormalizationJob, modelNormalizationResultMessage,
   summarizeModelNormalizationJobs, showModelNormalizationNotices, existingModelIssueLabel,
   existingModelIssueBadgeClass, apiErrorDetails, deviceDeleteName, compactList,
-  formatDeviceDeleteBlockedDetails, mergeCustomers, extractMaintenancePartyNames,
+  formatDeviceDeleteBlockedDetails, extractMaintenancePartyNames,
   loadMaintenancePartyNamesForTemplate, worksheetRangeFormula, applyImportTemplateDropdowns,
   downloadDeviceImportTemplate, deviceImportHeaderKey, findDeviceImportHeaderRow,
   downloadRemainingDeviceImportFile, exportDevicesToExcel,
 } from "./devices/utils";
-import { DeviceCustomerSuggestions } from "./devices/DeviceCustomerSuggestions";
+import { CustomerIndexSuggestions } from "@/components/CustomerIndexSuggestions";
+import {
+  customerName as customerLabel, customerMeta, customerMatches, customerInitial, customerSortKey,
+  groupCustomersByInitial, mergeCustomers,
+} from "@/lib/customer-index";
 import {
   IMPORT_TEMPLATE_MAX_ROWS, IMPORT_TEMPLATE_OPTIONS_SHEET, IMPORT_TEMPLATE_MAINTENANCE_TYPES,
   MAINTENANCE_IMPORT_STATUS_LABELS, MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_BADGE,
   MAINTENANCE_TYPE_HELP, MAINTENANCE_TYPE_ALIASES, DEVICE_STATUS_LABELS, DEVICE_STATUS_BADGE,
   DEVICE_TABLE_GRID, DEVICE_TABLE_READONLY_GRID, DEVICE_BADGE_CLASS, DEVICE_STATUS_BADGE_CLASS,
-  CUSTOMER_INDEX_LETTERS, ATTACHMENT_PURPOSE_LABELS, ATTACHMENT_FORMAT_LABELS,
+  ATTACHMENT_PURPOSE_LABELS, ATTACHMENT_FORMAT_LABELS,
   MODEL_NORMALIZATION_TOAST_POSITION, MODEL_NORMALIZATION_JOB_POLL_MS, MODEL_NORMALIZATION_JOB_TIMEOUT_MS,
 } from "./devices/constants";
 
@@ -150,6 +155,7 @@ import {
 
 export function Devices() {
   const { hasPermission } = useAuth();
+  const { lang } = useLanguage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const canCreateDevices = hasPermission("device.create");
@@ -301,7 +307,7 @@ export function Devices() {
 
   async function loadCustomers() {
     try {
-      const sortLocale = encodeURIComponent("zh-Hans-CN");
+      const sortLocale = encodeURIComponent(lang === "zh-TW" ? "zh-TW" : "zh-Hans-CN");
       const [customerData, recentCustomerData] = await Promise.all([
         api.get(`/customers?pageSize=200&sortLocale=${sortLocale}`),
         api.get(`/customers?mine=1&pageSize=4&sortLocale=${sortLocale}`).catch(() => ({ items: [] })),
@@ -594,14 +600,15 @@ export function Devices() {
       customers
         .filter((customer) => !recentCustomerIds.has(String(customer.id)))
         .filter((customer) => customerMatches(customer, customerInput)),
+      lang,
     );
     if (selectedCustomer && !recentCustomerIds.has(String(selectedCustomer.id)) && !grouped.some((group) => (
       group.items.some((customer) => String(customer.id) === String(selectedCustomer.id))
     ))) {
-      return groupCustomersByInitial([selectedCustomer, ...grouped.flatMap((group) => group.items)]);
+      return groupCustomersByInitial([selectedCustomer, ...grouped.flatMap((group) => group.items)], lang);
     }
     return grouped;
-  }, [customers, customerInput, recentCustomerIds, selectedCustomer]);
+  }, [customers, customerInput, lang, recentCustomerIds, selectedCustomer]);
 
   function selectedCustomerLabel(customerId: string | number | undefined, fallback?: string) {
     if (!customerId) return "";
@@ -973,9 +980,9 @@ export function Devices() {
   async function submit() {
     let effectiveCustomerId = form.customerId;
     if (!effectiveCustomerId && customerInput.trim()) {
-      const normalizedInput = normalizeCustomerSearchText(customerInput);
+      const normalizedInput = normalizeSearchText(customerInput);
       const exact = customers.find((customer) => (
-        normalizeCustomerSearchText(customerLabel(customer)) === normalizedInput
+        normalizeSearchText(customerLabel(customer)) === normalizedInput
         || String(customer.id) === customerInput.trim()
       ));
       if (exact) effectiveCustomerId = String(exact.id);
@@ -1085,7 +1092,7 @@ export function Devices() {
     const timerId = window.setTimeout(async () => {
       setCustomerSearchLoading(true);
       try {
-        const sortLocale = encodeURIComponent("zh-Hans-CN");
+        const sortLocale = encodeURIComponent(lang === "zh-TW" ? "zh-TW" : "zh-Hans-CN");
         const data = await api.get(`/customers?pageSize=50&keyword=${encodeURIComponent(keyword)}&sortLocale=${sortLocale}`);
         setCustomers((prev) => mergeCustomers(prev, (data?.items || []) as Customer[]));
       } catch {
@@ -2500,14 +2507,15 @@ export function Devices() {
                       const value = event.target.value;
                       setCustomerInput(value);
                       setCustomerDropdownOpen(true);
-                      if (!selectedCustomer || normalizeCustomerSearchText(value) !== normalizeCustomerSearchText(customerLabel(selectedCustomer))) {
+                      if (!selectedCustomer || normalizeSearchText(value) !== normalizeSearchText(customerLabel(selectedCustomer))) {
                         setForm((prev) => ({ ...prev, customerId: "" }));
                       }
                       scheduleCustomerSearch(value);
                     }}
                     placeholder="输入客户名称关键词搜索"
                   />
-                  <DeviceCustomerSuggestions
+                  <CustomerIndexSuggestions
+                    idPrefix="device-customer-letter"
                     open={customerDropdownOpen}
                     searching={customerSearchLoading}
                     recentCustomers={dialogRecentCustomers}

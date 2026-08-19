@@ -464,6 +464,7 @@ export function MarkdownTextarea({
   );
 }
 
+/** 工单填写专用 Field：仅填写态（预览态统一走 ReportPreviewField）。与 MR 的 Field（双模）是有意分化，勿合并。 */
 export function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
     <div className="space-y-2">

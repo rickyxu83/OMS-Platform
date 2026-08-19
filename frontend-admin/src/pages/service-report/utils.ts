@@ -3,8 +3,9 @@
  * 服务模块推导、工单展示文案、文件下载等（自 6200 行单文件拆出，无副作用）。
  */
 import type * as React from "react";
-import type { AppLang } from "@/contexts/LanguageContext";
-import { matchesSearchText, normalizeSearchText } from "@/lib/text-i18n";
+import { matchesSearchText } from "@/lib/text-i18n";
+import { formatDateTime } from "@/lib/format";
+import { orderStatusLabel } from "@/lib/service-items";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
 import type {
   BadgeVariant, CustomerContact, CustomerOption, DeviceOption, EngineerOption, GeoCandidate,
@@ -12,7 +13,7 @@ import type {
   ServiceOrder, ServicePartDraft, TargetDeviceDraft,
 } from "./types";
 import {
-  COMPRESSIBLE_IMAGE_EXTENSIONS, COMPRESSIBLE_IMAGE_MIME_TYPES, CUSTOMER_INDEX_LETTERS,
+  COMPRESSIBLE_IMAGE_EXTENSIONS, COMPRESSIBLE_IMAGE_MIME_TYPES,
   IMAGE_COMPRESSION_MAX_EDGE, IMAGE_COMPRESSION_QUALITY, INSPECTION_DOCUMENT_EXTENSIONS,
   MAX_FILE_SIZE, MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
   PART_ACTION_OPTIONS, REMOTE_SERVICE_MODULE_OPTIONS, RESULT_OPTIONS, SERVICE_TYPE_OPTIONS,
@@ -114,10 +115,7 @@ export function normalizeMode(value?: string | null): ServiceMode {
   return value === "remote" || value === "office" ? value : "onsite";
 }
 
-export function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
-}
+export { formatDateTime };
 
 export function formatDateRange(start?: string, end?: string) {
   if (!start && !end) return "-";
@@ -511,73 +509,6 @@ export function contactsForCustomer(customer?: CustomerOption | null) {
   });
 }
 
-export function customerMatches(customer: CustomerOption, keyword: string) {
-  const text = keyword.trim();
-  if (!text) return true;
-  return [
-    customer.name,
-    customer.code,
-    customer.address,
-    customer.mapAddress,
-    customer.contactName,
-    customer.contactPhone,
-    ...(customer.contacts || []).flatMap((contact) => [contact.name, contact.phone, contact.contactName, contact.contactPhone]),
-  ].filter(Boolean).some((value) => matchesSearchText(value, text));
-}
-
-
-export function customerName(customer: CustomerOption) {
-  return customer.name || `客户 #${customer.id}`;
-}
-
-export function customerMeta(customer: CustomerOption) {
-  return [customer.address || customer.mapAddress, customer.contactName, customer.contactPhone]
-    .filter(Boolean)
-    .join(" · ") || customer.code || "系统客户";
-}
-
-export function customerInitial(customer: CustomerOption) {
-  const initial = String(customer.sortInitial || "").toUpperCase();
-  if (/^[A-Z]$/.test(initial)) return initial;
-  const first = customerName(customer).trim()[0]?.toUpperCase() || "";
-  return /^[A-Z]$/.test(first) ? first : "#";
-}
-
-export function customerSortKey(customer: CustomerOption) {
-  return customer.sortKey || `${customerInitial(customer)}|${customerName(customer).trim().toLowerCase()}`;
-}
-
-export function groupCustomersByInitial(items: CustomerOption[], lang: AppLang) {
-  const collator = new Intl.Collator(lang === "zh-TW" ? "zh-TW" : "zh-Hans-CN", { numeric: true, sensitivity: "base" });
-  const groups = new Map<string, CustomerOption[]>();
-  const sortedItems = [...items].sort((a, b) => {
-    const groupA = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(a));
-    const groupB = CUSTOMER_INDEX_LETTERS.indexOf(customerInitial(b));
-    const rankA = groupA >= 0 ? groupA : CUSTOMER_INDEX_LETTERS.length;
-    const rankB = groupB >= 0 ? groupB : CUSTOMER_INDEX_LETTERS.length;
-    if (rankA !== rankB) return rankA - rankB;
-    return collator.compare(customerSortKey(a), customerSortKey(b));
-  });
-  for (const customer of sortedItems) {
-    const letter = customerInitial(customer);
-    groups.set(letter, [...(groups.get(letter) || []), customer]);
-  }
-  return CUSTOMER_INDEX_LETTERS
-    .filter((letter) => groups.has(letter))
-    .map((letter) => ({ letter, items: groups.get(letter) || [] }));
-}
-
-export function mergeCustomers(current: CustomerOption[], next: CustomerOption[]) {
-  const map = new Map<string, CustomerOption>();
-  for (const item of current) map.set(String(item.id || item.name || ""), item);
-  for (const item of next) {
-    const key = String(item.id || item.name || "");
-    if (!key) continue;
-    map.set(key, { ...(map.get(key) || {}), ...item });
-  }
-  return [...map.values()];
-}
-
 export function numberOrNull(value: string | number | null | undefined) {
   if (value === undefined || value === null || value === "") return null;
   const parsed = Number(value);
@@ -609,23 +540,7 @@ export function geoCandidateMeta(candidate: GeoCandidate) {
   return candidate.address || candidate.mapAddress || "暂无详细地址";
 }
 
-export function orderStatusLabel(order: ServiceOrder) {
-  const status = order.workflowStatus || order.status || "";
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    assigned: "已派发",
-    in_progress: "进行中",
-    pending_confirmation: "待确认",
-    awaiting_customer_signature: "待客户签署",
-    submitted: "已提交",
-    approved: "已审核",
-    archived: "已归档",
-    rejected: "已退回",
-    cancelled: "已作废",
-    completed: "已完成",
-  };
-  return order.displayStatus || labels[status] || status || "-";
-}
+export { orderStatusLabel };
 
 export function reportOrderDisplayId(order: ServiceOrder) {
   return order.orderNo || `SR-${order.id}`;
@@ -689,7 +604,7 @@ export function orderMatchesKeyword(order: ServiceOrder, keyword: string) {
     order.customerName,
     order.issueDescription,
     serviceItemsLabel(order),
-    orderStatusLabel(order),
+    orderStatusLabel(order.workflowStatus || order.status, order.displayStatus),
   ].some((value) => matchesSearchText(value, keyword));
 }
 

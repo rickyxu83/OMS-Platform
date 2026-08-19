@@ -1,4 +1,3 @@
-import { useEffect } from "react"
 import OpenCC from "opencc-js"
 import type { AppLang } from "@/contexts/LanguageContext"
 
@@ -497,10 +496,4 @@ export function setupAdminDomTextI18n(lang: AppLang) {
     observer.disconnect()
     restoreOriginalTree(document.body)
   }
-}
-
-export function useAdminDomTextI18n(lang: AppLang) {
-  useEffect(() => {
-    return setupAdminDomTextI18n(lang)
-  }, [lang])
 }

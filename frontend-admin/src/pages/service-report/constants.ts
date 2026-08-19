@@ -137,7 +137,6 @@ export const COMPRESSIBLE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png",
 export const IMAGE_COMPRESSION_MAX_EDGE = 1920;
 export const IMAGE_COMPRESSION_QUALITY = 0.8;
 
-export const CUSTOMER_INDEX_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
 
 export const MARKDOWN_TOOLS = [
   { action: "heading", label: "标题", icon: Heading2 },

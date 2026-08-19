@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { CustomerInlineSuggestions } from '@/pages/service-report/CustomerInlineSuggestions'
-import { customerMatches, groupCustomersByInitial } from '@/pages/service-report/utils'
+import { CustomerIndexSuggestions } from '@/components/CustomerIndexSuggestions'
+import { customerMatches, groupCustomersByInitial } from '@/lib/customer-index'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ErrorToast } from '@/components/ErrorToast'
@@ -1262,12 +1262,13 @@ export function MrFormPage() {
                       onChange={(event) => { handleCustomerInput(event.target.value); setCustomerOptionsOpen(true) }}
                     />
                   </div>
-                  <CustomerInlineSuggestions
+                  <CustomerIndexSuggestions
                     open={customerOptionsOpen}
                     searching={false}
                     recentCustomers={matchingFrequentCustomers}
                     groups={customerGroups}
                     selectedCustomerId={String(calculated.customerId || '')}
+                    emptyText="未找到匹配客户，可按新客户继续填写"
                     onSelect={(customer) => { setCustomerOptionsOpen(false); void chooseCustomer(String(customer.id)) }}
                   />
                 </div>

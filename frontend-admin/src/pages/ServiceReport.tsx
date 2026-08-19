@@ -72,7 +72,7 @@ import type {
 } from "./service-report/types";
 import {
   ATTACHMENT_PURPOSES, COMPRESSIBLE_IMAGE_EXTENSIONS, COMPRESSIBLE_IMAGE_MIME_TYPES,
-  CUSTOMER_INDEX_LETTERS, FORM_SKIN, IMAGE_COMPRESSION_MAX_EDGE, IMAGE_COMPRESSION_QUALITY,
+  FORM_SKIN, IMAGE_COMPRESSION_MAX_EDGE, IMAGE_COMPRESSION_QUALITY,
   INSPECTION_DOCUMENT_ACCEPT, INSPECTION_DOCUMENT_EXTENSIONS, MARKDOWN_TOOLS, MAX_FILE_SIZE,
   MODE_BADGE_VARIANT, MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
   PART_ACTION_OPTIONS, PRIORITY_OPTIONS, REMOTE_SERVICE_MODULE_OPTIONS, REPORT_ORDER_HEADER_CLASS,
@@ -83,15 +83,14 @@ import {
   allowedServiceModules, attachmentFileExtension, attachmentPreviewKind, buildDeleteConfirmationMessage,
   canCancelServiceOrder, canDeleteServiceOrder, canExportServiceRecord, candidateCoordinates,
   compactDraftLabel, compressAttachmentImages, compressImageFile, compressedImageName, contactKey,
-  contactsForCustomer, coordinateLabel, customerMatches, customerMeta, customerInitial, customerName,
-  customerSortKey, defaultForm, defaultServiceModules, deletePreviewDeviceLabel, deletePreviewFileLabel,
+  contactsForCustomer, coordinateLabel, defaultForm, defaultServiceModules, deletePreviewDeviceLabel, deletePreviewFileLabel,
   deletePreviewInstalledDeviceLabel, deletePreviewPartActionLabel, deriveModulesFromLegacyForm,
   derivePrimaryServiceType, deriveRemoteTimesheetCategory, deviceLabel, deviceMatchesKeyword, deviceMeta,
   deviceSearchText, deviceSelectLabel, displayText, downloadBlob, emptyInstallDevice, emptyPart,
   emptyTargetDevice, fileExtension, formatDateRange, formatDateTime, formatFileSize, geoCandidateMeta,
-  groupCustomersByInitial, inputNow, inputToday, installDeviceDraftId, installDeviceHasContent,
+  inputNow, inputToday, installDeviceDraftId, installDeviceHasContent,
   installDeviceTitle, isCompressibleImage, isDispatchOrder, isFilledServiceOrder, isServiceModuleId,
-  loadImageFile, mergeAttachmentFiles, mergeCustomers, normalizeDeviceSearchText, normalizeInstallDeviceDraft,
+  loadImageFile, mergeAttachmentFiles, normalizeDeviceSearchText, normalizeInstallDeviceDraft,
   normalizeLoadedForm, normalizeMode, normalizeResult, normalizeServiceModules, normalizeTargetDeviceDraft,
   numberOrNull, openNativePicker, openPickerOnMouse, optionLabel, optionText, orderMatchesKeyword,
   orderStatusLabel, partActionFor, payloadFromOrder, previewBlob, reportIssuePreviewLabel,
@@ -106,7 +105,11 @@ import {
   NativeTimeInput, ReportPreviewBlock, ReportPreviewField, ReportSection, SignaturePad,
   hasPreviewValue, markdownReplacement,
 } from "./service-report/components";
-import { CustomerInlineSuggestions } from "./service-report/CustomerInlineSuggestions";
+import { CustomerIndexSuggestions } from "@/components/CustomerIndexSuggestions";
+import {
+  customerMatches, customerMeta, customerInitial, customerName, customerSortKey,
+  groupCustomersByInitial, mergeCustomers,
+} from "@/lib/customer-index";
 
 
 
@@ -2145,7 +2148,7 @@ export function ServiceReport() {
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
                         <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                          {orderStatusLabel(order)}
+                          {orderStatusLabel(order.workflowStatus || order.status, order.displayStatus)}
                         </Badge>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -2236,7 +2239,7 @@ export function ServiceReport() {
 
                     <div className="hidden lg:block">
                       <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                        {orderStatusLabel(order)}
+                        {orderStatusLabel(order.workflowStatus || order.status, order.displayStatus)}
                       </Badge>
                     </div>
 
@@ -2649,7 +2652,7 @@ export function ServiceReport() {
                 const serviceFields = [
                   { label: "服务事项", value: serviceItemsLabel(previewOrder) },
                   { label: "优先级", value: optionText(PRIORITY_OPTIONS, previewOrder.priority) },
-                  { label: "状态", value: orderStatusLabel(previewOrder) },
+                  { label: "状态", value: orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus) },
                   { label: "服务时间", value: serviceTimeText },
                   { label: "销售", value: previewOrder.timesheetSalesperson },
                   { label: "创建时间", value: formatDateTime(previewOrder.createdAt) },
@@ -2680,7 +2683,7 @@ export function ServiceReport() {
                     {previewError ? <InlineError message={previewError} /> : null}
 
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{orderStatusLabel(previewOrder)}</Badge>
+                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus)}</Badge>
                       <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
                       {serviceLabels.length ? serviceLabels.map((label) => (
                         <Badge key={label} variant={TYPE_BADGE_VARIANT[previewOrder.serviceType || ""] || "outline"}>{label}</Badge>
@@ -3020,7 +3023,8 @@ export function ServiceReport() {
                             onChange={(event) => changeCustomerName(event.target.value)}
                           />
                         </div>
-                        <CustomerInlineSuggestions
+                        <CustomerIndexSuggestions
+                          idPrefix="customer-inline-letter"
                           open={customerOptionsOpen}
                           searching={customerSearching}
                           recentCustomers={matchingRecentCustomers}
