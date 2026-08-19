@@ -188,6 +188,8 @@ export interface CustomerOption {
   mapAddress?: string
   mapPoiName?: string
   contacts?: Array<{ id?: string | number; customerId?: string | number; name?: string; phone?: string; email?: string }>
+  sortInitial?: string
+  sortKey?: string
 }
 
 export interface UserOption {

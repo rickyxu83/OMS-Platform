@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { CustomerInlineSuggestions } from '@/pages/service-report/CustomerInlineSuggestions'
+import { customerMatches, groupCustomersByInitial } from '@/pages/service-report/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ErrorToast } from '@/components/ErrorToast'
@@ -363,6 +366,10 @@ export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, hasPermission } = useAuth()
+  const { lang } = useLanguage()
+  // 当前界面语言（简/繁）影响客户首字母索引分组；用 ref 供主加载闭包读取，避免 lang 变化触发整单重载丢失未保存内容
+  const langRef = useRef(lang)
+  useEffect(() => { langRef.current = lang }, [lang])
   const [form, setForm] = useState<MrOrder | null>(null)
   const [constants, setConstants] = useState<MrConstants | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -396,16 +403,42 @@ export function MrFormPage() {
   const errorListRef = useRef<HTMLDivElement | null>(null)
 
   const calculated = useMemo(() => form ? calculateForm(form) : null, [form])
-  const linkedContacts = (contacts || []).filter((contact) => form?.customerId && String(contact.customerId) === String(form.customerId))
+  // 客户档案联系人 + 该客户快照里独有的联系人（上次提交填的、未进档案）：合并后删掉快照带出的人仍可在下拉再选
+  const linkedContacts = (() => {
+    const base = (contacts || []).filter((contact) => form?.customerId && String(contact.customerId) === String(form.customerId))
+    const pref = (salesPrefs.customers || []).find((p) => String(p.customerId) === String(form?.customerId))
+    const snap = (pref?.snapshot || {}) as Record<string, unknown>
+    const seen = new Set(base.map((c) => normalizeLookup(c.name)))
+    const extra: NonNullable<CustomerOption['contacts']> = []
+    const snapRoles = [
+      { name: snap.purchaser, phone: snap.purchaserTel, email: snap.purchaserMail },
+      { name: snap.recipient, phone: snap.recipientTel, email: snap.recipientMail },
+      { name: snap.invoiceRecipient, phone: snap.invoiceRecipientTel, email: snap.invoiceRecipientMail },
+    ]
+    for (const role of snapRoles) {
+      const name = String(role.name || '').trim()
+      const key = normalizeLookup(name)
+      if (!name || seen.has(key)) continue
+      seen.add(key)
+      extra.push({ id: `snap-${name}`, customerId: form?.customerId ?? undefined, name, phone: String(role.phone || ''), email: String(role.email || '') })
+    }
+    return [...base, ...extra]
+  })()
   // 客户下拉按“该销售常用客户”排前（其余保持后端默认顺序）
-  const sortedCustomers = useMemo(() => {
-    const prefOrder = new Map((salesPrefs.customers || []).map((pref, index) => [String(pref.customerId), index]))
-    return [...customers].sort((a, b) => {
-      const aIdx = prefOrder.has(String(a.id)) ? prefOrder.get(String(a.id))! : Number.MAX_SAFE_INTEGER
-      const bIdx = prefOrder.has(String(b.id)) ? prefOrder.get(String(b.id))! : Number.MAX_SAFE_INTEGER
-      return aIdx - bIdx
-    })
-  }, [customers, salesPrefs])
+  // 客户名称下拉（复用工程师工单填写页组件）：常用客户置顶区 + 拼音首字母分组 + 右侧 A-Z 索引
+  const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false)
+  // 已选客户（customerId 有值）时打开下拉显示全部便于改选；输入中（customerId 空）按文本过滤
+  const customerKeyword = calculated?.customerId ? '' : (calculated?.customerName || '')
+  const frequentCustomerIds = useMemo(() => new Set((salesPrefs.customers || []).map((pref) => String(pref.customerId))), [salesPrefs])
+  const matchingFrequentCustomers = useMemo(() =>
+    customers.filter((c) => frequentCustomerIds.has(String(c.id))).filter((c) => customerMatches(c, customerKeyword)).slice(0, 4),
+    [customers, frequentCustomerIds, customerKeyword])
+  const customerGroups = useMemo(() =>
+    groupCustomersByInitial(
+      customers.filter((c) => !frequentCustomerIds.has(String(c.id))).filter((c) => customerMatches(c, customerKeyword)).slice(0, 160),
+      lang,
+    ),
+    [customers, frequentCustomerIds, customerKeyword, lang])
   const canEdit = Boolean(form?.permissions?.canEdit)
   const assistantReview = Boolean(canEdit && form?.status === 'in_review' && form?.currentStepKey === 'assistant')
   const editable = Boolean(canEdit && (!assistantReview || editing))
@@ -424,7 +457,7 @@ export function MrFormPage() {
       const [order, optionData, references] = await Promise.all([
         getMr(id),
         getMrConstants(),
-        canLoadReferences ? loadMrReferences() : Promise.resolve({ customers: [], salespeople: [], vendors: [], salesPreferences: { customers: [], vendors: [] } }),
+        canLoadReferences ? loadMrReferences(langRef.current) : Promise.resolve({ customers: [], salespeople: [], vendors: [], salesPreferences: { customers: [], vendors: [] } }),
       ])
       const customer = canLoadReferences && order.customerId ? await loadCustomer(order.customerId) : null
       const customerContacts = customer?.contacts || []
@@ -467,6 +500,19 @@ export function MrFormPage() {
     void load()
     return () => { loadSequence.current += 1 }
   }, [load])
+
+  // 界面语言（简/繁）切换时仅重拉客户/供应商等参考数据（刷新首字母索引分组），不重载单据避免丢失未保存内容
+  const isFirstLangRef = useRef(true)
+  useEffect(() => {
+    if (isFirstLangRef.current) { isFirstLangRef.current = false; return }
+    if (!hasPermission('customer.view')) return
+    loadMrReferences(lang).then((references) => {
+      setCustomers(references.customers)
+      setVendors(references.vendors)
+      setSalespeople(references.salespeople)
+      setSalesPrefs(references.salesPreferences || { customers: [], vendors: [] })
+    }).catch(() => {})
+  }, [lang, hasPermission])
 
   useEffect(() => {
     if (!dirty) return
@@ -1201,14 +1247,30 @@ export function MrFormPage() {
           <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <SmartCombobox
-                  value={calculated.customerName || ''}
-                  readOnly={!editable}
-                  placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
-                  options={sortedCustomers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
-                  onChange={handleCustomerInput}
-                  onSelect={(option) => void chooseCustomer(option.value)}
-                />
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      inputMode="search"
+                      className="pl-9"
+                      value={calculated.customerName || ''}
+                      placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
+                      autoComplete="off"
+                      onFocus={() => setCustomerOptionsOpen(true)}
+                      onMouseDown={() => setCustomerOptionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setCustomerOptionsOpen(false), 140)}
+                      onChange={(event) => { handleCustomerInput(event.target.value); setCustomerOptionsOpen(true) }}
+                    />
+                  </div>
+                  <CustomerInlineSuggestions
+                    open={customerOptionsOpen}
+                    searching={false}
+                    recentCustomers={matchingFrequentCustomers}
+                    groups={customerGroups}
+                    selectedCustomerId={String(calculated.customerId || '')}
+                    onSelect={(customer) => { setCustomerOptionsOpen(false); void chooseCustomer(String(customer.id)) }}
+                  />
+                </div>
               </Field>
               <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
                 <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />

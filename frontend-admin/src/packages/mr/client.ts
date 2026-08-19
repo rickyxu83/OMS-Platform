@@ -99,9 +99,10 @@ export async function downloadMrDocument(id: string | number, type?: 'approved' 
   URL.revokeObjectURL(url)
 }
 
-export async function loadMrReferences() {
+export async function loadMrReferences(lang?: string) {
+  const sortLocale = encodeURIComponent(lang || 'zh-CN')
   const [customers, salespeople, vendors, salesPreferences] = await Promise.all([
-    api.get('/customers?pageSize=200') as Promise<{ items?: CustomerOption[] }>,
+    api.get(`/customers?pageSize=200&sortLocale=${sortLocale}`) as Promise<{ items?: CustomerOption[] }>,
     api.get('/users/salespeople') as Promise<{ items?: UserOption[] }>,
     api.get('/mr/vendor-suggestions') as Promise<{ items?: VendorOption[] }>,
     api.get('/mr/sales-preferences') as Promise<SalesPreferences>,

@@ -335,6 +335,7 @@ export function SmartCombobox({
           className="pr-8"
           onChange={(event) => { setText(event.target.value); onChange(event.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
+          onMouseDown={() => setOpen(true)}
           onKeyDown={onKeyDown}
         />
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
