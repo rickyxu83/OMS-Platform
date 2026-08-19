@@ -55,6 +55,25 @@ export function serviceTypeLabel(value?: string) {
   return SERVICE_TYPE_LABELS[String(value || "").trim()] || String(value || "").trim() || "";
 }
 
+/** 工单状态文案（统一版）：in_progress 显示"进行中"；displayStatus（后端计算显示态）优先于 status 映射。 */
+export function orderStatusLabel(value?: string, displayStatus?: string) {
+  const status = String(value || "").trim();
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    assigned: "已派发",
+    in_progress: "进行中",
+    pending_confirmation: "待确认",
+    awaiting_customer_signature: "待客户签署",
+    submitted: "已提交",
+    approved: "已审核",
+    archived: "已归档",
+    rejected: "已退回",
+    cancelled: "已作废",
+    completed: "已完成",
+  };
+  return displayStatus || labels[status] || status || "-";
+}
+
 export function remoteCategoryLabel(value?: string) {
   const text = String(value || "").trim();
   if (!text) return "";

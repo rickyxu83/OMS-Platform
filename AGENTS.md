@@ -32,6 +32,26 @@
 - 执行任何部署前，必须依次确认：① 目标 profile ② 当前分支 ③ 目标环境当前运行版本，三者匹配后才可执行
 - 测试服等其他环境仅用于**用户明确指定的实验分支**验证，不得擅自用 main 或正式版本覆盖
 
+## 集成分支工作流（2026-08-17 起，单人 vibecoding 模式）
+
+本项目为单人 + AI 开发：佬只看效果不看代码，全部 git/GitHub 操作由 AI 执行。主工作分支为**集成分支** `integration/attendance-mr`；`main` 对应生产，只在验收通过后更新。核心原则：**佬在测试服验收的东西 = 最终发布的东西**。
+
+**单向流动（最重要）**：main → 集成分支只通过 rebase；集成分支 → main 只通过发布 PR。禁止再开第三条长期并行分支，禁止功能分支互 merge。
+
+**日常开发**：
+- 新功能/修复直接提交到集成分支；并行开发时在集成分支上开 worktree（`.worktrees/<feat>`），用完合回并清理
+- 每次工作结束推送集成分支到 origin（**推送即备份**）
+- 可见变更照旧升版本号（见提交规范）
+- 测试服只部署集成分支；生产服只部署 main
+
+**同步 main**：main 一有更新（如热修合入），立刻同步集成分支——先打备份 tag `backup/<分支名>-<yyyymmdd>`，再 `git rebase origin/main`，解完冲突跑后端 `npm run check` + 前端 build 验证，然后 `git push -f`（仅允许强推自己的集成分支）。
+
+**生产热修**：从 main 切 `hotfix/<描述>` → 修复 → PR 合 main → 部署生产 → 立刻按上条 rebase 回集成分支。
+
+**发布（合 main）的唯一闸门**：① 佬在测试服验收通过 ② 全量验证（`npm run test:mr`、admin 端 `npx tsc --noEmit`、双端 build）绿——二者缺一不可，AI 不得自行合 main。满足后走下方标准 PR 流程，合并后部署生产。
+
+**提前上线部分功能**：由 AI 评估拆分或权限暗启动方案，报佬决定后执行。
+
 ## 一键部署
 
 ```bash
@@ -147,3 +167,14 @@ Use the five default mattpocock/skills triage labels. See `docs/agents/triage-la
 ### Domain docs
 
 Use a single-context domain documentation layout. See `docs/agents/domain.md`.
+
+## Agent 工作流规则（2026-08-10 起试用）
+
+1. **先判断自己身份再决定流程**：动手前先确认主会话模型（是否支持视觉、是否付费）。不要机械套用"主会话 + 子代理"流水线。
+2. **不做本地 mock/模拟验证**：代码改动跑完项目自带测试（`npm run test:mr`）+ `npx tsc --noEmit` + `npm run build` 通过后，直接部署测试服（profile 见本地私有 `scripts/deploy.local.env`），由用户自己上去验收。禁止为验证视觉效果做 headless Chrome mock 截屏、本地 PDF 模拟等耗时环节。
+3. **子代理使用原则**：
+   - 主会话是免费模型（如 deepseek-v4-flash-free）：能自己干的活（改代码、跑测试、提交、部署、git/SSH 操作）一律自己干，不派子代理。
+   - `executor` 仅在主会话是付费模型（如 k3）且想把重复性 grunt work 甩给免费子代理时才派。
+   - `vision` 仅在主会话无视觉且必须看图时才派，一次调用合并所有问题。
+   - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
+

@@ -18,6 +18,8 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 interface TimesheetItem {
   id?: string | number;
@@ -406,7 +408,7 @@ export function Timesheets() {
                                 {loading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -428,7 +430,7 @@ export function Timesheets() {
               <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground text-sm">暂无月报数据</div>
+            <EmptyState title="暂无月报数据" description="可调整日期范围或筛选条件" />
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[720px]">

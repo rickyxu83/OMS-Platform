@@ -33,6 +33,7 @@ interface SettingsForm {
     user: string;
     password: string;
     assignNotifyEnabled: boolean;
+    attendanceNotifyEnabled: boolean;
   };
   notification: {
     maintenanceExpiryEnabled: boolean;
@@ -109,6 +110,7 @@ const emptyForm: SettingsForm = {
     user: "",
     password: "",
     assignNotifyEnabled: false,
+    attendanceNotifyEnabled: true,
   },
   notification: {
     maintenanceExpiryEnabled: true,
@@ -163,6 +165,7 @@ const roleOptions = [
   ["sales_supervisor", "业务主管"],
   ["sales", "业务"],
   ["engineer", "工程师"],
+  ["purchaser", "采购"],
 ];
 
 const quickEmoji = ["📣", "⚠️", "✅", "🛠️", "📌", "📝", "🚀", "💡"];
@@ -486,6 +489,7 @@ export function SystemSettings() {
           user: item.mail?.user || "",
           password: item.mail?.password || "",
           assignNotifyEnabled: toBool(item.mail?.assignNotifyEnabled),
+          attendanceNotifyEnabled: toBool(item.mail?.attendanceNotifyEnabled ?? true),
         },
         notification: {
           maintenanceExpiryEnabled: toBool(n.maintenanceExpiryEnabled ?? true),
@@ -548,6 +552,7 @@ export function SystemSettings() {
           enabled: form.mail.enabled,
           secure: form.mail.secure,
           assignNotifyEnabled: form.mail.assignNotifyEnabled,
+          attendanceNotifyEnabled: form.mail.attendanceNotifyEnabled,
         },
         notification: form.notification,
         map: form.map,
@@ -774,6 +779,16 @@ export function SystemSettings() {
                   <Switch
                     checked={form.mail.assignNotifyEnabled}
                     onCheckedChange={(checked) => setForm({ ...form, mail: { ...form.mail, assignNotifyEnabled: checked } })}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="font-medium">考勤审批邮件</div>
+                    <div className="text-sm text-muted-foreground">请假提交、逐级审批、驳回和完成时发送邮件。</div>
+                  </div>
+                  <Switch
+                    checked={form.mail.attendanceNotifyEnabled}
+                    onCheckedChange={(checked) => setForm({ ...form, mail: { ...form.mail, attendanceNotifyEnabled: checked } })}
                   />
                 </div>
               </div>

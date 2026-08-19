@@ -2,12 +2,14 @@ const { query, transaction } = require('../config/db')
 const {
   ALL_ROLES,
   ROLE_LABELS,
+  ATTENDANCE_APPLICANT_ROLES,
   PERMISSION_ENTRIES,
   PERMISSION_KEYS,
   getDefaultPermissionMatrix,
 } = require('./catalog')
 
 const roleSet = new Set(ALL_ROLES)
+const attendanceApplicantRoleSet = new Set(ATTENDANCE_APPLICANT_ROLES)
 const permissionSet = new Set(PERMISSION_KEYS)
 const CACHE_TTL_MS = 30 * 1000
 const BUSINESS_ASSET_PERMISSIONS = Object.freeze([
@@ -19,10 +21,14 @@ const BUSINESS_ASSET_PERMISSIONS = Object.freeze([
   'maintenance-party.edit',
   'maintenance-party.delete',
 ])
+const inheritedPermissions = (role) => PERMISSION_ENTRIES
+  .filter(([, , roles]) => roles.includes(role))
+  .map(([key]) => key)
 const ROLE_PERMISSION_BASELINES = Object.freeze({
   engineer: Object.freeze(['workspace.admin']),
+  engineering_supervisor: Object.freeze(inheritedPermissions('engineer')),
   sales: BUSINESS_ASSET_PERMISSIONS,
-  sales_supervisor: BUSINESS_ASSET_PERMISSIONS,
+  sales_supervisor: Object.freeze([...new Set([...BUSINESS_ASSET_PERMISSIONS, ...inheritedPermissions('sales')])]),
 })
 const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = Object.freeze([
   'order.engineer.own',
@@ -78,7 +84,18 @@ function applyRolePermissionBaselines(matrix) {
       }
     }
   }
-  return forceAdminSuperuser(matrix)
+  forceAdminSuperuser(matrix)
+  if (permissionSet.has('attendance.apply')) {
+    for (const role of ALL_ROLES) {
+      if (!attendanceApplicantRoleSet.has(role)) matrix[role]['attendance.apply'] = false
+    }
+  }
+  if (permissionSet.has('attendance.report.export') && permissionSet.has('attendance.view')) {
+    for (const role of ALL_ROLES) {
+      if (matrix[role]?.['attendance.report.export']) matrix[role]['attendance.view'] = true
+    }
+  }
+  return matrix
 }
 
 function applyOverrides(matrix, rows = []) {
@@ -257,6 +274,7 @@ async function getDefaultWorkspaceForRole(role) {
 }
 
 module.exports = {
+  applyRolePermissionBaselines,
   ensureRolePermissionsTable,
   getRolePermissionsPayload,
   hasPermission,

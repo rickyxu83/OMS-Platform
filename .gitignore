@@ -22,8 +22,15 @@ yarn-error.log*
 # Local deployment/private agent context
 AGENTS.local.md
 docs/deploy.local.md
+docs/*.local.md
+docs/*.local.*
 scripts/deploy.local.env
+scripts/deploy.local.env.*
 .env.deploy.local
+
+# Local prototypes / scratch (not for the repo)
+prototypes/
+**/prototypes/
 
 # Local automation and session artifacts
 .playwright-mcp/
@@ -31,10 +38,16 @@ scripts/deploy.local.env
 .claude/
 .agents/
 .codex/
+.omo/
 .opencode/
 conversation-*.txt
+tmp/
 
 # Local archives/backups
 *.tgz
 *.tar.gz
 *.zip
+__pycache__/
+backend/tests/fixtures/quotations/
+
+# 指挥官工作流的并行 worktree 工作区（herdr 多 agent）

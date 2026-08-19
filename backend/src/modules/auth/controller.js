@@ -111,7 +111,8 @@ async function login(req, res) {
     )
 
     const existingUser = rows[0]
-    if (!existingUser || isLockActive(existingUser.locked_until)) {
+    const loginBlocked = !existingUser || (!env.disableLoginAccountLockout && isLockActive(existingUser.locked_until))
+    if (loginBlocked) {
       // 做一次等时哈希比对,使不存在/被锁账号与存在账号的响应耗时一致
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH)
       return invalidLoginResult()
@@ -119,6 +120,10 @@ async function login(req, res) {
 
     const passwordOk = await bcrypt.compare(password, existingUser.password_hash)
     if (!passwordOk) {
+      if (env.disableLoginAccountLockout) {
+        return invalidLoginResult()
+      }
+
       const failedLoginCount = Number(existingUser.failed_login_count || 0) + 1
       const shouldLock = failedLoginCount >= MAX_FAILED_LOGINS
 

@@ -56,6 +56,7 @@ interface PermissionPayload {
 const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   assistant: "助理",
+  assistant_supervisor: "助理主管",
   dispatcher: "调度",
   operations_director: "运营负责人",
   engineering_supervisor: "工程主管",
@@ -63,11 +64,13 @@ const ROLE_LABELS: Record<string, string> = {
   sales_supervisor: "业务主管",
   sales: "业务",
   engineer: "工程师",
+  purchaser: "采购",
 };
 
 const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "warning" | "secondary" | "rose" | "cyan" | "teal" | "orange" | "lime" | "fuchsia"> = {
   admin: "rose",
   assistant: "info",
+  assistant_supervisor: "cyan",
   dispatcher: "purple",
   operations_director: "success",
   engineering_supervisor: "info",
@@ -75,6 +78,7 @@ const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "
   sales_supervisor: "warning",
   sales: "orange",
   engineer: "fuchsia",
+  purchaser: "teal",
 };
 
 const STATUS_VARIANT: Record<string, "success" | "secondary"> = {

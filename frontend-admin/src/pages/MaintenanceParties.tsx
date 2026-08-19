@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Party {
   id: string | number;
@@ -293,7 +294,7 @@ export function MaintenanceParties() {
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [typeFilter, setTypeFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Party | null>(null);
@@ -381,6 +382,14 @@ export function MaintenanceParties() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       load(searchQuery, typeFilter);
+      // 关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+      setSearchParams((prev) => {
+        const keyword = searchQuery.trim();
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      });
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -642,6 +651,7 @@ export function MaintenanceParties() {
               <Input
                 className="pl-9"
                 placeholder={t.filters.searchPlaceholder}
+                aria-label={t.filters.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -721,7 +731,10 @@ export function MaintenanceParties() {
                 <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+              <EmptyState
+                title={t.list.empty}
+                {...(canCreateParties ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
+              />
             ) : (
                 <table className="w-full min-w-[1040px] table-fixed caption-bottom text-sm">
                   <colgroup>

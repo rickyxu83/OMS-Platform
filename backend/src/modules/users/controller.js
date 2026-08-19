@@ -7,12 +7,13 @@ const { query } = require('../../config/db')
 const { badRequest, notFound, unauthorized } = require('../../utils/http-error')
 const { isValidNormalizedPhone, normalizePhoneNumber } = require('../../utils/phone')
 const { buildLikeSearch } = require('../../utils/chinese')
+const { validateSignature } = require('../../utils/signature')
 const { ALL_ROLES } = require('../../permissions/catalog')
 const { ensureUserLoginColumns } = require('./schema')
 
 const engineerRoles = new Set(['engineer', 'engineering_supervisor'])
 const salespersonRoles = new Set(['sales', 'sales_supervisor'])
-const publicColumns = 'id, username, real_name, phone, email, login_alias, role, status, avatar_path, must_change_password, engineer_signature, last_login_at, created_at, updated_at'
+const publicColumns = 'id, username, real_name, phone, email, login_alias, role, assistant_user_id, status, avatar_path, must_change_password, engineer_signature, last_login_at, created_at, updated_at'
 const privateColumns = publicColumns
 const allowedRoles = new Set(ALL_ROLES)
 const allowedStatuses = new Set(['active', 'disabled'])
@@ -132,6 +133,7 @@ function userPayload(row) {
     phone: normalizePhoneNumber(row.phone) || row.phone,
     email: row.email,
     role: row.role,
+    assistantUserId: row.assistant_user_id || null,
     status: row.status,
     engineerSignature: row.engineer_signature || '',
     hasEngineerSignature: Boolean(row.engineer_signature),
@@ -153,18 +155,6 @@ function validatePassword(password) {
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
     throw badRequest('密码需要包含大小写字母、数字和特殊符号')
   }
-}
-
-function validateSignature(dataUrl) {
-  if (!dataUrl) return ''
-  const value = String(dataUrl)
-  if (!/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(value)) {
-    throw badRequest('签名格式不正确')
-  }
-  if (Buffer.from(value.split(',')[1], 'base64').length > 1024 * 1024) {
-    throw badRequest('签名图片过大')
-  }
-  return value
 }
 
 async function list(req, res) {
@@ -203,7 +193,7 @@ async function listEngineers(req, res) {
   const rows = await query(
     `SELECT ${publicColumns}
      FROM users
-     WHERE role = 'engineer' AND status = 'active'
+     WHERE role IN ('engineer', 'engineering_supervisor') AND status = 'active'
      ORDER BY real_name ASC`,
   )
   res.json({ items: rows.map(userPayload) })
@@ -218,6 +208,17 @@ async function listSalespeople(req, res) {
      ORDER BY real_name ASC, username ASC`,
   )
   res.json({ items: rows.map(userPayload).filter((user) => salespersonRoles.has(user.role)) })
+}
+
+async function listAssistants(_req, res) {
+  await ensureUserLoginColumns()
+  const rows = await query(
+    `SELECT ${publicColumns}
+     FROM users
+     WHERE role = 'assistant' AND status = 'active'
+     ORDER BY real_name ASC, username ASC`,
+  )
+  res.json({ items: rows.map(userPayload) })
 }
 
 async function create(req, res) {
@@ -487,6 +488,7 @@ module.exports = {
   list,
   listEngineers,
   listSalespeople,
+  listAssistants,
   create,
   update,
   remove,

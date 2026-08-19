@@ -1,4 +1,3 @@
-import { useEffect } from "react"
 import OpenCC from "opencc-js"
 import type { AppLang } from "@/contexts/LanguageContext"
 
@@ -116,6 +115,10 @@ const phraseMap: Record<string, string> = {
   "浏览器": "瀏覽器",
   "软件": "軟體",
   "网络": "網路",
+  "签核": "簽核",
+  "会签": "會簽",
+  "结账": "結帳",
+  "操作台": "操作臺",
   "文档": "文件",
   "配置文件": "設定檔",
   "日志文件": "日誌檔",
@@ -304,10 +307,14 @@ function applyPhrases(value: string, replacements: Array<[string, string]>) {
   return output
 }
 
+// OpenCC 字符级映射会把业务词“签核/会签”转成“籤核/會籤”（竹籤的籤），词组级兜底掰回“簽”。
+// 只按词组替换，不误伤抽籤/竹籤等正确用法；前置简体词组表（phraseMap）已含签核/会签。
+const traditionalPostFixes: Array<[string, string]> = [["籤核", "簽核"], ["會籤", "會簽"]]
+
 export function toTraditional(value: unknown) {
   const normalized = applyPhrases(String(value ?? "").split("...").join("…"), phrases)
   const converted = toTraditionalConverter(japaneseToSimplifiedConverter(normalized))
-  return applyPhrases(converted, phrases)
+  return applyPhrases(applyPhrases(converted, phrases), traditionalPostFixes)
 }
 
 export function toSimplified(value: unknown) {
@@ -408,6 +415,18 @@ function translateElementAttrs(element: Element, lang: AppLang) {
   }
 }
 
+function translateInputValue(element: HTMLInputElement | HTMLTextAreaElement, lang: AppLang) {
+  if (shouldSkipAttrElement(element)) return
+  if (element instanceof HTMLInputElement) {
+    const type = (element.type || "text").toLowerCase()
+    if (["number", "password", "hidden", "email", "tel", "url", "date", "time"].includes(type)) return
+  }
+  const current = element.value
+  if (!hasHan(current)) return
+  const translated = localizedText(current, lang)
+  if (current !== translated) element.value = translated
+}
+
 function translateTree(root: ParentNode, lang: AppLang) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let node = walker.nextNode()
@@ -418,6 +437,10 @@ function translateTree(root: ParentNode, lang: AppLang) {
 
   if (root instanceof Element) translateElementAttrs(root, lang)
   root.querySelectorAll?.("*").forEach((element) => translateElementAttrs(element, lang))
+  // 输入框/文本域 value 做展示型转换（切换语言时一次性；用户输入不实时转换，避免打断编辑）
+  root.querySelectorAll?.("input, textarea").forEach((element) => {
+    translateInputValue(element as HTMLInputElement | HTMLTextAreaElement, lang)
+  })
 }
 
 function restoreOriginalTree(root: ParentNode) {
@@ -473,10 +496,4 @@ export function setupAdminDomTextI18n(lang: AppLang) {
     observer.disconnect()
     restoreOriginalTree(document.body)
   }
-}
-
-export function useAdminDomTextI18n(lang: AppLang) {
-  useEffect(() => {
-    return setupAdminDomTextI18n(lang)
-  }, [lang])
 }

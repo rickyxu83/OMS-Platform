@@ -455,7 +455,7 @@ export function Amap({
                 ${clicked.address ? `<div style="color:#717182;margin-top:2px">${clicked.address}</div>` : ""}
                 ${clicked.contact ? `<div style="margin-top:4px">联系人：${clicked.contact}</div>` : ""}
                 ${clicked.phone ? `<div>电话：${clicked.phone}</div>` : ""}
-                <div style="margin-top:4px;color:#7c3aed">年服务 ${clicked.annualServices || 0} 次</div>
+                <div style="margin-top:4px;color:var(--primary)">年服务 ${clicked.annualServices || 0} 次</div>
               </div>`;
             infoWindowRef.current.setContent(html);
             infoWindowRef.current.open(map, [clicked.lng, clicked.lat]);

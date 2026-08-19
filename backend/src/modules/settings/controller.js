@@ -20,6 +20,7 @@ const settingKeys = [
   'mail.user',
   'mail.password',
   'mail.assignNotifyEnabled',
+  'mail.attendanceNotifyEnabled',
   'map.amapRestKey',
   'map.amapJsapiKey',
   'map.amapSecurityJsCode',
@@ -80,6 +81,7 @@ async function effectiveSettings() {
       user: saved['mail.user'] ?? '',
       password: saved['mail.password'] ?? '',
       assignNotifyEnabled: boolText(saved['mail.assignNotifyEnabled'], false),
+      attendanceNotifyEnabled: boolText(saved['mail.attendanceNotifyEnabled'], true),
     },
     map: {
       amapRestKey: saved['map.amapRestKey'] ?? env.amapKey,
@@ -187,6 +189,7 @@ function normalizeMailSettings(bodyMail = {}, currentMail) {
     user: String(bodyMail.user || currentMail.user || '').trim(),
     password: password && password !== HIDDEN_SECRET ? password : currentMail.password,
     assignNotifyEnabled: boolText(bodyMail.assignNotifyEnabled, currentMail.assignNotifyEnabled === 'true'),
+    attendanceNotifyEnabled: boolText(bodyMail.attendanceNotifyEnabled, currentMail.attendanceNotifyEnabled === 'true'),
   }
 }
 
@@ -231,6 +234,7 @@ async function update(req, res) {
     next['mail.from'] = mail.from
     next['mail.user'] = mail.user
     next['mail.assignNotifyEnabled'] = mail.assignNotifyEnabled
+    next['mail.attendanceNotifyEnabled'] = mail.attendanceNotifyEnabled
     next['mail.password'] = mail.password
   }
 

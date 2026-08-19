@@ -1,11 +1,13 @@
 {
   "name": "oms-platform-admin",
   "private": true,
-  "version": "26.0815.1442",
+  "version": "26.0820.0137",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "test": "node --test --experimental-strip-types tests/service-order-detail.test.ts",
+    "test:mr": "node --experimental-strip-types src/packages/mr/lib/form-logic.check.ts",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -17,7 +19,6 @@
     "@radix-ui/react-separator": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-switch": "^1.1.3",
-    "antd": "^6.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",

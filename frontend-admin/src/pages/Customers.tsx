@@ -22,6 +22,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
+import { formatCount } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { toast } from "sonner";
 
 interface Customer {
@@ -32,6 +35,7 @@ interface Customer {
   contactPhone?: string;
   phone?: string;
   address?: string;
+  salesDeliveryAddress?: string;
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -43,7 +47,7 @@ interface Customer {
   salesperson?: string;
   updatedAt?: string;
   createdAt?: string;
-  contacts?: Array<{ id?: string | number; name?: string; phone?: string }>;
+  contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>;
 }
 
 interface CustomerDevice {
@@ -99,7 +103,7 @@ interface CustomerDeletePreview {
     devices: CustomerDevice[];
     serviceOrders: CustomerOrder[];
     inspectionSchedules: CustomerSchedule[];
-    contacts: Array<{ id: string | number; name?: string; phone?: string; useCount?: number }>;
+    contacts: Array<{ id: string | number; name?: string; phone?: string; email?: string; useCount?: number }>;
   };
   previewLimit?: number;
 }
@@ -112,7 +116,7 @@ interface GeoCandidate {
   location?: string;
   contactName?: string;
   contactPhone?: string;
-  contacts?: { name: string; phone?: string }[];
+  contacts?: { name: string; phone?: string; email?: string }[];
   latitude?: number | null;
   longitude?: number | null;
   mapProvider?: string;
@@ -135,6 +139,7 @@ interface CustomerForm {
   code: string;
   salesperson: string;
   address: string;
+  salesDeliveryAddress: string;
   level: string;
   latitude: number | null;
   longitude: number | null;
@@ -142,7 +147,7 @@ interface CustomerForm {
   mapPoiId: string;
   mapPoiName: string;
   mapAddress: string;
-  contacts: Array<{ id?: string | number; name: string; phone: string }>;
+  contacts: Array<{ id?: string | number; name: string; phone: string; email: string }>;
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -150,6 +155,7 @@ const EMPTY_FORM: CustomerForm = {
   code: "",
   salesperson: "",
   address: "",
+  salesDeliveryAddress: "",
   level: "normal",
   latitude: null,
   longitude: null,
@@ -157,7 +163,7 @@ const EMPTY_FORM: CustomerForm = {
   mapPoiId: "",
   mapPoiName: "",
   mapAddress: "",
-  contacts: [{ name: "", phone: "" }],
+  contacts: [{ name: "", phone: "", email: "" }],
 };
 
 const I18N = {
@@ -204,6 +210,7 @@ const I18N = {
       address: "地址",
       salesperson: "业务",
       action: "操作",
+      coordsLabel: "坐标",
       selectAllCurrent: "全选当前列表",
     },
     dialog: {
@@ -216,13 +223,17 @@ const I18N = {
       salesperson: "对应销售",
       contact: "联系人",
       phone: "联系电话",
-      address: "客户地址",
+      address: "工程服务地址",
+      salesDeliveryAddress: "销售交付地址",
       namePlaceholder: "请输入企业全称",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "请选择对应销售",
       contactPlaceholder: "联系人姓名",
       phonePlaceholder: "手机号或座机",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "详细至街道门牌号",
+      salesDeliveryAddressPlaceholder: "填写销售订购时使用的收货地址",
+      salesDeliveryAddressHelp: "仅用于 MR 交付地点，不会覆盖工程工单使用的客户地址。",
       coordinateLabel: "坐标与地图匹配",
       coordinatePlaceholder: "输入客户名称后自动搜索地图候选",
       level: "客户等级",
@@ -231,6 +242,7 @@ const I18N = {
       contacts: "联系人列表",
       contactName: "联系人姓名",
       contactPhone: "联系人电话",
+      contactEmail: "联系人邮箱",
       badgeSystem: "系统",
       badgeMap: "地图",
       selectedCoordinate: "已选坐标",
@@ -380,6 +392,7 @@ const I18N = {
       address: "地址",
       salesperson: "業務",
       action: "操作",
+      coordsLabel: "座標",
       selectAllCurrent: "全選目前列表",
     },
     dialog: {
@@ -392,13 +405,17 @@ const I18N = {
       salesperson: "對應銷售",
       contact: "聯絡人",
       phone: "聯絡電話",
-      address: "客戶地址",
+      address: "工程服務地址",
+      salesDeliveryAddress: "銷售交付地址",
       namePlaceholder: "請輸入企業全稱",
       codePlaceholder: "例如 SZGY-001（可留空）",
       salespersonPlaceholder: "請選擇對應銷售",
       contactPlaceholder: "聯絡人姓名",
       phonePlaceholder: "手機號或市話",
+      emailPlaceholder: "name@example.com",
       addressPlaceholder: "詳細至街道路牌號",
+      salesDeliveryAddressPlaceholder: "填寫銷售訂購時使用的收貨地址",
+      salesDeliveryAddressHelp: "僅用於 MR 交付地點，不會覆蓋工程工單使用的客戶地址。",
       coordinateLabel: "座標與地圖匹配",
       coordinatePlaceholder: "輸入客戶名稱後自動搜尋地圖候選",
       level: "客戶等級",
@@ -407,6 +424,7 @@ const I18N = {
       contacts: "聯絡人列表",
       contactName: "聯絡人姓名",
       contactPhone: "聯絡人電話",
+      contactEmail: "聯絡人信箱",
       badgeSystem: "系統",
       badgeMap: "地圖",
       selectedCoordinate: "已選座標",
@@ -554,6 +572,7 @@ const CADENCE_LABELS: Record<string, string> = {
   weekly: "每周",
 };
 
+const SALES_DELIVERY_ADDRESS_ROLES = new Set(["admin", "assistant", "operations_director", "sales_supervisor", "sales"]);
 const CUSTOMER_DELETE_ROLES = new Set([
   "admin",
   "assistant",
@@ -687,6 +706,7 @@ export function Customers() {
   const customerCandidateRef = useRef<HTMLDivElement | null>(null);
   const userRole = String(user?.role || "");
   const canManageCustomer = hasPermission("customer.create", "customer.edit");
+  const canManageSalesDeliveryAddress = SALES_DELIVERY_ADDRESS_ROLES.has(userRole);
   const canDeleteCustomer = hasPermission("customer.delete");
   const canForceDeleteCustomer = canDeleteCustomer;
   const canMergeCustomer = hasPermission("customer.merge");
@@ -694,7 +714,7 @@ export function Customers() {
   const customerListGrid = canDeleteCustomer ? CUSTOMER_LIST_GRID : CUSTOMER_LIST_READONLY_GRID;
   const customerListMinWidth = canDeleteCustomer ? "min-w-[1180px]" : "min-w-[1136px]";
 
-  const primaryContact = form.contacts[0] || { name: "", phone: "" };
+  const primaryContact = form.contacts[0] || { name: "", phone: "", email: "" };
   const salespersonOptions = useMemo(() => {
     const options = userRole === "sales"
       ? [currentSalespersonName].filter(Boolean)
@@ -806,6 +826,14 @@ export function Customers() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       load(searchQuery);
+      // 关键词写回 URL（replace 不刷历史），刷新/分享链接可恢复搜索态
+      setSearchParams((prev) => {
+        const keyword = searchQuery.trim();
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      });
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -987,8 +1015,9 @@ export function Customers() {
           id: contact.id,
           name: contact.name || "",
           phone: contact.phone || "",
+          email: contact.email || "",
         }))
-      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "" }]
+      : [{ name: c.contactName || "", phone: c.contactPhone || c.phone || "", email: "" }]
     setEditingId(c.id);
     setForm({
       id: c.id,
@@ -996,6 +1025,7 @@ export function Customers() {
       code: c.code || "",
       salesperson: c.salesperson || "",
       address: c.address || "",
+      salesDeliveryAddress: c.salesDeliveryAddress || "",
       level: c.level || "normal",
       latitude,
       longitude,
@@ -1093,7 +1123,7 @@ export function Customers() {
   function applyCandidate(company: GeoCandidate) {
     const coordinates = candidateCoordinates(company);
     setForm((prev) => {
-      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "" }]
+      const currentContacts = prev.contacts.length ? [...prev.contacts] : [{ name: "", phone: "", email: "" }]
       if (company.contactName || company.contactPhone) {
         currentContacts[0] = {
           ...currentContacts[0],
@@ -1198,7 +1228,7 @@ export function Customers() {
     );
   }
 
-  function updateContact(index: number, field: "name" | "phone", value: string) {
+  function updateContact(index: number, field: "name" | "phone" | "email", value: string) {
     setForm((prev) => ({
       ...prev,
       contacts: prev.contacts.map((contact, contactIndex) => (
@@ -1210,7 +1240,7 @@ export function Customers() {
   function addContact() {
     setForm((prev) => ({
       ...prev,
-      contacts: [...prev.contacts, { name: "", phone: "" }],
+      contacts: [...prev.contacts, { name: "", phone: "", email: "" }],
     }));
   }
 
@@ -1219,7 +1249,7 @@ export function Customers() {
       const nextContacts = prev.contacts.filter((_, contactIndex) => contactIndex !== index)
       return {
         ...prev,
-        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "" }],
+        contacts: nextContacts.length ? nextContacts : [{ name: "", phone: "", email: "" }],
       };
     });
   }
@@ -1244,6 +1274,115 @@ export function Customers() {
     setDeletePreviewError("");
     setDeleteTarget(c);
     loadDeletePreview(c.id).catch(() => undefined);
+  }
+
+  /** 移动端客户卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderCustomerCard(c: Customer) {
+    const lv = levelOf(c);
+    const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+    const selected = selectedCustomerIds.includes(String(c.id));
+    return (
+      <ResponsiveCard
+        onClick={() => openCustomerDetail(c)}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            {canDeleteCustomer ? (
+              <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
+                  disabled={deleting}
+                  aria-label={`选择客户 ${c.name || c.id}`}
+                />
+              </span>
+            ) : null}
+            <Building2 className="h-4 w-4 shrink-0 text-primary" />
+            {c.name ? (
+              <button
+                type="button"
+                className="min-w-0 truncate text-left hover:text-primary hover:underline"
+                title={c.name}
+                onClick={(event) => filterByCustomerName(event, c.name)}
+              >
+                {c.name}
+              </button>
+            ) : (
+              <span className="truncate">{t.misc.unknown}</span>
+            )}
+          </span>
+        }
+        status={(
+          <Badge
+            role="button"
+            tabIndex={0}
+            variant={LEVEL_VARIANT[lv] || "secondary"}
+            className={`cursor-pointer ${levelFilter === lv ? "ring-2 ring-primary/30" : ""}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleLevelFilter(lv);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleLevelFilter(lv);
+              }
+            }}
+          >
+            {lvLabel}
+          </Badge>
+        )}
+        subtitle={c.salesperson ? `${t.list.salesperson}：${c.salesperson}` : undefined}
+        fields={[
+          { label: t.list.contact, value: c.contactName || t.misc.unknown },
+          { label: t.list.phone, value: renderPhoneLink(c.contactPhone || c.phone, true) },
+          { label: t.list.address, value: c.address || t.misc.unknown },
+          ...(c.latitude && c.longitude
+            ? [{
+                label: t.list.coordsLabel,
+                value: (
+                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                    <MapPin className="h-3 w-3" />
+                    {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
+                  </span>
+                ),
+              }]
+            : []),
+        ]}
+        actions={(
+          <>
+            {canManageCustomer ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(c);
+                }}
+              >
+                <Pencil className="w-4 h-4 mr-1" />
+                {t.actions.edit}
+              </Button>
+            ) : null}
+            {canDeleteCustomer ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDelete(c);
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                {t.actions.delete}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
+    );
   }
 
   function openMergeDialog() {
@@ -1390,6 +1529,7 @@ export function Customers() {
         contactName: primaryContact.name.trim() || undefined,
         contactPhone: primaryContact.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        ...(canManageSalesDeliveryAddress ? { salesDeliveryAddress: form.salesDeliveryAddress.trim() || null } : {}),
         latitude: form.latitude,
         longitude: form.longitude,
         mapProvider: form.mapProvider || null,
@@ -1402,6 +1542,7 @@ export function Customers() {
             ...(contact.id ? { id: contact.id } : {}),
             name: contact.name.trim(),
             phone: contact.phone.trim() || undefined,
+            email: contact.email.trim() || undefined,
           }))
           .filter((contact) => contact.name),
       };
@@ -1452,7 +1593,7 @@ export function Customers() {
                                 {initialLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
               </div>
             </CardContent>
@@ -1492,6 +1633,7 @@ export function Customers() {
                 <Input
                   className="pl-9"
                   placeholder={t.list.searchPlaceholder}
+                  aria-label={t.list.searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => {
@@ -1555,8 +1697,12 @@ export function Customers() {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.list.empty}</div>
+              <EmptyState
+                title={t.list.empty}
+                {...(canManageCustomer ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
+              />
             ) : (
+              <ResponsiveList items={filtered} keyExtractor={(c) => c.id} renderCard={renderCustomerCard}>
               <div className={customerListMinWidth}>
                 <div className={`sticky top-0 z-10 grid border-b bg-muted/70 px-2 py-2 text-xs font-medium text-muted-foreground backdrop-blur ${customerListGrid} items-center gap-0`}>
                   {canDeleteCustomer ? <div className="text-center" aria-hidden="true" /> : null}
@@ -1694,6 +1840,7 @@ export function Customers() {
                     );
                   })}
               </div>
+              </ResponsiveList>
             )}
           </div>
         </CardContent>
@@ -1783,7 +1930,7 @@ export function Customers() {
             const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
             const contacts = detailTarget.contacts?.length
               ? detailTarget.contacts
-              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "" }]
+              : [{ name: detailTarget.contactName || "", phone: detailTarget.contactPhone || detailTarget.phone || "", email: "" }]
             const devices = detailInsight?.devices || [];
             const schedules = detailInsight?.schedules || [];
             const orders = detailInsight?.orders || [];
@@ -1883,10 +2030,11 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.contacts}</div>
                           <div className="mt-3 space-y-2">
-                            {contacts.some((contact) => contact.name || contact.phone) ? contacts.map((contact, index) => (
+                            {contacts.some((contact) => contact.name || contact.phone || contact.email) ? contacts.map((contact, index) => (
                               <div key={contact.id ?? `detail-contact-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
                                 <div className="text-sm font-medium">{contact.name || t.misc.unknown}</div>
                                 <div className="text-xs text-muted-foreground">{renderPhoneLink(contact.phone)}</div>
+                                {contact.email ? <a className="text-xs text-primary hover:underline" href={`mailto:${contact.email}`}>{contact.email}</a> : null}
                               </div>
                             )) : (
                               <div className="text-sm text-muted-foreground">{t.dialog.noContacts}</div>
@@ -1897,6 +2045,12 @@ export function Customers() {
                         <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.address}</div>
                           <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
+                          {canManageSalesDeliveryAddress && detailTarget.salesDeliveryAddress ? (
+                            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                              <div className="text-xs font-medium text-amber-900">{t.dialog.salesDeliveryAddress}</div>
+                              <div className="mt-1 text-sm text-slate-700">{detailTarget.salesDeliveryAddress}</div>
+                            </div>
+                          ) : null}
                           <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
                             {detailTarget.latitude != null && detailTarget.longitude != null ? (
                               <div className="flex items-start gap-2">
@@ -2080,7 +2234,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
@@ -2147,6 +2301,19 @@ export function Customers() {
                   </Button>
                 </div>
               </div>
+
+              {canManageSalesDeliveryAddress ? (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                  <Label htmlFor="cust-sales-delivery-address">{t.dialog.salesDeliveryAddress}</Label>
+                  <Input
+                    id="cust-sales-delivery-address"
+                    value={form.salesDeliveryAddress}
+                    onChange={(e) => setForm({ ...form, salesDeliveryAddress: e.target.value })}
+                    placeholder={t.dialog.salesDeliveryAddressPlaceholder}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.dialog.salesDeliveryAddressHelp}</p>
+                </div>
+              ) : null}
 
               {showCandidates && candidates.length > 0 ? (
                 <div className="border rounded-lg bg-white shadow-sm max-h-[200px] overflow-y-auto">
@@ -2264,7 +2431,7 @@ export function Customers() {
               </div>
               <div className="space-y-3">
                 {form.contacts.map((contact, index) => (
-                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
+                  <div key={contact.id ?? `contact-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end rounded-lg border p-3">
                     <div className="space-y-2">
                       <Label>{t.dialog.contactName}</Label>
                       <Input
@@ -2279,6 +2446,16 @@ export function Customers() {
                         value={contact.phone}
                         onChange={(e) => updateContact(index, "phone", e.target.value)}
                         placeholder={t.dialog.phonePlaceholder}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t.dialog.contactEmail}</Label>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        value={contact.email}
+                        onChange={(e) => updateContact(index, "email", e.target.value)}
+                        placeholder={t.dialog.emailPlaceholder}
                       />
                     </div>
                     <Button
@@ -2398,6 +2575,7 @@ export function Customers() {
                             <div key={`delete-contact-${contact.id}`} className="rounded-md bg-slate-50 px-3 py-2">
                               <div className="font-medium text-slate-900">{contact.name || t.misc.unknown}</div>
                               <div className="text-xs text-muted-foreground">{contact.phone || t.misc.unknown}</div>
+                              {contact.email ? <div className="text-xs text-muted-foreground">{contact.email}</div> : null}
                             </div>
                           ))}
                         </div>

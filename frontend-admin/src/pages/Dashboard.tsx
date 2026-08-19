@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Download, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import { MarkdownContent } from "@/lib/markdown";
 import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { Sparkline } from "@/components/Sparkline";
 import { api, fetchSummaryStream } from "@/services/api";
+import { formatCount } from "@/lib/format";
 
 interface Summary {
   todayTotal?: number;
@@ -280,6 +283,7 @@ const I18N = {
     subtitle: "系统运行状态、服务工单及客户地理分布实时监测",
     searchPlaceholder: "快速搜索工单或客户…",
     exportReport: "AI 运营总结",
+    unnamed: "未命名",
     reportDialog: {
       title: "AI 运营总结",
       description: "选择统计日期，使用 AI 根据工单生成运营总结并显示在当前页面。",
@@ -294,6 +298,7 @@ const I18N = {
       allCustomers: "全部客户",
       cancel: "取消",
       submit: "生成总结",
+      regenerate: "重新生成",
       invalidRange: "开始日期不能晚于结束日期",
       progressTitle: "AI 总结生成中",
       progress: {
@@ -314,6 +319,8 @@ const I18N = {
       monthCustomers: "本月客户数量",
       monthEngineerVisits: "本月工程师拜访数",
       realtime: "实时统计",
+      trend14: "近 14 天工单量",
+      vsAvg: "较 14 日均值",
     },
     map: {
       title: "客户地理分布",
@@ -352,6 +359,36 @@ const I18N = {
       unnamedContact: "未维护联系人",
       unnamedEngineer: "未指定",
       unnamedDevice: "未指定设备",
+      serviceTime: "服务时间",
+      result: "处理结果",
+      resultDescription: "结果说明",
+      customerConfirm: "客户确认人",
+      signature: "客户签名",
+      signatureHistory: "已使用历史签名",
+      signatureOnsite: "已完成现场签名",
+      signatureRemoteNone: "远程服务无需客户手写签名",
+      deviceModel: "设备型号",
+      devicePn: "料号 / PN",
+      deviceSerialNo: "序列号 / SN",
+      deviceRemark: "设备备注",
+      partsBlock: "备件与硬件部件",
+      attachmentsBlock: "附件",
+      resultResolved: "已完成",
+      resultUnresolved: "未完成",
+      resultFollowUp: "需后续跟进",
+      partReplacement: "更换",
+      partInstallation: "安装",
+      partRecord: "记录",
+      unnamedPart: "未命名部件",
+      quantityLabel: "数量",
+      issueOffice: "内勤工作事项",
+      issueDefault: "服务需求说明",
+      workOffice: "工作内容",
+      workRepair: "技术处理记录",
+      workInspect: "巡检处理记录",
+      workOnsite: "现场处理记录",
+      workRemote: "远程支持记录",
+      workDefault: "处理记录",
     },
     errors: {
       loadFailed: "加载失败",
@@ -394,6 +431,7 @@ const I18N = {
     subtitle: "系統運行狀態、服務工單及客戶地理分佈即時監測",
     searchPlaceholder: "快速搜尋工單或客戶…",
     exportReport: "AI 營運總結",
+    unnamed: "未命名",
     reportDialog: {
       title: "AI 營運總結",
       description: "選擇統計日期，使用 AI 根據服務記錄生成營運總結並顯示在目前頁面。",
@@ -408,6 +446,7 @@ const I18N = {
       allCustomers: "全部客戶",
       cancel: "取消",
       submit: "生成總結",
+      regenerate: "重新生成",
       invalidRange: "開始日期不能晚於結束日期",
       progressTitle: "AI 總結產生中",
       progress: {
@@ -428,6 +467,8 @@ const I18N = {
       monthCustomers: "本月客戶數量",
       monthEngineerVisits: "本月工程師拜訪數",
       realtime: "即時統計",
+      trend14: "近 14 天工單量",
+      vsAvg: "較 14 日均值",
     },
     map: {
       title: "客戶地理分佈",
@@ -466,6 +507,36 @@ const I18N = {
       unnamedContact: "未維護聯絡人",
       unnamedEngineer: "未指定",
       unnamedDevice: "未指定設備",
+      serviceTime: "服務時間",
+      result: "處理結果",
+      resultDescription: "結果說明",
+      customerConfirm: "客戶確認人",
+      signature: "客戶簽名",
+      signatureHistory: "已使用歷史簽名",
+      signatureOnsite: "已完成現場簽名",
+      signatureRemoteNone: "遠程服務無需客戶手寫簽名",
+      deviceModel: "設備型號",
+      devicePn: "料號 / PN",
+      deviceSerialNo: "序列號 / SN",
+      deviceRemark: "設備備註",
+      partsBlock: "備件與硬體部件",
+      attachmentsBlock: "附件",
+      resultResolved: "已完成",
+      resultUnresolved: "未完成",
+      resultFollowUp: "需後續跟進",
+      partReplacement: "更換",
+      partInstallation: "安裝",
+      partRecord: "記錄",
+      unnamedPart: "未命名部件",
+      quantityLabel: "數量",
+      issueOffice: "內勤工作事項",
+      issueDefault: "服務需求說明",
+      workOffice: "工作內容",
+      workRepair: "技術處理記錄",
+      workInspect: "巡檢處理記錄",
+      workOnsite: "現場處理記錄",
+      workRemote: "遠程支持記錄",
+      workDefault: "處理記錄",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -603,53 +674,55 @@ function reportWorkContent(order: Order) {
   return order.report?.workContent || entries;
 }
 
-function resultLabel(value?: string) {
-  if (value === "resolved") return "已完成";
-  if (value === "unresolved") return "未完成";
-  if (value === "follow_up_required") return "需后续跟进";
+type DetailStrings = { [K in keyof (typeof I18N)["zh-CN"]["detail"]]: string };
+
+function resultLabel(value: string | undefined, detail: DetailStrings) {
+  if (value === "resolved") return detail.resultResolved;
+  if (value === "unresolved") return detail.resultUnresolved;
+  if (value === "follow_up_required") return detail.resultFollowUp;
   return value || "";
 }
 
-function partActionLabel(value?: string) {
-  if (value === "replacement") return "更换";
-  if (value === "installation") return "安装";
-  return "记录";
+function partActionLabel(value: string | undefined, detail: DetailStrings) {
+  if (value === "replacement") return detail.partReplacement;
+  if (value === "installation") return detail.partInstallation;
+  return detail.partRecord;
 }
 
-function partsSummary(order: Order) {
+function partsSummary(order: Order, detail: DetailStrings) {
   return (order.parts || [])
     .map((part) => {
-      const name = part.partName || part.part_name || "未命名部件";
+      const name = part.partName || part.part_name || detail.unnamedPart;
       const pn = part.partNo || part.part_no ? `PN ${part.partNo || part.part_no}` : "";
       const quantity = [part.quantity, part.unit].filter(Boolean).join("");
-      const details = [pn, quantity ? `数量 ${quantity}` : "", part.remark].filter(Boolean);
-      return `${partActionLabel(part.actionType || part.action_type)} ${name}${details.length ? `（${details.join("，")}）` : ""}`;
+      const details = [pn, quantity ? `${detail.quantityLabel} ${quantity}` : "", part.remark].filter(Boolean);
+      return `${partActionLabel(part.actionType || part.action_type, detail)} ${name}${details.length ? `（${details.join("，")}）` : ""}`;
     })
     .filter(Boolean)
     .join("\n");
 }
 
-function filesSummary(order: Order) {
+function filesSummary(order: Order, detail: DetailStrings) {
   const files = (order.files || []).filter((file) => file.ownerType !== "signature");
   if (!files.length) return "";
-  return files.map((file) => file.originalName || `附件 #${file.id}`).join("\n");
+  return files.map((file) => file.originalName || `${detail.attachmentsBlock} #${file.id}`).join("\n");
 }
 
-function issuePreviewLabel(order: Order) {
-  if (order.serviceMode === "office") return "内勤工作事项";
-  return "服务需求说明";
+function issuePreviewLabel(order: Order, detail: DetailStrings) {
+  if (order.serviceMode === "office") return detail.issueOffice;
+  return detail.issueDefault;
 }
 
-function workContentPreviewLabel(order: Order) {
-  if (order.serviceMode === "office") return "工作内容";
+function workContentPreviewLabel(order: Order, detail: DetailStrings) {
+  if (order.serviceMode === "office") return detail.workOffice;
   const modules = Array.isArray(order.serviceModules) ? order.serviceModules : [];
   if (order.serviceMode === "onsite") {
-    if (modules.includes("repair")) return "技术处理记录";
-    if (modules.includes("inspect") || order.serviceType === "inspect") return "巡检处理记录";
-    return "现场处理记录";
+    if (modules.includes("repair")) return detail.workRepair;
+    if (modules.includes("inspect") || order.serviceType === "inspect") return detail.workInspect;
+    return detail.workOnsite;
   }
-  if (order.serviceMode === "remote" && modules.includes("repair")) return "远程支持记录";
-  return "处理记录";
+  if (order.serviceMode === "remote" && modules.includes("repair")) return detail.workRemote;
+  return detail.workDefault;
 }
 
 function samePreviewText(a?: string, b?: string) {
@@ -704,6 +777,7 @@ export function Dashboard() {
   const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales" && !useOwnScope;
   const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
+  const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -750,6 +824,7 @@ export function Dashboard() {
         ]);
         if (cancelled) return;
         setSummary(stats?.summary || {});
+        setTrend(Array.isArray(stats?.trend) ? stats.trend : []);
         const items = (stats?.recent || orderRes?.items || []) as Order[];
         setOrders(items);
         const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
@@ -758,7 +833,7 @@ export function Dashboard() {
           (Array.isArray(rawCustomers) ? rawCustomers : [])
             .map((c: any) => ({
               id: c.id,
-              name: c.name || c.customerName || "未命名",
+              name: c.name || c.customerName || t.unnamed,
               lng: Number(c.longitude ?? c.lng ?? c.lon),
               lat: Number(c.latitude ?? c.lat),
               annualServices: c.annualServices ?? c.serviceOrderCount ?? c.orderCount ?? c.useCount ?? 0,
@@ -791,11 +866,20 @@ export function Dashboard() {
     }).catch(() => undefined);
   }, [canSelectReportEngineer, canSelectReportSalesperson, canUseWorkSummary]);
 
+  const orderTrend = trend.map((point) => Number(point.total) || 0);
+  const todayTrendCount = trend.length ? Number(trend[trend.length - 1]?.total) || 0 : null;
+  const previousTrendDays = trend.slice(0, -1).map((point) => Number(point.total) || 0);
+  const avgPreviousTrend = previousTrendDays.length
+    ? previousTrendDays.reduce((sum, value) => sum + value, 0) / previousTrendDays.length
+    : 0;
+  const todayDelta = todayTrendCount !== null && avgPreviousTrend > 0
+    ? (todayTrendCount - avgPreviousTrend) / avgPreviousTrend
+    : null;
   const stats = [
-    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50" },
-    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50" },
+    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
+    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
+    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
+    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
   ];
   const displayWorkSummary = normalizeWorkSummaryForDisplay(workSummary?.summary);
 
@@ -919,6 +1003,7 @@ export function Dashboard() {
             <Input
               className="h-10 w-full bg-card pl-9"
               placeholder={t.searchPlaceholder}
+              aria-label={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -932,7 +1017,7 @@ export function Dashboard() {
           </Button>
           {canUseWorkSummary && (
             <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
               {t.exportReport}
             </Button>
           )}
@@ -964,12 +1049,33 @@ export function Dashboard() {
                         className="stat-value-enter inline-block"
                         style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
                       >
-                        {stat.value}
+                        {formatCount(stat.value)}
                       </span>
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                {loading ? (
+                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                ) : stat.spark ? (
+                  <div className="mt-2">
+                    <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
+                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
+                  </div>
+                ) : stat.delta !== null && stat.delta !== undefined ? (
+                  <p className="mt-2 flex items-center gap-1 text-xs">
+                    {stat.delta >= 0 ? (
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                    ) : (
+                      <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                    )}
+                    <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
+                      {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
+                    </span>
+                    <span className="text-muted-foreground">{t.stats.vsAvg}</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
+                )}
               </CardContent>
             </Card>
           );
@@ -981,7 +1087,7 @@ export function Dashboard() {
           <CardHeader>
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
-                <CardTitle>{lang === "zh-TW" ? "AI 營運總結" : "AI 运营总结"}</CardTitle>
+                <CardTitle>{t.reportDialog.title}</CardTitle>
                 <CardDescription className="truncate">
                   {workSummaryRange || "—"}
                   {workSummary.available && (workSummary.provider || workSummary.usage?.model)
@@ -991,7 +1097,7 @@ export function Dashboard() {
               </div>
               <Button className="shrink-0 whitespace-nowrap" variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
                 {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : null}
-                重新生成
+                {t.reportDialog.regenerate}
               </Button>
             </div>
           </CardHeader>
@@ -1114,10 +1220,10 @@ export function Dashboard() {
             fitView={false}
             fullscreenable
             fullscreenStats={[
-              { label: "今日工单", value: summary.todayTotal ?? 0 },
-              { label: "本月工单", value: summary.monthTotal ?? 0, tone: "accent" },
-              { label: "本月服务客户", value: summary.monthCustomers ?? 0, tone: "green" },
-              { label: "本月工程师出勤", value: summary.monthEngineerVisits ?? 0, tone: "red" },
+              { label: t.stats.todayTotal, value: summary.todayTotal ?? 0 },
+              { label: t.stats.monthTotal, value: summary.monthTotal ?? 0, tone: "accent" },
+              { label: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, tone: "green" },
+              { label: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, tone: "red" },
             ]}
           />
         </section>
@@ -1136,7 +1242,7 @@ export function Dashboard() {
                   <span className="btn-loader mr-2" aria-hidden="true" /> {t.recent.loading}
                 </div>
               ) : recentOrders.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t.recent.empty}</div>
+                <EmptyState title={t.recent.empty} />
               ) : (
                 <div className="space-y-1.5">
                   {recentOrders.map((order) => (
@@ -1221,16 +1327,16 @@ export function Dashboard() {
               const displayWorkContent = previewOrder.serviceMode === "office"
                 ? workContent
                 : samePreviewText(previewOrder.issueDescription, workContent) ? "" : workContent;
-              const resultText = resultLabel(previewOrder.report?.result);
+              const resultText = resultLabel(previewOrder.report?.result, t.detail);
               const signatureText = previewOrder.serviceMode === "onsite"
                 ? previewOrder.report?.customerSignatureFileId
-                  ? "已使用历史签名"
+                  ? t.detail.signatureHistory
                   : previewOrder.report?.customerSignature
-                    ? "已完成现场签名"
+                    ? t.detail.signatureOnsite
                     : ""
-                : previewOrder.serviceMode === "remote" ? "远程服务无需客户手写签名" : "";
-              const partText = partsSummary(previewOrder);
-              const fileText = filesSummary(previewOrder);
+                : previewOrder.serviceMode === "remote" ? t.detail.signatureRemoteNone : "";
+              const partText = partsSummary(previewOrder, t.detail);
+              const fileText = filesSummary(previewOrder, t.detail);
               return (
                 <div className="space-y-5 py-2">
                   <div className="flex flex-wrap gap-2">
@@ -1248,35 +1354,35 @@ export function Dashboard() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
-                    <PreviewField label="服务时间" value={serviceTime} />
+                    <PreviewField label={t.detail.serviceTime} value={serviceTime} />
                     <PreviewField label={t.detail.createdAt} value={formatDateTime(previewOrder.createdAt)} />
                     <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
                     <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />
                     <PreviewField label={t.detail.salesperson} value={previewOrder.timesheetSalesperson} />
                   </div>
 
-                  <PreviewBlock label={issuePreviewLabel(previewOrder)} value={previewOrder.issueDescription} markdown />
-                  {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder)} value={displayWorkContent} markdown /> : null}
+                  <PreviewBlock label={issuePreviewLabel(previewOrder, t.detail)} value={previewOrder.issueDescription} markdown />
+                  {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder, t.detail)} value={displayWorkContent} markdown /> : null}
                   {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
                     <div className="grid gap-4 md:grid-cols-3">
-                      {resultText ? <PreviewField label="处理结果" value={resultText} /> : null}
-                      {previewOrder.report?.resultDescription ? <PreviewField label="结果说明" value={previewOrder.report.resultDescription} /> : null}
+                      {resultText ? <PreviewField label={t.detail.result} value={resultText} /> : null}
+                      {previewOrder.report?.resultDescription ? <PreviewField label={t.detail.resultDescription} value={previewOrder.report.resultDescription} /> : null}
                       {previewOrder.report?.customerConfirmName || previewOrder.report?.customerName ? (
-                        <PreviewField label="客户确认人" value={previewOrder.report?.customerConfirmName || previewOrder.report?.customerName} />
+                        <PreviewField label={t.detail.customerConfirm} value={previewOrder.report?.customerConfirmName || previewOrder.report?.customerName} />
                       ) : null}
-                      {signatureText ? <PreviewField label="客户签名" value={signatureText} /> : null}
+                      {signatureText ? <PreviewField label={t.detail.signature} value={signatureText} /> : null}
                     </div>
                   ) : null}
                   {(previewOrder.deviceModel || previewOrder.devicePn || previewOrder.deviceSerialNo || previewOrder.deviceRemark) ? (
                     <div className="grid gap-4 md:grid-cols-3">
-                      <PreviewField label="设备型号" value={previewOrder.deviceModel} />
-                      <PreviewField label="料号 / PN" value={previewOrder.devicePn} />
-                      <PreviewField label="序列号 / SN" value={previewOrder.deviceSerialNo} />
-                      <PreviewField label="设备备注" value={previewOrder.deviceRemark} />
+                      <PreviewField label={t.detail.deviceModel} value={previewOrder.deviceModel} />
+                      <PreviewField label={t.detail.devicePn} value={previewOrder.devicePn} />
+                      <PreviewField label={t.detail.deviceSerialNo} value={previewOrder.deviceSerialNo} />
+                      <PreviewField label={t.detail.deviceRemark} value={previewOrder.deviceRemark} />
                     </div>
                   ) : null}
-                  {partText ? <PreviewBlock label="备件与硬件部件" value={partText} markdown /> : null}
-                  {fileText ? <PreviewBlock label="附件" value={fileText} markdown /> : null}
+                  {partText ? <PreviewBlock label={t.detail.partsBlock} value={partText} markdown /> : null}
+                  {fileText ? <PreviewBlock label={t.detail.attachmentsBlock} value={fileText} markdown /> : null}
                 </div>
               );
             })() : null}
@@ -1397,7 +1503,7 @@ export function Dashboard() {
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>

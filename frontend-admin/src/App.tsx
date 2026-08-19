@@ -4,53 +4,69 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
+import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })))
+const ApprovalTasks = lazy(() => import("@/pages/ApprovalTasks").then((module) => ({ default: module.ApprovalTasks })))
 const ServiceReport = lazy(() => import("@/pages/ServiceReport").then((module) => ({ default: module.ServiceReport })))
 const CustomerSignature = lazy(() => import("@/pages/CustomerSignature").then((module) => ({ default: module.CustomerSignature })))
+const EngineerSignature = lazy(() => import("@/pages/EngineerSignature").then((module) => ({ default: module.EngineerSignature })))
 const ServiceOrders = lazy(() => import("@/pages/ServiceOrders").then((module) => ({ default: module.ServiceOrders })))
+const MrListPage = lazy(() => import("@/packages/mr/MrListPage").then((module) => ({ default: module.MrListPage })))
+const MrFormPage = lazy(() => import("@/packages/mr/MrFormPage").then((module) => ({ default: module.MrFormPage })))
+const MrPrintPage = lazy(() => import("@/packages/mr/MrPrintPage").then((module) => ({ default: module.MrPrintPage })))
 const InspectionSchedules = lazy(() => import("@/pages/InspectionSchedules").then((module) => ({ default: module.InspectionSchedules })))
 const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ default: module.Customers })))
 const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default: module.Devices })))
 const MaintenanceParties = lazy(() => import("@/pages/MaintenanceParties").then((module) => ({ default: module.MaintenanceParties })))
 const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ default: module.Timesheets })))
+const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ default: module.Attendance })))
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
-const Feedback = lazy(() => import("@/pages/Feedback").then((module) => ({ default: module.Feedback })))
+const NavPrototype = lazy(() => import("@/prototypes/NavPrototype").then((module) => ({ default: module.NavPrototype })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
+const NotFound = lazy(() => import("@/pages/NotFound").then((module) => ({ default: module.NotFound })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   dashboard: ["order.view", "order.engineer.own"],
   "service-report": ["order.engineer.own"],
   "service-orders": ["order.view"],
+  mr: ["mr.view"],
   "inspection-schedules": ["inspection.view"],
   customers: ["customer.view"],
   devices: ["device.view"],
   "maintenance-parties": ["maintenance-party.view"],
   timesheets: ["timesheet.view"],
+  attendance: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.admin.approve", "attendance.manage"],
+  "attendance-duty": ["attendance.duty.manage", "attendance.duty.admin.approve"],
   users: ["user.view"],
   "audit-logs": ["audit-log.view"],
   settings: ["settings.view"],
-  feedback: ["feedback.manage"],
 }
 
 const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/service-report", permissions: ROUTE_ACCESS_PERMISSIONS["service-report"] },
   { path: "/dashboard", permissions: ROUTE_ACCESS_PERMISSIONS.dashboard },
   { path: "/service-orders", permissions: ROUTE_ACCESS_PERMISSIONS["service-orders"] },
+  { path: "/mr", permissions: ROUTE_ACCESS_PERMISSIONS.mr },
   { path: "/inspection-schedules", permissions: ROUTE_ACCESS_PERMISSIONS["inspection-schedules"] },
   { path: "/customers", permissions: ROUTE_ACCESS_PERMISSIONS.customers },
   { path: "/devices", permissions: ROUTE_ACCESS_PERMISSIONS.devices },
   { path: "/maintenance-parties", permissions: ROUTE_ACCESS_PERMISSIONS["maintenance-parties"] },
+  { path: "/attendance", permissions: ROUTE_ACCESS_PERMISSIONS.attendance },
+  { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
-  { path: "/feedback", permissions: ROUTE_ACCESS_PERMISSIONS.feedback },
 ]
+/** 暗启动隐藏路由：SHOW_MR_ATTENDANCE=false 时登录默认跳转候选剔除 MR/考勤/待办（与菜单过滤一致） */
+const FEATURE_FLAG_HIDDEN_ROUTE_PATHS = new Set(["/mr", "/attendance", "/attendance-duty", "/approval-tasks"])
 
 function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
-  return ADMIN_ROUTE_FALLBACKS.find((route) => hasPermission(...route.permissions))?.path || "/login"
+  return ADMIN_ROUTE_FALLBACKS.find((route) => (
+    (SHOW_MR_ATTENDANCE || !FEATURE_FLAG_HIDDEN_ROUTE_PATHS.has(route.path)) && hasPermission(...route.permissions)
+  ))?.path || "/login"
 }
 
 function defaultAdminPath(user: any, hasPermission: (...permissions: string[]) => boolean) {
@@ -152,6 +168,19 @@ function ProtectedAdminDefaultRedirect() {
   )
 }
 
+function ProtectedAdminNotFound() {
+  const { user, hasPermission } = useAuth()
+  return (
+    <ProtectedRoute>
+      <Suspense fallback={<PageLoading />}>
+        <AdminLayout>
+          <NotFound homePath={defaultAdminPath(user, hasPermission)} />
+        </AdminLayout>
+      </Suspense>
+    </ProtectedRoute>
+  )
+}
+
 export default function App() {
   const { lang } = useLanguage()
   useAdminDomTextI18n(lang)
@@ -161,6 +190,14 @@ export default function App() {
       <RouteErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/prototype/admin-nav"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <NavPrototype />
+              </Suspense>
+            }
+          />
           <Route
             path="/customer-signature/:token"
             element={
@@ -177,6 +214,16 @@ export default function App() {
               </Suspense>
             }
           />
+          {SHOW_MR_ATTENDANCE ? (
+            <Route
+              path="/engineer-signature/:token"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <EngineerSignature />
+                </Suspense>
+              }
+            />
+          ) : null}
           <Route
             path="/change-password"
             element={
@@ -199,6 +246,12 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
+          {SHOW_MR_ATTENDANCE ? (
+            <Route
+              path="/approval-tasks"
+              element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
+            />
+          ) : null}
           <Route
             path="/service-orders"
             element={
@@ -207,6 +260,36 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
+          {SHOW_MR_ATTENDANCE ? (
+            <>
+              <Route
+                path="/mr"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <MrListPage />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/mr/:id"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <MrFormPage />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/mr/:id/print"
+                element={
+                  <ProtectedRoute allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <Suspense fallback={<PageLoading />}>
+                      <MrPrintPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+            </>
+          ) : null}
           <Route
             path="/service-report"
             element={
@@ -263,6 +346,26 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
+          {SHOW_MR_ATTENDANCE ? (
+            <>
+              <Route
+                path="/attendance"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
+                    <Attendance />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/attendance-duty"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
+                    <Navigate to="/attendance" replace />
+                  </ProtectedAdminPage>
+                }
+              />
+            </>
+          ) : null}
           <Route
             path="/timesheets"
             element={
@@ -295,15 +398,7 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route
-            path="/feedback"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.feedback}>
-                <Feedback />
-              </ProtectedAdminPage>
-            }
-          />
-          <Route path="*" element={<ProtectedAdminDefaultRedirect />} />
+          <Route path="*" element={<ProtectedAdminNotFound />} />
         </Routes>
       </RouteErrorBoundary>
       <Toaster />

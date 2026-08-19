@@ -1,25 +1,29 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
+import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags";
 import {
   LayoutDashboard,
+  ListTodo,
   ClipboardPenLine,
   FileText,
+  FileSignature,
   ClipboardCheck,
   Users,
   Server,
   Building2,
   BarChart3,
+  CalendarClock,
   Settings,
   Shield,
   LogOut,
-  MessageSquare,
-  Search,
   PanelLeftClose,
   PanelLeftOpen,
   Languages,
   ChevronUp,
+  TriangleAlert,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
@@ -36,13 +40,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Separator } from "./ui/separator";
 import { toast } from "sonner";
 import { ADMIN_WORKSPACE_LABEL, ADMIN_WORKSPACE_LABEL_HANT, APP_VERSION, goToWorkspace } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { matchesSearchText } from "@/lib/text-i18n";
 import { api } from "@/services/api";
 import { MySettingsDialog, UserAvatar } from "./MySettingsDialog";
 
@@ -77,16 +79,6 @@ const STRINGS: Record<AppLang, {
     switchedToCn: string
     switchedToTw: string
     switchEngineer: string
-    feedback: string
-    feedbackTitle: string
-    feedbackType: string
-    feedbackProblem: string
-    feedbackSuggestion: string
-    feedbackContent: string
-    feedbackPlaceholder: string
-    feedbackSubmit: string
-    feedbackSuccess: string
-    feedbackEmpty: string
   }
   groups: Record<string, string>
   pages: Record<string, string>
@@ -108,16 +100,6 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切换至简体中文",
       switchedToTw: "已切换至繁體中文",
       switchEngineer: "工单填写",
-      feedback: "反馈",
-      feedbackTitle: "反馈",
-      feedbackType: "类型",
-      feedbackProblem: "遇到问题",
-      feedbackSuggestion: "功能建议",
-      feedbackContent: "内容",
-      feedbackPlaceholder: "简单写一下遇到的问题或想法…",
-      feedbackSubmit: "提交",
-      feedbackSuccess: "反馈已提交",
-      feedbackEmpty: "请填写反馈内容",
     },
     groups: {
       workspace: "工作台",
@@ -128,21 +110,25 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "运营总览",
+      "approval-tasks": "待办中心",
       "service-report": "工单填写",
       "service-orders": "工单处理",
+      mr: "订购申请（MR）",
       "inspection-schedules": "巡检计划",
       customers: "客户档案",
       devices: "设备资产",
       "maintenance-parties": "维保方目录",
+      attendance: "考勤管理",
+      "attendance-duty": "工程值班",
       timesheets: "月报导出",
       users: "成员与角色",
       "audit-logs": "操作审计",
       settings: "系统设置",
-      feedback: "反馈",
     },
     roles: {
       admin: "管理员",
       assistant: "助理",
+      assistant_supervisor: "助理主管",
       dispatcher: "调度",
       operations_director: "运营负责人",
       engineering_supervisor: "工程主管",
@@ -150,6 +136,7 @@ const STRINGS: Record<AppLang, {
       sales_supervisor: "业务主管",
       sales: "业务",
       engineer: "工程师",
+      purchaser: "采购",
     },
   },
   "zh-TW": {
@@ -168,16 +155,6 @@ const STRINGS: Record<AppLang, {
       switchedToCn: "已切換至简体中文",
       switchedToTw: "已切換至繁體中文",
       switchEngineer: "工單填寫",
-      feedback: "回饋",
-      feedbackTitle: "回饋",
-      feedbackType: "類型",
-      feedbackProblem: "遇到問題",
-      feedbackSuggestion: "功能建議",
-      feedbackContent: "內容",
-      feedbackPlaceholder: "簡單寫一下遇到的問題或想法…",
-      feedbackSubmit: "提交",
-      feedbackSuccess: "回饋已提交",
-      feedbackEmpty: "請填寫回饋內容",
     },
     groups: {
       workspace: "工作臺",
@@ -188,21 +165,25 @@ const STRINGS: Record<AppLang, {
     },
     pages: {
       dashboard: "運營總覽",
+      "approval-tasks": "待辦中心",
       "service-report": "工單填寫",
       "service-orders": "工單處理",
+      mr: "訂購申請（MR）",
       "inspection-schedules": "巡檢計畫",
       customers: "客戶檔案",
       devices: "設備資產",
       "maintenance-parties": "維保方目錄",
+      attendance: "考勤管理",
+      "attendance-duty": "工程值班",
       timesheets: "月報導出",
       users: "成員與角色",
       "audit-logs": "操作審計",
       settings: "系統設定",
-      feedback: "回饋",
     },
     roles: {
       admin: "管理員",
       assistant: "助理",
+      assistant_supervisor: "助理主管",
       dispatcher: "調度",
       operations_director: "營運負責人",
       engineering_supervisor: "工程主管",
@@ -210,6 +191,7 @@ const STRINGS: Record<AppLang, {
       sales_supervisor: "業務主管",
       sales: "業務",
       engineer: "工程師",
+      purchaser: "採購",
     },
   },
 };
@@ -219,6 +201,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     groupKey: "workspace",
     items: [
       { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard", requiredPermissions: ["order.view", "order.engineer.own"] },
+      { labelKey: "approval-tasks", icon: ListTodo, path: "approval-tasks" },
     ],
   },
   {
@@ -226,6 +209,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     items: [
       { labelKey: "service-report", icon: ClipboardPenLine, path: "service-report", requiredPermissions: ["order.engineer.own"] },
       { labelKey: "service-orders", icon: FileText, path: "service-orders", requiredPermissions: ["order.view"] },
+      { labelKey: "mr", icon: FileSignature, path: "mr", requiredPermissions: ["mr.view"] },
       { labelKey: "inspection-schedules", icon: ClipboardCheck, path: "inspection-schedules", requiredPermissions: ["inspection.view"] },
     ],
   },
@@ -240,6 +224,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "reports",
     items: [
+      { labelKey: "attendance", icon: CalendarClock, path: "attendance", requiredPermissions: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.report.export", "attendance.admin.approve", "attendance.manage"] },
       { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
     ],
   },
@@ -264,21 +249,26 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
         path: "settings",
         requiredPermissions: ["settings.view"],
       },
-      {
-        labelKey: "feedback",
-        icon: MessageSquare,
-        path: "feedback",
-        requiredPermissions: ["feedback.manage"],
-      },
     ],
   },
 ];
+
+/** 暗启动隐藏入口：MR/考勤/待办（SHOW_MR_ATTENDANCE=false 时从导航剔除，桌面与移动端共用 navGroups 过滤点） */
+const FEATURE_FLAG_HIDDEN_NAV_PATHS = new Set(["mr", "attendance", "approval-tasks"]);
 
 const MOBILE_NAV_LABELS: Record<string, string> = {
   dashboard: "首页",
   "service-orders": "工单",
   "service-report": "填写",
+  attendance: "考勤",
+  "approval-tasks": "待办",
 };
+
+/** 移动端底栏入口按角色排序（无权限项会被 allNavItems 访问过滤自动去掉） */
+const MOBILE_NAV_PRIORITY_BY_ROLE: Record<string, string[]> = {
+  engineer: ["dashboard", "service-report", "service-orders", "attendance"],
+};
+const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "service-report", "attendance", "approval-tasks"];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -294,6 +284,8 @@ interface Announcement {
 function displayUserName(user: Record<string, any> | null | undefined) {
   return String(user?.realName || user?.name || user?.username || "用户");
 }
+
+const IS_TEST_SERVER = String(import.meta.env.VITE_APP_ENVIRONMENT || "").toLowerCase() === "test";
 
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
@@ -312,17 +304,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() => (
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
-  const [quickNavOpen, setQuickNavOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<"problem" | "suggestion">("problem");
-  const [feedbackContent, setFeedbackContent] = useState("");
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
@@ -331,6 +318,30 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const canSwitchEngineer = user?.role !== "engineer"
     && Array.isArray(user?.availableWorkspaces)
     && user.availableWorkspaces.some((workspace: { key?: string }) => workspace.key === "engineer");
+
+  // 考勤待审批数量：给左侧「考勤管理」入口显示徽标。口径与考勤页 approvalTodos 一致（后端接口保证）。
+  const canApproveAttendance = hasPermission(
+    "attendance.approve", "attendance.view", "attendance.manage",
+    "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve",
+  );
+  const [attendancePendingCount, setAttendancePendingCount] = useState(0);
+  useEffect(() => {
+    if (!SHOW_MR_ATTENDANCE || !canApproveAttendance) return;
+    let cancelled = false;
+    async function loadPendingCount() {
+      try {
+        const data = await api.get("/attendance/requests/pending-count");
+        if (!cancelled) setAttendancePendingCount(Number(data?.count || 0));
+      } catch {
+        // 徽标是辅助提示，拉取失败静默处理，不打断页面
+      }
+    }
+    loadPendingCount();
+    return () => {
+      cancelled = true;
+    };
+    // location.key 变化时重新拉取，保证审批后切换页面能刷新徽标
+  }, [canApproveAttendance, location.key]);
 
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -411,6 +422,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!SHOW_MR_ATTENDANCE) return;
+    let active = true;
+    const load = () => api.get("/approval-tasks?view=pending")
+      .then((data) => { if (active) setPendingTaskCount(Number(data?.pendingCount || 0)); })
+      .catch(() => {});
+    void load();
+    const timer = window.setInterval(load, 60000);
+    const onApprovalChanged = () => void load();
+    window.addEventListener("mr:approval-changed", onApprovalChanged);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("mr:approval-changed", onApprovalChanged); };
+  }, [user?.id, location.pathname]);
+
   const handleLangToggle = () => {
     const nextLang = lang === "zh-CN" ? "zh-TW" : "zh-CN";
     setLang(nextLang);
@@ -425,70 +449,44 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navGroups: NavGroup[] = useMemo(() => (
     NAV_CONFIG.map((group) => ({
       group: strings.groups[group.groupKey],
-      items: group.items.map((item) => ({
-        label: strings.pages[item.labelKey],
-        icon: item.icon,
-        path: item.path,
-        requiredPermissions: item.requiredPermissions,
-      })),
+      items: group.items
+        .filter((item) => SHOW_MR_ATTENDANCE || !FEATURE_FLAG_HIDDEN_NAV_PATHS.has(item.path))
+        .map((item) => ({
+          label: strings.pages[item.labelKey],
+          icon: item.icon,
+          path: item.path,
+          requiredPermissions: item.requiredPermissions,
+        })),
     }))
   ), [strings]);
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
-  const filteredNavItems = searchQuery
-    ? allNavItems.filter(item =>
-        matchesSearchText(item.label, searchQuery)
-      )
-    : allNavItems;
-
-  const mobileNavPriority = ["dashboard", "service-orders", "service-report"];
+  const mobileNavPriority = MOBILE_NAV_PRIORITY_BY_ROLE[user?.role || ""] || MOBILE_NAV_PRIORITY_DEFAULT;
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
     .filter(Boolean) as NavItem[];
 
   const navigateTo = (path: string) => {
+    if (typeof window !== "undefined") {
+      const event = new CustomEvent("oms:before-navigate", { cancelable: true, detail: { path } });
+      if (!window.dispatchEvent(event)) return false;
+    }
     navigate(`/${path}`);
     setMobileNavVisible(true);
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setSidebarOpen(false);
     }
+    return true;
   };
 
   const logoutToLogin = () => {
-    setQuickNavOpen(false);
-    setFeedbackOpen(false);
     setAnnouncementOpen(false);
     setMySettingsOpen(false);
     logout();
     window.setTimeout(() => {
       window.location.replace(`${import.meta.env.BASE_URL}login`);
     }, 0);
-  };
-
-  const submitFeedback = async () => {
-    const content = feedbackContent.trim();
-    if (!content) {
-      toast.error(strings.common.feedbackEmpty);
-      return;
-    }
-
-    setFeedbackSubmitting(true);
-    try {
-      await api.post("/feedback", {
-        type: feedbackType,
-        content,
-        pagePath: location.pathname,
-      });
-      toast.success(strings.common.feedbackSuccess);
-      setFeedbackContent("");
-      setFeedbackType("problem");
-      setFeedbackOpen(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "提交失败");
-    } finally {
-      setFeedbackSubmitting(false);
-    }
   };
 
   const currentAnnouncement = announcements[0] || null;
@@ -526,21 +524,88 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           sidebarOpen ? "translate-x-0 lg:w-64" : "-translate-x-full lg:w-0 lg:translate-x-0"
         } fixed inset-y-0 left-0 z-40 w-[82vw] max-w-[320px] transition-transform duration-300 bg-sidebar border-r border-sidebar-border flex-shrink-0 overflow-hidden shadow-2xl lg:relative lg:z-auto lg:max-w-none lg:shadow-none lg:transition-all`}
       >
+        <style>{`
+          @keyframes admin-test-banner-sweep {
+            0% { transform: translateX(-180%) skewX(-18deg); }
+            55%, 100% { transform: translateX(340%) skewX(-18deg); }
+          }
+          .admin-test-banner {
+            background-color: #fbbf24;
+            background-image: repeating-linear-gradient(
+              -45deg,
+              rgba(0, 0, 0, 0.13) 0,
+              rgba(0, 0, 0, 0.13) 3px,
+              transparent 3px,
+              transparent 16px
+            );
+          }
+          .admin-test-banner::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 38%;
+            background: linear-gradient(105deg, transparent, rgba(255,255,255,.5), transparent);
+            animation: admin-test-banner-sweep 3s ease-in-out infinite;
+            pointer-events: none;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .admin-test-banner::after {
+              animation: none;
+            }
+          }
+        `}</style>
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center border-b border-sidebar-border/50 px-5">
-            <div className="flex items-center gap-2.5">
-              <div className="admin-brand-mark">
-                <img src={logoSrc} alt="" aria-hidden="true" />
+          {/* 顶部：测试服时替换为黄色提示，否则显示品牌 */}
+          {IS_TEST_SERVER ? (
+            <div className="admin-test-banner relative flex h-16 shrink-0 items-center justify-between gap-2 overflow-hidden border-b-2 border-amber-700 bg-amber-300 px-3 text-amber-950">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <TriangleAlert className="h-6 w-6 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold leading-tight">测试开发服务器</p>
+                  <p className="truncate text-[11px] font-medium leading-snug text-amber-900/90">
+                    仅供测试，请勿录入正式业务数据
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
-                  {strings.brand.title}
-                </span>
-                <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(false)}
+                className="h-8 w-8 shrink-0 text-amber-900 hover:bg-amber-200/70 hover:text-amber-950"
+                aria-label="收起侧边栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
+          ) : (
+            <div className="flex h-16 items-center justify-between gap-2 border-b border-sidebar-border/50 px-4">
+              <div className="flex items-center gap-2.5">
+                <div className="admin-brand-mark">
+                  <img src={logoSrc} alt="" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
+                    {strings.brand.title}
+                  </span>
+                  <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(false)}
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                aria-label="收起侧边栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
@@ -571,9 +636,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             <Icon className={`w-4 h-4 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
                             <span className="text-sm font-medium">{item.label}</span>
                           </div>
-                          {isActive && (
+                          {item.path === "attendance" && attendancePendingCount > 0 ? (
+                            <Badge className="h-5 min-w-5 justify-center px-1.5 text-xs">{attendancePendingCount}</Badge>
+                          ) : item.path === "approval-tasks" && pendingTaskCount > 0 ? (
+                            <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{pendingTaskCount > 99 ? "99+" : pendingTaskCount}</span>
+                          ) : isActive ? (
                             <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}
@@ -583,156 +652,23 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             })}
           </nav>
 
-          {/* Sidebar Footer - Version Info */}
-          <div className="flex h-11 items-center border-t border-sidebar-border/50 bg-sidebar-accent/10 px-4">
-            <div className="flex w-full items-center justify-between px-2">
-              <span className="text-xs text-muted-foreground font-medium uppercase">{strings.brand.version}</span>
-              <span className="text-xs font-mono text-muted-foreground">{appVersion}</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
-          aria-label="关闭导航菜单"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative overflow-hidden">
-        {/* Decorative Background Elements */}
-        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
-        
-        {/* Top Bar */}
-        <header className={`h-14 bg-card/90 backdrop-blur-md sticky top-0 z-10 border-b border-border items-center justify-between px-3 flex-shrink-0 lg:h-16 lg:px-4 xl:px-6 ${hideMobileChrome ? "hidden lg:flex" : "flex"}`}>
-          <div className="flex min-w-0 items-center gap-2 lg:gap-3 xl:gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="h-8 w-8 border-border/70 bg-background/70 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
-            >
-              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-            </Button>
-            <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-              <span className="hidden whitespace-nowrap sm:inline">{strings.common.systemName}</span>
-              <span className="hidden sm:inline">/</span>
-              <span className="min-w-0 max-w-[8rem] truncate text-base font-semibold text-foreground sm:text-sm sm:font-medium xl:max-w-none">{strings.pages[currentPage] || currentPage}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 lg:hidden">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setQuickNavOpen(true)}
-              className="h-8 w-8"
-              aria-label={strings.common.quickNav}
-            >
-              <Search className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setFeedbackOpen(true)}
-              className="h-8 w-8"
-              aria-label={strings.common.feedback}
-            >
-              <MessageSquare className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLangToggle}
-              className="h-8 px-2 text-xs"
-            >
-              {strings.common.langShort}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-full p-0"
-              onClick={() => setMySettingsOpen(true)}
-              aria-label="我的设置"
-            >
-              <UserAvatar user={currentUser} className="h-8 w-8" textClassName="text-xs" />
-            </Button>
-          </div>
-
-          <div className="hidden min-w-0 flex-shrink-0 items-center gap-3 lg:flex">
-            <div className="flex items-center gap-2">
-              {/* Quick Nav */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuickNavOpen(true)}
-                className="gap-2"
-                aria-label={strings.common.quickNav}
-              >
-                <Search className="w-4 h-4" />
-                <span className="hidden xl:inline">{strings.common.quickNav}</span>
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setFeedbackOpen(true)}
-                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-                aria-label={strings.common.feedback}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="hidden xl:inline">{strings.common.feedback}</span>
-              </Button>
-
-              {/* Language Toggle */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLangToggle}
-                className="gap-2 px-2 hover:bg-primary/5 hover:text-primary transition-colors"
-                aria-label={strings.common.langShort}
-              >
-                <Languages className="w-4 h-4" />
-                <span className="hidden text-xs font-medium xl:inline">{strings.common.langShort}</span>
-              </Button>
-
-              {canSwitchEngineer && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => goToWorkspace("engineer")}
-                  className="hidden xl:inline-flex"
-                >
-                  {strings.common.switchEngineer}
-                </Button>
-              )}
-            </div>
-
-            <Separator orientation="vertical" className="hidden h-8 xl:block" />
-
-            {/* User Info */}
+          <div className="border-t border-sidebar-border/50 bg-sidebar-accent/10 p-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex min-w-0 items-center gap-3 rounded-full px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  aria-label="打开我的设置"
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="打开我的账号菜单"
                 >
-                  <div className="hidden min-w-0 text-right xl:block">
-                    <div className="max-w-[9rem] truncate whitespace-nowrap text-sm font-medium">{currentDisplayName}</div>
-                    <div className="whitespace-nowrap text-xs text-muted-foreground">
-                      {currentRoleLabel}
-                    </div>
+                  <UserAvatar user={currentUser} className="h-9 w-9 shrink-0" textClassName="text-xs" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-sidebar-foreground">{currentDisplayName}</div>
+                    <div className="truncate text-xs text-muted-foreground">{currentRoleLabel}</div>
                   </div>
-                  <UserAvatar user={currentUser} />
+                  <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
                 <DropdownMenuLabel>
                   <div className="min-w-0">
                     <div className="truncate">{currentDisplayName}</div>
@@ -757,15 +693,60 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleLangToggle}
+                className="h-8 gap-2 px-2 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                aria-label={`切换语言，当前${strings.common.langShort}`}
+              >
+                <Languages className="h-4 w-4" />
+                <span className="text-xs font-medium">{strings.common.langShort}</span>
+              </Button>
+              <span className="font-mono text-xs text-muted-foreground" title={strings.brand.version}>{appVersion}</span>
+            </div>
           </div>
-        </header>
+        </div>
+      </aside>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
+          aria-label="关闭导航菜单"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-        {/* Page Content */}
+      {!sidebarOpen ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => setSidebarOpen(true)}
+          className="fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+          aria-label="展开侧边栏"
+          title="展开侧边栏"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      ) : null}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
+
+        {/* Page Content：key 随 pathname 变化触发进入动画，PUSH 右滑入、POP（返回）左滑入 */}
         <main
           ref={contentRef}
           className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
         >
-          {children}
+          <div key={location.pathname} className={navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
+            {children}
+          </div>
         </main>
 
         {!hideMobileChrome && mobileNavItems.length > 0 && (
@@ -814,93 +795,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         )}
       </div>
 
-      {/* Quick Navigation Dialog */}
-      <Dialog open={quickNavOpen} onOpenChange={setQuickNavOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{strings.common.quickNavTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder={strings.common.quickNavPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {filteredNavItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => {
-                      navigateTo(item.path);
-                      setQuickNavOpen(false);
-                      setSearchQuery("");
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-accent transition-colors text-left"
-                  >
-                    <Icon className="w-5 h-5 text-primary" />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-              {filteredNavItems.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  {strings.common.quickNavEmpty}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
-        <DialogContent className="sm:max-w-[460px]">
-          <DialogHeader>
-            <DialogTitle>{strings.common.feedbackTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">{strings.common.feedbackType}</div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["problem", strings.common.feedbackProblem],
-                  ["suggestion", strings.common.feedbackSuggestion],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={feedbackType === value ? "default" : "outline"}
-                    onClick={() => setFeedbackType(value as "problem" | "suggestion")}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium">{strings.common.feedbackContent}</div>
-              <Textarea
-                value={feedbackContent}
-                onChange={(event) => setFeedbackContent(event.target.value)}
-                placeholder={strings.common.feedbackPlaceholder}
-                className="min-h-[120px]"
-                maxLength={2000}
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setFeedbackOpen(false)} disabled={feedbackSubmitting}>
-                取消
-              </Button>
-              <Button onClick={submitFeedback} disabled={feedbackSubmitting}>
-                {feedbackSubmitting ? "提交中…" : strings.common.feedbackSubmit}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={announcementOpen && Boolean(currentAnnouncement)}

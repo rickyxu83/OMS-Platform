@@ -1,6 +1,7 @@
 const ROLE_LABELS = Object.freeze({
   admin: '管理员',
   assistant: '助理',
+  assistant_supervisor: '助理主管',
   dispatcher: '调度',
   operations_director: '运营负责人',
   engineering_supervisor: '工程主管',
@@ -8,12 +9,22 @@ const ROLE_LABELS = Object.freeze({
   sales_supervisor: '业务主管',
   sales: '业务',
   engineer: '工程师',
+  purchaser: '采购',
 })
 
 const ALL_ROLES = Object.keys(ROLE_LABELS)
+const ATTENDANCE_NON_APPLICANT_ROLES = Object.freeze([
+  'admin',
+  'dispatcher',
+  'operations_director',
+])
+const attendanceNonApplicantRoleSet = new Set(ATTENDANCE_NON_APPLICANT_ROLES)
+const ATTENDANCE_APPLICANT_ROLES = Object.freeze(
+  ALL_ROLES.filter((role) => !attendanceNonApplicantRoleSet.has(role)),
+)
 
-const PERMISSION_ENTRIES = Object.freeze([
-  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer']],
+const RAW_PERMISSION_ENTRIES = Object.freeze([
+  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser']],
   ['workspace.engineer', '工程师工作台', []],
   ['permission.manage', '配置角色权限', ['admin']],
   ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
@@ -44,16 +55,42 @@ const PERMISSION_ENTRIES = Object.freeze([
   ['maintenance-party.edit', '编辑维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['maintenance-party.delete', '删除维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor']],
   ['timesheet.view', '查看工时报表', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
+  ['attendance.apply', '提交考勤申请', ATTENDANCE_APPLICANT_ROLES],
+  ['attendance.approve', '处理考勤审批', ALL_ROLES],
+  ['attendance.view', '查看考勤数据', ['admin', 'operations_director', 'administrative_supervisor']],
+  ['attendance.report.export', '导出考勤报表', ['admin', 'operations_director', 'administrative_supervisor']],
+  ['attendance.manage', '维护考勤档案与余额', ['admin', 'administrative_supervisor']],
+  ['attendance.admin.approve', '考勤行政终审', ['admin', 'administrative_supervisor']],
+  ['attendance.hr.approve', '考勤人事审批', ['admin', 'administrative_supervisor']],
+  ['attendance.vp.approve', '考勤副总审批', ['admin', 'operations_director']],
+  ['attendance.duty.manage', '管理工程师值班津贴', ['admin', 'engineering_supervisor']],
+  ['attendance.duty.admin.approve', '终审工程师值班津贴', ['admin', 'administrative_supervisor']],
   ['user.view', '查看用户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor']],
   ['user.create', '创建用户', ['admin']],
   ['user.edit', '编辑用户', ['admin']],
   ['user.delete', '删除用户', ['admin']],
-  ['feedback.manage', '处理反馈', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales']],
   ['announcement.manage', '管理公告', ['admin', 'operations_director', 'engineering_supervisor']],
   ['audit-log.view', '查看审计日志', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.view', '查看系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.edit', '编辑系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
+  ['mr.view', '查看订购申请', ['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales', 'purchaser']],
+  ['mr.create', '创建订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
+  ['mr.edit', '编辑订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
+  ['mr.approve', '签核订购申请', ['assistant', 'sales', 'engineering_supervisor', 'sales_supervisor', 'operations_director']],
+  ['mr.delete', '删除订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
+  ['mr.void', '作废订购申请', ['admin', 'assistant', 'sales', 'operations_director', 'sales_supervisor']],
+  ['mr.purchase', '填写采购订单号', ['admin', 'purchaser']],
 ])
+
+// 助理主管（assistant_supervisor）继承助理（assistant）的全部权限；
+// 后续为 assistant 新增权限时，助理主管自动同步，无需重复维护
+const PERMISSION_ENTRIES = Object.freeze(
+  RAW_PERMISSION_ENTRIES.map(([key, label, roles]) =>
+    roles.includes('assistant') && !roles.includes('assistant_supervisor')
+      ? [key, label, [...roles, 'assistant_supervisor']]
+      : [key, label, roles],
+  ),
+)
 
 const PERMISSION_KEYS = Object.freeze(PERMISSION_ENTRIES.map(([key]) => key))
 
@@ -84,6 +121,8 @@ function getRolePermissions() {
 module.exports = {
   ALL_ROLES,
   ROLE_LABELS,
+  ATTENDANCE_APPLICANT_ROLES,
+  ATTENDANCE_NON_APPLICANT_ROLES,
   PERMISSION_ENTRIES,
   PERMISSION_KEYS,
   getDefaultPermissionMatrix,
