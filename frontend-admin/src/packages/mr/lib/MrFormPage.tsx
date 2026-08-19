@@ -572,8 +572,6 @@ export function MrFormPage() {
       paymentTerms: pickSnap('paymentTerms'),
       paymentOther: pickSnap('paymentOther'),
       invoiceProcess: pickSnap('invoiceProcess'),
-      billingTiming: pickSnap('billingTiming'),
-      billingContent: pickSnap('billingContent'),
       invoiceType: pickSnap('invoiceType'),
       deliveryTerms: pickSnap('deliveryTerms'),
       deliveryLocation: pickSnap('deliveryLocation') || customer?.salesDeliveryAddress || '',

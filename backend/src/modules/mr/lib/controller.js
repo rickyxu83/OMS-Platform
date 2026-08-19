@@ -605,13 +605,14 @@ async function update(req, res) {
 
 // 销售个人常用信息沉淀：按“销售 × 供应商/客户”记忆 MR 表单偏好，与工程师维保厂商目录（maintenance_parties）完全隔离
 // 快照字段为客户维度的稳定偏好；单据级字段（客户 P/O、日期、金额、品项等）不记忆
+// 快照字段为客户维度的稳定偏好；单据级字段（客户 P/O、日期、金额、品项、开票/收款时间、开票内容等每单不同）不记忆
 const SALES_PREF_SNAPSHOT_FIELDS = [
   'deliveryLocation',
   'purchaser', 'purchaserTel', 'purchaserMail',
   'recipient', 'recipientTel', 'recipientMail',
   'invoiceRecipient', 'invoiceRecipientTel', 'invoiceRecipientMail',
   'paymentTerms', 'paymentOther',
-  'invoiceProcess', 'billingTiming', 'billingContent', 'invoiceType',
+  'invoiceProcess', 'invoiceType',
   'deliveryTerms',
 ]
 
