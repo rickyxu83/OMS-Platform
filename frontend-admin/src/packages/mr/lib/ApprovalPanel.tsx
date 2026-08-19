@@ -24,7 +24,8 @@ const MARKERS: Record<StepState, { icon: typeof Check; dot: string; text: string
 function projectedApprovals(order: MrOrder): MrApproval[] {
   const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务负责人']]
   if ((order.installOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签'])
-  steps.push(['supervisor', '处级单位'])
+  // 业务主管（处级主管）发起的 MR 单：流程跳过“处级单位”自签步骤，草稿预览保持一致
+  if (order.salesOwnerRole !== 'sales_supervisor') steps.push(['supervisor', '处级单位'])
   const margin = order.totals?.marginRate
   const lowMargin = margin !== null && margin !== undefined && Number(margin) < 15
   if (Number(order.totals?.salesExcludingTax) > 750000 || lowMargin) steps.push(['vp', '副总经理'])

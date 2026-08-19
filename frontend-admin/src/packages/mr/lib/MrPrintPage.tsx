@@ -127,7 +127,9 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
 }
 function Signatures({ order, formal }: { order: MrOrder; formal: boolean }) {
   const approvals = order.approvals || []
-  const roles = formal ? SIGNATURE_ROLES.filter(([key]) => approval(approvals, key)) : SIGNATURE_ROLES
+  // 业务主管（处级主管）发起的 MR 单：流程跳过“处级单位”自签步骤，占位框一并隐藏
+  const allRoles = order.salesOwnerRole === 'sales_supervisor' ? SIGNATURE_ROLES.filter(([key]) => key !== 'supervisor') : SIGNATURE_ROLES
+  const roles = formal ? allRoles.filter(([key]) => approval(approvals, key)) : allRoles
   return <div className="a-signatures" style={{ gridTemplateColumns: `repeat(${Math.max(1, roles.length)}, 1fr)` }}>{roles.map(([key, label]) => {
     const item = approval(approvals, key)
     const name = item?.approverName || item?.assigneeName || (formal ? '' : '—')
