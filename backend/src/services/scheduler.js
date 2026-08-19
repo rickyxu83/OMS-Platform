@@ -1,4 +1,5 @@
 const cron = require('node-cron')
+const env = require('../config/env')
 const { query } = require('../config/db')
 const { getSettings } = require('../modules/settings/store')
 const { generateTimesheetWorkSummary } = require('../modules/service-orders/work-summary')
@@ -1088,35 +1089,53 @@ function startScheduler() {
     }
   })
 
-  scheduleCron('* * * * *', async () => {
-    try {
-      const result = await processDueAttendanceEmailNotifications(30)
-      if (result?.processed) {
-        console.log(`[scheduler] Attendance notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+  // 暗启动：MR/考勤模块被禁用时不注册对应定时任务（生产不建表、不刷错误日志）
+  if (!env.featureModulesDisabled.has('attendance')) {
+    scheduleCron('* * * * *', async () => {
+      try {
+        const result = await processDueAttendanceEmailNotifications(30)
+        if (result?.processed) {
+          console.log(`[scheduler] Attendance notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+        }
+      } catch (error) {
+        console.error('[scheduler] Attendance notification check failed', error?.message)
       }
-    } catch (error) {
-      console.error('[scheduler] Attendance notification check failed', error?.message)
-    }
-  })
+    })
+  }
 
-  scheduleCron('* * * * *', async () => {
-    try {
-      const result = await processMrNotifications(20)
-      if (result.processed) console.log(`[scheduler] MR notifications processed: sent=${result.sent}, failed=${result.failed}`)
-    } catch (error) {
-      console.error('[scheduler] MR notification check failed', error?.message)
-    }
-  })
+  if (!env.featureModulesDisabled.has('mr')) {
+    scheduleCron('* * * * *', async () => {
+      try {
+        const result = await processMrNotifications(20)
+        if (result.processed) console.log(`[scheduler] MR notifications processed: sent=${result.sent}, failed=${result.failed}`)
+      } catch (error) {
+        console.error('[scheduler] MR notification check failed', error?.message)
+      }
+    })
 
-  scheduleCron('*/2 * * * *', async () => {
-    try {
-      const result = await processMrArchives(5)
-      if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}`)
-    } catch (error) {
-      console.error('[scheduler] MR archive check failed', error?.message)
-    }
-  })
+    scheduleCron('*/2 * * * *', async () => {
+      try {
+        const result = await processMrArchives(5)
+        if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}`)
+      } catch (error) {
+        console.error('[scheduler] MR archive check failed', error?.message)
+      }
+    })
+  }
 
-  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): maintenance expiry (08:00), incomplete maintenance devices (08:30 Monday), missing customer salesperson (08:35 Monday), inspection schedule date completeness (08:40 Monday), inspection auto-generation (06:30, 14 days ahead), inspection reminder (07:00), overdue inspection (08:10), monthly operations summary (08:20 on day 1), sales service-order notifications (every 5 minutes), attendance notifications (every minute), MR approval notifications (1m), MR PDF archive retry (2m)`)}
+  const startedTasks = [
+    'maintenance expiry (08:00)',
+    'incomplete maintenance devices (08:30 Monday)',
+    'missing customer salesperson (08:35 Monday)',
+    'inspection schedule date completeness (08:40 Monday)',
+    'inspection auto-generation (06:30, 14 days ahead)',
+    'inspection reminder (07:00)',
+    'overdue inspection (08:10)',
+    'monthly operations summary (08:20 on day 1)',
+    'sales service-order notifications (every 5 minutes)',
+  ]
+  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)')
+  if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
+  console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }
