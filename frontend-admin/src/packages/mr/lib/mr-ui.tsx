@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useCountUp } from './count-up'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -259,36 +260,63 @@ export function SmartCombobox({
   const [text, setText] = useState(value)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  // 下拉用 portal + fixed 定位（脱离 overflow 容器，避免被联系人分区等处裁剪）
+  const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
 
   // 外部值变化（如选择客户后自动回填联系人）时同步文本框
   useEffect(() => { setText(value) }, [value])
   useEffect(() => { setOpen(false) }, [value])
 
-  // 点击外部关闭
+  // 点击外部关闭（portal 下拉渲染在 body，需一并排除，否则点选项会被误判为点外部）
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (rootRef.current?.contains(target)) return
+      if (dropdownRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [open])
 
   const filtered = useMemo(() => {
+    // 文本等于当前已选值（快照带出/刚选中、未输入新内容）时展示全部候选，便于直接改选；仅真正输入新内容才过滤
+    if (text === value) return options
     const keyword = text.trim().toLowerCase()
     if (!keyword) return options
     return options.filter((option) => [option.label, option.hint || ''].some((item) => item.toLowerCase().includes(keyword)))
-  }, [options, text])
+  }, [options, text, value])
 
   useEffect(() => {
     if (open && filtered.length) setActiveIndex(0)
   }, [open, filtered.length])
 
+  const showDropdown = open && filtered.length > 0
+  // 下拉打开时按输入框位置 fixed 定位，并随滚动/缩放跟随
+  useEffect(() => {
+    if (!showDropdown) return
+    const updateRect = () => {
+      const el = inputRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      setDropdownRect({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+    }
+    updateRect()
+    window.addEventListener('scroll', updateRect, true)
+    window.addEventListener('resize', updateRect)
+    return () => {
+      window.removeEventListener('scroll', updateRect, true)
+      window.removeEventListener('resize', updateRect)
+    }
+  }, [showDropdown])
+
   if (readOnly) {
     return <Input readOnly value={value} placeholder={placeholder} className={className} />
   }
 
-  const showList = open && filtered.length > 0
+  const showList = showDropdown
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.min(index + 1, filtered.length - 1)) }
     else if (event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.max(index - 1, 0)) }
@@ -311,8 +339,12 @@ export function SmartCombobox({
         />
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
       </div>
-      {showList ? (
-        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+      {showList && dropdownRect ? createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: 'fixed', top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
+          className="z-[100] max-h-64 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+        >
           {filtered.map((option, index) => (
             <button
               type="button"
@@ -325,7 +357,8 @@ export function SmartCombobox({
               {option.hint ? <span className="truncate text-xs text-muted-foreground">{option.hint}</span> : null}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   )
