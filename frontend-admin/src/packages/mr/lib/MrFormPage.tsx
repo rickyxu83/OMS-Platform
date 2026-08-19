@@ -577,6 +577,10 @@ export function MrFormPage() {
       deliveryLocation: pickSnap('deliveryLocation') || customer?.salesDeliveryAddress || '',
     })
     setContacts([])
+    // 有快照带出时给一次性提示，让销售知道数据来源与“提交即更新记忆”的机制
+    if (Object.keys(snap).length > 0) {
+      toast.info('已带出你上次为该客户填写的信息，修改后提交将更新记忆')
+    }
     try {
       const detail = await loadCustomer(value)
       if (sequence !== customerLoadSequence.current) return
