@@ -56,7 +56,7 @@ import {
 import { QuotationImportDialog } from './QuotationImportDialog'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
-const WORKBENCH_SECTIONS = [MR_SECTIONS[1], MR_SECTIONS[5], MR_SECTIONS[0], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
+const WORKBENCH_SECTIONS = [MR_SECTIONS[0], MR_SECTIONS[1], MR_SECTIONS[5], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
 function suggestPricingMode(result: QuotationImportResult) {
   const itemText = (result.items || []).map((item) => `${item.name || ''} ${item.description || ''}`).join(' ')
   const sourceText = (result.sources || []).map((source) => source.name).join(' ')
@@ -1174,6 +1174,27 @@ export function MrFormPage() {
             </div>
           ) : null}
 
+          <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
+                <SmartCombobox
+                  value={calculated.customerName || ''}
+                  readOnly={!editable}
+                  placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
+                  options={sortedCustomers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
+                  onChange={handleCustomerInput}
+                  onSelect={(option) => void chooseCustomer(option.value)}
+                />
+              </Field>
+              <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
+                <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
+              </Field>
+              <Field label="客户 P/O" editable={editable} readonlyText={textValue(calculated.customerPo)}>
+                <Input value={calculated.customerPo || ''} placeholder="客户采购订单(PO)编号，选填" onChange={(e) => patch({ customerPo: e.target.value })} />
+              </Field>
+            </div>
+          </SectionCard>
+
           <SectionCard id="trade" title="交易信息" icon={MR_SECTIONS[1].icon} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
@@ -1289,27 +1310,6 @@ export function MrFormPage() {
                   <div className={`mt-1 text-xl font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</div>
                 </div>
               ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
-                <SmartCombobox
-                  value={calculated.customerName || ''}
-                  readOnly={!editable}
-                  placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
-                  options={sortedCustomers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
-                  onChange={handleCustomerInput}
-                  onSelect={(option) => void chooseCustomer(option.value)}
-                />
-              </Field>
-              <Field label="Ctrl.NO" editable={editable} readonlyText={textValue(calculated.ctrlNo)}>
-                <Input value={calculated.ctrlNo || ''} onChange={(e) => patch({ ctrlNo: e.target.value })} />
-              </Field>
-              <Field label="客户 P/O" editable={editable} readonlyText={textValue(calculated.customerPo)}>
-                <Input value={calculated.customerPo || ''} placeholder="客户采购订单(PO)编号，选填" onChange={(e) => patch({ customerPo: e.target.value })} />
-              </Field>
             </div>
           </SectionCard>
 
