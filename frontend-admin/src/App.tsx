@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
+import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
@@ -59,8 +60,13 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
 ]
+/** 暗启动隐藏路由：SHOW_MR_ATTENDANCE=false 时登录默认跳转候选剔除 MR/考勤/待办（与菜单过滤一致） */
+const FEATURE_FLAG_HIDDEN_ROUTE_PATHS = new Set(["/mr", "/attendance", "/attendance-duty", "/approval-tasks"])
+
 function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
-  return ADMIN_ROUTE_FALLBACKS.find((route) => hasPermission(...route.permissions))?.path || "/login"
+  return ADMIN_ROUTE_FALLBACKS.find((route) => (
+    (SHOW_MR_ATTENDANCE || !FEATURE_FLAG_HIDDEN_ROUTE_PATHS.has(route.path)) && hasPermission(...route.permissions)
+  ))?.path || "/login"
 }
 
 function defaultAdminPath(user: any, hasPermission: (...permissions: string[]) => boolean) {
@@ -208,14 +214,16 @@ export default function App() {
               </Suspense>
             }
           />
-          <Route
-            path="/engineer-signature/:token"
-            element={
-              <Suspense fallback={<PageLoading />}>
-                <EngineerSignature />
-              </Suspense>
-            }
-          />
+          {SHOW_MR_ATTENDANCE ? (
+            <Route
+              path="/engineer-signature/:token"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <EngineerSignature />
+                </Suspense>
+              }
+            />
+          ) : null}
           <Route
             path="/change-password"
             element={
@@ -238,10 +246,12 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route
-            path="/approval-tasks"
-            element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
-          />
+          {SHOW_MR_ATTENDANCE ? (
+            <Route
+              path="/approval-tasks"
+              element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
+            />
+          ) : null}
           <Route
             path="/service-orders"
             element={
@@ -250,32 +260,36 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route
-            path="/mr"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
-                <MrListPage />
-              </ProtectedAdminPage>
-            }
-          />
-          <Route
-            path="/mr/:id"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
-                <MrFormPage />
-              </ProtectedAdminPage>
-            }
-          />
-          <Route
-            path="/mr/:id/print"
-            element={
-              <ProtectedRoute allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
-                <Suspense fallback={<PageLoading />}>
-                  <MrPrintPage />
-                </Suspense>
-              </ProtectedRoute>
-            }
-          />
+          {SHOW_MR_ATTENDANCE ? (
+            <>
+              <Route
+                path="/mr"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <MrListPage />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/mr/:id"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <MrFormPage />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/mr/:id/print"
+                element={
+                  <ProtectedRoute allowPermissions={ROUTE_ACCESS_PERMISSIONS.mr}>
+                    <Suspense fallback={<PageLoading />}>
+                      <MrPrintPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+            </>
+          ) : null}
           <Route
             path="/service-report"
             element={
@@ -332,22 +346,26 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          <Route
-            path="/attendance"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
-                <Attendance />
-              </ProtectedAdminPage>
-            }
-          />
-          <Route
-            path="/attendance-duty"
-            element={
-              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
-                <Navigate to="/attendance" replace />
-              </ProtectedAdminPage>
-            }
-          />
+          {SHOW_MR_ATTENDANCE ? (
+            <>
+              <Route
+                path="/attendance"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
+                    <Attendance />
+                  </ProtectedAdminPage>
+                }
+              />
+              <Route
+                path="/attendance-duty"
+                element={
+                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
+                    <Navigate to="/attendance" replace />
+                  </ProtectedAdminPage>
+                }
+              />
+            </>
+          ) : null}
           <Route
             path="/timesheets"
             element={

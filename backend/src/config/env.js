@@ -54,6 +54,9 @@ const env = {
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',
   disableLoginAccountLockout: process.env.DISABLE_LOGIN_ACCOUNT_LOCKOUT === 'true',
   mrApprovalEmailDomains: parseCsv(process.env.MR_APPROVAL_EMAIL_DOMAINS),
+  // 暗启动：逗号分隔的禁用模块清单（对应 app.js 挂载点 key），用于生产对半成品模块（MR/考勤/审批/签名）零暴露。
+  // 默认空（全挂载）；生产 compose 注入 FEATURE_MODULES_DISABLED=mr,attendance,approval-tasks,user-signature
+  featureModulesDisabled: new Set(parseCsv(process.env.FEATURE_MODULES_DISABLED)),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
   ai: {

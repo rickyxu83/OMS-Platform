@@ -1,0 +1,17 @@
+/**
+ * 功能开关（暗启动）。
+ *
+ * MR 模块与请假（考勤）系统目前为半成品（待 QA 与灰度），随整体发布合入 main 后，
+ * 生产环境必须对终端用户零感知：前端入口（菜单/路由/页面入口）一律按本开关隐藏，
+ * 后端对应模块路由按 FEATURE_MODULES_DISABLED 不挂载（见 backend/src/app.js）。
+ *
+ * 显示规则：
+ * - 本地开发（import.meta.env.DEV）：显示
+ * - 测试服（部署注入 VITE_APP_ENVIRONMENT=test）：显示
+ * - 生产（未注入 test）：隐藏
+ *
+ * 点亮路径：MR/考勤 QA+灰度完成后，删除本开关及全部引用（菜单/路由/轮询恢复常驻），
+ * 并移除生产 compose 的 FEATURE_MODULES_DISABLED，小版本发布即可。
+ */
+export const SHOW_MR_ATTENDANCE: boolean =
+  import.meta.env.DEV || (import.meta as any).env.VITE_APP_ENVIRONMENT === "test";
