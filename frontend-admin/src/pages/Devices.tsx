@@ -199,6 +199,8 @@ export function Devices() {
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [customerFilter, setCustomerFilter] = useState("all");
+  const [filterCustomerInput, setFilterCustomerInput] = useState("");
+  const [filterCustomerOpen, setFilterCustomerOpen] = useState(false);
   const [maintenanceFilter, setMaintenanceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -592,6 +594,22 @@ export function Devices() {
   );
 
   const recentCustomerIds = useMemo(() => new Set(recentCustomers.map((customer) => String(customer.id))), [recentCustomers]);
+  const filterRecentCustomers = useMemo(() => (
+    recentCustomers.filter((customer) => customerMatches(customer, filterCustomerInput)).slice(0, 4)
+  ), [filterCustomerInput, recentCustomers]);
+  const filterCustomerGroups = useMemo(() => (
+    groupCustomersByInitial(
+      customers
+        .filter((customer) => !recentCustomerIds.has(String(customer.id)))
+        .filter((customer) => customerMatches(customer, filterCustomerInput))
+        .slice(0, 160),
+      lang,
+    )
+  ), [customers, filterCustomerInput, lang, recentCustomerIds]);
+  // 重置筛选（customerFilter 回到 all）时同步清空筛选输入框
+  useEffect(() => {
+    if (customerFilter === "all") setFilterCustomerInput("");
+  }, [customerFilter]);
   const dialogRecentCustomers = useMemo(() => (
     recentCustomers.filter((customer) => customerMatches(customer, customerInput)).slice(0, 4)
   ), [customerInput, recentCustomers]);
@@ -1737,19 +1755,35 @@ export function Devices() {
                 }}
               />
             </div>
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="全部客户" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部客户</SelectItem>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name || `客户 #${c.id}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative w-full md:w-[240px]">
+              <Input
+                placeholder="全部客户"
+                aria-label="按客户筛选"
+                value={filterCustomerInput}
+                onFocus={() => setFilterCustomerOpen(true)}
+                onBlur={() => window.setTimeout(() => setFilterCustomerOpen(false), 140)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFilterCustomerInput(value);
+                  setFilterCustomerOpen(true);
+                  if (!value.trim()) setCustomerFilter("all");
+                }}
+              />
+              <CustomerIndexSuggestions
+                idPrefix="filter-customer-letter"
+                open={filterCustomerOpen}
+                searching={false}
+                recentCustomers={filterRecentCustomers}
+                groups={filterCustomerGroups}
+                selectedCustomerId={customerFilter === "all" ? "" : customerFilter}
+                emptyText="未找到匹配客户"
+                onSelect={(customer) => {
+                  setFilterCustomerOpen(false);
+                  setCustomerFilter(String(customer.id));
+                  setFilterCustomerInput(customerLabel(customer));
+                }}
+              />
+            </div>
             <Select value={maintenanceFilter} onValueChange={(value) => { setPage(1); setMaintenanceFilter(value); }}>
               <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="维保类型" />
