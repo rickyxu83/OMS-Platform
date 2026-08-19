@@ -340,6 +340,25 @@ function ScheduleEntriesEditor({
   )
 }
 
+// 包住快照带出的字段控件：紫色高亮渐隐 + 右上角「自动」徽标（hover 显示来源）
+// 必须定义在模块顶层：若在 MrFormPage 内部定义，每次 render 都会生成新组件类型，
+// React 会卸载重挂内部输入框，导致每输入/删除一个字符就丢失焦点
+function AutoFill({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <span className={`relative block ${active ? 'mr-autofill-flash rounded-md' : ''}`}>
+      {children}
+      {active ? (
+        <span
+          className="absolute -top-2 right-1 z-10 rounded bg-[#6d5bd0] px-1.5 text-[10px] font-bold leading-4 text-white shadow-sm"
+          title="来自你上次为该客户填写的信息，修改后提交将更新记忆"
+        >
+          自动
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -502,24 +521,6 @@ export function MrFormPage() {
     setForm((current) => current ? { ...current, ...value } : current)
     setDirty(true)
     setErrors([])
-  }
-
-  // 包住快照带出的字段控件：紫色高亮渐隐 + 右上角「自动」徽标（hover 显示来源）
-  const AutoFill = ({ field, children }: { field: string; children: ReactNode }) => {
-    const active = autoFilled.includes(field)
-    return (
-      <span className={`relative block ${active ? 'mr-autofill-flash rounded-md' : ''}`}>
-        {children}
-        {active ? (
-          <span
-            className="absolute -top-2 right-1 z-10 rounded bg-[#6d5bd0] px-1.5 text-[10px] font-bold leading-4 text-white shadow-sm"
-            title="来自你上次为该客户填写的信息，修改后提交将更新记忆"
-          >
-            自动
-          </span>
-        ) : null}
-      </span>
-    )
   }
 
   const changePricingMode = (nextMode: number) => {
@@ -1232,7 +1233,7 @@ export function MrFormPage() {
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label="发票类型" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
-                    <AutoFill field="invoiceType">
+                    <AutoFill active={autoFilled.includes('invoiceType')}>
                     <Select
                       value={calculated.invoiceType || ''}
                       onValueChange={changeInvoiceType}
@@ -1343,7 +1344,7 @@ export function MrFormPage() {
               <SubPanel title="开票信息">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="开票方式" editable={editable} readonlyText={textValue(calculated.invoiceProcess)}>
-                    <AutoFill field="invoiceProcess">
+                    <AutoFill active={autoFilled.includes('invoiceProcess')}>
                     <Select value={calculated.invoiceProcess || ''} onValueChange={(value) => patch({ invoiceProcess: value })}>
                       <SelectTrigger><SelectValue placeholder="选择开票方式" /></SelectTrigger>
                       <SelectContent>{constants.INVOICE_PROCESSES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
@@ -1361,7 +1362,7 @@ export function MrFormPage() {
               <SubPanel title="付款信息">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="付款条件" editable={editable} readonlyText={textValue(calculated.paymentTerms)}>
-                    <AutoFill field="paymentTerms">
+                    <AutoFill active={autoFilled.includes('paymentTerms')}>
                     <Select value={calculated.paymentTerms || ''} onValueChange={(value) => patch({ paymentTerms: value })}>
                       <SelectTrigger><SelectValue placeholder="选择付款条件" /></SelectTrigger>
                       <SelectContent>{constants.PAYMENT_TERMS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
@@ -1370,7 +1371,7 @@ export function MrFormPage() {
                   </Field>
                   {calculated.paymentTerms === '其他' ? (
                     <Field required={calculated.paymentTerms === '其他'} label="付款条件说明" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
-                      <AutoFill field="paymentOther">
+                      <AutoFill active={autoFilled.includes('paymentOther')}>
                       <Input value={calculated.paymentOther || ''} placeholder="如：验收后 60 天" onChange={(e) => patch({ paymentOther: e.target.value })} />
                       </AutoFill>
                     </Field>
@@ -1388,39 +1389,39 @@ export function MrFormPage() {
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-<AutoFill field="purchaser"><SmartCombobox
+<AutoFill active={autoFilled.includes('purchaser')}><SmartCombobox
                   value={calculated.purchaser || ''}
                   readOnly={!editable}
                   placeholder="采购联系人姓名"
                   options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
                   onChange={(value) => patchContactField('purchaser', value)}
                 /></AutoFill>
-                  <AutoFill field="purchaserTel"><Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} /></AutoFill>
-                  <AutoFill field="purchaserMail"><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('purchaserTel')}><Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('purchaserMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} /></AutoFill>
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
                   <div className="font-medium">收货人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-<AutoFill field="recipient"><SmartCombobox
+<AutoFill active={autoFilled.includes('recipient')}><SmartCombobox
                   value={calculated.recipient || ''}
                   readOnly={!editable}
                   placeholder="收货人姓名"
                   options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
                   onChange={(value) => patchContactField('recipient', value)}
                 /></AutoFill>
-                  <AutoFill field="recipientTel"><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
-                  <AutoFill field="recipientMail"><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('recipientTel')}><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('recipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
                 </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
-<AutoFill field="invoiceRecipient"><SmartCombobox
+<AutoFill active={autoFilled.includes('invoiceRecipient')}><SmartCombobox
                   value={calculated.invoiceRecipient || ''}
                   readOnly={!editable}
                   placeholder="发票收件人姓名"
                   options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
                   onChange={(value) => patchContactField('invoiceRecipient', value)}
                 /></AutoFill>
-                  <AutoFill field="invoiceRecipientTel"><Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} /></AutoFill>
-                  <AutoFill field="invoiceRecipientMail"><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('invoiceRecipientTel')}><Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} /></AutoFill>
+                  <AutoFill active={autoFilled.includes('invoiceRecipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} /></AutoFill>
                 </div>
               </div>
             </div>
@@ -1446,7 +1447,7 @@ export function MrFormPage() {
                 </Field>
               ) : null}
               <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
-                <AutoFill field="deliveryLocation">
+                <AutoFill active={autoFilled.includes('deliveryLocation')}>
                 <Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} placeholder="选择销售或工程服务地址，也可直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
                 </AutoFill>
               </Field>
