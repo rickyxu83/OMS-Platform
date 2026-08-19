@@ -292,6 +292,33 @@ async function ensureTables() {
   if (!reviewFieldsColumn[0]) {
     await query('ALTER TABLE mr_layout_templates ADD COLUMN review_fields_json TEXT NULL')
   }
+  // 销售个人常用供应商：按“销售 × 供应商名”沉淀，与工程师维保厂商目录（maintenance_parties）隔离
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_sales_vendors (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      salesperson_id BIGINT UNSIGNED NOT NULL,
+      vendor_name VARCHAR(255) NOT NULL,
+      use_count INT UNSIGNED NOT NULL DEFAULT 0,
+      last_used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_mr_sales_vendors_owner (salesperson_id, vendor_name),
+      KEY idx_mr_sales_vendors_last (salesperson_id, last_used_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  // 销售个人客户偏好快照：按“销售 × 客户”记忆 MR 表单中客户维度的稳定偏好（送货地址、三组联系人、付款与开票等）
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_sales_customer_prefs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      salesperson_id BIGINT UNSIGNED NOT NULL,
+      customer_id BIGINT UNSIGNED NOT NULL,
+      snapshot JSON NULL,
+      use_count INT UNSIGNED NOT NULL DEFAULT 0,
+      last_used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_mr_sales_prefs_owner (salesperson_id, customer_id),
+      KEY idx_mr_sales_prefs_last (salesperson_id, last_used_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   await ensureWorkflowTables()
   const quoteRoleColumn = await query(
     `SELECT 1 FROM information_schema.columns

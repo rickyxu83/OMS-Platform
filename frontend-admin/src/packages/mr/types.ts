@@ -217,6 +217,26 @@ export interface VendorOption {
   officialWebsite?: string | null
 }
 
+/** 销售个人常用客户偏好（含该销售对该客户的表单快照） */
+export interface SalesCustomerPref {
+  customerId: number
+  snapshot?: Record<string, unknown>
+  useCount?: number
+  lastUsedAt?: string | null
+}
+
+/** 销售个人常用供应商 */
+export interface SalesVendorPref {
+  name: string
+  useCount?: number
+  lastUsedAt?: string | null
+}
+
+export interface SalesPreferences {
+  customers?: SalesCustomerPref[]
+  vendors?: SalesVendorPref[]
+}
+
 export interface QuotationFile {
   id: string | number
   name: string

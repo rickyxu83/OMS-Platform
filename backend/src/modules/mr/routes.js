@@ -14,6 +14,7 @@ router.delete('/layout-rules/:id', requirePermission('mr.edit'), controller.dele
 router.get('/', requirePermission('mr.view'), controller.list)
 router.get('/import-progress', requirePermission('mr.view'), controller.importProgressHandler)
 router.get('/vendor-suggestions', requirePermission('mr.view'), controller.vendorSuggestions)
+router.get('/sales-preferences', requirePermission('mr.view'), controller.salesPreferences)
 router.post('/', requirePermission('mr.create'), controller.create)
 router.get('/:id', requirePermission('mr.view'), controller.detail)
 router.put('/:id', requirePermission('mr.edit'), controller.update)

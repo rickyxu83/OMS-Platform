@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLayoutRule, MrOrder, QuotationFile, QuotationImportResult, UserOption, VendorOption } from './types'
+import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLayoutRule, MrOrder, QuotationFile, QuotationImportResult, SalesPreferences, UserOption, VendorOption } from './types'
 
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
@@ -100,15 +100,17 @@ export async function downloadMrDocument(id: string | number, type?: 'approved' 
 }
 
 export async function loadMrReferences() {
-  const [customers, salespeople, vendors] = await Promise.all([
+  const [customers, salespeople, vendors, salesPreferences] = await Promise.all([
     api.get('/customers?pageSize=200') as Promise<{ items?: CustomerOption[] }>,
     api.get('/users/salespeople') as Promise<{ items?: UserOption[] }>,
     api.get('/mr/vendor-suggestions') as Promise<{ items?: VendorOption[] }>,
+    api.get('/mr/sales-preferences') as Promise<SalesPreferences>,
   ])
   return {
     customers: customers.items || [],
     salespeople: (salespeople.items || []).filter((user) => ['sales', 'sales_supervisor'].includes(user.role || '')),
     vendors: vendors.items || [],
+    salesPreferences: salesPreferences || { customers: [], vendors: [] },
   }
 }
 

@@ -28,7 +28,7 @@ import {
   voidMr,
   withdrawMr,
 } from '../client'
-import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, ScheduleEntry, UserOption, VendorOption } from '../types'
+import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, SalesPreferences, ScheduleEntry, UserOption, VendorOption } from '../types'
 import { PdfPreview } from '@/components/PdfPreview'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrContractNoCard } from './MrContractNoCard'
@@ -350,6 +350,7 @@ export function MrFormPage() {
   const [vendors, setVendors] = useState<VendorOption[]>([])
   const [salespeople, setSalespeople] = useState<UserOption[]>([])
   const [contacts, setContacts] = useState<CustomerOption['contacts']>([])
+  const [salesPrefs, setSalesPrefs] = useState<SalesPreferences>({ customers: [], vendors: [] })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -375,6 +376,15 @@ export function MrFormPage() {
 
   const calculated = useMemo(() => form ? calculateForm(form) : null, [form])
   const linkedContacts = (contacts || []).filter((contact) => form?.customerId && String(contact.customerId) === String(form.customerId))
+  // 客户下拉按“该销售常用客户”排前（其余保持后端默认顺序）
+  const sortedCustomers = useMemo(() => {
+    const prefOrder = new Map((salesPrefs.customers || []).map((pref, index) => [String(pref.customerId), index]))
+    return [...customers].sort((a, b) => {
+      const aIdx = prefOrder.has(String(a.id)) ? prefOrder.get(String(a.id))! : Number.MAX_SAFE_INTEGER
+      const bIdx = prefOrder.has(String(b.id)) ? prefOrder.get(String(b.id))! : Number.MAX_SAFE_INTEGER
+      return aIdx - bIdx
+    })
+  }, [customers, salesPrefs])
   const canEdit = Boolean(form?.permissions?.canEdit)
   const assistantReview = Boolean(canEdit && form?.status === 'in_review' && form?.currentStepKey === 'assistant')
   const editable = Boolean(canEdit && (!assistantReview || editing))
@@ -393,7 +403,7 @@ export function MrFormPage() {
       const [order, optionData, references] = await Promise.all([
         getMr(id),
         getMrConstants(),
-        canLoadReferences ? loadMrReferences() : Promise.resolve({ customers: [], salespeople: [], vendors: [] }),
+        canLoadReferences ? loadMrReferences() : Promise.resolve({ customers: [], salespeople: [], vendors: [], salesPreferences: { customers: [], vendors: [] } }),
       ])
       const customer = canLoadReferences && order.customerId ? await loadCustomer(order.customerId) : null
       const customerContacts = customer?.contacts || []
@@ -422,6 +432,7 @@ export function MrFormPage() {
       setCustomers(references.customers)
       setVendors(references.vendors)
       setSalespeople(references.salespeople)
+      setSalesPrefs(references.salesPreferences || { customers: [], vendors: [] })
       setContacts(customer?.contacts || [])
       setDirty(false)
     } catch (err) {
@@ -535,43 +546,59 @@ export function MrFormPage() {
   const chooseCustomer = async (value: string) => {
     const sequence = ++customerLoadSequence.current
     const customer = customers.find((item) => String(item.id) === value)
-    const deliveryLocation = customer?.salesDeliveryAddress || customer?.mapAddress || customer?.address || customer?.mapPoiName || ''
-    setContacts([])
+    // 销售个人对该客户的常用快照优先；其次客户档案销售送货地址/联系人；不再 fallback 工程师维保地址（避免污染）
+    const pref = (salesPrefs.customers || []).find((item) => String(item.customerId) === String(value))
+    const snap = (pref?.snapshot || {}) as Record<string, unknown>
+    const pickSnap = (key: string) => {
+      const own = snap[key]
+      return own !== undefined && own !== null && String(own).trim() !== '' ? String(own) : ''
+    }
+    // 单据级字段（客户 P/O、交付日期、金额等）不随快照带出
     patch({
       customerId: value,
       customerContactId: null,
       customerName: customer?.name || '',
       customerCode: customer?.code || '',
-      contactName: '',
-      purchaser: '',
-      purchaserTel: '',
-      purchaserMail: '',
-      recipient: '',
-      recipientTel: '',
-      recipientMail: '',
-      invoiceRecipient: '',
-      invoiceRecipientTel: '',
-      invoiceRecipientMail: '',
-      deliveryLocation,
+      contactName: pickSnap('contactName'),
+      purchaser: pickSnap('purchaser'),
+      purchaserTel: pickSnap('purchaserTel'),
+      purchaserMail: pickSnap('purchaserMail'),
+      recipient: pickSnap('recipient'),
+      recipientTel: pickSnap('recipientTel'),
+      recipientMail: pickSnap('recipientMail'),
+      invoiceRecipient: pickSnap('invoiceRecipient'),
+      invoiceRecipientTel: pickSnap('invoiceRecipientTel'),
+      invoiceRecipientMail: pickSnap('invoiceRecipientMail'),
+      paymentTerms: pickSnap('paymentTerms'),
+      paymentOther: pickSnap('paymentOther'),
+      invoiceProcess: pickSnap('invoiceProcess'),
+      billingTiming: pickSnap('billingTiming'),
+      billingContent: pickSnap('billingContent'),
+      invoiceType: pickSnap('invoiceType'),
+      deliveryTerms: pickSnap('deliveryTerms'),
+      deliveryLocation: pickSnap('deliveryLocation') || customer?.salesDeliveryAddress || '',
     })
+    setContacts([])
     try {
       const detail = await loadCustomer(value)
       if (sequence !== customerLoadSequence.current) return
       const defaultContact = contactByName(detail.contacts, detail.contactName) || detail.contacts?.[0]
       setContacts(detail.contacts || [])
       if (defaultContact) {
+        // 快照已带出的字段不再被档案默认联系人覆盖；快照缺失的才用档案联系人补齐
+        const fill = (key: string, fallback: string) => pickSnap(key) || fallback
         patch({
           customerContactId: defaultContact.id || null,
-          contactName: defaultContact.name || '',
-          purchaser: defaultContact.name || '',
-          purchaserTel: defaultContact.phone || '',
-          purchaserMail: defaultContact.email || '',
-          recipient: defaultContact.name || '',
-          recipientTel: defaultContact.phone || '',
-          recipientMail: defaultContact.email || '',
-          invoiceRecipient: defaultContact.name || '',
-          invoiceRecipientTel: defaultContact.phone || '',
-          invoiceRecipientMail: defaultContact.email || '',
+          contactName: fill('contactName', defaultContact.name || ''),
+          purchaser: fill('purchaser', defaultContact.name || ''),
+          purchaserTel: fill('purchaserTel', defaultContact.phone || ''),
+          purchaserMail: fill('purchaserMail', defaultContact.email || ''),
+          recipient: fill('recipient', defaultContact.name || ''),
+          recipientTel: fill('recipientTel', defaultContact.phone || ''),
+          recipientMail: fill('recipientMail', defaultContact.email || ''),
+          invoiceRecipient: fill('invoiceRecipient', defaultContact.name || ''),
+          invoiceRecipientTel: fill('invoiceRecipientTel', defaultContact.phone || ''),
+          invoiceRecipientMail: fill('invoiceRecipientMail', defaultContact.email || ''),
         })
       }
     } catch (err) {
@@ -1272,7 +1299,7 @@ export function MrFormPage() {
                   value={calculated.customerName || ''}
                   readOnly={!editable}
                   placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
-                  options={customers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
+                  options={sortedCustomers.map((customer) => ({ value: String(customer.id), label: customer.name || '', hint: customer.code || '' }))}
                   onChange={handleCustomerInput}
                   onSelect={(option) => void chooseCustomer(option.value)}
                 />

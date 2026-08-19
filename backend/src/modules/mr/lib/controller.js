@@ -603,19 +603,51 @@ async function update(req, res) {
   res.json(await loadDetail(req.params.id, req.user))
 }
 
-async function ensureMrVendors(connection, items = []) {
+// 销售个人常用信息沉淀：按“销售 × 供应商/客户”记忆 MR 表单偏好，与工程师维保厂商目录（maintenance_parties）完全隔离
+// 快照字段为客户维度的稳定偏好；单据级字段（客户 P/O、日期、金额、品项等）不记忆
+const SALES_PREF_SNAPSHOT_FIELDS = [
+  'deliveryLocation',
+  'purchaser', 'purchaserTel', 'purchaserMail',
+  'recipient', 'recipientTel', 'recipientMail',
+  'invoiceRecipient', 'invoiceRecipientTel', 'invoiceRecipientMail',
+  'paymentTerms', 'paymentOther',
+  'invoiceProcess', 'billingTiming', 'billingContent', 'invoiceType',
+  'deliveryTerms',
+]
+
+async function recordSalesVendorUsage(connection, salespersonId, items = []) {
+  if (!salespersonId) return
   const names = [...new Set(items.map((item) => String(item.vendor || '').trim()).filter(Boolean))]
   for (const name of names) {
-    const [rows] = await connection.execute(
-      "SELECT id FROM maintenance_parties WHERE party_type = 'original_manufacturer' AND name = :name LIMIT 1",
-      { name },
-    )
-    if (rows[0]) continue
     await connection.execute(
-      `INSERT INTO maintenance_parties (party_type, name) VALUES ('original_manufacturer', :name)`,
-      { name },
+      `INSERT INTO mr_sales_vendors (salesperson_id, vendor_name, use_count, last_used_at)
+       VALUES (:salespersonId, :vendorName, 1, NOW())
+       ON DUPLICATE KEY UPDATE use_count = use_count + 1, last_used_at = NOW()`,
+      { salespersonId, vendorName: name },
     )
   }
+}
+
+async function recordSalesCustomerPref(connection, salespersonId, order) {
+  if (!salespersonId || !order || !order.customerId) return
+  const snapshot = {}
+  for (const field of SALES_PREF_SNAPSHOT_FIELDS) {
+    const value = order[field]
+    if (value !== null && value !== undefined && String(value).trim() !== '') snapshot[field] = value
+  }
+  await connection.execute(
+    `INSERT INTO mr_sales_customer_prefs (salesperson_id, customer_id, snapshot, use_count, last_used_at)
+     VALUES (:salespersonId, :customerId, :snapshot, 1, NOW())
+     ON DUPLICATE KEY UPDATE snapshot = :snapshot, use_count = use_count + 1, last_used_at = NOW()`,
+    { salespersonId, customerId: Number(order.customerId), snapshot: JSON.stringify(snapshot) },
+  )
+}
+
+// 提交/助理批准时沉淀该业务负责人的个人常用（供应商 + 客户表单快照），不写工程师维保厂商目录
+async function recordSalesUsage(connection, order, items = []) {
+  const salespersonId = Number(order.salesOwnerId) || null
+  await recordSalesVendorUsage(connection, salespersonId, items)
+  await recordSalesCustomerPref(connection, salespersonId, order)
 }
 
 async function submit(req, res) {
@@ -629,7 +661,7 @@ async function submit(req, res) {
     await resolveSubmissionCustomer(connection, detailValue, req.user)
     const errors = validateSubmission(detailValue, detailValue.items)
     if (errors.length) throw badRequest('规范检查未通过', errors)
-    await ensureMrVendors(connection, detailValue.items)
+    await recordSalesUsage(connection, detailValue, detailValue.items)
     await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
     await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
     const steps = computeApprovalSteps(detailValue, detailValue.items)
@@ -699,7 +731,7 @@ async function decide(req, res, action) {
       const detailValue = await loadCalculatedOrder(connection, order)
       const errors = validateSubmission(detailValue, detailValue.items)
       if (errors.length) throw badRequest('助理补充后仍有未完成内容', errors)
-      await ensureMrVendors(connection, detailValue.items)
+      await recordSalesUsage(connection, detailValue, detailValue.items)
       await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
       const nextSteps = computeApprovalSteps(detailValue, detailValue.items)
       await connection.execute(
@@ -1948,9 +1980,17 @@ async function importQuotation(req, res) {
   }
 }
 
-/** 供应商候选：MR 历史品项供应商 + 供应商目录（原厂），供导入/编辑页下拉联动。 */
-async function vendorSuggestions(_req, res) {
+/** 供应商候选：当前销售个人常用（mr_sales_vendors）排前 + MR 全局历史品项供应商兜底；不再返回维保厂商目录，避免与工程师侧混淆。 */
+async function vendorSuggestions(req, res) {
   await ensureTables()
+  const salespersonId = Number(req.user?.id) || 0
+  const personal = salespersonId ? await query(
+    `SELECT vendor_name AS name, use_count AS usageCount, last_used_at AS lastUsedAt
+     FROM mr_sales_vendors WHERE salesperson_id = :salespersonId
+     ORDER BY usageCount DESC, lastUsedAt DESC`,
+    { salespersonId },
+  ) : []
+  const personalNames = new Set(personal.map((row) => row.name))
   const mrVendors = await query(
     `SELECT vendor AS name, COUNT(*) AS usageCount
      FROM mr_items
@@ -1959,15 +1999,41 @@ async function vendorSuggestions(_req, res) {
      ORDER BY usageCount DESC, vendor
      LIMIT 300`,
   )
-  const seen = new Set(mrVendors.map((row) => row.name))
-  const parties = await query(
-    `SELECT id, name FROM maintenance_parties WHERE party_type = 'original_manufacturer' ORDER BY name`,
-  )
   const items = [
-    ...mrVendors.map((row) => ({ id: `mr-${row.name}`, name: row.name })),
-    ...parties.filter((party) => !seen.has(party.name)).map((party) => ({ id: party.id, name: party.name })),
+    ...personal.map((row) => ({ id: `sales-${row.name}`, name: row.name })),
+    ...mrVendors.filter((row) => !personalNames.has(row.name)).map((row) => ({ id: `mr-${row.name}`, name: row.name })),
   ]
   res.json({ items })
+}
+
+/** 销售个人常用偏好：常用客户（含该销售对该客户的表单快照）与常用供应商，供填单自动带出。 */
+async function salesPreferences(req, res) {
+  await ensureTables()
+  const salespersonId = Number(req.user?.id) || 0
+  if (!salespersonId) return res.json({ customers: [], vendors: [] })
+  const [customerRows, vendorRows] = await Promise.all([
+    query(
+      `SELECT customer_id AS customerId, snapshot, use_count AS useCount, last_used_at AS lastUsedAt
+       FROM mr_sales_customer_prefs WHERE salesperson_id = :salespersonId
+       ORDER BY useCount DESC, lastUsedAt DESC LIMIT 200`,
+      { salespersonId },
+    ),
+    query(
+      `SELECT vendor_name AS name, use_count AS useCount, last_used_at AS lastUsedAt
+       FROM mr_sales_vendors WHERE salesperson_id = :salespersonId
+       ORDER BY useCount DESC, lastUsedAt DESC LIMIT 200`,
+      { salespersonId },
+    ),
+  ])
+  res.json({
+    customers: customerRows.map((row) => ({
+      customerId: Number(row.customerId),
+      snapshot: parseJsonValue(row.snapshot, {}) || {},
+      useCount: Number(row.useCount) || 0,
+      lastUsedAt: row.lastUsedAt || null,
+    })),
+    vendors: vendorRows.map((row) => ({ name: row.name, useCount: Number(row.useCount) || 0, lastUsedAt: row.lastUsedAt || null })),
+  })
 }
 
 /** 报价导入进度查询（配合前端“第 x/N 份”提示）。 */
@@ -2191,6 +2257,7 @@ module.exports = {
   importQuotation,
   importProgressHandler,
   vendorSuggestions,
+  salesPreferences,
   downloadQuotation,
   deleteQuotationFile,
   uploadAttachments,
