@@ -16,10 +16,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { useUrlParam } from "@/lib/use-url-param";
 
 interface User {
   id: string | number;
@@ -103,8 +105,8 @@ export function Users() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useUrlParam("role", "all");
+  const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
   const [permData, setPermData] = useState<PermissionPayload | null>(null);
@@ -646,7 +648,10 @@ export function Users() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>角色</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>角色</Label>
+                  <HelpTooltip label="角色决定菜单可见范围与数据权限：管理员拥有全部权限；工程主管可派单与审批；运营负责人可见全部工单；行政主管对业务数据只读；工程师仅能处理派给自己的工单。更细颗粒度的权限可在成员列表的「角色权限配置」中逐项调整。" />
+                </div>
                 <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="选择角色" />

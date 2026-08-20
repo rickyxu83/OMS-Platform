@@ -13,6 +13,7 @@ const {
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
+  sendHolidaySyncMail,
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
 const { processDueAttendanceEmailNotifications } = require('./attendance-notifications')
@@ -1101,6 +1102,32 @@ function startScheduler() {
         console.error('[scheduler] Attendance notification check failed', error?.message)
       }
     })
+
+    // 法定节假日自动同步：每年 11~12 月每天 09:15 检查来年数据，缺失则双源拉取写入并邮件通知管理员。
+    // 失败通知节流：每周一提醒一次；12 月 15 日起（国务院通常已公布）仍未成功则每天提醒。
+    scheduleCron('15 9 * * *', async () => {
+      try {
+        const { autoSyncNextYearHolidays } = require('../modules/attendance/controller')
+        const result = await autoSyncNextYearHolidays()
+        if (result.skipped) return
+        const admins = await activeUsersByRoles(['admin'])
+        if (result.synced) {
+          const mailResult = await sendHolidaySyncMail({ ...result, recipients: admins })
+          console.log(`[scheduler] Holiday auto-sync: ${result.year} synced ${result.count} day(s)`,
+            mailResult?.skipped ? `(mail skipped: ${mailResult.reason})` : `(mail sent to ${mailResult.to})`)
+          return
+        }
+        console.warn(`[scheduler] Holiday auto-sync failed for ${result.year}: ${result.reason}`)
+        const { year: currentYear, month, day } = shanghaiDateParts()
+        const weekday = new Date(Date.UTC(currentYear, month - 1, day)).getUTCDay()
+        if (weekday === 1 || (month === 12 && day >= 15)) {
+          const mailResult = await sendHolidaySyncMail({ ...result, recipients: admins })
+          if (!mailResult?.skipped) console.log(`[scheduler] Holiday auto-sync failure mail sent to ${mailResult.to}`)
+        }
+      } catch (error) {
+        console.error('[scheduler] Holiday auto-sync failed', error?.message)
+      }
+    })
   }
 
   if (!env.featureModulesDisabled.has('mr')) {
@@ -1134,7 +1161,7 @@ function startScheduler() {
     'monthly operations summary (08:20 on day 1)',
     'sales service-order notifications (every 5 minutes)',
   ]
-  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)')
+  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 

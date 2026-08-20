@@ -1092,6 +1092,42 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
   return { sent: true, to }
 }
 
+async function sendHolidaySyncMail({ year, synced, count = 0, warnings = [], reason = '', recipients = [] }) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const subject = synced
+    ? `法定节假日自动同步完成：${year} 年（${count} 天）`
+    : `法定节假日自动同步失败：${year} 年需要人工介入`
+  const warningList = warnings.length
+    ? `<p style="color:#b45309">校验提醒：${warnings.map(htmlEscape).join('；')}</p>`
+    : ''
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">${synced ? '法定节假日自动同步完成' : '法定节假日自动同步失败'}</h2>
+      ${synced
+        ? `<p>系统已从国务院公告镜像双源自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日与调休补班安排，共 <b>${count}</b> 天，并已生效于加班折算规则。</p>
+           ${warningList}
+           <p>请登录管理端「考勤设置 → 法定节假日」抽查确认。</p>`
+        : `<p>系统尝试自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日失败：</p>
+           <p style="color:#b91c1c">${htmlEscape(reason || '未知原因')}</p>
+           <p>请登录管理端「考勤设置 → 法定节假日」使用「同步官方数据」按钮手动同步，或手工录入。</p>`}
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 module.exports = {
   sendAssignmentMail,
   sendInspectionConfirmationMail,
@@ -1106,4 +1142,5 @@ module.exports = {
   sendCustomerSignatureRequestMail,
   sendAttendanceNotificationMail,
   sendMrApprovalMail,
+  sendHolidaySyncMail,
 }

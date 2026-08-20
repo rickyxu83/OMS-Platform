@@ -11,6 +11,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 
 interface AuditLog {
@@ -116,8 +117,8 @@ export function AuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [actorFilter, setActorFilter] = useState("all");
-  const [actionFilter, setActionFilter] = useState("all");
+  const [actorFilter, setActorFilter] = useUrlParam("actor", "all");
+  const [actionFilter, setActionFilter] = useUrlParam("action", "all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [riskyOnly, setRiskyOnly] = useState(false);

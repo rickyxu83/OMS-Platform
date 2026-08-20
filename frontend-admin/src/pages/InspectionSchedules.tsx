@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { formatCount } from "@/lib/format";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 
@@ -115,9 +116,9 @@ export function InspectionSchedules() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
-  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
-  const [cadenceFilter, setCadenceFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useUrlParam("customerId", "all");
+  const [cadenceFilter, setCadenceFilter] = useUrlParam("cadence", "all");
+  const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Schedule | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -1387,7 +1388,10 @@ export function InspectionSchedules() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>下次生成日期 *</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>下次生成日期 *</Label>
+                  <HelpTooltip label="系统每天 06:30 检查各巡检计划，为未来 14 天内到期的计划自动生成「待确认」巡检工单（需在系统设置中开启自动生成）；工单确认后才会派给工程师。生成后该日期按巡检周期自动顺延。" />
+                </div>
                 <Input
                   type="date"
                   value={form.nextRunAnchor}

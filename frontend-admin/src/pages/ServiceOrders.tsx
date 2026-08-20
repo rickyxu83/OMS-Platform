@@ -238,6 +238,7 @@ const I18N = {
     },
     list: {
       title: "工单列表",
+      help: "工单状态流转：草稿 → 已派发 → 进行中 → 待确认 → 待客户签署 → 已结案；审批通过后为已审核，归档后为已归档。工程师提交或修改工单后，系统按设置的延迟分钟数邮件通知客户关联销售（系统设置中可开关）。",
       loading: "正在加载…",
       empty: "暂无工单",
       colCaseCustomer: "Case ID / 客户",
@@ -495,6 +496,7 @@ const I18N = {
     },
     list: {
       title: "工單列表",
+      help: "工單狀態流轉：草稿 → 已派發 → 進行中 → 待確認 → 待客戶簽署 → 已結案；審批通過後為已審核，歸檔後為已歸檔。工程師提交或修改工單後，系統按設定的延遲分鐘數郵件通知客戶關聯銷售（系統設定中可開關）。",
       loading: "正在載入…",
       empty: "暫無工單",
       colCaseCustomer: "Case ID / 客戶",
@@ -1066,7 +1068,7 @@ export function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -1193,6 +1195,19 @@ export function ServiceOrders() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
+
+  // 状态/客户/日期筛选写回 URL，刷新后保持当前筛选
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (statusFilter !== "all") next.set("status", statusFilter); else next.delete("status");
+      if (customerFilter !== "all") next.set("customerId", customerFilter); else next.delete("customerId");
+      if (startDate) next.set("startDate", startDate); else next.delete("startDate");
+      if (endDate) next.set("endDate", endDate); else next.delete("endDate");
+      if (next.toString() === prev.toString()) return prev;
+      return next;
+    });
+  }, [statusFilter, customerFilter, startDate, endDate, setSearchParams]);
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
@@ -2132,6 +2147,7 @@ export function ServiceOrders() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
+            <HelpTooltip label={t.list.help} />
             {refreshing && <span className="btn-loader" aria-hidden="true" />}
           </CardTitle>
         </CardHeader>

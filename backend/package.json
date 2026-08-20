@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "26.0820.1010",
+  "version": "26.0820.2028",
   "description": "",
   "main": "src/server.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "ensure-user-onboarding-columns": "node scripts/ensure-user-onboarding-columns.js",
     "ensure-legacy-compat-columns": "node scripts/ensure-legacy-compat-columns.js",
     "sync:device-models": "node src/modules/device-model-catalog/sync-cli.js",
-    "test:unit": "node tests/auth-account-lockout.test.js && node tests/auth-login-rate-limit.test.js && node tests/attendance-workflow.test.js && node tests/attendance-applicant-permissions.test.js && node tests/attendance-mail.test.js && node tests/attendance-notifications.test.js && node tests/attendance-workflow-controller.test.js && node tests/attendance-report.test.js",
+    "test:unit": "node tests/auth-account-lockout.test.js && node tests/auth-login-rate-limit.test.js && node tests/attendance-workflow.test.js && node tests/attendance-applicant-permissions.test.js && node tests/attendance-mail.test.js && node tests/attendance-notifications.test.js && node tests/attendance-workflow-controller.test.js && node tests/attendance-report.test.js && node tests/holiday-sync.test.js",
     "test": "npm run check && node tests/chinese-search.test.js && node tests/device-customer-import-match.test.js && node tests/device-import-merge.test.js && node tests/device-maintenance-import.test.js && node tests/multi-install-schema.test.js && node tests/geo-ranking.test.js && node tests/sales-directory-permissions.test.js && node tests/device-model-catalog-h3c-fixture.test.js && node tests/device-model-catalog-hpe-network-fixture.test.js && node tests/device-model-catalog-ncloud-fixture.test.js && node tests/device-model-catalog-ingest-conflicts.test.js && node tests/bugfix-high-med.test.js && node tests/legacy-compat-columns.test.js && node tests/service-record-pdf-continuation.test.js && node tests/inspection-schedule-date.test.js && node tests/customer-routes.test.js && node tests/customer-sales-delivery-address.test.js && node src/modules/mr/tests/domain.test.js && node src/modules/mr/tests/workflow.test.js && node src/modules/mr/tests/quotation-parser.test.js && node src/modules/mr/tests/quotation-recognition.test.js && node src/modules/mr/tests/quotation-ai-parser.test.js && node src/modules/mr/tests/quotation-fixtures.test.js && npm run test:unit"
   },
   "keywords": [],

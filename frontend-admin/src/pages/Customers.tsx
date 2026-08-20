@@ -23,6 +23,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { toast } from "sonner";
@@ -221,6 +222,7 @@ const I18N = {
       name: "客户名称 *",
       code: "客户编码（留空自动生成）",
       salesperson: "对应销售",
+      salespersonHelp: "对应销售是维保到期预警、巡检提醒、月度总结等自动邮件的派发依据；留空的客户会在每周一 08:35 的「客户缺少销售」汇总邮件中被列出，提醒助理补齐。",
       contact: "联系人",
       phone: "联系电话",
       address: "工程服务地址",
@@ -403,6 +405,7 @@ const I18N = {
       name: "客戶名稱 *",
       code: "客戶編碼（留空自動生成）",
       salesperson: "對應銷售",
+      salespersonHelp: "對應銷售是維保到期預警、巡檢提醒、月度總結等自動郵件的派發依據；留空的客戶會在每週一 08:35 的「客戶缺少銷售」彙總郵件中被列出，提醒助理補齊。",
       contact: "聯絡人",
       phone: "聯絡電話",
       address: "工程服務地址",
@@ -675,7 +678,7 @@ export function Customers() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
-  const [levelFilter, setLevelFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useUrlParam("level", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -2386,7 +2389,10 @@ export function Customers() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cust-salesperson">{t.dialog.salesperson}</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="cust-salesperson">{t.dialog.salesperson}</Label>
+                  <HelpTooltip label={t.dialog.salespersonHelp} />
+                </div>
                 <Select
                   value={form.salesperson || "__none"}
                   onValueChange={(value) => setForm({ ...form, salesperson: value === "__none" ? "" : value })}

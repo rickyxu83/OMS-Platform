@@ -52,23 +52,12 @@ let schemaReadyPromise = null
 const WORK_HOURS_PER_DAY = 8
 const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
 const DEFAULT_PAY_MULTIPLIER = 1
-const BUILTIN_LEGAL_HOLIDAYS = Object.freeze([
-  { date: '2026-01-01', name: '元旦' },
-  { date: '2026-02-16', name: '春节' },
-  { date: '2026-02-17', name: '春节' },
-  { date: '2026-02-18', name: '春节' },
-  { date: '2026-02-19', name: '春节' },
-  { date: '2026-04-05', name: '清明节' },
-  { date: '2026-05-01', name: '劳动节' },
-  { date: '2026-05-02', name: '劳动节' },
-  { date: '2026-06-19', name: '端午节' },
-  { date: '2026-09-25', name: '中秋节' },
-  { date: '2026-10-01', name: '国庆节' },
-  { date: '2026-10-02', name: '国庆节' },
-  { date: '2026-10-03', name: '国庆节' },
-])
+const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
+const { fetchYearHolidays } = require('./holiday-sync')
 const legalHolidayCache = new Map()
+const makeupWorkdayCache = new Set()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
+const holidayDayTypes = new Set(['legal_holiday', 'makeup_workday'])
 
 function activeLeaveOverlapCondition(alias = 'r') {
   return [
@@ -215,7 +204,9 @@ function dateKey(value) {
 function overtimeDayType(startAt) {
   const date = toDate(startAt)
   if (!date) return 'workday'
-  if (legalHolidayCache.has(dateKey(date))) return 'legal_holiday'
+  const key = dateKey(date)
+  if (legalHolidayCache.has(key)) return 'legal_holiday'
+  if (makeupWorkdayCache.has(key)) return 'workday'
   if (date.getDay() === 0 || date.getDay() === 6) return 'rest_day'
   return 'workday'
 }
@@ -380,6 +371,7 @@ async function ensureSchema() {
           holiday_name VARCHAR(100) NOT NULL,
           source VARCHAR(32) NOT NULL DEFAULT 'manual',
           is_active TINYINT(1) NOT NULL DEFAULT 1,
+          day_type VARCHAR(32) NOT NULL DEFAULT 'legal_holiday',
           created_by BIGINT UNSIGNED NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -389,6 +381,7 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
+      await ensureLegalHolidayDayTypeColumn()
       await ensureAttendanceEmailNotificationsTable()
 
       await seedBuiltinLegalHolidays()
@@ -405,26 +398,57 @@ async function ensureSchema() {
   return schemaReadyPromise
 }
 
+async function ensureLegalHolidayDayTypeColumn() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_legal_holidays'
+       AND COLUMN_NAME = 'day_type'`,
+  )
+  if (!rows.length) {
+    await query("ALTER TABLE attendance_legal_holidays ADD COLUMN day_type VARCHAR(32) NOT NULL DEFAULT 'legal_holiday' AFTER is_active")
+  }
+}
+
 async function seedBuiltinLegalHolidays() {
   for (const item of BUILTIN_LEGAL_HOLIDAYS) {
     await query(
-      `INSERT IGNORE INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active)
-       VALUES (:date, :name, 'builtin', 1)`,
-      item,
+      `INSERT IGNORE INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active)
+       VALUES (:date, :name, :dayType, 'builtin', 1)`,
+      { date: item.date, name: item.name, dayType: item.dayType || 'legal_holiday' },
     )
   }
+  // 纠偏：自动来源（auto）的行与官方内置数据冲突时，强制改回官方值。
+  // manual 行视为人工有意调整，不动；is_active 也不动（尊重人工停用）。
+  let corrected = 0
+  for (const item of BUILTIN_LEGAL_HOLIDAYS) {
+    const result = await query(
+      `UPDATE attendance_legal_holidays
+       SET holiday_name = :name, day_type = :dayType, source = 'builtin'
+       WHERE holiday_date = :date
+         AND source = 'auto'
+         AND (holiday_name <> :name OR day_type <> :dayType)`,
+      { date: item.date, name: item.name, dayType: item.dayType || 'legal_holiday' },
+    )
+    corrected += Number(result?.affectedRows || 0)
+  }
+  if (corrected) console.log(`[attendance] legal holidays: corrected ${corrected} auto row(s) to builtin official data`)
 }
 
 async function refreshLegalHolidayCache() {
   const rows = await query(
-    `SELECT holiday_date, holiday_name
+    `SELECT holiday_date, holiday_name, day_type
      FROM attendance_legal_holidays
      WHERE is_active = 1`,
   )
   legalHolidayCache.clear()
-  rows.forEach((row) => {
-    legalHolidayCache.set(normalizeHolidayDate(row.holiday_date), row.holiday_name)
-  })
+  makeupWorkdayCache.clear()
+  for (const row of rows) {
+    const date = normalizeHolidayDate(row.holiday_date)
+    if (row.day_type === 'makeup_workday') makeupWorkdayCache.add(date)
+    else legalHolidayCache.set(date, row.holiday_name)
+  }
 }
 
 async function recalculateOvertimeRulesForDate(date) {
@@ -569,6 +593,8 @@ async function ensureDefaultSupervisorRoleRules() {
 }
 
 async function removeNonApplicantApprovalRoleRules() {
+  // 非申请角色清单为空时无需清理（当前模型：所有角色均可提交申请）
+  if (!ATTENDANCE_NON_APPLICANT_ROLES.length) return
   const params = Object.fromEntries(
     ATTENDANCE_NON_APPLICANT_ROLES.map((role, index) => [`excludedRole${index}`, role]),
   )
@@ -776,16 +802,6 @@ async function updateSupervisorRoleRules(req, res) {
          ON DUPLICATE KEY UPDATE supervisor_role = VALUES(supervisor_role)`,
         { applicantRole, supervisorRole },
       )
-      await connection.execute(
-        `DELETE FROM attendance_approval_role_rule_steps
-         WHERE applicant_role = :applicantRole`,
-        { applicantRole },
-      )
-      await connection.execute(
-        `INSERT INTO attendance_approval_role_rule_steps (applicant_role, step_order, approver_role)
-         VALUES (:applicantRole, 1, :supervisorRole)`,
-        { applicantRole, supervisorRole },
-      )
     }
   })
   return listSupervisorRoleRules(req, res)
@@ -875,6 +891,7 @@ function legalHolidayPayload(row) {
     date: normalizeHolidayDate(row.holiday_date),
     name: row.holiday_name,
     source: row.source,
+    dayType: row.day_type === 'makeup_workday' ? 'makeup_workday' : 'legal_holiday',
     active: Boolean(row.is_active),
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -888,7 +905,7 @@ async function listLegalHolidays(req, res) {
   const where = year ? 'WHERE holiday_date >= :startDate AND holiday_date < :endDate' : ''
   const params = year ? { startDate: `${year}-01-01`, endDate: `${Number(year) + 1}-01-01` } : {}
   const rows = await query(
-    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
+    `SELECT holiday_date, holiday_name, day_type, source, is_active, created_by, created_at, updated_at
      FROM attendance_legal_holidays
      ${where}
      ORDER BY holiday_date ASC`,
@@ -905,14 +922,17 @@ async function upsertLegalHoliday(req, res) {
   if (!name) throw badRequest('节假日名称不能为空')
   const requestedSource = text(req.body?.source) || 'manual'
   const source = holidaySources.has(requestedSource) ? requestedSource : 'manual'
+  const requestedDayType = text(req.body?.dayType)
+  const dayType = holidayDayTypes.has(requestedDayType) ? requestedDayType : 'legal_holiday'
   await query(
-    `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active, created_by)
-     VALUES (:date, :name, :source, 1, :createdBy)
+    `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active, created_by)
+     VALUES (:date, :name, :dayType, :source, 1, :createdBy)
      ON DUPLICATE KEY UPDATE
        holiday_name = VALUES(holiday_name),
+       day_type = VALUES(day_type),
        source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE VALUES(source) END,
        is_active = 1`,
-    { date, name, source, createdBy: req.user.id },
+    { date, name, dayType, source, createdBy: req.user.id },
   )
   await refreshLegalHolidayCache()
   await recalculateOvertimeRulesForDate(date)
@@ -940,6 +960,61 @@ async function deleteLegalHoliday(req, res) {
   await refreshLegalHolidayCache()
   await recalculateOvertimeRulesForDate(date)
   res.json({ ok: true })
+}
+
+// 同步官方节假日（双源拉取国务院公告镜像）：预览不写库；确认时后端重新拉取再写入，不信任前端回传。
+async function syncLegalHolidaysPreview(req, res) {
+  await ensureSchema()
+  const result = await fetchYearHolidays(req.body?.year)
+  if (!result.ok) throw badRequest(result.reason)
+  res.json({ year: result.year, items: result.items, warnings: result.warnings, sources: result.sources })
+}
+
+// 双源比对一致的节假日批量落库（source='auto'，后续启动时 builtin 官方数据仍可纠偏）
+async function writeSyncedHolidays(items, createdBy = null) {
+  for (const item of items) {
+    await query(
+      `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active, created_by)
+       VALUES (:date, :name, :dayType, 'auto', 1, :createdBy)
+       ON DUPLICATE KEY UPDATE
+         holiday_name = VALUES(holiday_name),
+         day_type = VALUES(day_type),
+         source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE 'auto' END,
+         is_active = 1`,
+      { date: item.date, name: item.name, dayType: item.dayType, createdBy },
+    )
+    await recalculateOvertimeRulesForDate(item.date)
+  }
+  await refreshLegalHolidayCache()
+}
+
+async function syncLegalHolidaysConfirm(req, res) {
+  await ensureSchema()
+  const result = await fetchYearHolidays(req.body?.year)
+  if (!result.ok) throw badRequest(result.reason)
+  await writeSyncedHolidays(result.items, req.user.id)
+  res.json({ ok: true, year: result.year, count: result.items.length, warnings: result.warnings, sources: result.sources })
+}
+
+// 定时任务用：每年 11~12 月检查来年节假日，缺失则自动双源同步（最严格模式：双源必须均可用且一致）。
+// 返回结果由调用方（scheduler）决定邮件通知策略。
+async function autoSyncNextYearHolidays() {
+  await ensureSchema()
+  const shanghaiNow = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const month = shanghaiNow.getUTCMonth() + 1
+  if (month < 11) return { skipped: true, reason: 'not_in_sync_window' }
+  const targetYear = shanghaiNow.getUTCFullYear() + 1
+  const rows = await query(
+    `SELECT COUNT(*) AS cnt FROM attendance_legal_holidays
+     WHERE holiday_date >= :startDate AND holiday_date < :endDate AND is_active = 1`,
+    { startDate: `${targetYear}-01-01`, endDate: `${targetYear + 1}-01-01` },
+  )
+  const existing = Number(rows[0]?.cnt || 0)
+  if (existing >= 20) return { skipped: true, reason: 'already_present', year: targetYear, count: existing }
+  const result = await fetchYearHolidays(targetYear, { requireDualSource: true })
+  if (!result.ok) return { skipped: false, synced: false, year: targetYear, reason: result.reason }
+  await writeSyncedHolidays(result.items, null)
+  return { skipped: false, synced: true, year: targetYear, count: result.items.length, warnings: result.warnings }
 }
 
 async function supervisorRoleForApplicantRoleConnection(connection, role) {
@@ -1219,6 +1294,7 @@ async function createRequest(req, res) {
           startAt: input.startAt,
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
+          makeupWorkdays: new Set(makeupWorkdayCache),
           includeNonWorkingDays: input.requestType === 'leave' && ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt
@@ -1263,7 +1339,7 @@ async function createRequest(req, res) {
      VALUES
        (:workflowVersion, :employeeId, :delegateEmployeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :workingDays, :reason, 'draft', :submittedBy)`,
     {
-      workflowVersion: 3,
+      workflowVersion: 4,
       employeeId: employee.id,
       delegateEmployeeId,
       submittedBy: req.user.id,
@@ -1621,13 +1697,13 @@ async function insertServiceOrderOvertimeSegment(connection, {
   )
   if (existingRows[0]) return null
 
-  const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, employee.role)
+  const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
   const approvalSteps = buildApprovalSteps({
+    applicantRole: employee.role,
     requestType: 'overtime',
     workingDays: 0,
-    delegateEmployeeId: null,
-    approvalRoles,
-    workflowVersion: 3,
+    supervisorRole,
+    workflowVersion: 4,
   })
   await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(approvalSteps), userId)
   const status = requestStatusForStep(approvalSteps[0]?.stepType)
@@ -1636,8 +1712,9 @@ async function insertServiceOrderOvertimeSegment(connection, {
     `INSERT INTO attendance_requests
        (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (3, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, NULL, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
+       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
     {
+      supervisorRole,
       employeeId: employee.id,
       overtimeKind: segment.kind,
       overtimeResult,
@@ -2098,7 +2175,7 @@ async function submitRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     const workflowVersion = Number(request.workflow_version || 1)
-    if (![2, 3].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
+    if (![2, 3, 4].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
@@ -2129,7 +2206,18 @@ async function submitRequest(req, res) {
     }
 
     let steps
-    if (workflowVersion >= 3) {
+    if (workflowVersion >= 4) {
+      // v4：提交时按当前直属主管映射实时推导审批链（配置变更对未提交草稿即时生效）
+      const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, request.applicant_role)
+      steps = buildApprovalSteps({
+        applicantRole: request.applicant_role,
+        requestType: request.request_type,
+        workingDays: Number(request.working_days || 0),
+        supervisorRole,
+        workflowVersion,
+      })
+      await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(steps), request.submitted_by)
+    } else if (workflowVersion >= 3) {
       const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, request.applicant_role)
       steps = buildApprovalSteps({
         requestType: request.request_type,
@@ -2288,6 +2376,12 @@ async function nextWaitingApprovalStep(connection, requestId) {
 }
 
 function assertWorkflowStepApprover(step, user, request) {
+  // 管理员与行政主管拥有全部考勤权限，可审批任意环节（防止审批链配置的角色无审批权限时申请卡死）；
+  // 但申请人不能审批自己的申请
+  if (['admin', 'administrative_supervisor'].includes(user.role)) {
+    if (Number(request?.submitted_by) === Number(user.id)) throw forbidden('申请人不能审批自己的申请')
+    return
+  }
   if (step.step_type === 'delegate') {
     if (Number(step.assignee_user_id) !== Number(user.id)) throw forbidden('只有指定代理人可以审批')
     return
@@ -2554,6 +2648,49 @@ async function adjustBalance(req, res) {
   res.json({ ok: true })
 }
 
+// 批量初始化余额：把选中员工的特休/调休余额设定为绝对值，差额以 adjust 流水入账（保持台账可追溯）
+async function batchInitBalance(req, res) {
+  await ensureSchema()
+  if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
+  const balanceType = text(req.body?.balanceType)
+  if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
+  const target = Number(req.body?.target)
+  if (!Number.isFinite(target) || target < 0) throw badRequest('目标余额不正确（不能为负数）')
+  assertHalfUnit(target, balanceType === 'annual_leave' ? '特休余额' : '调休余额')
+  const employeeIds = Array.isArray(req.body?.employeeIds)
+    ? [...new Set(req.body.employeeIds.map(Number).filter(Number.isFinite))]
+    : []
+  if (!employeeIds.length) throw badRequest('请先选择员工')
+  if (employeeIds.length > 200) throw badRequest('单次最多批量设置 200 人')
+  const note = nullableText(req.body?.note)
+  const unit = balanceType === 'annual_leave' ? '天' : '小时'
+  let initialized = 0
+  let skipped = 0
+  for (const employeeId of employeeIds) {
+    await transaction(async (connection) => {
+      await lockEmployeeBalance(connection, employeeId)
+      const [rows] = await connection.execute(
+        `SELECT COALESCE(SUM(delta_hours), 0) AS balance
+         FROM attendance_balance_ledger
+         WHERE employee_id = :employeeId AND balance_type = :balanceType`,
+        { employeeId, balanceType },
+      )
+      const current = Number(rows[0]?.balance || 0)
+      const delta = roundBalance(target - current)
+      if (delta === 0) { skipped += 1; return }
+      await connection.execute(
+        `INSERT INTO attendance_balance_ledger
+           (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
+         VALUES
+           (:employeeId, NULL, :balanceType, :delta, 'adjust', :note, :createdBy)`,
+        { employeeId, balanceType, delta, note: `${note || '批量初始化'}（设定为 ${target} ${unit}，原 ${roundBalance(current)} ${unit}）`, createdBy: req.user.id },
+      )
+      initialized += 1
+    })
+  }
+  res.json({ ok: true, initialized, skipped })
+}
+
 async function monthlyReport(req, res) {
   await ensureSchema()
   const month = /^\d{4}-\d{2}$/.test(text(req.query.month)) ? text(req.query.month) : new Date().toISOString().slice(0, 7)
@@ -2612,6 +2749,9 @@ module.exports = {
   listLegalHolidays,
   upsertLegalHoliday,
   deleteLegalHoliday,
+  syncLegalHolidaysPreview,
+  syncLegalHolidaysConfirm,
+  autoSyncNextYearHolidays,
   updateEmployee,
   createRequest,
   submitRequest,
@@ -2631,5 +2771,6 @@ module.exports = {
   withdrawRequest,
   voidRequest,
   adjustBalance,
+  batchInitBalance,
   monthlyReport,
 }

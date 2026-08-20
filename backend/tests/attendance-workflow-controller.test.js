@@ -142,21 +142,23 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const insert = result.calls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
     assert.match(insert.sql, /workflow_version/)
-    assert.equal(insert.params.workflowVersion, 3)
+    assert.equal(insert.params.workflowVersion, 4)
     assert.equal(insert.params.delegateEmployeeId, 9)
     assert.equal(insert.params.workingDays, 3)
     assert.equal(insert.params.hours, 24)
     assert.ok(result.calls.some((call) => /INSERT IGNORE INTO attendance_approval_role_rule_steps/.test(call.sql)))
-    assert.ok(result.calls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)))
-    assert.ok(result.calls.some((call) => /DELETE FROM attendance_supervisor_role_rules/.test(call.sql)))
+    // 所有角色均可申请后，不再清理非申请角色的审批规则
+    assert.equal(result.calls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)), false)
+    assert.equal(result.calls.some((call) => /DELETE FROM attendance_supervisor_role_rules/.test(call.sql)), false)
     assert.equal(result.calls.some((call) => /DELETE FROM attendance_requests/.test(call.sql)), false)
   }
 
+  // 权限收窄后所有角色（含 admin/dispatcher/operations_director）均可提交考勤申请
   for (const role of ['admin', 'dispatcher', 'operations_director']) {
     const result = await createLeave({}, {}, role)
-    assert.equal(result.thrown?.status, 403)
-    assert.match(result.thrown?.message || '', /无需提交考勤申请/)
-    assert.equal(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)), false)
+    assert.equal(result.thrown, null, `${role} should be able to create leave`)
+    assert.equal(result.response.statusCode, 201)
+    assert.ok(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)))
   }
 
   {
@@ -248,8 +250,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const res = createResponse()
     await controller.listApprovalRoleRules(req, res)
     assert.deepEqual(res.body.items.map((item) => item.applicantRole), [
+      'admin',
       'assistant',
       'assistant_supervisor',
+      'dispatcher',
+      'operations_director',
       'engineering_supervisor',
       'administrative_supervisor',
       'sales_supervisor',
@@ -472,7 +477,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       user: { id: 1, role: 'admin' },
       body: {
         items: [{
-          applicantRole: 'admin',
+          applicantRole: 'guest',
           steps: [{ approverRole: 'administrative_supervisor' }],
         }],
       },
@@ -762,7 +767,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -783,7 +788,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(res.body.status, 'pending_approval')
     const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
-    assert.match(insert.sql, /\(3, :employeeId/)
+    assert.match(insert.sql, /\(4, :employeeId/)
     assert.match(insert.sql, /source_snapshot/)
     const approvalInsert = executeCalls.find((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
     assert.equal(approvalInsert?.params.stepType, 'role')
@@ -838,7 +843,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -893,7 +898,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -1020,7 +1025,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
         if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
         if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
-        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
         if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: insertId++ }, []]
         return [{ affectedRows: 1 }, []]
@@ -1068,7 +1073,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return params.segmentKey === 'work' ? [[{ id: 700 }], []] : [[], []]
         }
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
-        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
         if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 1010 }, []]
         return [{ affectedRows: 1 }, []]
@@ -1528,7 +1533,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 403)
+    // 权限收窄后：管理员/行政主管可审批任意环节（防止配置角色无审批权限时申请卡死）
+    assert.equal(thrown, null)
+    assert.equal(res.body.ok, true)
   }
 
   {
@@ -1607,7 +1614,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 403)
+    // 权限收窄后：管理员/行政主管可审批任意环节，v2 遗留流程同样兜底
+    assert.equal(thrown, null)
+    assert.equal(res.body.ok, true)
   }
 
   {
