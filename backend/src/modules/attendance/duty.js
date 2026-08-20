@@ -164,7 +164,7 @@ async function saveSetup(req, res) {
     }
     // 删除假期段范围内的旧按天记录（历史数据），整段未锁定才允许
     const writableSpans = records.filter((record) => record.dutyType === 'legal_holiday_on_call' && [...spanMonths(record)].every((month) => !lockedMonths.has(month)))
-    const holidayParams = Object.fromEntries(writableSpans.map((span, index) => [`start${index}`, span.date, `end${index}`, span.endDate]))
+    const holidayParams = Object.fromEntries(writableSpans.flatMap((span, index) => [[`start${index}`, span.date], [`end${index}`, span.endDate]]))
     if (writableSpans.length) {
       await connection.execute(`DELETE FROM attendance_duty_records
         WHERE duty_type = 'legal_holiday_on_call' AND batch_status IN ('draft', 'rejected') AND (
@@ -178,7 +178,7 @@ async function saveSetup(req, res) {
       await connection.execute(`INSERT INTO attendance_duty_records
         (duty_date, duty_end_date, duty_month, employee_id, duty_type, reason, units, overlap_state, source_template_id, batch_status)
         VALUES (:date, :endDate, :month, :employeeId, :dutyType, :reason, :units, :overlapState, :templateId, 'draft')`,
-      { ...record, month, endDate: record.endDate || null, units: record.units ?? 1, templateId: record.dutyType === 'weekend_on_call' ? templateId : null })
+      { ...record, month, endDate: record.endDate || null, units: record.days ?? record.units ?? 1, templateId: record.dutyType === 'weekend_on_call' ? templateId : null })
     }
   })
   res.json({ ok: true, generated: records.length })
