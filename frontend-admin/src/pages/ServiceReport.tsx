@@ -55,6 +55,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorToast } from "@/components/ErrorToast";
 import { PdfPreview } from "@/components/PdfPreview";
+import { OfficePreviewContent } from "@/components/OfficePreviewContent";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
@@ -138,6 +139,7 @@ export function ServiceReport() {
   const [attachmentPreviewFiles, setAttachmentPreviewFiles] = useState<OrderFile[]>([]);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState("");
   const [attachmentPreviewPdfData, setAttachmentPreviewPdfData] = useState<Uint8Array | null>(null);
+const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: Blob; kind: "docx" | "xlsx" } | null>(null);
   const [attachmentPreviewText, setAttachmentPreviewText] = useState("");
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [attachmentPreviewError, setAttachmentPreviewError] = useState("");
@@ -1510,6 +1512,7 @@ export function ServiceReport() {
     setAttachmentPreviewFiles([]);
     setAttachmentPreviewUrl("");
     setAttachmentPreviewPdfData(null);
+    setAttachmentPreviewOffice(null);
     setAttachmentPreviewText("");
     setAttachmentPreviewLoading(false);
     setAttachmentPreviewError("");
@@ -1531,6 +1534,8 @@ export function ServiceReport() {
         setAttachmentPreviewText(await blob.text());
       } else if (kind === "pdf") {
         setAttachmentPreviewPdfData(new Uint8Array(await previewBlob(blob, kind).arrayBuffer()));
+      } else if (kind === "docx" || kind === "xlsx") {
+        setAttachmentPreviewOffice({ blob, kind });
       } else {
         const url = URL.createObjectURL(blob);
         attachmentPreviewUrlRef.current = url;
@@ -2904,6 +2909,12 @@ export function ServiceReport() {
                 <PdfPreview
                   data={attachmentPreviewPdfData}
                   title={attachmentPreviewFile.originalName || "PDF 附件预览"}
+                />
+              ) : attachmentPreviewOffice && attachmentPreviewFile ? (
+                <OfficePreviewContent
+                  blob={attachmentPreviewOffice.blob}
+                  fileName={attachmentPreviewFile.originalName || `附件 #${attachmentPreviewFile.id}`}
+                  type={attachmentPreviewOffice.kind}
                 />
               ) : attachmentPreviewText ? (
                 <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">

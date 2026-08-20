@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FilePenLine, Loader2, Plus, RefreshCw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { FilePenLine, Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorToast } from '@/components/ErrorToast'
+import { CustomerIndexSuggestions } from '@/components/CustomerIndexSuggestions'
+import { customerMatches, groupCustomersByInitial } from '@/lib/customer-index'
 import { useAuth } from '@/contexts/AuthContext'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { api } from '@/services/api'
 import { createMr, deleteMr, listMr, listSalespeople } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
-import type { MrOrder, MrStatus, UserOption } from '../types'
+import type { CustomerOption, MrOrder, MrStatus, UserOption } from '../types'
 
 const STATUS_LABELS: Record<MrStatus, string> = {
   draft: '草稿',
@@ -61,6 +65,15 @@ export function MrListPage() {
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
+  const [purchaseStatus, setPurchaseStatus] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [salesFilterId, setSalesFilterId] = useState('all')
+  const [salesFilterOptions, setSalesFilterOptions] = useState<UserOption[]>([])
+  const [customerFilterId, setCustomerFilterId] = useState('')
+  const [customerFilterInput, setCustomerFilterInput] = useState('')
+  const [customerFilterOpen, setCustomerFilterOpen] = useState(false)
+  const [filterCustomers, setFilterCustomers] = useState<CustomerOption[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
@@ -73,20 +86,57 @@ export function MrListPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await listMr({ q: q.trim(), status: status === 'all' ? '' : status })
+      const data = await listMr({
+        q: q.trim(),
+        status: status === 'all' ? '' : status,
+        purchaseStatus: purchaseStatus === 'all' ? '' : purchaseStatus,
+        customerId: customerFilterId,
+        salesOwnerId: salesFilterId === 'all' ? '' : salesFilterId,
+        dateFrom,
+        dateTo,
+      })
       setItems(data.items || [])
     } catch (err) {
       setError((err as Error).message || '加载失败')
     } finally {
       setLoading(false)
     }
-  }, [q, status])
+  }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQ(queryInput.trim()), 300)
     return () => window.clearTimeout(timer)
   }, [queryInput])
   useEffect(() => { void load() }, [load])
+
+  const { lang } = useLanguage()
+  // 销售筛选名录（mount 加载一次）；与新建弹窗按需加载的 salesOptions 相互独立
+  useEffect(() => {
+    listSalespeople().then((data) => setSalesFilterOptions(data.items || [])).catch(() => {})
+  }, [])
+  // 客户筛选名录（无 customer.view 权限的角色 403 时静默为空，关键词搜索兑底）
+  useEffect(() => {
+    const sortLocale = encodeURIComponent(lang === 'zh-TW' ? 'zh-TW' : 'zh-Hans-CN')
+    api.get(`/customers?pageSize=200&sortLocale=${sortLocale}`).then((data) => setFilterCustomers((data?.items || []) as CustomerOption[])).catch(() => {})
+  }, [lang])
+  const filterCustomerGroups = useMemo(() => (
+    groupCustomersByInitial(
+      filterCustomers.filter((customer) => customerMatches(customer, customerFilterInput)).slice(0, 160),
+      lang,
+    )
+  ), [filterCustomers, customerFilterInput, lang])
+
+  const resetFilters = () => {
+    setQueryInput('')
+    setQ('')
+    setStatus('all')
+    setPurchaseStatus('all')
+    setDateFrom('')
+    setDateTo('')
+    setSalesFilterId('all')
+    setCustomerFilterId('')
+    setCustomerFilterInput('')
+  }
 
   const createForSales = async (salesOwnerId?: string | number) => {
     setCreating(true)
@@ -170,17 +220,68 @@ export function MrListPage() {
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
       <div className="flex flex-wrap items-center gap-2 border-y bg-background py-3">
-        <div className="relative min-w-[240px] flex-1 sm:max-w-md">
+        <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户、客户缩写或 Ctrl.NO" aria-label="搜索 MR" className="pl-9" />
+          <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
+        </div>
+        <div className="relative w-full sm:w-[220px]">
+          <Input
+            value={customerFilterInput}
+            placeholder="按客户筛选"
+            aria-label="按客户筛选"
+            onFocus={() => setCustomerFilterOpen(true)}
+            onBlur={() => window.setTimeout(() => setCustomerFilterOpen(false), 140)}
+            onChange={(event) => {
+              const value = event.target.value
+              setCustomerFilterInput(value)
+              setCustomerFilterOpen(true)
+              if (!value.trim()) setCustomerFilterId('')
+            }}
+          />
+          <CustomerIndexSuggestions
+            idPrefix="mr-filter-customer-letter"
+            open={customerFilterOpen}
+            searching={false}
+            recentCustomers={[]}
+            groups={filterCustomerGroups}
+            selectedCustomerId={customerFilterId}
+            emptyText="未找到匹配客户"
+            onSelect={(customer) => {
+              setCustomerFilterOpen(false)
+              setCustomerFilterId(String(customer.id))
+              setCustomerFilterInput(customer.name || `客户 #${customer.id}`)
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="填表日期起" className="w-[150px]" />
+          <span className="text-sm text-muted-foreground">至</span>
+          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="填表日期止" className="w-[150px]" />
         </div>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部状态</SelectItem>
             {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={purchaseStatus} onValueChange={setPurchaseStatus}>
+          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部采购状态</SelectItem>
+            {Object.entries(PURCHASE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={salesFilterId} onValueChange={setSalesFilterId}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="全部销售" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部销售</SelectItem>
+            {salesFilterOptions.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="icon" title="重置筛选" aria-label="重置筛选" onClick={resetFilters}>
+          <RotateCcw className="size-4" />
+        </Button>
         <Button variant="outline" size="icon" title="刷新" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>

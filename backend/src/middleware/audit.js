@@ -1,4 +1,5 @@
 const { query } = require('../config/db')
+const { resolveIpLocation } = require('../utils/ip-location')
 
 const actionByMethod = {
   GET: 'read',
@@ -53,6 +54,7 @@ function auditLogger(req, res, next) {
       path: req.originalUrl,
       statusCode: res.statusCode,
       ip: req.ip,
+      location: resolveIpLocation(req.ip) || undefined,
       durationMs: Date.now() - startedAt,
       query: safePayload(req.query) || {},
       body: req.method === 'GET' ? undefined : safePayload(req.body),

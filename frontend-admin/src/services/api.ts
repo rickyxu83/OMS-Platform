@@ -44,7 +44,7 @@ export function clearSession() {
   sessionStorage.removeItem(USER_KEY)
 }
 
-function resolveApiBase(): string {
+export function resolveApiBase(): string {
   const sameOrigin = `${window.location.origin}/api/v1`
   const configured = (import.meta as any).env.VITE_API_BASE_URL
   if (!configured) return sameOrigin

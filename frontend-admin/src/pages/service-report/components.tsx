@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { CheckCircle, FileText, PenLine, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cropSignatureDataUrl } from "@/lib/signature-crop";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -214,6 +215,7 @@ export function SignaturePad({
     const canvas = canvasRef.current;
     let dataUrl = "";
     if (canvas) {
+      let source = canvas;
       if (isQuarterRotated(canvas)) {
         // 画布被 CSS 旋转 90°：导出时把位图转正，保证存下来的签名是正的
         const output = document.createElement("canvas");
@@ -224,10 +226,12 @@ export function SignaturePad({
           outputContext.translate(output.width / 2, output.height / 2);
           outputContext.rotate(Math.PI / 2);
           outputContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-          dataUrl = output.toDataURL("image/png");
+          source = output;
         }
       }
-      if (!dataUrl) dataUrl = canvas.toDataURL("image/png");
+      // 裁剪到笔迹包围盒：签名只含笔迹本身，服务记录/归档 PDF 中渲染大小一致
+      dataUrl = cropSignatureDataUrl(source);
+      if (!dataUrl) dataUrl = source.toDataURL("image/png");
     }
     onChange(dataUrl);
   }

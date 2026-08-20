@@ -56,8 +56,12 @@ const app = express()
 const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve(env.rootDir, env.uploadDir)
 
 app.disable('x-powered-by')
-// 只信任最近一跳反向代理（nginx），避免伪造 X-Forwarded-For 绕过基于 IP 的限流
-app.set('trust proxy', 1)
+// 信任最近 N 跳反向代理，避免伪造 X-Forwarded-For 绕过基于 IP 的限流。
+// 生产为单层 Caddy → 默认 1；测试服为「外层 Caddy 网关 → 项目 Caddy」双层 → 设 TRUST_PROXY=2。
+// 注意：审计日志中出现 Cloudflare IP（104.28.0.0/16）是访问者的 WARP 代理出口，
+// 并非服务端多了 CF 代理层，不要据此调大 TRUST_PROXY。
+const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY || '', 10)
+app.set('trust proxy', Number.isInteger(trustProxyHops) && trustProxyHops > 0 ? trustProxyHops : 1)
 app.use(helmet())
 app.use(cors(corsOptions))
 app.use(express.json({ limit: '10mb' }))

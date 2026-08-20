@@ -27,6 +27,7 @@ interface AuditLog {
   detail?: {
     statusCode?: number;
     ip?: string;
+    location?: string;
     durationMs?: number;
     message?: string;
     [key: string]: unknown;
@@ -196,7 +197,7 @@ export function AuditLogs() {
   function exportCsv() {
     if (!filtered.length) return;
     const rows: string[][] = [
-      ["时间", "操作人", "操作类型", "资源", "状态码", "IP", "耗时(ms)"],
+      ["时间", "操作人", "操作类型", "资源", "状态码", "IP", "归属地", "耗时(ms)"],
       ...filtered.map((log) => [
         formatDateTime(log.createdAt),
         actorName(log),
@@ -204,6 +205,7 @@ export function AuditLogs() {
         resourceName(log),
         String(log.detail?.statusCode ?? "-"),
         String(log.detail?.ip || "-"),
+        String(log.detail?.location || "-"),
         String(log.detail?.durationMs ?? "-"),
       ]),
     ];
@@ -417,7 +419,10 @@ export function AuditLogs() {
                             </div>
                           )}
                           <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                            <span>来源: {String(log.detail?.ip || "-")}</span>
+                            <span>
+                              来源: {String(log.detail?.ip || "-")}
+                              {log.detail?.location ? `（${String(log.detail.location)}）` : ""}
+                            </span>
                             <span>
                               状态:{" "}
                               {code >= 400 ? (

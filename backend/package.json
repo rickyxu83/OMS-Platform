@@ -1,12 +1,13 @@
 {
   "name": "backend",
-  "version": "26.0820.0137",
+  "version": "26.0820.1010",
   "description": "",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "check": "find src scripts tests -type f \\( -name '*.js' -o -name '*.cjs' \\) -print0 | xargs -0 -n 1 node --check",
     "create-admin": "node scripts/create-admin.js",
+    "crop-signatures": "node scripts/crop-signatures.js",
     "ensure-user-login-columns": "node scripts/ensure-user-login-columns.js",
     "ensure-user-role-enum": "node scripts/ensure-user-role-enum.js",
     "ensure-user-lockout-columns": "node scripts/ensure-user-lockout-columns.js",
@@ -27,6 +28,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
+    "ip2region": "^2.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "mysql2": "^3.22.3",
@@ -37,6 +39,7 @@
     "pdfjs-dist": "5.4.296",
     "pdfkit": "^0.18.0",
     "pinyin-pro": "^3.28.1",
+    "pngjs": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
