@@ -35,13 +35,14 @@ export function cropSignatureDataUrl(canvas: HTMLCanvasElement): string {
   }
   if (maxX < 0) return ""; // 无笔迹
 
-  // 归一化：笔迹 + 四边 15% 留白（不受画布边缘限制，不够就向外扩），
-  // 所有签名图笔迹占比恒定为 1/1.3，固定高度渲染时笔迹视觉大小一致。
+  // 归一化：笔迹 + 四边各 15% 留白（横竖分别按笔迹宽/高计算，不够就向外扩），
+  // 横竖两个方向笔迹占比都恒定为 1/1.3，固定高度渲染时笔迹视觉大小一致。
   const inkW = maxX - minX + 1;
   const inkH = maxY - minY + 1;
-  const pad = Math.max(8, Math.round(Math.max(inkW, inkH) * 0.15));
-  const outW = inkW + pad * 2;
-  const outH = inkH + pad * 2;
+  const padX = Math.max(8, Math.round(inkW * 0.15));
+  const padY = Math.max(8, Math.round(inkH * 0.15));
+  const outW = inkW + padX * 2;
+  const outH = inkH + padY * 2;
 
   const out = document.createElement("canvas");
   out.width = outW;
@@ -52,6 +53,6 @@ export function cropSignatureDataUrl(canvas: HTMLCanvasElement): string {
     outContext.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
     outContext.fillRect(0, 0, outW, outH);
   }
-  outContext.drawImage(canvas, minX, minY, inkW, inkH, pad, pad, inkW, inkH);
+  outContext.drawImage(canvas, minX, minY, inkW, inkH, padX, padY, inkW, inkH);
   return out.toDataURL("image/png");
 }

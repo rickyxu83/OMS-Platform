@@ -47,15 +47,16 @@ function cropSignaturePng(buffer) {
   }
   if (maxX < 0) return null // 无笔迹
 
-  // 归一化：笔迹 + 四边 15% 留白（不受原画布边距限制，不够就向外扩）。
-  // 这样所有签名图的笔迹占比恒定为 1/1.3，配合固定高度渲染，笔迹视觉高度完全一致。
+  // 归一化：笔迹 + 四边各 15% 留白（横竖分别按笔迹宽/高计算，不够就向外扩）。
+  // 横竖两个方向的笔迹占比都恒定为 1/1.3，配合固定高度渲染，笔迹视觉大小完全一致。
   const inkW = maxX - minX + 1
   const inkH = maxY - minY + 1
-  const pad = Math.max(8, Math.round(Math.max(inkW, inkH) * 0.15))
-  const outW = inkW + pad * 2
-  const outH = inkH + pad * 2
+  const padX = Math.max(8, Math.round(inkW * 0.15))
+  const padY = Math.max(8, Math.round(inkH * 0.15))
+  const outW = inkW + padX * 2
+  const outH = inkH + padY * 2
   // 已是归一化结果（尺寸与边距都吻合）则跳过，保证幂等
-  if (outW === width && outH === height && minX === pad && minY === pad) return null
+  if (outW === width && outH === height && minX === padX && minY === padY) return null
 
   const out = new PNG({ width: outW, height: outH })
   // 预填背景（透明背景填透明），抗锯齿边缘不会透出杂色
@@ -65,7 +66,7 @@ function cropSignaturePng(buffer) {
     out.data[i + 2] = bgB
     out.data[i + 3] = bgTransparent ? 0 : 255
   }
-  PNG.bitblt(png, out, minX, minY, inkW, inkH, pad, pad)
+  PNG.bitblt(png, out, minX, minY, inkW, inkH, padX, padY)
   return { buffer: PNG.sync.write(out), width: outW, height: outH }
 }
 
