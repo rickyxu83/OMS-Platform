@@ -35,6 +35,7 @@ export interface LegalHolidayItem {
   date: string;
   name: string;
   source: string;
+  dayType?: string;
   active?: boolean;
 }
 

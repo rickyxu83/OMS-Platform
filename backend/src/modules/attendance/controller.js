@@ -55,7 +55,9 @@ const DEFAULT_PAY_MULTIPLIER = 1
 const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
 const { generateYearHolidays, isAiAvailable } = require('./holiday-ai')
 const legalHolidayCache = new Map()
+const makeupWorkdayCache = new Set()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
+const holidayDayTypes = new Set(['legal_holiday', 'makeup_workday'])
 
 function activeLeaveOverlapCondition(alias = 'r') {
   return [
@@ -202,7 +204,9 @@ function dateKey(value) {
 function overtimeDayType(startAt) {
   const date = toDate(startAt)
   if (!date) return 'workday'
-  if (legalHolidayCache.has(dateKey(date))) return 'legal_holiday'
+  const key = dateKey(date)
+  if (legalHolidayCache.has(key)) return 'legal_holiday'
+  if (makeupWorkdayCache.has(key)) return 'workday'
   if (date.getDay() === 0 || date.getDay() === 6) return 'rest_day'
   return 'workday'
 }
@@ -367,6 +371,7 @@ async function ensureSchema() {
           holiday_name VARCHAR(100) NOT NULL,
           source VARCHAR(32) NOT NULL DEFAULT 'manual',
           is_active TINYINT(1) NOT NULL DEFAULT 1,
+          day_type VARCHAR(32) NOT NULL DEFAULT 'legal_holiday',
           created_by BIGINT UNSIGNED NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -376,6 +381,7 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
+      await ensureLegalHolidayDayTypeColumn()
       await ensureAttendanceEmailNotificationsTable()
 
       await seedBuiltinLegalHolidays()
@@ -392,26 +398,42 @@ async function ensureSchema() {
   return schemaReadyPromise
 }
 
+async function ensureLegalHolidayDayTypeColumn() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_legal_holidays'
+       AND COLUMN_NAME = 'day_type'`,
+  )
+  if (!rows.length) {
+    await query("ALTER TABLE attendance_legal_holidays ADD COLUMN day_type VARCHAR(32) NOT NULL DEFAULT 'legal_holiday' AFTER is_active")
+  }
+}
+
 async function seedBuiltinLegalHolidays() {
   for (const item of BUILTIN_LEGAL_HOLIDAYS) {
     await query(
-      `INSERT IGNORE INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active)
-       VALUES (:date, :name, 'builtin', 1)`,
-      item,
+      `INSERT IGNORE INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active)
+       VALUES (:date, :name, :dayType, 'builtin', 1)`,
+      { date: item.date, name: item.name, dayType: item.dayType || 'legal_holiday' },
     )
   }
 }
 
 async function refreshLegalHolidayCache() {
   const rows = await query(
-    `SELECT holiday_date, holiday_name
+    `SELECT holiday_date, holiday_name, day_type
      FROM attendance_legal_holidays
      WHERE is_active = 1`,
   )
   legalHolidayCache.clear()
-  rows.forEach((row) => {
-    legalHolidayCache.set(normalizeHolidayDate(row.holiday_date), row.holiday_name)
-  })
+  makeupWorkdayCache.clear()
+  for (const row of rows) {
+    const date = normalizeHolidayDate(row.holiday_date)
+    if (row.day_type === 'makeup_workday') makeupWorkdayCache.add(date)
+    else legalHolidayCache.set(date, row.holiday_name)
+  }
 }
 
 async function recalculateOvertimeRulesForDate(date) {
@@ -862,6 +884,7 @@ function legalHolidayPayload(row) {
     date: normalizeHolidayDate(row.holiday_date),
     name: row.holiday_name,
     source: row.source,
+    dayType: row.day_type === 'makeup_workday' ? 'makeup_workday' : 'legal_holiday',
     active: Boolean(row.is_active),
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -875,7 +898,7 @@ async function listLegalHolidays(req, res) {
   const where = year ? 'WHERE holiday_date >= :startDate AND holiday_date < :endDate' : ''
   const params = year ? { startDate: `${year}-01-01`, endDate: `${Number(year) + 1}-01-01` } : {}
   const rows = await query(
-    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
+    `SELECT holiday_date, holiday_name, day_type, source, is_active, created_by, created_at, updated_at
      FROM attendance_legal_holidays
      ${where}
      ORDER BY holiday_date ASC`,
@@ -892,14 +915,17 @@ async function upsertLegalHoliday(req, res) {
   if (!name) throw badRequest('节假日名称不能为空')
   const requestedSource = text(req.body?.source) || 'manual'
   const source = holidaySources.has(requestedSource) ? requestedSource : 'manual'
+  const requestedDayType = text(req.body?.dayType)
+  const dayType = holidayDayTypes.has(requestedDayType) ? requestedDayType : 'legal_holiday'
   await query(
-    `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active, created_by)
-     VALUES (:date, :name, :source, 1, :createdBy)
+    `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active, created_by)
+     VALUES (:date, :name, :dayType, :source, 1, :createdBy)
      ON DUPLICATE KEY UPDATE
        holiday_name = VALUES(holiday_name),
+       day_type = VALUES(day_type),
        source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE VALUES(source) END,
        is_active = 1`,
-    { date, name, source, createdBy: req.user.id },
+    { date, name, dayType, source, createdBy: req.user.id },
   )
   await refreshLegalHolidayCache()
   await recalculateOvertimeRulesForDate(date)
@@ -957,17 +983,20 @@ async function batchUpsertLegalHolidays(req, res) {
     const date = normalizeHolidayDate(raw?.date)
     const name = text(raw?.name)
     if (!name) throw badRequest('节假日名称不能为空')
-    items.push({ date, name })
+    const requestedDayType = text(raw?.dayType)
+    const dayType = holidayDayTypes.has(requestedDayType) ? requestedDayType : 'legal_holiday'
+    items.push({ date, name, dayType })
   }
   for (const item of items) {
     await query(
-      `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active, created_by)
-       VALUES (:date, :name, 'auto', 1, :createdBy)
+      `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active, created_by)
+       VALUES (:date, :name, :dayType, 'auto', 1, :createdBy)
        ON DUPLICATE KEY UPDATE
          holiday_name = VALUES(holiday_name),
+         day_type = VALUES(day_type),
          source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE 'auto' END,
          is_active = 1`,
-      { date: item.date, name: item.name, createdBy: req.user.id },
+      { date: item.date, name: item.name, dayType: item.dayType, createdBy: req.user.id },
     )
     await recalculateOvertimeRulesForDate(item.date)
   }
@@ -1260,6 +1289,7 @@ async function createRequest(req, res) {
           startAt: input.startAt,
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
+          makeupWorkdays: new Set(makeupWorkdayCache),
           includeNonWorkingDays: input.requestType === 'leave' && ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt

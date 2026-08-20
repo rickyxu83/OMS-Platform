@@ -45,16 +45,17 @@ function buildMessages(year) {
     {
       role: 'user',
       content: [
-        `请输出 ${year} 年中国全部法定节假日的放假日期。`,
+        `请输出 ${year} 年中国全部法定节假日的放假安排（放假日 + 调休补班日）。`,
         '',
         '严格只输出一个 JSON 对象，不要任何其他文字、不要 Markdown 代码块：',
-        '{ "items": [ { "date": "YYYY-MM-DD", "name": "节日名称" }, ... ] }',
+        '{ "items": [ { "date": "YYYY-MM-DD", "name": "节日名称", "dayType": "legal_holiday | makeup_workday" }, ... ] }',
         '',
         `要求：覆盖 ${HOLIDAY_NAME_HINT}。`,
-        `- date 为 ${year} 年的放假日期，春节/清明/端午/中秋按农历与节气精确计算，元旦/劳动节/国庆按公历固定`,
-        '- 一个节日放假多天时，每个放假日期单独一条（name 相同）',
-        `- 只输出属于 ${year} 年的日期，日期去重并升序`,
-        '- 宁可只给确定无误的节日当天，也不要臆造不确定的调休补班日期',
+        `- date 为 ${year} 年日期，春节/清明/端午/中秋按农历与节气精确计算，元旦/劳动节/国庆按公历固定`,
+        '- dayType=legal_holiday 表示法定放假日；dayType=makeup_workday 表示调休补班日（本应周末但安排上班）',
+        '- 放假日要给出每个节日的完整连休，放假多天则每个放假日单独一条（name 相同、dayType=legal_holiday）',
+        '- 调休补班日按常规安排推断输出（dayType=makeup_workday），即便年份未公布也允许不确定推断',
+        `- 只输出属于 ${year} 年的日期，日期去重并升序排列`,
       ].join('\n'),
     },
   ]
@@ -99,7 +100,7 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
   }
 }
 
-/** 规范化并校验 AI 生成的节假日列表：过滤非目标年/格式错误/空名，去重，升序。 */
+/** 规范化并校验 AI 生成的节假日列表：过滤非目标年/格式错误/空名，去重，升序，解析 dayType。 */
 function normalizeAiHolidays(content, year) {
   const parsed = extractJson(content)
   const items = Array.isArray(parsed?.items) ? parsed.items : []
@@ -113,7 +114,7 @@ function normalizeAiHolidays(content, year) {
     if (!date.startsWith(`${year}-`)) continue
     if (seen.has(date)) continue
     seen.add(date)
-    result.push({ date, name })
+    result.push({ date, name, dayType: item.dayType === 'makeup_workday' ? 'makeup_workday' : 'legal_holiday' })
   }
   result.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   return result
@@ -121,7 +122,7 @@ function normalizeAiHolidays(content, year) {
 
 /**
  * 生成指定年份的法定节假日。AI 不可用/失败返回 null（由调用方提示）；成功返回
- * 规范化后的 [{date, name}]（可能为空数组，表示 AI 未给出有效结果）。
+ * 规范化后的 [{date, name, dayType}]（可能为空数组，表示 AI 未给出有效结果）。
  * @param {number|string} year 目标年份（四位数）
  * @param {{ fetchImpl?: typeof fetch }} [options]
  */

@@ -22,8 +22,9 @@ function fakeError(message) {
 async function testNormalize() {
   const content = JSON.stringify({
     items: [
-      { date: '2027-02-06', name: '春节' },
-      { date: '2027-06-09', name: '端午节' },
+      { date: '2027-02-06', name: '春节', dayType: 'legal_holiday' },
+      { date: '2027-06-09', name: '端午节', dayType: 'legal_holiday' },
+      { date: '2027-02-14', name: '春节', dayType: 'makeup_workday' }, // 补班日
       { date: '2026-12-31', name: '跨年（应被过滤，非目标年）' },
       { date: '2027-02-06', name: '春节（重复应去重）' },
       { date: 'not-a-date', name: '坏日期（应被过滤）' },
@@ -33,9 +34,10 @@ async function testNormalize() {
   })
   const normalized = normalizeAiHolidays(content, '2027')
   assert.deepStrictEqual(normalized, [
-    { date: '2027-02-06', name: '春节' },
-    { date: '2027-06-09', name: '端午节' },
-  ], '应按年过滤、去重、丢弃坏数据并按日期升序')
+    { date: '2027-02-06', name: '春节', dayType: 'legal_holiday' },
+    { date: '2027-02-14', name: '春节', dayType: 'makeup_workday' },
+    { date: '2027-06-09', name: '端午节', dayType: 'legal_holiday' },
+  ], '应按年过滤、去重、丢弃坏数据并按日期升序，且正确解析 dayType')
   assert.equal(normalizeAiHolidays('not json at all', '2027').length, 0, '非 JSON 应返回空数组')
   await testGenerate()
 }
@@ -43,16 +45,18 @@ async function testNormalize() {
 async function testGenerate() {
   const json = JSON.stringify({
     items: [
-      { date: '2027-02-06', name: '春节' },
-      { date: '2027-10-01', name: '国庆节' },
+      { date: '2027-02-06', name: '春节', dayType: 'legal_holiday' },
+      { date: '2027-02-14', name: '春节', dayType: 'makeup_workday' },
+      { date: '2027-10-01', name: '国庆节', dayType: 'legal_holiday' },
       { date: '2028-01-01', name: '元旦(应过滤，非2027)' },
     ],
   })
   const result = await generateYearHolidays('2027', { fetchImpl: fakeOk(json) })
   assert.deepStrictEqual(result, [
-    { date: '2027-02-06', name: '春节' },
-    { date: '2027-10-01', name: '国庆节' },
-  ], 'generateYearHolidays 应返回规范化后的当年节假日')
+    { date: '2027-02-06', name: '春节', dayType: 'legal_holiday' },
+    { date: '2027-02-14', name: '春节', dayType: 'makeup_workday' },
+    { date: '2027-10-01', name: '国庆节', dayType: 'legal_holiday' },
+  ], 'generateYearHolidays 应返回规范化后的当年节假日（含 dayType）')
 
   const empty = await generateYearHolidays('2027', { fetchImpl: fakeOk('抱歉，我无法推算') })
   assert.deepStrictEqual(empty, [], 'AI 无有效结果应返回空数组')

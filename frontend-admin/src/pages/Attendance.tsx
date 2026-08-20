@@ -188,6 +188,11 @@ const HOLIDAY_SOURCE_LABELS: Record<string, string> = {
   auto: "自动",
 };
 
+const DAY_TYPE_LABELS: Record<string, string> = {
+  legal_holiday: "放假",
+  makeup_workday: "调休补班",
+};
+
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
   pending_delegate: "待代理人",
@@ -371,13 +376,13 @@ export function Attendance() {
   const [holidayYear, setHolidayYear] = useState(todayYear());
   const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
   const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
-  const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "" });
+  const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "", dayType: "legal_holiday" });
   // 审批页（申请与审批）只读展示的法定节假日：默认当年，可切换年份
   const [publicHolidays, setPublicHolidays] = useState<LegalHolidayItem[]>([]);
   const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
   // AI 补全下一年节假日：预览可编辑，确认后批量写入
   const [aiYear, setAiYear] = useState(String(todayYear() + 1));
-  const [aiPreview, setAiPreview] = useState<Array<{ date: string; name: string }>>([]);
+  const [aiPreview, setAiPreview] = useState<Array<{ date: string; name: string; dayType: string }>>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSaving, setAiSaving] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
@@ -729,9 +734,9 @@ export function Attendance() {
       return;
     }
     try {
-      await api.put(`/attendance/legal-holidays/${encodeURIComponent(date)}`, { name, source: "manual" });
+      await api.put(`/attendance/legal-holidays/${encodeURIComponent(date)}`, { name, source: "manual", dayType: holidayDraft.dayType });
       toast.success("法定节假日已保存");
-      setHolidayDraft({ date, name: "" });
+      setHolidayDraft({ date, name: "", dayType: "legal_holiday" });
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -744,8 +749,8 @@ export function Attendance() {
     try {
       const data = await api.post("/attendance/legal-holidays/ai-generate", { year: aiYear });
       const rawItems = (data as any)?.items;
-      const items: Array<{ date: string; name: string }> = Array.isArray(rawItems) ? rawItems : [];
-      setAiPreview(items.map((item) => ({ date: item.date, name: item.name })));
+      const items: Array<{ date: string; name: string; dayType: string }> = Array.isArray(rawItems) ? rawItems : [];
+      setAiPreview(items.map((item) => ({ date: item.date, name: item.name, dayType: item.dayType })));
       setAiMessage(
         data?.available === false
           ? data?.message || "AI 服务未配置，暂不可用"
@@ -764,7 +769,7 @@ export function Attendance() {
     if (!aiPreview.length) return;
     setAiSaving(true);
     try {
-      await api.post("/attendance/legal-holidays/batch", { items: aiPreview.map((item) => ({ date: item.date, name: item.name })) });
+      await api.post("/attendance/legal-holidays/batch", { items: aiPreview.map((item) => ({ date: item.date, name: item.name, dayType: item.dayType })) });
       toast.success("节假日已写入");
       setAiPreview([]);
       setAiMessage("");
@@ -776,14 +781,14 @@ export function Attendance() {
     }
   }
 
-  function updateAiItem(index: number, field: "date" | "name", value: string) {
+  function updateAiItem(index: number, field: "date" | "name" | "dayType", value: string) {
     setAiPreview((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
   }
   function removeAiItem(index: number) {
     setAiPreview((prev) => prev.filter((_, i) => i !== index));
   }
   function addAiItem() {
-    setAiPreview((prev) => [...prev, { date: "", name: "" }]);
+    setAiPreview((prev) => [...prev, { date: "", name: "", dayType: "legal_holiday" }]);
   }
 
   async function disableLegalHoliday(item: LegalHolidayItem) {
@@ -980,26 +985,50 @@ export function Attendance() {
               {(() => {
                 const items = publicHolidays.filter((item) => item.active !== false);
                 if (!items.length) return <p className="py-6 text-center text-sm text-muted-foreground">暂无法定节假日数据</p>;
-                const byMonth: Record<string, LegalHolidayItem[]> = {};
-                for (const item of items) {
-                  const month = item.date.slice(0, 7);
-                  (byMonth[month] = byMonth[month] || []).push(item);
-                }
-                return (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {Object.entries(byMonth).map(([month, items]) => (
-                      <div key={month} className="rounded-md border bg-muted/30 p-3">
-                        <div className="mb-2 text-xs font-semibold text-muted-foreground">{month}</div>
-                        <ul className="space-y-1.5">
-                          {items.map((item) => (
-                            <li key={item.date} className="flex items-center justify-between gap-2 text-sm">
-                              <span className="font-medium">{item.name}</span>
-                              <span className="tabular-nums text-muted-foreground">{item.date.slice(5)}</span>
-                            </li>
-                          ))}
-                        </ul>
+                const holidayRows = items.filter((item) => item.dayType !== "makeup_workday");
+                const makeupRows = items.filter((item) => item.dayType === "makeup_workday");
+                const groupByMonth = (list: LegalHolidayItem[]) => {
+                  const byMonth: Record<string, LegalHolidayItem[]> = {};
+                  for (const item of list) {
+                    const month = item.date.slice(0, 7);
+                    (byMonth[month] = byMonth[month] || []).push(item);
+                  }
+                  return byMonth;
+                };
+                const renderGroup = (title: string, list: LegalHolidayItem[]) => {
+                  const byMonth = groupByMonth(list);
+                  return (
+                    <div>
+                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                        <span>{title}</span>
+                        <span className="rounded-full bg-muted px-1.5 text-[10px]">{list.length}</span>
                       </div>
-                    ))}
+                      {Object.keys(byMonth).length ? (
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          {Object.entries(byMonth).map(([month, rows]) => (
+                            <div key={month} className="rounded-md border bg-muted/30 p-3">
+                              <div className="mb-2 text-xs font-semibold text-muted-foreground">{month}</div>
+                              <ul className="space-y-1.5">
+                                {rows.map((item) => (
+                                  <li key={item.date} className="flex items-center justify-between gap-2 text-sm">
+                                    <span className="font-medium">{item.name}</span>
+                                    <span className="tabular-nums text-muted-foreground">{item.date.slice(5)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">无</p>
+                      )}
+                    </div>
+                  );
+                };
+                return (
+                  <div className="space-y-5">
+                    {renderGroup("放假", holidayRows)}
+                    {renderGroup("调休补班", makeupRows)}
                   </div>
                 );
               })()}
@@ -1412,6 +1441,13 @@ export function Attendance() {
                           className="h-8 w-48"
                           onChange={(event) => updateAiItem(index, "name", event.target.value)}
                         />
+                        <Select value={item.dayType || "legal_holiday"} onValueChange={(value) => updateAiItem(index, "dayType", value)}>
+                          <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="legal_holiday">放假</SelectItem>
+                            <SelectItem value="makeup_workday">调休补班</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <Button size="icon" variant="ghost" onClick={() => removeAiItem(index)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1424,7 +1460,7 @@ export function Attendance() {
                 ) : null}
               </div>
               {canManage ? (
-                <div className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
+                <div className="grid gap-3 md:grid-cols-[160px_1fr_140px_auto]">
                   <div className="space-y-2">
                     <Label>日期</Label>
                     <Input
@@ -1441,6 +1477,16 @@ export function Attendance() {
                       placeholder="如：国庆节"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>类型</Label>
+                    <Select value={holidayDraft.dayType} onValueChange={(value) => setHolidayDraft((current) => ({ ...current, dayType: value }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="legal_holiday">放假</SelectItem>
+                        <SelectItem value="makeup_workday">调休补班</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex items-end">
                     <Button onClick={saveLegalHoliday}>
                       <Plus className="mr-1 h-4 w-4" /> 保存
@@ -1454,6 +1500,7 @@ export function Attendance() {
                     <TableRow>
                       <TableHead>日期</TableHead>
                       <TableHead>名称</TableHead>
+                      <TableHead>类型</TableHead>
                       <TableHead>来源</TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>操作</TableHead>
@@ -1464,6 +1511,7 @@ export function Attendance() {
                       <TableRow key={item.date}>
                         <TableCell className="font-medium">{item.date}</TableCell>
                         <TableCell>{item.name}</TableCell>
+                        <TableCell>{DAY_TYPE_LABELS[item.dayType || "legal_holiday"] || "放假"}</TableCell>
                         <TableCell>{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
                         <TableCell>
                           <Badge variant={item.active === false ? "outline" : "success"}>{item.active === false ? "停用" : "启用"}</Badge>
@@ -1486,7 +1534,7 @@ export function Attendance() {
                       </TableRow>
                     ))}
                     {legalHolidays.length === 0 ? (
-                      <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">暂无法定节假日</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">暂无法定节假日</TableCell></TableRow>
                     ) : null}
                   </TableBody>
                 </Table>
