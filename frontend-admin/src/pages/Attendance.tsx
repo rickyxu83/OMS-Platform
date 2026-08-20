@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -140,6 +140,16 @@ interface DutyPendingBatch {
   submittedAt: string | null;
   autoSubmitted: boolean;
   rejectedReason?: string | null;
+}
+
+interface DutyDetailRecord {
+  id: number;
+  duty_date: string;
+  duty_end_date?: string | null;
+  employee_name: string;
+  duty_type: string;
+  reason: string;
+  units: number;
 }
 
 interface MonthlyReportItem {
@@ -489,6 +499,8 @@ export function Attendance() {
   // 值班津贴待终审批次（审批 tab 与值班 tab 双入口，状态实时同步）
   const [dutyPendingBatches, setDutyPendingBatches] = useState<DutyPendingBatch[]>([]);
   const [dutyBatchSaving, setDutyBatchSaving] = useState(false);
+  const [dutyDetail, setDutyDetail] = useState<{ month: string; records: DutyDetailRecord[] } | null>(null);
+  const [dutyDetailLoading, setDutyDetailLoading] = useState(false);
   const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
   const employeeAnchorRef = useRef<number | null>(null);
   const employeeCardRef = useRef<HTMLDivElement | null>(null);
@@ -750,6 +762,18 @@ export function Attendance() {
       return;
     }
     await dutyAction(month, "reject", reason);
+  }
+
+  async function loadDutyDetail(month: string) {
+    setDutyDetailLoading(true);
+    try {
+      const data = await api.get(`/attendance/duty/monthly?month=${month}`);
+      setDutyDetail({ month, records: (data?.records || []) as DutyDetailRecord[] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载值班明细失败");
+    } finally {
+      setDutyDetailLoading(false);
+    }
   }
 
   function closeProofPreview() {
@@ -1172,6 +1196,9 @@ export function Attendance() {
                           <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-wrap justify-end gap-2">
+                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
+                                <Eye className="mr-1 size-4" />查看明细
+                              </Button>
                               <Button size="sm" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
                                 <Check className="mr-1 size-4" />终审通过
                               </Button>
@@ -2033,6 +2060,61 @@ export function Attendance() {
             <Button onClick={submitBatchBalanceInit} disabled={batchBalanceSaving}>
               {batchBalanceSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
               确认初始化
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(dutyDetail)} onOpenChange={(open) => { if (!open) setDutyDetail(null); }}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>值班津贴明细{dutyDetail ? `：${dutyDetail.month}` : ""}</DialogTitle>
+            <DialogDescription>该月 7×24 值班与法定节假日值班记录，供终审核对值班人员与天数。</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {dutyDetailLoading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>
+            ) : dutyDetail && dutyDetail.records.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>日期</TableHead>
+                    <TableHead>工程师</TableHead>
+                    <TableHead>值班类型</TableHead>
+                    <TableHead>事由</TableHead>
+                    <TableHead className="text-right">次数</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dutyDetail.records.map((record) => {
+                    const start = String(record.duty_date).slice(0, 10);
+                    const end = record.duty_end_date ? String(record.duty_end_date).slice(0, 10) : start;
+                    const isSpan = end !== start;
+                    return (
+                      <TableRow key={record.id}>
+                        <TableCell className="tabular-nums">{start}{isSpan ? `~${end}` : ""}<span className="ml-1 text-xs text-muted-foreground">{isSpan ? `${record.units} 天` : ""}</span></TableCell>
+                        <TableCell className="font-medium">{record.employee_name}</TableCell>
+                        <TableCell><Badge variant={record.duty_type === "legal_holiday_on_call" ? "rose" : "cyan"}>{record.duty_type === "legal_holiday_on_call" ? "法定节假日值班" : "7×24 值班"}</Badge></TableCell>
+                        <TableCell className="max-w-44 truncate text-muted-foreground" title={record.reason}>{record.reason}</TableCell>
+                        <TableCell className="text-right tabular-nums">{Number(record.units)}<span className="ml-1 text-xs text-muted-foreground">次</span></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">该月暂无值班记录</div>
+            )}
+          </div>
+          <DialogFooter className="border-t pt-4">
+            <Button variant="outline" onClick={() => rejectDutyBatch(dutyDetail?.month || "")} disabled={dutyBatchSaving}>
+              <X className="mr-1 size-4" />退回
+            </Button>
+            <Button
+              onClick={async () => { if (dutyDetail) { await dutyAction(dutyDetail.month, "approve"); setDutyDetail(null); } }}
+              disabled={dutyBatchSaving}
+            >
+              <Check className="mr-1 size-4" />终审通过
             </Button>
           </DialogFooter>
         </DialogContent>
