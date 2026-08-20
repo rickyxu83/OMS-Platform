@@ -1569,6 +1569,8 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
                   const sales = calculated.totals?.salesExcludingTax
                   const cost = calculated.totals?.costExcludingTax
                   if (!sales || cost === null || cost === undefined) return null
+                  // 无转拨时不展示“扣除转拨后留存毛利”，避免出现（毛利 − 转拨 ¥ 0.00）噪音
+                  if (transferTotal <= 0) return null
                   const margin = sales - cost
                   const retention = margin - transferTotal
                   const rate = sales > 0 ? retention / sales * 100 : null
