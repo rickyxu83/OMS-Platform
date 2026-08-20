@@ -578,6 +578,8 @@ export function Attendance() {
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
       if (!selectedEmployeeIds.size) return;
+      // 弹窗（portal 渲染在 body 下、不在员工卡片内）内部的点击不应清空已选员工
+      if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
       if (employeeCardRef.current && !employeeCardRef.current.contains(event.target as Node)) setSelectedEmployeeIds(new Set());
     };
     document.addEventListener("mousedown", onDocumentMouseDown);
