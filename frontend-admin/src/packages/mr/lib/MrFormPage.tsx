@@ -1012,7 +1012,7 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
         })
       return
     }
-    if (isUnsupportedOfficeName(file.name)) toast.info('旧版 Office/PPT 格式暂不支持在线预览，已为你下载文件')
+    if (isUnsupportedOfficeName(file.name)) toast.info('该格式暂不支持在线预览，已为你下载文件')
     downloadQuotation(id, file.id, file.name).catch((err) => setError((err as Error).message || '附件下载失败'))
   }
 

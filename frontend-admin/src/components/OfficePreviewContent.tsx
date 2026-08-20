@@ -3,18 +3,18 @@ import { cn } from '@/lib/utils'
 
 export type OfficePreviewType = 'docx' | 'xlsx'
 
-/** 浏览器可在线预览的 Office 扩展名（新版 OOXML 格式） */
+/** 浏览器可在线预览的 Office 扩展名（docx 走 docx-preview；xls/xlsx 都由 SheetJS 解析，BIFF 二进制同样支持） */
 export function officePreviewType(fileName: string): OfficePreviewType | null {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
   if (ext === 'docx') return 'docx'
-  if (ext === 'xlsx') return 'xlsx'
+  if (ext === 'xlsx' || ext === 'xls') return 'xlsx'
   return null
 }
 
-/** 客户端无法解析的旧版二进制/演示格式：只能提示后下载 */
+/** 客户端无法解析的格式（旧版 .doc 与 PPT 系）：只能提示后下载 */
 export function isUnsupportedOfficeName(fileName: string): boolean {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  return ['doc', 'xls', 'ppt', 'pptx'].includes(ext)
+  return ['doc', 'ppt', 'pptx'].includes(ext)
 }
 
 /** docx-preview 默认样式补丁：页面包一层纸张感、表格加边框 */

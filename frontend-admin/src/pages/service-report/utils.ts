@@ -319,9 +319,9 @@ export function attachmentPreviewKind(file: OrderFile, blob?: Blob): AttachmentP
   if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
   if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
   if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
-  // 新版 OOXML 格式走客户端渲染预览；旧版二进制 .doc/.xls 与 .ppt/.pptx 客户端无法解析，仍走下载
+  // docx 与 Excel（xls/xlsx，SheetJS 兼容 BIFF 旧版二进制）走客户端渲染预览；旧版 .doc 与 .ppt/.pptx 客户端无法解析，仍走下载
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === "docx") return "docx";
-  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || extension === "xlsx") return "xlsx";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mimeType === "application/vnd.ms-excel" || extension === "xlsx" || extension === "xls") return "xlsx";
   return "unsupported";
 }
 export function previewBlob(blob: Blob, kind: AttachmentPreviewKind) {
