@@ -513,9 +513,22 @@ async function list(req, res) {
     where.push('o.purchase_status = :purchaseStatus')
     params.purchaseStatus = purchaseStatus
   }
+  // 全文搜索：单头（客户/Ctrl.NO/客户P/O/备注）+ 品项明细（品名/描述/原厂规格/料号/供应商/采购订单号/出货单号）
+  // 设备型号查单场景：型号命中 oem_spec/description/name 的品项即可定位所属 MR 单
   const q = String(req.query.q || '').trim()
   if (q) {
-    where.push('(o.customer_name LIKE :q OR o.ctrl_no LIKE :q OR c.code LIKE :q)')
+    where.push(`(
+      o.customer_name LIKE :q OR o.ctrl_no LIKE :q OR c.code LIKE :q
+      OR o.customer_po LIKE :q OR o.remark LIKE :q
+      OR EXISTS (
+        SELECT 1 FROM mr_items i
+        WHERE i.mr_id = o.id AND (
+          i.name LIKE :q OR i.description LIKE :q OR i.oem_spec LIKE :q
+          OR i.company_part_no LIKE :q OR i.vendor LIKE :q
+          OR i.purchase_order_no LIKE :q OR i.shipment_no LIKE :q
+        )
+      )
+    )`)
     params.q = `%${q}%`
   }
   // 多维筛选：客户精确、业务负责人、填表日期范围（均为可选，参数化查询防注入）

@@ -222,7 +222,7 @@ export function MrListPage() {
       <div className="flex flex-wrap items-center gap-2 border-y bg-background py-3">
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户、客户缩写或 Ctrl.NO" aria-label="搜索 MR" className="pl-9" />
+          <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
         </div>
         <div className="relative w-full sm:w-[220px]">
           <Input
