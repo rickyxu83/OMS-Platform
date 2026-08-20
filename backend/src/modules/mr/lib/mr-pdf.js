@@ -21,7 +21,8 @@ const PAGE = { width: 841.89, height: 595.28, margin: 28 }
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-const PDF_FORMAT_VERSION = 38
+// 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
+const PDF_FORMAT_VERSION = 39
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -435,8 +436,10 @@ function signatureImage(doc, dataUrl, x, y, width, height) {
   try {
     const buffer = Buffer.from(match[1], 'base64')
     const img = doc.openImage(buffer)
-    // 按签名自身比例等比 fit 进目标区域（可放大）；不统一高度，保持各签名原始形状
-    const scale = Math.min(width / img.width, height / img.height)
+    // 签名图已归一化（笔迹+固定比例留白）：按高度等比缩放，各签名笔迹视觉高度一致；
+    // 超宽签名超过宽度上限时退化为按宽度缩放
+    let scale = height / img.height
+    if (img.width * scale > width) scale = width / img.width
     const finalW = img.width * scale
     const finalH = img.height * scale
     doc.image(buffer, x + (width - finalW) / 2, y + (height - finalH) / 2, { width: finalW, height: finalH })
@@ -467,8 +470,9 @@ function approvals(doc, fonts, rows, y) {
     if (index > 0) {
       doc.moveTo(x, y + 6).lineTo(x, y + boxHeight - 6).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
     }
-    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 62, y + 2, 50, 40)
-    const textWidth = width - (hasSignature ? 78 : 16)
+    // 签名区加宽到 92：超宽签名（如横屏英文连笔）不再被 50pt 宽度压得过小；文本相应收窄
+    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 96, y + 2, 92, 44)
+    const textWidth = width - (hasSignature ? 112 : 16)
     text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
     text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
