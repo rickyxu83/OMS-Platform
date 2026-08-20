@@ -578,8 +578,8 @@ export function Attendance() {
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
       if (!selectedEmployeeIds.size) return;
-      // 弹窗（portal 渲染在 body 下、不在员工卡片内）内部的点击不应清空已选员工
-      if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
+      // 弹窗（portal 渲染在 body 下、不在员工卡片内）或下拉浮层（listbox/popper）内部的点击不清空已选员工
+      if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
       if (employeeCardRef.current && !employeeCardRef.current.contains(event.target as Node)) setSelectedEmployeeIds(new Set());
     };
     document.addEventListener("mousedown", onDocumentMouseDown);
@@ -1891,8 +1891,8 @@ export function Attendance() {
                   onValueChange={(value) => setBatchBalanceDialog((current) => {
                     if (!current) return current
                     const balanceType = value as "annual_leave" | "comp_time"
-                    // 仅余额类型真正变化时才清空目标值（单位“天/小时”不同）；误触同选项不得丢已输入的值
-                    return balanceType === current.balanceType ? current : { ...current, balanceType, target: "" }
+                    // 切换类型保留已输入的目标值（单位变化用户自理，不清空避免再度丢失）
+                    return balanceType === current.balanceType ? current : { ...current, balanceType }
                   })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -2021,8 +2021,8 @@ export function Attendance() {
                   onValueChange={(value) => setAdjustDialog((current) => {
                     if (!current) return current
                     const balanceType = value as AdjustDraft["balanceType"]
-                    // 同值点击不重置；仅类型真正变化时才清空已输入数量（单位不同，数值不可沿用）
-                    return balanceType === current.draft.balanceType ? current : { ...current, draft: { ...current.draft, balanceType, amount: "" } }
+                    // 切换类型保留已输入的金额（单位变化用户自理，不清空避免再度丢失）
+                    return balanceType === current.draft.balanceType ? current : { ...current, draft: { ...current.draft, balanceType } }
                   })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
