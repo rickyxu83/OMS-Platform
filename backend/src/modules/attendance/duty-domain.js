@@ -5,6 +5,37 @@ function isoDate(year, monthIndex, day) {
   return new Date(Date.UTC(year, monthIndex, day)).toISOString().slice(0, 10)
 }
 
+// 把按天的假期日历聚合为假期段（一个假期一个段：名称 + 起止日期 + 天数）。
+// 入参为按日期升序的 { date, name } 行；同名称且日期连续者并段（防御性：同一名称出现两段则拆段）。
+function holidaySpans(holidayRows) {
+  const spans = []
+  let current = null
+  for (const row of holidayRows) {
+    const gap = current ? (Date.parse(`${row.date}T00:00:00Z`) - Date.parse(`${current.end}T00:00:00Z`)) / 86400000 : 0
+    if (!current || current.name !== row.name || gap > 1) {
+      current = { name: row.name, start: row.date, end: row.date, days: 1 }
+      spans.push(current)
+    } else {
+      current.end = row.date
+      current.days += 1
+    }
+  }
+  return spans
+}
+
+// 展开一条记录覆盖的日期列表（单日记录只含自身，假期段记录展开为段内每一天）
+function expandRecordDates(record) {
+  const start = new Date(`${record.date}T00:00:00Z`)
+  const end = record.endDate ? new Date(`${record.endDate}T00:00:00Z`) : start
+  const dates = []
+  const cursor = new Date(start)
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10))
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return dates
+}
+
 function weekendDates(year) {
   const dates = []
   for (let month = 0; month < 12; month += 1) {
@@ -38,14 +69,16 @@ function assignDates(dates, employeeIds, mode) {
 function markOverlaps(records) {
   const typesByKey = new Map()
   records.forEach((record) => {
-    const key = `${record.date}:${record.employeeId}`
-    const types = typesByKey.get(key) || new Set()
-    types.add(record.dutyType)
-    typesByKey.set(key, types)
+    for (const date of expandRecordDates(record)) {
+      const key = `${date}:${record.employeeId}`
+      const types = typesByKey.get(key) || new Set()
+      types.add(record.dutyType)
+      typesByKey.set(key, types)
+    }
   })
   return records.map((record) => ({
     ...record,
-    overlapState: (typesByKey.get(`${record.date}:${record.employeeId}`)?.size || 0) > 1 ? 'unresolved' : 'none',
+    overlapState: expandRecordDates(record).some((date) => (typesByKey.get(`${date}:${record.employeeId}`)?.size || 0) > 1) ? 'unresolved' : 'none',
   }))
 }
 
@@ -64,4 +97,4 @@ function nextBatchStatus(current, action) {
   return transitions[action]?.[current] || null
 }
 
-module.exports = { DUTY_TYPES, ASSIGNMENT_MODES, weekendDates, assignDates, dedupeRecords, markOverlaps, nextBatchStatus }
+module.exports = { DUTY_TYPES, ASSIGNMENT_MODES, holidaySpans, weekendDates, assignDates, dedupeRecords, markOverlaps, nextBatchStatus }
