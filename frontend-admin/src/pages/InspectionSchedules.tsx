@@ -1387,7 +1387,10 @@ export function InspectionSchedules() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>下次生成日期 *</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>下次生成日期 *</Label>
+                  <HelpTooltip label="系统每天 06:30 检查各巡检计划，为未来 14 天内到期的计划自动生成「待确认」巡检工单（需在系统设置中开启自动生成）；工单确认后才会派给工程师。生成后该日期按巡检周期自动顺延。" />
+                </div>
                 <Input
                   type="date"
                   value={form.nextRunAnchor}

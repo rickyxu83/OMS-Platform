@@ -20,6 +20,7 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 interface TimesheetItem {
   id?: string | number;
@@ -440,7 +441,7 @@ export function Timesheets() {
                     <TableHead>客户</TableHead>
                     <TableHead>工程师</TableHead>
                     <TableHead>服务日期</TableHead>
-                    <TableHead>来源</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">来源 <HelpTooltip label="工单：从服务工单自动带入的工时；手工记录：工程师在工时填报中手工补录的记录。两者都会计入月度汇总与导出。" /></span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

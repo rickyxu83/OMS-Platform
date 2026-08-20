@@ -2669,7 +2669,10 @@ export function Devices() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>维保截止</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>维保截止</Label>
+                  <HelpTooltip label="维保到期预警以此为依据：系统每天 08:00 检查，在截止日期前 N 天（系统设置中可配）向客户销售负责人和固定收件人发送提醒邮件。留空则不参与到期预警。" />
+                </div>
                 <Input
                   type="date"
                   value={form.maintenanceEnd}

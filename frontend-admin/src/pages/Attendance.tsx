@@ -1231,7 +1231,7 @@ export function Attendance() {
                     <TableHead>事假</TableHead>
                     <TableHead>其他假</TableHead>
                     <TableHead>加班·转调休</TableHead>
-                    <TableHead>加班·付费</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果折算的付费工时：普通加班按申请时长计，法定放假日加班自动按 3 倍计入（节假日以「考勤设置 → 法定节假日」中启用的数据为准）。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
                     <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
