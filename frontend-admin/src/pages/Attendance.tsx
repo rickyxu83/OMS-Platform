@@ -341,7 +341,7 @@ function requestDetailContent(item: AttendanceRequest) {
         <Badge variant={item.overtimeResult === "pay" ? "purple" : "teal"}>
           {(OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-") + multiplier}
         </Badge>
-        {item.overtimeDayType ? <Badge variant="secondary">{OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType]}</Badge> : null}
+        {item.overtimeDayType ? <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType]}</span> : null}
       </span>
     );
   }
@@ -2041,26 +2041,38 @@ function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrder
       </div>
     );
   }
+  const typeLabel = serviceOrderTypeLabel(order);
+  // 空字段不占位：只展示有值的项（工单号 / 客户 / 设备 / 类型）
+  const facts = [
+    order.customerName,
+    order.deviceName,
+    typeLabel === "- / -" ? "" : typeLabel,
+  ].filter((value) => value && value !== "-");
   return (
-    <div className="mt-2 min-w-0 rounded-md border bg-muted/10 p-3 text-xs">
-      <div className="grid min-w-0 gap-x-4 gap-y-1 text-muted-foreground sm:grid-cols-2">
-        <div className="min-w-0 break-words">
-          <span className="font-medium text-foreground">工单：</span>
-          {onPreview ? (
-            <button
-              type="button"
-              onClick={() => onPreview(order)}
-              className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {orderLabel}
-            </button>
-          ) : orderLabel}
-        </div>
-        <div className="min-w-0 break-words"><span className="font-medium text-foreground">客户：</span>{order.customerName || "-"}</div>
-        <div className="min-w-0 break-words"><span className="font-medium text-foreground">设备：</span>{order.deviceName || "-"}</div>
-        <div className="min-w-0 break-words"><span className="font-medium text-foreground">类型：</span>{serviceOrderTypeLabel(order)}</div>
-        <div className="min-w-0 break-words sm:col-span-2"><span className="font-medium text-foreground">问题：</span>{order.issueDescription || "-"}</div>
+    <div className="mt-1.5 max-w-xl rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+        {onPreview ? (
+          <button
+            type="button"
+            onClick={() => onPreview(order)}
+            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ExternalLink className="h-3 w-3" />
+            工单 {orderLabel}
+          </button>
+        ) : (
+          <span className="font-medium text-foreground">工单 {orderLabel}</span>
+        )}
+        {facts.map((fact) => (
+          <span key={fact} className="inline-flex items-center gap-2">
+            <span className="text-muted-foreground/40">|</span>
+            {fact}
+          </span>
+        ))}
       </div>
+      {order.issueDescription ? (
+        <div className="mt-0.5 truncate text-muted-foreground" title={order.issueDescription}>问题：{order.issueDescription}</div>
+      ) : null}
     </div>
   );
 }
