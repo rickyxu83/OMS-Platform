@@ -47,15 +47,17 @@ function cropSignaturePng(buffer) {
   }
   if (maxX < 0) return null // 无笔迹
 
-  const pad = Math.max(8, Math.round(Math.max(maxX - minX, maxY - minY) * 0.15))
-  const cropX = Math.max(0, minX - pad)
-  const cropY = Math.max(0, minY - pad)
-  const cropW = Math.min(width, maxX + pad + 1) - cropX
-  const cropH = Math.min(height, maxY + pad + 1) - cropY
-  // 仅宽度无需收縮且高度也无需收縮时才算已是紧凑图
-  if (cropW >= width && cropH >= height) return null
+  // 归一化：笔迹 + 四边 15% 留白（不受原画布边距限制，不够就向外扩）。
+  // 这样所有签名图的笔迹占比恒定为 1/1.3，配合固定高度渲染，笔迹视觉高度完全一致。
+  const inkW = maxX - minX + 1
+  const inkH = maxY - minY + 1
+  const pad = Math.max(8, Math.round(Math.max(inkW, inkH) * 0.15))
+  const outW = inkW + pad * 2
+  const outH = inkH + pad * 2
+  // 已是归一化结果（尺寸与边距都吻合）则跳过，保证幂等
+  if (outW === width && outH === height && minX === pad && minY === pad) return null
 
-  const out = new PNG({ width: cropW, height: cropH })
+  const out = new PNG({ width: outW, height: outH })
   // 预填背景（透明背景填透明），抗锯齿边缘不会透出杂色
   for (let i = 0; i < out.data.length; i += 4) {
     out.data[i] = bgR
@@ -63,8 +65,8 @@ function cropSignaturePng(buffer) {
     out.data[i + 2] = bgB
     out.data[i + 3] = bgTransparent ? 0 : 255
   }
-  PNG.bitblt(png, out, cropX, cropY, cropW, cropH, 0, 0)
-  return { buffer: PNG.sync.write(out), width: cropW, height: cropH }
+  PNG.bitblt(png, out, minX, minY, inkW, inkH, pad, pad)
+  return { buffer: PNG.sync.write(out), width: outW, height: outH }
 }
 
 const TARGETS = [
@@ -85,16 +87,10 @@ async function processTarget(target) {
       const result = cropSignaturePng(buffer)
       if (!result) {
         stats.skipped += 1
-        if (verbose) console.log(`  [跳过] ${target.table}#${row.id}：无笔迹或已紧凑`)
+        if (verbose) console.log(`  [跳过] ${target.table}#${row.id}：无笔迹或已归一化`)
         continue
       }
-      // 裁剪后体积反而更大（极少见：小图重编码开销）则保留原值
-      if (result.buffer.length >= buffer.length) {
-        stats.skipped += 1
-        if (verbose) console.log(`  [跳过] ${target.table}#${row.id}：裁剪后体积反增`)
-        continue
-      }
-      if (verbose) console.log(`  [裁剪] ${target.table}#${row.id} → ${result.width}x${result.height}`)
+      if (verbose) console.log(`  [归一化] ${target.table}#${row.id} → ${result.width}x${result.height}`)
       stats.cropped += 1
       stats.savedBytes += buffer.length - result.buffer.length
       if (APPLY) {

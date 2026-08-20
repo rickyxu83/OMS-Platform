@@ -12,6 +12,7 @@ export function cropSignatureDataUrl(canvas: HTMLCanvasElement): string {
   const bgR = pixels[0];
   const bgG = pixels[1];
   const bgB = pixels[2];
+  const bgTransparent = pixels[3] < 24;
 
   let minX = width;
   let minY = height;
@@ -20,32 +21,37 @@ export function cropSignatureDataUrl(canvas: HTMLCanvasElement): string {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4;
-      const alpha = pixels[offset + 3];
-      if (alpha < 24) continue; // 透明区域不算笔迹
-      const diff = Math.abs(pixels[offset] - bgR) + Math.abs(pixels[offset + 1] - bgG) + Math.abs(pixels[offset + 2] - bgB);
-      if (diff > 48) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
+      if (pixels[offset + 3] < 24) continue; // 透明区域不算笔迹
+      // 背景透明时可见像素即笔迹；背景不透明时按色差判定
+      if (!bgTransparent) {
+        const diff = Math.abs(pixels[offset] - bgR) + Math.abs(pixels[offset + 1] - bgG) + Math.abs(pixels[offset + 2] - bgB);
+        if (diff <= 48) continue;
       }
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
   }
   if (maxX < 0) return ""; // 无笔迹
 
-  const pad = Math.max(8, Math.round(Math.max(maxX - minX, maxY - minY) * 0.15));
-  const cropX = Math.max(0, minX - pad);
-  const cropY = Math.max(0, minY - pad);
-  const cropW = Math.min(width, maxX + pad + 1) - cropX;
-  const cropH = Math.min(height, maxY + pad + 1) - cropY;
+  // 归一化：笔迹 + 四边 15% 留白（不受画布边缘限制，不够就向外扩），
+  // 所有签名图笔迹占比恒定为 1/1.3，固定高度渲染时笔迹视觉大小一致。
+  const inkW = maxX - minX + 1;
+  const inkH = maxY - minY + 1;
+  const pad = Math.max(8, Math.round(Math.max(inkW, inkH) * 0.15));
+  const outW = inkW + pad * 2;
+  const outH = inkH + pad * 2;
 
   const out = document.createElement("canvas");
-  out.width = cropW;
-  out.height = cropH;
+  out.width = outW;
+  out.height = outH;
   const outContext = out.getContext("2d");
   if (!outContext) return canvas.toDataURL("image/png");
-  outContext.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
-  outContext.fillRect(0, 0, cropW, cropH);
-  outContext.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+  if (!bgTransparent) {
+    outContext.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
+    outContext.fillRect(0, 0, outW, outH);
+  }
+  outContext.drawImage(canvas, minX, minY, inkW, inkH, pad, pad, inkW, inkH);
   return out.toDataURL("image/png");
 }
