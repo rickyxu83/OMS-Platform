@@ -23,6 +23,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { toast } from "sonner";
@@ -677,7 +678,7 @@ export function Customers() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("city") || "");
-  const [levelFilter, setLevelFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useUrlParam("level", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);

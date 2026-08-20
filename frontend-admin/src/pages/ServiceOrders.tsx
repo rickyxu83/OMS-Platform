@@ -1068,7 +1068,7 @@ export function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -1195,6 +1195,19 @@ export function ServiceOrders() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, customerFilter, startDate, endDate, debouncedSearch]);
+
+  // 状态/客户/日期筛选写回 URL，刷新后保持当前筛选
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (statusFilter !== "all") next.set("status", statusFilter); else next.delete("status");
+      if (customerFilter !== "all") next.set("customerId", customerFilter); else next.delete("customerId");
+      if (startDate) next.set("startDate", startDate); else next.delete("startDate");
+      if (endDate) next.set("endDate", endDate); else next.delete("endDate");
+      if (next.toString() === prev.toString()) return prev;
+      return next;
+    });
+  }, [statusFilter, customerFilter, startDate, endDate, setSearchParams]);
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { CalendarDays, CheckCircle2, RefreshCw, Save, Send, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -28,7 +29,12 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
   const { hasPermission } = useAuth()
   const canManage = hasPermission("attendance.duty.manage")
   const canApprove = hasPermission("attendance.duty.admin.approve")
-  const [tab, setTab] = useState<"setup" | "monthly">(canManage ? "setup" : "monthly")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = useState<"setup" | "monthly">(() => {
+    const param = searchParams.get("duty")
+    if (param === "setup" || param === "monthly") return param
+    return canManage ? "setup" : "monthly"
+  })
   const [year, setYear] = useState(currentYear)
   const [month, setMonth] = useState(currentMonth)
   const [engineers, setEngineers] = useState<Engineer[]>([])
@@ -43,6 +49,18 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
 
   const toggle = (ids: number[], id: number) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]
   const unresolved = useMemo(() => records.filter((record) => record.overlap_state === "unresolved").length, [records])
+
+  // 子页签写入 URL（?duty=setup|monthly），刷新后保持当前位置
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === "setup") next.delete("duty"); else next.set("duty", tab)
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
+  }, [tab, searchParams, setSearchParams])
+
+  // 无年度设置权限时不允许停留在 setup 页签（例如带了 ?duty=setup 的链接）
+  useEffect(() => {
+    if (!canManage && tab === "setup") setTab("monthly")
+  }, [canManage, tab])
 
   const loadSetup = async () => {
     setLoading(true)

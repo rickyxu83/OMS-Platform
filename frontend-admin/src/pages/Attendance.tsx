@@ -389,11 +389,11 @@ export function Attendance() {
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const canViewDuty = hasPermission("attendance.duty.manage", "attendance.duty.admin.approve");
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<AttendanceTab>(() => parseTabParam(searchParams.get("tab")));
-  const [recordView, setRecordView] = useState<"detail" | "summary">("detail");
+  const [recordView, setRecordView] = useState<"detail" | "summary">(() => searchParams.get("record") === "summary" ? "summary" : "detail");
   // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
-  const [settingsView, setSettingsView] = useState<"rules" | "holidays">("rules");
+  const [settingsView, setSettingsView] = useState<"rules" | "holidays">(() => searchParams.get("view") === "holidays" ? "holidays" : "rules");
   const [expandedRuleRoles, setExpandedRuleRoles] = useState<Record<string, boolean>>({});
   const [applyOpen, setApplyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -579,6 +579,16 @@ export function Attendance() {
   useEffect(() => {
     if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("approve");
   }, [tabs, activeTab]);
+
+  // 页签与子视图写入 URL，刷新后保持当前位置（?tab= 同时供待办中心等外部深链使用）
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (activeTab === "approve") next.delete("tab"); else next.set("tab", activeTab);
+    if (activeTab === "settings" && settingsView !== "rules") next.set("view", settingsView); else next.delete("view");
+    if (activeTab === "records" && recordView !== "detail") next.set("record", recordView); else next.delete("record");
+    if (activeTab !== "duty") next.delete("duty");
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, settingsView, recordView, searchParams, setSearchParams]);
 
 
 

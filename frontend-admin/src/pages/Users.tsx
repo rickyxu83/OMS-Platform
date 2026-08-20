@@ -21,6 +21,7 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { useUrlParam } from "@/lib/use-url-param";
 
 interface User {
   id: string | number;
@@ -104,8 +105,8 @@ export function Users() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useUrlParam("role", "all");
+  const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
   const [permData, setPermData] = useState<PermissionPayload | null>(null);

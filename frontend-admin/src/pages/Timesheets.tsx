@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { useUrlParam } from "@/lib/use-url-param";
 
 interface TimesheetItem {
   id?: string | number;
@@ -226,9 +227,9 @@ export function Timesheets() {
   const defaults = useMemo(() => defaultMonthRange(), []);
   const [startDate, setStartDate] = useState(defaults.first);
   const [endDate, setEndDate] = useState(defaults.last);
-  const [engineerId, setEngineerId] = useState("all");
-  const [salesperson, setSalesperson] = useState("all");
-  const [customerId, setCustomerId] = useState("all");
+  const [engineerId, setEngineerId] = useUrlParam("engineer", "all");
+  const [salesperson, setSalesperson] = useUrlParam("sales", "all");
+  const [customerId, setCustomerId] = useUrlParam("customer", "all");
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
   const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);

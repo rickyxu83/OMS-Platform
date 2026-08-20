@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { formatCount } from "@/lib/format";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 
@@ -115,9 +116,9 @@ export function InspectionSchedules() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
-  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
-  const [cadenceFilter, setCadenceFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useUrlParam("customerId", "all");
+  const [cadenceFilter, setCadenceFilter] = useUrlParam("cadence", "all");
+  const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Schedule | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);

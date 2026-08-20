@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Clock3, ListTodo, Loader2, RefreshCw, Send } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -43,7 +43,11 @@ function businessLabel(task: ApprovalTask) {
 
 export function ApprovalTasks() {
   const navigate = useNavigate()
-  const [view, setView] = useState<View>('pending')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [view, setView] = useState<View>(() => {
+    const param = searchParams.get('view')
+    return VIEWS.some((item) => item.key === param) ? (param as View) : 'pending'
+  })
   const [items, setItems] = useState<ApprovalTask[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -64,6 +68,13 @@ export function ApprovalTasks() {
   }, [view])
 
   useEffect(() => { void load() }, [load])
+
+  // 视图写入 URL（?view=initiated|completed），刷新后保持当前位置
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    if (view === 'pending') next.delete('view'); else next.set('view', view)
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
+  }, [view, searchParams, setSearchParams])
 
   useEffect(() => {
     const onApprovalChanged = () => { if (view === 'pending') void load() }

@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { matchesSearchText } from "@/lib/text-i18n";
+import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 
 interface Party {
@@ -295,7 +296,7 @@ export function MaintenanceParties() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useUrlParam("type", "all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<Party | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
