@@ -103,7 +103,7 @@ async function setup(req, res) {
     if (!assignmentByName.has(name)) assignmentByName.set(name, new Set())
     assignmentByName.get(name).add(Number(row.employee_id))
   }
-  const items = holidaySpans.map((span) => ({
+  const items = spans.map((span) => ({
     name: span.name, startDate: span.start, endDate: span.end, days: span.days,
     employeeIds: [...(assignmentByName.get(span.name) || [])],
   }))
