@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,13 @@ import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type Serv
 import { api } from "@/services/api";
 import { formatCount } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { HelpTooltip } from "@/components/HelpTooltip";
+
+// 法定节假日模块说明文案
+const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。标记为「放假」的日期加班按 3 倍计算加班费，「调休补班」按正常工作日处理。";
+const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
+const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
+const APPROVAL_RULE_HELP = "按申请人角色配置多级审批链，审批人按顺序逐级审批；请假满 3 天时运营负责人自动追加为最后一级。未配置规则的角色提交申请时会提示无法审批。";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -431,12 +438,15 @@ export function Attendance() {
   // 审批页（申请与审批）只读展示的法定节假日：默认当年，可切换年份
   const [publicHolidays, setPublicHolidays] = useState<LegalHolidayItem[]>([]);
   const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
-  // AI 补全下一年节假日：预览可编辑，确认后批量写入
-  const [aiYear, setAiYear] = useState(String(todayYear() + 1));
-  const [aiPreview, setAiPreview] = useState<Array<{ date: string; name: string; dayType: string }>>([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSaving, setAiSaving] = useState(false);
-  const [aiMessage, setAiMessage] = useState("");
+  // 同步官方节假日：双源拉取预览（任意年份），确认后写入；来年数据由后端定时任务自动同步
+  const [syncYear, setSyncYear] = useState(String(todayYear() + 1));
+  const [syncPreview, setSyncPreview] = useState<{
+    items: Array<{ date: string; name: string; dayType: string }>;
+    warnings: string[];
+    sources: Array<{ label: string; count: number; error?: string | null }>;
+  } | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncSaving, setSyncSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -794,52 +804,40 @@ export function Attendance() {
     }
   }
 
-  async function runAiGenerate() {
-    setAiLoading(true);
-    setAiMessage("");
+  async function runSyncPreview() {
+    if (!/^\d{4}$/.test(syncYear)) {
+      toast.error("请输入四位年份");
+      return;
+    }
+    setSyncLoading(true);
+    setSyncPreview(null);
     try {
-      const data = await api.post("/attendance/legal-holidays/ai-generate", { year: aiYear });
-      const rawItems = (data as any)?.items;
-      const items: Array<{ date: string; name: string; dayType: string }> = Array.isArray(rawItems) ? rawItems : [];
-      setAiPreview(items.map((item) => ({ date: item.date, name: item.name, dayType: item.dayType })));
-      setAiMessage(
-        data?.available === false
-          ? data?.message || "AI 服务未配置，暂不可用"
-          : items.length
-            ? `已生成 ${items.length} 条，请核对后确认写入`
-            : data?.message || "AI 未返回有效节假日，请重试或手动添加",
-      );
+      const data = await api.post("/attendance/legal-holidays/sync-preview", { year: syncYear });
+      setSyncPreview({
+        items: (data?.items || []) as Array<{ date: string; name: string; dayType: string }>,
+        warnings: (data?.warnings || []) as string[],
+        sources: (data?.sources || []) as Array<{ label: string; count: number; error?: string | null }>,
+      });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "AI 生成失败");
+      toast.error(e instanceof Error ? e.message : "同步预览失败");
     } finally {
-      setAiLoading(false);
+      setSyncLoading(false);
     }
   }
 
-  async function confirmAiWrite() {
-    if (!aiPreview.length) return;
-    setAiSaving(true);
+  async function confirmSyncWrite() {
+    if (!syncPreview?.items.length) return;
+    setSyncSaving(true);
     try {
-      await api.post("/attendance/legal-holidays/batch", { items: aiPreview.map((item) => ({ date: item.date, name: item.name, dayType: item.dayType })) });
-      toast.success("节假日已写入");
-      setAiPreview([]);
-      setAiMessage("");
+      const data = await api.post("/attendance/legal-holidays/sync-confirm", { year: syncYear });
+      toast.success(`${data?.year || syncYear} 年节假日已同步（${data?.count ?? syncPreview.items.length} 天）`);
+      setSyncPreview(null);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "写入失败");
+      toast.error(e instanceof Error ? e.message : "同步写入失败");
     } finally {
-      setAiSaving(false);
+      setSyncSaving(false);
     }
-  }
-
-  function updateAiItem(index: number, field: "date" | "name" | "dayType", value: string) {
-    setAiPreview((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
-  }
-  function removeAiItem(index: number) {
-    setAiPreview((prev) => prev.filter((_, i) => i !== index));
-  }
-  function addAiItem() {
-    setAiPreview((prev) => [...prev, { date: "", name: "", dayType: "legal_holiday" }]);
   }
 
   async function disableLegalHoliday(item: LegalHolidayItem) {
@@ -1019,6 +1017,7 @@ export function Attendance() {
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <CalendarDays className="h-4 w-4 text-rose-500" />
                   法定节假日
+                  <HelpTooltip label="全年法定节假日与调休补班一览，供请假与排班参考。节假日由管理员在「考勤设置」中维护，并有每年 11~12 月自动同步来年数据的机制；「放假」日加班按 3 倍计算加班费。" />
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">全年法定节假日一览，供请假与排班参考</p>
               </div>
@@ -1369,7 +1368,7 @@ export function Attendance() {
               <CardHeader>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <CardTitle>审批角色规则</CardTitle>
+                    <CardTitle className="flex items-center gap-1.5">审批角色规则 <HelpTooltip label={APPROVAL_RULE_HELP} /></CardTitle>
                     <CardDescription>每个申请人角色可配置一条按顺序执行的多级审批链；请假满 3 天时，运营负责人自动作为最后一级审批</CardDescription>
                   </div>
                   <Button size="sm" onClick={saveApprovalRoleRules} disabled={approvalRoleRulesSaving}>
@@ -1476,7 +1475,7 @@ export function Attendance() {
             <CardHeader>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <CardTitle>法定节假日</CardTitle>
+                  <CardTitle className="flex items-center gap-1.5">法定节假日 <HelpTooltip label={HOLIDAY_TABLE_HELP} /></CardTitle>
                   <CardDescription>启用状态会影响加班类型和 3 倍加班费折算</CardDescription>
                 </div>
                 <div className="w-36 space-y-2">
@@ -1494,62 +1493,60 @@ export function Attendance() {
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-muted/20 p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">AI 补全下一年节假日</span>
+                  <RefreshCw className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">同步官方数据</span>
+                  <HelpTooltip label={HOLIDAY_SYNC_HELP} />
                   <Input
                     type="number"
                     min="2000"
                     max="2100"
-                    value={aiYear}
-                    onChange={(event) => setAiYear(event.target.value)}
+                    value={syncYear}
+                    onChange={(event) => setSyncYear(event.target.value)}
                     className="h-8 w-24"
                   />
-                  <Button size="sm" onClick={runAiGenerate} disabled={aiLoading}>
-                    {aiLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
-                    AI 生成
+                  <Button size="sm" onClick={runSyncPreview} disabled={syncLoading}>
+                    {syncLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+                    获取预览
                   </Button>
-                  {aiPreview.length > 0 ? (
-                    <Button size="sm" onClick={confirmAiWrite} disabled={aiSaving}>
-                      {aiSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+                  {syncPreview ? (
+                    <Button size="sm" onClick={confirmSyncWrite} disabled={syncSaving}>
+                      {syncSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
                       确认写入
                     </Button>
                   ) : null}
-                  {aiPreview.length > 0 ? (
-                    <Button size="sm" variant="ghost" onClick={() => setAiPreview([])}>取消</Button>
+                  {syncPreview ? (
+                    <Button size="sm" variant="ghost" onClick={() => setSyncPreview(null)}>取消</Button>
                   ) : null}
                 </div>
-                {aiMessage ? <p className="mt-2 text-xs text-muted-foreground">{aiMessage}</p> : null}
-                {aiPreview.length > 0 ? (
+                {syncPreview ? (
                   <div className="mt-3 space-y-2">
-                    <div className="text-xs font-medium text-muted-foreground">生成结果（可编辑核对后写入）：</div>
-                    {aiPreview.map((item, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input
-                          type="date"
-                          value={item.date}
-                          className="h-8 w-36"
-                          onChange={(event) => updateAiItem(index, "date", event.target.value)}
-                        />
-                        <Input
-                          value={item.name}
-                          className="h-8 w-48"
-                          onChange={(event) => updateAiItem(index, "name", event.target.value)}
-                        />
-                        <Select value={item.dayType || "legal_holiday"} onValueChange={(value) => updateAiItem(index, "dayType", value)}>
-                          <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="legal_holiday">放假</SelectItem>
-                            <SelectItem value="makeup_workday">调休补班</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button size="icon" variant="ghost" onClick={() => removeAiItem(index)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {syncPreview.sources.map((source) => (
+                        <Badge key={source.label} variant={source.error ? "destructive" : "secondary"}>
+                          {source.label} {source.error ? "不可用" : `${source.count} 天`}
+                        </Badge>
+                      ))}
+                    </div>
+                    {syncPreview.warnings.length ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        {syncPreview.warnings.map((warning) => <div key={warning}>⚠ {warning}</div>)}
                       </div>
-                    ))}
-                    <Button size="sm" variant="outline" onClick={addAiItem}>
-                      <Plus className="mr-1 h-4 w-4" /> 添加
-                    </Button>
+                    ) : null}
+                    <div className="text-xs font-medium text-muted-foreground">同步结果预览（{syncPreview.items.length} 天）：</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {syncPreview.items.map((item) => (
+                        <span
+                          key={item.date}
+                          className={`rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${
+                            item.dayType === "makeup_workday"
+                              ? "bg-orange-50 text-orange-700 ring-orange-200"
+                              : "bg-rose-50 text-rose-700 ring-rose-200"
+                          }`}
+                        >
+                          {item.name} · {fmtHolidayDate(item.date)}（{holidayWeekday(item.date)}）{item.dayType === "makeup_workday" ? " 补班" : ""}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1595,7 +1592,7 @@ export function Attendance() {
                       <TableHead>日期</TableHead>
                       <TableHead>名称</TableHead>
                       <TableHead>类型</TableHead>
-                      <TableHead>来源</TableHead>
+                      <TableHead><span className="inline-flex items-center gap-1">来源 <HelpTooltip label={HOLIDAY_SOURCE_HELP} /></span></TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>操作</TableHead>
                     </TableRow>
