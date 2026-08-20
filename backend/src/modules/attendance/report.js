@@ -10,15 +10,17 @@ const MAX_RANGE_DAYS = 366
 const DAY_MS = 86400000
 const REPORT_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const COMPANY_NAME = '敦阳（宁波）科技有限公司'
+// 与管理端网页主题（theme.css --primary: #582b8b）同族的品牌紫配色
 const REPORT_COLORS = Object.freeze({
-  deep: 'FF2E1065',
-  primary: 'FF8B5CF6',
-  primaryDark: 'FF6D28D9',
-  accent: 'FFA855F7',
-  ink: 'FF2A2140',
-  muted: 'FF7C6F9C',
-  line: 'FFEDE9FE',
-  soft: 'FFF5F3FF',
+  deep: 'FF38185C',
+  primary: 'FF582B8B',
+  primaryDark: 'FF4A2375',
+  accent: 'FF8B6BC4',
+  onDeep: 'FFE9E1F5',
+  ink: 'FF1F1B2E',
+  muted: 'FF717182',
+  line: 'FFE6DFF1',
+  soft: 'FFF5F3FA',
   white: 'FFFFFFFF',
   success: 'FF15803D',
   successSoft: 'FFDCFCE7',
@@ -408,7 +410,7 @@ function styleTitle(sheet, title, filters, generatedAt, maxColumns) {
 
   sheet.mergeCells(`A2:${lastColumn}2`)
   sheet.getCell('A2').value = 'ATTENDANCE REPORT  ·  考勤数据中心'
-  sheet.getCell('A2').font = { bold: true, size: 10, color: { argb: 'FFE9D5FF' } }
+  sheet.getCell('A2').font = { bold: true, size: 10, color: { argb: REPORT_COLORS.onDeep } }
   sheet.getCell('A2').fill = fill(REPORT_COLORS.deep)
   sheet.getRow(2).height = 22
 
