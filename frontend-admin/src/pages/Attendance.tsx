@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -326,17 +326,26 @@ function annualUsageDays(item?: { annualLeaveDays?: number; annualLeaveHours?: n
   return Number(item.annualLeaveHours || 0) / 8;
 }
 
-function requestDetail(item: AttendanceRequest) {
-  if (item.requestType === "leave") return LEAVE_TYPE_LABELS[item.leaveType || ""] || "-";
-  if (item.requestType === "overtime") {
-    const result = OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-";
-    const multiplier = item.overtimeResult === "pay" && Number(item.overtimePayMultiplier || 0) > 1
-      ? `（${hours(Number(item.overtimePayMultiplier))}倍）`
-      : "";
-    const dayType = OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType || ""] || "";
-    return `${OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"} / ${result}${multiplier}${dayType ? ` / ${dayType}` : ""}`;
+// 明细列主内容：加班拆为结构化徽章（事由 / 结果·倍数 / 日类型），请假与调休加粗主文案
+function requestDetailContent(item: AttendanceRequest) {
+  if (item.requestType === "leave") {
+    return <span className="font-medium">{LEAVE_TYPE_LABELS[item.leaveType || ""] || "-"}</span>;
   }
-  return "调休";
+  if (item.requestType === "overtime") {
+    const multiplier = item.overtimeResult === "pay" && Number(item.overtimePayMultiplier || 0) > 1
+      ? ` ${hours(Number(item.overtimePayMultiplier))}倍`
+      : "";
+    return (
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="font-medium">{OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"}</span>
+        <Badge variant={item.overtimeResult === "pay" ? "purple" : "teal"}>
+          {(OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-") + multiplier}
+        </Badge>
+        {item.overtimeDayType ? <Badge variant="secondary">{OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType]}</Badge> : null}
+      </span>
+    );
+  }
+  return <span className="font-medium">调休</span>;
 }
 
 function requestTypeLabel(type?: string) {
@@ -2174,27 +2183,40 @@ function RequestList({
                     {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
                     <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
                     <TableCell>
-                      <div>{requestDetail(item)}</div>
+                      <div>{requestDetailContent(item)}</div>
                       {item.requestType === "overtime" && item.sourceType === "service_order" ? (
                         <ServiceOrderApprovalSummary
                           order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
                           onPreview={onPreviewOrder}
                         />
                       ) : null}
-                      {item.delegateEmployeeName ? <div className="text-xs text-muted-foreground">代理人：{item.delegateEmployeeName}</div> : null}
-                      {typeof item.workingDays === "number" ? <div className="text-xs text-muted-foreground">{days(item.workingDays)} 个工作日</div> : null}
-                      {item.proofFiles?.length ? (
-                        <div className="text-xs text-muted-foreground">
-                          证明：{item.proofFiles.map((file, index) => (
-                            <span key={file.id}>
-                              {index ? "、" : ""}
-                              <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
-                                {file.originalName || `附件 #${file.id}`}
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      ) : item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
+                      {(() => {
+                        const meta: ReactNode[] = [];
+                        if (item.delegateEmployeeName) {
+                          meta.push(<span key="delegate" className="inline-flex items-center gap-1"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
+                        }
+                        if (typeof item.workingDays === "number") {
+                          meta.push(<span key="days" className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
+                        }
+                        if (item.proofFiles?.length) {
+                          meta.push(
+                            <span key="proof" className="inline-flex flex-wrap items-center gap-1">
+                              <Paperclip className="h-3 w-3" />
+                              {item.proofFiles.map((file, index) => (
+                                <span key={file.id}>
+                                  {index ? "、" : ""}
+                                  <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
+                                    {file.originalName || `附件 #${file.id}`}
+                                  </button>
+                                </span>
+                              ))}
+                            </span>,
+                          );
+                        } else if (item.proofFileCount) {
+                          meta.push(<span key="proof" className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
+                        }
+                        return meta.length ? <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{meta}</div> : null;
+                      })()}
                       {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
                     <TableCell>{requestTimeRange(item)}</TableCell>
