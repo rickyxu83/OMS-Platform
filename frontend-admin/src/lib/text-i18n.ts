@@ -248,6 +248,10 @@ const phraseMap: Record<string, string> = {
 
 const toTraditionalConverter = OpenCC.Converter({ from: "cn", to: "tw" })
 const toSimplifiedConverter = OpenCC.Converter({ from: "tw", to: "cn" })
+// 警告：japaneseToSimplifiedConverter（jp→cn）只允许作为搜索加法变体使用，禁止进入主转换链！
+// jp→cn 是“日语新字体→中文标准字”的单向映射，会把 216 个中文正常用字误映射成别的字：
+// 沪→滤（日语里“沪”是“濾”的新字体，過濾写作過沪）、研→硏、欠→缺、予→豫、瓶→甁、翻→飜、概→槪 等。
+// 曾因把它串进 toSimplified/toTraditional，导致用户输入“沪坊”入库/显示成“滤坊”（2026-08 数据污染事件）。
 const japaneseToSimplifiedConverter = OpenCC.Converter({ from: "jp", to: "cn" })
 const phrases = (Object.entries(phraseMap) as Array<[string, string]>).sort((left, right) => right[0].length - left[0].length)
 const oneWayTraditionalPhrases = new Set(["文档", "配置", "文件"])
@@ -307,20 +311,45 @@ function applyPhrases(value: string, replacements: Array<[string, string]>) {
   return output
 }
 
+// 简体保护字：这些是简体中文正常用字，OpenCC 的 tw→cn/jp→cn 词典会把它们误归并成别的简体字，
+// 导致“什么→什幺、沪坊→滤坊”式的静默数据污染。转换前用私用区字符占位、转换后还原，保证简体输入恒等。
+// 注意：只能保护“合法简体字”，繁体字（滬、麼…）不在此列，它们应正常归并。
+const SIMPLIFIED_GUARDS: Record<string, string> = { 么: "\uE000" }
+const TRADITIONAL_GUARDS: Record<string, string> = { 幺: "\uE001" }
+// 历史污染形态：修复前词典曾把“么→幺、沪→滤”写入数据（什么→什幺）。
+// 为兼容检索这类历史脏数据，把词典错误方向形态作为搜索追加变体（纯加法，只用于匹配，永不写入/展示）。
+const LEGACY_MISFORMS: Record<string, string> = { 么: "幺" }
+function guard(value: string, guards: Record<string, string>) {
+  let output = value
+  for (const [ch, placeholder] of Object.entries(guards)) output = output.split(ch).join(placeholder)
+  return output
+}
+function unguard(value: string, guards: Record<string, string>) {
+  let output = value
+  for (const [ch, placeholder] of Object.entries(guards)) output = output.split(placeholder).join(ch)
+  return output
+}
+function applyMisform(value: string, misforms: Record<string, string>) {
+  let output = value
+  for (const [source, target] of Object.entries(misforms)) output = output.split(source).join(target)
+  return output
+}
+
 // OpenCC 字符级映射会把业务词“签核/会签”转成“籤核/會籤”（竹籤的籤），词组级兜底掰回“簽”。
 // 只按词组替换，不误伤抽籤/竹籤等正确用法；前置简体词组表（phraseMap）已含签核/会签。
 const traditionalPostFixes: Array<[string, string]> = [["籤核", "簽核"], ["會籤", "會簽"]]
 
 export function toTraditional(value: unknown) {
   const normalized = applyPhrases(String(value ?? "").split("...").join("…"), phrases)
-  const converted = toTraditionalConverter(japaneseToSimplifiedConverter(normalized))
-  return applyPhrases(applyPhrases(converted, phrases), traditionalPostFixes)
+  const guarded = guard(normalized, TRADITIONAL_GUARDS)
+  const converted = toTraditionalConverter(guarded)
+  return applyPhrases(applyPhrases(unguard(converted, TRADITIONAL_GUARDS), phrases), traditionalPostFixes)
 }
 
 export function toSimplified(value: unknown) {
   const normalizedTerms = applyPhrases(String(value ?? ""), simplifiedPhrases)
-  const converted = japaneseToSimplifiedConverter(toSimplifiedConverter(normalizedTerms))
-  return applyPhrases(converted, simplifiedPhrases)
+  const converted = toSimplifiedConverter(guard(normalizedTerms, SIMPLIFIED_GUARDS))
+  return applyPhrases(unguard(converted, SIMPLIFIED_GUARDS), simplifiedPhrases)
 }
 
 export function normalizeSearchText(value: unknown) {
@@ -337,6 +366,10 @@ function searchTextVariants(value: unknown) {
     toTraditional(value),
     toTraditional(toSimplified(value)),
     toSimplified(toTraditional(value)),
+    applyMisform(String(value ?? ""), LEGACY_MISFORMS),
+    // 日文新字体作为“加法变体”只追加、不替换：搜“泽”能命中“沢”，搜“沪”也能命中历史污染数据“滤”。
+    // 加法变体最坏只是多匹配，永远不会改写任何存储值/显示值。
+    japaneseToSimplifiedConverter(String(value ?? "")),
   ].map((item) => String(item || "").toLowerCase().replace(/\s+/g, "").trim()).filter(Boolean)))
 }
 
