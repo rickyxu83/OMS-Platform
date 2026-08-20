@@ -18,7 +18,6 @@ import {
   deleteQuotationFile,
   downloadMrDocument,
   downloadQuotation,
-  fetchQuotationBlob,
   getMr,
   getMrConstants,
   loadCustomer,
@@ -32,7 +31,7 @@ import {
   withdrawMr,
 } from '../client'
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, SalesPreferences, ScheduleEntry, UserOption, VendorOption } from '../types'
-import { PdfPreview } from '@/components/PdfPreview'
+import { resolveApiBase } from '@/services/api'
 import { ApprovalPanel } from './ApprovalPanel'
 import { MrContractNoCard } from './MrContractNoCard'
 import { MrPurchaseCard } from './MrPurchaseCard'
@@ -143,6 +142,9 @@ function changeValue(value: unknown) {
 }
 
 const ATTACHMENT_ACCEPT = '.pdf,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.csv,.txt'
+
+/** 浏览器可直接内联预览的附件扩展名；其余类型点击仍走下载 */
+const PREVIEWABLE_ATTACHMENT_EXTS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'txt', 'csv'])
 
 function attachmentIcon(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() || ''
@@ -392,8 +394,6 @@ export function MrFormPage() {
   const [editing, setEditing] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [reassignSalesId, setReassignSalesId] = useState('')
-  const [attachmentPreview, setAttachmentPreview] = useState<{ file: QuotationFile; data: Uint8Array } | null>(null)
-  const [previewBusy, setPreviewBusy] = useState(false)
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
@@ -988,23 +988,16 @@ export function MrFormPage() {
     }
   }
 
-  /** 附件点击交互：PDF 在浏览器内预览，其余类型直接下载。 */
-  const openAttachment = async (file: QuotationFile) => {
+  /** 附件点击交互：浏览器可预览类型（PDF/图片/文本/CSV）新标签页内联预览，其余类型直接下载。 */
+  const openAttachment = (file: QuotationFile) => {
     if (!id) return
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    if (ext === 'pdf') {
-      setPreviewBusy(true)
-      try {
-        const blob = await fetchQuotationBlob(id, file.id)
-        setAttachmentPreview({ file, data: new Uint8Array(await blob.arrayBuffer()) })
-      } catch (err) {
-        setError((err as Error).message || '附件预览失败')
-      } finally {
-        setPreviewBusy(false)
-      }
-    } else {
-      downloadQuotation(id, file.id, file.name).catch((err) => setError((err as Error).message || '附件下载失败'))
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (PREVIEWABLE_ATTACHMENT_EXTS.has(ext)) {
+      const url = `${resolveApiBase()}/mr/${encodeURIComponent(String(id))}/quotation?fileId=${encodeURIComponent(String(file.id))}&inline=1`
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
     }
+    downloadQuotation(id, file.id, file.name).catch((err) => setError((err as Error).message || '附件下载失败'))
   }
 
   /** 品项明细顶部“添加品项”：追加空行并自动聚焦进入编辑。 */
@@ -1620,20 +1613,6 @@ export function MrFormPage() {
           onLinkedItemsRemoved={handleLinkedItemsRemoved}
         />
       ) : null}
-
-      <Dialog open={Boolean(attachmentPreview)} onOpenChange={(open) => { if (!open) setAttachmentPreview(null) }}>
-        <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-5xl overflow-y-auto sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><FileText className="size-4" />{attachmentPreview?.file.name || '附件预览'}</DialogTitle>
-            <DialogDescription>浏览器内直接预览 PDF；如需保存或打开其他格式，请使用下方下载。</DialogDescription>
-          </DialogHeader>
-          {attachmentPreview ? <PdfPreview data={attachmentPreview.data} title={attachmentPreview.file.name} /> : null}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAttachmentPreview(null)}>关闭</Button>
-            <Button variant="outline" onClick={() => { if (attachmentPreview && id) void downloadQuotation(id, attachmentPreview.file.id, attachmentPreview.file.name).catch((err) => setError((err as Error).message || '附件下载失败')) }}><Download className="mr-2 size-4" />下载</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
         <DialogContent>

@@ -518,6 +518,27 @@ async function list(req, res) {
     where.push('(o.customer_name LIKE :q OR o.ctrl_no LIKE :q OR c.code LIKE :q)')
     params.q = `%${q}%`
   }
+  // 多维筛选：客户精确、业务负责人、填表日期范围（均为可选，参数化查询防注入）
+  const customerId = Number(String(req.query.customerId || '').trim())
+  if (Number.isInteger(customerId) && customerId > 0) {
+    where.push('o.customer_id = :customerId')
+    params.customerId = customerId
+  }
+  const salesOwnerId = Number(String(req.query.salesOwnerId || '').trim())
+  if (Number.isInteger(salesOwnerId) && salesOwnerId > 0) {
+    where.push('o.sales_owner_id = :salesOwnerId')
+    params.salesOwnerId = salesOwnerId
+  }
+  const dateFrom = String(req.query.dateFrom || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+    where.push('o.fill_date >= :dateFrom')
+    params.dateFrom = dateFrom
+  }
+  const dateTo = String(req.query.dateTo || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+    where.push('o.fill_date <= :dateTo')
+    params.dateTo = dateTo
+  }
   params.permissionUserId = req.user.id
   const assistantIds = await assistantIdsFor(req.user)
   const rows = await query(
@@ -2065,6 +2086,12 @@ async function downloadQuotation(req, res) {
     { fileId, ownerId: req.params.id },
   )
   if (!rows[0] || !fs.existsSync(rows[0].storage_path)) throw notFound('报价原始附件不存在')
+  // inline=1 时浏览器内联预览（前端新标签页打开），否则强制下载
+  if (String(req.query.inline || '') === '1') {
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(rows[0].original_name)}`)
+    res.sendFile(path.resolve(rows[0].storage_path))
+    return
+  }
   res.download(rows[0].storage_path, rows[0].original_name)
 }
 

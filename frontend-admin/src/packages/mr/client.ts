@@ -4,10 +4,15 @@ import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLay
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
 }
-export async function listMr(params: { q?: string; status?: string } = {}) {
+export async function listMr(params: { q?: string; status?: string; purchaseStatus?: string; customerId?: string; salesOwnerId?: string; dateFrom?: string; dateTo?: string } = {}) {
   const search = new URLSearchParams()
   if (params.q) search.set('q', params.q)
   if (params.status) search.set('status', params.status)
+  if (params.purchaseStatus) search.set('purchaseStatus', params.purchaseStatus)
+  if (params.customerId) search.set('customerId', params.customerId)
+  if (params.salesOwnerId) search.set('salesOwnerId', params.salesOwnerId)
+  if (params.dateFrom) search.set('dateFrom', params.dateFrom)
+  if (params.dateTo) search.set('dateTo', params.dateTo)
   return api.get(`/mr${search.size ? `?${search}` : ''}`) as Promise<{ items: MrOrder[] }>
 }
 
