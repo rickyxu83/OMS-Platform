@@ -1886,7 +1886,12 @@ export function Attendance() {
                 <Label>余额类型</Label>
                 <Select
                   value={batchBalanceDialog.balanceType}
-                  onValueChange={(value) => setBatchBalanceDialog((current) => current ? { ...current, balanceType: value as "annual_leave" | "comp_time", target: "" } : current)}
+                  onValueChange={(value) => setBatchBalanceDialog((current) => {
+                    if (!current) return current
+                    const balanceType = value as "annual_leave" | "comp_time"
+                    // 仅余额类型真正变化时才清空目标值（单位“天/小时”不同）；误触同选项不得丢已输入的值
+                    return balanceType === current.balanceType ? current : { ...current, balanceType, target: "" }
+                  })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2011,7 +2016,12 @@ export function Attendance() {
                 <Label>余额类型</Label>
                 <Select
                   value={adjustDialog.draft.balanceType}
-                  onValueChange={(value) => setAdjustDialogDraft({ balanceType: value as AdjustDraft["balanceType"], amount: "" })}
+                  onValueChange={(value) => setAdjustDialog((current) => {
+                    if (!current) return current
+                    const balanceType = value as AdjustDraft["balanceType"]
+                    // 同值点击不重置；仅类型真正变化时才清空已输入数量（单位不同，数值不可沿用）
+                    return balanceType === current.draft.balanceType ? current : { ...current, draft: { ...current.draft, balanceType, amount: "" } }
+                  })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
