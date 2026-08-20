@@ -57,7 +57,8 @@ const uploadRoot = path.isAbsolute(env.uploadDir) ? env.uploadDir : path.resolve
 
 app.disable('x-powered-by')
 // 信任最近 N 跳反向代理，避免伪造 X-Forwarded-For 绕过基于 IP 的限流。
-// 生产为单层 Caddy → 默认 1；测试服为「外层 Caddy 网关 → 项目 Caddy」双层 → 设 TRUST_PROXY=2。
+// 生产为单层 Caddy → 默认 1；测试服为「Cloudflare → 外层 Caddy 网关 → 项目 Caddy」三层 → 设 TRUST_PROXY=3。
+// 层数不足会把代理节点 IP（如 Cloudflare 边缘地址）误记为客户端 IP。
 const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY || '', 10)
 app.set('trust proxy', Number.isInteger(trustProxyHops) && trustProxyHops > 0 ? trustProxyHops : 1)
 app.use(helmet())
