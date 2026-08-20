@@ -2075,33 +2075,68 @@ export function Attendance() {
             {dutyDetailLoading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>
             ) : dutyDetail && dutyDetail.records.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>日期</TableHead>
-                    <TableHead>工程师</TableHead>
-                    <TableHead>值班类型</TableHead>
-                    <TableHead>事由</TableHead>
-                    <TableHead className="text-right">次数</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {dutyDetail.records.map((record) => {
-                    const start = String(record.duty_date).slice(0, 10);
-                    const end = record.duty_end_date ? String(record.duty_end_date).slice(0, 10) : start;
-                    const isSpan = end !== start;
-                    return (
-                      <TableRow key={record.id}>
-                        <TableCell className="tabular-nums">{start}{isSpan ? `~${end}` : ""}<span className="ml-1 text-xs text-muted-foreground">{isSpan ? `${record.units} 天` : ""}</span></TableCell>
-                        <TableCell className="font-medium">{record.employee_name}</TableCell>
-                        <TableCell><Badge variant={record.duty_type === "legal_holiday_on_call" ? "rose" : "cyan"}>{record.duty_type === "legal_holiday_on_call" ? "法定节假日值班" : "7×24 值班"}</Badge></TableCell>
-                        <TableCell className="max-w-44 truncate text-muted-foreground" title={record.reason}>{record.reason}</TableCell>
-                        <TableCell className="text-right tabular-nums">{Number(record.units)}<span className="ml-1 text-xs text-muted-foreground">次</span></TableCell>
+              (() => {
+                // 按工程师汇总：一人一行（对应纸质加班申请单「一人一张、按週填写」的习惯），
+                // 分列「7×24 值班（平日加班）」与「法定节假日（国定假日）」
+                const byEmployee = new Map<string, { name: string; weekendDates: string[]; holidays: Array<{ name: string; units: number; start: string; end: string }>; total: number }>();
+                for (const record of dutyDetail.records) {
+                  const name = record.employee_name || "-";
+                  if (!byEmployee.has(name)) byEmployee.set(name, { name, weekendDates: [], holidays: [], total: 0 });
+                  const group = byEmployee.get(name)!;
+                  group.total += Number(record.units);
+                  if (record.duty_type === "legal_holiday_on_call") {
+                    group.holidays.push({
+                      name: record.reason || "法定节假日",
+                      units: Number(record.units),
+                      start: String(record.duty_date).slice(5, 10),
+                      end: record.duty_end_date ? String(record.duty_end_date).slice(5, 10) : "",
+                    });
+                  } else {
+                    group.weekendDates.push(String(record.duty_date).slice(5, 10));
+                  }
+                }
+                const groups = [...byEmployee.values()];
+                return (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>工程师</TableHead>
+                        <TableHead>7×24 值班（平日加班）</TableHead>
+                        <TableHead>法定节假日（国定假日）</TableHead>
+                        <TableHead className="text-right">合计人次</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {groups.map((group) => (
+                        <TableRow key={group.name}>
+                          <TableCell className="font-medium">{group.name}</TableCell>
+                          <TableCell>
+                            {group.weekendDates.length ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="cyan">{group.weekendDates.length} 次</Badge>
+                                <span className="text-xs text-muted-foreground tabular-nums">{group.weekendDates.join("、")}</span>
+                              </div>
+                            ) : <span className="text-xs text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell>
+                            {group.holidays.length ? (
+                              <div className="space-y-1">
+                                {group.holidays.map((holiday, index) => (
+                                  <div key={index} className="flex flex-wrap items-center gap-1.5">
+                                    <Badge variant="rose">{holiday.name}</Badge>
+                                    <span className="text-xs text-muted-foreground tabular-nums">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : <span className="text-xs text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right"><span className="font-semibold tabular-nums">{group.total}</span><span className="ml-1 text-xs text-muted-foreground">人次</span></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                );
+              })()
             ) : (
               <div className="py-10 text-center text-sm text-muted-foreground">该月暂无值班记录</div>
             )}
