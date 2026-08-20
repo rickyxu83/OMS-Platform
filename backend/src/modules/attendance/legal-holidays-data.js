@@ -12,8 +12,44 @@
 // - 管理端"考勤设置 → 法定节假日"的手动增删（source='manual'）始终作为兜底，
 //   用于临时调整或补充漏项。
 //
-// 已公布年份：2026（国务院已公布当年安排，含放假日与调休补班日）
+// 已公布年份：2025、2026（国务院已公布当年安排，含放假日与调休补班日）
 const BUILTIN_LEGAL_HOLIDAYS = Object.freeze([
+  // 2025 年（国务院办公厅 2024 年 11 月公布）
+  { date: '2025-01-01', name: '元旦', dayType: 'legal_holiday' },
+  { date: '2025-01-26', name: '春节', dayType: 'makeup_workday' },
+  { date: '2025-01-28', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-01-29', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-01-30', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-01-31', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-02-01', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-02-02', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-02-03', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-02-04', name: '春节', dayType: 'legal_holiday' },
+  { date: '2025-02-08', name: '春节', dayType: 'makeup_workday' },
+  { date: '2025-04-04', name: '清明节', dayType: 'legal_holiday' },
+  { date: '2025-04-05', name: '清明节', dayType: 'legal_holiday' },
+  { date: '2025-04-06', name: '清明节', dayType: 'legal_holiday' },
+  { date: '2025-04-27', name: '劳动节', dayType: 'makeup_workday' },
+  { date: '2025-05-01', name: '劳动节', dayType: 'legal_holiday' },
+  { date: '2025-05-02', name: '劳动节', dayType: 'legal_holiday' },
+  { date: '2025-05-03', name: '劳动节', dayType: 'legal_holiday' },
+  { date: '2025-05-04', name: '劳动节', dayType: 'legal_holiday' },
+  { date: '2025-05-05', name: '劳动节', dayType: 'legal_holiday' },
+  { date: '2025-05-31', name: '端午节', dayType: 'legal_holiday' },
+  { date: '2025-06-01', name: '端午节', dayType: 'legal_holiday' },
+  { date: '2025-06-02', name: '端午节', dayType: 'legal_holiday' },
+  { date: '2025-09-28', name: '国庆节', dayType: 'makeup_workday' },
+  // 2025 国庆中秋连休 8 天（10-06 为中秋当天），统一命名“国庆节”便于连休合并展示
+  { date: '2025-10-01', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-02', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-03', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-04', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-05', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-06', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-07', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-08', name: '国庆节', dayType: 'legal_holiday' },
+  { date: '2025-10-11', name: '国庆节', dayType: 'makeup_workday' },
+  // 2026 年（国务院办公厅 2025 年 11 月公布）
   { date: '2026-01-01', name: '元旦', dayType: 'legal_holiday' },
   { date: '2026-01-02', name: '元旦', dayType: 'legal_holiday' },
   { date: '2026-01-03', name: '元旦', dayType: 'legal_holiday' },

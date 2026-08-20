@@ -53,7 +53,7 @@ const WORK_HOURS_PER_DAY = 8
 const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
 const DEFAULT_PAY_MULTIPLIER = 1
 const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
-const { generateYearHolidays, isAiAvailable } = require('./holiday-ai')
+const { fetchYearHolidays } = require('./holiday-sync')
 const legalHolidayCache = new Map()
 const makeupWorkdayCache = new Set()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
@@ -419,6 +419,21 @@ async function seedBuiltinLegalHolidays() {
       { date: item.date, name: item.name, dayType: item.dayType || 'legal_holiday' },
     )
   }
+  // 纠偏：自动来源（auto）的行与官方内置数据冲突时，强制改回官方值。
+  // manual 行视为人工有意调整，不动；is_active 也不动（尊重人工停用）。
+  let corrected = 0
+  for (const item of BUILTIN_LEGAL_HOLIDAYS) {
+    const result = await query(
+      `UPDATE attendance_legal_holidays
+       SET holiday_name = :name, day_type = :dayType, source = 'builtin'
+       WHERE holiday_date = :date
+         AND source = 'auto'
+         AND (holiday_name <> :name OR day_type <> :dayType)`,
+      { date: item.date, name: item.name, dayType: item.dayType || 'legal_holiday' },
+    )
+    corrected += Number(result?.affectedRows || 0)
+  }
+  if (corrected) console.log(`[attendance] legal holidays: corrected ${corrected} auto row(s) to builtin official data`)
 }
 
 async function refreshLegalHolidayCache() {
@@ -955,38 +970,16 @@ async function deleteLegalHoliday(req, res) {
   res.json({ ok: true })
 }
 
-// AI 生成指定年法定节假日：生成结果仅供预览（不写库），由前端确认后走 batch 写入。
-async function aiGenerateLegalHolidays(req, res) {
+// 同步官方节假日（双源拉取国务院公告镜像）：预览不写库；确认时后端重新拉取再写入，不信任前端回传。
+async function syncLegalHolidaysPreview(req, res) {
   await ensureSchema()
-  const year = text(req.body?.year)
-  if (!/^\d{4}$/.test(year)) throw badRequest('年份格式不正确（需四位数字）')
-  if (!isAiAvailable()) {
-    return res.json({ available: false, year, items: [], message: 'AI 服务未配置，暂不可用' })
-  }
-  let items = []
-  let message = ''
-  try {
-    items = await generateYearHolidays(year)
-  } catch (error) {
-    message = error?.message || 'AI 生成失败'
-  }
-  res.json({ available: true, year, items, message })
+  const result = await fetchYearHolidays(req.body?.year)
+  if (!result.ok) throw badRequest(result.reason)
+  res.json({ year: result.year, items: result.items, warnings: result.warnings, sources: result.sources })
 }
 
-// 批量写入节假日（source=auto，供 AI 生成结果确认后落库）。
-async function batchUpsertLegalHolidays(req, res) {
-  await ensureSchema()
-  const rawItems = Array.isArray(req.body?.items) ? req.body.items : []
-  if (!rawItems.length) throw badRequest('至少需要一条节假日数据')
-  const items = []
-  for (const raw of rawItems) {
-    const date = normalizeHolidayDate(raw?.date)
-    const name = text(raw?.name)
-    if (!name) throw badRequest('节假日名称不能为空')
-    const requestedDayType = text(raw?.dayType)
-    const dayType = holidayDayTypes.has(requestedDayType) ? requestedDayType : 'legal_holiday'
-    items.push({ date, name, dayType })
-  }
+// 双源比对一致的节假日批量落库（source='auto'，后续启动时 builtin 官方数据仍可纠偏）
+async function writeSyncedHolidays(items, createdBy = null) {
   for (const item of items) {
     await query(
       `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, day_type, source, is_active, created_by)
@@ -996,20 +989,40 @@ async function batchUpsertLegalHolidays(req, res) {
          day_type = VALUES(day_type),
          source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE 'auto' END,
          is_active = 1`,
-      { date: item.date, name: item.name, dayType: item.dayType, createdBy: req.user.id },
+      { date: item.date, name: item.name, dayType: item.dayType, createdBy },
     )
     await recalculateOvertimeRulesForDate(item.date)
   }
   await refreshLegalHolidayCache()
-  const year = items[0].date.slice(0, 4)
+}
+
+async function syncLegalHolidaysConfirm(req, res) {
+  await ensureSchema()
+  const result = await fetchYearHolidays(req.body?.year)
+  if (!result.ok) throw badRequest(result.reason)
+  await writeSyncedHolidays(result.items, req.user.id)
+  res.json({ ok: true, year: result.year, count: result.items.length, warnings: result.warnings, sources: result.sources })
+}
+
+// 定时任务用：每年 11~12 月检查来年节假日，缺失则自动双源同步（最严格模式：双源必须均可用且一致）。
+// 返回结果由调用方（scheduler）决定邮件通知策略。
+async function autoSyncNextYearHolidays() {
+  await ensureSchema()
+  const shanghaiNow = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const month = shanghaiNow.getUTCMonth() + 1
+  if (month < 11) return { skipped: true, reason: 'not_in_sync_window' }
+  const targetYear = shanghaiNow.getUTCFullYear() + 1
   const rows = await query(
-    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
-     FROM attendance_legal_holidays
-     WHERE holiday_date >= :startDate AND holiday_date < :endDate
-     ORDER BY holiday_date ASC`,
-    { startDate: `${year}-01-01`, endDate: `${Number(year) + 1}-01-01` },
+    `SELECT COUNT(*) AS cnt FROM attendance_legal_holidays
+     WHERE holiday_date >= :startDate AND holiday_date < :endDate AND is_active = 1`,
+    { startDate: `${targetYear}-01-01`, endDate: `${targetYear + 1}-01-01` },
   )
-  res.json({ items: rows.map(legalHolidayPayload) })
+  const existing = Number(rows[0]?.cnt || 0)
+  if (existing >= 20) return { skipped: true, reason: 'already_present', year: targetYear, count: existing }
+  const result = await fetchYearHolidays(targetYear, { requireDualSource: true })
+  if (!result.ok) return { skipped: false, synced: false, year: targetYear, reason: result.reason }
+  await writeSyncedHolidays(result.items, null)
+  return { skipped: false, synced: true, year: targetYear, count: result.items.length, warnings: result.warnings }
 }
 
 async function supervisorRoleForApplicantRoleConnection(connection, role) {
@@ -2683,8 +2696,9 @@ module.exports = {
   listLegalHolidays,
   upsertLegalHoliday,
   deleteLegalHoliday,
-  aiGenerateLegalHolidays,
-  batchUpsertLegalHolidays,
+  syncLegalHolidaysPreview,
+  syncLegalHolidaysConfirm,
+  autoSyncNextYearHolidays,
   updateEmployee,
   createRequest,
   submitRequest,
