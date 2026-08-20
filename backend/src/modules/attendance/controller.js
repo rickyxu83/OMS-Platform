@@ -593,6 +593,8 @@ async function ensureDefaultSupervisorRoleRules() {
 }
 
 async function removeNonApplicantApprovalRoleRules() {
+  // 非申请角色清单为空时无需清理（当前模型：所有角色均可提交申请）
+  if (!ATTENDANCE_NON_APPLICANT_ROLES.length) return
   const params = Object.fromEntries(
     ATTENDANCE_NON_APPLICANT_ROLES.map((role, index) => [`excludedRole${index}`, role]),
   )
@@ -2372,6 +2374,12 @@ async function nextWaitingApprovalStep(connection, requestId) {
 }
 
 function assertWorkflowStepApprover(step, user, request) {
+  // 管理员与行政主管拥有全部考勤权限，可审批任意环节（防止审批链配置的角色无审批权限时申请卡死）；
+  // 但申请人不能审批自己的申请
+  if (['admin', 'administrative_supervisor'].includes(user.role)) {
+    if (Number(request?.submitted_by) === Number(user.id)) throw forbidden('申请人不能审批自己的申请')
+    return
+  }
   if (step.step_type === 'delegate') {
     if (Number(step.assignee_user_id) !== Number(user.id)) throw forbidden('只有指定代理人可以审批')
     return

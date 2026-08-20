@@ -26,7 +26,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。标记为「放假」的日期加班按 3 倍计算加班费，「调休补班」按正常工作日处理。";
 const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
 const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
-const APPROVAL_RULE_HELP = "按申请人角色配置多级审批链，审批人按顺序逐级审批；请假满 3 天时运营负责人自动追加为最后一级。未配置规则的角色提交申请时会提示无法审批。";
+const APPROVAL_RULE_HELP = "按申请人角色配置多级审批链，审批人按顺序逐级审批；请假满 3 天时运营负责人自动追加为最后一级。管理员与行政主管拥有全部考勤权限，可审批任意环节。未配置规则的角色提交申请时会提示无法审批。";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -1379,7 +1379,7 @@ export function Attendance() {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-1.5">审批角色规则 <HelpTooltip label={APPROVAL_RULE_HELP} /></CardTitle>
-                    <CardDescription>每个申请人角色可配置一条按顺序执行的多级审批链；请假满 3 天时，运营负责人自动作为最后一级审批</CardDescription>
+                    <CardDescription>每个申请人角色可配置一条按顺序执行的多级审批链；请假满 3 天时，运营负责人自动作为最后一级审批；管理员与行政主管可审批任意环节</CardDescription>
                   </div>
                   <Button size="sm" onClick={saveApprovalRoleRules} disabled={approvalRoleRulesSaving}>
                     {approvalRoleRulesSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 保存规则

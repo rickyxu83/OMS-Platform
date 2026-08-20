@@ -36,7 +36,7 @@ assert.throws(
   const matrix = getDefaultPermissionMatrix()
   assert.equal(matrix.admin['attendance.report.export'], true)
   assert.equal(matrix.administrative_supervisor['attendance.report.export'], true)
-  assert.equal(matrix.operations_director['attendance.report.export'], true)
+  assert.equal(matrix.operations_director['attendance.report.export'], false)
   assert.equal(matrix.engineer['attendance.report.export'], false)
   const custom = getDefaultPermissionMatrix()
   custom.engineer['attendance.report.export'] = true

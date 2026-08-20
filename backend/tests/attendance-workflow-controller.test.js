@@ -147,16 +147,18 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(insert.params.workingDays, 3)
     assert.equal(insert.params.hours, 24)
     assert.ok(result.calls.some((call) => /INSERT IGNORE INTO attendance_approval_role_rule_steps/.test(call.sql)))
-    assert.ok(result.calls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)))
-    assert.ok(result.calls.some((call) => /DELETE FROM attendance_supervisor_role_rules/.test(call.sql)))
+    // 所有角色均可申请后，不再清理非申请角色的审批规则
+    assert.equal(result.calls.some((call) => /DELETE FROM attendance_approval_role_rule_steps/.test(call.sql)), false)
+    assert.equal(result.calls.some((call) => /DELETE FROM attendance_supervisor_role_rules/.test(call.sql)), false)
     assert.equal(result.calls.some((call) => /DELETE FROM attendance_requests/.test(call.sql)), false)
   }
 
+  // 权限收窄后所有角色（含 admin/dispatcher/operations_director）均可提交考勤申请
   for (const role of ['admin', 'dispatcher', 'operations_director']) {
     const result = await createLeave({}, {}, role)
-    assert.equal(result.thrown?.status, 403)
-    assert.match(result.thrown?.message || '', /无需提交考勤申请/)
-    assert.equal(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)), false)
+    assert.equal(result.thrown, null, `${role} should be able to create leave`)
+    assert.equal(result.response.statusCode, 201)
+    assert.ok(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)))
   }
 
   {
@@ -248,8 +250,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const res = createResponse()
     await controller.listApprovalRoleRules(req, res)
     assert.deepEqual(res.body.items.map((item) => item.applicantRole), [
+      'admin',
       'assistant',
       'assistant_supervisor',
+      'dispatcher',
+      'operations_director',
       'engineering_supervisor',
       'administrative_supervisor',
       'sales_supervisor',
@@ -472,7 +477,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       user: { id: 1, role: 'admin' },
       body: {
         items: [{
-          applicantRole: 'admin',
+          applicantRole: 'guest',
           steps: [{ approverRole: 'administrative_supervisor' }],
         }],
       },
@@ -1528,7 +1533,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 403)
+    // 权限收窄后：管理员/行政主管可审批任意环节（防止配置角色无审批权限时申请卡死）
+    assert.equal(thrown, null)
+    assert.equal(res.body.ok, true)
   }
 
   {
@@ -1607,7 +1614,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 403)
+    // 权限收窄后：管理员/行政主管可审批任意环节，v2 遗留流程同样兜底
+    assert.equal(thrown, null)
+    assert.equal(res.body.ok, true)
   }
 
   {

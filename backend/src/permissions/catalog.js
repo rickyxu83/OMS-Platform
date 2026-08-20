@@ -13,11 +13,11 @@ const ROLE_LABELS = Object.freeze({
 })
 
 const ALL_ROLES = Object.keys(ROLE_LABELS)
-const ATTENDANCE_NON_APPLICANT_ROLES = Object.freeze([
-  'admin',
-  'dispatcher',
-  'operations_director',
-])
+// 考勤权限模型（2026-08-20 收窄）：
+// - 管理员、行政主管：全部考勤权限（含提交申请）
+// - 工程主管：值班津贴管理 + 提交申请
+// - 其他角色：仅提交申请
+const ATTENDANCE_NON_APPLICANT_ROLES = Object.freeze([])
 const attendanceNonApplicantRoleSet = new Set(ATTENDANCE_NON_APPLICANT_ROLES)
 const ATTENDANCE_APPLICANT_ROLES = Object.freeze(
   ALL_ROLES.filter((role) => !attendanceNonApplicantRoleSet.has(role)),
@@ -56,14 +56,14 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['maintenance-party.delete', '删除维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor']],
   ['timesheet.view', '查看工时报表', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
   ['attendance.apply', '提交考勤申请', ATTENDANCE_APPLICANT_ROLES],
-  ['attendance.approve', '处理考勤审批', ALL_ROLES],
-  ['attendance.view', '查看考勤数据', ['admin', 'operations_director', 'administrative_supervisor']],
-  ['attendance.report.export', '导出考勤报表', ['admin', 'operations_director', 'administrative_supervisor']],
+  ['attendance.approve', '处理考勤审批', ['admin', 'administrative_supervisor']],
+  ['attendance.view', '查看考勤数据', ['admin', 'administrative_supervisor']],
+  ['attendance.report.export', '导出考勤报表', ['admin', 'administrative_supervisor']],
   ['attendance.manage', '维护考勤档案与余额', ['admin', 'administrative_supervisor']],
   ['attendance.admin.approve', '考勤行政终审', ['admin', 'administrative_supervisor']],
   ['attendance.hr.approve', '考勤人事审批', ['admin', 'administrative_supervisor']],
-  ['attendance.vp.approve', '考勤副总审批', ['admin', 'operations_director']],
-  ['attendance.duty.manage', '管理工程师值班津贴', ['admin', 'engineering_supervisor']],
+  ['attendance.vp.approve', '考勤副总审批', ['admin', 'administrative_supervisor']],
+  ['attendance.duty.manage', '管理工程师值班津贴', ['admin', 'engineering_supervisor', 'administrative_supervisor']],
   ['attendance.duty.admin.approve', '终审工程师值班津贴', ['admin', 'administrative_supervisor']],
   ['user.view', '查看用户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor']],
   ['user.create', '创建用户', ['admin']],
