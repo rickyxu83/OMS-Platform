@@ -372,6 +372,9 @@ export function Attendance() {
   const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
   const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
   const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "" });
+  // 审批页（申请与审批）只读展示的法定节假日：默认当年，可切换年份
+  const [publicHolidays, setPublicHolidays] = useState<LegalHolidayItem[]>([]);
+  const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
 
   async function load() {
     setLoading(true);
@@ -421,6 +424,14 @@ export function Attendance() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth, holidayYear]);
+
+  // 审批页法定节假日只读展示：按所选年份拉取（GET 对全体考勤用户开放）
+  useEffect(() => {
+    const year = /^\d{4}$/.test(publicHolidayYear) ? publicHolidayYear : "";
+    api.get(`/attendance/legal-holidays${year ? `?year=${year}` : ""}`)
+      .then((data) => setPublicHolidays((data?.items || []) as LegalHolidayItem[]))
+      .catch(() => setPublicHolidays([]));
+  }, [publicHolidayYear]);
 
 
   async function exportAttendanceReport() {
@@ -488,7 +499,7 @@ export function Attendance() {
       items.push({ key: "records", label: "记录与报表" });
     }
     if (canManage) items.push({ key: "employees", label: "员工与余额" });
-    if (canViewAll) items.push({ key: "settings", label: "考勤设置" });
+    if (canManage) items.push({ key: "settings", label: "考勤设置" });
     if (canViewDuty) items.push({ key: "duty", label: "值班津贴" });
     return items;
   }, [canApply, canViewAll, canManage, canViewDuty, approvalTodos.length]);
@@ -890,6 +901,56 @@ export function Attendance() {
               </Button>
             ) : null}
           /> : null}
+
+          {/* 法定节假日：全体考勤用户只读可见，默认当年、可切换年份 */}
+          <div className="rounded-lg border bg-card">
+            <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  法定节假日
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">全年法定节假日一览，供请假与排班参考</p>
+              </div>
+              <div className="w-32">
+                <Input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={publicHolidayYear}
+                  onChange={(event) => setPublicHolidayYear(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="px-5 py-4">
+              {(() => {
+                const items = publicHolidays.filter((item) => item.active !== false);
+                if (!items.length) return <p className="py-6 text-center text-sm text-muted-foreground">暂无法定节假日数据</p>;
+                const byMonth: Record<string, LegalHolidayItem[]> = {};
+                for (const item of items) {
+                  const month = item.date.slice(0, 7);
+                  (byMonth[month] = byMonth[month] || []).push(item);
+                }
+                return (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {Object.entries(byMonth).map(([month, items]) => (
+                      <div key={month} className="rounded-md border bg-muted/30 p-3">
+                        <div className="mb-2 text-xs font-semibold text-muted-foreground">{month}</div>
+                        <ul className="space-y-1.5">
+                          {items.map((item) => (
+                            <li key={item.date} className="flex items-center justify-between gap-2 text-sm">
+                              <span className="font-medium">{item.name}</span>
+                              <span className="tabular-nums text-muted-foreground">{item.date.slice(5)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1098,7 +1159,7 @@ export function Attendance() {
         </Card>
       ) : null}
 
-      {activeTab === "settings" && canViewAll ? (
+      {activeTab === "settings" && canManage ? (
         <div className="space-y-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>

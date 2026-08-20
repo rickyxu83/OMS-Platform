@@ -52,21 +52,7 @@ let schemaReadyPromise = null
 const WORK_HOURS_PER_DAY = 8
 const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
 const DEFAULT_PAY_MULTIPLIER = 1
-const BUILTIN_LEGAL_HOLIDAYS = Object.freeze([
-  { date: '2026-01-01', name: '元旦' },
-  { date: '2026-02-16', name: '春节' },
-  { date: '2026-02-17', name: '春节' },
-  { date: '2026-02-18', name: '春节' },
-  { date: '2026-02-19', name: '春节' },
-  { date: '2026-04-05', name: '清明节' },
-  { date: '2026-05-01', name: '劳动节' },
-  { date: '2026-05-02', name: '劳动节' },
-  { date: '2026-06-19', name: '端午节' },
-  { date: '2026-09-25', name: '中秋节' },
-  { date: '2026-10-01', name: '国庆节' },
-  { date: '2026-10-02', name: '国庆节' },
-  { date: '2026-10-03', name: '国庆节' },
-])
+const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
 const legalHolidayCache = new Map()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
 
