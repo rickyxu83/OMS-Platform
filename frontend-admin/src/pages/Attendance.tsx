@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -375,6 +375,12 @@ export function Attendance() {
   // 审批页（申请与审批）只读展示的法定节假日：默认当年，可切换年份
   const [publicHolidays, setPublicHolidays] = useState<LegalHolidayItem[]>([]);
   const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
+  // AI 补全下一年节假日：预览可编辑，确认后批量写入
+  const [aiYear, setAiYear] = useState(String(todayYear() + 1));
+  const [aiPreview, setAiPreview] = useState<Array<{ date: string; name: string }>>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
 
   async function load() {
     setLoading(true);
@@ -730,6 +736,54 @@ export function Attendance() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     }
+  }
+
+  async function runAiGenerate() {
+    setAiLoading(true);
+    setAiMessage("");
+    try {
+      const data = await api.post("/attendance/legal-holidays/ai-generate", { year: aiYear });
+      const rawItems = (data as any)?.items;
+      const items: Array<{ date: string; name: string }> = Array.isArray(rawItems) ? rawItems : [];
+      setAiPreview(items.map((item) => ({ date: item.date, name: item.name })));
+      setAiMessage(
+        data?.available === false
+          ? data?.message || "AI 服务未配置，暂不可用"
+          : items.length
+            ? `已生成 ${items.length} 条，请核对后确认写入`
+            : data?.message || "AI 未返回有效节假日，请重试或手动添加",
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI 生成失败");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  async function confirmAiWrite() {
+    if (!aiPreview.length) return;
+    setAiSaving(true);
+    try {
+      await api.post("/attendance/legal-holidays/batch", { items: aiPreview.map((item) => ({ date: item.date, name: item.name })) });
+      toast.success("节假日已写入");
+      setAiPreview([]);
+      setAiMessage("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "写入失败");
+    } finally {
+      setAiSaving(false);
+    }
+  }
+
+  function updateAiItem(index: number, field: "date" | "name", value: string) {
+    setAiPreview((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  }
+  function removeAiItem(index: number) {
+    setAiPreview((prev) => prev.filter((_, i) => i !== index));
+  }
+  function addAiItem() {
+    setAiPreview((prev) => [...prev, { date: "", name: "" }]);
   }
 
   async function disableLegalHoliday(item: LegalHolidayItem) {
@@ -1315,6 +1369,60 @@ export function Attendance() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">AI 补全下一年节假日</span>
+                  <Input
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    value={aiYear}
+                    onChange={(event) => setAiYear(event.target.value)}
+                    className="h-8 w-24"
+                  />
+                  <Button size="sm" onClick={runAiGenerate} disabled={aiLoading}>
+                    {aiLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                    AI 生成
+                  </Button>
+                  {aiPreview.length > 0 ? (
+                    <Button size="sm" onClick={confirmAiWrite} disabled={aiSaving}>
+                      {aiSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+                      确认写入
+                    </Button>
+                  ) : null}
+                  {aiPreview.length > 0 ? (
+                    <Button size="sm" variant="ghost" onClick={() => setAiPreview([])}>取消</Button>
+                  ) : null}
+                </div>
+                {aiMessage ? <p className="mt-2 text-xs text-muted-foreground">{aiMessage}</p> : null}
+                {aiPreview.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">生成结果（可编辑核对后写入）：</div>
+                    {aiPreview.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={item.date}
+                          className="h-8 w-36"
+                          onChange={(event) => updateAiItem(index, "date", event.target.value)}
+                        />
+                        <Input
+                          value={item.name}
+                          className="h-8 w-48"
+                          onChange={(event) => updateAiItem(index, "name", event.target.value)}
+                        />
+                        <Button size="icon" variant="ghost" onClick={() => removeAiItem(index)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button size="sm" variant="outline" onClick={addAiItem}>
+                      <Plus className="mr-1 h-4 w-4" /> 添加
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
               {canManage ? (
                 <div className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
                   <div className="space-y-2">

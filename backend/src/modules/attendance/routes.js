@@ -24,6 +24,8 @@ router.put('/approval-role-rules', requirePermission('attendance.manage'), contr
 router.get('/legal-holidays', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listLegalHolidays)
 router.put('/legal-holidays/:date', requirePermission('attendance.manage'), controller.upsertLegalHoliday)
 router.delete('/legal-holidays/:date', requirePermission('attendance.manage'), controller.deleteLegalHoliday)
+router.post('/legal-holidays/ai-generate', requirePermission('attendance.manage'), controller.aiGenerateLegalHolidays)
+router.post('/legal-holidays/batch', requirePermission('attendance.manage'), controller.batchUpsertLegalHolidays)
 router.put('/employees/:id', requirePermission('attendance.manage'), controller.updateEmployee)
 router.post('/employees/:id/adjust-balance', requirePermission('attendance.manage'), controller.adjustBalance)
 

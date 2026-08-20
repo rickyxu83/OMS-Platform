@@ -53,6 +53,7 @@ const WORK_HOURS_PER_DAY = 8
 const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
 const DEFAULT_PAY_MULTIPLIER = 1
 const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
+const { generateYearHolidays, isAiAvailable } = require('./holiday-ai')
 const legalHolidayCache = new Map()
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
 
@@ -926,6 +927,60 @@ async function deleteLegalHoliday(req, res) {
   await refreshLegalHolidayCache()
   await recalculateOvertimeRulesForDate(date)
   res.json({ ok: true })
+}
+
+// AI 生成指定年法定节假日：生成结果仅供预览（不写库），由前端确认后走 batch 写入。
+async function aiGenerateLegalHolidays(req, res) {
+  await ensureSchema()
+  const year = text(req.body?.year)
+  if (!/^\d{4}$/.test(year)) throw badRequest('年份格式不正确（需四位数字）')
+  if (!isAiAvailable()) {
+    return res.json({ available: false, year, items: [], message: 'AI 服务未配置，暂不可用' })
+  }
+  let items = []
+  let message = ''
+  try {
+    items = await generateYearHolidays(year)
+  } catch (error) {
+    message = error?.message || 'AI 生成失败'
+  }
+  res.json({ available: true, year, items, message })
+}
+
+// 批量写入节假日（source=auto，供 AI 生成结果确认后落库）。
+async function batchUpsertLegalHolidays(req, res) {
+  await ensureSchema()
+  const rawItems = Array.isArray(req.body?.items) ? req.body.items : []
+  if (!rawItems.length) throw badRequest('至少需要一条节假日数据')
+  const items = []
+  for (const raw of rawItems) {
+    const date = normalizeHolidayDate(raw?.date)
+    const name = text(raw?.name)
+    if (!name) throw badRequest('节假日名称不能为空')
+    items.push({ date, name })
+  }
+  for (const item of items) {
+    await query(
+      `INSERT INTO attendance_legal_holidays (holiday_date, holiday_name, source, is_active, created_by)
+       VALUES (:date, :name, 'auto', 1, :createdBy)
+       ON DUPLICATE KEY UPDATE
+         holiday_name = VALUES(holiday_name),
+         source = CASE WHEN source = 'builtin' AND VALUES(source) = 'manual' THEN source ELSE 'auto' END,
+         is_active = 1`,
+      { date: item.date, name: item.name, createdBy: req.user.id },
+    )
+    await recalculateOvertimeRulesForDate(item.date)
+  }
+  await refreshLegalHolidayCache()
+  const year = items[0].date.slice(0, 4)
+  const rows = await query(
+    `SELECT holiday_date, holiday_name, source, is_active, created_by, created_at, updated_at
+     FROM attendance_legal_holidays
+     WHERE holiday_date >= :startDate AND holiday_date < :endDate
+     ORDER BY holiday_date ASC`,
+    { startDate: `${year}-01-01`, endDate: `${Number(year) + 1}-01-01` },
+  )
+  res.json({ items: rows.map(legalHolidayPayload) })
 }
 
 async function supervisorRoleForApplicantRoleConnection(connection, role) {
@@ -2598,6 +2653,8 @@ module.exports = {
   listLegalHolidays,
   upsertLegalHoliday,
   deleteLegalHoliday,
+  aiGenerateLegalHolidays,
+  batchUpsertLegalHolidays,
   updateEmployee,
   createRequest,
   submitRequest,
