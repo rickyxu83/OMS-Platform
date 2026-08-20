@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "26.0820.0137",
+  "version": "26.0820.0955",
   "description": "",
   "main": "src/server.js",
   "scripts": {
