@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,6 +192,57 @@ const DAY_TYPE_LABELS: Record<string, string> = {
   legal_holiday: "放假",
   makeup_workday: "调休补班",
 };
+
+// 法定节假日只读展示：星期、日期格式化与连续假期段合并辅助
+const HOLIDAY_WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+function holidayWeekday(date: string) {
+  return `周${HOLIDAY_WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]}`;
+}
+
+function fmtHolidayDate(date: string) {
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
+}
+
+function addHolidayDays(date: string, amount: number) {
+  const base = new Date(`${date}T00:00:00`);
+  base.setDate(base.getDate() + amount);
+  const month = String(base.getMonth() + 1).padStart(2, "0");
+  const day = String(base.getDate()).padStart(2, "0");
+  return `${base.getFullYear()}-${month}-${day}`;
+}
+
+interface HolidayRange {
+  name: string;
+  start: string;
+  end: string;
+  days: number;
+  makeup: string[];
+}
+
+// 连续同名的放假日合并为一个假期段，并按名称关联调休补班日；未匹配到假期的补班日单列
+function buildHolidayRanges(items: LegalHolidayItem[]) {
+  const sorted = items.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const holidayRows = sorted.filter((item) => item.dayType !== "makeup_workday");
+  const makeupRows = sorted.filter((item) => item.dayType === "makeup_workday");
+  const ranges: HolidayRange[] = [];
+  for (const item of holidayRows) {
+    const last = ranges[ranges.length - 1];
+    if (last && last.name === item.name && addHolidayDays(last.end, 1) === item.date) {
+      last.end = item.date;
+      last.days += 1;
+    } else {
+      ranges.push({ name: item.name, start: item.date, end: item.date, days: 1, makeup: [] });
+    }
+  }
+  const orphanMakeup: LegalHolidayItem[] = [];
+  for (const item of makeupRows) {
+    const target = ranges.find((range) => range.name === item.name);
+    if (target) target.makeup.push(item.date);
+    else orphanMakeup.push(item);
+  }
+  return { ranges, orphanMakeup };
+}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -962,73 +1013,116 @@ export function Attendance() {
           /> : null}
 
           {/* 法定节假日：全体考勤用户只读可见，默认当年、可切换年份 */}
-          <div className="rounded-lg border bg-card">
-            <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="flex flex-col gap-3 border-b bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
-                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <CalendarDays className="h-4 w-4 text-rose-500" />
                   法定节假日
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">全年法定节假日一览，供请假与排班参考</p>
               </div>
-              <div className="w-32">
-                <Input
-                  type="number"
-                  min="2000"
-                  max="2100"
-                  value={publicHolidayYear}
-                  onChange={(event) => setPublicHolidayYear(event.target.value)}
-                />
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  disabled={Number(publicHolidayYear) <= 2000}
+                  onClick={() => setPublicHolidayYear(String(Math.max(2000, Number(publicHolidayYear) - 1)))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="w-16 text-center text-lg font-bold tabular-nums">{publicHolidayYear}</div>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  disabled={Number(publicHolidayYear) >= 2100}
+                  onClick={() => setPublicHolidayYear(String(Math.min(2100, Number(publicHolidayYear) + 1)))}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
             </div>
             <div className="px-5 py-4">
               {(() => {
                 const items = publicHolidays.filter((item) => item.active !== false);
-                if (!items.length) return <p className="py-6 text-center text-sm text-muted-foreground">暂无法定节假日数据</p>;
-                const holidayRows = items.filter((item) => item.dayType !== "makeup_workday");
-                const makeupRows = items.filter((item) => item.dayType === "makeup_workday");
-                const groupByMonth = (list: LegalHolidayItem[]) => {
-                  const byMonth: Record<string, LegalHolidayItem[]> = {};
-                  for (const item of list) {
-                    const month = item.date.slice(0, 7);
-                    (byMonth[month] = byMonth[month] || []).push(item);
-                  }
-                  return byMonth;
-                };
-                const renderGroup = (title: string, list: LegalHolidayItem[]) => {
-                  const byMonth = groupByMonth(list);
-                  return (
-                    <div>
-                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                        <span>{title}</span>
-                        <span className="rounded-full bg-muted px-1.5 text-[10px]">{list.length}</span>
-                      </div>
-                      {Object.keys(byMonth).length ? (
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                          {Object.entries(byMonth).map(([month, rows]) => (
-                            <div key={month} className="rounded-md border bg-muted/30 p-3">
-                              <div className="mb-2 text-xs font-semibold text-muted-foreground">{month}</div>
-                              <ul className="space-y-1.5">
-                                {rows.map((item) => (
-                                  <li key={item.date} className="flex items-center justify-between gap-2 text-sm">
-                                    <span className="font-medium">{item.name}</span>
-                                    <span className="tabular-nums text-muted-foreground">{item.date.slice(5)}</span>
-                                  </li>
-                                ))}
-                              </ul>
+                if (!items.length) return <p className="py-10 text-center text-sm text-muted-foreground">暂无 {publicHolidayYear} 年法定节假日数据</p>;
+                const { ranges, orphanMakeup } = buildHolidayRanges(items);
+                const todayStr = dateValue();
+                const holidayDays = ranges.reduce((sum, range) => sum + range.days, 0);
+                const makeupCount = items.filter((item) => item.dayType === "makeup_workday").length;
+                const ongoing = ranges.find((range) => range.start <= todayStr && todayStr <= range.end) || null;
+                const upcoming = ranges.find((range) => range.start > todayStr) || null;
+                return (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant="rose">{ranges.length} 个假期 · 共 {holidayDays} 天</Badge>
+                      <Badge variant="orange">调休补班 {makeupCount} 天</Badge>
+                      {ongoing ? (
+                        <span className="text-muted-foreground">正在放假：{ongoing.name}（{fmtHolidayDate(ongoing.end)} 结束）</span>
+                      ) : upcoming ? (
+                        <span className="text-muted-foreground">下个假期：{upcoming.name}，还有 {dateIndex(upcoming.start) - dateIndex(todayStr)} 天</span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {ranges.map((range) => {
+                        const past = range.end < todayStr;
+                        const isOngoing = ongoing?.start === range.start;
+                        const isNext = !isOngoing && upcoming?.start === range.start;
+                        return (
+                          <div
+                            key={`${range.name}-${range.start}`}
+                            className={`rounded-xl border p-4 transition ${past ? "opacity-55" : ""} ${isOngoing ? "border-emerald-300 bg-emerald-50/60 shadow-sm" : isNext ? "border-rose-300 bg-rose-50/50 shadow-sm" : "bg-muted/20 hover:bg-muted/40"}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-base font-semibold">{range.name}</div>
+                              {isOngoing ? (
+                                <Badge variant="success">进行中</Badge>
+                              ) : isNext ? (
+                                <Badge variant="rose">还有 {dateIndex(range.start) - dateIndex(todayStr)} 天</Badge>
+                              ) : past ? (
+                                <Badge variant="secondary">已结束</Badge>
+                              ) : null}
                             </div>
+                            <div className="mt-2 text-sm font-medium tabular-nums">
+                              {fmtHolidayDate(range.start)}
+                              <span className="ml-1 text-xs font-normal text-muted-foreground">{holidayWeekday(range.start)}</span>
+                              {range.end !== range.start ? (
+                                <>
+                                  <span className="mx-1.5 text-muted-foreground">–</span>
+                                  {fmtHolidayDate(range.end)}
+                                  <span className="ml-1 text-xs font-normal text-muted-foreground">{holidayWeekday(range.end)}</span>
+                                </>
+                              ) : null}
+                              <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700">共 {range.days} 天</span>
+                            </div>
+                            {range.makeup.length ? (
+                              <div className="mt-2.5 border-t border-dashed pt-2 text-xs text-muted-foreground">
+                                <span className="mr-1 inline-flex items-center gap-1 font-medium text-orange-600">
+                                  <Briefcase className="h-3 w-3" />调休补班
+                                </span>
+                                {range.makeup.map((date) => `${fmtHolidayDate(date)}（${holidayWeekday(date)}）`).join("、")}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {orphanMakeup.length ? (
+                      <div className="rounded-lg border border-dashed p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-orange-600">
+                          <Briefcase className="h-3.5 w-3.5" />其他调休补班
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {orphanMakeup.map((item) => (
+                            <span key={item.date} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs text-orange-700 ring-1 ring-inset ring-orange-200">
+                              {item.name} · {fmtHolidayDate(item.date)}（{holidayWeekday(item.date)}）
+                            </span>
                           ))}
                         </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">无</p>
-                      )}
-                    </div>
-                  );
-                };
-                return (
-                  <div className="space-y-5">
-                    {renderGroup("放假", holidayRows)}
-                    {renderGroup("调休补班", makeupRows)}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })()}
@@ -1508,11 +1602,18 @@ export function Attendance() {
                   </TableHeader>
                   <TableBody>
                     {legalHolidays.map((item) => (
-                      <TableRow key={item.date}>
-                        <TableCell className="font-medium">{item.date}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>{DAY_TYPE_LABELS[item.dayType || "legal_holiday"] || "放假"}</TableCell>
-                        <TableCell>{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
+                      <TableRow key={item.date} className={item.active === false ? "opacity-55" : ""}>
+                        <TableCell>
+                          <div className="font-medium tabular-nums">{item.date}</div>
+                          <div className="text-xs text-muted-foreground">{holidayWeekday(item.date)}</div>
+                        </TableCell>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell>
+                          <Badge variant={(item.dayType || "legal_holiday") === "makeup_workday" ? "orange" : "rose"}>
+                            {DAY_TYPE_LABELS[item.dayType || "legal_holiday"] || "放假"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
                         <TableCell>
                           <Badge variant={item.active === false ? "outline" : "success"}>{item.active === false ? "停用" : "启用"}</Badge>
                         </TableCell>
