@@ -2,6 +2,10 @@ const WORK_HOURS_PER_DAY = 8
 const HALF_DAY_HOURS = WORK_HOURS_PER_DAY / 2
 const LONG_LEAVE_MIN_DAYS = 3
 const LONG_LEAVE_FINAL_APPROVER_ROLE = 'operations_director'
+// v4 推导模型常量：统一终审角色与升级终审角色（业务上的稳定角色，不做配置项）
+const FINAL_APPROVER_ROLE = 'administrative_supervisor'
+// 主管级申请人：无直属主管步骤，行政主管审批后固定由运营负责人终审
+const ESCALATION_APPLICANT_ROLES = new Set(['engineering_supervisor', 'sales_supervisor'])
 
 function dateKey(date) {
   const pad = (value) => String(value).padStart(2, '0')
@@ -72,9 +76,35 @@ function approvalRolesForRequest({ requestType, workingDays, approvalRoles }) {
   ]
 }
 
+// v4 审批链自动推导（替代手工逐级配置，完整覆盖现有全部规则形态）：
+// - 普通员工：直属主管 → 行政主管
+// - 工程主管/销售主管（主管级）：行政主管 → 运营负责人
+// - 行政主管本人：运营负责人
+// - 请假满 3 天：末尾追加运营负责人终审
+// - 管理员/运营负责人：返回空链（沿用提交时报「审批流程不能为空」的既有行为）
+function deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole }) {
+  if (applicantRole === 'admin' || applicantRole === LONG_LEAVE_FINAL_APPROVER_ROLE) return []
+  if (applicantRole === FINAL_APPROVER_ROLE) return [LONG_LEAVE_FINAL_APPROVER_ROLE]
+  const roles = []
+  const escalatedApplicant = ESCALATION_APPLICANT_ROLES.has(applicantRole)
+  // 直属主管步骤跳过：映射为申请人自己/终审角色/升级角色/兜底 admin 时均无意义
+  const skipSupervisor = new Set([applicantRole, FINAL_APPROVER_ROLE, LONG_LEAVE_FINAL_APPROVER_ROLE, 'admin'])
+  if (!escalatedApplicant && supervisorRole && !skipSupervisor.has(supervisorRole)) roles.push(supervisorRole)
+  roles.push(FINAL_APPROVER_ROLE)
+  const days = Number(workingDays)
+  const longLeave = requestType === 'leave' && Number.isFinite(days) && days >= LONG_LEAVE_MIN_DAYS
+  if (escalatedApplicant || longLeave) roles.push(LONG_LEAVE_FINAL_APPROVER_ROLE)
+  return roles
+}
+
 // 代理人仅作为登记字段（冲突校验/通知知会），不再设确认环节：默认代理人同意，
 // 提交后直接进入角色审批链。历史 pending_delegate 申请仍可由代理人通过旧入口确认。
-function buildApprovalSteps({ requestType, workingDays, supervisorRole, approvalRoles, workflowVersion = 2 }) {
+function buildApprovalSteps({ applicantRole, requestType, workingDays, supervisorRole, approvalRoles, workflowVersion = 2 }) {
+  if (Number(workflowVersion) >= 4) {
+    return deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole })
+      .map((role) => ({ stepType: 'role', assigneeEmployeeId: null, assigneeRole: role }))
+  }
+
   if (Number(workflowVersion) >= 3) {
     const steps = []
     for (const role of approvalRolesForRequest({ requestType, workingDays, approvalRoles })) {
@@ -114,6 +144,7 @@ module.exports = {
   WORK_HOURS_PER_DAY,
   buildApprovalSteps,
   calculateWorkingLeaveRange,
+  deriveApprovalRoles,
   requestStatusForStep,
   requiresLeaveProof,
 }
