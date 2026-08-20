@@ -343,6 +343,38 @@ function requestTypeLabel(type?: string) {
   return REQUEST_TYPE_LABELS[type || ""] || type || "-";
 }
 
+const REQUEST_TYPE_VARIANT: Record<string, "info" | "warning" | "teal" | "secondary"> = {
+  leave: "info",
+  overtime: "warning",
+  comp_time: "teal",
+};
+
+function requestTypeBadge(type?: string) {
+  return <Badge variant={REQUEST_TYPE_VARIANT[type || ""] || "secondary"}>{requestTypeLabel(type)}</Badge>;
+}
+
+// 申请时间区间：同日单行「08-20 09:00 – 18:00」，跨天两行；均省略年份（考勤申请不跨年）
+function requestTimeRange(item: AttendanceRequest) {
+  const start = formatDateTime(item.startAt);
+  if (start === "-") return <span className="text-muted-foreground">-</span>;
+  const end = formatDateTime(item.endAt);
+  const sameDay = String(item.startAt || "").slice(0, 10) === String(item.endAt || "").slice(0, 10);
+  if (sameDay) {
+    return (
+      <div className="tabular-nums">
+        <span className="font-medium">{start.slice(5, 10)}</span>
+        <span className="ml-1.5 text-xs text-muted-foreground">{start.slice(11)} – {end.slice(11)}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="tabular-nums">
+      <div className="font-medium">{start.slice(5)}</div>
+      <div className="text-xs text-muted-foreground">至 {end.slice(5)}</div>
+    </div>
+  );
+}
+
 function approvalStepLabel(step?: ApprovalStep) {
   if (!step) return "";
   if (step.stepType === "role") return roleLabel(step.assigneeRole);
@@ -399,6 +431,7 @@ export function Attendance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
+  const [mineStatus, setMineStatus] = useState("all");
   const [supervisorTodo, setSupervisorTodo] = useState<AttendanceRequest[]>([]);
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
   const [myProfile, setMyProfile] = useState<EmployeeProfile | null>(null);
@@ -549,6 +582,13 @@ export function Attendance() {
     () => mine.filter((item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
     [mine],
   );
+  // 「我的申请」状态筛选：pending 聚合所有 pending_* 步骤，closed 聚合已撤回/已作废
+  const filteredMine = useMemo(() => {
+    if (mineStatus === "all") return mine;
+    if (mineStatus === "pending") return mine.filter((item) => String(item.status || "").startsWith("pending_"));
+    if (mineStatus === "closed") return mine.filter((item) => ["withdrawn", "voided"].includes(item.status || ""));
+    return mine.filter((item) => item.status === mineStatus);
+  }, [mine, mineStatus]);
   const supervisorPending = useMemo(
     () => supervisorTodo.filter((item) => ["pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp"].includes(item.status || "")),
     [supervisorTodo],
@@ -1008,11 +1048,39 @@ export function Attendance() {
           {canApply ? <RequestList
             title="我的申请"
             description="最终审批前可撤回"
-            items={mine}
+            items={filteredMine}
             loading={loading}
             onDownloadProof={previewProof}
             onPreviewOrder={openOrderPreview}
             showEmployee={false}
+            emptyText={mineStatus === "all" ? "暂无申请记录" : "没有该状态的申请"}
+            toolbar={(
+              <>
+                {[
+                  { key: "all", label: "全部", count: mine.length },
+                  { key: "pending", label: "审批中", count: mine.filter((item) => String(item.status || "").startsWith("pending_")).length },
+                  { key: "approved", label: "已通过", count: mine.filter((item) => item.status === "approved").length },
+                  { key: "rejected", label: "已驳回", count: mine.filter((item) => item.status === "rejected").length },
+                  { key: "draft", label: "草稿", count: mine.filter((item) => item.status === "draft").length },
+                  { key: "closed", label: "已撤回/作废", count: mine.filter((item) => ["withdrawn", "voided"].includes(item.status || "")).length },
+                ].map((chip) => {
+                  const active = mineStatus === chip.key;
+                  return (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      onClick={() => setMineStatus(chip.key)}
+                      className={active
+                        ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
+                        : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
+                    >
+                      {chip.label}
+                      <span className={active ? "font-semibold" : ""}>{chip.count}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
               <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
                 <RotateCcw className="mr-1 h-4 w-4" /> 撤回
@@ -2104,7 +2172,7 @@ function RequestList({
                 {items.map((item) => (
                   <TableRow key={item.id}>
                     {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
-                    <TableCell>{requestTypeLabel(item.requestType)}</TableCell>
+                    <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetail(item)}</div>
                       {item.requestType === "overtime" && item.sourceType === "service_order" ? (
@@ -2129,11 +2197,14 @@ function RequestList({
                       ) : item.proofFileCount ? <div className="text-xs text-muted-foreground">证明附件：{item.proofFileCount} 份</div> : null}
                       {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
+                    <TableCell>{requestTimeRange(item)}</TableCell>
                     <TableCell>
-                      <div>{formatDateTime(item.startAt)}</div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(item.endAt)}</div>
+                      {item.hours != null ? (
+                        <span className="tabular-nums"><span className="font-semibold">{hours(item.hours)}</span> <span className="text-xs text-muted-foreground">小时</span></span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
-                    <TableCell>{hours(item.hours)}</TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
                     {hasActions ? (
                       <TableCell>
