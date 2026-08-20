@@ -142,7 +142,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const insert = result.calls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
     assert.match(insert.sql, /workflow_version/)
-    assert.equal(insert.params.workflowVersion, 3)
+    assert.equal(insert.params.workflowVersion, 4)
     assert.equal(insert.params.delegateEmployeeId, 9)
     assert.equal(insert.params.workingDays, 3)
     assert.equal(insert.params.hours, 24)
@@ -767,7 +767,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -788,7 +788,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(res.body.status, 'pending_approval')
     const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
-    assert.match(insert.sql, /\(3, :employeeId/)
+    assert.match(insert.sql, /\(4, :employeeId/)
     assert.match(insert.sql, /source_snapshot/)
     const approvalInsert = executeCalls.find((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
     assert.equal(approvalInsert?.params.stepType, 'role')
@@ -843,7 +843,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -898,7 +898,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return [[{ approver_role: 'engineering_supervisor' }], []]
         }
         if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
-          return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         }
         if (/FROM attendance_supervisor_role_rules/.test(sql)) {
           return [[{ supervisor_role: 'engineering_supervisor' }], []]
@@ -1025,7 +1025,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
         if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
         if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
-        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
         if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: insertId++ }, []]
         return [{ affectedRows: 1 }, []]
@@ -1073,7 +1073,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           return params.segmentKey === 'work' ? [[{ id: 700 }], []] : [[], []]
         }
         if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
-        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
         if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
         if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 1010 }, []]
         return [{ affectedRows: 1 }, []]

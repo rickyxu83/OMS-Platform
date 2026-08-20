@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。标记为「放假」的日期加班按 3 倍计算加班费，「调休补班」按正常工作日处理。";
 const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
 const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
-const APPROVAL_RULE_HELP = "按申请人角色配置多级审批链，审批人按顺序逐级审批；请假满 3 天时运营负责人自动追加为最后一级。管理员与行政主管拥有全部考勤权限，可审批任意环节。未配置规则的角色提交申请时会提示无法审批。";
+const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -358,6 +359,23 @@ const REQUEST_TYPE_VARIANT: Record<string, "info" | "warning" | "teal" | "second
   comp_time: "teal",
 };
 
+// 审批链 v4 自动推导（与后端 workflow.js deriveApprovalRoles 保持一致，用于设置页实时预览）
+const APPROVAL_FINAL_ROLE = "administrative_supervisor";
+const APPROVAL_ESCALATION_ROLE = "operations_director";
+const APPROVAL_ESCALATION_APPLICANT_ROLES = new Set(["engineering_supervisor", "sales_supervisor"]);
+
+function deriveApprovalChainPreview(applicantRole: string, supervisorRole?: string) {
+  if (applicantRole === "admin" || applicantRole === APPROVAL_ESCALATION_ROLE) return { chain: [] as string[], longLeaveEscalation: false };
+  if (applicantRole === APPROVAL_FINAL_ROLE) return { chain: [APPROVAL_ESCALATION_ROLE], longLeaveEscalation: false };
+  const escalated = APPROVAL_ESCALATION_APPLICANT_ROLES.has(applicantRole);
+  const chain: string[] = [];
+  const skip = new Set([applicantRole, APPROVAL_FINAL_ROLE, APPROVAL_ESCALATION_ROLE, "admin"]);
+  if (!escalated && supervisorRole && !skip.has(supervisorRole)) chain.push(supervisorRole);
+  chain.push(APPROVAL_FINAL_ROLE);
+  if (escalated) chain.push(APPROVAL_ESCALATION_ROLE);
+  return { chain, longLeaveEscalation: !escalated };
+}
+
 function requestTypeBadge(type?: string) {
   return <Badge variant={REQUEST_TYPE_VARIANT[type || ""] || "secondary"}>{requestTypeLabel(type)}</Badge>;
 }
@@ -435,7 +453,6 @@ export function Attendance() {
   const [recordView, setRecordView] = useState<"detail" | "summary">(() => searchParams.get("record") === "summary" ? "summary" : "detail");
   // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
   const [settingsView, setSettingsView] = useState<"rules" | "holidays">(() => searchParams.get("view") === "holidays" ? "holidays" : "rules");
-  const [expandedRuleRoles, setExpandedRuleRoles] = useState<Record<string, boolean>>({});
   const [applyOpen, setApplyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -448,12 +465,19 @@ export function Attendance() {
   const [proofPreview, setProofPreview] = useState<ProofPreview | null>(null);
   const [proofImageSize, setProofImageSize] = useState<{ width: number; height: number } | null>(null);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
-  const [approvalRoleRules, setApprovalRoleRules] = useState<ApprovalRoleRule[]>([]);
-  const [approvalRoleDrafts, setApprovalRoleDrafts] = useState<Record<string, string[]>>({});
-  const [approvalRoleRulesSaving, setApprovalRoleRulesSaving] = useState(false);
+  const [supervisorRules, setSupervisorRules] = useState<Array<{ applicantRole: string; applicantRoleLabel?: string; supervisorRole: string }>>([]);
+  const [supervisorRuleDrafts, setSupervisorRuleDrafts] = useState<Record<string, string>>({});
+  const [supervisorRulesSaving, setSupervisorRulesSaving] = useState(false);
   const [employeeDialog, setEmployeeDialog] = useState<{ employee: EmployeeProfile; draft: EmployeeDraft } | null>(null);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [adjustDialog, setAdjustDialog] = useState<{ employee: EmployeeProfile; draft: AdjustDraft } | null>(null);
+  // 员工余额表多选：点击行切换、Shift 连选、按住拖动框选（交互与 MR 采购卡一致）
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [batchBalanceDialog, setBatchBalanceDialog] = useState<{ balanceType: "annual_leave" | "comp_time"; target: string; note: string } | null>(null);
+  const [batchBalanceSaving, setBatchBalanceSaving] = useState(false);
+  const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
+  const employeeAnchorRef = useRef<number | null>(null);
+  const employeeCardRef = useRef<HTMLDivElement | null>(null);
   const [adjustSaving, setAdjustSaving] = useState(false);
   // 点击工单号先显示申请快照，再加载完整工单详情；申请时的核心事实仍以快照为准。
   const [previewOrder, setPreviewOrder] = useState<ServiceOrderSummary | null>(null);
@@ -504,7 +528,7 @@ export function Attendance() {
         calls.push(api.get("/attendance/requests?scope=all"));
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
-        calls.push(api.get("/attendance/approval-role-rules"));
+        calls.push(api.get("/attendance/supervisor-role-rules"));
         const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
         calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
@@ -514,17 +538,14 @@ export function Attendance() {
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
       setApplicationHolidays((applicationHolidayData?.items || []) as LegalHolidayItem[]);
       if (canViewAll) {
-        const roleRules = (roleRuleData || {}) as ApprovalRoleRulePayload;
-        const ruleItems = roleRules.items || [];
+        const supervisorRulesData = (roleRuleData || {}) as { roles?: RoleOption[]; items?: Array<{ applicantRole: string; applicantRoleLabel?: string; supervisorRole: string }> };
+        const ruleItems = supervisorRulesData.items || [];
         setAllRequests((allData?.items || []) as AttendanceRequest[]);
         setEmployees((employeeData?.items || []) as EmployeeProfile[]);
         setReportItems((reportData?.items || []) as MonthlyReportItem[]);
-        setRoleOptions(roleRules.roles || []);
-        setApprovalRoleRules(ruleItems);
-        setApprovalRoleDrafts(Object.fromEntries(ruleItems.map((item) => [
-          item.applicantRole,
-          item.steps.map((step) => step.approverRole),
-        ])));
+        setRoleOptions(supervisorRulesData.roles || []);
+        setSupervisorRules(ruleItems);
+        setSupervisorRuleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
         setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
     } catch (e) {
@@ -546,6 +567,22 @@ export function Attendance() {
       .then((data) => setPublicHolidays((data?.items || []) as LegalHolidayItem[]))
       .catch(() => setPublicHolidays([]));
   }, [publicHolidayYear]);
+
+  // 员工余额表：松开鼠标结束框选；点击卡片外空白处时清除已选（与 MR 采购卡一致）
+  useEffect(() => {
+    const stop = () => { employeeDragRef.current.active = false; };
+    window.addEventListener("mouseup", stop);
+    return () => window.removeEventListener("mouseup", stop);
+  }, []);
+
+  useEffect(() => {
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      if (!selectedEmployeeIds.size) return;
+      if (employeeCardRef.current && !employeeCardRef.current.contains(event.target as Node)) setSelectedEmployeeIds(new Set());
+    };
+    document.addEventListener("mousedown", onDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", onDocumentMouseDown);
+  }, [selectedEmployeeIds.size]);
 
 
   async function exportAttendanceReport() {
@@ -790,59 +827,96 @@ export function Attendance() {
     }
   }
 
-  function setApprovalRoleStep(applicantRole: string, index: number, approverRole: string) {
-    setApprovalRoleDrafts((current) => ({
-      ...current,
-      [applicantRole]: (current[applicantRole] || []).map((role, stepIndex) => (stepIndex === index ? approverRole : role)),
-    }));
-  }
-
-  function addApprovalRoleStep(applicantRole: string) {
-    setApprovalRoleDrafts((current) => {
-      const steps = current[applicantRole] || [];
-      const nextRole = roleOptions.find((item) => !steps.includes(item.role))?.role;
-      if (!nextRole) return current;
-      return { ...current, [applicantRole]: [...steps, nextRole] };
+  // 员工余额表多选处理器（点击切换 / Shift 连选 / 拖动框选）
+  function setEmployeeSelected(index: number, mode: "add" | "remove") {
+    const id = employees[index]?.id;
+    if (id === undefined || id === null) return;
+    const key = String(id);
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      if (mode === "add") next.add(key); else next.delete(key);
+      return next;
     });
   }
 
-  function moveApprovalRoleStep(applicantRole: string, index: number, direction: -1 | 1) {
-    setApprovalRoleDrafts((current) => {
-      const steps = [...(current[applicantRole] || [])];
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= steps.length) return current;
-      [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
-      return { ...current, [applicantRole]: steps };
+  function selectEmployeeRange(from: number, to: number) {
+    const [start, end] = from <= to ? [from, to] : [to, from];
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      for (let i = start; i <= end; i += 1) next.add(String(employees[i].id));
+      return next;
     });
   }
 
-  function removeApprovalRoleStep(applicantRole: string, index: number) {
-    setApprovalRoleDrafts((current) => {
-      const steps = current[applicantRole] || [];
-      if (steps.length <= 1) return current;
-      return { ...current, [applicantRole]: steps.filter((_, stepIndex) => stepIndex !== index) };
-    });
+  function onEmployeeRowMouseDown(index: number, event: ReactMouseEvent<HTMLTableRowElement>) {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button, a, input, textarea")) return;
+    if (event.shiftKey && employeeAnchorRef.current !== null) {
+      selectEmployeeRange(employeeAnchorRef.current, index);
+      event.preventDefault();
+      return;
+    }
+    const key = String(employees[index]?.id);
+    const mode = selectedEmployeeIds.has(key) ? "remove" : "add";
+    employeeDragRef.current = { active: true, mode };
+    employeeAnchorRef.current = index;
+    setEmployeeSelected(index, mode);
+    event.preventDefault();
   }
 
-  async function saveApprovalRoleRules() {
-    setApprovalRoleRulesSaving(true);
+  function onEmployeeRowMouseEnter(index: number) {
+    if (!employeeDragRef.current.active) return;
+    setEmployeeSelected(index, employeeDragRef.current.mode);
+  }
+
+  async function submitBatchBalanceInit() {
+    if (!batchBalanceDialog) return;
+    const target = Number(batchBalanceDialog.target);
+    if (!Number.isFinite(target) || target < 0) {
+      toast.error("请输入有效的目标余额（不能为负数）");
+      return;
+    }
+    if (Math.abs(target * 2 - Math.round(target * 2)) > 0.0001) {
+      toast.error("目标余额须以 0.5 为单位");
+      return;
+    }
+    setBatchBalanceSaving(true);
     try {
-      const items = approvalRoleRules.map((item) => {
-        const roles = approvalRoleDrafts[item.applicantRole] || [];
-        if (!roles.length) throw new Error(`${item.applicantRoleLabel || roleLabel(item.applicantRole)}的审批链不能为空`);
-        if (new Set(roles).size !== roles.length) throw new Error(`${item.applicantRoleLabel || roleLabel(item.applicantRole)}的审批角色不能重复`);
-        return {
-          applicantRole: item.applicantRole,
-          steps: roles.map((approverRole, index) => ({ stepOrder: index + 1, approverRole })),
-        };
+      const data = await api.post("/attendance/employees/batch-balance-init", {
+        employeeIds: [...selectedEmployeeIds],
+        balanceType: batchBalanceDialog.balanceType,
+        target,
+        note: batchBalanceDialog.note,
       });
-      await api.put("/attendance/approval-role-rules", { items });
-      toast.success("审批角色规则已保存");
+      toast.success(`批量初始化完成：${data?.initialized ?? 0} 人已设定${data?.skipped ? `，${data.skipped} 人已是目标值跳过` : ""}`);
+      setBatchBalanceDialog(null);
+      setSelectedEmployeeIds(new Set());
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "批量初始化失败");
+    } finally {
+      setBatchBalanceSaving(false);
+    }
+  }
+
+  function setSupervisorRuleDraft(applicantRole: string, supervisorRole: string) {
+    setSupervisorRuleDrafts((current) => ({ ...current, [applicantRole]: supervisorRole }));
+  }
+
+  async function saveSupervisorRoleRules() {
+    setSupervisorRulesSaving(true);
+    try {
+      const items = supervisorRules.map((item) => ({
+        applicantRole: item.applicantRole,
+        supervisorRole: supervisorRuleDrafts[item.applicantRole] || item.supervisorRole,
+      }));
+      await api.put("/attendance/supervisor-role-rules", { items });
+      toast.success("直属主管映射已保存，审批链按推导规则即时生效");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     } finally {
-      setApprovalRoleRulesSaving(false);
+      setSupervisorRulesSaving(false);
     }
   }
 
@@ -935,10 +1009,10 @@ export function Attendance() {
   const recordApprovedCount = filteredAllRequests.filter((item) => item.status === "approved").length;
   const activeEmployeeCount = employees.filter((item) => item.attendanceEnabled !== false).length;
   const totalCompBalanceHours = employees.reduce((sum, item) => sum + Number(item.compTimeBalanceHours || 0), 0);
-  const approvalRoleStepCount = approvalRoleRules.reduce(
-    (sum, item) => sum + (approvalRoleDrafts[item.applicantRole]?.length || item.steps.length),
-    0,
-  );
+  const approvalRuleMappedCount = supervisorRules.filter((rule) => {
+    const supervisor = supervisorRuleDrafts[rule.applicantRole] ?? rule.supervisorRole;
+    return supervisor && !["admin", "administrative_supervisor", "operations_director"].includes(supervisor);
+  }).length;
 
   const applicationHolidayDates = useMemo(
     () => new Set(applicationHolidays.filter((item) => item.active !== false).map((item) => item.date)),
@@ -1352,6 +1426,7 @@ export function Attendance() {
       ) : null}
 
       {activeTab === "employees" && canManage ? (
+        <div ref={employeeCardRef}>
         <Card className="gap-0 overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1366,10 +1441,29 @@ export function Attendance() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            {selectedEmployeeIds.size ? (
+              <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-5 py-3">
+                <Badge>已选 {selectedEmployeeIds.size} 人</Badge>
+                <span className="text-xs text-muted-foreground">点击行切换 · Shift 连选 · 按住拖动框选</span>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => setBatchBalanceDialog({ balanceType: "annual_leave", target: "", note: "" })}>
+                    <Wallet className="mr-1 h-4 w-4" /> 批量初始化余额
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedEmployeeIds(new Set())}>清除选择</Button>
+                </div>
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
-              <Table className="min-w-[860px]">
+              <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="全选"
+                        checked={employees.length > 0 && selectedEmployeeIds.size === employees.length}
+                        onCheckedChange={(checked) => setSelectedEmployeeIds(checked ? new Set(employees.map((employee) => String(employee.id))) : new Set())}
+                      />
+                    </TableHead>
                     <TableHead>员工</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>籍别 / 入职</TableHead>
@@ -1379,8 +1473,20 @@ export function Attendance() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.map((employee) => (
-                    <TableRow key={employee.id}>
+                  {employees.map((employee, index) => (
+                    <TableRow
+                      key={employee.id}
+                      className={`cursor-pointer select-none ${selectedEmployeeIds.has(String(employee.id)) ? "bg-primary/10 hover:bg-primary/10" : ""}`}
+                      onMouseDown={(event) => onEmployeeRowMouseDown(index, event)}
+                      onMouseEnter={() => onEmployeeRowMouseEnter(index)}
+                    >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          aria-label={`选择 ${employee.employeeName || employee.username || employee.id}`}
+                          checked={selectedEmployeeIds.has(String(employee.id))}
+                          onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="font-medium">{employee.employeeName || "-"}</div>
                         <div className="text-xs text-muted-foreground">{employee.username || "-"} · {roleLabel(employee.role)}</div>
@@ -1410,7 +1516,7 @@ export function Attendance() {
                   ))}
                   {employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                         {loading ? "正在加载…" : "暂无员工档案"}
                       </TableCell>
                     </TableRow>
@@ -1420,6 +1526,7 @@ export function Attendance() {
             </div>
           </CardContent>
         </Card>
+        </div>
       ) : null}
 
       {activeTab === "settings" && canManage ? (
@@ -1432,7 +1539,7 @@ export function Attendance() {
             <Badge variant="outline"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <AttendanceMetric label="审批流程" value={`${approvalRoleRules.length} 条`} note={`${approvalRoleStepCount} 个审批步骤`} icon={<ShieldCheck className="h-4 w-4" />} />
+            <AttendanceMetric label="审批流程" value="自动推导" note={`直属主管映射 ${approvalRuleMappedCount} 条生效中`} icon={<ShieldCheck className="h-4 w-4" />} />
             <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-4 w-4" />} />
             <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-4 w-4" />} />
           </div>
@@ -1455,104 +1562,57 @@ export function Attendance() {
               <CardHeader>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-1.5">审批角色规则 <HelpTooltip label={APPROVAL_RULE_HELP} /></CardTitle>
-                    <CardDescription>每个申请人角色可配置一条按顺序执行的多级审批链；请假满 3 天时，运营负责人自动作为最后一级审批；管理员与行政主管可审批任意环节</CardDescription>
+                    <CardTitle className="flex items-center gap-1.5">审批流程（自动推导） <HelpTooltip label={APPROVAL_RULE_HELP} /></CardTitle>
+                    <CardDescription>审批链按固定模型自动推导，只需维护下方直属主管映射；请假满 3 天时运营负责人自动追加为终审</CardDescription>
                   </div>
-                  <Button size="sm" onClick={saveApprovalRoleRules} disabled={approvalRoleRulesSaving}>
-                    {approvalRoleRulesSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 保存规则
+                  <Button size="sm" onClick={saveSupervisorRoleRules} disabled={supervisorRulesSaving}>
+                    {supervisorRulesSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 保存映射
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                      {approvalRoleRules.map((rule) => {
-                        const steps = approvalRoleDrafts[rule.applicantRole] || rule.steps.map((step) => step.approverRole);
-                        const ruleExpanded = Boolean(expandedRuleRoles[rule.applicantRole]);
-                        return (
-                          <div key={rule.applicantRole} className="rounded-lg border">
-                            <button
-                              type="button"
-                              className="flex w-full flex-wrap items-center justify-between gap-2 p-4 text-left"
-                              onClick={() => setExpandedRuleRoles((current) => ({ ...current, [rule.applicantRole]: !ruleExpanded }))}
-                            >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition ${ruleExpanded ? "" : "-rotate-90"}`} />
-                                <Badge variant="secondary">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
-                                <span className="text-xs text-muted-foreground">{steps.map((role) => roleLabel(role)).join(" → ")}</span>
-                              </div>
-                              <span className="text-xs text-muted-foreground">{steps.length} 级 · 提交后依次审批</span>
-                            </button>
-                            {ruleExpanded ? (
-                            <div className="space-y-3 border-t p-4 pt-3">
-                            <div className="space-y-2">
-                              {steps.map((approverRole, index) => (
-                                <div key={`${rule.applicantRole}-${index}`} className="flex flex-col gap-2 rounded-md bg-muted/30 p-2.5 sm:flex-row sm:items-center">
-                                  <Badge variant="outline" className="w-fit shrink-0">第 {index + 1} 级</Badge>
-                                  <Select value={approverRole} onValueChange={(value) => setApprovalRoleStep(rule.applicantRole, index, value)}>
-                                    <SelectTrigger className="w-full sm:min-w-48 sm:flex-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      {roleOptions.map((item) => (
-                                        <SelectItem
-                                          key={item.role}
-                                          value={item.role}
-                                          disabled={steps.some((role, stepIndex) => stepIndex !== index && role === item.role)}
-                                        >
-                                          {item.label || roleLabel(item.role)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <div className="flex items-center gap-1 self-end sm:self-auto">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      title="上移"
-                                      disabled={index === 0}
-                                      onClick={() => moveApprovalRoleStep(rule.applicantRole, index, -1)}
-                                    >
-                                      <ChevronUp className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      title="下移"
-                                      disabled={index === steps.length - 1}
-                                      onClick={() => moveApprovalRoleStep(rule.applicantRole, index, 1)}
-                                    >
-                                      <ChevronDown className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      title="删除步骤"
-                                      disabled={steps.length <= 1}
-                                      onClick={() => removeApprovalRoleStep(rule.applicantRole, index)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => addApprovalRoleStep(rule.applicantRole)}
-                              disabled={steps.length >= roleOptions.length}
-                            >
-                              <Plus className="mr-1 h-4 w-4" /> 添加步骤
-                            </Button>
-                            </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                      {approvalRoleRules.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-muted-foreground">暂无审批角色规则</div>
-                      ) : null}
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border bg-muted/20 p-4 text-xs leading-6 text-muted-foreground">
+                  <div className="mb-2 text-sm font-medium text-foreground">推导规则</div>
+                  <ul className="space-y-1">
+                    <li>· 普通员工（工程师 / 销售 / 助理 / 采购等）：直属主管 → 行政主管</li>
+                    <li>· 工程主管 / 销售主管：行政主管 → 运营负责人</li>
+                    <li>· 行政主管本人：运营负责人</li>
+                    <li>· 请假满 3 天：末尾自动追加运营负责人终审</li>
+                    <li>· 直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）</li>
+                  </ul>
+                </div>
+                {supervisorRules.filter((rule) => !["admin", "operations_director"].includes(rule.applicantRole)).map((rule) => {
+                  const supervisorRole = supervisorRuleDrafts[rule.applicantRole] ?? rule.supervisorRole;
+                  const { chain, longLeaveEscalation } = deriveApprovalChainPreview(rule.applicantRole, supervisorRole);
+                  return (
+                    <div key={rule.applicantRole} className="flex flex-col gap-3 rounded-lg border p-4 lg:flex-row lg:items-center">
+                      <Badge variant="secondary" className="w-fit shrink-0">{rule.applicantRoleLabel || roleLabel(rule.applicantRole)}</Badge>
+                      <Select value={supervisorRole} onValueChange={(value) => setSupervisorRuleDraft(rule.applicantRole, value)}>
+                        <SelectTrigger className="w-full lg:w-48"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {roleOptions.map((item) => (
+                            <SelectItem key={item.role} value={item.role} disabled={item.role === rule.applicantRole}>
+                              {item.label || roleLabel(item.role)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">审批链：</span>
+                        {chain.map((role, index) => (
+                          <span key={role} className="inline-flex items-center gap-1.5">
+                            {index > 0 ? <span className="text-muted-foreground/50">→</span> : null}
+                            <span className="rounded-full bg-muted px-2 py-0.5">{roleLabel(role)}</span>
+                          </span>
+                        ))}
+                        {longLeaveEscalation ? <span className="text-muted-foreground/70">（请假 ≥3 天追加 运营负责人）</span> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {supervisorRules.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">暂无角色映射</div>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
@@ -1807,6 +1867,62 @@ export function Attendance() {
           ) : null}
           <DialogFooter className="border-t px-5 py-3">
             <Button variant="outline" onClick={closeProofPreview}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(batchBalanceDialog)} onOpenChange={(open) => { if (!open) setBatchBalanceDialog(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>批量初始化余额</DialogTitle>
+            <DialogDescription>把选中的 {selectedEmployeeIds.size} 人的余额统一设定为目标值，差额自动计入调整流水</DialogDescription>
+          </DialogHeader>
+          {batchBalanceDialog ? (
+            <div className="space-y-4">
+              <div className="max-h-28 overflow-y-auto rounded-md border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                {employees.filter((employee) => selectedEmployeeIds.has(String(employee.id))).map((employee) => employee.employeeName || employee.username).join("、")}
+              </div>
+              <div className="space-y-2">
+                <Label>余额类型</Label>
+                <Select
+                  value={batchBalanceDialog.balanceType}
+                  onValueChange={(value) => setBatchBalanceDialog((current) => current ? { ...current, balanceType: value as "annual_leave" | "comp_time", target: "" } : current)}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="annual_leave">特休（按天）</SelectItem>
+                    <SelectItem value="comp_time">调休（按小时）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>设定为（{batchBalanceDialog.balanceType === "annual_leave" ? "天" : "小时"}）</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  placeholder="如 10"
+                  value={batchBalanceDialog.target}
+                  onChange={(event) => setBatchBalanceDialog((current) => current ? { ...current, target: event.target.value } : current)}
+                />
+                <p className="text-xs text-muted-foreground">须以 0.5 为单位；已是目标值的员工自动跳过</p>
+              </div>
+              <div className="space-y-2">
+                <Label>备注</Label>
+                <Input
+                  placeholder="备注（可选，默认「批量初始化」）"
+                  value={batchBalanceDialog.note}
+                  onChange={(event) => setBatchBalanceDialog((current) => current ? { ...current, note: event.target.value } : current)}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchBalanceDialog(null)} disabled={batchBalanceSaving}>取消</Button>
+            <Button onClick={submitBatchBalanceInit} disabled={batchBalanceSaving}>
+              {batchBalanceSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+              确认初始化
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

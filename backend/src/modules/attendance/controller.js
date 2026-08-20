@@ -802,16 +802,6 @@ async function updateSupervisorRoleRules(req, res) {
          ON DUPLICATE KEY UPDATE supervisor_role = VALUES(supervisor_role)`,
         { applicantRole, supervisorRole },
       )
-      await connection.execute(
-        `DELETE FROM attendance_approval_role_rule_steps
-         WHERE applicant_role = :applicantRole`,
-        { applicantRole },
-      )
-      await connection.execute(
-        `INSERT INTO attendance_approval_role_rule_steps (applicant_role, step_order, approver_role)
-         VALUES (:applicantRole, 1, :supervisorRole)`,
-        { applicantRole, supervisorRole },
-      )
     }
   })
   return listSupervisorRoleRules(req, res)
@@ -1349,7 +1339,7 @@ async function createRequest(req, res) {
      VALUES
        (:workflowVersion, :employeeId, :delegateEmployeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :workingDays, :reason, 'draft', :submittedBy)`,
     {
-      workflowVersion: 3,
+      workflowVersion: 4,
       employeeId: employee.id,
       delegateEmployeeId,
       submittedBy: req.user.id,
@@ -1707,13 +1697,13 @@ async function insertServiceOrderOvertimeSegment(connection, {
   )
   if (existingRows[0]) return null
 
-  const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, employee.role)
+  const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, employee.role)
   const approvalSteps = buildApprovalSteps({
+    applicantRole: employee.role,
     requestType: 'overtime',
     workingDays: 0,
-    delegateEmployeeId: null,
-    approvalRoles,
-    workflowVersion: 3,
+    supervisorRole,
+    workflowVersion: 4,
   })
   await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(approvalSteps), userId)
   const status = requestStatusForStep(approvalSteps[0]?.stepType)
@@ -1722,8 +1712,9 @@ async function insertServiceOrderOvertimeSegment(connection, {
     `INSERT INTO attendance_requests
        (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (3, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, NULL, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
+       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
     {
+      supervisorRole,
       employeeId: employee.id,
       overtimeKind: segment.kind,
       overtimeResult,
@@ -2184,7 +2175,7 @@ async function submitRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     const workflowVersion = Number(request.workflow_version || 1)
-    if (![2, 3].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
+    if (![2, 3, 4].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
@@ -2215,7 +2206,18 @@ async function submitRequest(req, res) {
     }
 
     let steps
-    if (workflowVersion >= 3) {
+    if (workflowVersion >= 4) {
+      // v4：提交时按当前直属主管映射实时推导审批链（配置变更对未提交草稿即时生效）
+      const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, request.applicant_role)
+      steps = buildApprovalSteps({
+        applicantRole: request.applicant_role,
+        requestType: request.request_type,
+        workingDays: Number(request.working_days || 0),
+        supervisorRole,
+        workflowVersion,
+      })
+      await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(steps), request.submitted_by)
+    } else if (workflowVersion >= 3) {
       const approvalRoles = await approvalRolesForApplicantRoleConnection(connection, request.applicant_role)
       steps = buildApprovalSteps({
         requestType: request.request_type,
@@ -2646,6 +2648,49 @@ async function adjustBalance(req, res) {
   res.json({ ok: true })
 }
 
+// 批量初始化余额：把选中员工的特休/调休余额设定为绝对值，差额以 adjust 流水入账（保持台账可追溯）
+async function batchInitBalance(req, res) {
+  await ensureSchema()
+  if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
+  const balanceType = text(req.body?.balanceType)
+  if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
+  const target = Number(req.body?.target)
+  if (!Number.isFinite(target) || target < 0) throw badRequest('目标余额不正确（不能为负数）')
+  assertHalfUnit(target, balanceType === 'annual_leave' ? '特休余额' : '调休余额')
+  const employeeIds = Array.isArray(req.body?.employeeIds)
+    ? [...new Set(req.body.employeeIds.map(Number).filter(Number.isFinite))]
+    : []
+  if (!employeeIds.length) throw badRequest('请先选择员工')
+  if (employeeIds.length > 200) throw badRequest('单次最多批量设置 200 人')
+  const note = nullableText(req.body?.note)
+  const unit = balanceType === 'annual_leave' ? '天' : '小时'
+  let initialized = 0
+  let skipped = 0
+  for (const employeeId of employeeIds) {
+    await transaction(async (connection) => {
+      await lockEmployeeBalance(connection, employeeId)
+      const [rows] = await connection.execute(
+        `SELECT COALESCE(SUM(delta_hours), 0) AS balance
+         FROM attendance_balance_ledger
+         WHERE employee_id = :employeeId AND balance_type = :balanceType`,
+        { employeeId, balanceType },
+      )
+      const current = Number(rows[0]?.balance || 0)
+      const delta = roundBalance(target - current)
+      if (delta === 0) { skipped += 1; return }
+      await connection.execute(
+        `INSERT INTO attendance_balance_ledger
+           (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
+         VALUES
+           (:employeeId, NULL, :balanceType, :delta, 'adjust', :note, :createdBy)`,
+        { employeeId, balanceType, delta, note: `${note || '批量初始化'}（设定为 ${target} ${unit}，原 ${roundBalance(current)} ${unit}）`, createdBy: req.user.id },
+      )
+      initialized += 1
+    })
+  }
+  res.json({ ok: true, initialized, skipped })
+}
+
 async function monthlyReport(req, res) {
   await ensureSchema()
   const month = /^\d{4}-\d{2}$/.test(text(req.query.month)) ? text(req.query.month) : new Date().toISOString().slice(0, 7)
@@ -2726,5 +2771,6 @@ module.exports = {
   withdrawRequest,
   voidRequest,
   adjustBalance,
+  batchInitBalance,
   monthlyReport,
 }
