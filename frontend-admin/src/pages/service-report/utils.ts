@@ -311,15 +311,20 @@ export function attachmentFileExtension(file: OrderFile) {
   return String(file.originalName || "").split(".").pop()?.toLowerCase() || "";
 }
 
-export function attachmentPreviewKind(file: OrderFile, blob?: Blob): "image" | "pdf" | "text" | "unsupported" {
+export type AttachmentPreviewKind = "image" | "pdf" | "text" | "docx" | "xlsx" | "unsupported";
+
+export function attachmentPreviewKind(file: OrderFile, blob?: Blob): AttachmentPreviewKind {
   const mimeType = String(file.mimeType || blob?.type || "").toLowerCase();
   const extension = attachmentFileExtension(file);
   if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
   if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
   if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
+  // 新版 OOXML 格式走客户端渲染预览；旧版二进制 .doc/.xls 与 .ppt/.pptx 客户端无法解析，仍走下载
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === "docx") return "docx";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || extension === "xlsx") return "xlsx";
   return "unsupported";
 }
-export function previewBlob(blob: Blob, kind: "image" | "pdf" | "text" | "unsupported") {
+export function previewBlob(blob: Blob, kind: AttachmentPreviewKind) {
   if (kind === "pdf" && blob.type.toLowerCase() !== "application/pdf") {
     return new Blob([blob], { type: "application/pdf" });
   }
