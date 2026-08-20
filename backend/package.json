@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "check": "find src scripts tests -type f \\( -name '*.js' -o -name '*.cjs' \\) -print0 | xargs -0 -n 1 node --check",
     "create-admin": "node scripts/create-admin.js",
+    "crop-signatures": "node scripts/crop-signatures.js",
     "ensure-user-login-columns": "node scripts/ensure-user-login-columns.js",
     "ensure-user-role-enum": "node scripts/ensure-user-role-enum.js",
     "ensure-user-lockout-columns": "node scripts/ensure-user-lockout-columns.js",
@@ -37,6 +38,7 @@
     "pdfjs-dist": "5.4.296",
     "pdfkit": "^0.18.0",
     "pinyin-pro": "^3.28.1",
+    "pngjs": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {

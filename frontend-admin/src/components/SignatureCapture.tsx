@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from "rea
 import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cropSignatureDataUrl } from "@/lib/signature-crop";
 
 interface SignatureCanvasProps {
   value: string;
@@ -115,7 +116,8 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
     drawingRef.current = false;
     lastPointRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    onChange(canvasRef.current?.toDataURL("image/png") || "");
+    const canvas = canvasRef.current;
+    onChange(canvas ? cropSignatureDataUrl(canvas) : "");
   }
 
   return (
