@@ -611,7 +611,7 @@ async function addDutyWorksheet(workbook, filters) {
   const employeeFilter = selectedSql(filters.employeeIds, 'r.employee_id', params)
   const rows = await query(
     `SELECT r.id, r.duty_date, r.duty_end_date, r.employee_id, p.employee_name, r.duty_type, r.reason, r.units,
-            b.supervisor_submitted_at, b.admin_approved_at,
+            b.supervisor_submitted_at, b.supervisor_submitted_by, b.admin_approved_at,
             COALESCE(supervisor.real_name, supervisor.username) AS supervisor_name,
             COALESCE(admin.real_name, admin.username) AS admin_name
      FROM attendance_duty_records r
@@ -637,7 +637,9 @@ async function addDutyWorksheet(workbook, filters) {
     { label: '法定节假日值班', value: `${unitSum(rows.filter((row) => row.duty_type === 'legal_holiday_on_call'))} 次` },
   ], 10)
   addSection(sheet, 10, '01  已终审津贴明细', ['记录编号', '值班日期', '员工', '值班类型', '目的／类别', '事由', '次数', '主管提交', '行政终审', '终审时间'],
-    rows.map((row) => [row.id, dutyRange(row), row.employee_name, row.duty_type === 'weekend_on_call' ? '7×24 值班' : '法定节假日值班', '加班费', row.reason, Number(row.units), row.supervisor_name || '', row.admin_name || '', mysqlDate(row.admin_approved_at)]),
+    rows.map((row) => [row.id, dutyRange(row), row.employee_name, row.duty_type === 'weekend_on_call' ? '7×24 值班' : '法定节假日值班', '加班费', row.reason, Number(row.units),
+      row.supervisor_name || (row.supervisor_submitted_by === null ? '系统自动' : ''),
+      row.admin_name || '', mysqlDate(row.admin_approved_at)]),
     [12, 14, 18, 20, 14, 22, 10, 16, 16, 20])
   sheet.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 10 } }
   sheet.properties.defaultRowHeight = 20

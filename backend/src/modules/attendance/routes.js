@@ -13,6 +13,8 @@ router.put('/duty/records/:id/overlap', requirePermission('attendance.duty.manag
 router.post('/duty/monthly/:month/submit', requirePermission('attendance.duty.manage'), duty.submit)
 router.post('/duty/monthly/:month/approve', requirePermission('attendance.duty.admin.approve'), duty.approve)
 router.post('/duty/monthly/:month/reject', requirePermission('attendance.duty.admin.approve'), duty.reject)
+router.get('/duty/batches', requirePermission('attendance.duty.manage', 'attendance.duty.admin.approve'), (req, res) =>
+  duty.listMonthlyBatches(String(req.query.status || '')).then((items) => res.json({ items })).catch((error) => { throw error }))
 
 router.get('/employees', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listEmployees)
 router.get('/delegates', requirePermission('attendance.apply'), controller.listDelegates)

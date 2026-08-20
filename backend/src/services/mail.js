@@ -904,16 +904,25 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     delegate_info: `请假代理通知：${payload.applicantName || '-'} / ${leaveType}`,
     rejected: `请假申请已驳回：${payload.applicantName || '-'} / ${leaveType}`,
     completed: `请假流程已完成：${payload.applicantName || '-'} / ${leaveType}`,
+    duty_pending_admin: `值班津贴待终审：${payload.month || '-'}（${payload.total || 0} 条）`,
   }
   const headingByType = {
     approval_pending: '请假待审批',
     delegate_info: '请假代理通知',
     rejected: '请假申请已驳回',
     completed: '请假流程已完成',
+    duty_pending_admin: '值班津贴待终审',
   }
   const subject = subjectByType[eventType] || `请假通知：${payload.applicantName || '-'}`
   const heading = headingByType[eventType] || '请假通知'
   const rows = attendanceMailRows(payload)
+  if (eventType === 'duty_pending_admin') {
+    rows.length = 0
+    rows.push(['值班月份', payload.month || '-'])
+    rows.push(['记录条数', `${payload.total || 0} 条`])
+    rows.push(['值班人次', `${payload.units || 0} 人次`])
+    rows.push(['提交方式', payload.auto ? '系统每月自动提交' : '工程主管提交'])
+  }
   if (eventType === 'rejected') {
     rows.push(['驳回人', payload.rejectedByName || '-'])
     rows.push(['驳回原因', payload.rejectedReason || '未填写'])
@@ -935,6 +944,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     delegate_info: '你被指定为本次请假期间的工作代理人，请提前做好工作交接；此邮件不需要你在系统中确认。',
     rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
     completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
+    duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在考勤页「审批」中完成终审。',
   }
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">

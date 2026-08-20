@@ -88,6 +88,19 @@ function dedupeRecords(records) {
   return [...unique.values()]
 }
 
+// 节假日优先自动消解：节假日段覆盖的每一天（含周末）以法定节假日为准，
+// 删除同一工程师当天的 7×24 记录，避免生成重叠记录、无需人工处理。
+function holidayPriorityResolve(records) {
+  const covered = new Set()
+  for (const record of records) {
+    if (record.dutyType !== 'legal_holiday_on_call') continue
+    for (const date of expandRecordDates(record)) covered.add(`${date}:${record.employeeId}`)
+  }
+  return records.filter((record) => !(
+    record.dutyType === 'weekend_on_call' && covered.has(`${record.date}:${record.employeeId}`)
+  ))
+}
+
 function nextBatchStatus(current, action) {
   const transitions = {
     submit: { draft: 'pending_admin', rejected: 'pending_admin' },
@@ -97,4 +110,4 @@ function nextBatchStatus(current, action) {
   return transitions[action]?.[current] || null
 }
 
-module.exports = { DUTY_TYPES, ASSIGNMENT_MODES, holidaySpans, weekendDates, assignDates, dedupeRecords, markOverlaps, nextBatchStatus }
+module.exports = { DUTY_TYPES, ASSIGNMENT_MODES, holidaySpans, weekendDates, assignDates, dedupeRecords, holidayPriorityResolve, markOverlaps, nextBatchStatus }

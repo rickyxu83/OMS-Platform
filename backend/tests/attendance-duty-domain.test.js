@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict')
-const { weekendDates, holidaySpans, assignDates, dedupeRecords, markOverlaps, nextBatchStatus } = require('../src/modules/attendance/duty-domain')
+const { weekendDates, holidaySpans, assignDates, dedupeRecords, holidayPriorityResolve, markOverlaps, nextBatchStatus } = require('../src/modules/attendance/duty-domain')
 
 const dates2026 = weekendDates(2026)
 assert.equal(dates2026.length, 104)
@@ -40,7 +40,18 @@ assert.deepEqual(holidaySpans([{ date: '2026-10-01', name: '国庆节' }, { date
   { name: '国庆节', start: '2026-10-03', end: '2026-10-03', days: 1 },
 ])
 
-// 假期段与 7×24 按天重叠：段内任一工作日（周六）与周末值班同人时标记 unresolver
+// 节假日优先自动消解：假期段覆盖的周末同人 7×24 让位（删除）
+const resolved = holidayPriorityResolve([
+  { date: '2026-02-15', endDate: '2026-02-21', days: 7, employeeId: 10, dutyType: 'legal_holiday_on_call' },
+  { date: '2026-02-21', employeeId: 10, dutyType: 'weekend_on_call' },   // 段内周六，同人 → 删除
+  { date: '2026-02-21', employeeId: 20, dutyType: 'weekend_on_call' },   // 段内周六，不同人 → 保留
+  { date: '2026-03-07', employeeId: 10, dutyType: 'weekend_on_call' },   // 段外周末 → 保留
+])
+assert.deepEqual(resolved.map((r) => `${r.dutyType}:${r.date}:${r.employeeId}`), [
+  'legal_holiday_on_call:2026-02-15:10', 'weekend_on_call:2026-02-21:20', 'weekend_on_call:2026-03-07:10',
+])
+
+// 假期段与 7×24 按天重叠：段内任一周末与周末值班同人时标记 unresolved
 const spanOverlaps = markOverlaps([
   { date: '2026-02-15', endDate: '2026-02-21', days: 7, employeeId: 10, dutyType: 'legal_holiday_on_call' },
   { date: '2026-02-21', employeeId: 10, dutyType: 'weekend_on_call' },

@@ -1,6 +1,6 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
-const { weekendDates, holidaySpans, assignDates, dedupeRecords, markOverlaps, nextBatchStatus } = require('./duty-domain')
+const { weekendDates, holidaySpans, assignDates, dedupeRecords, holidayPriorityResolve, markOverlaps, nextBatchStatus } = require('./duty-domain')
 
 let schemaReady
 const yearPattern = /^20\d{2}$/
@@ -137,7 +137,8 @@ async function saveSetup(req, res) {
     ...assignDates(weekendDates(year), weekendEmployeeIds, mode).map((item) => ({ ...item, dutyType: 'weekend_on_call', reason: '7×24 值班' })),
     ...holidayRecords.map((item) => ({ ...item, dutyType: 'legal_holiday_on_call', reason: item.name })),
   ]
-  const records = markOverlaps(dedupeRecords(rawRecords))
+  // 节假日优先：删除与节假日段重叠的 7×24 记录后，再计算剩余记录的重叠状态
+  const records = markOverlaps(dedupeRecords(holidayPriorityResolve(rawRecords)))
   await transaction(async (connection) => {
     const [locked] = await connection.execute(`SELECT duty_month FROM attendance_duty_monthly_batches
       WHERE duty_month LIKE :yearPrefix AND status NOT IN ('draft', 'rejected') FOR UPDATE`, { yearPrefix: `${year}-%` })
@@ -256,4 +257,72 @@ const submit = (req, res) => transition(req, res, 'submit')
 const approve = (req, res) => transition(req, res, 'approve')
 const reject = (req, res) => transition(req, res, 'reject')
 
-module.exports = { ensureSchema, setup, saveSetup, monthly, resolveOverlap, submit, approve, reject }
+// 每月 1 号自动提交当月值班批次：有记录、未提交（draft/被退回）且无未处理重叠时
+// 置为待行政终审（系统自动提交，无人工提交人），并给行政主管入队邮件通知。
+// 幂等：已提交/已终审/无记录/有重叠的月份跳过并返回原因。
+function shanghaiMonthString(reference) {
+  const shifted = new Date((reference || new Date()).getTime() + 8 * 60 * 60 * 1000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+async function autoSubmitMonthlyBatches(reference) {
+  await ensureSchema()
+  const month = shanghaiMonthString(reference)
+  const result = await transaction(async (connection) => {
+    await connection.execute(`INSERT IGNORE INTO attendance_duty_monthly_batches (duty_month, status) VALUES (:month, 'draft')`, { month })
+    const [batches] = await connection.execute('SELECT * FROM attendance_duty_monthly_batches WHERE duty_month = :month FOR UPDATE', { month })
+    const current = batches[0]
+    if (!current || !['draft', 'rejected'].includes(current.status)) return { month, submitted: false, reason: current ? `status_${current.status}` : 'no_batch' }
+    const [counts] = await connection.execute(`SELECT COUNT(*) total, SUM(overlap_state = 'unresolved') unresolved FROM attendance_duty_records WHERE duty_month = :month`, { month })
+    if (!Number(counts[0].total)) return { month, submitted: false, reason: 'no_records' }
+    if (Number(counts[0].unresolved)) return { month, submitted: false, reason: 'unresolved_overlap' }
+    await connection.execute(`UPDATE attendance_duty_monthly_batches SET status = 'pending_admin',
+      supervisor_submitted_by = NULL, supervisor_submitted_at = NOW(),
+      rejected_by = NULL, rejected_at = NULL, rejected_reason = NULL WHERE duty_month = :month`, { month })
+    await connection.execute(`UPDATE attendance_duty_records SET batch_status = 'pending_admin' WHERE duty_month = :month`, { month })
+    return { month, submitted: true }
+  })
+  if (result.submitted) {
+    await queueDutyPendingAdminNotification(month)
+  }
+  return result
+}
+
+async function queueDutyPendingAdminNotification(month) {
+  const { enqueueAttendanceEmailNotification } = require('../../services/attendance-notifications')
+  const admins = await query(`SELECT id, real_name, username, email FROM users
+    WHERE status = 'active' AND role IN ('admin', 'administrative_supervisor') AND email IS NOT NULL AND email <> ''`)
+  if (!admins.length) return { queued: false, reason: 'no_admin_email' }
+  const [stats] = await query(`SELECT COUNT(*) total, SUM(units) units FROM attendance_duty_records WHERE duty_month = :month AND batch_status = 'pending_admin'`, { month })
+  const total = Number(stats[0]?.total || 0)
+  const units = Number(stats[0]?.units || 0)
+  const result = await enqueueAttendanceEmailNotification(null, {
+    requestId: 0,
+    eventKey: `duty:${month}:auto-submitted`,
+    eventType: 'duty_pending_admin',
+    recipients: admins,
+    payload: { month, total, units, auto: true },
+  })
+  return result
+}
+
+async function listMonthlyBatches(status) {
+  await ensureSchema()
+  const rows = await query(`SELECT b.duty_month, b.status, b.supervisor_submitted_by, b.supervisor_submitted_at, b.admin_approved_at, b.rejected_at, b.rejected_reason,
+      COUNT(r.id) AS record_count, COALESCE(SUM(r.units), 0) AS units_sum
+    FROM attendance_duty_monthly_batches b
+    LEFT JOIN attendance_duty_records r ON r.duty_month = b.duty_month
+    WHERE (:status = '' OR b.status = :status)
+    GROUP BY b.duty_month, b.status, b.supervisor_submitted_by, b.supervisor_submitted_at, b.admin_approved_at, b.rejected_at, b.rejected_reason
+    ORDER BY b.duty_month DESC`,
+  { status: String(status || '') })
+  return rows.map((row) => ({
+    month: row.duty_month, status: row.status,
+    submittedAt: row.supervisor_submitted_at, approvedAt: row.admin_approved_at,
+    rejectedAt: row.rejected_at, rejectedReason: row.rejected_reason,
+    recordCount: Number(row.record_count), unitsSum: Number(row.units_sum),
+    autoSubmitted: !row.supervisor_submitted_by,
+  }))
+}
+
+module.exports = { ensureSchema, setup, saveSetup, monthly, resolveOverlap, submit, approve, reject, autoSubmitMonthlyBatches, listMonthlyBatches }

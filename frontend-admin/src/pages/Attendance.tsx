@@ -132,6 +132,16 @@ interface AdjustDraft {
   note: string;
 }
 
+interface DutyPendingBatch {
+  month: string;
+  status: string;
+  recordCount: number;
+  unitsSum: number;
+  submittedAt: string | null;
+  autoSubmitted: boolean;
+  rejectedReason?: string | null;
+}
+
 interface MonthlyReportItem {
   employeeId: number | string;
   employeeName?: string;
@@ -448,6 +458,7 @@ export function Attendance() {
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const canViewDuty = hasPermission("attendance.duty.manage", "attendance.duty.admin.approve");
+  const canDutyApprove = hasPermission("attendance.duty.admin.approve");
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<AttendanceTab>(() => parseTabParam(searchParams.get("tab")));
   const [recordView, setRecordView] = useState<"detail" | "summary">(() => searchParams.get("record") === "summary" ? "summary" : "detail");
@@ -475,6 +486,9 @@ export function Attendance() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   const [batchBalanceDialog, setBatchBalanceDialog] = useState<{ balanceType: "annual_leave" | "comp_time"; target: string; note: string } | null>(null);
   const [batchBalanceSaving, setBatchBalanceSaving] = useState(false);
+  // 值班津贴待终审批次（审批 tab 与值班 tab 双入口，状态实时同步）
+  const [dutyPendingBatches, setDutyPendingBatches] = useState<DutyPendingBatch[]>([]);
+  const [dutyBatchSaving, setDutyBatchSaving] = useState(false);
   const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
   const employeeAnchorRef = useRef<number | null>(null);
   const employeeCardRef = useRef<HTMLDivElement | null>(null);
@@ -700,6 +714,42 @@ export function Attendance() {
       return;
     }
     await action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason });
+  }
+
+  // 审批页值班津贴待终审：拉取待行政终审的月度批次；操作成功后刷新列表保持双入口同步
+  const loadDutyPendingBatches = async () => {
+    try {
+      const data = await api.get("/attendance/duty/batches?status=pending_admin");
+      setDutyPendingBatches((data?.items || []) as DutyPendingBatch[]);
+    } catch { /* 值班未配置时静默 */ }
+  };
+  useEffect(() => {
+    if (activeTab === "approve" && canDutyApprove) loadDutyPendingBatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, canDutyApprove]);
+
+  async function dutyAction(month: string, name: "approve" | "reject", reason = "") {
+    setDutyBatchSaving(true);
+    try {
+      await api.post(`/attendance/duty/monthly/${month}/${name}`, reason ? { reason } : undefined);
+      toast.success(name === "approve" ? `${month} 值班津贴已终审` : `${month} 已退回工程主管`);
+      await loadDutyPendingBatches();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setDutyBatchSaving(false);
+    }
+  }
+
+  async function rejectDutyBatch(month: string) {
+    const value = window.prompt("请输入退回原因");
+    if (value === null) return;
+    const reason = value.trim();
+    if (!reason) {
+      toast.error("请填写退回原因");
+      return;
+    }
+    await dutyAction(month, "reject", reason);
   }
 
   function closeProofPreview() {
@@ -1086,6 +1136,60 @@ export function Attendance() {
               </span>
             ))}
           </div>
+
+          {canDutyApprove ? (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-primary" />
+                  <CardTitle className="text-base">值班津贴待终审</CardTitle>
+                  <Badge variant="secondary">{dutyPendingBatches.length} 月</Badge>
+                </div>
+                <Button variant="ghost" size="sm" onClick={loadDutyPendingBatches} disabled={dutyBatchSaving}>
+                  <RefreshCw className="size-4" />刷新
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {dutyPendingBatches.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>月份</TableHead>
+                        <TableHead>记录</TableHead>
+                        <TableHead>人次</TableHead>
+                        <TableHead>提交时间</TableHead>
+                        <TableHead>提交方式</TableHead>
+                        <TableHead className="text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dutyPendingBatches.map((batch) => (
+                        <TableRow key={batch.month}>
+                          <TableCell className="font-medium tabular-nums">{batch.month}</TableCell>
+                          <TableCell className="tabular-nums">{batch.recordCount} 条</TableCell>
+                          <TableCell className="tabular-nums">{batch.unitsSum} 人次</TableCell>
+                          <TableCell className="text-muted-foreground">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
+                          <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button size="sm" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
+                                <Check className="mr-1 size-4" />终审通过
+                              </Button>
+                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
+                                <X className="mr-1 size-4" />退回
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="p-8 text-center text-sm text-muted-foreground">暂无待终审的值班津贴批次</div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {isApprover ? (
             <RequestList
