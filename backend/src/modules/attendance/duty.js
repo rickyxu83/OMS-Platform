@@ -18,7 +18,8 @@ function validDate(value, year) {
 }
 
 async function ensureDutyEndDateColumn() {
-  const [columns] = await query(`SELECT COLUMN_NAME FROM information_schema.COLUMNS
+  // 注意：query() 直接返回 rows 数组（勿用 [rows, fields] 解构），避免巡检计划同款 500
+  const columns = await query(`SELECT COLUMN_NAME FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance_duty_records' AND COLUMN_NAME = 'duty_end_date'`)
   if (!columns.length) {
     await query(`ALTER TABLE attendance_duty_records ADD COLUMN duty_end_date DATE NULL AFTER duty_date`)
