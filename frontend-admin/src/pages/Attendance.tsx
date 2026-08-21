@@ -417,8 +417,8 @@ function requestTimeRange(item: AttendanceRequest) {
   }
   return (
     <div className="tabular-nums">
-      <div className="font-medium">{start.slice(5)}</div>
-      <div className="text-xs text-muted-foreground">至 {end.slice(5)}</div>
+      <div className="font-medium">{start.slice(5, 10)} → {end.slice(5, 10)}</div>
+      <div className="text-xs text-muted-foreground">{start.slice(11)} – {end.slice(11)}</div>
     </div>
   );
 }
@@ -2597,10 +2597,12 @@ function RequestList({
                       {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
                     <TableCell>
-                      <div>{requestTimeRange(item)}</div>
-                      {item.hours != null ? (
-                        <div className="mt-0.5 text-xs text-muted-foreground">{requestDuration(item)}</div>
-                      ) : null}
+                      <div className="flex flex-col items-start gap-1">
+                        {requestTimeRange(item)}
+                        {requestDuration(item) ? (
+                          <Badge variant={REQUEST_TYPE_VARIANT[item.requestType || ""] || "secondary"}>{requestDuration(item)}</Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
                     {hasActions ? (
