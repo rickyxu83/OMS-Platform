@@ -82,6 +82,7 @@ interface AttendanceRequest {
   overtimeResult?: string | null;
   overtimeDayType?: string | null;
   overtimePayMultiplier?: number | null;
+  isTriplePay?: boolean;
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
@@ -354,15 +355,15 @@ function requestDetailContent(item: AttendanceRequest) {
     return <span className="font-medium">{LEAVE_TYPE_LABELS[item.leaveType || ""] || "-"}</span>;
   }
   if (item.requestType === "overtime") {
-    const multiplier = item.overtimeResult === "pay" && Number(item.overtimePayMultiplier || 0) > 1
-      ? ` ${hours(Number(item.overtimePayMultiplier))}倍`
-      : "";
     return (
       <span className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium">{OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"}</span>
         <Badge variant={item.overtimeResult === "pay" ? "purple" : "teal"}>
-          {(OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-") + multiplier}
+          {OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-"}
         </Badge>
+        {item.isTriplePay ? (
+          <Badge variant="rose" className="animate-pulse font-semibold">3倍</Badge>
+        ) : null}
         {item.overtimeDayType ? <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType]}</span> : null}
       </span>
     );
@@ -401,24 +402,55 @@ function requestTypeBadge(type?: string) {
   return <Badge variant={REQUEST_TYPE_VARIANT[type || ""] || "secondary"}>{requestTypeLabel(type)}</Badge>;
 }
 
-// 申请时间区间：同日单行「08-20 09:00 – 18:00」，跨天两行；均省略年份（考勤申请不跨年）
+// 中文日期：'2026-08-21' → '8月21日'（考勤申请不跨年，省略年份）
+function chineseMonthDay(value?: string) {
+  const date = String(value || '')
+  if (!/^\d{4}-\d{2}-\d{2}/.test(date)) return ''
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
+}
+
+// 申请时间列：假类用中文日期 + 半天标注（整天不显示时段，半天标「下午/中午」）；
+// 加班/调休保留精确时段。时长（共 X 天/小时）由徽章在下一行展示。
 function requestTimeRange(item: AttendanceRequest) {
-  const start = formatDateTime(item.startAt);
-  if (start === "-") return <span className="text-muted-foreground">-</span>;
-  const end = formatDateTime(item.endAt);
-  const sameDay = String(item.startAt || "").slice(0, 10) === String(item.endAt || "").slice(0, 10);
+  if (!item.startAt) return <span className="text-muted-foreground">-</span>;
+  const startDate = String(item.startAt).slice(0, 10);
+  const endDate = String(item.endAt || item.startAt).slice(0, 10);
+  const startTime = String(item.startAt).slice(11, 16);
+  const endTime = String(item.endAt || item.startAt).slice(11, 16);
+  const sameDay = startDate === endDate;
+
+  if (item.requestType === "leave") {
+    const startHalf = startTime === "14:00" ? "下午" : "";
+    const endHalf = endTime === "14:00" ? "中午" : "";
+    if (sameDay) {
+      // 单日：09:00–18:00 整天无标注；14:00–18:00 下午；09:00–14:00 上午（到中午）
+      const tag = startHalf ? "下午" : endHalf ? "上午" : "";
+      return (
+        <div className="tabular-nums">
+          <span className="font-medium">{chineseMonthDay(startDate)}{tag}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="tabular-nums">
+        <div className="font-medium">{chineseMonthDay(startDate)}{startHalf} – {chineseMonthDay(endDate)}{endHalf}</div>
+      </div>
+    );
+  }
+
+  // 加班/调休：保留精确时段
   if (sameDay) {
     return (
       <div className="tabular-nums">
-        <span className="font-medium">{start.slice(5, 10)}</span>
-        <span className="ml-1.5 text-xs text-muted-foreground">{start.slice(11)} – {end.slice(11)}</span>
+        <span className="font-medium">{chineseMonthDay(startDate)}</span>
+        <span className="ml-1.5 text-xs text-muted-foreground">{startTime} – {endTime}</span>
       </div>
     );
   }
   return (
     <div className="tabular-nums">
-      <div className="font-medium">{start.slice(5, 10)} → {end.slice(5, 10)}</div>
-      <div className="text-xs text-muted-foreground">{start.slice(11)} – {end.slice(11)}</div>
+      <div className="font-medium">{chineseMonthDay(startDate)} → {chineseMonthDay(endDate)}</div>
+      <div className="text-xs text-muted-foreground">{startTime} – {endTime}</div>
     </div>
   );
 }
@@ -1536,7 +1568,7 @@ export function Attendance() {
                     <TableHead>事假</TableHead>
                     <TableHead>其他假</TableHead>
                     <TableHead>加班·转调休</TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果折算的付费工时：普通加班按申请时长计，法定放假日加班自动按 3 倍计入（节假日以「考勤设置 → 法定节假日」中启用的数据为准）。" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；三倍工资日的加班会标记「3倍」角标，具体加班费由行政线下核计。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
                     <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
@@ -1767,7 +1799,7 @@ export function Attendance() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-1.5">法定节假日 <HelpTooltip label={HOLIDAY_TABLE_HELP} /></CardTitle>
-                  <CardDescription>启用状态会影响加班类型和 3 倍加班费折算</CardDescription>
+                  <CardDescription>启用状态会影响加班可用的加班类型</CardDescription>
                 </div>
                 <div className="w-36 space-y-2">
                   <Label>年份</Label>

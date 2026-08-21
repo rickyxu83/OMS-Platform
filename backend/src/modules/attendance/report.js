@@ -273,15 +273,15 @@ function buildReportData(filters, rows) {
       if (row.overtime_result === 'comp_time') summary.compTimeHours = round(summary.compTimeHours + amount.hours)
       if (row.overtime_result === 'pay') {
         summary.payHours = round(summary.payHours + amount.hours)
-        summary.weightedPayHours = round(summary.weightedPayHours + amount.hours * multiplier)
+        // 三倍折算已取消（2026-08-21）：折算时数不再乘倍率，等同原始付费时长，由行政线下自行计算
+        summary.weightedPayHours = round(summary.weightedPayHours + amount.hours)
         if (row.overtime_day_type === 'legal_holiday') summary.legalHolidayPayHours = round(summary.legalHolidayPayHours + amount.hours)
       }
       overtimeDetails.push({
         employeeId, employeeName: employee.employee_name, status, requestId: Number(row.id),
         kind: OVERTIME_KIND_LABELS[row.overtime_kind] || row.overtime_kind || '-', startAt: mysqlDate(row.start_at), endAt: mysqlDate(row.end_at),
         hours: amount.hours, result: OVERTIME_RESULT_LABELS[row.overtime_result] || row.overtime_result || '-',
-        dayType: DAY_TYPE_LABELS[row.overtime_day_type] || row.overtime_day_type || '-', multiplier,
-        weightedHours: row.overtime_result === 'pay' ? round(amount.hours * multiplier) : 0,
+        dayType: DAY_TYPE_LABELS[row.overtime_day_type] || row.overtime_day_type || '-', multipliers: null, weightedHours: 0,
         reason: text(row.reason) || sourceReference(row) || '-', approvedAt: finalApprovedAt(row), source: sourceReference(row),
       })
       continue
@@ -556,14 +556,14 @@ function buildWorkbook(data) {
     { label: '转调休', value: `${overtimeCompHours} 小时` },
     { label: '计加班费', value: `${overtimePayHours} 小时` },
   ], 14)
-  next = addSection(overtime, 10, '01  员工汇总', ['员工', '状态', '加班次数', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数', '加班费折算时数'],
-    data.overtimeSummary.map((row) => [row.name, row.status, row.requestCount, row.totalHours, row.compTimeHours, row.payHours, row.legalHolidayPayHours, row.weightedPayHours]),
-    [18, 10, 12, 14, 14, 14, 22, 18])
+  next = addSection(overtime, 10, '01  员工汇总', ['员工', '状态', '加班次数', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数'],
+    data.overtimeSummary.map((row) => [row.name, row.status, row.requestCount, row.totalHours, row.compTimeHours, row.payHours, row.legalHolidayPayHours]),
+    [18, 10, 12, 14, 14, 14, 22])
   next += 1
-  addSection(overtime, next, '02  申请明细', ['员工', '状态', '申请编号', '加班类型', '加班事由', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '倍率', '折算时数', '最终审批时间', '来源工单'],
-    data.overtimeDetails.map((row) => [row.employeeName, row.status, row.requestId, row.kind, row.reason, row.startAt, row.endAt, row.hours, row.result, row.dayType, row.multiplier, row.weightedHours, row.approvedAt, row.source]),
-    [18, 10, 12, 14, 28, 20, 20, 14, 12, 14, 10, 12, 20, 20])
-  overtime.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 8 } }
+  addSection(overtime, next, '02  申请明细', ['员工', '状态', '申请编号', '加班类型', '加班事由', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '最终审批时间', '来源工单'],
+    data.overtimeDetails.map((row) => [row.employeeName, row.status, row.requestId, row.kind, row.reason, row.startAt, row.endAt, row.hours, row.result, row.dayType, row.approvedAt, row.source]),
+    [18, 10, 12, 14, 28, 20, 20, 14, 12, 14, 20, 20])
+  overtime.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 7 } }
 
   const annualBalanceDays = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.annualDays || 0), 0))
   const compBalanceHours = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.compTimeHours || 0), 0))
