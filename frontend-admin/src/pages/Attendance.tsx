@@ -423,6 +423,16 @@ function requestTimeRange(item: AttendanceRequest) {
   );
 }
 
+// 申请时长：假类按天（整天=8h，半天=0.5），加班/调休按小时
+function requestDuration(item: AttendanceRequest) {
+  if (item.hours == null) return null;
+  if (item.requestType === "leave") {
+    const daysValue = item.workingDays ?? Number(item.hours) / 8;
+    return `共 ${days(daysValue)} 天`;
+  }
+  return `共 ${hours(item.hours)} 小时`;
+}
+
 function approvalStepLabel(step?: ApprovalStep) {
   if (!step) return "";
   if (step.stepType === "role") return roleLabel(step.assigneeRole);
@@ -2534,7 +2544,6 @@ function RequestList({
                   <TableHead>类型</TableHead>
                   <TableHead>明细</TableHead>
                   <TableHead>时间</TableHead>
-                  <TableHead>小时</TableHead>
                   <TableHead>状态</TableHead>
                   {hasActions ? <TableHead>操作</TableHead> : null}
                 </TableRow>
@@ -2587,13 +2596,11 @@ function RequestList({
                       })()}
                       {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
-                    <TableCell>{requestTimeRange(item)}</TableCell>
                     <TableCell>
+                      <div>{requestTimeRange(item)}</div>
                       {item.hours != null ? (
-                        <span className="tabular-nums"><span className="font-semibold">{hours(item.hours)}</span> <span className="text-xs text-muted-foreground">小时</span></span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                        <div className="mt-0.5 text-xs text-muted-foreground">{requestDuration(item)}</div>
+                      ) : null}
                     </TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
                     {hasActions ? (
