@@ -85,7 +85,8 @@ export function calculateForm(order: MrOrder): MrOrder {
       allocatedSales += subtotal
       unitPrice = subtotal / qty
     }
-    if (qty > 0 && !item.purchaseOnly && mode === 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
+    // mode 2 单项系统集成：主项（第一项）是销售主体，即使仅采购（purchase_only）也必须分配 99%；技术服务分配 1%
+    if (qty > 0 && mode === 2 && (index === 0 || !item.purchaseOnly)) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
     if (subtotal === null) subtotal = unitPrice === null ? null : round(qty * unitPrice)
     const marginRate = subtotal && cost !== null ? round((subtotal - cost) / subtotal * 100, 4) : null
     return { ...item, rowNo: index + 1, unitPrice: unitPrice === null ? null : round(unitPrice, 6), subtotal, costExcludingTax: cost === null ? null : round(cost), marginRate }
