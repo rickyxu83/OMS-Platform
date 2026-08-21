@@ -291,7 +291,7 @@ async function autoSubmitMonthlyBatches(reference) {
 async function queueDutyPendingAdminNotification(month) {
   const { enqueueAttendanceEmailNotification } = require('../../services/attendance-notifications')
   const admins = await query(`SELECT id, real_name, username, email FROM users
-    WHERE status = 'active' AND role IN ('admin', 'administrative_supervisor') AND email IS NOT NULL AND email <> ''`)
+    WHERE status = 'active' AND role IN ('admin') AND email IS NOT NULL AND email <> ''`)
   if (!admins.length) return { queued: false, reason: 'no_admin_email' }
   const [stats] = await query(`SELECT COUNT(*) total, SUM(units) units FROM attendance_duty_records WHERE duty_month = :month AND batch_status = 'pending_admin'`, { month })
   const total = Number(stats[0]?.total || 0)

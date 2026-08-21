@@ -56,11 +56,11 @@ const { hasPermission } = require('../src/permissions/store')
     }
   }
 
-  // 值班津贴：管理权限 = 管理员/工程主管/行政主管；终审 = 管理员/行政主管
+  // 值班津贴：管理权限 = 管理员/工程主管（行政主管不开放值班津贴入口）；终审 = 仅管理员
   for (const role of ALL_ROLES) {
-    const canManageDuty = ['admin', 'engineering_supervisor', 'administrative_supervisor'].includes(role)
+    const canManageDuty = ['admin', 'engineering_supervisor'].includes(role)
     assert.equal(defaults[role]['attendance.duty.manage'], canManageDuty, `${role} duty.manage`)
-    assert.equal(defaults[role]['attendance.duty.admin.approve'], fullAccessRoles.includes(role), `${role} duty.admin.approve`)
+    assert.equal(defaults[role]['attendance.duty.admin.approve'], role === 'admin', `${role} duty.admin.approve`)
   }
 
   console.log('attendance applicant permission tests passed')
