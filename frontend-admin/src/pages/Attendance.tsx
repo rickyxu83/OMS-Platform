@@ -86,6 +86,7 @@ interface AttendanceRequest {
   sourceId?: number | string | null;
   sourceDetail?: string | null;
   serviceOrder?: ServiceOrderSummary | null;
+  reason?: string | null;
   startAt?: string;
   endAt?: string;
   hours?: number;
@@ -2545,6 +2546,12 @@ function RequestList({
                     <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetailContent(item)}</div>
+                      {item.reason ? (
+                        <div className="mt-1 flex items-start gap-1 text-sm text-muted-foreground">
+                          <span className="shrink-0 text-xs font-medium text-muted-foreground/60">申请说明</span>
+                          <span>{item.reason}</span>
+                        </div>
+                      ) : null}
                       {item.requestType === "overtime" && item.sourceType === "service_order" ? (
                         <ServiceOrderApprovalSummary
                           order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}

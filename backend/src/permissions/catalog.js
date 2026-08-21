@@ -56,7 +56,7 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['maintenance-party.delete', '删除维保厂商', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor']],
   ['timesheet.view', '查看工时报表', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
   ['attendance.apply', '提交考勤申请', ATTENDANCE_APPLICANT_ROLES],
-  ['attendance.approve', '处理考勤审批', ['admin', 'administrative_supervisor']],
+  ['attendance.approve', '处理考勤审批', ['admin', 'administrative_supervisor', 'engineering_supervisor', 'sales_supervisor', 'operations_director']],
   ['attendance.view', '查看考勤数据', ['admin', 'administrative_supervisor']],
   ['attendance.report.export', '导出考勤报表', ['admin', 'administrative_supervisor']],
   ['attendance.manage', '维护考勤档案与余额', ['admin', 'administrative_supervisor']],
