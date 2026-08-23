@@ -1267,11 +1267,11 @@ export function Attendance() {
 
   const statTiles = [
     ...(canApply ? [
-      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天` },
-      { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时` },
-      { label: "我的进行中", value: String(pendingMine) },
+      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1 },
+      { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false },
+      { label: "我的进行中", value: String(pendingMine), warn: false },
     ] : []),
-    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length) }] : []),
+    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: false }] : []),
   ];
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -1325,7 +1325,8 @@ export function Attendance() {
             {statTiles.map((stat) => (
               <span key={stat.label} className="flex items-center gap-1.5 text-muted-foreground">
                 {stat.label}
-                <b className="font-semibold text-foreground">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
+                <b className={`font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
+                {stat.warn && !loading ? <span className="text-xs text-amber-600">不足</span> : null}
               </span>
             ))}
           </div>
@@ -2244,6 +2245,13 @@ export function Attendance() {
             </div>
           ) : null}
           <DialogFooter className="border-t px-5 py-3">
+            {proofPreview ? (
+              <Button asChild variant="outline">
+                <a href={proofPreview.url} download={proofPreview.originalName}>
+                  <Download className="mr-1 h-4 w-4" />下载原文件
+                </a>
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={closeProofPreview}>关闭</Button>
           </DialogFooter>
         </DialogContent>
