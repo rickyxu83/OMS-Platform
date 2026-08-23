@@ -1294,7 +1294,7 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
           <SectionCard id="trade" title="交易信息" icon={MR_SECTIONS[1].icon} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
-                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'}>
+                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
                   <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
                     {constants.pricingModes.map((mode) => (
                       <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>

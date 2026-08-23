@@ -682,7 +682,10 @@ export function Users() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>登录别名</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>登录别名</Label>
+                  <HelpTooltip label="别名是邮箱之外的第二个登录账号：登录页输入别名或邮箱均可登录。适合邮箱较长或习惯用短账号的成员；留空则只能用邮箱登录。" />
+                </div>
                 <Input
                   value={form.loginAlias}
                   onChange={(e) => setForm({ ...form, loginAlias: e.target.value })}

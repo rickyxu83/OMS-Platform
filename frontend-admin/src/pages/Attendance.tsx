@@ -28,6 +28,8 @@ const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统
 const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
 const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
 const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
+
+const ANNUAL_LEAVE_HELP = "特休（特别休假，即年假）按天计，1 天＝8 小时；余额由行政在员工页签的「余额控制台」中初始化或调整，请假通过后自动扣减。";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -1558,14 +1560,14 @@ export function Attendance() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>员工</TableHead>
-                    <TableHead>特休</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">特休 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>病假</TableHead>
                     <TableHead>事假</TableHead>
                     <TableHead>其他假</TableHead>
                     <TableHead>加班·转调休</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；三倍工资日的加班会标记「3倍」角标，具体加班费由行政线下核计。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
-                    <TableHead>特休余额</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1638,7 +1640,7 @@ export function Attendance() {
                     <TableHead>员工</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>籍别 / 入职</TableHead>
-                    <TableHead>特休余额</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>

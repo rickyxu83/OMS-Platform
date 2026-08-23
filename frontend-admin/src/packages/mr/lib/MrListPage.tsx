@@ -294,7 +294,7 @@ export function MrListPage() {
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
               <TableHead>负责的销售</TableHead>
-              <TableHead>计价模式</TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">计价模式 <HelpTooltip label="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。" /></span></TableHead>
               <TableHead className="text-right">未税总计</TableHead>
               <TableHead><span className="inline-flex items-center gap-1">状态 <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。" /></span></TableHead>
               <TableHead>当前签核步骤</TableHead>
