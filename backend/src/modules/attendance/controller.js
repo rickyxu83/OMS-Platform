@@ -15,6 +15,7 @@ const {
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
 } = require('../../services/attendance-notifications')
+const { isTriplePayDate } = require('./triple-pay-days')
 const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
@@ -50,7 +51,8 @@ const defaultSupervisorRoleRules = Object.freeze({
 let schemaReadyPromise = null
 
 const WORK_HOURS_PER_DAY = 8
-const LEGAL_HOLIDAY_PAY_MULTIPLIER = 3
+// 加班付费统一按申请时长计（1 倍）。三倍折算已取消（2026-08-21）：系统不做 300% 折算，
+// 由行政线下按法定节假日自行计算，仅以 isTriplePay 角标提示审批与财务。
 const DEFAULT_PAY_MULTIPLIER = 1
 const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
 const { fetchYearHolidays } = require('./holiday-sync')
@@ -212,8 +214,8 @@ function overtimeDayType(startAt) {
 }
 
 function overtimePayMultiplier(dayType, result = '') {
-  if (result !== 'pay') return null
-  return dayType === 'legal_holiday' ? LEGAL_HOLIDAY_PAY_MULTIPLIER : DEFAULT_PAY_MULTIPLIER
+  // dayType 保留入参以兼容调用点；付费加班一律 1 倍，不再按法定节假日乘 3
+  return result === 'pay' ? DEFAULT_PAY_MULTIPLIER : null
 }
 
 function userDisplayName(user) {
@@ -676,6 +678,8 @@ function requestPayload(row) {
     overtimeResult: row.overtime_result,
     overtimeDayType: row.overtime_day_type,
     overtimePayMultiplier: row.overtime_pay_multiplier === null || row.overtime_pay_multiplier === undefined ? null : Number(row.overtime_pay_multiplier),
+    // 三倍工资日角标：付费加班且开始日期为三倍工资日时为 true（仅供审批/财务识别，不做折算）
+    isTriplePay: row.overtime_result === 'pay' && isTriplePayDate(row.start_at),
     sourceType: row.source_type,
     sourceId: row.source_id,
     sourceDetail: row.source_detail,

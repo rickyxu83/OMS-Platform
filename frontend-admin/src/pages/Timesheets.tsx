@@ -18,7 +18,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDateTime } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useUrlParam } from "@/lib/use-url-param";
@@ -59,11 +59,6 @@ interface SalespersonOption {
 interface CustomerOption {
   id: string | number;
   name?: string;
-}
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
 }
 
 function safeSheetName(value: string, fallback: string) {
@@ -452,7 +447,7 @@ export function Timesheets() {
                       <TableCell>{item.customerName || "-"}</TableCell>
                       <TableCell>{item.engineerName || "-"}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDate(getServiceDate(item))}
+                        {formatDateTime(getServiceDate(item))}
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.source === "service_order" ? "info" : "secondary"}>

@@ -46,9 +46,9 @@ const { hasPermission } = require('../src/permissions/store')
     assert.equal(await hasPermission(role, 'attendance.apply'), true, `${role} apply via store`)
   }
 
-  // 审批/查看/导出/维护类权限仅管理员与行政主管
+  // 查看/导出/维护类权限仅管理员与行政主管（attendance.approve 例外：给审批链主管角色）
   const fullAccessRoles = ['admin', 'administrative_supervisor']
-  const restrictedKeys = ['attendance.approve', 'attendance.view', 'attendance.report.export', 'attendance.manage', 'attendance.admin.approve', 'attendance.hr.approve', 'attendance.vp.approve']
+  const restrictedKeys = ['attendance.view', 'attendance.report.export', 'attendance.manage', 'attendance.admin.approve', 'attendance.hr.approve', 'attendance.vp.approve']
   for (const role of ALL_ROLES) {
     for (const key of restrictedKeys) {
       const expected = fullAccessRoles.includes(role)
@@ -56,11 +56,19 @@ const { hasPermission } = require('../src/permissions/store')
     }
   }
 
-  // 值班津贴：管理权限 = 管理员/工程主管/行政主管；终审 = 管理员/行政主管
+  // 考勤审批：审批链 v4 会把直属主管/运营负责人推为审批环节，需授予处理考勤审批权限
+  // （工程主管/业务主管/运营负责人仅处理指派给自己的审批环节，不开放考勤数据查看 attendance.view）
+  const approveRoles = ['admin', 'administrative_supervisor', 'engineering_supervisor', 'sales_supervisor', 'operations_director']
   for (const role of ALL_ROLES) {
-    const canManageDuty = ['admin', 'engineering_supervisor', 'administrative_supervisor'].includes(role)
+    assert.equal(defaults[role]['attendance.approve'], approveRoles.includes(role), `${role} attendance.approve`)
+    assert.equal(await hasPermission(role, 'attendance.approve'), approveRoles.includes(role), `${role} approve via store`)
+  }
+
+  // 值班津贴：管理权限 = 管理员/工程主管（行政主管不开放值班津贴入口）；终审 = 仅管理员
+  for (const role of ALL_ROLES) {
+    const canManageDuty = ['admin', 'engineering_supervisor'].includes(role)
     assert.equal(defaults[role]['attendance.duty.manage'], canManageDuty, `${role} duty.manage`)
-    assert.equal(defaults[role]['attendance.duty.admin.approve'], fullAccessRoles.includes(role), `${role} duty.admin.approve`)
+    assert.equal(defaults[role]['attendance.duty.admin.approve'], role === 'admin', `${role} duty.admin.approve`)
   }
 
   console.log('attendance applicant permission tests passed')

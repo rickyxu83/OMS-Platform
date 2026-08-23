@@ -4,7 +4,8 @@
   "scripts": {
     "typecheck": "cd frontend-admin && tsc --noEmit",
     "lint:boundaries": "depcruise backend/src frontend-admin/src",
-    "check": "npm run typecheck && npm run lint:boundaries && npm --prefix backend run check",
+    "check:reuse": "node scripts/check-reuse.mjs",
+    "check": "npm run typecheck && npm run lint:boundaries && npm run check:reuse && npm --prefix backend run check",
     "test": "npm run check && npm --prefix frontend-admin run test:mr && npm --prefix backend test"
   },
   "devDependencies": {

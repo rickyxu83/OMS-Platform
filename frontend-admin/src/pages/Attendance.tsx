@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,12 @@ import { AttendanceApplyDrawer } from "@/pages/AttendanceApplyDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type ServiceOrderDetailItem } from "@/lib/service-order-detail";
 import { api } from "@/services/api";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
 
 // 法定节假日模块说明文案
-const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。标记为「放假」的日期加班按 3 倍计算加班费，「调休补班」按正常工作日处理。";
+const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。「调休补班」按正常工作日处理。";
 const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
 const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
 const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
@@ -82,10 +82,12 @@ interface AttendanceRequest {
   overtimeResult?: string | null;
   overtimeDayType?: string | null;
   overtimePayMultiplier?: number | null;
+  isTriplePay?: boolean;
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
   serviceOrder?: ServiceOrderSummary | null;
+  reason?: string | null;
   startAt?: string;
   endAt?: string;
   hours?: number;
@@ -130,6 +132,26 @@ interface AdjustDraft {
   balanceType: "comp_time" | "annual_leave";
   amount: string;
   note: string;
+}
+
+interface DutyPendingBatch {
+  month: string;
+  status: string;
+  recordCount: number;
+  unitsSum: number;
+  submittedAt: string | null;
+  autoSubmitted: boolean;
+  rejectedReason?: string | null;
+}
+
+interface DutyDetailRecord {
+  id: number;
+  duty_date: string;
+  duty_end_date?: string | null;
+  employee_name: string;
+  duty_type: string;
+  reason: string;
+  units: number;
 }
 
 interface MonthlyReportItem {
@@ -312,11 +334,6 @@ function todayYear() {
   return new Date().getFullYear().toString();
 }
 
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).slice(0, 10);
-}
-
 function dateInputValue(value?: string) {
   return String(value || "").slice(0, 10);
 }
@@ -333,15 +350,15 @@ function requestDetailContent(item: AttendanceRequest) {
     return <span className="font-medium">{LEAVE_TYPE_LABELS[item.leaveType || ""] || "-"}</span>;
   }
   if (item.requestType === "overtime") {
-    const multiplier = item.overtimeResult === "pay" && Number(item.overtimePayMultiplier || 0) > 1
-      ? ` ${hours(Number(item.overtimePayMultiplier))}倍`
-      : "";
     return (
       <span className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium">{OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"}</span>
         <Badge variant={item.overtimeResult === "pay" ? "purple" : "teal"}>
-          {(OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-") + multiplier}
+          {OVERTIME_RESULT_LABELS[item.overtimeResult || ""] || "-"}
         </Badge>
+        {item.isTriplePay ? (
+          <Badge variant="rose" className="animate-pulse font-semibold">3倍</Badge>
+        ) : null}
         {item.overtimeDayType ? <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{OVERTIME_DAY_TYPE_LABELS[item.overtimeDayType]}</span> : null}
       </span>
     );
@@ -380,26 +397,67 @@ function requestTypeBadge(type?: string) {
   return <Badge variant={REQUEST_TYPE_VARIANT[type || ""] || "secondary"}>{requestTypeLabel(type)}</Badge>;
 }
 
-// 申请时间区间：同日单行「08-20 09:00 – 18:00」，跨天两行；均省略年份（考勤申请不跨年）
+// 中文日期：'2026-08-21' → '8月21日'（考勤申请不跨年，省略年份）
+function chineseMonthDay(value?: string) {
+  const date = String(value || '')
+  if (!/^\d{4}-\d{2}-\d{2}/.test(date)) return ''
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
+}
+
+// 申请时间列：假类用中文日期 + 半天标注（整天不显示时段，半天标「下午/中午」）；
+// 加班/调休保留精确时段。时长（共 X 天/小时）由徽章在下一行展示。
 function requestTimeRange(item: AttendanceRequest) {
-  const start = formatDateTime(item.startAt);
-  if (start === "-") return <span className="text-muted-foreground">-</span>;
-  const end = formatDateTime(item.endAt);
-  const sameDay = String(item.startAt || "").slice(0, 10) === String(item.endAt || "").slice(0, 10);
+  if (!item.startAt) return <span className="text-muted-foreground">-</span>;
+  const startDate = String(item.startAt).slice(0, 10);
+  const endDate = String(item.endAt || item.startAt).slice(0, 10);
+  const startTime = String(item.startAt).slice(11, 16);
+  const endTime = String(item.endAt || item.startAt).slice(11, 16);
+  const sameDay = startDate === endDate;
+
+  if (item.requestType === "leave") {
+    const startHalf = startTime === "14:00" ? "下午" : "";
+    const endHalf = endTime === "14:00" ? "中午" : "";
+    if (sameDay) {
+      // 单日：09:00–18:00 整天无标注；14:00–18:00 下午；09:00–14:00 上午（到中午）
+      const tag = startHalf ? "下午" : endHalf ? "上午" : "";
+      return (
+        <div className="tabular-nums">
+          <span className="font-medium">{chineseMonthDay(startDate)}{tag}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="tabular-nums">
+        <div className="font-medium">{chineseMonthDay(startDate)}{startHalf} – {chineseMonthDay(endDate)}{endHalf}</div>
+      </div>
+    );
+  }
+
+  // 加班/调休：保留精确时段
   if (sameDay) {
     return (
       <div className="tabular-nums">
-        <span className="font-medium">{start.slice(5, 10)}</span>
-        <span className="ml-1.5 text-xs text-muted-foreground">{start.slice(11)} – {end.slice(11)}</span>
+        <span className="font-medium">{chineseMonthDay(startDate)}</span>
+        <span className="ml-1.5 text-xs text-muted-foreground">{startTime} – {endTime}</span>
       </div>
     );
   }
   return (
     <div className="tabular-nums">
-      <div className="font-medium">{start.slice(5)}</div>
-      <div className="text-xs text-muted-foreground">至 {end.slice(5)}</div>
+      <div className="font-medium">{chineseMonthDay(startDate)} → {chineseMonthDay(endDate)}</div>
+      <div className="text-xs text-muted-foreground">{startTime} – {endTime}</div>
     </div>
   );
+}
+
+// 申请时长：假类按天（整天=8h，半天=0.5），加班/调休按小时
+function requestDuration(item: AttendanceRequest) {
+  if (item.hours == null) return null;
+  if (item.requestType === "leave") {
+    const daysValue = item.workingDays ?? Number(item.hours) / 8;
+    return `共 ${days(daysValue)} 天`;
+  }
+  return `共 ${hours(item.hours)} 小时`;
 }
 
 function approvalStepLabel(step?: ApprovalStep) {
@@ -448,6 +506,7 @@ export function Attendance() {
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
   const canViewDuty = hasPermission("attendance.duty.manage", "attendance.duty.admin.approve");
+  const canDutyApprove = hasPermission("attendance.duty.admin.approve");
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<AttendanceTab>(() => parseTabParam(searchParams.get("tab")));
   const [recordView, setRecordView] = useState<"detail" | "summary">(() => searchParams.get("record") === "summary" ? "summary" : "detail");
@@ -475,6 +534,11 @@ export function Attendance() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   const [batchBalanceDialog, setBatchBalanceDialog] = useState<{ balanceType: "annual_leave" | "comp_time"; target: string; note: string } | null>(null);
   const [batchBalanceSaving, setBatchBalanceSaving] = useState(false);
+  // 值班津贴待终审批次（审批 tab 与值班 tab 双入口，状态实时同步）
+  const [dutyPendingBatches, setDutyPendingBatches] = useState<DutyPendingBatch[]>([]);
+  const [dutyBatchSaving, setDutyBatchSaving] = useState(false);
+  const [dutyDetail, setDutyDetail] = useState<{ month: string; records: DutyDetailRecord[] } | null>(null);
+  const [dutyDetailLoading, setDutyDetailLoading] = useState(false);
   const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
   const employeeAnchorRef = useRef<number | null>(null);
   const employeeCardRef = useRef<HTMLDivElement | null>(null);
@@ -578,6 +642,8 @@ export function Attendance() {
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
       if (!selectedEmployeeIds.size) return;
+      // 弹窗（portal 渲染在 body 下、不在员工卡片内）或下拉浮层（listbox/popper）内部的点击不清空已选员工
+      if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
       if (employeeCardRef.current && !employeeCardRef.current.contains(event.target as Node)) setSelectedEmployeeIds(new Set());
     };
     document.addEventListener("mousedown", onDocumentMouseDown);
@@ -698,6 +764,54 @@ export function Attendance() {
       return;
     }
     await action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason });
+  }
+
+  // 审批页值班津贴待终审：拉取待行政终审的月度批次；操作成功后刷新列表保持双入口同步
+  const loadDutyPendingBatches = async () => {
+    try {
+      const data = await api.get("/attendance/duty/batches?status=pending_admin");
+      setDutyPendingBatches((data?.items || []) as DutyPendingBatch[]);
+    } catch { /* 值班未配置时静默 */ }
+  };
+  useEffect(() => {
+    if (activeTab === "approve" && canDutyApprove) loadDutyPendingBatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, canDutyApprove]);
+
+  async function dutyAction(month: string, name: "approve" | "reject", reason = "") {
+    setDutyBatchSaving(true);
+    try {
+      await api.post(`/attendance/duty/monthly/${month}/${name}`, reason ? { reason } : undefined);
+      toast.success(name === "approve" ? `${month} 值班津贴已终审` : `${month} 已退回工程主管`);
+      await loadDutyPendingBatches();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setDutyBatchSaving(false);
+    }
+  }
+
+  async function rejectDutyBatch(month: string) {
+    const value = window.prompt("请输入退回原因");
+    if (value === null) return;
+    const reason = value.trim();
+    if (!reason) {
+      toast.error("请填写退回原因");
+      return;
+    }
+    await dutyAction(month, "reject", reason);
+  }
+
+  async function loadDutyDetail(month: string) {
+    setDutyDetailLoading(true);
+    try {
+      const data = await api.get(`/attendance/duty/monthly?month=${month}`);
+      setDutyDetail({ month, records: (data?.records || []) as DutyDetailRecord[] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载值班明细失败");
+    } finally {
+      setDutyDetailLoading(false);
+    }
   }
 
   function closeProofPreview() {
@@ -1085,6 +1199,63 @@ export function Attendance() {
             ))}
           </div>
 
+          {canDutyApprove ? (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-primary" />
+                  <CardTitle className="text-base">值班津贴待终审</CardTitle>
+                  <Badge variant="secondary">{dutyPendingBatches.length} 月</Badge>
+                </div>
+                <Button variant="ghost" size="sm" onClick={loadDutyPendingBatches} disabled={dutyBatchSaving}>
+                  <RefreshCw className="size-4" />刷新
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {dutyPendingBatches.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>月份</TableHead>
+                        <TableHead>记录</TableHead>
+                        <TableHead>人次</TableHead>
+                        <TableHead>提交时间</TableHead>
+                        <TableHead>提交方式</TableHead>
+                        <TableHead className="text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dutyPendingBatches.map((batch) => (
+                        <TableRow key={batch.month}>
+                          <TableCell className="font-medium tabular-nums">{batch.month}</TableCell>
+                          <TableCell className="tabular-nums">{batch.recordCount} 条</TableCell>
+                          <TableCell className="tabular-nums">{batch.unitsSum} 人次</TableCell>
+                          <TableCell className="text-muted-foreground">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
+                          <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
+                                <Eye className="mr-1 size-4" />查看明细
+                              </Button>
+                              <Button size="sm" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
+                                <Check className="mr-1 size-4" />终审通过
+                              </Button>
+                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
+                                <X className="mr-1 size-4" />退回
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="p-8 text-center text-sm text-muted-foreground">暂无待终审的值班津贴批次</div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {isApprover ? (
             <RequestList
               title="待我审批"
@@ -1178,7 +1349,7 @@ export function Attendance() {
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <CalendarDays className="h-4 w-4 text-rose-500" />
                   法定节假日
-                  <HelpTooltip label="全年法定节假日与调休补班一览，供请假与排班参考。节假日由管理员在「考勤设置」中维护，并有每年 11~12 月自动同步来年数据的机制；「放假」日加班按 3 倍计算加班费。" />
+                  <HelpTooltip label="全年法定节假日与调休补班一览，供请假与排班参考。节假日由管理员在「考勤设置」中维护，并有每年 11~12 月自动同步来年数据的机制。" />
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">全年法定节假日一览，供请假与排班参考</p>
               </div>
@@ -1392,7 +1563,7 @@ export function Attendance() {
                     <TableHead>事假</TableHead>
                     <TableHead>其他假</TableHead>
                     <TableHead>加班·转调休</TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果折算的付费工时：普通加班按申请时长计，法定放假日加班自动按 3 倍计入（节假日以「考勤设置 → 法定节假日」中启用的数据为准）。" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；三倍工资日的加班会标记「3倍」角标，具体加班费由行政线下核计。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
                     <TableHead>特休余额</TableHead>
                     <TableHead>调休余额</TableHead>
@@ -1623,7 +1794,7 @@ export function Attendance() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-1.5">法定节假日 <HelpTooltip label={HOLIDAY_TABLE_HELP} /></CardTitle>
-                  <CardDescription>启用状态会影响加班类型和 3 倍加班费折算</CardDescription>
+                  <CardDescription>启用状态会影响加班可用的加班类型</CardDescription>
                 </div>
                 <div className="w-36 space-y-2">
                   <Label>年份</Label>
@@ -1886,7 +2057,12 @@ export function Attendance() {
                 <Label>余额类型</Label>
                 <Select
                   value={batchBalanceDialog.balanceType}
-                  onValueChange={(value) => setBatchBalanceDialog((current) => current ? { ...current, balanceType: value as "annual_leave" | "comp_time", target: "" } : current)}
+                  onValueChange={(value) => setBatchBalanceDialog((current) => {
+                    if (!current) return current
+                    const balanceType = value as "annual_leave" | "comp_time"
+                    // 切换类型保留已输入的目标值（单位变化用户自理，不清空避免再度丢失）
+                    return balanceType === current.balanceType ? current : { ...current, balanceType }
+                  })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1922,6 +2098,96 @@ export function Attendance() {
             <Button onClick={submitBatchBalanceInit} disabled={batchBalanceSaving}>
               {batchBalanceSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
               确认初始化
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(dutyDetail)} onOpenChange={(open) => { if (!open) setDutyDetail(null); }}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>值班津贴明细{dutyDetail ? `：${dutyDetail.month}` : ""}</DialogTitle>
+            <DialogDescription>该月 7×24 值班与法定节假日值班记录，供终审核对值班人员与天数。</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {dutyDetailLoading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>
+            ) : dutyDetail && dutyDetail.records.length ? (
+              (() => {
+                // 按工程师汇总：一人一行（对应纸质加班申请单「一人一张、按週填写」的习惯），
+                // 分列「7×24 值班（平日加班）」与「法定节假日（国定假日）」
+                const byEmployee = new Map<string, { name: string; weekendDates: string[]; holidays: Array<{ name: string; units: number; start: string; end: string }>; total: number }>();
+                for (const record of dutyDetail.records) {
+                  const name = record.employee_name || "-";
+                  if (!byEmployee.has(name)) byEmployee.set(name, { name, weekendDates: [], holidays: [], total: 0 });
+                  const group = byEmployee.get(name)!;
+                  group.total += Number(record.units);
+                  if (record.duty_type === "legal_holiday_on_call") {
+                    group.holidays.push({
+                      name: record.reason || "法定节假日",
+                      units: Number(record.units),
+                      start: String(record.duty_date).slice(5, 10),
+                      end: record.duty_end_date ? String(record.duty_end_date).slice(5, 10) : "",
+                    });
+                  } else {
+                    group.weekendDates.push(String(record.duty_date).slice(5, 10));
+                  }
+                }
+                const groups = [...byEmployee.values()];
+                return (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>工程师</TableHead>
+                        <TableHead>7×24 值班（平日加班）</TableHead>
+                        <TableHead>法定节假日（国定假日）</TableHead>
+                        <TableHead className="text-right">合计人次</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {groups.map((group) => (
+                        <TableRow key={group.name}>
+                          <TableCell className="font-medium">{group.name}</TableCell>
+                          <TableCell>
+                            {group.weekendDates.length ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="cyan">{group.weekendDates.length} 次</Badge>
+                                <span className="text-xs text-muted-foreground tabular-nums">{group.weekendDates.join("、")}</span>
+                              </div>
+                            ) : <span className="text-xs text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell>
+                            {group.holidays.length ? (
+                              <div className="space-y-1">
+                                {group.holidays.map((holiday, index) => (
+                                  <div key={index} className="flex flex-wrap items-center gap-1.5">
+                                    <Badge variant="rose">{holiday.name}</Badge>
+                                    <span className="text-xs text-muted-foreground tabular-nums">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : <span className="text-xs text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right"><span className="font-semibold tabular-nums">{group.total}</span><span className="ml-1 text-xs text-muted-foreground">人次</span></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                );
+              })()
+            ) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">该月暂无值班记录</div>
+            )}
+          </div>
+          <DialogFooter className="border-t pt-4">
+            <Button variant="outline" onClick={() => rejectDutyBatch(dutyDetail?.month || "")} disabled={dutyBatchSaving}>
+              <X className="mr-1 size-4" />退回
+            </Button>
+            <Button
+              onClick={async () => { if (dutyDetail) { await dutyAction(dutyDetail.month, "approve"); setDutyDetail(null); } }}
+              disabled={dutyBatchSaving}
+            >
+              <Check className="mr-1 size-4" />终审通过
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2011,7 +2277,12 @@ export function Attendance() {
                 <Label>余额类型</Label>
                 <Select
                   value={adjustDialog.draft.balanceType}
-                  onValueChange={(value) => setAdjustDialogDraft({ balanceType: value as AdjustDraft["balanceType"], amount: "" })}
+                  onValueChange={(value) => setAdjustDialog((current) => {
+                    if (!current) return current
+                    const balanceType = value as AdjustDraft["balanceType"]
+                    // 切换类型保留已输入的金额（单位变化用户自理，不清空避免再度丢失）
+                    return balanceType === current.draft.balanceType ? current : { ...current, draft: { ...current.draft, balanceType } }
+                  })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2300,7 +2571,6 @@ function RequestList({
                   <TableHead>类型</TableHead>
                   <TableHead>明细</TableHead>
                   <TableHead>时间</TableHead>
-                  <TableHead>小时</TableHead>
                   <TableHead>状态</TableHead>
                   {hasActions ? <TableHead>操作</TableHead> : null}
                 </TableRow>
@@ -2312,6 +2582,12 @@ function RequestList({
                     <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetailContent(item)}</div>
+                      {item.reason ? (
+                        <div className="mt-1 flex items-start gap-1 text-sm text-muted-foreground">
+                          <span className="shrink-0 text-xs font-medium text-muted-foreground/60">申请说明</span>
+                          <span>{item.reason}</span>
+                        </div>
+                      ) : null}
                       {item.requestType === "overtime" && item.sourceType === "service_order" ? (
                         <ServiceOrderApprovalSummary
                           order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
@@ -2347,13 +2623,13 @@ function RequestList({
                       })()}
                       {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
                     </TableCell>
-                    <TableCell>{requestTimeRange(item)}</TableCell>
                     <TableCell>
-                      {item.hours != null ? (
-                        <span className="tabular-nums"><span className="font-semibold">{hours(item.hours)}</span> <span className="text-xs text-muted-foreground">小时</span></span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                      <div className="flex flex-col items-start gap-1">
+                        {requestTimeRange(item)}
+                        {requestDuration(item) ? (
+                          <Badge variant={REQUEST_TYPE_VARIANT[item.requestType || ""] || "secondary"}>{requestDuration(item)}</Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
                     {hasActions ? (

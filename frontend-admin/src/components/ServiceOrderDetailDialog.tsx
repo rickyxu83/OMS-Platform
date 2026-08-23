@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MarkdownContent } from "@/lib/markdown";
+import { formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { serviceItemsLabel } from "@/lib/service-items";
 import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import type { ServiceOrderDetailFile, ServiceOrderDetailItem } from "@/lib/service-order-detail";
@@ -93,19 +94,6 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 
-function formatDateTime(value?: string | null) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
-}
-
-function formatFileSize(value?: number) {
-  const size = Number(value || 0);
-  if (!size) return "-";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function textValue(value?: string | null, fallback = "-") {
   const text = String(value || "").trim();
   return text || fallback;
@@ -181,12 +169,6 @@ function engineerText(order: ServiceOrderDetailItem, fallback: string) {
     .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
     .filter(Boolean);
   return names.length ? names.join("、") : order.engineerName || fallback;
-}
-
-function formatDateRange(start?: string | null, end?: string | null) {
-  if (!start && !end) return "-";
-  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
-  return formatDateTime(start || end);
 }
 
 function serviceTimeRange(order: ServiceOrderDetailItem) {

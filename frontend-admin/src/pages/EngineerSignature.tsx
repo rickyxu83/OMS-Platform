@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SignatureCapture } from "@/components/SignatureCapture";
 import { api } from "@/services/api";
+import { formatDateTime } from "@/lib/format";
 
 interface EngineerSignatureItem {
   realName?: string;
@@ -29,10 +30,6 @@ const ROLE_LABELS: Record<string, string> = {
   engineer: "工程师",
   purchaser: "采购",
 };
-
-function formatDateTime(value?: string) {
-  return String(value || "").replace("T", " ").slice(0, 16) || "-";
-}
 
 export function EngineerSignature() {
   const { token = "" } = useParams();

@@ -100,10 +100,7 @@ export function batchRowHasInput(row: BatchDeviceRow) {
   return Boolean(row.name.trim() || row.model.trim() || row.serialNo.trim() || row.mrNo.trim());
 }
 
-export function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
-}
+export { formatDate } from "@/lib/format";
 
 export function inputDate(value?: string) {
   if (!value) return "";

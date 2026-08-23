@@ -22,7 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate } from "@/lib/format";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
@@ -604,11 +604,6 @@ const CUSTOMER_MERGE_ROLES = new Set([
 
 function levelOf(c: Customer): string {
   return c.level || "normal";
-}
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
 }
 
 function telHref(value?: string) {

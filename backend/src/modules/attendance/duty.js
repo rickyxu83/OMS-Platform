@@ -1,6 +1,6 @@
 const { query, transaction } = require('../../config/db')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
-const { weekendDates, assignDates, dedupeRecords, markOverlaps, nextBatchStatus } = require('./duty-domain')
+const { weekendDates, holidaySpans, assignDates, dedupeRecords, holidayPriorityResolve, markOverlaps, nextBatchStatus } = require('./duty-domain')
 
 let schemaReady
 const yearPattern = /^20\d{2}$/
@@ -15,6 +15,15 @@ function numberIds(value) {
 function validDate(value, year) {
   if (!datePattern.test(String(value || '')) || !String(value).startsWith(`${year}-`)) return false
   return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+}
+
+async function ensureDutyEndDateColumn() {
+  // 注意：query() 直接返回 rows 数组（勿用 [rows, fields] 解构），避免巡检计划同款 500
+  const columns = await query(`SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance_duty_records' AND COLUMN_NAME = 'duty_end_date'`)
+  if (!columns.length) {
+    await query(`ALTER TABLE attendance_duty_records ADD COLUMN duty_end_date DATE NULL AFTER duty_date`)
+  }
 }
 
 async function ensureSchema() {
@@ -48,7 +57,8 @@ async function ensureSchema() {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (duty_month), KEY idx_attendance_duty_batch_status (status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`)
-  })()
+    await ensureDutyEndDateColumn()
+    })()
   return schemaReady
 }
 
@@ -72,20 +82,33 @@ async function setup(req, res) {
   await ensureSchema()
   const year = Number(req.query.year)
   if (!yearPattern.test(String(year))) throw badRequest('年份格式不正确')
-  const [templates, holidays, engineers] = await Promise.all([
+  const [templates, holidayRows, engineers] = await Promise.all([
     query(`SELECT t.id, t.duty_type, t.assignment_mode, t.template_name, m.employee_id, m.sequence_no
       FROM attendance_duty_templates t LEFT JOIN attendance_duty_template_members m ON m.template_id = t.id
       WHERE t.duty_year = :year ORDER BY t.duty_type, m.sequence_no`, { year }),
     query(`SELECT holiday_date, holiday_name FROM attendance_legal_holidays
-      WHERE is_active = 1 AND holiday_date >= :start AND holiday_date <= :end ORDER BY holiday_date`, { start: `${year}-01-01`, end: `${year}-12-31` }),
+      WHERE is_active = 1 AND day_type = 'legal_holiday' AND holiday_date >= :start AND holiday_date <= :end ORDER BY holiday_date`, { start: `${year}-01-01`, end: `${year}-12-31` }),
     listEngineers(),
   ])
   const weekend = templates.filter((row) => row.duty_type === 'weekend_on_call')
+  const holidays = holidayRows.map((row) => ({ date: row.holiday_date, name: row.holiday_name }))
+  const spans = holidaySpans(holidays)
+  // 历史按天记录按假期名聚合为已选人员（同一假期多天去重合并）
   const holidayAssignments = await query(`SELECT duty_date, employee_id, reason FROM attendance_duty_records
     WHERE duty_type = 'legal_holiday_on_call' AND duty_date >= :start AND duty_date <= :end AND batch_status IN ('draft', 'rejected')
     ORDER BY duty_date, employee_id`, { start: `${year}-01-01`, end: `${year}-12-31` })
+  const assignmentByName = new Map()
+  for (const row of holidayAssignments) {
+    const name = row.reason || '法定节假日'
+    if (!assignmentByName.has(name)) assignmentByName.set(name, new Set())
+    assignmentByName.get(name).add(Number(row.employee_id))
+  }
+  const items = spans.map((span) => ({
+    name: span.name, startDate: span.start, endDate: span.end, days: span.days,
+    employeeIds: [...(assignmentByName.get(span.name) || [])],
+  }))
   res.json({ year, engineers, weekend: weekend.length ? { mode: weekend[0].assignment_mode, employeeIds: weekend.map((row) => Number(row.employee_id)).filter(Boolean) } : null,
-    holidays: holidays.map((row) => ({ date: row.holiday_date, name: row.holiday_name })), holidayAssignments })
+    holidays: items })
 }
 
 async function saveSetup(req, res) {
@@ -96,20 +119,26 @@ async function saveSetup(req, res) {
   const weekendEmployeeIds = numberIds(req.body?.weekend?.employeeIds)
   const holidayItems = Array.isArray(req.body?.holidays) ? req.body.holidays : []
   if (!weekendEmployeeIds.length) throw badRequest('请选择至少一名 7×24 值班工程师')
+  // 假期段校验：一个假期一份配置（起止日期 + 天数），每人一条记录、units 记天数
   const holidayRecords = holidayItems.flatMap((item) => {
-    if (!validDate(item.date, year)) throw badRequest('法定节假日日期格式不正确')
+    if (!validDate(item.startDate, year) || !validDate(item.endDate, year)) throw badRequest('法定节假日日期格式不正确')
+    if (String(item.startDate) > String(item.endDate)) throw badRequest('假期起止日期不正确')
+    const days = Number(item.days)
+    if (!Number.isInteger(days) || days < 1 || days > 31) throw badRequest('假期天数不正确')
     const employeeIds = numberIds(item.employeeIds)
     if (!employeeIds.length) return []
-    return employeeIds.map((employeeId) => ({ date: item.date, employeeId, reason: String(item.name || '法定节假日值班').slice(0, 100) }))
+    const name = String(item.name || '法定节假日').slice(0, 100)
+    return employeeIds.map((employeeId) => ({ date: item.startDate, endDate: item.endDate, days, employeeId, name }))
   })
   const allIds = [...new Set([...weekendEmployeeIds, ...holidayRecords.map((item) => item.employeeId)])]
   const validEngineers = await enabledEngineers(allIds)
   if (validEngineers.length !== allIds.length) throw badRequest('选择中包含停用或非工程师账号')
   const rawRecords = [
     ...assignDates(weekendDates(year), weekendEmployeeIds, mode).map((item) => ({ ...item, dutyType: 'weekend_on_call', reason: '7×24 值班' })),
-    ...holidayRecords.map((item) => ({ ...item, dutyType: 'legal_holiday_on_call' })),
+    ...holidayRecords.map((item) => ({ ...item, dutyType: 'legal_holiday_on_call', reason: item.name })),
   ]
-  const records = markOverlaps(dedupeRecords(rawRecords))
+  // 节假日优先：删除与节假日段重叠的 7×24 记录后，再计算剩余记录的重叠状态
+  const records = markOverlaps(dedupeRecords(holidayPriorityResolve(rawRecords)))
   await transaction(async (connection) => {
     const [locked] = await connection.execute(`SELECT duty_month FROM attendance_duty_monthly_batches
       WHERE duty_month LIKE :yearPrefix AND status NOT IN ('draft', 'rejected') FOR UPDATE`, { yearPrefix: `${year}-%` })
@@ -123,18 +152,34 @@ async function saveSetup(req, res) {
     for (const [index, employeeId] of weekendEmployeeIds.entries()) await connection.execute(
       'INSERT INTO attendance_duty_template_members (template_id, employee_id, sequence_no) VALUES (:templateId, :employeeId, :sequence)',
       { templateId, employeeId, sequence: index + 1 })
+    // 假期段按起始月归属；段内任一月已送审则整段跳过（不删不插，保护已审批数据）
+    const spanMonths = (span) => {
+      const startMonth = span.date.slice(0, 7)
+      const endMonth = String(span.endDate || span.date).slice(0, 7)
+      return new Set([startMonth, endMonth])
+    }
     const editableMonths = [...new Set(records.map((record) => record.date.slice(0, 7)).filter((month) => !lockedMonths.has(month)))]
     if (editableMonths.length) {
       const params = Object.fromEntries(editableMonths.map((month, index) => [`month${index}`, month]))
       await connection.execute(`DELETE FROM attendance_duty_records WHERE duty_month IN (${editableMonths.map((_, index) => `:month${index}`).join(', ')}) AND batch_status IN ('draft', 'rejected')`, params)
     }
+    // 删除假期段范围内的旧按天记录（历史数据），整段未锁定才允许
+    const writableSpans = records.filter((record) => record.dutyType === 'legal_holiday_on_call' && [...spanMonths(record)].every((month) => !lockedMonths.has(month)))
+    const holidayParams = Object.fromEntries(writableSpans.flatMap((span, index) => [[`start${index}`, span.date], [`end${index}`, span.endDate]]))
+    if (writableSpans.length) {
+      await connection.execute(`DELETE FROM attendance_duty_records
+        WHERE duty_type = 'legal_holiday_on_call' AND batch_status IN ('draft', 'rejected') AND (
+          ${writableSpans.map((_, index) => `duty_date BETWEEN :start${index} AND :end${index}`).join(' OR ')}
+        )`, holidayParams)
+    }
     for (const record of records) {
       const month = record.date.slice(0, 7)
       if (lockedMonths.has(month)) continue
+      if (record.dutyType === 'legal_holiday_on_call' && [...spanMonths(record)].some((spanMonth) => lockedMonths.has(spanMonth))) continue
       await connection.execute(`INSERT INTO attendance_duty_records
-        (duty_date, duty_month, employee_id, duty_type, reason, units, overlap_state, source_template_id, batch_status)
-        VALUES (:date, :month, :employeeId, :dutyType, :reason, 1, :overlapState, :templateId, 'draft')`,
-      { ...record, month, templateId: record.dutyType === 'weekend_on_call' ? templateId : null })
+        (duty_date, duty_end_date, duty_month, employee_id, duty_type, reason, units, overlap_state, source_template_id, batch_status)
+        VALUES (:date, :endDate, :month, :employeeId, :dutyType, :reason, :units, :overlapState, :templateId, 'draft')`,
+      { ...record, month, endDate: record.endDate || null, units: record.days ?? record.units ?? 1, templateId: record.dutyType === 'weekend_on_call' ? templateId : null })
     }
   })
   res.json({ ok: true, generated: records.length })
@@ -162,10 +207,20 @@ async function resolveOverlap(req, res) {
   if (!record) throw notFound('值班记录不存在')
   if (!['draft', 'rejected'].includes(record.batch_status)) throw forbidden('该月份已送审，不能修改')
   await transaction(async (connection) => {
-    await connection.execute(`DELETE FROM attendance_duty_records WHERE duty_date = :date AND employee_id = :employeeId
-      AND duty_type <> :keepType AND batch_status IN ('draft', 'rejected')`, { date: record.duty_date, employeeId: record.employee_id, keepType })
-    await connection.execute(`UPDATE attendance_duty_records SET overlap_state = 'resolved' WHERE duty_date = :date AND employee_id = :employeeId AND duty_type = :keepType`,
-      { date: record.duty_date, employeeId: record.employee_id, keepType })
+    if (keepType === 'weekend_on_call') {
+      // 保留 7×24：删除覆盖该周末日的节假日段记录（段内任一天与之冲突即整段让位）
+      await connection.execute(`DELETE FROM attendance_duty_records WHERE duty_type = 'legal_holiday_on_call' AND employee_id = :employeeId
+        AND duty_date <= :date AND COALESCE(duty_end_date, duty_date) >= :date AND batch_status IN ('draft', 'rejected')`,
+        { date: record.duty_date, employeeId: record.employee_id })
+      // 该 weekend 记录不再冲突，置为已处理
+      await connection.execute(`UPDATE attendance_duty_records SET overlap_state = 'resolved' WHERE id = :id`, { id })
+    } else {
+      // 保留法定节假日：删除该假期段内同人的 7×24 记录，假期段记录置为已处理
+      await connection.execute(`DELETE FROM attendance_duty_records WHERE duty_type = 'weekend_on_call' AND employee_id = :employeeId
+        AND duty_date >= :start AND duty_date <= :end AND batch_status IN ('draft', 'rejected')`,
+        { start: record.duty_date, end: record.duty_end_date || record.duty_date, employeeId: record.employee_id })
+      await connection.execute(`UPDATE attendance_duty_records SET overlap_state = 'resolved' WHERE id = :id`, { id })
+    }
   })
   res.json({ ok: true })
 }
@@ -202,4 +257,72 @@ const submit = (req, res) => transition(req, res, 'submit')
 const approve = (req, res) => transition(req, res, 'approve')
 const reject = (req, res) => transition(req, res, 'reject')
 
-module.exports = { ensureSchema, setup, saveSetup, monthly, resolveOverlap, submit, approve, reject }
+// 每月 1 号自动提交当月值班批次：有记录、未提交（draft/被退回）且无未处理重叠时
+// 置为待行政终审（系统自动提交，无人工提交人），并给行政主管入队邮件通知。
+// 幂等：已提交/已终审/无记录/有重叠的月份跳过并返回原因。
+function shanghaiMonthString(reference) {
+  const shifted = new Date((reference || new Date()).getTime() + 8 * 60 * 60 * 1000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+async function autoSubmitMonthlyBatches(reference) {
+  await ensureSchema()
+  const month = shanghaiMonthString(reference)
+  const result = await transaction(async (connection) => {
+    await connection.execute(`INSERT IGNORE INTO attendance_duty_monthly_batches (duty_month, status) VALUES (:month, 'draft')`, { month })
+    const [batches] = await connection.execute('SELECT * FROM attendance_duty_monthly_batches WHERE duty_month = :month FOR UPDATE', { month })
+    const current = batches[0]
+    if (!current || !['draft', 'rejected'].includes(current.status)) return { month, submitted: false, reason: current ? `status_${current.status}` : 'no_batch' }
+    const [counts] = await connection.execute(`SELECT COUNT(*) total, SUM(overlap_state = 'unresolved') unresolved FROM attendance_duty_records WHERE duty_month = :month`, { month })
+    if (!Number(counts[0].total)) return { month, submitted: false, reason: 'no_records' }
+    if (Number(counts[0].unresolved)) return { month, submitted: false, reason: 'unresolved_overlap' }
+    await connection.execute(`UPDATE attendance_duty_monthly_batches SET status = 'pending_admin',
+      supervisor_submitted_by = NULL, supervisor_submitted_at = NOW(),
+      rejected_by = NULL, rejected_at = NULL, rejected_reason = NULL WHERE duty_month = :month`, { month })
+    await connection.execute(`UPDATE attendance_duty_records SET batch_status = 'pending_admin' WHERE duty_month = :month`, { month })
+    return { month, submitted: true }
+  })
+  if (result.submitted) {
+    await queueDutyPendingAdminNotification(month)
+  }
+  return result
+}
+
+async function queueDutyPendingAdminNotification(month) {
+  const { enqueueAttendanceEmailNotification } = require('../../services/attendance-notifications')
+  const admins = await query(`SELECT id, real_name, username, email FROM users
+    WHERE status = 'active' AND role IN ('admin') AND email IS NOT NULL AND email <> ''`)
+  if (!admins.length) return { queued: false, reason: 'no_admin_email' }
+  const [stats] = await query(`SELECT COUNT(*) total, SUM(units) units FROM attendance_duty_records WHERE duty_month = :month AND batch_status = 'pending_admin'`, { month })
+  const total = Number(stats[0]?.total || 0)
+  const units = Number(stats[0]?.units || 0)
+  const result = await enqueueAttendanceEmailNotification(null, {
+    requestId: 0,
+    eventKey: `duty:${month}:auto-submitted`,
+    eventType: 'duty_pending_admin',
+    recipients: admins,
+    payload: { month, total, units, auto: true },
+  })
+  return result
+}
+
+async function listMonthlyBatches(status) {
+  await ensureSchema()
+  const rows = await query(`SELECT b.duty_month, b.status, b.supervisor_submitted_by, b.supervisor_submitted_at, b.admin_approved_at, b.rejected_at, b.rejected_reason,
+      COUNT(r.id) AS record_count, COALESCE(SUM(r.units), 0) AS units_sum
+    FROM attendance_duty_monthly_batches b
+    LEFT JOIN attendance_duty_records r ON r.duty_month = b.duty_month
+    WHERE (:status = '' OR b.status = :status)
+    GROUP BY b.duty_month, b.status, b.supervisor_submitted_by, b.supervisor_submitted_at, b.admin_approved_at, b.rejected_at, b.rejected_reason
+    ORDER BY b.duty_month DESC`,
+  { status: String(status || '') })
+  return rows.map((row) => ({
+    month: row.duty_month, status: row.status,
+    submittedAt: row.supervisor_submitted_at, approvedAt: row.admin_approved_at,
+    rejectedAt: row.rejected_at, rejectedReason: row.rejected_reason,
+    recordCount: Number(row.record_count), unitsSum: Number(row.units_sum),
+    autoSubmitted: !row.supervisor_submitted_by,
+  }))
+}
+
+module.exports = { ensureSchema, setup, saveSetup, monthly, resolveOverlap, submit, approve, reject, autoSubmitMonthlyBatches, listMonthlyBatches }

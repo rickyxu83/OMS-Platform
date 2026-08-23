@@ -24,7 +24,7 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate } from "@/lib/format";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
@@ -97,10 +97,6 @@ const CADENCE_VARIANT: Record<string, "info" | "purple" | "success" | "secondary
 
 function inputDate(value?: string) {
   return String(value || "").slice(0, 10);
-}
-
-function formatDate(value?: string) {
-  return inputDate(value) || "-";
 }
 
 export function InspectionSchedules() {

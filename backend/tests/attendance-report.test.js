@@ -72,7 +72,8 @@ assert.throws(
   assert.equal(data.leaveSummary[0].requestCount, 1)
   assert.equal(data.overtimeSummary[0].payHours, 2)
   assert.equal(data.overtimeSummary[0].requestCount, 1)
-  assert.equal(data.overtimeSummary[0].weightedPayHours, 6)
+  // 三倍折算已取消：折算时数等同原始付费时长（不再 ×3）
+  assert.equal(data.overtimeSummary[0].weightedPayHours, 2)
   assert.equal(data.overtimeDetails[0].reason, '客户系统升级')
   assert.equal(data.balanceSummary[0].annualOpeningDays, 10)
   assert.equal(data.balanceSummary[0].annualUsedDays, 3)

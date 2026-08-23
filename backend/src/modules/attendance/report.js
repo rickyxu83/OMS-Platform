@@ -273,15 +273,15 @@ function buildReportData(filters, rows) {
       if (row.overtime_result === 'comp_time') summary.compTimeHours = round(summary.compTimeHours + amount.hours)
       if (row.overtime_result === 'pay') {
         summary.payHours = round(summary.payHours + amount.hours)
-        summary.weightedPayHours = round(summary.weightedPayHours + amount.hours * multiplier)
+        // 三倍折算已取消（2026-08-21）：折算时数不再乘倍率，等同原始付费时长，由行政线下自行计算
+        summary.weightedPayHours = round(summary.weightedPayHours + amount.hours)
         if (row.overtime_day_type === 'legal_holiday') summary.legalHolidayPayHours = round(summary.legalHolidayPayHours + amount.hours)
       }
       overtimeDetails.push({
         employeeId, employeeName: employee.employee_name, status, requestId: Number(row.id),
         kind: OVERTIME_KIND_LABELS[row.overtime_kind] || row.overtime_kind || '-', startAt: mysqlDate(row.start_at), endAt: mysqlDate(row.end_at),
         hours: amount.hours, result: OVERTIME_RESULT_LABELS[row.overtime_result] || row.overtime_result || '-',
-        dayType: DAY_TYPE_LABELS[row.overtime_day_type] || row.overtime_day_type || '-', multiplier,
-        weightedHours: row.overtime_result === 'pay' ? round(amount.hours * multiplier) : 0,
+        dayType: DAY_TYPE_LABELS[row.overtime_day_type] || row.overtime_day_type || '-', multipliers: null, weightedHours: 0,
         reason: text(row.reason) || sourceReference(row) || '-', approvedAt: finalApprovedAt(row), source: sourceReference(row),
       })
       continue
@@ -556,14 +556,14 @@ function buildWorkbook(data) {
     { label: '转调休', value: `${overtimeCompHours} 小时` },
     { label: '计加班费', value: `${overtimePayHours} 小时` },
   ], 14)
-  next = addSection(overtime, 10, '01  员工汇总', ['员工', '状态', '加班次数', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数', '加班费折算时数'],
-    data.overtimeSummary.map((row) => [row.name, row.status, row.requestCount, row.totalHours, row.compTimeHours, row.payHours, row.legalHolidayPayHours, row.weightedPayHours]),
-    [18, 10, 12, 14, 14, 14, 22, 18])
+  next = addSection(overtime, 10, '01  员工汇总', ['员工', '状态', '加班次数', '加班总时数', '转调休时数', '加班费时数', '法定节假日加班费时数'],
+    data.overtimeSummary.map((row) => [row.name, row.status, row.requestCount, row.totalHours, row.compTimeHours, row.payHours, row.legalHolidayPayHours]),
+    [18, 10, 12, 14, 14, 14, 22])
   next += 1
-  addSection(overtime, next, '02  申请明细', ['员工', '状态', '申请编号', '加班类型', '加班事由', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '倍率', '折算时数', '最终审批时间', '来源工单'],
-    data.overtimeDetails.map((row) => [row.employeeName, row.status, row.requestId, row.kind, row.reason, row.startAt, row.endAt, row.hours, row.result, row.dayType, row.multiplier, row.weightedHours, row.approvedAt, row.source]),
-    [18, 10, 12, 14, 28, 20, 20, 14, 12, 14, 10, 12, 20, 20])
-  overtime.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 8 } }
+  addSection(overtime, next, '02  申请明细', ['员工', '状态', '申请编号', '加班类型', '加班事由', '开始时间', '结束时间', '区间内时长', '处理方式', '日期类型', '最终审批时间', '来源工单'],
+    data.overtimeDetails.map((row) => [row.employeeName, row.status, row.requestId, row.kind, row.reason, row.startAt, row.endAt, row.hours, row.result, row.dayType, row.approvedAt, row.source]),
+    [18, 10, 12, 14, 28, 20, 20, 14, 12, 14, 20, 20])
+  overtime.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 7 } }
 
   const annualBalanceDays = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.annualDays || 0), 0))
   const compBalanceHours = round(data.balanceSummary.reduce((sum, row) => sum + Number(row.compTimeHours || 0), 0))
@@ -610,8 +610,8 @@ async function addDutyWorksheet(workbook, filters) {
   const params = { startDate: filters.startDate, endDate: filters.endDate }
   const employeeFilter = selectedSql(filters.employeeIds, 'r.employee_id', params)
   const rows = await query(
-    `SELECT r.id, r.duty_date, r.employee_id, p.employee_name, r.duty_type, r.reason, r.units,
-            b.supervisor_submitted_at, b.admin_approved_at,
+    `SELECT r.id, r.duty_date, r.duty_end_date, r.employee_id, p.employee_name, r.duty_type, r.reason, r.units,
+            b.supervisor_submitted_at, b.supervisor_submitted_by, b.admin_approved_at,
             COALESCE(supervisor.real_name, supervisor.username) AS supervisor_name,
             COALESCE(admin.real_name, admin.username) AS admin_name
      FROM attendance_duty_records r
@@ -619,21 +619,27 @@ async function addDutyWorksheet(workbook, filters) {
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      LEFT JOIN users supervisor ON supervisor.id = b.supervisor_submitted_by
      LEFT JOIN users admin ON admin.id = b.admin_approved_by
-     WHERE r.duty_date >= :startDate AND r.duty_date <= :endDate${employeeFilter}
+     WHERE COALESCE(r.duty_end_date, r.duty_date) >= :startDate AND r.duty_date <= :endDate${employeeFilter}
      ORDER BY r.duty_date, p.employee_name, r.duty_type`,
     params,
   )
   const sheet = workbook.addWorksheet('值班津贴', { views: [{ state: 'frozen', ySplit: 11 }], properties: { tabColor: { argb: REPORT_COLORS.warning } } })
   const generatedAt = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).replaceAll('/', '-')
   styleTitle(sheet, '工程师值班津贴', filters, generatedAt, 10)
+  const unitSum = (rows) => rows.reduce((sum, row) => sum + Number(row.units || 0), 0)
+  const dutyRange = (row) => (row.duty_end_date && String(row.duty_end_date) !== String(row.duty_date))
+    ? `${String(row.duty_date).slice(5)}~${String(row.duty_end_date).slice(5)}`
+    : String(row.duty_date).slice(5)
   addMetricStrip(sheet, 7, [
-    { label: '值班记录', value: `${rows.length} 次` },
+    { label: '值班记录', value: `${unitSum(rows)} 次` },
     { label: '涉及员工', value: `${new Set(rows.map((row) => row.employee_id)).size} 人` },
-    { label: '7×24 值班', value: `${rows.filter((row) => row.duty_type === 'weekend_on_call').length} 次` },
-    { label: '法定节假日值班', value: `${rows.filter((row) => row.duty_type === 'legal_holiday_on_call').length} 次` },
+    { label: '7×24 值班', value: `${unitSum(rows.filter((row) => row.duty_type === 'weekend_on_call'))} 次` },
+    { label: '法定节假日值班', value: `${unitSum(rows.filter((row) => row.duty_type === 'legal_holiday_on_call'))} 次` },
   ], 10)
   addSection(sheet, 10, '01  已终审津贴明细', ['记录编号', '值班日期', '员工', '值班类型', '目的／类别', '事由', '次数', '主管提交', '行政终审', '终审时间'],
-    rows.map((row) => [row.id, row.duty_date, row.employee_name, row.duty_type === 'weekend_on_call' ? '7×24 值班' : '法定节假日值班', '加班费', row.reason, Number(row.units), row.supervisor_name || '', row.admin_name || '', mysqlDate(row.admin_approved_at)]),
+    rows.map((row) => [row.id, dutyRange(row), row.employee_name, row.duty_type === 'weekend_on_call' ? '7×24 值班' : '法定节假日值班', '加班费', row.reason, Number(row.units),
+      row.supervisor_name || (row.supervisor_submitted_by === null ? '系统自动' : ''),
+      row.admin_name || '', mysqlDate(row.admin_approved_at)]),
     [12, 14, 18, 20, 14, 22, 10, 16, 16, 20])
   sheet.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: 10 } }
   sheet.properties.defaultRowHeight = 20

@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "26.0820.2028",
+  "version": "26.0821.0011",
   "description": "",
   "main": "src/server.js",
   "scripts": {
@@ -30,6 +30,7 @@
     "helmet": "^8.2.0",
     "ip2region": "^2.3.0",
     "jsonwebtoken": "^9.0.3",
+    "lunar-javascript": "^1.7.7",
     "multer": "^2.2.0",
     "mysql2": "^3.22.3",
     "node-cron": "^4.2.1",
