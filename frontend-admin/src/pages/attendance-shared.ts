@@ -247,3 +247,36 @@ export function createBlankForm() {
     annualEndPeriod: "morning" as AnnualLeavePeriod,
   });
 }
+
+/** 可继续提交的草稿申请（结构子集，Attendance.tsx 的 AttendanceRequest 天然满足） */
+export interface ResumableDraft {
+  id: number | string;
+  requestType: RequestType;
+  leaveType?: string | null;
+  delegateEmployeeId?: number | string | null;
+  startAt?: string;
+  endAt?: string;
+  proofFiles?: Array<{ id: number | string; originalName: string }>;
+  proofFileCount?: number;
+}
+
+/** 从草稿重建抽屉表单（继续提交入口用）。仅请假/调休有草稿；加班单一步提交无草稿态。 */
+export function formFromDraft(draft: ResumableDraft) {
+  const startDate = dateValue(draft.startAt);
+  const endDate = dateValue(draft.endAt || draft.startAt);
+  const startTime = String(draft.startAt || "").slice(11, 16);
+  const endTime = String(draft.endAt || "").slice(11, 16);
+  const singleDay = startDate === endDate;
+  return applyAnnualLeaveRange({
+    ...createBlankForm(),
+    requestType: draft.requestType === "comp_time" ? "comp_time" as RequestType : "leave" as RequestType,
+    leaveType: draft.leaveType || "annual",
+    delegateEmployeeId: draft.delegateEmployeeId ? String(draft.delegateEmployeeId) : "",
+    annualStartDate: startDate,
+    annualEndDate: endDate,
+    // 单日：09-14 上午 / 14-18 下午 / 09-18 全天；多日：按起止半天槽位还原
+    annualPeriod: singleDay ? (startTime === "14:00" ? "afternoon" : endTime === "14:00" ? "morning" : "day") as AnnualLeavePeriod : "morning" as AnnualLeavePeriod,
+    annualStartPeriod: (startTime === "14:00" ? "afternoon" : "morning") as AnnualLeavePeriod,
+    annualEndPeriod: (endTime === "14:00" ? "morning" : "afternoon") as AnnualLeavePeriod,
+  });
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -532,6 +532,8 @@ export function Attendance() {
   // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
   const [settingsView, setSettingsView] = useState<"rules" | "holidays">(() => searchParams.get("view") === "holidays" ? "holidays" : "rules");
   const [applyOpen, setApplyOpen] = useState(false);
+  // 我的申请-草稿行「继续提交」：预填抽屉并锁定表单（草稿内容不可改，仅补材料提交）
+  const [resumeDraft, setResumeDraft] = useState<AttendanceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
@@ -1247,7 +1249,7 @@ export function Attendance() {
         </div>
         <div className="flex items-center gap-2">
           {canApply ? (
-            <Button onClick={() => setApplyOpen(true)}>
+            <Button onClick={() => { setResumeDraft(null); setApplyOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
               新建申请
             </Button>
@@ -1432,9 +1434,16 @@ export function Attendance() {
               </>
             )}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
-              <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
-                <RotateCcw className="mr-1 h-4 w-4" /> 撤回
-              </Button>
+              <>
+                {item.status === "draft" ? (
+                  <Button size="sm" onClick={() => { setResumeDraft(item); setApplyOpen(true); }}>
+                    <Send className="mr-1 h-4 w-4" /> 继续提交
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
+                  <RotateCcw className="mr-1 h-4 w-4" /> 撤回
+                </Button>
+              </>
             ) : null}
           /> : null}
 
@@ -2073,10 +2082,11 @@ export function Attendance() {
 
       <AttendanceApplyDrawer
         open={applyOpen}
-        onOpenChange={setApplyOpen}
+        onOpenChange={(open) => { setApplyOpen(open); if (!open) setResumeDraft(null); }}
         onSubmitted={load}
         myProfile={myProfile}
         holidayDates={applicationHolidayDates}
+        resumeDraft={resumeDraft}
       />
 
       <ReasonConfirmDialog
