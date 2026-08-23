@@ -22,6 +22,7 @@ import { api } from "@/services/api";
 import { formatCount, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 
 // 法定节假日模块说明文案
 const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。「调休补班」按正常工作日处理。";
@@ -181,6 +182,19 @@ interface RoleOption {
   label: string;
 }
 
+// 统一原因/确认对话框（ReasonConfirmDialog）的待执行动作描述
+interface PendingConfirmAction {
+  title: string;
+  description?: ReactNode;
+  warning?: ReactNode;
+  reasonRequired?: boolean;
+  reasonLabel?: string;
+  reasonPlaceholder?: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  run: (reason: string) => Promise<boolean>;
+}
+
 interface ApprovalRoleRuleStep {
   stepOrder: number;
   approverRole: string;
@@ -219,6 +233,9 @@ const HOLIDAY_SOURCE_LABELS: Record<string, string> = {
   manual: "手动",
   auto: "自动",
 };
+
+// 与后端 listRequests 的 LIMIT 保持一致：达到即视为截断，提示用日期范围查档
+const RECORDS_LIMIT = 300;
 
 const DAY_TYPE_LABELS: Record<string, string> = {
   legal_holiday: "放假",
@@ -554,6 +571,11 @@ export function Attendance() {
   const [recordStatus, setRecordStatus] = useState("all");
   const [recordType, setRecordType] = useState("all");
   const [recordKeyword, setRecordKeyword] = useState("");
+  const [recordStartDate, setRecordStartDate] = useState("");
+  const [recordEndDate, setRecordEndDate] = useState("");
+  // 高危操作统一确认对话框（驳回/退回/作废/撤回/停用节假日）
+  const [pendingAction, setPendingAction] = useState<PendingConfirmAction | null>(null);
+  const [pendingActionSaving, setPendingActionSaving] = useState(false);
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
   const [reportExportOpen, setReportExportOpen] = useState(false);
@@ -591,14 +613,13 @@ export function Attendance() {
         api.get("/attendance/legal-holidays"),
       ];
       if (canViewAll) {
-        calls.push(api.get("/attendance/requests?scope=all"));
         calls.push(api.get("/attendance/employees"));
         calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
         calls.push(api.get("/attendance/supervisor-role-rules"));
         const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
         calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
-      const [meData, mineData, supervisorData, applicationHolidayData, allData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, applicationHolidayData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
@@ -606,7 +627,6 @@ export function Attendance() {
       if (canViewAll) {
         const supervisorRulesData = (roleRuleData || {}) as { roles?: RoleOption[]; items?: Array<{ applicantRole: string; applicantRoleLabel?: string; supervisorRole: string }> };
         const ruleItems = supervisorRulesData.items || [];
-        setAllRequests((allData?.items || []) as AttendanceRequest[]);
         setEmployees((employeeData?.items || []) as EmployeeProfile[]);
         setReportItems((reportData?.items || []) as MonthlyReportItem[]);
         setRoleOptions(supervisorRulesData.roles || []);
@@ -614,6 +634,7 @@ export function Attendance() {
         setSupervisorRuleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
         setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
+      await loadAllRequests();
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
     } finally {
@@ -625,6 +646,24 @@ export function Attendance() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth, holidayYear]);
+
+  // 申请明细（scope=all）独立加载：日期范围变化只重拉本列表，不动整页；
+  // 操作成功后由 load() 顺带调用保持新鲜
+  async function loadAllRequests() {
+    if (!canViewAll) return;
+    try {
+      const params = new URLSearchParams({ scope: "all" });
+      if (recordStartDate) params.set("startDate", recordStartDate);
+      if (recordEndDate) params.set("endDate", recordEndDate);
+      const data = await api.get(`/attendance/requests?${params.toString()}`);
+      setAllRequests((data?.items || []) as AttendanceRequest[]);
+    } catch { /* 静默：主 load 已统一报错，避免双 toast */ }
+  }
+
+  useEffect(() => {
+    loadAllRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewAll, recordStartDate, recordEndDate]);
 
   // 审批页法定节假日只读展示：按所选年份拉取（GET 对全体考勤用户开放）
   useEffect(() => {
@@ -747,25 +786,40 @@ export function Attendance() {
 
 
 
-  async function action(path: string, success: string, body?: any) {
+  async function action(path: string, success: string, body?: any): Promise<boolean> {
     try {
       await api.post(path, body);
       toast.success(success);
       await load();
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
+      return false;
     }
   }
 
-  async function reject(item: AttendanceRequest) {
-    const value = window.prompt("请输入驳回原因");
-    if (value === null) return;
-    const reason = value.trim();
-    if (!reason) {
-      toast.error("请填写驳回原因");
-      return;
+  async function confirmPendingAction(reason: string) {
+    if (!pendingAction) return;
+    setPendingActionSaving(true);
+    try {
+      const ok = await pendingAction.run(reason);
+      if (ok) setPendingAction(null);
+    } finally {
+      setPendingActionSaving(false);
     }
-    await action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason });
+  }
+
+  function reject(item: AttendanceRequest) {
+    setPendingAction({
+      title: "驳回申请",
+      description: <>{item.employeeName || "-"} · {requestTypeLabel(item.requestType)}</>,
+      confirmLabel: "确认驳回",
+      destructive: true,
+      reasonRequired: true,
+      reasonLabel: "驳回原因",
+      reasonPlaceholder: "请填写驳回原因（将通知申请人）",
+      run: (reason) => action(`/attendance/requests/${item.id}/reject`, "已驳回", { reason }),
+    });
   }
 
   // 审批页值班津贴待终审：拉取待行政终审的月度批次；操作成功后刷新列表保持双入口同步
@@ -780,28 +834,59 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, canDutyApprove]);
 
-  async function dutyAction(month: string, name: "approve" | "reject", reason = "") {
+  async function dutyAction(month: string, name: "approve" | "reject", reason = ""): Promise<boolean> {
     setDutyBatchSaving(true);
     try {
       await api.post(`/attendance/duty/monthly/${month}/${name}`, reason ? { reason } : undefined);
       toast.success(name === "approve" ? `${month} 值班津贴已终审` : `${month} 已退回工程主管`);
       await loadDutyPendingBatches();
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
+      return false;
     } finally {
       setDutyBatchSaving(false);
     }
   }
 
-  async function rejectDutyBatch(month: string) {
-    const value = window.prompt("请输入退回原因");
-    if (value === null) return;
-    const reason = value.trim();
-    if (!reason) {
-      toast.error("请填写退回原因");
-      return;
-    }
-    await dutyAction(month, "reject", reason);
+  function rejectDutyBatch(month: string) {
+    setPendingAction({
+      title: "退回值班津贴批次",
+      description: `${month} 批次将退回工程主管重新确认`,
+      confirmLabel: "确认退回",
+      destructive: true,
+      reasonRequired: true,
+      reasonLabel: "退回原因",
+      reasonPlaceholder: "请填写退回原因",
+      run: async (reason) => {
+        const ok = await dutyAction(month, "reject", reason);
+        if (ok) setDutyDetail(null);
+        return ok;
+      },
+    });
+  }
+
+  function withdrawRequest(item: AttendanceRequest) {
+    setPendingAction({
+      title: "撤回申请",
+      description: <>{requestTypeLabel(item.requestType)} · 撤回后不再进入审批，可重新新建申请。</>,
+      confirmLabel: "确认撤回",
+      run: () => action(`/attendance/requests/${item.id}/withdraw`, "已撤回"),
+    });
+  }
+
+  function voidRequest(item: AttendanceRequest) {
+    setPendingAction({
+      title: "作废申请",
+      description: <>{item.employeeName || "-"} · {requestTypeLabel(item.requestType)}</>,
+      warning: "作废将回滚该申请已结算的余额（特休/调休自动返还），操作不可撤销，原因将留档备查。",
+      confirmLabel: "确认作废",
+      destructive: true,
+      reasonRequired: true,
+      reasonLabel: "作废原因",
+      reasonPlaceholder: "请填写作废原因（留档备查）",
+      run: (reason) => action(`/attendance/requests/${item.id}/void`, "已作废", { reason }),
+    });
   }
 
   async function loadDutyDetail(month: string) {
@@ -1089,15 +1174,24 @@ export function Attendance() {
     }
   }
 
-  async function disableLegalHoliday(item: LegalHolidayItem) {
-    if (!window.confirm(`停用 ${item.date} ${item.name}？`)) return;
-    try {
-      await api.delete(`/attendance/legal-holidays/${encodeURIComponent(item.date)}`);
-      toast.success("法定节假日已停用");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "停用失败");
-    }
+  function disableLegalHoliday(item: LegalHolidayItem) {
+    setPendingAction({
+      title: "停用法定节假日",
+      description: `${item.date} ${item.name} 停用后将不再参与请假/加班类型核算。`,
+      confirmLabel: "确认停用",
+      destructive: true,
+      run: async () => {
+        try {
+          await api.delete(`/attendance/legal-holidays/${encodeURIComponent(item.date)}`);
+          toast.success("法定节假日已停用");
+          await load();
+          return true;
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "停用失败");
+          return false;
+        }
+      },
+    });
   }
 
   async function enableLegalHoliday(item: LegalHolidayItem) {
@@ -1110,7 +1204,7 @@ export function Attendance() {
     }
   }
 
-  const hasRecordFilter = recordStatus !== "all" || recordType !== "all" || recordKeyword.trim() !== "";
+  const hasRecordFilter = recordStatus !== "all" || recordType !== "all" || recordKeyword.trim() !== "" || recordStartDate !== "" || recordEndDate !== "";
   const filteredAllRequests = useMemo(() => {
     const keyword = recordKeyword.trim().toLowerCase();
     return allRequests.filter((item) => {
@@ -1338,7 +1432,7 @@ export function Attendance() {
               </>
             )}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
-              <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/withdraw`, "已撤回")}>
+              <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
                 <RotateCcw className="mr-1 h-4 w-4" /> 撤回
               </Button>
             ) : null}
@@ -1479,6 +1573,11 @@ export function Attendance() {
             >月度汇总</button>
           </div>
           {recordView === "detail" ? (<>
+            {allRequests.length >= RECORDS_LIMIT ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+                已到达单次 {RECORDS_LIMIT} 条上限，仅显示最近记录；查更早记录请用下方起止日期缩小范围。
+              </div>
+            ) : null}
             <RequestList
               title="申请明细"
               description="全员全部类型申请记录，审批通过后可作废"
@@ -1522,11 +1621,16 @@ export function Attendance() {
                     <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
                     <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
                   </div>
-                  {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); }}>重置</Button> : null}
+                  <div className="flex items-center gap-1.5">
+                    <Input className="h-8 w-36" type="date" aria-label="开始日期" value={recordStartDate} onChange={(event) => setRecordStartDate(event.target.value)} />
+                    <span className="text-xs text-muted-foreground">至</span>
+                    <Input className="h-8 w-36" type="date" aria-label="结束日期" min={recordStartDate || undefined} value={recordEndDate} onChange={(event) => setRecordEndDate(event.target.value)} />
+                  </div>
+                  {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
                 </div>
               </>)}
               actions={canAdminApprove ? (item) => item.status === "approved" ? (
-                <Button size="sm" variant="outline" onClick={() => action(`/attendance/requests/${item.id}/void`, "已作废")}><X className="mr-1 h-4 w-4" /> 作废</Button>
+                <Button size="sm" variant="outline" onClick={() => voidRequest(item)}><X className="mr-1 h-4 w-4" /> 作废</Button>
               ) : null : undefined}
             />
           </>) : (
@@ -1973,6 +2077,21 @@ export function Attendance() {
         onSubmitted={load}
         myProfile={myProfile}
         holidayDates={applicationHolidayDates}
+      />
+
+      <ReasonConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.title || ""}
+        description={pendingAction?.description}
+        warning={pendingAction?.warning}
+        reasonRequired={pendingAction?.reasonRequired}
+        reasonLabel={pendingAction?.reasonLabel}
+        reasonPlaceholder={pendingAction?.reasonPlaceholder}
+        confirmLabel={pendingAction?.confirmLabel || "确认"}
+        destructive={pendingAction?.destructive}
+        loading={pendingActionSaving}
+        onConfirm={confirmPendingAction}
+        onCancel={() => setPendingAction(null)}
       />
 
       <ServiceOrderDetailDialog

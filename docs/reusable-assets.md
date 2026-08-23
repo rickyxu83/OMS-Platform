@@ -23,6 +23,7 @@ Radix UI + Tailwind 封装（shadcn 风格），新 UI 一律基于这些拼：
 | `Amap` | 高德地图 |
 | `CustomerIndexSuggestions` | 客户索引建议 |
 | `MySettingsDialog` | 个人设置弹窗 |
+| `ReasonConfirmDialog` | 统一原因/确认对话框（替代 window.prompt/confirm；驳回/作废必填原因留痕，撤回/停用纯确认） |
 
 ## 工具库（`frontend-admin/src/lib/`）
 
