@@ -23,6 +23,7 @@ import { formatCount, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 
 // 法定节假日模块说明文案
 const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。「调休补班」按正常工作日处理。";
@@ -591,8 +592,7 @@ export function Attendance() {
   const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
   const [legalHolidays, setLegalHolidays] = useState<LegalHolidayItem[]>([]);
   const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "", dayType: "legal_holiday" });
-  // 审批页（申请与审批）只读展示的法定节假日：默认当年，可切换年份
-  const [publicHolidays, setPublicHolidays] = useState<LegalHolidayItem[]>([]);
+  // 审批页节假日展示按所选年份前端过滤（与申请抽屉共用 load 的全量数据，不再重复请求）
   const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
   // 同步官方节假日：双源拉取预览（任意年份），确认后写入；来年数据由后端定时任务自动同步
   const [syncYear, setSyncYear] = useState(String(todayYear() + 1));
@@ -616,12 +616,9 @@ export function Attendance() {
       ];
       if (canViewAll) {
         calls.push(api.get("/attendance/employees"));
-        calls.push(api.get(`/attendance/reports/monthly?month=${reportMonth}`));
         calls.push(api.get("/attendance/supervisor-role-rules"));
-        const holidayQuery = /^\d{4}$/.test(holidayYear) ? `?year=${holidayYear}` : "";
-        calls.push(api.get(`/attendance/legal-holidays${holidayQuery}`));
       }
-      const [meData, mineData, supervisorData, applicationHolidayData, employeeData, reportData, roleRuleData, holidayData] = await Promise.all(calls);
+      const [meData, mineData, supervisorData, applicationHolidayData, employeeData, roleRuleData] = await Promise.all(calls);
       setMyProfile((meData?.item || null) as EmployeeProfile | null);
       setMine((mineData?.items || []) as AttendanceRequest[]);
       setSupervisorTodo((supervisorData?.items || []) as AttendanceRequest[]);
@@ -630,13 +627,12 @@ export function Attendance() {
         const supervisorRulesData = (roleRuleData || {}) as { roles?: RoleOption[]; items?: Array<{ applicantRole: string; applicantRoleLabel?: string; supervisorRole: string }> };
         const ruleItems = supervisorRulesData.items || [];
         setEmployees((employeeData?.items || []) as EmployeeProfile[]);
-        setReportItems((reportData?.items || []) as MonthlyReportItem[]);
         setRoleOptions(supervisorRulesData.roles || []);
         setSupervisorRules(ruleItems);
         setSupervisorRuleDrafts(Object.fromEntries(ruleItems.map((item) => [item.applicantRole, item.supervisorRole])));
-        setLegalHolidays((holidayData?.items || []) as LegalHolidayItem[]);
       }
-      await loadAllRequests();
+      // 子表各自带权限/参数守卫，幂等可重复调用
+      await Promise.all([loadAllRequests(), loadReportItems(), loadLegalHolidays()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
     } finally {
@@ -647,7 +643,7 @@ export function Attendance() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewAll, reportMonth, holidayYear]);
+  }, [canViewAll]);
 
   // 申请明细（scope=all）独立加载：日期范围变化只重拉本列表，不动整页；
   // 操作成功后由 load() 顺带调用保持新鲜
@@ -667,13 +663,33 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, recordStartDate, recordEndDate]);
 
-  // 审批页法定节假日只读展示：按所选年份拉取（GET 对全体考勤用户开放）
+  // 月度汇总独立加载：切换月份只重拉本报表，不动整页
+  async function loadReportItems() {
+    if (!canViewAll) return;
+    try {
+      const data = await api.get(`/attendance/reports/monthly?month=${reportMonth}`);
+      setReportItems((data?.items || []) as MonthlyReportItem[]);
+    } catch { /* 静默：主 load 已统一报错，避免双 toast */ }
+  }
+
   useEffect(() => {
-    const year = /^\d{4}$/.test(publicHolidayYear) ? publicHolidayYear : "";
-    api.get(`/attendance/legal-holidays${year ? `?year=${year}` : ""}`)
-      .then((data) => setPublicHolidays((data?.items || []) as LegalHolidayItem[]))
-      .catch(() => setPublicHolidays([]));
-  }, [publicHolidayYear]);
+    loadReportItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewAll, reportMonth]);
+
+  // 考勤设置-工作日历独立加载：年份输满 4 位才发请求（避免逐击键触发整页重载）
+  async function loadLegalHolidays() {
+    if (!canViewAll || !/^\d{4}$/.test(holidayYear)) return;
+    try {
+      const data = await api.get(`/attendance/legal-holidays?year=${holidayYear}`);
+      setLegalHolidays((data?.items || []) as LegalHolidayItem[]);
+    } catch { /* 静默：同上 */ }
+  }
+
+  useEffect(() => {
+    loadLegalHolidays();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewAll, holidayYear]);
 
   // 员工余额表：松开鼠标结束框选；点击卡片外空白处时清除已选（与 MR 采购卡一致）
   useEffect(() => {
@@ -848,6 +864,17 @@ export function Attendance() {
       return false;
     } finally {
       setDutyBatchSaving(false);
+    }
+  }
+
+  // 行内一键操作（通过/终审）防重复点击：请求进行中禁用该行按钮并转圈
+  const [rowActionId, setRowActionId] = useState("");
+  async function approveRow(item: AttendanceRequest, path: string, success: string) {
+    setRowActionId(String(item.id));
+    try {
+      await action(`/attendance/requests/${item.id}/${path}`, success);
+    } finally {
+      setRowActionId("");
     }
   }
 
@@ -1231,6 +1258,12 @@ export function Attendance() {
     [applicationHolidays],
   );
 
+  // 审批页节假日展示：从 load 的全量数据按所选年份前端过滤
+  const publicHolidays = useMemo(
+    () => applicationHolidays.filter((item) => item.date.startsWith(publicHolidayYear)),
+    [applicationHolidays, publicHolidayYear],
+  );
+
 
   const statTiles = [
     ...(canApply ? [
@@ -1372,22 +1405,23 @@ export function Attendance() {
                   pending_vp: { path: "approve-vp", success: "副总已通过" },
                 };
                 const current = config[item.status || ""];
+                const busy = rowActionId === String(item.id);
                 if (current) return (
                   <>
-                    <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/${current.path}`, current.success)}>
-                      <Check className="mr-1 h-4 w-4" /> 通过
+                    <Button size="sm" disabled={busy} onClick={() => approveRow(item, current.path, current.success)}>
+                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 通过
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => reject(item)}>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => reject(item)}>
                       <X className="mr-1 h-4 w-4" /> 驳回
                     </Button>
                   </>
                 );
                 if (item.status === "pending_admin" && canAdminApprove) return (
                   <>
-                    <Button size="sm" onClick={() => action(`/attendance/requests/${item.id}/approve-admin`, "行政终审已通过")}>
-                      <ShieldCheck className="mr-1 h-4 w-4" /> 终审通过
+                    <Button size="sm" disabled={busy} onClick={() => approveRow(item, "approve-admin", "行政终审已通过")}>
+                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />} 终审通过
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => reject(item)}>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => reject(item)}>
                       <X className="mr-1 h-4 w-4" /> 驳回
                     </Button>
                   </>
@@ -1739,6 +1773,42 @@ export function Attendance() {
                 </div>
               </div>
             ) : null}
+            <ResponsiveList
+              items={employees}
+              keyExtractor={(employee) => employee.id}
+              breakpoint="lg"
+              renderCard={(employee, index) => (
+                <ResponsiveCard
+                  title={(
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Checkbox
+                        aria-label={`选择 ${employee.employeeName || employee.username || employee.id}`}
+                        checked={selectedEmployeeIds.has(String(employee.id))}
+                        onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
+                      />
+                      <span className="truncate">{employee.employeeName || "-"}</span>
+                    </span>
+                  )}
+                  status={<Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>{employee.attendanceEnabled === false ? "停用" : "启用"}</Badge>}
+                  subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
+                  fields={[
+                    { label: "籍别 / 入职", value: `${NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"} · ${formatDate(employee.hireDate)}` },
+                    { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
+                    { label: "调休余额", value: `${hours(employee.compTimeBalanceHours)} 小时` },
+                  ]}
+                  actions={(
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => setEmployeeDialog({ employee, draft: createEmployeeDraft(employee) })}>
+                        <Pencil className="mr-1 h-4 w-4" /> 编辑
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setAdjustDialog({ employee, draft: createAdjustDraft() })}>
+                        <Wallet className="mr-1 h-4 w-4" /> 调余额
+                      </Button>
+                    </>
+                  )}
+                />
+              )}
+            >
             <div className="overflow-x-auto">
               <Table className="min-w-[900px]">
                 <TableHeader>
@@ -1810,6 +1880,12 @@ export function Attendance() {
                 </TableBody>
               </Table>
             </div>
+            </ResponsiveList>
+            {employees.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground lg:hidden">
+                {loading ? "正在加载…" : "暂无员工档案"}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
         </div>
@@ -2694,6 +2770,29 @@ function RequestList({
         ) : items.length === 0 ? (
           <EmptyState title={emptyText} className="min-h-0" />
         ) : (
+          <ResponsiveList
+            items={items}
+            keyExtractor={(item) => item.id}
+            breakpoint="md"
+            renderCard={(item) => (
+              <ResponsiveCard
+                title={(
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {requestTypeBadge(item.requestType)}
+                    {showEmployee ? <span className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
+                  </span>
+                )}
+                status={statusBadge(item.status)}
+                fields={[
+                  ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
+                  { label: "时间", value: requestTimeRange(item) },
+                  { label: "时长", value: requestDuration(item) || "-" },
+                  ...(item.delegateEmployeeName ? [{ label: "代理人", value: item.delegateEmployeeName }] : []),
+                ]}
+                actions={hasActions ? <>{actions?.(item)}</> : undefined}
+              />
+            )}
+          >
           <div className="overflow-x-auto rounded-md border">
             <Table className="min-w-[760px]">
               <TableHeader>
@@ -2773,6 +2872,7 @@ function RequestList({
               </TableBody>
             </Table>
           </div>
+          </ResponsiveList>
         )}
       </CardContent>
     </Card>
