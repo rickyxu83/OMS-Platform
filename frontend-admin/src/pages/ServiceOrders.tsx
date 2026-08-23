@@ -39,7 +39,7 @@ import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel } fro
 import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate, formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 
@@ -782,16 +782,6 @@ const SERVICE_MODE_SEARCH_ALIASES: Record<string, string> = {
   office: "内勤 内勤工作 office",
 };
 
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
-}
-
-function formatDateOnly(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
-}
-
 function CompactDateFilterInput({
   id,
   label,
@@ -824,14 +814,6 @@ function CompactDateFilterInput({
       </div>
     </div>
   );
-}
-
-function formatFileSize(value?: number) {
-  const size = Number(value || 0);
-  if (!size) return "-";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function cleanDate(value: string) {
@@ -1041,12 +1023,6 @@ function engineerText(order: ServiceOrder, fallback: string) {
     .filter(Boolean);
   if (names.length) return names.join("、");
   return order.engineerName || fallback;
-}
-
-function formatDateRange(start?: string, end?: string) {
-  if (!start && !end) return "-";
-  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
-  return formatDateTime(start || end);
 }
 
 function serviceTimeRange(order: ServiceOrder) {

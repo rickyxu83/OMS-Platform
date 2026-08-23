@@ -7,6 +7,7 @@ import { SignatureCapture } from "@/components/SignatureCapture";
 import { Badge } from "@/components/ui/badge";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
+import { formatDateTime } from "@/lib/format";
 
 interface CustomerSignatureItem {
   orderNo?: string;
@@ -32,10 +33,6 @@ interface CustomerSignatureItem {
 const COMPANY_NAME = "敦阳（宁波）科技有限公司";
 const ICP_NOTICE = "浙ICP备2026045692号";
 const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
-
-function formatDateTime(value?: string) {
-  return String(value || "").replace("T", " ").slice(0, 16) || "-";
-}
 
 function serviceModeLabel(value?: string) {
   if (value === "remote") return "远程服务";

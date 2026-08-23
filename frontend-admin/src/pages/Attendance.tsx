@@ -19,7 +19,7 @@ import { AttendanceApplyDrawer } from "@/pages/AttendanceApplyDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { mergeServiceOrderApprovalDetail, type ServiceOrderDetailFile, type ServiceOrderDetailItem } from "@/lib/service-order-detail";
 import { api } from "@/services/api";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
 
@@ -332,11 +332,6 @@ function monthDateRange(month: string) {
 
 function todayYear() {
   return new Date().getFullYear().toString();
-}
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).slice(0, 10);
 }
 
 function dateInputValue(value?: string) {

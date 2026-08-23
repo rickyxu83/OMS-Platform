@@ -4,7 +4,7 @@
  */
 import type * as React from "react";
 import { matchesSearchText } from "@/lib/text-i18n";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatFileSize } from "@/lib/format";
 import { orderStatusLabel } from "@/lib/service-items";
 import { remoteCategoryLabel, serviceItemLabels, serviceItemsLabel } from "@/lib/service-items";
 import type {
@@ -115,13 +115,7 @@ export function normalizeMode(value?: string | null): ServiceMode {
   return value === "remote" || value === "office" ? value : "onsite";
 }
 
-export { formatDateTime };
-
-export function formatDateRange(start?: string, end?: string) {
-  if (!start && !end) return "-";
-  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
-  return formatDateTime(start || end);
-}
+export { formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 
 export function displayText(value?: string | number | null, fallback = "-") {
   const text = String(value ?? "").trim();
@@ -297,14 +291,6 @@ export function buildDeleteConfirmationMessage(order: ServiceOrder) {
     "",
     "安装来源设备如果仍被其他工单、部件记录或巡检计划引用，会保留在设备列表中。",
   ].join("\n");
-}
-
-export function formatFileSize(value?: number) {
-  const size = Number(value || 0);
-  if (!size) return "-";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function attachmentFileExtension(file: OrderFile) {

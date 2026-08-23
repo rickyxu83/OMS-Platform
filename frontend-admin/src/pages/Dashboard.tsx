@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { Sparkline } from "@/components/Sparkline";
 import { api, fetchSummaryStream } from "@/services/api";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate, formatDateTime, formatDateRange, formatLocalDate } from "@/lib/format";
 
 interface Summary {
   todayTotal?: number;
@@ -221,13 +221,6 @@ function normalizeWorkSummaryForDisplay(summary?: WorkSummaryResult | null) {
 
 const LAST_REPORT_EXPORT_KEY = "admin:lastMonthlyReportExport";
 
-function formatDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function parseDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return null;
@@ -240,13 +233,13 @@ function addDays(value: string, days: number) {
   const date = parseDate(value);
   if (!date) return "";
   date.setDate(date.getDate() + days);
-  return formatDate(date);
+  return formatLocalDate(date);
 }
 
 function getDefaultReportRange(lang: "zh-CN" | "zh-TW") {
   const now = new Date();
-  const today = formatDate(now);
-  let startDate = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const today = formatLocalDate(now);
+  let startDate = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
   let hint = lang === "zh-TW" ? "首次匯出，已預設選擇本月範圍。" : "首次导出，已默认选择本月范围。";
 
   try {
@@ -649,17 +642,6 @@ function orderMainContent(order: Order, fallback = "-") {
 function previewSummary(order: Order, fallback = "") {
   const text = orderMainContent(order, fallback);
   return text.length > 90 ? `${text.slice(0, 90)}...` : text;
-}
-
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
-}
-
-function formatDateRange(start?: string, end?: string) {
-  if (!start && !end) return "-";
-  if (start && end) return `${formatDateTime(start)} 至 ${formatDateTime(end)}`;
-  return formatDateTime(start || end);
 }
 
 function reportServiceTime(order: Order) {

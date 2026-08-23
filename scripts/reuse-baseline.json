@@ -1,17 +1,1 @@
-{
-  "no-private-format-fn:components/ServiceOrderDetailDialog.tsx": 3,
-  "no-private-format-fn:pages/Attendance.tsx": 1,
-  "no-private-format-fn:pages/AuditLogs.tsx": 1,
-  "no-private-format-fn:pages/CustomerSignature.tsx": 1,
-  "no-private-format-fn:pages/Customers.tsx": 1,
-  "no-private-format-fn:pages/Dashboard.tsx": 3,
-  "no-private-format-fn:pages/EngineerSignature.tsx": 1,
-  "no-private-format-fn:pages/InspectionSchedules.tsx": 1,
-  "no-private-format-fn:pages/MaintenanceParties.tsx": 1,
-  "no-private-format-fn:pages/ServiceOrders.tsx": 4,
-  "no-private-format-fn:pages/SystemSettings.tsx": 1,
-  "no-private-format-fn:pages/Timesheets.tsx": 1,
-  "no-private-format-fn:pages/Users.tsx": 1,
-  "no-private-format-fn:pages/devices/utils.ts": 1,
-  "no-private-format-fn:pages/service-report/utils.ts": 2
-}
+{}

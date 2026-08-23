@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formatDate } from "@/lib/format";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -233,11 +234,6 @@ const TYPE_VARIANT: Record<string, "default" | "info" | "secondary" | "purple"> 
   partner: "purple",
   our: "purple",
 };
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 10);
-}
 
 function isOriginalManufacturer(type?: string) {
   return type === "original_manufacturer" || type === "vendor_contact" || type === "vendor";

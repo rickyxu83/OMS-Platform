@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDateTime } from "@/lib/format";
 import { ErrorToast } from "@/components/ErrorToast";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
@@ -212,9 +213,8 @@ function toDateTimeInput(value?: string) {
   return String(value).replace(" ", "T").slice(0, 16);
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return "长期";
-  return String(value).replace("T", " ").slice(0, 16);
+function formatExpiry(value?: string) {
+  return value ? formatDateTime(value) : "长期";
 }
 
 function SettingsGroupHeader({ title, description }: { title: string; description: string }) {
@@ -1051,7 +1051,7 @@ export function SystemSettings() {
                           <div className="min-w-0">
                             <div className="truncate font-semibold">{item.title}</div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {item.active ? "启用" : "停用"} · {formatDateTime(item.startsAt)} 至 {formatDateTime(item.endsAt)}
+                              {item.active ? "启用" : "停用"} · {formatExpiry(item.startsAt)} 至 {formatExpiry(item.endsAt)}
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               {item.targetRoles.length ? item.targetRoles.map((role) => roleOptions.find(([value]) => value === role)?.[1] || role).join("、") : "所有用户"}

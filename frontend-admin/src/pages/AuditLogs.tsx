@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { ErrorToast } from "@/components/ErrorToast";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDateTime } from "@/lib/format";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -62,11 +62,6 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   logout: "secondary",
   export: "secondary",
 };
-
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 19);
-}
 
 function actorName(log: AuditLog) {
   return log.actorName || log.actorUsername || `用户 #${log.actorId ?? "-"}`;

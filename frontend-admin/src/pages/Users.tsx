@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formatDateTime } from "@/lib/format";
 import {
   Dialog,
   DialogContent,
@@ -91,11 +92,6 @@ const STATUS_VARIANT: Record<string, "success" | "secondary"> = {
 
 function displayName(u: User) {
   return u.realName || u.name || u.username || `用户 #${u.id}`;
-}
-
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 16);
 }
 
 export function Users() {
