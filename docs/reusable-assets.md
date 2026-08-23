@@ -55,15 +55,8 @@ Radix UI + Tailwind 封装（shadcn 风格），新 UI 一律基于这些拼：
 
 ---
 
-## ⚠️ 待收敛清单（2026-08-24 审计发现）
+## ✅ 已收敛：format 家族（2026-08-24 完成）
 
-以下是违反"复用优先"原则的**存量**问题，按正常迭代逐步收敛，不搞大扫除：
+审计发现的 22 处私有 format 函数已全部收敛到 `lib/format.ts`（formatDateTime×9、formatDate×7、formatDateRange×4、formatFileSize×3），基线已清零；`npm run check:reuse` 硬检查持续把关，新私建函数提交即报错。
 
-| 问题 | 现状 | 收敛方向 |
-|---|---|---|
-| `formatDateTime` 重复定义 ×9 | Dashboard、ServiceOrders、Users、AuditLogs、SystemSettings、CustomerSignature、EngineerSignature、ServiceOrderDetailDialog 等各自私建 | 统一改用 `lib/format.ts` 的 `formatDateTime` |
-| `formatDate` 重复定义 ×7 | MaintenanceParties、Dashboard、Attendance、InspectionSchedules、Timesheets、Customers 等 | 在 `lib/format.ts` 补 `formatDate` 并全量替换 |
-| `formatDateRange` 重复定义 ×4 | Dashboard、ServiceOrders、ServiceOrderDetailDialog 等 | 同上，补 `formatDateRange` |
-| `formatFileSize` 重复定义 ×3 | ServiceOrderDetailDialog、ServiceOrders、service-report/utils.ts | 收敛到一处（建议 `lib/format.ts`） |
-
-**规则**：改到上述文件时顺手收敛对应函数；新代码再犯视为违反宪法。
+**规则**：新代码一律使用 `lib/format.ts` 的导出；再犯视为违反宪法并会被机器拦下。
