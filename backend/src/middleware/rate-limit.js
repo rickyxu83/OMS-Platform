@@ -13,6 +13,20 @@ const loginLimiter = rateLimit({
   },
 })
 
+// 通行密钥登录票据签发限流（002）：options 恒 200，skipSuccessfulRequests 型限流拦不住，
+// 用独立计数器按总请求数限，防刷库/枚举探测
+const passkeyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: '操作过于频繁，请稍后再试',
+    },
+  },
+})
+
 const aiSummaryLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 10,
@@ -39,6 +53,7 @@ const customerSignatureLimiter = rateLimit({
 
 module.exports = {
   loginLimiter,
+  passkeyLimiter,
   aiSummaryLimiter,
   customerSignatureLimiter,
 }

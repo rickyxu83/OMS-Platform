@@ -71,6 +71,8 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
   const compareCalls = []
 
   installMock(require.resolve('../src/config/db'), {
+    // query 供登录审计写日志（writeAuthAudit 自带容错，这里给空实现保持测试安静）
+    query: async () => [],
     transaction: async (callback) => callback(connection),
   })
   installMock(require.resolve('../src/modules/users/schema'), {
