@@ -274,10 +274,9 @@ async function loginOptions(req, res) {
   const options = await generateAuthenticationOptions({
     rpID: env.webauthnRpId,
     userVerification: 'required',
-    allowCredentials: credentials.map((row) => ({
-      id: row.credential_id,
-      transports: String(row.transports || '').split(',').filter(Boolean),
-    })),
+    // 不声明 transports：让浏览器自行选择本机/手机扫码（hybrid）任意通道，
+    // 否则台式机会失去「用手机 Face ID/指纹扫码登录」的入口
+    allowCredentials: credentials.map((row) => ({ id: row.credential_id })),
   })
 
   const challengeToken = await createChallenge({

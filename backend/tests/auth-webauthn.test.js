@@ -279,12 +279,12 @@ const authedReq = (overrides = {}) => ({
     assert.equal(insert.params.userId, null)
   }
 
-  // 登录 options：命中账号带凭据列表
+  // 登录 options：命中账号带凭据列表（不声明 transports，台式机可走手机扫码 hybrid 通道）
   {
     const { webauthn } = await loadWebauthn()
     const res = createResponse()
     await webauthn.loginOptions({ body: { identifier: 'USER@example.test' } }, res)
-    assert.deepEqual(res.body.publicKey.allowCredentials, [{ id: 'cred-1', transports: ['internal'] }])
+    assert.deepEqual(res.body.publicKey.allowCredentials, [{ id: 'cred-1' }])
   }
 
   // 登录 verify：成功 → 计数器更新 + 会话签发 + 审计
