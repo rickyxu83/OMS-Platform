@@ -140,9 +140,19 @@
   animation: lt-out-hero 0.55s cubic-bezier(0.5, 0, 0.75, 0.4) forwards;
 }
 
+/* 候选 E：模糊过渡（覆盖层雾化淡出） */
+@keyframes lt-out-blur {
+  to { opacity: 0; filter: blur(16px); }
+}
+.lt-out-blur {
+  --lt-exit-ms: 500;
+  animation: lt-out-blur 0.5s ease forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lt-out-zoom,
-  .lt-out-hero {
+  .lt-out-hero,
+  .lt-out-blur {
     animation: none;
   }
 }
