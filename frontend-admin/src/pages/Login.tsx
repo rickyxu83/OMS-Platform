@@ -475,10 +475,10 @@ export function Login() {
       navigate(localTarget, { replace: true });
       return;
     }
-    // 过场动画候选 A（打分赛）：先淡出登录页 0.3s 再跳转，主页侧由 AdminLayout 播 route-enter-crossfade
+    // 过场动画候选 B（打分赛）：登录页左滑让位 0.3s 再跳转，主页由 AdminLayout 从右侧推入
     setExitTransition(true);
     window.setTimeout(() => {
-      navigate(localTarget, { replace: true, state: { loginTransition: "crossfade" } });
+      navigate(localTarget, { replace: true, state: { loginTransition: "slide" } });
     }, 300);
   };
 
@@ -631,7 +631,7 @@ export function Login() {
 
   return (
     <div
-      className={`fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 ${exitTransition ? "login-exit-crossfade" : ""}`}
+      className={`fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 ${exitTransition ? "login-exit-slide" : ""}`}
       style={{
         backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
         colorScheme: "light",

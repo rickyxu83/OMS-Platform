@@ -108,23 +108,23 @@
   }
 }
 
-/* 登录 → 主页过场动画候选 A：交叉淡化（逐个部署打分赛，落选方案即删） */
-@keyframes login-exit-crossfade {
-  to { opacity: 0; }
+/* 登录 → 主页过场动画候选 B：推入（打分赛 2/6，落选方案即删） */
+@keyframes login-exit-slide {
+  to { opacity: 0.55; transform: translateX(-28%); }
 }
-.login-exit-crossfade {
-  animation: login-exit-crossfade 0.3s ease forwards;
+.login-exit-slide {
+  animation: login-exit-slide 0.3s cubic-bezier(0.32, 0.72, 0.35, 1) forwards;
 }
-@keyframes route-enter-crossfade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes route-enter-slide {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
-.route-enter-crossfade {
-  animation: route-enter-crossfade 0.35s ease-out;
+.route-enter-slide {
+  animation: route-enter-slide 0.35s cubic-bezier(0.32, 0.72, 0.35, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  .login-exit-crossfade,
-  .route-enter-crossfade {
+  .login-exit-slide,
+  .route-enter-slide {
     animation: none;
   }
 }
