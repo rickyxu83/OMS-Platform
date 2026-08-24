@@ -2469,7 +2469,9 @@ async function approveVp(req, res) {
 }
 
 async function approveRole(req, res) {
-  return approveWorkflowStep(req, res, 'role', [3])
+  // v4 审批链全为 role 步骤（deriveApprovalRoles 自动推导），必须一并放行，
+  // 否则 v4 申请在「当前审批步骤已通过」入口报「申请不属于当前审批流程」全员卡死（2026-08-24 事故）
+  return approveWorkflowStep(req, res, 'role', [3, 4])
 }
 
 async function approveSupervisor(req, res) {
@@ -2531,7 +2533,8 @@ async function rejectRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (finalStatuses.has(request.status)) throw badRequest('当前状态不能驳回')
-    if ([2, 3].includes(Number(request.workflow_version || 1))) {
+    // v4 与 v2/v3 同样走步骤表驳回，不能落到下方 v1 老路径（会因状态不匹配误报 403）
+    if ([2, 3, 4].includes(Number(request.workflow_version || 1))) {
       const step = await pendingApprovalStep(connection, request.id)
       if (!step) throw badRequest('当前申请没有待审批步骤')
       assertWorkflowStepApprover(step, req.user, request)

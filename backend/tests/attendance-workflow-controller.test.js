@@ -1579,6 +1579,83 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(JSON.parse(notification.params.payload).rejectedReason, '资料不完整')
   }
 
+  // v4 回归（2026-08-24 事故：approveRole/rejectRequest 版本门禁漏 4，业务主管审批 v4 申请报「申请不属于当前审批流程」）
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 490,
+            workflow_version: 4,
+            employee_id: 6,
+            employee_name: '业务员',
+            applicant_email: 'sales@example.test',
+            request_type: 'leave',
+            leave_type: 'personal',
+            hours: 8,
+            status: 'pending_approval',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 51, request_id: 490, step_type: 'role', step_order: 1, assignee_role: 'sales_supervisor', status: 'pending' }], []]
+        }
+        if (/FROM attendance_request_approvals/.test(sql) && /status = 'waiting'/.test(sql)) {
+          return [[{ id: 52, request_id: 490, step_type: 'role', step_order: 2, assignee_role: 'administrative_supervisor', status: 'waiting' }], []]
+        }
+        if (/SELECT COUNT\(\*\) AS step_count/.test(sql)) return [[{ step_count: 2 }], []]
+        if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
+          return [[{ id: 88, name: '行政主管', email: 'admin@example.test' }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const res = createResponse()
+    await controller.approveRole({ user: { id: 5, role: 'sales_supervisor' }, params: { id: '490' }, body: {} }, res)
+    assert.equal(res.body.ok, true)
+    assert.equal(res.body.status, 'pending_approval')
+    assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 51))
+    assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 52))
+  }
+
+  {
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 491,
+            workflow_version: 4,
+            employee_name: '业务员',
+            applicant_email: 'sales@example.test',
+            request_type: 'leave',
+            leave_type: 'personal',
+            start_at: '2026-08-24 09:00:00',
+            end_at: '2026-08-24 18:00:00',
+            status: 'pending_approval',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM attendance_request_approvals a/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 53, step_type: 'role', assignee_role: 'sales_supervisor', status: 'pending' }], []]
+        }
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const res = createResponse()
+    await controller.rejectRequest({
+      user: { id: 5, role: 'sales_supervisor' },
+      params: { id: '491' },
+      body: { reason: '事由不充分' },
+    }, res)
+    assert.equal(res.body.ok, true)
+    assert.ok(executeCalls.some((call) => /UPDATE attendance_request_approvals/.test(call.sql) && call.params.reason === '事由不充分'))
+    assert.ok(executeCalls.some((call) => /UPDATE attendance_requests/.test(call.sql) && call.params.reason === '事由不充分'))
+  }
+
   {
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
