@@ -8,11 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDateTime } from "@/lib/format";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
+
+const RISKY_AUDIT_HELP = "风险操作指可能带来数据变更或执行失败的操作：更新、删除类动作，或响应状态码为 4xx/5xx 的请求。用于快速定位误操作与异常调用。";
 
 interface AuditLog {
   id: string | number;
@@ -335,7 +338,10 @@ export function AuditLogs() {
                   }}
                 />
                 <Label htmlFor="risky-only" className="cursor-pointer text-sm">
-                  仅看风险操作
+                  <span className="inline-flex items-center gap-1">
+                    仅看风险操作
+                    <HelpTooltip label={RISKY_AUDIT_HELP} />
+                  </span>
                 </Label>
               </div>
               <Button
@@ -496,7 +502,12 @@ export function AuditLogs() {
               <div className="text-2xl font-bold mt-1">{stats[3]?.value}</div>
             </div>
             <div>
-              <Label className="text-muted-foreground">风险操作占比</Label>
+              <Label className="text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  风险操作占比
+                  <HelpTooltip label={RISKY_AUDIT_HELP} />
+                </span>
+              </Label>
               <div className="text-2xl font-bold mt-1 text-destructive">
                 {logs.length
                   ? `${Math.round(

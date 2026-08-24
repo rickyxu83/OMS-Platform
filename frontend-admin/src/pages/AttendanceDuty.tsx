@@ -106,7 +106,12 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { if (tab === "setup") loadSetup(); else loadMonthly() }, [tab, year, month])
+  useEffect(() => {
+    // year 为 number 输入：输入过程（如 "202"）不产生有效年份，守卫拦截避免逐击键重载
+    if (tab === "setup") { if (year >= 2000 && year <= 2099) loadSetup(); }
+    else loadMonthly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, year, month])
 
   const saveSetup = async () => {
     if (!weekendIds.length) return toast.error("请选择至少一名 7×24 值班工程师")
@@ -115,7 +120,8 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
       const data = await api.put(`/attendance/duty/setup/${year}`, { weekend: { mode: weekendMode, employeeIds: weekendIds }, holidays })
       toast.success(`年度设置已保存，共生成 ${data.generated || 0} 条值班记录`)
       setTab("monthly")
-      setMonth(`${year}-01`)
+      // 同年落在当前月（年中保存当年设置不必回看 1 月）；其他年份落 1 月便于检查全年安排
+      setMonth(year === currentYear ? currentMonth : `${year}-01`)
     } catch (error) { toast.error(error instanceof Error ? error.message : "保存失败") }
     finally { setSaving(false) }
   }

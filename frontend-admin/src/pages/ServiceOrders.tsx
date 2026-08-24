@@ -328,6 +328,7 @@ const I18N = {
       device: "设备",
       noDevice: "不指定设备",
       serviceModeLabel: "服务方式",
+      serviceModeHelp: "现场服务需选择服务类型并可关联设备；远程服务、内勤工作不关联设备，改为填写工时类别，提交后计入工时统计与月度汇总。",
       serviceTypeLabel: "服务类型",
       timesheetCategoryLabel: "工时类别",
       timesheetRemotePlaceholder: "排障 / 调配 / 协调 / 会议 / 其他",
@@ -586,6 +587,7 @@ const I18N = {
       device: "設備",
       noDevice: "不指定設備",
       serviceModeLabel: "服務方式",
+      serviceModeHelp: "現場服務需選擇服務類型並可關聯設備；遠端服務、內勤工作不關聯設備，改為填寫工時類別，提交後計入工時統計與月度彙總。",
       serviceTypeLabel: "服務類型",
       timesheetCategoryLabel: "工時類別",
       timesheetRemotePlaceholder: "排障 / 調配 / 協調 / 會議 / 其他",
@@ -2376,7 +2378,10 @@ export function ServiceOrders() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{t.dialogs.serviceModeLabel}</Label>
+              <div className="flex items-center gap-1.5">
+                <Label>{t.dialogs.serviceModeLabel}</Label>
+                <HelpTooltip label={t.dialogs.serviceModeHelp} />
+              </div>
               <Select value={createForm.serviceMode} onValueChange={(v) => setCreateForm({ ...createForm, serviceMode: v, deviceId: createForm.deviceId === "none" ? "" : createForm.deviceId })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

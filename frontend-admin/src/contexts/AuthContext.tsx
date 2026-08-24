@@ -29,6 +29,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   login: (username: string, password: string, remember?: boolean) => Promise<LoginResult>
+  completeLogin: (data: any, remember?: boolean) => LoginResult
   logout: () => void
   refreshUser: () => Promise<User | null>
   isAuthenticated: boolean
@@ -106,6 +107,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // 非密码登录（通行密钥/微信扫码）完成服务端验证后复用的会话写入（002-login-security）
+  const completeLogin = useCallback((data: any, remember = true) => {
+    saveSession(data.user, remember)
+    setUser(data.user)
+    setIsAuthenticated(hasAdminWorkspace(data.user))
+    return {
+      user: data.user,
+      availableWorkspaces: data.availableWorkspaces || data.user?.availableWorkspaces || [],
+      defaultWorkspace: data.defaultWorkspace || data.user?.defaultWorkspace || '',
+    }
+  }, [])
+
   const logout = useCallback(() => {
     api.post('/auth/logout').catch(() => {})
     clearSession()
@@ -135,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback((...permissions: string[]) => userHasPermission(user, ...permissions), [user])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, isAuthenticated, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, login, completeLogin, logout, refreshUser, isAuthenticated, hasPermission }}>
       {children}
     </AuthContext.Provider>
   )

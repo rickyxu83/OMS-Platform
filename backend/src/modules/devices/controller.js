@@ -2230,7 +2230,9 @@ async function remove(req, res) {
 
     await connection.execute('UPDATE service_orders SET device_id = NULL WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM service_order_devices WHERE device_id = :id', { id: deviceId })
-    await connection.execute('UPDATE service_parts SET device_id = NULL WHERE device_id = :id', { id: deviceId })
+    // 配件保留为工单服务历史，但 action_type 必须随设备删除降级为 general：
+    // 否则 replacement/installation 配件因「关联设备必填」校验（前后端一致）把工单编辑卡死——删掉会触发模块必填、留着又过不了设备校验
+    await connection.execute("UPDATE service_parts SET device_id = NULL, action_type = 'general' WHERE device_id = :id", { id: deviceId })
     await connection.execute('DELETE FROM inspection_schedule_assignments WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM inspection_schedule_devices WHERE device_id = :id', { id: deviceId })
     await connection.execute('DELETE FROM devices WHERE id = :id', { id: deviceId })

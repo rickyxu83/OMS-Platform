@@ -49,11 +49,18 @@ const env = {
   host: process.env.HOST || '127.0.0.1',
   jwtSecret,
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'oms_platform_token',
+  // 陌生设备识别的长效设备标记 Cookie（002-login-security 新设备登录提醒）
+  deviceCookieName: process.env.DEVICE_COOKIE_NAME || 'oms_device_id',
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',
   disableLoginAccountLockout: process.env.DISABLE_LOGIN_ACCOUNT_LOCKOUT === 'true',
   mrApprovalEmailDomains: parseCsv(process.env.MR_APPROVAL_EMAIL_DOMAINS),
+  // 通行密钥（WebAuthn）配置：rpId 为域名主体（如 example.com），origins 覆盖各环境完整 Origin；
+  // 未配置 rpId 时通行密钥功能整体关闭（端点 404、前端入口隐藏），属可选增强不阻塞启动
+  webauthnRpId: process.env.WEBAUTHN_RP_ID || '',
+  webauthnRpName: process.env.WEBAUTHN_RP_NAME || 'OMS Platform',
+  webauthnOrigins: parseCsv(process.env.WEBAUTHN_ORIGINS),
   // 暗启动：逗号分隔的禁用模块清单（对应 app.js 挂载点 key），用于生产对半成品模块（MR/考勤/审批/签名）零暴露。
   // 默认空（全挂载）；生产 compose 注入 FEATURE_MODULES_DISABLED=mr,attendance,approval-tasks,user-signature
   featureModulesDisabled: new Set(parseCsv(process.env.FEATURE_MODULES_DISABLED)),

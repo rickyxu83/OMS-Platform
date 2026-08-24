@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, Copy, KeyRound, Link2, LogOut, QrCode, Save, Settings, Trash2 } from "lucide-react";
+import { Camera, Check, CheckCircle2, Copy, Fingerprint, KeyRound, Link2, Loader2, LogOut, Pencil, QrCode, Save, Settings, Trash2, X } from "lucide-react";
 import QRCode from "qrcode";
+import { startRegistration } from "@simplewebauthn/browser";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { getPreferredWorkspace, setPreferredWorkspace, workspaceLabel } from "@/config/app";
+import { formatDateTime } from "@/lib/format";
 import { toast } from "sonner";
 
 const passwordRules = [
@@ -77,6 +79,13 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [assistants, setAssistants] = useState<Array<{ id: string | number; realName?: string; username?: string; email?: string }>>([]);
   const [assistantUserId, setAssistantUserId] = useState("");
+  // 通行密钥（002-login-security）：列表/登记/改名/删除
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeys, setPasskeys] = useState<Array<{ id: number; deviceName: string; createdAt?: string; lastUsedAt?: string | null }>>([]);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [renamingPasskeyId, setRenamingPasskeyId] = useState<number | null>(null);
+  const [passkeyRenameValue, setPasskeyRenameValue] = useState("");
+  const [confirmDeletePasskeyId, setConfirmDeletePasskeyId] = useState<number | null>(null);
 
   const workspaces = useMemo(() => (
     Array.isArray(user?.availableWorkspaces) ? user.availableWorkspaces : []
@@ -110,6 +119,80 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
     if (!open) return;
     setLoginAlias(String(user?.loginAlias || ""));
   }, [open, user?.loginAlias]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    (async () => {
+      try {
+        const supported = typeof window !== "undefined"
+          && window.isSecureContext
+          && typeof window.PublicKeyCredential !== "undefined";
+        if (!supported) return;
+        const methods = await api.get("/auth/login-methods");
+        if (!active || !methods?.passkey) return;
+        setPasskeySupported(true);
+        const data = await api.get("/auth/webauthn/credentials");
+        if (active) setPasskeys(Array.isArray(data?.items) ? data.items : []);
+      } catch { /* 探测或加载失败：入口隐藏 */ }
+    })();
+    return () => { active = false; };
+  }, [open]);
+
+  async function reloadPasskeys() {
+    try {
+      const data = await api.get("/auth/webauthn/credentials");
+      setPasskeys(Array.isArray(data?.items) ? data.items : []);
+    } catch { /* 静默 */ }
+  }
+
+  async function registerThisDevice() {
+    setPasskeyBusy(true);
+    try {
+      const options = await api.post("/auth/webauthn/register/options", {});
+      const response = await startRegistration({ optionsJSON: options.publicKey });
+      await api.post("/auth/webauthn/register/verify", { challengeToken: options.challengeToken, response });
+      toast.success("通行密钥已登记，下次登录可直接刷脸/按指纹");
+      await reloadPasskeys();
+    } catch (error: any) {
+      if (error?.name === "NotAllowedError" || error?.name === "AbortError") {
+        toast.error("已取消登记");
+      } else {
+        toast.error(error instanceof Error ? error.message : "登记失败");
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
+  async function savePasskeyRename(id: number) {
+    const deviceName = passkeyRenameValue.trim();
+    if (!deviceName) return;
+    setPasskeyBusy(true);
+    try {
+      await api.patch(`/auth/webauthn/credentials/${id}`, { deviceName });
+      setRenamingPasskeyId(null);
+      await reloadPasskeys();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "改名失败");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
+  async function deletePasskey(id: number) {
+    setPasskeyBusy(true);
+    try {
+      await api.delete(`/auth/webauthn/credentials/${id}`);
+      setConfirmDeletePasskeyId(null);
+      toast.success("已删除，该设备的通行密钥即刻失效");
+      await reloadPasskeys();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "删除失败");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
 
   async function saveProfile() {
     const normalizedAlias = loginAlias.trim();
@@ -443,6 +526,87 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
             </section>
 
             <Separator className="my-5" />
+
+            {passkeySupported ? (
+              <>
+                <section className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold">通行密钥</h3>
+                    <p className="text-xs text-muted-foreground">登记本设备后，登录页可直接使用 Face ID / Touch ID / 指纹 / 人脸验证，无需输密码。</p>
+                  </div>
+                  <div className="rounded-lg border bg-slate-50/60 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                    <p><span className="font-medium text-foreground">使用说明</span></p>
+                    <p>① 登记：在每台常用设备上点下方「登记本设备」，按提示完成验证各一次（手机、笔记本、台式机都可以）。</p>
+                    <p>② 本机登录：输入邮箱点「继续」，已登记设备会直接弹出指纹/人脸/PIN 验证。</p>
+                    <p>③ 未登记的电脑：屏幕出现二维码，用已登记的手机扫码、刷脸即可（需打开手机和电脑的蓝牙）。</p>
+                    <p>支持方式：iPhone/iPad 的 Face ID、Mac 的 Touch ID 或开机密码、Windows 的 Hello（人脸/指纹/PIN 码）、安卓的指纹或人脸。</p>
+                  </div>
+                  {passkeys.length ? (
+                    <div className="space-y-2">
+                      {passkeys.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 rounded-lg border bg-slate-50/60 px-3 py-2">
+                          <Fingerprint className="h-4 w-4 shrink-0 text-primary" />
+                          {renamingPasskeyId === item.id ? (
+                            <>
+                              <Input
+                                value={passkeyRenameValue}
+                                onChange={(event) => setPasskeyRenameValue(event.target.value)}
+                                className="h-8 flex-1"
+                                maxLength={64}
+                                autoFocus
+                              />
+                              <Button size="sm" variant="outline" className="h-8 gap-1" disabled={passkeyBusy} onClick={() => savePasskeyRename(item.id)}>
+                                <Check className="h-3.5 w-3.5" /> 保存
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-8" disabled={passkeyBusy} onClick={() => setRenamingPasskeyId(null)}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium">{item.deviceName}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  登记于 {formatDateTime(item.createdAt) || "-"}
+                                  {item.lastUsedAt ? ` · 最近登录 ${formatDateTime(item.lastUsedAt)}` : ""}
+                                </div>
+                              </div>
+                              <Button size="sm" variant="ghost" className="h-8 gap-1" disabled={passkeyBusy} onClick={() => { setRenamingPasskeyId(item.id); setPasskeyRenameValue(item.deviceName); }}>
+                                <Pencil className="h-3.5 w-3.5" /> 改名
+                              </Button>
+                              {confirmDeletePasskeyId === item.id ? (
+                                <>
+                                  <Button size="sm" variant="destructive" className="h-8 gap-1" disabled={passkeyBusy} onClick={() => deletePasskey(item.id)}>
+                                    确认删除
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-8" disabled={passkeyBusy} onClick={() => setConfirmDeletePasskeyId(null)}>
+                                    取消
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-8 gap-1 text-destructive hover:text-destructive" disabled={passkeyBusy} onClick={() => setConfirmDeletePasskeyId(item.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" /> 删除
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">尚未登记任何设备。</p>
+                  )}
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={registerThisDevice} disabled={passkeyBusy}>
+                      {passkeyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
+                      {passkeyBusy ? "登记中..." : "登记本设备"}
+                    </Button>
+                  </div>
+                </section>
+
+                <Separator className="my-5" />
+              </>
+            ) : null}
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">账号备注</h3>

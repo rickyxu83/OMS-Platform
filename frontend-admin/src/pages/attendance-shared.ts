@@ -247,3 +247,229 @@ export function createBlankForm() {
     annualEndPeriod: "morning" as AnnualLeavePeriod,
   });
 }
+
+/** 可继续提交的草稿申请（结构子集，Attendance.tsx 的 AttendanceRequest 天然满足） */
+export interface ResumableDraft {
+  id: number | string;
+  requestType: RequestType;
+  leaveType?: string | null;
+  delegateEmployeeId?: number | string | null;
+  startAt?: string;
+  endAt?: string;
+  proofFiles?: Array<{ id: number | string; originalName: string }>;
+  proofFileCount?: number;
+}
+
+/** 从草稿重建抽屉表单（继续提交入口用）。仅请假/调休有草稿；加班单一步提交无草稿态。 */
+export function formFromDraft(draft: ResumableDraft) {
+  const startDate = dateValue(draft.startAt);
+  const endDate = dateValue(draft.endAt || draft.startAt);
+  const startTime = String(draft.startAt || "").slice(11, 16);
+  const endTime = String(draft.endAt || "").slice(11, 16);
+  const singleDay = startDate === endDate;
+  return applyAnnualLeaveRange({
+    ...createBlankForm(),
+    requestType: draft.requestType === "comp_time" ? "comp_time" as RequestType : "leave" as RequestType,
+    leaveType: draft.leaveType || "annual",
+    delegateEmployeeId: draft.delegateEmployeeId ? String(draft.delegateEmployeeId) : "",
+    annualStartDate: startDate,
+    annualEndDate: endDate,
+    // 单日：09-14 上午 / 14-18 下午 / 09-18 全天；多日：按起止半天槽位还原
+    annualPeriod: singleDay ? (startTime === "14:00" ? "afternoon" : endTime === "14:00" ? "morning" : "day") as AnnualLeavePeriod : "morning" as AnnualLeavePeriod,
+    annualStartPeriod: (startTime === "14:00" ? "afternoon" : "morning") as AnnualLeavePeriod,
+    annualEndPeriod: (endTime === "14:00" ? "morning" : "afternoon") as AnnualLeavePeriod,
+  });
+}
+
+/* ============================================================================
+ * 以下为 Attendance.tsx 拆分（D1 重构 2026-08-24）迁出的共享常量/类型/纯函数。
+ * 供 pages/Attendance 与 components/attendance/* 共同使用。
+ * ==========================================================================*/
+
+export interface ApprovalStep {
+  id: number | string;
+  stepType: "delegate" | "supervisor" | "hr" | "vp" | "role";
+  stepOrder: number;
+  assigneeEmployeeId?: number | string | null;
+  assigneeEmployeeName?: string | null;
+  assigneeRole?: string | null;
+  status: "waiting" | "pending" | "approved" | "rejected" | "skipped";
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+  rejectedByName?: string | null;
+  rejectedAt?: string | null;
+  rejectedReason?: string | null;
+}
+
+export interface AttendanceRequest {
+  id: number | string;
+  workflowVersion?: number;
+  employeeId: number | string;
+  employeeName?: string;
+  applicantRole?: string | null;
+  supervisorRole?: string | null;
+  delegateEmployeeId?: number | string | null;
+  delegateEmployeeName?: string | null;
+  requestType: RequestType;
+  leaveType?: string | null;
+  overtimeKind?: string | null;
+  overtimeResult?: string | null;
+  overtimeDayType?: string | null;
+  overtimePayMultiplier?: number | null;
+  isTriplePay?: boolean;
+  sourceType?: string | null;
+  sourceId?: number | string | null;
+  sourceDetail?: string | null;
+  serviceOrder?: ServiceOrderSummary | null;
+  reason?: string | null;
+  startAt?: string;
+  endAt?: string;
+  hours?: number;
+  workingDays?: number | null;
+  proofFileCount?: number;
+  proofFiles?: Array<{ id: number | string; originalName: string; mimeType?: string; size?: number }>;
+  approvals?: ApprovalStep[];
+  status?: string;
+}
+
+export const REQUEST_TYPE_LABELS: Record<string, string> = {
+  leave: "请假",
+  overtime: "加班",
+  comp_time: "调休",
+};
+
+export const STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  pending_delegate: "待代理人",
+  pending_approval: "待审批",
+  pending_supervisor: "待主管",
+  pending_hr: "待人事",
+  pending_vp: "待副总",
+  pending_admin: "待行政（旧流程）",
+  approved: "已通过",
+  rejected: "已驳回",
+  withdrawn: "已撤回",
+  voided: "已作废",
+};
+
+export const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "info" | "destructive" | "outline"> = {
+  draft: "secondary",
+  pending_delegate: "warning",
+  pending_approval: "info",
+  pending_supervisor: "warning",
+  pending_hr: "info",
+  pending_vp: "info",
+  pending_admin: "info",
+  approved: "success",
+  rejected: "destructive",
+  withdrawn: "secondary",
+  voided: "outline",
+};
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: "管理员",
+  assistant: "助理",
+  dispatcher: "调度",
+  operations_director: "运营负责人",
+  engineering_supervisor: "工程主管",
+  administrative_supervisor: "行政主管",
+  sales_supervisor: "业务主管",
+  sales: "业务",
+  engineer: "工程师",
+};
+
+export const NATIONALITY_LABELS: Record<string, string> = {
+  mainland: "陆籍",
+  taiwan: "台籍",
+};
+
+export function roleLabel(role?: string | null) {
+  return ROLE_LABELS[role || ""] || role || "-";
+}
+
+export function approvalStepLabel(step?: ApprovalStep) {
+  if (!step) return "";
+  if (step.stepType === "role") return roleLabel(step.assigneeRole);
+  const labels = { delegate: "代理人", supervisor: "主管", hr: "人事", vp: "副总" };
+  return labels[step.stepType] || step.stepType;
+}
+
+export function approvalStepStatus(step?: ApprovalStep) {
+  if (!step) return "";
+  const labels = { waiting: "等待", pending: "待签核", approved: "已通过", rejected: "已驳回", skipped: "已跳过" };
+  return labels[step.status] || step.status;
+}
+
+export function monthDateRange(month: string) {
+  const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return { startDate: "", endDate: "" };
+  const endDay = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+  return { startDate: `${match[1]}-${match[2]}-01`, endDate: `${match[1]}-${match[2]}-${String(endDay).padStart(2, "0")}` };
+}
+
+export function dateInputValue(value?: string) {
+  return String(value || "").slice(0, 10);
+}
+
+export function annualUsageDays(item?: { annualLeaveDays?: number; annualLeaveHours?: number } | null) {
+  if (!item) return 0;
+  if (typeof item.annualLeaveDays === "number") return item.annualLeaveDays;
+  return Number(item.annualLeaveHours || 0) / 8;
+}
+
+// 法定节假日只读展示：星期、日期格式化与连续假期段合并辅助
+const HOLIDAY_WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+export function holidayWeekday(date: string) {
+  return `周${HOLIDAY_WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]}`;
+}
+
+export function fmtHolidayDate(date: string) {
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
+}
+
+export function addHolidayDays(date: string, amount: number) {
+  const base = new Date(`${date}T00:00:00`);
+  base.setDate(base.getDate() + amount);
+  const month = String(base.getMonth() + 1).padStart(2, "0");
+  const day = String(base.getDate()).padStart(2, "0");
+  return `${base.getFullYear()}-${month}-${day}`;
+}
+
+export interface HolidayRange {
+  name: string;
+  start: string;
+  end: string;
+  days: number;
+  makeup: string[];
+}
+
+// 连续同名的放假日合并为一个假期段，并按名称关联调休补班日；未匹配到假期的补班日单列
+export function buildHolidayRanges(items: LegalHolidayItem[]) {
+  const sorted = items.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const holidayRows = sorted.filter((item) => item.dayType !== "makeup_workday");
+  const makeupRows = sorted.filter((item) => item.dayType === "makeup_workday");
+  const ranges: HolidayRange[] = [];
+  for (const item of holidayRows) {
+    const last = ranges[ranges.length - 1];
+    if (last && last.name === item.name && addHolidayDays(last.end, 1) === item.date) {
+      last.end = item.date;
+      last.days += 1;
+    } else {
+      ranges.push({ name: item.name, start: item.date, end: item.date, days: 1, makeup: [] });
+    }
+  }
+  const orphanMakeup: LegalHolidayItem[] = [];
+  for (const item of makeupRows) {
+    const target = ranges.find((range) => range.name === item.name);
+    if (target) target.makeup.push(item.date);
+    else orphanMakeup.push(item);
+  }
+  return { ranges, orphanMakeup };
+}
+
+export function serviceOrderTypeLabel(order: ServiceOrderSummary) {
+  const mode = SERVICE_MODE_LABELS[order.serviceMode || ""] || order.serviceMode || "-";
+  const type = SERVICE_TYPE_LABELS[order.serviceType || ""] || order.serviceType || "-";
+  return `${mode} / ${type}`;
+}

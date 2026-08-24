@@ -1847,6 +1847,37 @@ function listScopeSql(scope, user, employee) {
       },
     }
   }
+  if (scope === 'related') {
+    // 审批链相关可见（产品裁决 2026-08-24）：任一审批环节指派给本人或本人角色即可见，
+    // 不论该环节当前状态（含历史已审/待审）；v1 旧流程没有步骤表，
+    // 退回用申请行上的 supervisor_role / 档案直属主管匹配
+    return {
+      sql: `(
+        (COALESCE(r.workflow_version, 1) = 1
+          AND (
+            r.supervisor_role = :currentRole
+            OR (r.supervisor_role IS NULL AND p.supervisor_employee_id = :relatedEmployeeId)
+          ))
+        OR
+        (COALESCE(r.workflow_version, 1) >= 2
+          AND EXISTS (
+            SELECT 1
+            FROM attendance_request_approvals a
+            LEFT JOIN attendance_employee_profiles ap ON ap.id = a.assignee_employee_id
+            WHERE a.request_id = r.id
+              AND (
+                ap.user_id = :currentUserId
+                OR a.assignee_role = :currentRole
+              )
+          ))
+      )`,
+      params: {
+        currentRole: user.role,
+        currentUserId: user.id,
+        relatedEmployeeId: employee?.id || 0,
+      },
+    }
+  }
   if (scope === 'all') return { sql: '1 = 1', params: {} }
   throw badRequest('查询范围不正确')
 }
@@ -1855,9 +1886,12 @@ async function listRequests(req, res) {
   await ensureSchema()
   const employee = await currentEmployee(req.user.id)
   const scope = text(req.query.scope) || 'mine'
-  if (!['mine', 'supervisor', 'all'].includes(scope)) throw badRequest('查询范围不正确')
+  if (!['mine', 'supervisor', 'related', 'all'].includes(scope)) throw badRequest('查询范围不正确')
   const status = text(req.query.status)
   const requestType = text(req.query.requestType)
+  // 可选日期范围（作用于申请开始时间），配合前端查档筛选；空串表示不过滤
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(text(req.query.startDate)) ? text(req.query.startDate) : ''
+  const endDate = /^\d{4}-\d{2}-\d{2}$/.test(text(req.query.endDate)) ? text(req.query.endDate) : ''
   const allAllowed = await canViewAll(req.user)
   if (scope === 'all' && !allAllowed) throw forbidden()
   if (scope === 'supervisor' && !employee && !req.user.role) throw forbidden('当前账号没有员工档案')
@@ -1879,9 +1913,11 @@ async function listRequests(req, res) {
      WHERE ${scoped.sql}
        AND (:status = '' OR r.status = :status)
        AND (:requestType = '' OR r.request_type = :requestType)
+       AND (:startDate = '' OR DATE(r.start_at) >= :startDate)
+       AND (:endDate = '' OR DATE(r.start_at) <= :endDate)
      ORDER BY r.start_at DESC, r.id DESC
      LIMIT 300`,
-    { ...scoped.params, status, requestType },
+    { ...scoped.params, status, requestType, startDate, endDate },
   )
   const requestServiceOrderMap = new Map()
   const fallbackOrderIds = []
@@ -2605,6 +2641,8 @@ async function voidRequest(req, res) {
   if (!await hasPermission(req.user.role, 'attendance.admin.approve')) throw forbidden()
   const id = Number(req.params.id)
   const reason = nullableText(req.body?.reason)
+  // 作废会回滚余额台账，必须留原因备查（此前前端不传导致 void_reason 恒为 NULL）
+  if (!reason) throw badRequest('请填写作废原因')
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')

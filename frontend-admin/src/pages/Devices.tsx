@@ -2606,7 +2606,10 @@ export function Devices() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>MR单</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label>MR单</Label>
+                      <HelpTooltip label="关联的「客户订购申请（MR）」单号，用于追溯设备出自哪张订购单；可多值用 ; 隔开，没有来源单据时可不填。" />
+                    </div>
                     <Input
                       value={form.mrNo}
                       onChange={(e) => setForm({ ...form, mrNo: e.target.value })}
@@ -3436,7 +3439,10 @@ export function Devices() {
                 onCheckedChange={(v) => setBatchEditToggles((t) => ({ ...t, mrNo: v === true }))}
               />
               <div className="flex-1 space-y-1.5">
-                <Label>MR单</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>MR单</Label>
+                  <HelpTooltip label="关联的「客户订购申请（MR）」单号，用于追溯设备出自哪张订购单；可多值用 ; 隔开，批量编辑时留空表示清除。" />
+                </div>
                 <Input
                   value={batchEditForm.mrNo}
                   onChange={(e) => setBatchEditForm((f) => ({ ...f, mrNo: e.target.value }))}

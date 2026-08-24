@@ -71,6 +71,8 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
   const compareCalls = []
 
   installMock(require.resolve('../src/config/db'), {
+    // query 供登录审计写日志（writeAuthAudit 自带容错，这里给空实现保持测试安静）
+    query: async () => [],
     transaction: async (callback) => callback(connection),
   })
   installMock(require.resolve('../src/modules/users/schema'), {
@@ -141,6 +143,11 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
     assert.equal(result.thrown, null)
     assert.equal(result.compareCalls.length, 1, 'disabled account lockout should still check the password for locked users')
     assert.equal(result.response.body.user.id, 42)
+    // 陌生设备登录提醒（002）：未携带设备标记 Cookie 时应落两年期设备 Cookie
+    assert.ok(
+      result.response.cookies.some((cookie) => cookie.name === 'oms_device_id'),
+      'new device login should set the long-lived device marker cookie',
+    )
   }
 })().catch((error) => {
   console.error(error)

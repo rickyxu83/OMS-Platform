@@ -11,6 +11,8 @@ const {
 const { badRequest, unauthorized } = require('../../utils/http-error')
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { ensureUserLoginColumns } = require('../users/schema')
+const { writeAuthAudit } = require('./audit')
+const { markDeviceAndAlert } = require('./device-alert')
 
 const MAX_FAILED_LOGINS = 5
 const LOCKOUT_MINUTES = 15
@@ -89,6 +91,28 @@ async function sessionPayload(user) {
   }
 }
 
+// 统一会话签发（002-login-security R7）：密码/通行密钥/微信扫码三条登录路径共用，保证会话形态完全一致
+async function issueSession(req, res, user, { method = 'password_login' } = {}) {
+  // 陌生设备登录提醒：先落设备标记 Cookie（同步），邮件消防式异步发送
+  markDeviceAndAlert(req, res, user, { method, sessionCookieOptions: sessionCookieOptions(req) })
+
+  const token = jwt.sign(
+    {
+      sub: user.id,
+      role: user.role,
+      username: user.username,
+    },
+    env.jwtSecret,
+    { expiresIn: '12h' },
+  )
+
+  setSessionCookie(req, res, token)
+
+  res.json({
+    ...await sessionPayload(user),
+  })
+}
+
 async function login(req, res) {
   const { username, password } = req.body || {}
   if (!username || !password) {
@@ -156,26 +180,14 @@ async function login(req, res) {
   })
 
   if (!loginResult.ok) {
+    await writeAuthAudit(req, { action: 'login_failed', detail: { method: 'password_login' } })
     throw unauthorized('用户名或密码错误')
   }
 
   const { user } = loginResult
 
-  const token = jwt.sign(
-    {
-      sub: user.id,
-      role: user.role,
-      username: user.username,
-    },
-    env.jwtSecret,
-    { expiresIn: '12h' },
-  )
-
-  setSessionCookie(req, res, token)
-
-  res.json({
-    ...await sessionPayload(user),
-  })
+  await writeAuthAudit(req, { actorId: user.id, action: 'login', detail: { method: 'password_login' } })
+  await issueSession(req, res, user, { method: 'password_login' })
 }
 
 async function me(req, res) {
@@ -191,4 +203,5 @@ module.exports = {
   login,
   me,
   logout,
+  issueSession,
 }

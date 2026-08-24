@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrStatus } from '../types'
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -156,6 +157,7 @@ export function Field({
   readonlyText,
   editable = true,
   required,
+  help,
   className = '',
 }: {
   label: string
@@ -163,21 +165,28 @@ export function Field({
   readonlyText?: ReactNode
   editable?: boolean
   required?: boolean
+  help?: string
   className?: string
 }) {
   const showRequired = required ?? REQUIRED_FIELD_LABELS.has(label)
-  const labelContent = <>{label}{showRequired ? <span className="ml-0.5 text-red-600" aria-hidden="true">*</span> : null}</>
+  const labelContent = (
+    <>
+      {label}
+      {showRequired ? <span className="ml-0.5 text-red-600" aria-hidden="true">*</span> : null}
+      {help ? <HelpTooltip label={help} /> : null}
+    </>
+  )
   if (!editable) {
     return (
       <div className={`min-w-0 space-y-1 ${className}`}>
-        <div className="text-xs text-muted-foreground">{labelContent}</div>
+        <div className="text-xs text-muted-foreground">{help ? <span className="inline-flex items-center gap-1">{labelContent}</span> : labelContent}</div>
         <div className="min-h-6 text-sm break-words whitespace-pre-wrap">{readonlyText ?? children}</div>
       </div>
     )
   }
   return (
     <div role="group" aria-label={label} className={`min-w-0 space-y-1.5 ${className}`}>
-      <Label>{labelContent}</Label>
+      {help ? <Label className="flex items-center gap-1">{labelContent}</Label> : <Label>{labelContent}</Label>}
       {children}
     </div>
   )

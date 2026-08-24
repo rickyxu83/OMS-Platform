@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, Globe, TriangleAlert } from "lucide-react";
+import { Eye, EyeOff, Fingerprint, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +16,9 @@ import {
 import { APP_VERSION, getPreferredWorkspace, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { releaseInteractionLocks } from "@/services/api";
+import { api, releaseInteractionLocks } from "@/services/api";
+import { preloadAdminCore } from "@/lib/preload-admin";
+import { cancelLoginTransition, finishLoginTransition, startLoginTransition } from "@/lib/login-transition";
 
 const LOGIN_BACKGROUND_BLOBS = [
   { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
@@ -314,7 +318,7 @@ function LoginMotionBackground() {
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login } = useAuth();
+  const { login, completeLogin } = useAuth();
   const { lang, setLang } = useLanguage();
   const [username, setUsername] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -329,6 +333,12 @@ export function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [workspaceChoices, setWorkspaceChoices] = useState<WorkspaceOption[]>([]);
+  // 通行密钥（002-login-security）：login-methods 探测 + 浏览器能力探测双重门控，不满足就不出现入口
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const passkeyActiveRef = useRef(false);
+  // identifier-first 单框流：先只问账号，再按账号能力决定唤起生物识别还是展开密码框
+  const [step, setStep] = useState<"identifier" | "password">("identifier");
 
   const i18n = {
     "zh-CN": {
@@ -358,6 +368,15 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "请输入邮箱或别名",
       passwordPlaceholder: "请输入密码",
+      passkeyLogin: "通行密钥登录",
+      passkeyLoggingIn: "验证中…",
+      continue: "继续",
+      changeAccount: "更改",
+      passkeyAutoHint: "登记过通行密钥的账号将直接验证指纹/人脸",
+      passkeyTip: "通行密钥可用指纹 / 人脸 / PIN 码免密码登录。设置方法：密码登录后进入「我的设置 → 通行密钥」，那里有详细说明。",
+      usePasskeyInstead: "改用通行密钥验证",
+      errorEmptyIdentifier: "请输入邮箱/别名",
+      errorEmptyPassword: "请输入密码",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已开源发布，遵循 GPL-3.0 许可证",
@@ -389,6 +408,15 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "請輸入信箱或別名",
       passwordPlaceholder: "請輸入密碼",
+      passkeyLogin: "通行密鑰登錄",
+      passkeyLoggingIn: "驗證中…",
+      continue: "繼續",
+      changeAccount: "更改",
+      passkeyAutoHint: "登記過通行密鑰的帳號將直接驗證指紋/人臉",
+      passkeyTip: "通行密鑰可用指紋 / 人臉 / PIN 碼免密碼登錄。設定方法：密碼登錄後進入「我的設定 → 通行密鑰」，那裡有詳細說明。",
+      usePasskeyInstead: "改用通行密鑰驗證",
+      errorEmptyIdentifier: "請輸入信箱或別名",
+      errorEmptyPassword: "請輸入密碼",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已開源發布，遵循 GPL-3.0 授權條款",
@@ -401,6 +429,8 @@ export function Login() {
 
   useEffect(() => {
     releaseInteractionLocks();
+    // 用户输账号/刷指纹的空档期预取管理端 chunk，消除登录跳转时的懒加载白屏
+    preloadAdminCore();
     const timer = window.setTimeout(releaseInteractionLocks, 80);
     return () => window.clearTimeout(timer);
   }, []);
@@ -439,17 +469,162 @@ export function Login() {
     };
   }, []);
 
+  const [exitTransition, setExitTransition] = useState(false);
+
   const enterWorkspace = (workspaceKey: string, home = "") => {
     const localTarget = goToWorkspace(workspaceKey, home);
-    if (localTarget) navigate(localTarget, { replace: true });
+    if (!localTarget || exitTransition) return;
+    const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      navigate(localTarget, { replace: true });
+      return;
+    }
+    // 过场动画定稿 A（打分赛：交叉淡化）：乐观路径已由 startLoginTransition 开播，此处收口导航；
+    // 密码路径无乐观覆盖层，finish 内部回退为「先罩住再掀开」
+    setExitTransition(true);
+    finishLoginTransition(() => navigate(localTarget, { replace: true }));
+  };
+
+  // 登录成功后的工作台路由（密码/通行密钥共用）
+  const routeAfterLogin = (result: { user?: any; availableWorkspaces?: WorkspaceOption[] }) => {
+    const workspaces: WorkspaceOption[] = result.availableWorkspaces || result.user?.availableWorkspaces || [];
+    const requestedWorkspace = searchParams.get("workspace") || "";
+    const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
+
+    if (explicitWorkspace) {
+      enterWorkspace(explicitWorkspace.key, explicitWorkspace.home || "");
+      return true;
+    }
+
+    if (workspaces.length === 1) {
+      enterWorkspace(workspaces[0].key, workspaces[0].home || "");
+      return true;
+    }
+
+    if (workspaces.length > 1) {
+      const preferredWorkspace = getPreferredWorkspace(result.user?.id);
+      const preferredChoice = workspaces.find((workspace) => workspace.key === preferredWorkspace);
+      if (preferredChoice) {
+        enterWorkspace(preferredChoice.key, preferredChoice.home || "");
+        return true;
+      }
+      setWorkspaceChoices(workspaces);
+      return true;
+    }
+    return false;
+  };
+
+  // 通行密钥能力探测：后端配置开启 + 安全上下文 + 平台认证器可用，三者齐备才显示入口
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const supported = typeof window !== "undefined"
+          && window.isSecureContext
+          && typeof window.PublicKeyCredential !== "undefined";
+        if (!supported) return;
+        const methods = await api.get("/auth/login-methods");
+        if (!active || !methods?.passkey) return;
+        const platformReady = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+        if (active && platformReady) setPasskeyAvailable(true);
+      } catch { /* 探测失败即保持隐藏 */ }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // 通行密钥自动填充（conditional UI）：账号框获得焦点时由浏览器原生下拉列出本机通行密钥
+  useEffect(() => {
+    if (!passkeyAvailable) return;
+    let active = true;
+    passkeyActiveRef.current = true;
+    (async () => {
+      try {
+        const conditionalReady = await PublicKeyCredential.isConditionalMediationAvailable?.().catch(() => false);
+        if (!active || !conditionalReady) return;
+        const options = await api.post("/auth/webauthn/login/options", { identifier: "" });
+        if (!active) return;
+        // useBrowserAutofill：挂起等待用户从自动填充中选择；其他 WebAuthn 调用会自动中止它
+        const response = await startAuthentication({ optionsJSON: options.publicKey, useBrowserAutofill: true });
+        if (!active) return;
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) startLoginTransition();
+        const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
+        if (!active) {
+          cancelLoginTransition();
+          return;
+        }
+        const result = completeLogin(verify, true);
+        routeAfterLogin(result);
+      } catch {
+        cancelLoginTransition(); /* 用户未选择/被中止：静默 */
+      }
+    })();
+    return () => {
+      active = false;
+      passkeyActiveRef.current = false;
+      cancelLoginTransition();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passkeyAvailable]);
+
+  // 通行密钥登录尝试：成功返回 true；账号无凭据/用户取消/接口异常返回 false（由调用方落密码步）
+  const attemptPasskeyLogin = async (identifier: string): Promise<boolean> => {
+    if (!passkeyAvailable) return false;
+    setPasskeyLoading(true);
+    try {
+      const options = await api.post("/auth/webauthn/login/options", { identifier });
+      if (!(options?.publicKey?.allowCredentials || []).length) return false;
+      const response = await startAuthentication({ optionsJSON: options.publicKey });
+      // 乐观过渡：指纹/人脸一通过立即开播动画，前段正好盖住 verify 网络往返（消除暂停感）
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) startLoginTransition();
+      const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
+      if (rememberMe) {
+        localStorage.setItem("remembered_username", identifier);
+      } else {
+        localStorage.removeItem("remembered_username");
+      }
+      const result = completeLogin(verify, rememberMe);
+      if (!routeAfterLogin(result)) {
+        cancelLoginTransition();
+        setError(t.errorAuth);
+      }
+      return true;
+    } catch (err: any) {
+      cancelLoginTransition();
+      // NotAllowedError/AbortError = 用户取消/本机无匹配凭据/超时：静默落密码步
+      if (err?.name !== "NotAllowedError" && err?.name !== "AbortError") {
+        setError(err?.message || t.errorFallback);
+      }
+      return false;
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
+  // 第一步「继续」：有通行密钥直接唤起生物识别；否则展开密码框
+  const handleContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const identifier = username.trim();
+    if (!identifier) {
+      setError(t.errorEmptyIdentifier);
+      return;
+    }
+    const loggedIn = await attemptPasskeyLogin(identifier);
+    if (!loggedIn) setStep("password");
+  };
+
+  const backToIdentifierStep = () => {
+    setStep("identifier");
+    setPassword("");
+    setError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!username || !password) {
-      setError(t.errorEmpty);
+    if (!username.trim() || !password) {
+      setError(t.errorEmptyPassword);
       return;
     }
 
@@ -461,32 +636,7 @@ export function Login() {
       } else {
         localStorage.removeItem("remembered_username");
       }
-      const workspaces = result.availableWorkspaces || result.user?.availableWorkspaces || [];
-      const requestedWorkspace = searchParams.get("workspace") || "";
-      const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
-
-      if (explicitWorkspace) {
-        enterWorkspace(explicitWorkspace.key, explicitWorkspace.home || "");
-        return;
-      }
-
-      if (workspaces.length === 1) {
-        enterWorkspace(workspaces[0].key, workspaces[0].home || "");
-        return;
-      }
-
-      if (workspaces.length > 1) {
-        const preferredWorkspace = getPreferredWorkspace(result.user?.id);
-        const preferredChoice = workspaces.find((workspace) => workspace.key === preferredWorkspace);
-        if (preferredChoice) {
-          enterWorkspace(preferredChoice.key, preferredChoice.home || "");
-          return;
-        }
-        setWorkspaceChoices(workspaces);
-        return;
-      }
-
-      setError(t.errorAuth);
+      if (!routeAfterLogin(result)) setError(t.errorAuth);
     } catch (err: any) {
       const msg = String(err?.message || "")
       if (msg.includes("账号不存在") || msg.includes("User not found")) setError(t.errorNotFound)
@@ -500,6 +650,7 @@ export function Login() {
 
   return (
     <div
+      id="login-root"
       className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
       style={{
         backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
@@ -597,73 +748,138 @@ export function Login() {
               <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={step === "identifier" ? handleContinue : handleSubmit} className="space-y-4">
               {error && (
                 <div role="alert" className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
 
-              <div>
-                <Label htmlFor="username" className="sr-only">
-                  {t.username}
-                </Label>
-                <Input
-                  id="username"
-                  name="username"
-                  placeholder={t.usernamePlaceholder || t.username}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
-                  className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                />
-              </div>
+              {step === "identifier" ? (
+                <>
+                  <div>
+                    <Label htmlFor="username" className="sr-only">
+                      {t.username}
+                    </Label>
+                    <Input
+                      id="username"
+                      name="username"
+                      placeholder={t.usernamePlaceholder || t.username}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      autoComplete="username webauthn"
+                      className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
+                    />
+                  </div>
 
-              <div>
-                <Label htmlFor="password" className="sr-only">
-                  {t.password}
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder={t.passwordPlaceholder || t.password}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
-                    onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? t.hidePassword : t.showPassword}
+                  <div className="flex items-center text-sm">
+                    <label className="group flex cursor-pointer items-center">
+                      <Checkbox
+                        id="remember"
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                      />
+                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                    </label>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading || passkeyLoading}
+                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
+                    {passkeyLoading ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t.passkeyLoggingIn}</>
+                    ) : t.continue}
+                  </Button>
 
-              <div className="flex items-center text-sm">
-                <label className="group flex cursor-pointer items-center">
-                  <Checkbox
-                    id="remember"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                    className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                  />
-                  <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
-                </label>
-              </div>
+                  {passkeyAvailable ? (
+                    <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
+                      <Fingerprint className="h-3.5 w-3.5 shrink-0" />
+                      <span className="whitespace-nowrap">{t.passkeyAutoHint}</span>
+                      <HelpTooltip label={t.passkeyTip} />
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between rounded-[10px] border border-gray-200 bg-gray-50/80 px-3.5 py-2.5">
+                    <span className="truncate text-sm font-medium text-gray-700">{username}</span>
+                    <button
+                      type="button"
+                      onClick={backToIdentifierStep}
+                      className="ml-2 shrink-0 text-sm font-medium text-primary transition-colors hover:underline"
+                    >
+                      {t.changeAccount}
+                    </button>
+                  </div>
 
-              <Button
-                type="submit"
-                disabled={loading}
-                className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
-              >
-                {loading ? t.loggingIn : t.login}
-              </Button>
+                  <div>
+                    <Label htmlFor="password" className="sr-only">
+                      {t.password}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={t.passwordPlaceholder || t.password}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                        autoFocus
+                        className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
+                        onClick={() => setShowPassword((value) => !value)}
+                        aria-label={showPassword ? t.hidePassword : t.showPassword}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center text-sm">
+                    <label className="group flex cursor-pointer items-center">
+                      <Checkbox
+                        id="remember-password"
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                      />
+                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                    </label>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading || passkeyLoading}
+                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
+                  >
+                    {loading ? t.loggingIn : t.login}
+                  </Button>
+
+                  {passkeyAvailable ? (
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={passkeyLoading}
+                        onClick={() => { setError(""); void attemptPasskeyLogin(username.trim()); }}
+                        className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:underline disabled:opacity-50"
+                      >
+                        {passkeyLoading
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Fingerprint className="h-3.5 w-3.5" />}
+                        {t.usePasskeyInstead}
+                      </button>
+                      <HelpTooltip label={t.passkeyTip} />
+                    </div>
+                  ) : null}
+                </>
+              )}
             </form>
 
             {workspaceChoices.length > 0 && (

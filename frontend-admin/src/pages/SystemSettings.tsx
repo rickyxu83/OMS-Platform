@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime } from "@/lib/format";
 import { ErrorToast } from "@/components/ErrorToast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1249,7 +1250,10 @@ export function SystemSettings() {
                 >
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>延迟发送分钟数</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>延迟发送分钟数</Label>
+                        <HelpTooltip label="提交后不立即发邮件，而是延迟到设定分钟数后发送；延迟期间工程师仍可修改或撤回服务单，避免销售收到中间过程的通知。" />
+                      </div>
                       <Input
                         type="number" min="5" max="1440"
                         value={form.notification.serviceOrderSalesDelayMinutes}
@@ -1257,7 +1261,10 @@ export function SystemSettings() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>OMS 管理端地址</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>OMS 管理端地址</Label>
+                        <HelpTooltip label="邮件中「查看工单」链接使用的前缀地址，应填管理端对外可访问的完整网址（如 https://admin.example.com）；留空或填内网地址会导致收件人打不开链接。" />
+                      </div>
                       <Input
                         value={form.notification.serviceOrderAdminBaseUrl}
                         onChange={(e) => setForm({ ...form, notification: { ...form.notification, serviceOrderAdminBaseUrl: e.target.value } })}
