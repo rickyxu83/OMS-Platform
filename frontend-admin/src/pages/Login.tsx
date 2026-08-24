@@ -479,7 +479,7 @@ export function Login() {
       navigate(localTarget, { replace: true });
       return;
     }
-    // 过场动画定稿 E（打分赛冠军：模糊过渡）：乐观路径已由 startLoginTransition 开播，此处收口导航；
+    // 过场动画定稿 A（打分赛：交叉淡化）：乐观路径已由 startLoginTransition 开播，此处收口导航；
     // 密码路径无乐观覆盖层，finish 内部回退为「先罩住再掀开」
     setExitTransition(true);
     finishLoginTransition(() => navigate(localTarget, { replace: true }));
