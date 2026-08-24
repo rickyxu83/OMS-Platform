@@ -334,6 +334,8 @@ export function Login() {
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const passkeyActiveRef = useRef(false);
+  // identifier-first 单框流：先只问账号，再按账号能力决定唤起生物识别还是展开密码框
+  const [step, setStep] = useState<"identifier" | "password">("identifier");
 
   const i18n = {
     "zh-CN": {
@@ -365,9 +367,12 @@ export function Login() {
       passwordPlaceholder: "请输入密码",
       passkeyLogin: "通行密钥登录",
       passkeyLoggingIn: "验证中…",
-      passkeyNeedUsername: "请先输入邮箱/别名，再使用通行密钥登录",
-      passkeyHint: "使用本机的 Face ID / Touch ID / 指纹或人脸验证登录",
-      orDivider: "或",
+      continue: "继续",
+      changeAccount: "更改",
+      passkeyAutoHint: "已登记通行密钥的账号，继续后将直接验证本机生物识别",
+      usePasskeyInstead: "改用通行密钥验证",
+      errorEmptyIdentifier: "请输入邮箱/别名",
+      errorEmptyPassword: "请输入密码",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已开源发布，遵循 GPL-3.0 许可证",
@@ -401,9 +406,12 @@ export function Login() {
       passwordPlaceholder: "請輸入密碼",
       passkeyLogin: "通行密鑰登錄",
       passkeyLoggingIn: "驗證中…",
-      passkeyNeedUsername: "請先輸入信箱或別名，再使用通行密鑰登錄",
-      passkeyHint: "使用本機的 Face ID / Touch ID / 指紋或人臉驗證登錄",
-      orDivider: "或",
+      continue: "繼續",
+      changeAccount: "更改",
+      passkeyAutoHint: "已登記通行密鑰的帳號，繼續後將直接驗證本機生物識別",
+      usePasskeyInstead: "改用通行密鑰驗證",
+      errorEmptyIdentifier: "請輸入信箱或別名",
+      errorEmptyPassword: "請輸入密碼",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已開源發布，遵循 GPL-3.0 授權條款",
@@ -530,39 +538,59 @@ export function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passkeyAvailable]);
 
-  const handlePasskeyLogin = async () => {
-    setError("");
-    const identifier = username.trim();
-    if (!identifier) {
-      setError(t.passkeyNeedUsername);
-      return;
-    }
+  // 通行密钥登录尝试：成功返回 true；账号无凭据/用户取消/接口异常返回 false（由调用方落密码步）
+  const attemptPasskeyLogin = async (identifier: string): Promise<boolean> => {
+    if (!passkeyAvailable) return false;
     setPasskeyLoading(true);
     try {
       const options = await api.post("/auth/webauthn/login/options", { identifier });
+      if (!(options?.publicKey?.allowCredentials || []).length) return false;
       const response = await startAuthentication({ optionsJSON: options.publicKey });
       const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
       if (rememberMe) {
         localStorage.setItem("remembered_username", identifier);
+      } else {
+        localStorage.removeItem("remembered_username");
       }
       const result = completeLogin(verify, rememberMe);
       if (!routeAfterLogin(result)) setError(t.errorAuth);
+      return true;
     } catch (err: any) {
-      // NotAllowedError/AbortError = 用户取消或本机无匹配凭据（浏览器自身已提示），静默停留登录页
+      // NotAllowedError/AbortError = 用户取消/本机无匹配凭据/超时：静默落密码步
       if (err?.name !== "NotAllowedError" && err?.name !== "AbortError") {
         setError(err?.message || t.errorFallback);
       }
+      return false;
     } finally {
       setPasskeyLoading(false);
     }
+  };
+
+  // 第一步「继续」：有通行密钥直接唤起生物识别；否则展开密码框
+  const handleContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const identifier = username.trim();
+    if (!identifier) {
+      setError(t.errorEmptyIdentifier);
+      return;
+    }
+    const loggedIn = await attemptPasskeyLogin(identifier);
+    if (!loggedIn) setStep("password");
+  };
+
+  const backToIdentifierStep = () => {
+    setStep("identifier");
+    setPassword("");
+    setError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!username || !password) {
-      setError(t.errorEmpty);
+    if (!username.trim() || !password) {
+      setError(t.errorEmptyPassword);
       return;
     }
 
@@ -685,96 +713,122 @@ export function Login() {
               <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={step === "identifier" ? handleContinue : handleSubmit} className="space-y-4">
               {error && (
                 <div role="alert" className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
 
-              <div>
-                <Label htmlFor="username" className="sr-only">
-                  {t.username}
-                </Label>
-                <Input
-                  id="username"
-                  name="username"
-                  placeholder={t.usernamePlaceholder || t.username}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username webauthn"
-                  className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="password" className="sr-only">
-                  {t.password}
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder={t.passwordPlaceholder || t.password}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
-                    onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? t.hidePassword : t.showPassword}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center text-sm">
-                <label className="group flex cursor-pointer items-center">
-                  <Checkbox
-                    id="remember"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                    className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                  />
-                  <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
-                </label>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={loading || passkeyLoading}
-                className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
-              >
-                {loading ? t.loggingIn : t.login}
-              </Button>
-
-              {passkeyAvailable ? (
+              {step === "identifier" ? (
                 <>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span className="h-px flex-1 bg-gray-200" />
-                    <span>{t.orDivider}</span>
-                    <span className="h-px flex-1 bg-gray-200" />
+                  <div>
+                    <Label htmlFor="username" className="sr-only">
+                      {t.username}
+                    </Label>
+                    <Input
+                      id="username"
+                      name="username"
+                      placeholder={t.usernamePlaceholder || t.username}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      autoComplete="username webauthn"
+                      className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
+                    />
                   </div>
+
+                  <div className="flex items-center text-sm">
+                    <label className="group flex cursor-pointer items-center">
+                      <Checkbox
+                        id="remember"
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                      />
+                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                    </label>
+                  </div>
+
                   <Button
-                    type="button"
-                    variant="outline"
+                    type="submit"
                     disabled={loading || passkeyLoading}
-                    onClick={handlePasskeyLogin}
-                    title={t.passkeyHint}
-                    className="h-11 w-full rounded-[10px] border-[1.5px] border-primary/25 bg-white/80 text-base font-semibold text-primary transition-all hover:border-primary hover:bg-primary/5 active:scale-[0.98]"
+                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
                   >
-                    {passkeyLoading
-                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      : <Fingerprint className="mr-2 h-4 w-4" />}
-                    {passkeyLoading ? t.passkeyLoggingIn : t.passkeyLogin}
+                    {passkeyLoading ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t.passkeyLoggingIn}</>
+                    ) : t.continue}
                   </Button>
+
+                  {passkeyAvailable ? (
+                    <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
+                      <Fingerprint className="h-3.5 w-3.5 shrink-0" />
+                      {t.passkeyAutoHint}
+                    </p>
+                  ) : null}
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <div className="flex items-center justify-between rounded-[10px] border border-gray-200 bg-gray-50/80 px-3.5 py-2.5">
+                    <span className="truncate text-sm font-medium text-gray-700">{username}</span>
+                    <button
+                      type="button"
+                      onClick={backToIdentifierStep}
+                      className="ml-2 shrink-0 text-sm font-medium text-primary transition-colors hover:underline"
+                    >
+                      {t.changeAccount}
+                    </button>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="password" className="sr-only">
+                      {t.password}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={t.passwordPlaceholder || t.password}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                        autoFocus
+                        className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
+                        onClick={() => setShowPassword((value) => !value)}
+                        aria-label={showPassword ? t.hidePassword : t.showPassword}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading || passkeyLoading}
+                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
+                  >
+                    {loading ? t.loggingIn : t.login}
+                  </Button>
+
+                  {passkeyAvailable ? (
+                    <button
+                      type="button"
+                      disabled={passkeyLoading}
+                      onClick={() => { setError(""); void attemptPasskeyLogin(username.trim()); }}
+                      className="mx-auto flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:underline disabled:opacity-50"
+                    >
+                      {passkeyLoading
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Fingerprint className="h-3.5 w-3.5" />}
+                      {t.usePasskeyInstead}
+                    </button>
+                  ) : null}
+                </>
+              )}
             </form>
 
             {workspaceChoices.length > 0 && (
