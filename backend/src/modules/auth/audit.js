@@ -1,5 +1,6 @@
 const { query } = require('../../config/db')
 const { ensureAuthSecurityTables } = require('./schema')
+const { resolveIpLocation } = require('../../utils/ip-location')
 
 // 登录安全审计（002-login-security US3）：/api/v1/auth 未挂 auditLogger 中间件（依赖 req.user），
 // 登录成功/失败与通行密钥增删全部在这里显式留痕。
@@ -18,6 +19,7 @@ async function writeAuthAudit(req, { actorId = null, action, detail = {} }) {
         action,
         detailJson: JSON.stringify({
           ip: req.ip,
+          location: resolveIpLocation(req.ip) || undefined,
           userAgent: String(req.get?.('user-agent') || '').slice(0, 255) || undefined,
           ...detail,
         }),

@@ -13,19 +13,20 @@ try {
 /**
  * 解析 IP 归属地，返回展示用字符串：
  * - 国内：省 市 运营商（如 "广东省 深圳市 电信"）
- * - 海外：国家（如 "美国"、"台湾省 中华电信"）
- * - 内网/无法解析："内网" 或 ""
+ * - 海外：国家（如 "美国"）；IPv6 库国内数据为主，海外/未收录返回 "未知地区" 或 ""
+ * - 内网/本机/链路本地："内网"
  */
+const LOCAL_MARKS = ['内网IP', '本机地址', '本地链路单播地址', '本地地址', '链路本地地址']
+
 function resolveIpLocation(ip) {
   if (!searcher || !ip) return ''
   let addr = String(ip).trim()
   if (addr.startsWith('::ffff:')) addr = addr.slice(7)
-  if (addr.includes(':')) return '' // xdb v4 库不支持 IPv6
 
   try {
     const result = searcher.search(addr)
     if (!result) return ''
-    if (result.city === '内网IP' || result.country === '内网IP') return '内网'
+    if (LOCAL_MARKS.includes(result.city) || LOCAL_MARKS.includes(result.country) || LOCAL_MARKS.includes(result.isp)) return '内网'
 
     const clean = (value) => (value && value !== '0' ? value : '')
     const parts = []
