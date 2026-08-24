@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, Globe, TriangleAlert } from "lucide-react";
+import { Eye, EyeOff, Fingerprint, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,7 @@ import {
 import { APP_VERSION, getPreferredWorkspace, goToWorkspace, workspaceLabel, type WorkspaceOption } from "@/config/app";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { releaseInteractionLocks } from "@/services/api";
+import { api, releaseInteractionLocks } from "@/services/api";
 
 const LOGIN_BACKGROUND_BLOBS = [
   { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
@@ -314,7 +315,7 @@ function LoginMotionBackground() {
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login } = useAuth();
+  const { login, completeLogin } = useAuth();
   const { lang, setLang } = useLanguage();
   const [username, setUsername] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -329,6 +330,10 @@ export function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [workspaceChoices, setWorkspaceChoices] = useState<WorkspaceOption[]>([]);
+  // 通行密钥（002-login-security）：login-methods 探测 + 浏览器能力探测双重门控，不满足就不出现入口
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const passkeyActiveRef = useRef(false);
 
   const i18n = {
     "zh-CN": {
@@ -358,6 +363,11 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "请输入邮箱或别名",
       passwordPlaceholder: "请输入密码",
+      passkeyLogin: "通行密钥登录",
+      passkeyLoggingIn: "验证中…",
+      passkeyNeedUsername: "请先输入邮箱/别名，再使用通行密钥登录",
+      passkeyHint: "使用本机的 Face ID / Touch ID / 指纹或人脸验证登录",
+      orDivider: "或",
       copyrightNotice: "© 2026 敦阳（宁波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已开源发布，遵循 GPL-3.0 许可证",
@@ -389,6 +399,11 @@ export function Login() {
       langOptionTw: "繁體中文",
       usernamePlaceholder: "請輸入信箱或別名",
       passwordPlaceholder: "請輸入密碼",
+      passkeyLogin: "通行密鑰登錄",
+      passkeyLoggingIn: "驗證中…",
+      passkeyNeedUsername: "請先輸入信箱或別名，再使用通行密鑰登錄",
+      passkeyHint: "使用本機的 Face ID / Touch ID / 指紋或人臉驗證登錄",
+      orDivider: "或",
       copyrightNotice: "© 2026 敦陽（寧波）科技有限公司",
       icpNotice: "浙ICP备2026045692号",
       licenseLine: "OMS Platform 已開源發布，遵循 GPL-3.0 授權條款",
@@ -444,6 +459,104 @@ export function Login() {
     if (localTarget) navigate(localTarget, { replace: true });
   };
 
+  // 登录成功后的工作台路由（密码/通行密钥共用）
+  const routeAfterLogin = (result: { user?: any; availableWorkspaces?: WorkspaceOption[] }) => {
+    const workspaces: WorkspaceOption[] = result.availableWorkspaces || result.user?.availableWorkspaces || [];
+    const requestedWorkspace = searchParams.get("workspace") || "";
+    const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
+
+    if (explicitWorkspace) {
+      enterWorkspace(explicitWorkspace.key, explicitWorkspace.home || "");
+      return true;
+    }
+
+    if (workspaces.length === 1) {
+      enterWorkspace(workspaces[0].key, workspaces[0].home || "");
+      return true;
+    }
+
+    if (workspaces.length > 1) {
+      const preferredWorkspace = getPreferredWorkspace(result.user?.id);
+      const preferredChoice = workspaces.find((workspace) => workspace.key === preferredWorkspace);
+      if (preferredChoice) {
+        enterWorkspace(preferredChoice.key, preferredChoice.home || "");
+        return true;
+      }
+      setWorkspaceChoices(workspaces);
+      return true;
+    }
+    return false;
+  };
+
+  // 通行密钥能力探测：后端配置开启 + 安全上下文 + 平台认证器可用，三者齐备才显示入口
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const supported = typeof window !== "undefined"
+          && window.isSecureContext
+          && typeof window.PublicKeyCredential !== "undefined";
+        if (!supported) return;
+        const methods = await api.get("/auth/login-methods");
+        if (!active || !methods?.passkey) return;
+        const platformReady = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+        if (active && platformReady) setPasskeyAvailable(true);
+      } catch { /* 探测失败即保持隐藏 */ }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // 通行密钥自动填充（conditional UI）：账号框获得焦点时由浏览器原生下拉列出本机通行密钥
+  useEffect(() => {
+    if (!passkeyAvailable) return;
+    let active = true;
+    passkeyActiveRef.current = true;
+    (async () => {
+      try {
+        const conditionalReady = await PublicKeyCredential.isConditionalMediationAvailable?.().catch(() => false);
+        if (!active || !conditionalReady) return;
+        const options = await api.post("/auth/webauthn/login/options", { identifier: "" });
+        if (!active) return;
+        // useBrowserAutofill：挂起等待用户从自动填充中选择；其他 WebAuthn 调用会自动中止它
+        const response = await startAuthentication({ optionsJSON: options.publicKey, useBrowserAutofill: true });
+        if (!active) return;
+        const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
+        if (!active) return;
+        const result = completeLogin(verify, true);
+        routeAfterLogin(result);
+      } catch { /* 用户未选择/被中止：静默 */ }
+    })();
+    return () => { active = false; passkeyActiveRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passkeyAvailable]);
+
+  const handlePasskeyLogin = async () => {
+    setError("");
+    const identifier = username.trim();
+    if (!identifier) {
+      setError(t.passkeyNeedUsername);
+      return;
+    }
+    setPasskeyLoading(true);
+    try {
+      const options = await api.post("/auth/webauthn/login/options", { identifier });
+      const response = await startAuthentication({ optionsJSON: options.publicKey });
+      const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
+      if (rememberMe) {
+        localStorage.setItem("remembered_username", identifier);
+      }
+      const result = completeLogin(verify, rememberMe);
+      if (!routeAfterLogin(result)) setError(t.errorAuth);
+    } catch (err: any) {
+      // NotAllowedError/AbortError = 用户取消或本机无匹配凭据（浏览器自身已提示），静默停留登录页
+      if (err?.name !== "NotAllowedError" && err?.name !== "AbortError") {
+        setError(err?.message || t.errorFallback);
+      }
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -461,32 +574,7 @@ export function Login() {
       } else {
         localStorage.removeItem("remembered_username");
       }
-      const workspaces = result.availableWorkspaces || result.user?.availableWorkspaces || [];
-      const requestedWorkspace = searchParams.get("workspace") || "";
-      const explicitWorkspace = workspaces.find((workspace) => workspace.key === requestedWorkspace);
-
-      if (explicitWorkspace) {
-        enterWorkspace(explicitWorkspace.key, explicitWorkspace.home || "");
-        return;
-      }
-
-      if (workspaces.length === 1) {
-        enterWorkspace(workspaces[0].key, workspaces[0].home || "");
-        return;
-      }
-
-      if (workspaces.length > 1) {
-        const preferredWorkspace = getPreferredWorkspace(result.user?.id);
-        const preferredChoice = workspaces.find((workspace) => workspace.key === preferredWorkspace);
-        if (preferredChoice) {
-          enterWorkspace(preferredChoice.key, preferredChoice.home || "");
-          return;
-        }
-        setWorkspaceChoices(workspaces);
-        return;
-      }
-
-      setError(t.errorAuth);
+      if (!routeAfterLogin(result)) setError(t.errorAuth);
     } catch (err: any) {
       const msg = String(err?.message || "")
       if (msg.includes("账号不存在") || msg.includes("User not found")) setError(t.errorNotFound)
@@ -614,7 +702,7 @@ export function Login() {
                   placeholder={t.usernamePlaceholder || t.username}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
+                  autoComplete="username webauthn"
                   className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
               </div>
@@ -659,11 +747,34 @@ export function Login() {
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || passkeyLoading}
                 className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
               >
                 {loading ? t.loggingIn : t.login}
               </Button>
+
+              {passkeyAvailable ? (
+                <>
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <span className="h-px flex-1 bg-gray-200" />
+                    <span>{t.orDivider}</span>
+                    <span className="h-px flex-1 bg-gray-200" />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={loading || passkeyLoading}
+                    onClick={handlePasskeyLogin}
+                    title={t.passkeyHint}
+                    className="h-11 w-full rounded-[10px] border-[1.5px] border-primary/25 bg-white/80 text-base font-semibold text-primary transition-all hover:border-primary hover:bg-primary/5 active:scale-[0.98]"
+                  >
+                    {passkeyLoading
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <Fingerprint className="mr-2 h-4 w-4" />}
+                    {passkeyLoading ? t.passkeyLoggingIn : t.passkeyLogin}
+                  </Button>
+                </>
+              ) : null}
             </form>
 
             {workspaceChoices.length > 0 && (
