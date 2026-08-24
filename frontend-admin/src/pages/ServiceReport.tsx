@@ -1832,10 +1832,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     if (!isOffice && !form.contactPhone.trim()) missing.push({ label: "客户联系电话", section: "customer" });
     if (isOffice && !form.timesheetCategory.trim()) missing.push({ label: "内勤工作事项", section: "module" });
     if (isInstall) {
+      // 安装设备为可选（产品裁决：UI 无必填星号、后端允许空数组），仅对填写了的行做逐行校验
       const installTargets = form.installDevices.filter(installDeviceHasContent);
-      if (!installTargets.length) {
-        missing.push({ label: "安装设备", section: "asset" });
-      }
       installTargets.forEach((device, index) => {
         const deviceLabelText = `安装设备 ${index + 1}`;
         if (device.inputMode === "existing") {
