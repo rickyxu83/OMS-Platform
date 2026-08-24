@@ -123,16 +123,16 @@
   height: 100%;
 }
 
-/* 候选 B：覆盖层向左滑开，露出已就绪的主页 */
-@keyframes lt-out-slide {
-  to { transform: translateX(-102%); }
+/* 候选 C：覆盖层缩小渐隐（Material 感，登录页向后退去） */
+@keyframes lt-out-zoom {
+  to { opacity: 0; transform: scale(0.9); }
 }
-.lt-out-slide {
-  animation: lt-out-slide 0.45s cubic-bezier(0.32, 0.72, 0.35, 1) forwards;
+.lt-out-zoom {
+  animation: lt-out-zoom 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lt-out-slide {
+  .lt-out-zoom {
     animation: none;
   }
 }
