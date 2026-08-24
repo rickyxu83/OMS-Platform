@@ -18,7 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api, releaseInteractionLocks } from "@/services/api";
 import { preloadAdminCore } from "@/lib/preload-admin";
-import { playLoginTransition } from "@/lib/login-transition";
+import { cancelLoginTransition, finishLoginTransition, startLoginTransition } from "@/lib/login-transition";
 
 const LOGIN_BACKGROUND_BLOBS = [
   { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
@@ -479,9 +479,10 @@ export function Login() {
       navigate(localTarget, { replace: true });
       return;
     }
-    // 过场动画候选 F（打分赛）：克隆登录页罩住加载间隙，随后被斜切边裁开露出主页
+    // 过场动画定稿 E（打分赛冠军：模糊过渡）：乐观路径已由 startLoginTransition 开播，此处收口导航；
+    // 密码路径无乐观覆盖层，finish 内部回退为「先罩住再掀开」
     setExitTransition(true);
-    playLoginTransition("wipe", () => navigate(localTarget, { replace: true }));
+    finishLoginTransition(() => navigate(localTarget, { replace: true }));
   };
 
   // 登录成功后的工作台路由（密码/通行密钥共用）
@@ -545,13 +546,23 @@ export function Login() {
         // useBrowserAutofill：挂起等待用户从自动填充中选择；其他 WebAuthn 调用会自动中止它
         const response = await startAuthentication({ optionsJSON: options.publicKey, useBrowserAutofill: true });
         if (!active) return;
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) startLoginTransition();
         const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
-        if (!active) return;
+        if (!active) {
+          cancelLoginTransition();
+          return;
+        }
         const result = completeLogin(verify, true);
         routeAfterLogin(result);
-      } catch { /* 用户未选择/被中止：静默 */ }
+      } catch {
+        cancelLoginTransition(); /* 用户未选择/被中止：静默 */
+      }
     })();
-    return () => { active = false; passkeyActiveRef.current = false; };
+    return () => {
+      active = false;
+      passkeyActiveRef.current = false;
+      cancelLoginTransition();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passkeyAvailable]);
 
@@ -563,6 +574,8 @@ export function Login() {
       const options = await api.post("/auth/webauthn/login/options", { identifier });
       if (!(options?.publicKey?.allowCredentials || []).length) return false;
       const response = await startAuthentication({ optionsJSON: options.publicKey });
+      // 乐观过渡：指纹/人脸一通过立即开播动画，前段正好盖住 verify 网络往返（消除暂停感）
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) startLoginTransition();
       const verify = await api.post("/auth/webauthn/login/verify", { challengeToken: options.challengeToken, response });
       if (rememberMe) {
         localStorage.setItem("remembered_username", identifier);
@@ -570,9 +583,13 @@ export function Login() {
         localStorage.removeItem("remembered_username");
       }
       const result = completeLogin(verify, rememberMe);
-      if (!routeAfterLogin(result)) setError(t.errorAuth);
+      if (!routeAfterLogin(result)) {
+        cancelLoginTransition();
+        setError(t.errorAuth);
+      }
       return true;
     } catch (err: any) {
+      cancelLoginTransition();
       // NotAllowedError/AbortError = 用户取消/本机无匹配凭据/超时：静默落密码步
       if (err?.name !== "NotAllowedError" && err?.name !== "AbortError") {
         setError(err?.message || t.errorFallback);
