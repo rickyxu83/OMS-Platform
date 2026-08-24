@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api, releaseInteractionLocks } from "@/services/api";
 import { preloadAdminCore } from "@/lib/preload-admin";
+import { playLoginTransition } from "@/lib/login-transition";
 
 const LOGIN_BACKGROUND_BLOBS = [
   { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
@@ -478,11 +479,9 @@ export function Login() {
       navigate(localTarget, { replace: true });
       return;
     }
-    // 过场动画候选 B（打分赛）：登录页左滑让位 0.3s 再跳转，主页由 AdminLayout 从右侧推入
+    // 过场动画候选 B（打分赛）：克隆登录页罩住加载间隙，随后向左滑开露出就绪主页
     setExitTransition(true);
-    window.setTimeout(() => {
-      navigate(localTarget, { replace: true, state: { loginTransition: "slide" } });
-    }, 300);
+    playLoginTransition("slide", () => navigate(localTarget, { replace: true }));
   };
 
   // 登录成功后的工作台路由（密码/通行密钥共用）
@@ -634,7 +633,8 @@ export function Login() {
 
   return (
     <div
-      className={`fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 ${exitTransition ? "login-exit-slide" : ""}`}
+      id="login-root"
+      className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
       style={{
         backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
         colorScheme: "light",

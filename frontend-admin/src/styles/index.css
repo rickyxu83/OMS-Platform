@@ -108,23 +108,31 @@
   }
 }
 
-/* 登录 → 主页过场动画候选 B：推入（打分赛 2/6，落选方案即删） */
-@keyframes login-exit-slide {
-  to { opacity: 0.55; transform: translateX(-28%); }
+/* 登录 → 主页过场动画（打分赛）：克隆覆盖层机制
+   .login-transition-overlay 罩住跳转后的加载间隙，COVER 结束后按 lt-out-* 风格掀开 */
+.login-transition-overlay {
+  --lt-exit-ms: 450;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
 }
-.login-exit-slide {
-  animation: login-exit-slide 0.3s cubic-bezier(0.32, 0.72, 0.35, 1) forwards;
+.login-transition-overlay [id="login-root"],
+.login-transition-overlay > * {
+  width: 100%;
+  height: 100%;
 }
-@keyframes route-enter-slide {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+
+/* 候选 B：覆盖层向左滑开，露出已就绪的主页 */
+@keyframes lt-out-slide {
+  to { transform: translateX(-102%); }
 }
-.route-enter-slide {
-  animation: route-enter-slide 0.35s cubic-bezier(0.32, 0.72, 0.35, 1);
+.lt-out-slide {
+  animation: lt-out-slide 0.45s cubic-bezier(0.32, 0.72, 0.35, 1) forwards;
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .login-exit-slide,
-  .route-enter-slide {
+  .lt-out-slide {
     animation: none;
   }
 }
