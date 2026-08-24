@@ -23,12 +23,12 @@ export function playLoginTransition(style: string, navigate: () => void) {
 
   navigate()
 
-  const exitMs = Number(
-    getComputedStyle(overlay).getPropertyValue("--lt-exit-ms").replace(/[^0-9.]/g, ""),
-  ) || 450
-
   window.setTimeout(() => {
     overlay.classList.add(`lt-out-${style}`)
+    // 退出时长在加类后读取，允许每个风格用 --lt-exit-ms 自定义
+    const exitMs = Number(
+      getComputedStyle(overlay).getPropertyValue("--lt-exit-ms").replace(/[^0-9.]/g, ""),
+    ) || 450
     window.setTimeout(() => overlay.remove(), exitMs + EXIT_BUFFER_MS)
   }, COVER_MS)
 }

@@ -131,8 +131,18 @@
   animation: lt-out-zoom 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* 候选 D：卡片扑面（英雄感，覆盖层迎面放大飞出，0.55s 加长版） */
+@keyframes lt-out-hero {
+  to { opacity: 0; transform: scale(1.55); }
+}
+.lt-out-hero {
+  --lt-exit-ms: 550;
+  animation: lt-out-hero 0.55s cubic-bezier(0.5, 0, 0.75, 0.4) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lt-out-zoom {
+  .lt-out-zoom,
+  .lt-out-hero {
     animation: none;
   }
 }

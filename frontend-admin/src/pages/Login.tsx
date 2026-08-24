@@ -479,9 +479,9 @@ export function Login() {
       navigate(localTarget, { replace: true });
       return;
     }
-    // 过场动画候选 C（打分赛）：克隆登录页罩住加载间隙，随后缩小渐隐（Material 感）露出主页
+    // 过场动画候选 D（打分赛）：克隆登录页罩住加载间隙，随后迎面放大飞出（英雄感）露出主页
     setExitTransition(true);
-    playLoginTransition("zoom", () => navigate(localTarget, { replace: true }));
+    playLoginTransition("hero", () => navigate(localTarget, { replace: true }));
   };
 
   // 登录成功后的工作台路由（密码/通行密钥共用）
