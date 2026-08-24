@@ -810,6 +810,18 @@ export function Login() {
                     </div>
                   </div>
 
+                  <div className="flex items-center text-sm">
+                    <label className="group flex cursor-pointer items-center">
+                      <Checkbox
+                        id="remember-password"
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                      />
+                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                    </label>
+                  </div>
+
                   <Button
                     type="submit"
                     disabled={loading || passkeyLoading}
