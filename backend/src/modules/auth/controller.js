@@ -25,8 +25,9 @@ function isLockActive(lockedUntil) {
   return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
 }
 
-function invalidLoginResult() {
-  return { ok: false }
+function invalidLoginResult(user = null) {
+  // 失败时把已知账号带回：审计据此把「针对真实账号的攻击」归属到被攻击账号（匿名探测则为 NULL）
+  return { ok: false, userId: user?.id ?? null }
 }
 
 function cookieDomain() {
@@ -139,7 +140,7 @@ async function login(req, res) {
     if (loginBlocked) {
       // 做一次等时哈希比对,使不存在/被锁账号与存在账号的响应耗时一致
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH)
-      return invalidLoginResult()
+      return invalidLoginResult(existingUser)
     }
 
     const passwordOk = await bcrypt.compare(password, existingUser.password_hash)
@@ -163,7 +164,7 @@ async function login(req, res) {
         },
       )
 
-      return invalidLoginResult()
+      return invalidLoginResult(existingUser)
     }
 
     await connection.execute(
@@ -180,7 +181,7 @@ async function login(req, res) {
   })
 
   if (!loginResult.ok) {
-    await writeAuthAudit(req, { action: 'login_failed', detail: { method: 'password_login' } })
+    await writeAuthAudit(req, { actorId: loginResult.userId, action: 'login_failed', detail: { method: 'password_login' } })
     throw unauthorized('用户名或密码错误')
   }
 

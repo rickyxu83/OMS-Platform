@@ -41,6 +41,18 @@ async function ensureAuthSecurityTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
 
+  // 匿名登录审计需要 actor_id 可空（2026-08-24 事故：audit_logs.actor_id NOT NULL + FK RESTRICT，
+  // 失败登录用 actor_id=0 写入直接 FK 报错，失败审计静默丢失；NULL 可绕过 FK 且语义正确）
+  const actorCol = await query(
+    `SELECT IS_NULLABLE AS isNullable
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'actor_id'
+     LIMIT 1`,
+  )
+  if (actorCol[0] && String(actorCol[0].isNullable).toUpperCase() === 'NO') {
+    await query('ALTER TABLE audit_logs MODIFY actor_id BIGINT UNSIGNED NULL')
+  }
+
   authSecurityTablesReady = true
 }
 
