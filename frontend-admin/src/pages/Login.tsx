@@ -370,7 +370,7 @@ export function Login() {
       passkeyLoggingIn: "验证中…",
       continue: "继续",
       changeAccount: "更改",
-      passkeyAutoHint: "已登记通行密钥的账号，继续后将直接验证本机生物识别",
+      passkeyAutoHint: "登记过通行密钥的账号将直接验证指纹/人脸",
       passkeyTip: "通行密钥是免密码登录：已登记的账号点「继续」后直接唤起本机指纹或人脸验证。首次使用：在手机上打开本系统，密码登录后进入「我的设置 → 通行密钥」登记一次即可。台式电脑登录：输入邮箱点「继续」，屏幕出现二维码后用已登记的手机扫码、刷脸即可（需打开手机和电脑的蓝牙）。",
       usePasskeyInstead: "改用通行密钥验证",
       errorEmptyIdentifier: "请输入邮箱/别名",
@@ -410,7 +410,7 @@ export function Login() {
       passkeyLoggingIn: "驗證中…",
       continue: "繼續",
       changeAccount: "更改",
-      passkeyAutoHint: "已登記通行密鑰的帳號，繼續後將直接驗證本機生物識別",
+      passkeyAutoHint: "登記過通行密鑰的帳號將直接驗證指紋/人臉",
       passkeyTip: "通行密鑰是免密碼登錄：已登記的帳號點「繼續」後直接喚起本機指紋或人臉驗證。首次使用：在手機上開啟本系統，密碼登錄後進入「我的設定 → 通行密鑰」登記一次即可。桌上型電腦登錄：輸入信箱點「繼續」，螢幕出現 QR Code 後用已登記的手機掃碼、刷臉即可（需開啟手機和電腦的藍牙）。",
       usePasskeyInstead: "改用通行密鑰驗證",
       errorEmptyIdentifier: "請輸入信箱或別名",
@@ -765,7 +765,7 @@ export function Login() {
                   {passkeyAvailable ? (
                     <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
                       <Fingerprint className="h-3.5 w-3.5 shrink-0" />
-                      <span>{t.passkeyAutoHint}</span>
+                      <span className="whitespace-nowrap">{t.passkeyAutoHint}</span>
                       <HelpTooltip label={t.passkeyTip} />
                     </p>
                   ) : null}
