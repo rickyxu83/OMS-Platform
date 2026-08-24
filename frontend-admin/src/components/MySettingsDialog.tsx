@@ -534,6 +534,13 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                     <h3 className="text-sm font-semibold">通行密钥</h3>
                     <p className="text-xs text-muted-foreground">登记本设备后，登录页可直接使用 Face ID / Touch ID / 指纹 / 人脸验证，无需输密码。</p>
                   </div>
+                  <div className="rounded-lg border bg-slate-50/60 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                    <p><span className="font-medium text-foreground">使用说明</span></p>
+                    <p>① 登记：在每台常用设备上点下方「登记本设备」，按提示完成验证各一次（手机、笔记本、台式机都可以）。</p>
+                    <p>② 本机登录：输入邮箱点「继续」，已登记设备会直接弹出指纹/人脸/PIN 验证。</p>
+                    <p>③ 未登记的电脑：屏幕出现二维码，用已登记的手机扫码、刷脸即可（需打开手机和电脑的蓝牙）。</p>
+                    <p>支持方式：iPhone/iPad 的 Face ID、Mac 的 Touch ID 或开机密码、Windows 的 Hello（人脸/指纹/PIN 码）、安卓的指纹或人脸。</p>
+                  </div>
                   {passkeys.length ? (
                     <div className="space-y-2">
                       {passkeys.map((item) => (
