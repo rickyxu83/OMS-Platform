@@ -143,10 +143,13 @@
   animation: lt-out-hero 0.55s cubic-bezier(0.5, 0, 0.75, 0.4) forwards;
 }
 
-/* 定稿 E：模糊过渡（模糊量收敛至 12px 降负载，0.85s 加长摊薄每帧压力；
-   乐观启动时动画前段盖住 verify 网络往返，消除刷完指纹后的暂停感） */
+/* 定稿 E v2：两段式模糊——前 35% 先把模糊打满（画面近乎不透明，雾化清晰可辨），
+   后 65% 连透明度一起消散；附 3% 微缩放增加「毛玻璃离去」的纵深。
+   乐观启动时动画前段盖住 verify 网络往返，消除刷完指纹后的暂停感 */
 @keyframes lt-out-blur {
-  to { opacity: 0; filter: blur(12px); }
+  0% { opacity: 1; filter: blur(0); transform: scale(1); }
+  35% { opacity: 0.92; filter: blur(10px); transform: scale(1.015); }
+  100% { opacity: 0; filter: blur(14px); transform: scale(1.03); }
 }
 .lt-out-blur {
   --lt-exit-ms: 850;
