@@ -49,6 +49,8 @@ const env = {
   host: process.env.HOST || '127.0.0.1',
   jwtSecret,
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'oms_platform_token',
+  // 陌生设备识别的长效设备标记 Cookie（002-login-security 新设备登录提醒）
+  deviceCookieName: process.env.DEVICE_COOKIE_NAME || 'oms_device_id',
   sessionCookieDomain: process.env.SESSION_COOKIE_DOMAIN || '',
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',

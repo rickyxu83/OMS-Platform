@@ -143,6 +143,11 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
     assert.equal(result.thrown, null)
     assert.equal(result.compareCalls.length, 1, 'disabled account lockout should still check the password for locked users')
     assert.equal(result.response.body.user.id, 42)
+    // 陌生设备登录提醒（002）：未携带设备标记 Cookie 时应落两年期设备 Cookie
+    assert.ok(
+      result.response.cookies.some((cookie) => cookie.name === 'oms_device_id'),
+      'new device login should set the long-lived device marker cookie',
+    )
   }
 })().catch((error) => {
   console.error(error)

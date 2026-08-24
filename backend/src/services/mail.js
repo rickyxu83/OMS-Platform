@@ -129,6 +129,38 @@ function mailFooter() {
       </div>`
 }
 
+async function sendNewDeviceLoginMail({ to, realName = '', methodLabel = '', ip = '', location = '', deviceLabel = '' }) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const recipient = String(to || '').trim()
+  if (!recipient || !recipient.includes('@')) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const subject = '【OMS Platform】您的账号在新设备上登录'
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">新设备登录提醒</h2>
+      <p>${htmlEscape(realName || '您好')}，您的账号刚刚在一台此前未使用过的设备上登录成功：</p>
+      <table style="border-collapse:collapse;width:100%;max-width:680px;font-size:14px">
+        <tr><td style="padding:6px 0;color:#64748b;width:96px">时间</td><td>${htmlEscape(formatTime(new Date()))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">登录方式</td><td>${htmlEscape(methodLabel || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">设备</td><td>${htmlEscape(deviceLabel || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">IP</td><td>${htmlEscape(ip || '-')}${location ? `（${htmlEscape(location)}）` : ''}</td></tr>
+      </table>
+      <p style="margin-top:14px">如这是您本人操作，可忽略本邮件。<strong>如非本人操作</strong>，请立即联系系统管理员重置密码，并在「我的设置」中检查通行密钥列表是否有陌生设备。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to: recipient, subject, html })
+  return { sent: true, to: recipient }
+}
+
 async function sendAssignmentMail(order, engineers = []) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -1139,6 +1171,7 @@ async function sendHolidaySyncMail({ year, synced, count = 0, warnings = [], rea
 }
 
 module.exports = {
+  sendNewDeviceLoginMail,
   sendAssignmentMail,
   sendInspectionConfirmationMail,
   sendMaintenanceExpiryMail,

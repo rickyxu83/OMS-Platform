@@ -11,6 +11,7 @@ const { badRequest, unauthorized, notFound } = require('../../utils/http-error')
 const { ensureAuthSecurityTables } = require('./schema')
 const { ensureUserLoginColumns } = require('../users/schema')
 const { writeAuthAudit } = require('./audit')
+const { inferDeviceLabel } = require('./device-alert')
 
 const MAX_PASSKEYS_PER_USER = 10
 const CHALLENGE_TTL_MINUTES = 5
@@ -28,15 +29,9 @@ function assertPasskeyEnabled() {
   if (!passkeyEnabled()) throw notFound('通行密钥功能未开启')
 }
 
-// 设备名自动推断（用户可在设置中改名）
+// 设备名自动推断（用户可在设置中改名）；复用 device-alert 的 UA 解析，取 OS 部分
 function inferDeviceName(userAgent = '') {
-  const ua = String(userAgent)
-  if (/iPhone/i.test(ua)) return 'iPhone'
-  if (/iPad/i.test(ua)) return 'iPad'
-  if (/Macintosh|Mac OS/i.test(ua)) return 'Mac'
-  if (/Android/i.test(ua)) return '安卓设备'
-  if (/Windows/i.test(ua)) return 'Windows 电脑'
-  return '未命名设备'
+  return inferDeviceLabel(userAgent).split(' · ')[0]
 }
 
 function base64urlToBytes(value) {
@@ -372,7 +367,7 @@ async function loginVerify(req, res, { issueSession }) {
     }
 
     await writeAuthAudit(req, { actorId: outcome.id, action: 'login', detail: { method: 'passkey_login' } })
-    await issueSession(req, res, outcome)
+    await issueSession(req, res, outcome, { method: 'passkey_login' })
   } catch (error) {
     if (error?.status) throw error
     await auditFail()
