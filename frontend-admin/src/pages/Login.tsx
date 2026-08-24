@@ -465,9 +465,21 @@ export function Login() {
     };
   }, []);
 
+  const [exitTransition, setExitTransition] = useState(false);
+
   const enterWorkspace = (workspaceKey: string, home = "") => {
     const localTarget = goToWorkspace(workspaceKey, home);
-    if (localTarget) navigate(localTarget, { replace: true });
+    if (!localTarget || exitTransition) return;
+    const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      navigate(localTarget, { replace: true });
+      return;
+    }
+    // 过场动画候选 A（打分赛）：先淡出登录页 0.3s 再跳转，主页侧由 AdminLayout 播 route-enter-crossfade
+    setExitTransition(true);
+    window.setTimeout(() => {
+      navigate(localTarget, { replace: true, state: { loginTransition: "crossfade" } });
+    }, 300);
   };
 
   // 登录成功后的工作台路由（密码/通行密钥共用）
@@ -619,7 +631,7 @@ export function Login() {
 
   return (
     <div
-      className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
+      className={`fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 ${exitTransition ? "login-exit-crossfade" : ""}`}
       style={{
         backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
         colorScheme: "light",

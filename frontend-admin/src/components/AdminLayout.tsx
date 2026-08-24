@@ -744,7 +744,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           ref={contentRef}
           className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
         >
-          <div key={location.pathname} className={navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
+          <div key={location.pathname} className={(location.state as { loginTransition?: string } | null)?.loginTransition ? `route-enter-${(location.state as { loginTransition?: string }).loginTransition}` : navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
             {children}
           </div>
         </main>

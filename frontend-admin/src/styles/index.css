@@ -108,6 +108,27 @@
   }
 }
 
+/* 登录 → 主页过场动画候选 A：交叉淡化（逐个部署打分赛，落选方案即删） */
+@keyframes login-exit-crossfade {
+  to { opacity: 0; }
+}
+.login-exit-crossfade {
+  animation: login-exit-crossfade 0.3s ease forwards;
+}
+@keyframes route-enter-crossfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.route-enter-crossfade {
+  animation: route-enter-crossfade 0.35s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-exit-crossfade,
+  .route-enter-crossfade {
+    animation: none;
+  }
+}
+
 /* 减少动态偏好：停用装饰性动画，状态指示（三点 loader 等）保持静态可见 */
 @media (prefers-reduced-motion: reduce) {
   .list-row-enter,
