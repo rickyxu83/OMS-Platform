@@ -5,7 +5,7 @@
 // ② 成功启动 play（密码路径）：服务端确认后才克隆覆盖层，带 380ms 覆盖窗再掀开。
 // 覆盖层内输入框值为空（cloneNode 不复制 live value），恰好避免账号/密码在过渡期间残留可见。
 
-export const LOGIN_TRANSITION_STYLE = "blur"
+export const LOGIN_TRANSITION_STYLE = "crossfade"
 
 const COVER_MS = 380
 const EXIT_BUFFER_MS = 80

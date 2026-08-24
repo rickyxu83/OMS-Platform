@@ -166,11 +166,21 @@
   animation: lt-out-wipe 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
+/* 终选对比 A：交叉淡化（零开销纯透明度合成，乐观启动同样无暂停） */
+@keyframes lt-out-crossfade {
+  to { opacity: 0; }
+}
+.lt-out-crossfade {
+  --lt-exit-ms: 650;
+  animation: lt-out-crossfade 0.65s ease forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lt-out-zoom,
   .lt-out-hero,
   .lt-out-blur,
-  .lt-out-wipe {
+  .lt-out-wipe,
+  .lt-out-crossfade {
     animation: none;
   }
 }
