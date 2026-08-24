@@ -1246,9 +1246,10 @@ async function cleanupInstallationDevicesForOrderIds(connection, orderIds, optio
        AND device_id IN (${deletableParams.placeholders})`,
     { ...orderParams.params, ...deletableParams.params },
   )
+  // 同上：安装来源设备被删后，其 installation 配件降级为 general 保留为历史，避免「关联设备必填」校验卡死工单
   await connection.execute(
     `UPDATE service_parts
-     SET device_id = NULL
+     SET device_id = NULL, action_type = 'general'
      WHERE service_order_id IN (${orderParams.placeholders})
        AND device_id IN (${deletableParams.placeholders})`,
     { ...orderParams.params, ...deletableParams.params },
