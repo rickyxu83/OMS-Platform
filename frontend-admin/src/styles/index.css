@@ -116,6 +116,8 @@
   inset: 0;
   z-index: 9999;
   pointer-events: none;
+  /* 预升合成层：避免退出动画起帧时才创建图层导致的卡顿（E 反馈的 lag） */
+  will-change: transform, opacity, filter, clip-path;
 }
 .login-transition-overlay [id="login-root"],
 .login-transition-overlay > * {
@@ -149,10 +151,21 @@
   animation: lt-out-blur 0.5s ease forwards;
 }
 
+/* 候选 F：斜切扫入（覆盖层被斜切边从右向左裁掉） */
+@keyframes lt-out-wipe {
+  from { clip-path: polygon(0% 0%, 130% 0%, 100% 100%, 0% 100%); }
+  to { clip-path: polygon(-30% 0%, -30% 0%, -60% 100%, -30% 100%); }
+}
+.lt-out-wipe {
+  --lt-exit-ms: 500;
+  animation: lt-out-wipe 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lt-out-zoom,
   .lt-out-hero,
-  .lt-out-blur {
+  .lt-out-blur,
+  .lt-out-wipe {
     animation: none;
   }
 }
