@@ -17,6 +17,7 @@ import { APP_VERSION, getPreferredWorkspace, goToWorkspace, workspaceLabel, type
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api, releaseInteractionLocks } from "@/services/api";
+import { preloadAdminCore } from "@/lib/preload-admin";
 
 const LOGIN_BACKGROUND_BLOBS = [
   { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
@@ -427,6 +428,8 @@ export function Login() {
 
   useEffect(() => {
     releaseInteractionLocks();
+    // 用户输账号/刷指纹的空档期预取管理端 chunk，消除登录跳转时的懒加载白屏
+    preloadAdminCore();
     const timer = window.setTimeout(releaseInteractionLocks, 80);
     return () => window.clearTimeout(timer);
   }, []);
