@@ -212,6 +212,8 @@ export function Attendance() {
   const canApply = hasPermission("attendance.apply");
   const canApprove = hasPermission("attendance.approve");
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
+  // 申请明细可见性（2026-08-24 裁决）：全员查档限 view-all 角色；有审批权限者可见审批链与自己相关的申请（scope=related）
+  const canViewRecords = canViewAll || canApprove;
   const canExportReport = hasPermission("attendance.report.export");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
@@ -328,12 +330,12 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll]);
 
-  // 申请明细（scope=all）独立加载：日期范围变化只重拉本列表，不动整页；
-  // 操作成功后由 load() 顺带调用保持新鲜
+  // 申请明细独立加载：日期范围变化只重拉本列表，不动整页；
+  // 无全员查档权限的审批人退化为 scope=related（仅审批链相关），操作成功后由 load() 顺带调用保持新鲜
   async function loadAllRequests() {
-    if (!canViewAll) return;
+    if (!canViewRecords) return;
     try {
-      const params = new URLSearchParams({ scope: "all" });
+      const params = new URLSearchParams({ scope: canViewAll ? "all" : "related" });
       if (recordStartDate) params.set("startDate", recordStartDate);
       if (recordEndDate) params.set("endDate", recordEndDate);
       const data = await api.get(`/attendance/requests?${params.toString()}`);
@@ -344,7 +346,7 @@ export function Attendance() {
   useEffect(() => {
     loadAllRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewAll, recordStartDate, recordEndDate]);
+  }, [canViewRecords, canViewAll, recordStartDate, recordEndDate]);
 
   // 月度汇总独立加载：切换月份只重拉本报表，不动整页
   async function loadReportItems() {
@@ -423,14 +425,14 @@ export function Attendance() {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
       { key: "approve", label: canApply ? "申请与审批" : "审批待办", count: approvalTodos.length },
     ];
-    if (canViewAll) {
-      items.push({ key: "records", label: "记录与报表" });
+    if (canViewRecords) {
+      items.push({ key: "records", label: canViewAll ? "记录与报表" : "申请明细" });
     }
     if (canManage) items.push({ key: "employees", label: "员工与余额" });
     if (canManage) items.push({ key: "settings", label: "考勤设置" });
     if (canViewDuty) items.push({ key: "duty", label: "值班津贴" });
     return items;
-  }, [canApply, canViewAll, canManage, canViewDuty, approvalTodos.length]);
+  }, [canApply, canViewAll, canViewRecords, canManage, canViewDuty, approvalTodos.length]);
 
   useEffect(() => {
     if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("approve");
@@ -1047,8 +1049,9 @@ export function Attendance() {
         </div>
       ) : null}
 
-      {activeTab === "records" && canViewAll ? (
+      {activeTab === "records" && canViewRecords ? (
         <div className="space-y-5">
+          {canViewAll ? (
           <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
             <button
               type="button"
@@ -1061,7 +1064,8 @@ export function Attendance() {
               className={`h-8 rounded-md px-4 font-medium transition ${recordView === "summary" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >月度汇总</button>
           </div>
-          {recordView === "detail" ? (<>
+          ) : null}
+          {recordView === "detail" || !canViewAll ? (<>
             {allRequests.length >= RECORDS_LIMIT ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
                 已到达单次 {RECORDS_LIMIT} 条上限，仅显示最近记录；查更早记录请用下方起止日期缩小范围。
@@ -1069,7 +1073,7 @@ export function Attendance() {
             ) : null}
             <RequestList
               title="申请明细"
-              description="全员全部类型申请记录，审批通过后可作废"
+              description={canViewAll ? "全员全部类型申请记录，审批通过后可作废" : "审批链与您相关的申请记录"}
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}

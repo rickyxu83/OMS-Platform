@@ -1381,6 +1381,46 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.match(listQuery.sql, /r\.submitted_by <> :currentUserId/)
   }
 
+  // 申请明细 related scope：审批链任一环节指派给本人/本人角色即可见，不限制环节状态；无 view-all 权限也放行
+  {
+    const { controller, calls } = await loadController({
+      queryHandler: async (sql) => {
+        if (isRequestListQuery(sql)) return []
+        return undefined
+      },
+    })
+    const res = createResponse()
+    await controller.listRequests({ user: { id: 88, role: 'sales_supervisor' }, query: { scope: 'related' } }, res)
+    const listQuery = calls.find((call) => isRequestListQuery(call.sql))
+    assert.ok(listQuery)
+    // v2+ 流程：审批步骤表按 指派人/角色 匹配，且不筛步骤状态（历史环节也算相关）
+    assert.match(listQuery.sql, /EXISTS[\s\S]*attendance_request_approvals a[\s\S]*ap\.user_id = :currentUserId/)
+    assert.match(listQuery.sql, /a\.assignee_role = :currentRole/)
+    assert.ok(!listQuery.sql.includes("a.status = 'pending'"))
+    // v1 旧流程：用申请行 supervisor_role / 档案直属主管匹配
+    assert.match(listQuery.sql, /r\.supervisor_role = :currentRole/)
+    assert.match(listQuery.sql, /p\.supervisor_employee_id = :relatedEmployeeId/)
+    // 绝不是全员可见
+    assert.ok(!/WHERE 1 = 1/.test(listQuery.sql))
+    assert.equal(listQuery.params.currentRole, 'sales_supervisor')
+    assert.equal(listQuery.params.currentUserId, 88)
+    assert.equal(listQuery.params.relatedEmployeeId, 5)
+  }
+
+  // scope=all：无 view-all 权限的角色（如业务主管）必须被拒绝
+  {
+    const { controller, calls } = await loadController()
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.listRequests({ user: { id: 88, role: 'sales_supervisor' }, query: { scope: 'all' } }, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403)
+    assert.ok(!calls.some((call) => isRequestListQuery(call.sql)))
+  }
+
   // 待审批数量：supervisor 待办 + 行政 pending_admin，按申请 ID 去重
   {
     const { controller } = await loadController({
