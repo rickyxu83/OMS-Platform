@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   approveMr,
   createMr,
+  deleteMr,
   deleteQuotationFile,
   downloadMrDocument,
   downloadQuotation,
@@ -614,6 +615,22 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
     navigate(path)
   }
 
+  // 删除草稿：入口仅对后端判定 canDelete 的单据显示；成功后清 dirty 并回列表，避免被离开确认拦截
+  const removeDraft = async () => {
+    if (!id) return
+    if (!window.confirm(`删除 ${calculated?.customerName || `草稿 #${id}`}？此操作不可恢复。`)) return
+    setBusy(true)
+    try {
+      await deleteMr(id)
+      toast.success('MR 草稿已删除')
+      setDirty(false)
+      navigate('/mr', { replace: true })
+    } catch (err) {
+      setError((err as Error).message || '删除失败')
+      setBusy(false)
+    }
+  }
+
   const chooseCustomer = async (value: string) => {
     const sequence = ++customerLoadSequence.current
     const customer = customers.find((item) => String(item.id) === value)
@@ -1152,6 +1169,11 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
             {calculated.permissions?.canWithdraw ? <Button variant="outline" onClick={() => { setDecision('withdraw'); setReason('') }}><Undo2 className="mr-2 size-4" />撤回</Button> : null}
             {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更业务负责人</Button> : null}
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
+            {calculated.permissions?.canDelete ? (
+              <Button variant="outline" disabled={busy} className="text-destructive hover:text-destructive" onClick={() => void removeDraft()}>
+                <Trash2 className="mr-2 size-4" />删除草稿
+              </Button>
+            ) : null}
             {editable ? (
               <Button variant="outline" disabled={busy || !dirty} onClick={() => void save()}>
                 {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}{status === 'in_review' ? '保存修改' : '保存草稿'}
