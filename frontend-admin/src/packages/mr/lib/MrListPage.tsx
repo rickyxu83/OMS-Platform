@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FilePenLine, Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +13,7 @@ import { customerMatches, groupCustomersByInitial } from '@/lib/customer-index'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { api } from '@/services/api'
-import { createMr, deleteMr, listMr, listSalespeople } from '../client'
+import { createMr, listMr, listSalespeople } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
 import { HelpTooltip } from '@/components/HelpTooltip'
 import type { CustomerOption, MrOrder, MrStatus, UserOption } from '../types'
@@ -35,8 +34,6 @@ const STATUS_CLASSES: Record<MrStatus, string> = {
   voided: 'bg-zinc-200 text-zinc-600',
 }
 
-const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
-
 const PURCHASE_LABELS: Record<string, string> = {
   pending: '待采购',
   done: '采购完成',
@@ -50,6 +47,8 @@ const PURCHASE_CLASSES: Record<string, string> = {
   skipped: 'bg-zinc-100 text-zinc-500',
   waiting_contract: 'bg-orange-100 text-orange-800',
 }
+
+const PAGE_SIZE = 50
 
 function money(value?: number | null) {
   return value === null || value === undefined ? '-' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -82,6 +81,7 @@ export function MrListPage() {
   const [salesOptions, setSalesOptions] = useState<UserOption[]>([])
   const [selectedSalesId, setSelectedSalesId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,6 +109,12 @@ export function MrListPage() {
     return () => window.clearTimeout(timer)
   }, [queryInput])
   useEffect(() => { void load() }, [load])
+
+  const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const pagedItems = useMemo(() => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [items, page])
+  // 筛选/搜索变化时回到第一页；数据变少时收敛页码
+  useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo])
+  useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
 
   const { lang } = useLanguage()
   // 销售筛选名录（mount 加载一次）；与新建弹窗按需加载的 salesOptions 相互独立
@@ -181,17 +187,6 @@ export function MrListPage() {
       setError((err as Error).message || '业务负责人加载失败')
     } finally {
       setCreating(false)
-    }
-  }
-
-  const remove = async (order: MrOrder) => {
-    if (!order.id || !window.confirm(`删除 ${order.customerName || `草稿 #${order.id}`}？此操作不可恢复。`)) return
-    try {
-      await deleteMr(order.id)
-      toast.success('MR 草稿已删除')
-      await load()
-    } catch (err) {
-      setError((err as Error).message || '删除失败')
     }
   }
 
@@ -289,26 +284,24 @@ export function MrListPage() {
       </div>
 
       <div className="overflow-hidden border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead>客户 / Ctrl.NO</TableHead>
-              <TableHead>负责的销售</TableHead>
-              <TableHead><span className="inline-flex items-center gap-1">计价模式 <HelpTooltip label="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。" /></span></TableHead>
-              <TableHead className="text-right">未税总计</TableHead>
-              <TableHead><span className="inline-flex items-center gap-1">状态 <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。" /></span></TableHead>
-              <TableHead>当前签核步骤</TableHead>
-              <TableHead>更新时间</TableHead>
-              <TableHead className="w-[104px] text-right">操作</TableHead>
+              <TableHead className="w-[110px]">负责的销售</TableHead>
+              <TableHead className="w-[140px] text-right">未税总计</TableHead>
+              <TableHead className="w-[180px]"><span className="inline-flex items-center gap-1">状态 <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。" /></span></TableHead>
+              <TableHead className="w-[150px]">更新时间</TableHead>
             </TableRow>
           </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
               ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
-            ) : items.map((order) => {
+                <TableRow><TableCell colSpan={5} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
+            ) : pagedItems.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
+              const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
               return (
                 <TableRow key={order.id} className="cursor-pointer" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
@@ -318,22 +311,27 @@ export function MrListPage() {
                     </button>
                   </TableCell>
                   <TableCell>{order.salesOwnerName || '-'}</TableCell>
-                  <TableCell>{order.pricingMode ? PRICING_LABELS[order.pricingMode] : '-'}</TableCell>
                   <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
-                  <TableCell><Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge>{orderStatus === 'approved' && order.purchaseStatus ? <Badge className={`ml-1 ${PURCHASE_CLASSES[order.purchaseStatus] || ''}`}>{PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}</Badge> : null}</TableCell>
-                  <TableCell><div>{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel || '-'}</div>{order.assignmentError ? <div className="mt-1 text-xs text-destructive">流程暂停：{order.assignmentError}</div> : order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{order.currentAssigneeName}</div> : null}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="icon" title="打开" onClick={() => navigate(`/mr/${order.id}`)}><FilePenLine className="size-4" /></Button>
-                      {order.permissions?.canDelete ? <Button variant="ghost" size="icon" title="删除" onClick={() => void remove(order)}><Trash2 className="size-4 text-destructive" /></Button> : null}
-                    </div>
+                    <Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge>{orderStatus === 'approved' && order.purchaseStatus ? <Badge className={`ml-1 ${PURCHASE_CLASSES[order.purchaseStatus] || ''}`}>{PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}</Badge> : null}
+                    {stepLabel || order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{[stepLabel, order.currentAssigneeName].filter(Boolean).join(' · ')}</div> : null}
+                    {order.assignmentError ? <div className="mt-1 text-xs text-destructive">流程暂停：{order.assignmentError}</div> : null}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                 </TableRow>
               )
             })}
           </TableBody>
         </Table>
+        {!loading && items.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-sm text-muted-foreground">
+            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
+              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
+            </div>
+          </div>
+        ) : null}
       </div>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
