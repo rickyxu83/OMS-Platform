@@ -1172,6 +1172,59 @@ async function me(req, res) {
   res.json({ item: rows[0] ? profilePayload(rows[0]) : null })
 }
 
+// 员工本人额度流水：特休按天、调休按小时记账（与 adjustBalance 口径一致）；
+// balanceAfter 由 JS 按时间正序逐条累算（与余额口径 SUM(delta) 同源），再整体倒序返回，最新在最前。
+async function myBalanceLedger(req, res) {
+  await ensureSchema()
+  await syncUserProfiles()
+  const profiles = await query(
+    'SELECT id FROM attendance_employee_profiles WHERE user_id = :userId LIMIT 1',
+    { userId: req.user.id },
+  )
+  const profile = profiles[0]
+  if (!profile) return res.json({ items: [] })
+  const rows = await query(
+    `SELECT l.id, l.request_id, l.balance_type, l.delta_hours, l.action, l.note, l.created_at,
+            r.request_type, r.leave_type, r.overtime_result, r.hours AS request_hours, r.start_at, r.end_at, r.status AS request_status,
+            cp.employee_name AS created_by_name, cu.username AS created_by_username
+     FROM attendance_balance_ledger l
+     LEFT JOIN attendance_requests r ON r.id = l.request_id
+     LEFT JOIN users cu ON cu.id = l.created_by
+     LEFT JOIN attendance_employee_profiles cp ON cp.user_id = l.created_by
+     WHERE l.employee_id = :employeeId
+     ORDER BY l.created_at ASC, l.id ASC`,
+    { employeeId: profile.id },
+  )
+  const running = {}
+  const items = rows.map((row) => {
+    const balanceType = String(row.balance_type || '')
+    const delta = roundBalance(Number(row.delta_hours || 0))
+    running[balanceType] = roundBalance(Number(running[balanceType] || 0) + delta)
+    return {
+      id: row.id,
+      balanceType,
+      action: String(row.action || ''),
+      delta,
+      balanceAfter: running[balanceType],
+      note: row.note || '',
+      createdAt: row.created_at,
+      createdByName: row.created_by_name || row.created_by_username || '',
+      request: row.request_id ? {
+        id: row.request_id,
+        requestType: row.request_type,
+        leaveType: row.leave_type,
+        overtimeResult: row.overtime_result,
+        hours: Number(row.request_hours || 0),
+        startAt: row.start_at,
+        endAt: row.end_at,
+        status: row.request_status,
+      } : null,
+    }
+  })
+  items.reverse()
+  res.json({ items })
+}
+
 async function updateEmployee(req, res) {
   await ensureSchema()
   const id = Number(req.params.id)
@@ -2787,6 +2840,7 @@ module.exports = {
   listEmployees,
   listDelegates,
   me,
+  myBalanceLedger,
   listSupervisorRoleRules,
   updateSupervisorRoleRules,
   listApprovalRoleRules,

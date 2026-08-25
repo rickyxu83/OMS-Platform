@@ -29,6 +29,7 @@ import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
 import { ReportExportDialog } from "@/components/attendance/ReportExportDialog";
 import { AdjustBalanceDialog, BatchBalanceDialog, EmployeeEditDialog } from "@/components/attendance/EmployeeDialogs";
+import { BalanceLedgerPanel, type BalanceLedgerItem } from "@/components/attendance/BalanceLedgerPanel";
 
 // 法定节假日说明文案已迁 SettingsHolidays；审批链规则说明保留在本页（设置-审批流程视图使用）
 const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
@@ -72,10 +73,10 @@ import {
   serviceOrderTypeLabel,
 } from "@/pages/attendance-shared";
 
-type AttendanceTab = "approve" | "records" | "employees" | "settings" | "duty";
+type AttendanceTab = "approve" | "balance" | "records" | "employees" | "settings" | "duty";
 
 // 待办中心等外部入口通过 ?tab=approve 深链定位考勤页签
-const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "records", "employees", "settings", "duty"];
+const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "balance", "records", "employees", "settings", "duty"];
 function parseTabParam(value: string | null): AttendanceTab {
   return ATTENDANCE_TABS.includes(value as AttendanceTab) ? (value as AttendanceTab) : "approve";
 }
@@ -253,6 +254,9 @@ export function Attendance() {
   const [dutyBatchSaving, setDutyBatchSaving] = useState(false);
   const [dutyDetail, setDutyDetail] = useState<{ month: string; records: DutyDetailRecord[] } | null>(null);
   const [dutyDetailLoading, setDutyDetailLoading] = useState(false);
+  // 员工本人额度流水（「额度变动」页签，进入页签时按需拉取）
+  const [balanceLedger, setBalanceLedger] = useState<BalanceLedgerItem[]>([]);
+  const [balanceLedgerLoading, setBalanceLedgerLoading] = useState(false);
   const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
   const employeeAnchorRef = useRef<number | null>(null);
   const employeeCardRef = useRef<HTMLDivElement | null>(null);
@@ -362,6 +366,23 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth]);
 
+  // 额度变动页签：进入时拉取本人流水（变动多由审批人/行政触发，页内自带刷新按钮兜底）
+  async function loadBalanceLedger() {
+    if (!canApply) return;
+    setBalanceLedgerLoading(true);
+    try {
+      const data = await api.get("/attendance/me/balance-ledger");
+      setBalanceLedger((data?.items || []) as BalanceLedgerItem[]);
+    } catch { /* 静默：页签内刷新按钮可重试 */ } finally {
+      setBalanceLedgerLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "balance") loadBalanceLedger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, canApply]);
+
   // 考勤设置-工作日历独立加载：年份输满 4 位才发请求（避免逐击键触发整页重载）
   async function loadLegalHolidays() {
     if (!canViewAll || !/^\d{4}$/.test(holidayYear)) return;
@@ -425,6 +446,7 @@ export function Attendance() {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
       { key: "approve", label: canApply ? "申请与审批" : "审批待办", count: approvalTodos.length },
     ];
+    if (canApply) items.push({ key: "balance", label: "额度变动" });
     if (canViewRecords) {
       items.push({ key: "records", label: canViewAll ? "记录与报表" : "申请明细" });
     }
@@ -1047,6 +1069,10 @@ export function Attendance() {
 
           <HolidayPanel publicHolidays={publicHolidays} publicHolidayYear={publicHolidayYear} setPublicHolidayYear={setPublicHolidayYear} />
         </div>
+      ) : null}
+
+      {activeTab === "balance" && canApply ? (
+        <BalanceLedgerPanel items={balanceLedger} loading={balanceLedgerLoading} profile={myProfile} onRefresh={loadBalanceLedger} />
       ) : null}
 
       {activeTab === "records" && canViewRecords ? (
