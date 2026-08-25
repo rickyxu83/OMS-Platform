@@ -314,7 +314,7 @@ export function MrListPage() {
                   <TableCell>
                     <button type="button" className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); navigate(`/mr/${order.id}`) }}>
                       <span className="block font-medium">{order.customerName || '未选择客户'}</span>
-                      <span className="block text-xs text-muted-foreground">{order.customerCode || '-'} / {order.ctrlNo || '未填写 Ctrl.NO'}</span>
+                      <span className="block text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
                   <TableCell>{order.salesOwnerName || '-'}</TableCell>
