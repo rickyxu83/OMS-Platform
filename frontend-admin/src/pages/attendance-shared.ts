@@ -47,6 +47,7 @@ export interface OvertimeSegment {
   endAt: string;
   hours: number;
   dayType?: string;
+  triplePayDates?: string[];
   payMultiplier?: number | null;
   allowedResults?: string[];
 }

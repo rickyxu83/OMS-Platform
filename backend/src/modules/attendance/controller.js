@@ -15,7 +15,7 @@ const {
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
 } = require('../../services/attendance-notifications')
-const { isTriplePayDate } = require('./triple-pay-days')
+const { isTriplePayDate, triplePayDatesInRange } = require('./triple-pay-days')
 const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
@@ -1468,6 +1468,7 @@ function travelOvertimeSegment(row, overrides = {}) {
     endAt: toIsoMinute(legs[legs.length - 1].endAt),
     hours: Math.round(legs.reduce((sum, leg) => sum + Number(leg.hours || 0), 0) * 100) / 100,
     dayType: legs.some((leg) => leg.dayType === 'legal_holiday') ? 'legal_holiday' : legs[0].dayType,
+    triplePayDates: triplePayDatesInRange(legs[0].startAt, legs[legs.length - 1].endAt),
     payMultiplier: null,
     allowedResults: ['comp_time'],
   }
@@ -1484,6 +1485,7 @@ function workOvertimeSegment(row) {
     endAt: toIsoMinute(window.endAt),
     hours: window.hours,
     dayType: window.dayType,
+    triplePayDates: triplePayDatesInRange(window.startAt, window.endAt),
     payMultiplier: overtimePayMultiplier(window.dayType, 'pay') || DEFAULT_PAY_MULTIPLIER,
     allowedResults: ['comp_time', 'pay'],
   }

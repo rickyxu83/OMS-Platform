@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -149,6 +149,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     [overtimeOrders, selectedOvertimeOrderId],
   );
   const selectedOvertimeRows = useMemo(() => overtimeRows(selectedOvertimeOrder), [selectedOvertimeOrder]);
+  // 涉及的三倍工资日（法定节假日）：来自后端时段数据，用于填写提醒与确认页展示
+  const triplePayDates = useMemo(() => {
+    const dates = new Set<string>();
+    selectedOvertimeRows.forEach((segment) => (segment.triplePayDates || []).forEach((date) => dates.add(date)));
+    return [...dates].sort();
+  }, [selectedOvertimeRows]);
   const travelSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "travel") || null, [selectedOvertimeRows]);
   const workSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "work") || null, [selectedOvertimeRows]);
 
@@ -435,6 +441,14 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 </div>
 
+                {selectedOvertimeOrder && triplePayDates.length ? (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      本申请涉及法定节假日（3 倍工资日）：<b>{triplePayDates.join("、")}</b>。按法规法定节假日安排加班应按 300% 计付工资，系统不做折算，实际加班费由行政核计。
+                    </span>
+                  </div>
+                ) : null}
                 {selectedOvertimeOrder ? (
                   <>
                     <div className="space-y-2">
@@ -447,7 +461,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           return (
                             <div key={segment.key} className="rounded-md border bg-background p-3 text-left text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{segment.label}</span>
+                                <span className="font-medium">{segment.label}{segment.triplePayDates?.length ? <Badge variant="rose" className="ml-1.5 align-middle font-semibold">3倍</Badge> : null}</span>
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
@@ -734,6 +748,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工单</span>
                       <span className="font-medium">{selectedOvertimeOrder?.orderNo || (selectedOvertimeOrder ? "工单 #" + selectedOvertimeOrder.id : "未选择")}（{selectedOvertimeOrder?.customerName || "-"}）</span>
                     </div>
+                    {triplePayDates.length ? (
+                      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                        <span className="text-muted-foreground">三倍工资日</span>
+                        <span className="font-medium text-amber-700">{triplePayDates.join("、")}（法定节假日加班按 300% 计付，以行政核计为准）</span>
+                      </div>
+                    ) : null}
                     {travelSegment ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                         <span className="text-muted-foreground">来回路上</span>
