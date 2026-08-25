@@ -1590,17 +1590,21 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
                       so.service_mode, so.service_type, so.issue_description,
                       COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
-                      (SELECT COUNT(DISTINCT x.engineer_id)
-                         FROM (
-                           SELECT so2.assigned_engineer_id AS engineer_id FROM service_orders so2 WHERE so2.id = so.id
-                           UNION ALL
-                           SELECT soe2.engineer_id FROM service_order_engineers soe2 WHERE soe2.service_order_id = so.id
-                         ) x) AS engineer_count,
+                      COALESCE(ec.engineer_count, 0) AS engineer_count,
                       COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
                LEFT JOIN devices d ON d.id = so.device_id
                JOIN service_reports sr ON sr.service_order_id = so.id
+               LEFT JOIN (
+                 SELECT order_id, COUNT(DISTINCT engineer_id) AS engineer_count
+                 FROM (
+                   SELECT id AS order_id, assigned_engineer_id AS engineer_id FROM service_orders
+                   UNION ALL
+                   SELECT service_order_id, engineer_id FROM service_order_engineers
+                 ) all_engineers
+                 GROUP BY order_id
+               ) ec ON ec.order_id = so.id
                WHERE (:serviceOrderId IS NULL OR so.id = :serviceOrderId)
                  AND so.status NOT IN ('draft', 'cancelled')
                  AND (
