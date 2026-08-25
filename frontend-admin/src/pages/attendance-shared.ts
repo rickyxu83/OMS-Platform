@@ -245,6 +245,7 @@ export function createBlankForm() {
     annualPeriod: "morning" as AnnualLeavePeriod,
     annualStartPeriod: "morning" as AnnualLeavePeriod,
     annualEndPeriod: "morning" as AnnualLeavePeriod,
+    reason: "",
   });
 }
 
@@ -258,6 +259,7 @@ export interface ResumableDraft {
   endAt?: string;
   proofFiles?: Array<{ id: number | string; originalName: string }>;
   proofFileCount?: number;
+  reason?: string | null;
 }
 
 /** 从草稿重建抽屉表单（继续提交入口用）。仅请假/调休有草稿；加班单一步提交无草稿态。 */
@@ -272,6 +274,7 @@ export function formFromDraft(draft: ResumableDraft) {
     requestType: draft.requestType === "comp_time" ? "comp_time" as RequestType : "leave" as RequestType,
     leaveType: draft.leaveType || "annual",
     delegateEmployeeId: draft.delegateEmployeeId ? String(draft.delegateEmployeeId) : "",
+    reason: draft.reason || "",
     annualStartDate: startDate,
     annualEndDate: endDate,
     // 单日：09-14 上午 / 14-18 下午 / 09-18 全天；多日：按起止半天槽位还原

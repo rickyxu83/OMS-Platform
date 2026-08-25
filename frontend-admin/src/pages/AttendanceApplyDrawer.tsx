@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/services/api";
 import {
@@ -246,6 +247,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       return "";
     }
     if (!form.delegateEmployeeId) return "请选择代理人";
+    if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
     if (proofRequired && proofFiles.length + existingProofCount === 0) {
       return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
     }
@@ -290,6 +292,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             startAt: leaveRange.startAt,
             endAt: leaveRange.endAt,
             hours: leaveRange.hours,
+            reason: requestType === "leave" ? String(form.reason || "").trim() || undefined : undefined,
           });
           draftId = draft.id;
         }
@@ -307,7 +310,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}。可直接重试，或稍后在「我的申请」对草稿点「继续提交」。`);
           return;
         }
-        await api.post(`/attendance/requests/${draftId}/submit`);
+        // 事由随提交落库：继续提交的草稿由后端在 submit 时顺带更新；新建草稿与建单值一致无副作用
+        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" ? { reason: String(form.reason || "").trim() } : undefined);
       }
       toast.success("申请已提交");
       onOpenChange(false);
@@ -642,6 +646,21 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 )}
 
+                {form.requestType === "leave" ? (
+                  <div className="space-y-2">
+                    <Label>
+                      事由{form.leaveType === "personal" ? <span className="text-destructive"> *</span> : <span className="ml-1 text-xs font-normal text-muted-foreground">（选填）</span>}
+                    </Label>
+                    <Textarea
+                      rows={2}
+                      className="resize-none"
+                      value={form.reason || ""}
+                      placeholder={form.leaveType === "personal" ? "请填写事假事由，审批人可见" : "可补充说明，审批人可见"}
+                      onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                ) : null}
+
                 <div className="space-y-2">
                   <Label>工作代理人</Label>
                   <Select
@@ -766,6 +785,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工作代理</span>
                       <span className="font-medium">{selectedDelegateName || "未选择"}</span>
                     </div>
+                    {form.requestType === "leave" ? (
+                      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                        <span className="text-muted-foreground">事由</span>
+                        <span className="font-medium">{String(form.reason || "").trim() || "未填写"}</span>
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                       <span className="text-muted-foreground">证明附件</span>
                       <span className={proofRequired && proofFiles.length === 0 ? "font-medium text-destructive" : "font-medium"}>

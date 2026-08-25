@@ -2218,6 +2218,11 @@ async function submitRequest(req, res) {
     if (![2, 3, 4].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
 
+    // 草稿提交时允许顺带更新事由/申请说明：继续提交场景在抽屉中补写或修改的事由随提交落库
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'reason')) {
+      await connection.execute('UPDATE attendance_requests SET reason = :reason WHERE id = :id', { id, reason: nullableText(req.body.reason) })
+    }
+
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
     if (request.request_type === 'leave') {
       const conflict = await findConflictingLeave(
