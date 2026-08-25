@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -82,6 +83,7 @@ export function MrListPage() {
   const [selectedSalesId, setSelectedSalesId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -115,6 +117,8 @@ export function MrListPage() {
   // 筛选/搜索变化时回到第一页；数据变少时收敛页码
   useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo])
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
+  // 翻页后表体滚动区回顶部，避免停留在上一页的滚动位置
+  useEffect(() => { tableScrollRef.current?.scrollTo({ top: 0 }) }, [page])
 
   const { lang } = useLanguage()
   // 销售筛选名录（mount 加载一次）；与新建弹窗按需加载的 salesOptions 相互独立
@@ -191,7 +195,7 @@ export function MrListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-4 sm:p-6">
       <ErrorToast message={error} />
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -215,99 +219,118 @@ export function MrListPage() {
       </header>
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
-      <div className="flex flex-wrap items-center gap-2 border-y bg-background py-3">
-        <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
-        </div>
-        <div className="relative w-full sm:w-[220px]">
-          <Input
-            value={customerFilterInput}
-            placeholder="按客户筛选"
-            aria-label="按客户筛选"
-            onFocus={() => setCustomerFilterOpen(true)}
-            onBlur={() => window.setTimeout(() => setCustomerFilterOpen(false), 140)}
-            onChange={(event) => {
-              const value = event.target.value
-              setCustomerFilterInput(value)
-              setCustomerFilterOpen(true)
-              if (!value.trim()) setCustomerFilterId('')
-            }}
-          />
-          <CustomerIndexSuggestions
-            idPrefix="mr-filter-customer-letter"
-            open={customerFilterOpen}
-            searching={false}
-            recentCustomers={[]}
-            groups={filterCustomerGroups}
-            selectedCustomerId={customerFilterId}
-            emptyText="未找到匹配客户"
-            onSelect={(customer) => {
-              setCustomerFilterOpen(false)
-              setCustomerFilterId(String(customer.id))
-              setCustomerFilterInput(customer.name || `客户 #${customer.id}`)
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="填表日期起" className="w-[150px]" />
-          <span className="text-sm text-muted-foreground">至</span>
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="填表日期止" className="w-[150px]" />
-        </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部状态</SelectItem>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={purchaseStatus} onValueChange={setPurchaseStatus}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部采购状态</SelectItem>
-            {Object.entries(PURCHASE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={salesFilterId} onValueChange={setSalesFilterId}>
-          <SelectTrigger className="w-[150px]"><SelectValue placeholder="全部销售" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部销售</SelectItem>
-            {salesFilterOptions.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="icon" title="重置筛选" aria-label="重置筛选" onClick={resetFilters}>
-          <RotateCcw className="size-4" />
-        </Button>
-        <Button variant="outline" size="icon" title="刷新" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
+      <Card>
+        <CardContent className="space-y-3 pt-6">
+          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.15fr)_minmax(200px,0.85fr)_minmax(280px,1fr)]">
+            <div className="relative min-w-0">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
+            </div>
+            <div className="relative min-w-0">
+              <Input
+                value={customerFilterInput}
+                placeholder="按客户筛选"
+                aria-label="按客户筛选"
+                onFocus={() => setCustomerFilterOpen(true)}
+                onBlur={() => window.setTimeout(() => setCustomerFilterOpen(false), 140)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setCustomerFilterInput(value)
+                  setCustomerFilterOpen(true)
+                  if (!value.trim()) setCustomerFilterId('')
+                }}
+              />
+              <CustomerIndexSuggestions
+                idPrefix="mr-filter-customer-letter"
+                open={customerFilterOpen}
+                searching={false}
+                recentCustomers={[]}
+                groups={filterCustomerGroups}
+                selectedCustomerId={customerFilterId}
+                emptyText="未找到匹配客户"
+                onSelect={(customer) => {
+                  setCustomerFilterOpen(false)
+                  setCustomerFilterId(String(customer.id))
+                  setCustomerFilterInput(customer.name || `客户 #${customer.id}`)
+                }}
+              />
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="填表日期起" className="min-w-0 flex-1" />
+              <span className="text-sm text-muted-foreground">至</span>
+              <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="填表日期止" className="min-w-0 flex-1" />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(140px,180px)_minmax(140px,180px)_minmax(140px,180px)_auto]">
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={purchaseStatus} onValueChange={setPurchaseStatus}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部采购状态</SelectItem>
+                {Object.entries(PURCHASE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={salesFilterId} onValueChange={setSalesFilterId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="全部销售" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部销售</SelectItem>
+                {salesFilterOptions.map((sales) => <SelectItem key={sales.id} value={String(sales.id)}>{sales.realName || sales.username}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-1 lg:justify-end">
+              <Button variant="outline" onClick={resetFilters}><RotateCcw className="mr-1.5 size-4" />重置</Button>
+              <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`mr-1.5 size-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="overflow-hidden border">
-        <Table className="table-fixed">
-          <TableHeader>
-            <TableRow>
-              <TableHead>客户 / Ctrl.NO</TableHead>
-              <TableHead className="w-[110px]">负责的销售</TableHead>
-              <TableHead className="w-[140px] text-right">未税总计</TableHead>
-              <TableHead className="w-[180px]"><span className="inline-flex items-center gap-1">状态 <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。" /></span></TableHead>
-              <TableHead className="w-[150px]">更新时间</TableHead>
-            </TableRow>
-          </TableHeader>
-            <TableBody>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            MR 申请单（{items.length}）
+            <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。" />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+            <Table className="table-fixed">
+              <colgroup>
+                <col className="w-[280px]" />
+                <col className="w-[110px]" />
+                <col className="w-[140px]" />
+                <col className="w-[170px]" />
+                <col className="w-[150px]" />
+              </colgroup>
+              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableRow>
+                  <TableHead>客户 / Ctrl.NO</TableHead>
+                  <TableHead>负责的销售</TableHead>
+                  <TableHead className="text-right">未税总计</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>更新时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="h-40 text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-[50vh] text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
               ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-40 text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-[50vh] text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
             ) : pagedItems.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
               const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
               return (
                 <TableRow key={order.id} className="cursor-pointer" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
-                    <button type="button" className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); navigate(`/mr/${order.id}`) }}>
-                      <span className="block font-medium">{order.customerName || '未选择客户'}</span>
-                      <span className="block text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
+                    <button type="button" className="block max-w-full text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); navigate(`/mr/${order.id}`) }}>
+                      <span className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
                   <TableCell>{order.salesOwnerName || '-'}</TableCell>
@@ -322,17 +345,19 @@ export function MrListPage() {
               )
             })}
           </TableBody>
-        </Table>
-        {!loading && items.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-sm text-muted-foreground">
-            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
-              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
-            </div>
+            </Table>
           </div>
-        ) : null}
-      </div>
+          {!loading && items.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
+                <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
