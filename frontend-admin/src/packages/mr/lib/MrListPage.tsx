@@ -299,8 +299,9 @@ export function MrListPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="w-fit max-w-full">
           <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            <table className="w-full min-w-[890px] table-fixed caption-bottom text-sm">
+            <table className="w-[890px] table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
                 <col className="w-[110px]" />
@@ -356,6 +357,7 @@ export function MrListPage() {
               </div>
             </div>
           ) : null}
+          </div>
         </CardContent>
       </Card>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
