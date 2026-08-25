@@ -291,7 +291,7 @@ export function MrListPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="w-fit max-w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             MR 申请单（{items.length}）
