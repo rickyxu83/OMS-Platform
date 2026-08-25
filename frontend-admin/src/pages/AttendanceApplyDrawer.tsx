@@ -292,7 +292,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             startAt: leaveRange.startAt,
             endAt: leaveRange.endAt,
             hours: leaveRange.hours,
-            reason: requestType === "leave" ? String(form.reason || "").trim() || undefined : undefined,
+            reason: requestType === "leave" && form.leaveType === "personal" ? String(form.reason || "").trim() || undefined : undefined,
           });
           draftId = draft.id;
         }
@@ -311,7 +311,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           return;
         }
         // 事由随提交落库：继续提交的草稿由后端在 submit 时顺带更新；新建草稿与建单值一致无副作用
-        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" ? { reason: String(form.reason || "").trim() } : undefined);
+        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && form.leaveType === "personal" ? { reason: String(form.reason || "").trim() } : undefined);
       }
       toast.success("申请已提交");
       onOpenChange(false);
@@ -646,16 +646,14 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 )}
 
-                {form.requestType === "leave" ? (
+                {form.requestType === "leave" && form.leaveType === "personal" ? (
                   <div className="space-y-2">
-                    <Label>
-                      事由{form.leaveType === "personal" ? <span className="text-destructive"> *</span> : <span className="ml-1 text-xs font-normal text-muted-foreground">（选填）</span>}
-                    </Label>
+                    <Label>事由<span className="text-destructive"> *</span></Label>
                     <Textarea
                       rows={2}
                       className="resize-none"
                       value={form.reason || ""}
-                      placeholder={form.leaveType === "personal" ? "请填写事假事由，审批人可见" : "可补充说明，审批人可见"}
+                      placeholder="请填写事假事由，审批人可见"
                       onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
                     />
                   </div>
@@ -785,7 +783,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工作代理</span>
                       <span className="font-medium">{selectedDelegateName || "未选择"}</span>
                     </div>
-                    {form.requestType === "leave" ? (
+                    {form.requestType === "leave" && form.leaveType === "personal" ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                         <span className="text-muted-foreground">事由</span>
                         <span className="font-medium">{String(form.reason || "").trim() || "未填写"}</span>
