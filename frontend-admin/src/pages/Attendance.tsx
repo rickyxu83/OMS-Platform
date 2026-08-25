@@ -214,8 +214,8 @@ export function Attendance() {
   const canApprove = hasPermission("attendance.approve");
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
   // 申请明细可见性（2026-08-24 裁决）：全员查档限 view-all 角色；有审批权限者可见审批链与自己相关的申请（scope=related）
-  // 申请明细页签：全员可查——admin/审批管理角色看全司，审批人看审批链相关，普通员工看本人全部申请（带筛选归档）
-  const canViewRecords = canViewAll || canApprove || canApply;
+  // 申请明细页签：仅全员权限与审批人可见（员工本人记录已由「我的申请」覆盖，不重复开放）
+  const canViewRecords = canViewAll || canApprove;
   const canExportReport = hasPermission("attendance.report.export");
   const canManage = hasPermission("attendance.manage");
   const canAdminApprove = hasPermission("attendance.admin.approve");
@@ -335,13 +335,12 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll]);
 
-  // 申请明细独立加载：日期范围变化只重拉本列表，不动整页；范围按角色退化——
-  // 全员权限看 all，审批人看 related（审批链相关），普通员工看 mine（本人全部申请），操作成功后由 load() 顺带调用保持新鲜
+  // 申请明细独立加载：日期范围变化只重拉本列表，不动整页；
+  // 无全员查档权限的审批人退化为 scope=related（仅审批链相关），操作成功后由 load() 顺带调用保持新鲜
   async function loadAllRequests() {
     if (!canViewRecords) return;
     try {
-      const scope = canViewAll ? "all" : canApprove ? "related" : "mine";
-      const params = new URLSearchParams({ scope });
+      const params = new URLSearchParams({ scope: canViewAll ? "all" : "related" });
       if (recordStartDate) params.set("startDate", recordStartDate);
       if (recordEndDate) params.set("endDate", recordEndDate);
       const data = await api.get(`/attendance/requests?${params.toString()}`);
@@ -352,7 +351,7 @@ export function Attendance() {
   useEffect(() => {
     loadAllRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewRecords, canViewAll, canApprove, recordStartDate, recordEndDate]);
+  }, [canViewRecords, canViewAll, recordStartDate, recordEndDate]);
 
   // 月度汇总独立加载：切换月份只重拉本报表，不动整页
   async function loadReportItems() {
@@ -1101,7 +1100,7 @@ export function Attendance() {
             ) : null}
             <RequestList
               title="申请明细"
-              description={canViewAll ? "全员全部类型申请记录，审批通过后可作废" : canApprove ? "审批链与您相关的申请记录" : "您的全部申请记录，可按状态、类型与日期范围筛选"}
+              description={canViewAll ? "全员全部类型申请记录，审批通过后可作废" : "审批链与您相关的申请记录"}
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
@@ -1138,12 +1137,10 @@ export function Attendance() {
                       {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {canApprove || canViewAll ? (
-                    <div className="relative">
-                      <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
-                      <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
-                    </div>
-                  ) : null}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <Input className="h-8 w-36" type="date" aria-label="开始日期" value={recordStartDate} onChange={(event) => setRecordStartDate(event.target.value)} />
                     <span className="text-xs text-muted-foreground">至</span>
