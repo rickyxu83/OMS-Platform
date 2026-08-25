@@ -195,7 +195,7 @@ export function MrListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 p-4 sm:p-6">
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
       <ErrorToast message={error} />
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -291,7 +291,7 @@ export function MrListPage() {
         </CardContent>
       </Card>
 
-      <Card className="w-fit max-w-full">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             MR 申请单（{items.length}）
@@ -299,9 +299,8 @@ export function MrListPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="w-fit max-w-full">
           <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            <table className="w-[890px] table-fixed caption-bottom text-sm">
+            <table className="w-full min-w-[890px] table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
                 <col className="w-[110px]" />
@@ -357,7 +356,6 @@ export function MrListPage() {
               </div>
             </div>
           ) : null}
-          </div>
         </CardContent>
       </Card>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
