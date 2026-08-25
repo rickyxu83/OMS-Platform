@@ -164,7 +164,8 @@ function calculateItems(pricingMode, totalExcludingTax, rawItems = []) {
         allocatedSales += subtotal
         unitPrice = subtotal / qty
       }
-      if (!item.purchaseOnly && mode === 2 && index < 2) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
+      // mode 2 单项系统集成：主项（第一项）是销售主体，即使仅采购（purchase_only）也必须分配 99%；技术服务分配 1%。与前端 form-logic.ts 保持一致，否则提交签核后后端重算会把仅采购主项单价抹成 null（毛利率爆负事故 2026-08-25）
+      if (mode === 2 && (index === 0 || !item.purchaseOnly)) unitPrice = total * (index === 0 ? 0.99 : 0.01) / qty
     }
     if (subtotal === null) subtotal = Number.isFinite(qty) && Number.isFinite(unitPrice) ? qty * unitPrice : null
     const marginRate = subtotal > 0 && cost !== null ? (subtotal - cost) / subtotal * 100 : null
