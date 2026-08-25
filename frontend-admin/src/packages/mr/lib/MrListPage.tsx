@@ -195,7 +195,7 @@ export function MrListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-[1100px] space-y-6 p-4 sm:p-6">
       <ErrorToast message={error} />
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
