@@ -128,6 +128,39 @@ function statusBadge(status?: string) {
   const key = status || "";
   return <Badge variant={STATUS_VARIANT[key] || "secondary"}>{STATUS_LABELS[key] || key || "-"}</Badge>;
 }
+
+// —— batch 归组（specs/003：工单加班路+工作同批审批，列表合并显示为一条）——
+type RequestGroup = AttendanceRequest[];
+function groupBatchItems(items: AttendanceRequest[]): RequestGroup[] {
+  const groups: RequestGroup[] = [];
+  const byBatch = new Map<string, RequestGroup>();
+  for (const item of items) {
+    const key = item.batchId || "";
+    if (key && byBatch.has(key)) {
+      byBatch.get(key)!.push(item);
+      continue;
+    }
+    const group: RequestGroup = [item];
+    groups.push(group);
+    if (key) byBatch.set(key, group);
+  }
+  return groups;
+}
+function segmentTimeText(item: AttendanceRequest) {
+  const startDate = String(item.startAt || "").slice(0, 10);
+  const startTime = String(item.startAt || "").slice(11, 16);
+  const endTime = String(item.endAt || item.startAt || "").slice(11, 16);
+  const duration = requestDuration(item);
+  return `${chineseMonthDay(startDate)} ${startTime} – ${endTime}${duration ? ` · ${duration}` : ""}`;
+}
+function batchUnionRange(group: RequestGroup) {
+  const startAt = group.map((item) => String(item.startAt || "")).filter(Boolean).sort()[0] || "";
+  const endAt = group.map((item) => String(item.endAt || item.startAt || "")).filter(Boolean).sort().slice(-1)[0] || "";
+  return requestTimeRange({ ...group[0], startAt, endAt });
+}
+function batchTotalHours(group: RequestGroup) {
+  return group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
+}
 function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrderSummary; onPreview?: (order: ServiceOrderSummary) => void }) {
   const orderLabel = order.orderNo || `#${order.id}`;
   if (order.unavailable) {
@@ -197,6 +230,147 @@ export function RequestList({
   onPreviewOrder?: (order: ServiceOrderSummary) => void;
 }) {
   const hasActions = typeof actions === "function";
+  // 归组：同 batchId 合并显示为一条；操作以首条为代表发起，服务端按 batch_id 自动扩组（specs/003）
+  const groups = groupBatchItems(items);
+  const detailCellExtra = (item: AttendanceRequest) => (
+    <>
+      {item.reason ? (
+        <div className="mt-1 flex items-start gap-1 text-sm text-muted-foreground">
+          <span className="shrink-0 text-xs font-medium text-muted-foreground/60">申请说明</span>
+          <span>{item.reason}</span>
+        </div>
+      ) : null}
+      {item.requestType === "overtime" && item.sourceType === "service_order" ? (
+        <ServiceOrderApprovalSummary
+          order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
+          onPreview={onPreviewOrder}
+        />
+      ) : null}
+      {(() => {
+        const meta: ReactNode[] = [];
+        if (item.delegateEmployeeName) {
+          meta.push(<span key="delegate" className="inline-flex items-center gap-1"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
+        }
+        if (typeof item.workingDays === "number") {
+          meta.push(<span key="days" className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
+        }
+        if (item.proofFiles?.length) {
+          meta.push(
+            <span key="proof" className="inline-flex flex-wrap items-center gap-1">
+              <Paperclip className="h-3 w-3" />
+              {item.proofFiles.map((file, index) => (
+                <span key={file.id}>
+                  {index ? "" : ""}
+                  <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
+                    {file.originalName || `附件 #${file.id}`}
+                  </button>
+                </span>
+              ))}
+            </span>,
+          );
+        } else if (item.proofFileCount) {
+          meta.push(<span key="proof" className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
+        }
+        return meta.length ? <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{meta}</div> : null;
+      })()}
+      {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
+    </>
+  );
+  const renderItemCard = (item: AttendanceRequest) => (
+    <ResponsiveCard
+      title={(
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {requestTypeBadge(item.requestType)}
+          {showEmployee ? <span className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
+        </span>
+      )}
+      status={statusBadge(item.status)}
+      fields={[
+        ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
+        { label: "时间", value: requestTimeRange(item) },
+        { label: "时长", value: requestDuration(item) || "-" },
+        ...(item.delegateEmployeeName ? [{ label: "代理人", value: item.delegateEmployeeName }] : []),
+      ]}
+      actions={hasActions ? <>{actions?.(item)}</> : undefined}
+    />
+  );
+  const renderBatchCard = (group: RequestGroup) => {
+    const rep = group[0];
+    return (
+      <ResponsiveCard
+        title={(
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {requestTypeBadge("overtime")}
+            {showEmployee ? <span className="truncate">{rep.employeeName || "-"}</span> : <span className="font-medium">工单加班（{group.length} 段同组）</span>}
+          </span>
+        )}
+        status={statusBadge(rep.status)}
+        fields={[
+          { label: "明细", value: <div className="space-y-1">{group.map((seg) => <div key={seg.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">{requestDetailContent(seg)}<span className="text-xs text-muted-foreground">{segmentTimeText(seg)}</span></div>)}</div> },
+          { label: "时间", value: batchUnionRange(group) },
+          { label: "时长", value: `共 ${hours(batchTotalHours(group))} 小时` },
+          ...(rep.delegateEmployeeName ? [{ label: "代理人", value: rep.delegateEmployeeName }] : []),
+        ]}
+        actions={hasActions ? <>{actions?.(rep)}</> : undefined}
+      />
+    );
+  };
+  const renderTableRow = (item: AttendanceRequest) => (
+    <TableRow key={item.id}>
+      {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
+      <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
+      <TableCell>
+        <div>{requestDetailContent(item)}</div>
+        {detailCellExtra(item)}
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-col items-start gap-1">
+          {requestTimeRange(item)}
+          {requestDuration(item) ? (
+            <Badge variant={REQUEST_TYPE_VARIANT[item.requestType || ""] || "secondary"}>{requestDuration(item)}</Badge>
+          ) : null}
+        </div>
+      </TableCell>
+      <TableCell>{statusBadge(item.status)}</TableCell>
+      {hasActions ? (
+        <TableCell>
+          <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
+        </TableCell>
+      ) : null}
+    </TableRow>
+  );
+  const renderBatchTableRow = (group: RequestGroup) => {
+    const rep = group[0];
+    return (
+      <TableRow key={rep.id}>
+        {showEmployee ? <TableCell className="font-medium">{rep.employeeName || "-"}</TableCell> : null}
+        <TableCell>{requestTypeBadge("overtime")}</TableCell>
+        <TableCell>
+          <div className="space-y-1.5">
+            {group.map((seg) => (
+              <div key={seg.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {requestDetailContent(seg)}
+                <span className="text-xs text-muted-foreground">{segmentTimeText(seg)}</span>
+              </div>
+            ))}
+          </div>
+          {detailCellExtra(rep)}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-col items-start gap-1">
+            {batchUnionRange(group)}
+            <Badge variant="warning">{`共 ${hours(batchTotalHours(group))} 小时`}</Badge>
+          </div>
+        </TableCell>
+        <TableCell>{statusBadge(rep.status)}</TableCell>
+        {hasActions ? (
+          <TableCell>
+            <div className="flex flex-wrap gap-2">{actions?.(rep)}</div>
+          </TableCell>
+        ) : null}
+      </TableRow>
+    );
+  };
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -207,7 +381,7 @@ export function RequestList({
           </CardTitle>
           <CardDescription>{description}</CardDescription>
         </div>
-        <Badge variant="secondary">{items.length} 条</Badge>
+        <Badge variant="secondary">{groups.length} 条</Badge>
       </CardHeader>
       <CardContent>
         {toolbar ? <div className="mb-4 flex flex-wrap items-center gap-2">{toolbar}</div> : null}
@@ -219,27 +393,10 @@ export function RequestList({
           <EmptyState title={emptyText} className="min-h-0" />
         ) : (
           <ResponsiveList
-            items={items}
-            keyExtractor={(item) => item.id}
+            items={groups}
+            keyExtractor={(group) => group[0].id}
             breakpoint="md"
-            renderCard={(item) => (
-              <ResponsiveCard
-                title={(
-                  <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    {requestTypeBadge(item.requestType)}
-                    {showEmployee ? <span className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
-                  </span>
-                )}
-                status={statusBadge(item.status)}
-                fields={[
-                  ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
-                  { label: "时间", value: requestTimeRange(item) },
-                  { label: "时长", value: requestDuration(item) || "-" },
-                  ...(item.delegateEmployeeName ? [{ label: "代理人", value: item.delegateEmployeeName }] : []),
-                ]}
-                actions={hasActions ? <>{actions?.(item)}</> : undefined}
-              />
-            )}
+            renderCard={(group) => (group.length > 1 ? renderBatchCard(group) : renderItemCard(group[0]))}
           >
           <div className="overflow-x-auto rounded-md border">
             <Table className="min-w-[760px]">
@@ -254,69 +411,7 @@ export function RequestList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
-                    <TableCell>{requestTypeBadge(item.requestType)}</TableCell>
-                    <TableCell>
-                      <div>{requestDetailContent(item)}</div>
-                      {item.reason ? (
-                        <div className="mt-1 flex items-start gap-1 text-sm text-muted-foreground">
-                          <span className="shrink-0 text-xs font-medium text-muted-foreground/60">申请说明</span>
-                          <span>{item.reason}</span>
-                        </div>
-                      ) : null}
-                      {item.requestType === "overtime" && item.sourceType === "service_order" ? (
-                        <ServiceOrderApprovalSummary
-                          order={item.serviceOrder || { id: item.sourceId || "-", unavailable: true }}
-                          onPreview={onPreviewOrder}
-                        />
-                      ) : null}
-                      {(() => {
-                        const meta: ReactNode[] = [];
-                        if (item.delegateEmployeeName) {
-                          meta.push(<span key="delegate" className="inline-flex items-center gap-1"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
-                        }
-                        if (typeof item.workingDays === "number") {
-                          meta.push(<span key="days" className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
-                        }
-                        if (item.proofFiles?.length) {
-                          meta.push(
-                            <span key="proof" className="inline-flex flex-wrap items-center gap-1">
-                              <Paperclip className="h-3 w-3" />
-                              {item.proofFiles.map((file, index) => (
-                                <span key={file.id}>
-                                  {index ? "、" : ""}
-                                  <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
-                                    {file.originalName || `附件 #${file.id}`}
-                                  </button>
-                                </span>
-                              ))}
-                            </span>,
-                          );
-                        } else if (item.proofFileCount) {
-                          meta.push(<span key="proof" className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
-                        }
-                        return meta.length ? <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{meta}</div> : null;
-                      })()}
-                      {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1">
-                        {requestTimeRange(item)}
-                        {requestDuration(item) ? (
-                          <Badge variant={REQUEST_TYPE_VARIANT[item.requestType || ""] || "secondary"}>{requestDuration(item)}</Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>{statusBadge(item.status)}</TableCell>
-                    {hasActions ? (
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
+                {groups.map((group) => (group.length > 1 ? renderBatchTableRow(group) : renderTableRow(group[0])))}
               </TableBody>
             </Table>
           </div>

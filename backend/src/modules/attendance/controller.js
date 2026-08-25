@@ -1,4 +1,5 @@
 const { query, transaction } = require('../../config/db')
+const { randomUUID } = require('node:crypto')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
 const {
@@ -384,6 +385,7 @@ async function ensureSchema() {
       )
 
       await ensureLegalHolidayDayTypeColumn()
+      await ensureRequestsBatchIdColumn()
       await ensureAttendanceEmailNotificationsTable()
 
       await seedBuiltinLegalHolidays()
@@ -398,6 +400,21 @@ async function ensureSchema() {
     })()
   }
   return schemaReadyPromise
+}
+
+// 同工单加班双段申请共享 batch_id：审批/驳回/撤回/作废按组联动（specs/003-attendance-overtime-batch）
+async function ensureRequestsBatchIdColumn() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_requests'
+       AND COLUMN_NAME = 'batch_id'`,
+  )
+  if (!rows.length) {
+    await query("ALTER TABLE attendance_requests ADD COLUMN batch_id VARCHAR(36) NULL AFTER source_snapshot")
+    await query("ALTER TABLE attendance_requests ADD INDEX idx_attendance_requests_batch (batch_id)")
+  }
 }
 
 async function ensureLegalHolidayDayTypeColumn() {
@@ -683,6 +700,7 @@ function requestPayload(row) {
     sourceType: row.source_type,
     sourceId: row.source_id,
     sourceDetail: row.source_detail,
+    batchId: row.batch_id || null,
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
@@ -1687,7 +1705,7 @@ function resolveSegmentResult(segmentKey, body) {
 // 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请；历史遗留的
 // travel_out/travel_back 申请仍按 travel 占用对待。参见 docs/adr/0002。
 async function insertServiceOrderOvertimeSegment(connection, {
-  employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId,
+  employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId, batchId = null,
 }) {
   const segment = segmentKey === 'travel'
     ? travelOvertimeSegment(order, travelOverrides)
@@ -1729,10 +1747,11 @@ async function insertServiceOrderOvertimeSegment(connection, {
   if (!status) throw badRequest('审批流程不能为空')
   const [inserted] = await connection.execute(
     `INSERT INTO attendance_requests
-       (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
+       (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, batch_id, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
+       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :batchId, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
     {
+      batchId,
       supervisorRole,
       employeeId: employee.id,
       overtimeKind: segment.kind,
@@ -1784,6 +1803,9 @@ async function createServiceOrderOvertimeRequest(req, res) {
       ? normalizeTravelOverrides(order, req.body)
       : {}
 
+    // 双段同批：同一次提交的路+工作盖同一 batch_id，审批/驳回/撤回/作废按组联动（specs/003）；显式单段提交不打标
+    const batchId = requestedKey ? null : randomUUID()
+
     const created = []
     for (const segmentKey of segmentKeys) {
       const overtimeResult = resolveSegmentResult(segmentKey, req.body)
@@ -1796,6 +1818,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
         overtimeResult,
         travelOverrides,
         userId: req.user.id,
+        batchId,
       })
       if (inserted) created.push(inserted)
     }
@@ -2202,6 +2225,24 @@ async function requestForUpdate(connection, id) {
   return rows[0] || null
 }
 
+// 组联动加载：带 batch_id 的申请（同工单加班的路+工作，specs/003）在审批/驳回/撤回/作废上视为一体，
+// 任一条目的动作都扩展到整组（同事务内逐条处理，终态条目由调用点跳过）。无 batch_id 返回单例。
+async function batchRequestsForUpdate(connection, request) {
+  if (!request.batch_id) return [request]
+  const [rows] = await connection.execute(
+    `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
+            u.role AS applicant_role, p.supervisor_employee_id
+     FROM attendance_requests r
+     JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE r.batch_id = :batchId
+     ORDER BY r.id
+     FOR UPDATE`,
+    { batchId: request.batch_id },
+  )
+  return rows.length ? rows : [request]
+}
+
 async function insertApprovalSteps(connection, requestId, steps) {
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index]
@@ -2508,7 +2549,15 @@ async function approveWorkflowStep(req, res, expectedStepType, workflowVersions 
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (!workflowVersions.includes(Number(request.workflow_version || 1))) throw badRequest('申请不属于当前审批流程')
-    return approveLockedWorkflowStep(connection, request, expectedStepType, req.user)
+    // 组联动：同批申请一并推进一步审批链（终态跳过），每行各自结算/通知
+    const group = await batchRequestsForUpdate(connection, request)
+    const actionable = group.filter((item) => !finalStatuses.has(item.status))
+    if (!actionable.length) throw badRequest('当前状态不能执行此审批')
+    let nextStatus = null
+    for (const item of actionable) {
+      nextStatus = await approveLockedWorkflowStep(connection, item, expectedStepType, req.user)
+    }
+    return nextStatus
   })
   res.json({ ok: true, status })
 }
@@ -2595,25 +2644,32 @@ async function rejectRequest(req, res) {
       const step = await pendingApprovalStep(connection, request.id)
       if (!step) throw badRequest('当前申请没有待审批步骤')
       assertWorkflowStepApprover(step, req.user, request)
-      await connection.execute(
-        `UPDATE attendance_request_approvals
-         SET status = 'rejected',
-             rejected_by = :userId,
-             rejected_at = NOW(),
-             rejected_reason = :reason
-         WHERE id = :id`,
-        { id: step.id, userId: req.user.id, reason },
-      )
-      await connection.execute(
-        `UPDATE attendance_requests
-         SET status = 'rejected',
-             rejected_by = :userId,
-             rejected_at = NOW(),
-             rejected_reason = :reason
-         WHERE id = :id`,
-        { id, userId: req.user.id, reason },
-      )
-      await queueRejectedLeaveNotification(connection, request, req.user, reason)
+      // 组联动：同批申请以同一原因一并驳回（终态或无待审步骤的跳过），各自发驳回通知
+      const group = await batchRequestsForUpdate(connection, request)
+      for (const item of group) {
+        if (finalStatuses.has(item.status)) continue
+        const itemStep = item.id === request.id ? step : await pendingApprovalStep(connection, item.id)
+        if (!itemStep) continue
+        await connection.execute(
+          `UPDATE attendance_request_approvals
+           SET status = 'rejected',
+               rejected_by = :userId,
+               rejected_at = NOW(),
+               rejected_reason = :reason
+           WHERE id = :id`,
+          { id: itemStep.id, userId: req.user.id, reason },
+        )
+        await connection.execute(
+          `UPDATE attendance_requests
+           SET status = 'rejected',
+               rejected_by = :userId,
+               rejected_at = NOW(),
+               rejected_reason = :reason
+           WHERE id = :id`,
+          { id: item.id, userId: req.user.id, reason },
+        )
+        await queueRejectedLeaveNotification(connection, item, req.user, reason)
+      }
       return
     }
     const isRoleSupervisor = request.status === 'pending_supervisor' && request.supervisor_role && request.supervisor_role === req.user.role
@@ -2645,14 +2701,19 @@ async function withdrawRequest(req, res) {
       throw badRequest('当前状态不能撤回')
     }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
-    await connection.execute(
-      `UPDATE attendance_requests
-       SET status = 'withdrawn',
-           withdrawn_by = :userId,
-           withdrawn_at = NOW()
-       WHERE id = :id`,
-      { id, userId: req.user.id },
-    )
+    // 组联动：同批申请中可撤回的条目一并撤回（终态/不可撤回状态跳过）
+    const group = await batchRequestsForUpdate(connection, request)
+    for (const item of group) {
+      if (!['draft', 'pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'withdrawn',
+             withdrawn_by = :userId,
+             withdrawn_at = NOW()
+         WHERE id = :id`,
+        { id: item.id, userId: req.user.id },
+      )
+    }
   })
   res.json({ ok: true })
 }
@@ -2668,16 +2729,21 @@ async function voidRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (request.status !== 'approved') throw badRequest('只有已通过申请可以作废')
-    await reverseApprovalLedger(connection, request, req.user.id)
-    await connection.execute(
-      `UPDATE attendance_requests
-       SET status = 'voided',
-           voided_by = :userId,
-           voided_at = NOW(),
-           void_reason = :reason
-       WHERE id = :id`,
-      { id, userId: req.user.id, reason },
-    )
+    // 组联动：同批已批准条目逐一回滚台账并作废（未批准条目跳过）
+    const group = await batchRequestsForUpdate(connection, request)
+    for (const item of group) {
+      if (item.status !== 'approved') continue
+      await reverseApprovalLedger(connection, item, req.user.id)
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'voided',
+             voided_by = :userId,
+             voided_at = NOW(),
+             void_reason = :reason
+         WHERE id = :id`,
+        { id: item.id, userId: req.user.id, reason },
+      )
+    }
   })
   res.json({ ok: true })
 }

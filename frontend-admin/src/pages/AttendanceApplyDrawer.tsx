@@ -457,7 +457,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <>
                     <div className="space-y-2">
                       <Label>加班时段</Label>
-                      <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，各生成一条申请（无有效加班时长的时段自动跳过）</p>
+                      <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，同组审批一次通过或驳回（无有效加班时长的时段自动跳过）</p>
                       <div className="grid gap-2 md:grid-cols-2">
                         {selectedOvertimeRows.map((segment) => {
                           const isTravel = segment.kind === "travel";

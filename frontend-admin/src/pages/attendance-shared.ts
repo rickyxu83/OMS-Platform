@@ -326,6 +326,7 @@ export interface AttendanceRequest {
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
+  batchId?: string | null;
   serviceOrder?: ServiceOrderSummary | null;
   reason?: string | null;
   startAt?: string;
