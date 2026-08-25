@@ -1572,6 +1572,12 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
                       so.service_mode, so.service_type, so.issue_description,
                       COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
+                      (SELECT COUNT(DISTINCT x.engineer_id)
+                         FROM (
+                           SELECT so2.assigned_engineer_id AS engineer_id FROM service_orders so2 WHERE so2.id = so.id
+                           UNION ALL
+                           SELECT soe2.engineer_id FROM service_order_engineers soe2 WHERE soe2.service_order_id = so.id
+                         ) x) AS engineer_count,
                       COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
@@ -1661,6 +1667,8 @@ async function listOvertimeServiceOrders(req, res) {
         segments: overtimeSegments(row, used),
         // 被本人进行中申请占用的时段（work/travel），前端据此显示占用占位提示
         usedSegments: [...used],
+        // 工单工程师数（主责+协作去重）：>1 时前端才放开路上时间编辑
+        engineerCount: Number(row.engineer_count || 0),
       }
     })
     .filter((item) => item.segments.length)
@@ -1771,7 +1779,8 @@ async function createServiceOrderOvertimeRequest(req, res) {
 
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
-    const travelOverrides = segmentKeys.includes('travel')
+    // 路上时间仅多工程师工单开放自报（各地往返天然不同，ADR-0002）；单人工单锁死按工单时间核算，忽略任何覆盖
+    const travelOverrides = segmentKeys.includes('travel') && Number(order.engineer_count || 0) > 1
       ? normalizeTravelOverrides(order, req.body)
       : {}
 

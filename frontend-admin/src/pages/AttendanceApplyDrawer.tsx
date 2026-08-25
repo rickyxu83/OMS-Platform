@@ -158,6 +158,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     return [...dates].sort();
   }, [selectedOvertimeRows]);
   const travelSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "travel") || null, [selectedOvertimeRows]);
+  // 路上时间可编辑性：仅多工程师工单开放（各地往返差异，ADR-0002）；单人工单按工单时间锁死
+  const travelEditable = (selectedOvertimeOrder?.engineerCount || 0) > 1;
   const workSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "work") || null, [selectedOvertimeRows]);
 
   useEffect(() => {
@@ -490,7 +492,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         ))}
                       </div>
                     </div>
-                    {travelSegment ? (
+                    {travelSegment && travelEditable ? (
                       <div className="space-y-3 rounded-md border bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <Label className="text-sm">去程/回程时间</Label>
@@ -528,6 +530,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           </p>
                         )}
                       </div>
+                    ) : null}
+                    {travelSegment && !travelEditable ? (
+                      <p className="text-xs text-muted-foreground">本工单为单人工单，路上时间按工单时间核算，不可修改；多名工程师协作时才可按各自实际往返调整。</p>
                     ) : null}
                     <div className="rounded-md border bg-muted/10 p-3">
                       <div className="text-xs font-medium text-muted-foreground">工单信息</div>
