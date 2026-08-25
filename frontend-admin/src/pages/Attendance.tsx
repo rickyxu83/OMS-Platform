@@ -1028,13 +1028,11 @@ export function Attendance() {
               description={showApprovalHistory && approvalView === "done"
                 ? "审批链与我相关的全部申请（含已办结历史），只读"
                 : "代理确认与当前角色审批待办集中在这里处理"}
-              items={showApprovalHistory && approvalView === "done" ? filteredAllRequests : approvalTodos}
+              items={showApprovalHistory && approvalView === "done" ? allRequests : approvalTodos}
               loading={loading}
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
-              emptyText={showApprovalHistory && approvalView === "done"
-                ? (hasRecordFilter ? "没有符合筛选条件的记录" : "暂无相关申请记录")
-                : "暂无待审批的申请"}
+              emptyText={showApprovalHistory && approvalView === "done" ? "暂无相关申请记录" : "暂无待审批的申请"}
               toolbar={showApprovalHistory ? (
                 <>
                   {[
@@ -1056,12 +1054,6 @@ export function Attendance() {
                       </button>
                     );
                   })}
-                  {approvalView === "done" ? recordFilterControls : null}
-                  {approvalView === "done" && allRequests.length >= RECORDS_LIMIT ? (
-                    <div className="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-                      已到达单次 {RECORDS_LIMIT} 条上限，仅显示最近记录；查更早记录请用起止日期缩小范围。
-                    </div>
-                  ) : null}
                 </>
               ) : undefined}
               actions={showApprovalHistory && approvalView === "done" ? undefined : (item) => {
