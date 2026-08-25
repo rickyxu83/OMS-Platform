@@ -43,6 +43,7 @@ const LEDGER_ACTION_LABELS: Record<string, string> = {
   use: "使用扣减",
   void: "作废冲回",
   adjust: "行政调整",
+  approved: "审批联动", // 历史数据（旧版代码口径）
 };
 
 function balanceTypeLabel(type?: string) {
