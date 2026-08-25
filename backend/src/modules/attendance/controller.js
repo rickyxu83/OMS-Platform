@@ -1653,11 +1653,16 @@ async function listOvertimeServiceOrders(req, res) {
   const rows = await serviceOrderOvertimeRows(req.user.id)
   const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
   const items = rows
-    .map((row) => ({
-      ...serviceOrderSnapshot(row),
-      status: row.status,
-      segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
-    }))
+    .map((row) => {
+      const used = usedMap.get(Number(row.id)) || new Set()
+      return {
+        ...serviceOrderSnapshot(row),
+        status: row.status,
+        segments: overtimeSegments(row, used),
+        // 被本人进行中申请占用的时段（work/travel），前端据此显示占用占位提示
+        usedSegments: [...used],
+      }
+    })
     .filter((item) => item.segments.length)
   res.json({ items })
 }

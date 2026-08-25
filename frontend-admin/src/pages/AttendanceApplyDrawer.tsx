@@ -149,10 +149,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     [overtimeOrders, selectedOvertimeOrderId],
   );
   const selectedOvertimeRows = useMemo(() => overtimeRows(selectedOvertimeOrder), [selectedOvertimeOrder]);
-  // 涉及的三倍工资日（法定节假日）：来自后端时段数据，用于填写提醒与确认页展示
+  // 涉及的三倍工资日（法定节假日）：仅可付费时段（工作时间）与 300% 相关；路上固定转调休不参与
   const triplePayDates = useMemo(() => {
     const dates = new Set<string>();
-    selectedOvertimeRows.forEach((segment) => (segment.triplePayDates || []).forEach((date) => dates.add(date)));
+    selectedOvertimeRows
+      .filter((segment) => (segment.allowedResults || []).includes("pay"))
+      .forEach((segment) => (segment.triplePayDates || []).forEach((date) => dates.add(date)));
     return [...dates].sort();
   }, [selectedOvertimeRows]);
   const travelSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "travel") || null, [selectedOvertimeRows]);
@@ -461,7 +463,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           return (
                             <div key={segment.key} className="rounded-md border bg-background p-3 text-left text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{segment.label}{segment.triplePayDates?.length ? <Badge variant="rose" className="ml-1.5 align-middle font-semibold">3倍</Badge> : null}</span>
+                                <span className="font-medium">{segment.label}{segment.allowedResults?.includes("pay") && segment.triplePayDates?.length ? <Badge variant="rose" className="ml-1.5 align-middle font-semibold">3倍</Badge> : null}</span>
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
@@ -480,6 +482,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         {selectedOvertimeRows.length === 0 ? (
                           <div className="rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground md:col-span-2">暂无可申请时段</div>
                         ) : null}
+                        {(selectedOvertimeOrder.usedSegments || []).map((key) => (
+                          <div key={`used-${key}`} className="rounded-md border border-dashed bg-muted/30 p-3 text-left text-sm text-muted-foreground">
+                            <div className="font-medium">{key === "work" ? "实际工作时间" : "来回路上实际时间"}</div>
+                            <div className="mt-1 text-xs">该时段已有一条进行中的加班申请；在「我的申请」撤回后才可重新申请</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     {travelSegment ? (

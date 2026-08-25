@@ -55,6 +55,7 @@ export interface OvertimeSegment {
 export interface OvertimeServiceOrder extends ServiceOrderSummary {
   status?: string;
   segments: OvertimeSegment[];
+  usedSegments?: string[];
 }
 
 export const LEAVE_TYPE_LABELS: Record<string, string> = {
