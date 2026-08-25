@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorToast } from '@/components/ErrorToast'
 import { CustomerIndexSuggestions } from '@/components/CustomerIndexSuggestions'
 import { customerMatches, groupCustomersByInitial } from '@/lib/customer-index'
@@ -300,19 +300,19 @@ export function MrListPage() {
         </CardHeader>
         <CardContent>
           <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            <Table className="table-fixed">
+            <table className="w-full min-w-[890px] table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
                 <col className="w-[110px]" />
-                <col className="w-[140px]" />
-                <col className="w-[170px]" />
                 <col className="w-[150px]" />
+                <col className="w-[190px]" />
+                <col className="w-[160px]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
                   <TableHead>客户 / Ctrl.NO</TableHead>
                   <TableHead>负责的销售</TableHead>
-                  <TableHead className="text-right">未税总计</TableHead>
+                  <TableHead className="pr-6 text-right">未税总计</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>更新时间</TableHead>
                 </TableRow>
@@ -334,7 +334,7 @@ export function MrListPage() {
                     </button>
                   </TableCell>
                   <TableCell>{order.salesOwnerName || '-'}</TableCell>
-                  <TableCell className="text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
+                  <TableCell className="pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell>
                     <Badge className={STATUS_CLASSES[orderStatus]}>{STATUS_LABELS[orderStatus]}</Badge>{orderStatus === 'approved' && order.purchaseStatus ? <Badge className={`ml-1 ${PURCHASE_CLASSES[order.purchaseStatus] || ''}`}>{PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}</Badge> : null}
                     {stepLabel || order.currentAssigneeName ? <div className="mt-1 text-xs text-muted-foreground">{[stepLabel, order.currentAssigneeName].filter(Boolean).join(' · ')}</div> : null}
@@ -345,7 +345,7 @@ export function MrListPage() {
               )
             })}
           </TableBody>
-            </Table>
+            </table>
           </div>
           {!loading && items.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
