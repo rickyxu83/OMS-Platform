@@ -39,6 +39,14 @@ export interface LegalHolidayItem {
   active?: boolean;
 }
 
+export interface OvertimeLeg {
+  key: string;
+  label: string;
+  startAt: string;
+  endAt: string;
+  hours: number;
+}
+
 export interface OvertimeSegment {
   key: string;
   kind: "travel" | "work";
@@ -50,6 +58,7 @@ export interface OvertimeSegment {
   triplePayDates?: string[];
   payMultiplier?: number | null;
   allowedResults?: string[];
+  legs?: OvertimeLeg[];
 }
 
 export interface OvertimeServiceOrder extends ServiceOrderSummary {
@@ -206,27 +215,24 @@ export function parseLocalDateTime(value?: string | null) {
 
 // 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（掐平日 18:00、整点取整）。
 // dayType 取所选 travel 段（同城往返为同一天，边界情况以提交后端核算为准）。
+// 镜像后端 overtimeWindow 的定稿口径（2026-08-25）：法定节假日/休息日全天计；
+// 工作日只计 09:00 上班前 + 18:00 下班后；有效时长按 0.5h 粒度四舍五入（满 15 分钟进 0.5h）。
 export function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
   const start = parseLocalDateTime(startAt);
   const end = parseLocalDateTime(endAt);
   if (!start || !end || end <= start) return 0;
   const fullDay = dayType === "legal_holiday" || dayType === "rest_day";
-  const endHour = end.getHours() + end.getMinutes() / 60;
-  if (!fullDay && endHour <= 18) return 0;
-  const overtimeStart = fullDay
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
-  const rawStart = start > overtimeStart ? start : overtimeStart;
-  const effStart = new Date(rawStart);
-  if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
-    effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
+  let minutes: number;
+  if (fullDay) {
+    minutes = (end.getTime() - start.getTime()) / 60000;
   } else {
-    effStart.setMinutes(0, 0, 0);
+    const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0);
+    const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
+    minutes = 0;
+    if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000;
+    if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000;
   }
-  const effEnd = new Date(end);
-  effEnd.setMinutes(0, 0, 0);
-  if (effEnd <= effStart) return 0;
-  const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
+  const hours = Math.round(minutes / 30) / 2;
   return hours > 0 ? hours : 0;
 }
 
@@ -323,6 +329,7 @@ export interface AttendanceRequest {
   overtimeDayType?: string | null;
   overtimePayMultiplier?: number | null;
   isTriplePay?: boolean;
+  travelLegs?: OvertimeLeg[] | null;
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;

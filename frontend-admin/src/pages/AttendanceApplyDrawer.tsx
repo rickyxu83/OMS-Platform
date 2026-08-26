@@ -59,6 +59,11 @@ const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description
   { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw },
 ];
 
+/** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
+function shortDateTime(value?: string) {
+  return String(value || "").replace("T", " ").slice(5, 16);
+}
+
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
 export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates, resumeDraft }: AttendanceApplyDrawerProps) {
   // 加班单无草稿态，仅请假/调休可继续提交
@@ -167,14 +172,25 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     setTravelReturnAt(toDateTimeLocal(selectedOvertimeOrder?.returnAt));
   }, [selectedOvertimeOrderId, selectedOvertimeOrder?.departureAt, selectedOvertimeOrder?.returnAt]);
 
+  // 路上两段（去程=出发→到达、回程=完工→返回）的即时预览，与后端 travelOvertimeSegment 同口径
+  const travelLegsPreview = useMemo(() => {
+    if (!selectedOvertimeOrder || !travelSegment) return [];
+    const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
+    const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
+    const dayType = travelSegment.dayType;
+    const legs: Array<{ label: string; startAt: string; endAt: string; hours: number }> = [];
+    const outHours = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
+    if (outHours > 0) legs.push({ label: "去程", startAt: travelDepartureAt, endAt: arrival, hours: outHours });
+    const backHours = finish && travelReturnAt ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
+    if (backHours > 0) legs.push({ label: "回程", startAt: finish, endAt: travelReturnAt, hours: backHours });
+    return legs;
+  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
+
   const travelPreview = useMemo(() => {
     if (!selectedOvertimeOrder || !travelSegment) return null;
-    const dayType = travelSegment.dayType;
-    // 路上 = 全程（出发→返回）− 中间实际工作，与后端 travelOvertimeSegment 同口径
-    const workHours = workSegment ? Number(workSegment.hours || 0) : 0;
-    const spanHours = travelDepartureAt && travelReturnAt ? previewOvertimeHours(travelDepartureAt, travelReturnAt, dayType) : 0;
-    return { hours: Math.max(0, Math.round((spanHours - workHours) * 100) / 100), dayType };
-  }, [selectedOvertimeOrder, travelSegment, workSegment, travelDepartureAt, travelReturnAt]);
+    const total = travelLegsPreview.reduce((sum, leg) => sum + leg.hours, 0);
+    return { hours: Math.round(total * 100) / 100, dayType: travelSegment.dayType };
+  }, [selectedOvertimeOrder, travelSegment, travelLegsPreview]);
 
   const travelInvalid = useMemo(() => {
     if (!travelSegment || !selectedOvertimeOrder) return "";
@@ -469,7 +485,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 {isTravel
-                                  ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
+                                  ? (travelLegsPreview.length
+                                      ? travelLegsPreview.map((leg) => `${leg.label} ${shortDateTime(leg.startAt)}–${shortDateTime(leg.endAt)}（${hours(leg.hours)}h）`).join(" ＋ ")
+                                      : `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`)
                                   : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
                               </div>
                               <div className="mt-0.5 text-xs text-muted-foreground">
@@ -525,7 +543,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <p className="text-xs text-destructive">{travelInvalid}</p>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
+                            预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（工作日计 9 点前/18 点后、按 0.5 小时核算，最终以审批核算为准）
                           </p>
                         )}
                       </div>

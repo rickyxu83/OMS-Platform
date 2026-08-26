@@ -1103,8 +1103,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const orderRow = {
       engineer_count: 2,
       id: 88, order_no: 'SO-NONE', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-14 09:00:00', departure_at: '2026-07-14 08:00:00',
-      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 16:00:00', return_at: '2026-07-14 17:00:00',
+      service_at: '2026-07-14 10:00:00', departure_at: '2026-07-14 09:30:00',
+      actual_start_at: '2026-07-14 10:00:00', actual_end_at: '2026-07-14 16:00:00', return_at: '2026-07-14 17:00:00',
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
@@ -2014,9 +2014,120 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(res.statusCode, 201)
     const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
     assert.ok(insert)
-    // 2026-07-12 是周日（rest_day 全天计）：span 11:10→20:35 取整 12:00→20:00=8h，工作 11:35→14:50 取整 12:00→14:00=2h，路上=8−2=6h
-    // （旧口径分段取整：去程 25 分钟整段被吞、回程取 15:00→20:00=5h，得出错误的 5h）
-    assert.equal(insert.params.hours, 6)
+    // 2026-07-12 是周日（rest_day 全天计）：去程 25 分钟 → 0.5h，回程 5h45m → 6h，路上=0.5+6=6.5h
+    // （旧截断口径：去程整段被吞、回程截成 5h，得出错误的 5h）
+    assert.equal(insert.params.hours, 6.5)
+  }
+
+  // 工作段 0.5h 粒度四舍五入：周日 11:35→14:50 = 3h15m → 3.5h（旧截断为 2h）
+  {
+    const executeCalls = []
+    const orderRow = {
+      engineer_count: 1,
+      id: 88,
+      order_no: 'SO-HOLIDAY',
+      status: 'completed',
+      customer_name: '测试客户',
+      contact_name: '王小姐',
+      contact_phone: '13800000000',
+      device_name: 'PowerVault ME5 / SN-88',
+      service_mode: 'onsite',
+      service_type: 'repair',
+      issue_description: '存储控制器告警',
+      service_at: '2026-07-12 11:35:00',
+      departure_at: '2026-07-12 11:10:00',
+      actual_start_at: '2026-07-12 11:35:00',
+      actual_end_at: '2026-07-12 14:50:00',
+      return_at: '2026-07-12 20:35:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 904 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'work', overtimeResult: 'comp_time' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    assert.equal(insert.params.hours, 3.5)
+  }
+
+  // 工作日有效窗口：9 点上班前也计加班——去程 08:30→09:30 有效 08:30-09:00=30 分钟 → 0.5h；回程 17:30→18:30 有效 18:00-18:30=30 分钟 → 0.5h
+  {
+    const executeCalls = []
+    const orderRow = {
+      engineer_count: 1,
+      id: 88,
+      order_no: 'SO-WORKDAY-AM',
+      status: 'completed',
+      customer_name: '测试客户',
+      contact_name: '王小姐',
+      contact_phone: '13800000000',
+      device_name: 'PowerVault ME5 / SN-88',
+      service_mode: 'onsite',
+      service_type: 'repair',
+      issue_description: '存储控制器告警',
+      service_at: '2026-07-14 09:30:00',
+      departure_at: '2026-07-14 08:30:00',
+      actual_start_at: '2026-07-14 09:30:00',
+      actual_end_at: '2026-07-14 17:30:00',
+      return_at: '2026-07-14 18:30:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 905 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    // 2026-07-14 周二工作日：去程有效 08:30-09:00=30min → 0.5h；回程有效 18:00-18:30=30min → 0.5h；合计 1h
+    assert.equal(insert.params.hours, 1)
   }
 })().catch((error) => {
   console.error(error)

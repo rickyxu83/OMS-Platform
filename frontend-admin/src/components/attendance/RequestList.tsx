@@ -71,8 +71,26 @@ function chineseMonthDay(value?: string) {
 
 // 申请时间列：假类用中文日期 + 半天标注（整天不显示时段，半天标「下午/中午」）；
 // 加班/调休保留精确时段。时长（共 X 天/小时）由徽章在下一行展示。
+// 路上时段（travelLegs）按去程/回程两段展示，不用整段表述（会把中间工作框进去，佬 2026-08-25）。
+function travelLegsText(item: AttendanceRequest) {
+  return (item.travelLegs || [])
+    .map((leg) => {
+      const startDate = String(leg.startAt || "").slice(0, 10);
+      const startTime = String(leg.startAt || "").slice(11, 16);
+      const endTime = String(leg.endAt || "").slice(11, 16);
+      return `${leg.label} ${chineseMonthDay(startDate)} ${startTime}–${endTime}`;
+    })
+    .join(" ＋ ");
+}
 function requestTimeRange(item: AttendanceRequest) {
   if (!item.startAt) return <span className="text-muted-foreground">-</span>;
+  if (item.requestType === "overtime" && item.travelLegs?.length) {
+    return (
+      <div className="tabular-nums">
+        <div className="font-medium">{travelLegsText(item)}</div>
+      </div>
+    );
+  }
   const startDate = String(item.startAt).slice(0, 10);
   const endDate = String(item.endAt || item.startAt).slice(0, 10);
   const startTime = String(item.startAt).slice(11, 16);
@@ -147,6 +165,10 @@ function groupBatchItems(items: AttendanceRequest[]): RequestGroup[] {
   return groups;
 }
 function segmentTimeText(item: AttendanceRequest) {
+  if (item.requestType === "overtime" && item.travelLegs?.length) {
+    const duration = requestDuration(item);
+    return `${travelLegsText(item)}${duration ? ` ＝ ${duration}` : ""}`;
+  }
   const startDate = String(item.startAt || "").slice(0, 10);
   const startTime = String(item.startAt || "").slice(11, 16);
   const endTime = String(item.endAt || item.startAt || "").slice(11, 16);

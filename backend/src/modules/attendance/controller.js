@@ -676,6 +676,27 @@ function profilePayload(row) {
   }
 }
 
+// 列表展示用：从申请快照（工单时间 + 自报往返）重算路上去程/回程两段；非路上申请或快照缺时间返回 null。
+// 历史申请同样可算（快照一直含工单四段时间），但 legs 小时按当前口径重算，可能与旧截断存储的 hours 不同，故展示只取时间段。
+function travelLegsFromSnapshot(row) {
+  const snapshot = parseServiceOrderSnapshot(row.source_snapshot, row.source_id)
+  if (!snapshot) return null
+  const departureAt = snapshot.reportedDepartureAt || snapshot.departureAt
+  const returnAt = snapshot.reportedReturnAt || snapshot.returnAt
+  const legs = [
+    { key: 'outbound', label: '去程', window: overtimeWindow(departureAt, snapshot.actualStartAt) },
+    { key: 'return', label: '回程', window: overtimeWindow(snapshot.actualEndAt, returnAt) },
+  ].filter((leg) => leg.window)
+  if (!legs.length) return null
+  return legs.map((leg) => ({
+    key: leg.key,
+    label: leg.label,
+    startAt: toIsoMinute(leg.window.startAt),
+    endAt: toIsoMinute(leg.window.endAt),
+    hours: leg.window.hours,
+  }))
+}
+
 function requestPayload(row) {
   return {
     id: row.id,
@@ -701,6 +722,7 @@ function requestPayload(row) {
     sourceId: row.source_id,
     sourceDetail: row.source_detail,
     batchId: row.batch_id || null,
+    travelLegs: row.request_type === 'overtime' && row.source_detail === 'travel' ? travelLegsFromSnapshot(row) : null,
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
@@ -1380,44 +1402,38 @@ function toDate(value) {
   return Number.isFinite(date.getTime()) ? date : null
 }
 
-function ceilToHour(date) {
-  const rounded = new Date(date)
-  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
-    rounded.setHours(rounded.getHours() + 1, 0, 0, 0)
-  } else {
-    rounded.setMinutes(0, 0, 0)
-  }
-  return rounded
+// 有效加班分钟数（佬 2026-08-25 定稿）：法定节假日/休息日全天计；
+// 工作日只计 09:00 上班前 + 18:00 下班后（工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
+function overtimeEligibleMinutes(startAt, endAt, dayType) {
+  const start = toDate(startAt)
+  const end = toDate(endAt)
+  if (!start || !end || end <= start) return 0
+  if (dayType === 'legal_holiday' || dayType === 'rest_day') return (end.getTime() - start.getTime()) / 60000
+  const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0)
+  const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
+  let minutes = 0
+  if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000
+  if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000
+  return minutes
 }
 
-function floorToHour(date) {
-  const rounded = new Date(date)
-  rounded.setMinutes(0, 0, 0)
-  return rounded
+// 0.5h 粒度四舍五入：×2 取整，满 15 分钟进 0.5h（最小单位 0.5h）
+function roundToHalfHour(minutes) {
+  return Math.round(minutes / 30) / 2
 }
 
-// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
-// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
-// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
+// 加班时长核算：有效部分（工作日 9 点前 + 18 点后，节假日全天）按 0.5h 粒度四舍五入。
+// 前端 attendance-shared.ts 的 previewOvertimeHours 镜像这套口径做即时预览，改动规则时需同步那里。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
   const dayType = overtimeDayType(start)
-  const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
-  const endHour = end.getHours() + end.getMinutes() / 60
-  if (!fullDayOvertime && endHour <= 18) return null
-  const overtimeStart = fullDayOvertime
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
-  const effectiveEnd = floorToHour(end)
-  if (effectiveEnd <= effectiveStart) return null
-  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
+  const hours = roundToHalfHour(overtimeEligibleMinutes(start, end, dayType))
   if (hours <= 0) return null
   return {
-    startAt: formatMysqlDateTime(effectiveStart),
-    endAt: formatMysqlDateTime(effectiveEnd),
+    startAt: formatMysqlDateTime(start),
+    endAt: formatMysqlDateTime(end),
     hours,
     dayType,
   }
@@ -1470,26 +1486,36 @@ function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
 // 路上时间合并成一条“来回路上实际时间”。去程出发、回程返回可由工程师自报覆盖
 // （overrides），到达/完工两个锚点始终取工单值。每一程各自过 overtimeWindow
 // （掐平日 18:00、整点取整），再把有效的时长相加。参见 docs/adr/0002。
+// 路上时段 = 去程（出发→到达）＋ 回程（完工→返回）两段组成，每段有效时长按 0.5h 粒度四舍五入后相加
+// （佬 2026-08-25 定稿，取代分段截断与 span−work 两种旧口径）。legs 明细随段返回供前端两段展示。
+// overrides 仅允许去程出发/回程返回（多工程师工单），到达/完工两个锚点始终取工单值。参见 docs/adr/0002。
 function travelOvertimeSegment(row, overrides = {}) {
   const departureAt = overrides.departureAt || row.departure_at
   const returnAt = overrides.returnAt || row.return_at
-  // 路上时长口径（佬 2026-08-25）：全程（出发→返回）减去中间实际工作（到达→完工），
-  // 取代原「去程/回程分段取整相加」——节假日场景下两段的零头会被整点取整吞掉（25 分钟去程整段消失），
-  // span−work 后零头自然计入。平日掐 18:00 规则不变（overtimeWindow 内部处理），平日两口径结果一致。
-  const span = overtimeWindow(departureAt, returnAt)
-  if (!span) return null
-  const work = overtimeWindow(row.actual_start_at, row.actual_end_at)
-  const hours = Math.round((Number(span.hours) - Number(work?.hours || 0)) * 100) / 100
-  if (hours <= 0) return null
+  const legs = [
+    { key: 'outbound', label: '去程', window: overtimeWindow(departureAt, row.actual_start_at) },
+    { key: 'return', label: '回程', window: overtimeWindow(row.actual_end_at, returnAt) },
+  ].filter((leg) => leg.window)
+  if (!legs.length) return null
+  const hours = Math.round(legs.reduce((sum, leg) => sum + Number(leg.window.hours || 0), 0) * 100) / 100
+  const first = legs[0].window
+  const last = legs[legs.length - 1].window
   return {
     key: 'travel',
     kind: 'travel',
     label: '来回路上实际时间',
-    startAt: toIsoMinute(span.startAt),
-    endAt: toIsoMinute(span.endAt),
+    startAt: toIsoMinute(first.startAt),
+    endAt: toIsoMinute(last.endAt),
     hours,
-    dayType: span.dayType,
-    triplePayDates: triplePayDatesInRange(span.startAt, span.endAt),
+    legs: legs.map((leg) => ({
+      key: leg.key,
+      label: leg.label,
+      startAt: toIsoMinute(leg.window.startAt),
+      endAt: toIsoMinute(leg.window.endAt),
+      hours: leg.window.hours,
+    })),
+    dayType: first.dayType,
+    triplePayDates: triplePayDatesInRange(first.startAt, last.endAt),
     payMultiplier: null,
     allowedResults: ['comp_time'],
   }
