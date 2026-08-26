@@ -59,6 +59,7 @@ import {
 } from './mr-ui'
 import { QuotationImportDialog } from './QuotationImportDialog'
 import { OfficePreviewContent, isUnsupportedOfficeName, officePreviewType } from '@/components/OfficePreviewContent'
+import { PdfPreview } from '@/components/PdfPreview'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 const WORKBENCH_SECTIONS = [MR_SECTIONS[0], MR_SECTIONS[1], MR_SECTIONS[5], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
@@ -146,8 +147,8 @@ function changeValue(value: unknown) {
 
 const ATTACHMENT_ACCEPT = '.pdf,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.csv,.txt'
 
-/** 浏览器可直接内联预览的附件扩展名（新标签页打开）；docx/xlsx 走弹窗渲染，其余类型点击仍走下载 */
-const PREVIEWABLE_ATTACHMENT_EXTS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'txt', 'csv'])
+/** 浏览器可直接内联预览的附件扩展名（新标签页打开）；PDF 走当前页弹窗预览，docx/xlsx 走弹窗渲染，其余类型点击仍走下载 */
+const PREVIEWABLE_ATTACHMENT_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'txt', 'csv'])
 
 function attachmentIcon(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() || ''
@@ -163,11 +164,12 @@ function fileSizeText(size?: number) {
   return `${Math.max(1, Math.round(size / 1024))} KB`
 }
 
-/** MR 附件列表（文件名+图标展示）；PDF 新标签页预览，Word/Excel 弹窗预览，其余类型点击下载。 */
+/** MR 附件列表（文件名+图标展示）；PDF 当前页弹窗预览，Word/Excel 弹窗预览，图片/文本新标签页预览，其余类型点击下载。singleColumn 用于签核侧窄卡片：单列排列且文件名换行完整显示。 */
 function MrAttachments({
   files,
   editable,
   busy,
+  singleColumn = false,
   onUpload,
   onDelete,
   onOpen,
@@ -175,6 +177,7 @@ function MrAttachments({
   files: QuotationFile[]
   editable: boolean
   busy: boolean
+  singleColumn?: boolean
   onUpload: (fileList: FileList | null) => void
   onDelete: (file: QuotationFile) => void
   onOpen: (file: QuotationFile) => void
@@ -183,14 +186,14 @@ function MrAttachments({
   return (
     <div className="space-y-3">
       {files.length ? (
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className={singleColumn ? 'grid gap-2' : 'grid gap-2 sm:grid-cols-2'}>
           {files.map((file) => {
             const Icon = attachmentIcon(file.name)
             return (
               <li key={file.id} className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
                 <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => onOpen(file)} title="点击预览或下载">
                   <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-sm hover:underline">{file.name}</span>
+                  <span className={`min-w-0 flex-1 text-sm hover:underline ${singleColumn ? 'break-all leading-snug' : 'truncate'}`} title={file.name}>{file.name}</span>
                   {fileSizeText(file.size) ? <span className="shrink-0 text-xs text-muted-foreground">{fileSizeText(file.size)}</span> : null}
                 </button>
                 {editable ? (
@@ -392,6 +395,8 @@ export function MrFormPage() {
   const [importOpen, setImportOpen] = useState(false)
 /** Office 附件在线预览：blob 为 null 表示正在加载 */
 const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: Blob | null } | null>(null)
+/** PDF 附件弹窗预览：data 为 null 表示正在加载 */
+const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8Array | null } | null>(null)
   const [importAnimationKey, setImportAnimationKey] = useState(0)
   const [decision, setDecision] = useState<Decision>(null)
   const [reason, setReason] = useState('')
@@ -1009,10 +1014,23 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
     }
   }
 
-  /** 附件点击交互：PDF/图片/文本/CSV 新标签页内联预览；docx/xlsx 弹窗在线预览；其余类型下载。 */
+  /** 附件点击交互：PDF 当前页弹窗预览；图片/文本/CSV 新标签页内联预览；docx/xlsx 弹窗在线预览；其余类型下载。 */
   const openAttachment = (file: QuotationFile) => {
     if (!id) return
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (ext === 'pdf') {
+      setPdfPreview({ file, data: null })
+      fetchQuotationBlob(id, file.id)
+        .then(async (blob) => {
+          const data = new Uint8Array(await blob.arrayBuffer())
+          setPdfPreview((current) => (current?.file.id === file.id ? { file, data } : current))
+        })
+        .catch((err) => {
+          setPdfPreview(null)
+          setError((err as Error).message || '附件预览失败')
+        })
+      return
+    }
     if (PREVIEWABLE_ATTACHMENT_EXTS.has(ext)) {
       const url = `${resolveApiBase()}/mr/${encodeURIComponent(String(id))}/quotation?fileId=${encodeURIComponent(String(file.id))}&inline=1`
       window.open(url, '_blank', 'noopener,noreferrer')
@@ -1224,7 +1242,7 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <h2 className="font-semibold">附件（{calculated.quotationFiles?.length || 0}）</h2>
-              <div className="mt-3"><MrAttachments files={calculated.quotationFiles || []} editable={false} busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
+              <div className="mt-3"><MrAttachments files={calculated.quotationFiles || []} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
             </div>
             <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
           </aside>
@@ -1625,7 +1643,7 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
             <MrPurchaseCard order={calculated} onChanged={() => void load()} />
           ) : null}
 
-          <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF/图片/Word/Excel 点击在线预览，其他类型点击下载。" flash={flashSection === 'attachments'}>
+          <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF/Word/Excel 点击弹窗预览，图片/文本新标签页预览，其他类型点击下载。" flash={flashSection === 'attachments'}>
             <MrAttachments files={calculated.quotationFiles || []} editable={editable} busy={busy} onUpload={(list) => void uploadAttachments(list)} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
           </SectionCard>
         </div>
@@ -1653,6 +1671,37 @@ const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: 
           onLinkedItemsRemoved={handleLinkedItemsRemoved}
         />
       ) : null}
+
+      <Dialog open={Boolean(pdfPreview)} onOpenChange={(open) => { if (!open) setPdfPreview(null) }}>
+        <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+          <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
+            <DialogTitle className="truncate">{pdfPreview?.file.name || '附件预览'}</DialogTitle>
+            <DialogDescription>
+              {pdfPreview ? `PDF 在线预览 · ${fileSizeText(pdfPreview.file.size) || '大小未知'}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
+            {pdfPreview ? (
+              pdfPreview.data ? (
+                <PdfPreview data={pdfPreview.data} title={pdfPreview.file.name} />
+              ) : (
+                <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <span className="btn-loader" aria-hidden="true" />
+                  正在加载附件…
+                </div>
+              )
+            ) : null}
+          </div>
+          <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-5 py-4 sm:px-6">
+            <Button variant="outline" onClick={() => setPdfPreview(null)}>取消预览</Button>
+            {pdfPreview && id ? (
+              <Button variant="outline" onClick={() => downloadQuotation(id, pdfPreview.file.id, pdfPreview.file.name).catch((err) => setError((err as Error).message || '附件下载失败'))}>
+                <Download className="mr-2 size-4" />下载文件
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(officePreview)} onOpenChange={(open) => { if (!open) setOfficePreview(null) }}>
         <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
