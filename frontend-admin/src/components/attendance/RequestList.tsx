@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, ChevronDown, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +19,7 @@ import {
   formatDateTime,
   roleLabel,
   type AttendanceRequest,
+  type ApprovalStep,
   type ServiceOrderSummary,
 } from "@/pages/attendance-shared";
 
@@ -181,24 +183,20 @@ function statusIndicator(status?: string) {
     </span>
   );
 }
-// 明细列 meta 行（行级组件）：说明 / 工单 / 代理人 / 工作日 / 附件各段与审批摘要同一行；
-// 工单等结构化段 shrink-0 保完整，说明段弹性截断；审批摘要在行尾，点击展开的详情面板显示在行下方。
-function RequestMetaRow({
-  item,
-  onPreviewOrder,
-  onDownloadProof,
-}: {
-  item: AttendanceRequest;
-  onPreviewOrder?: (order: ServiceOrderSummary) => void;
-  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const steps = item.approvals || [];
-
+// 明细列 meta 行：说明 / 工单 / 代理人 / 工作日 / 附件收进单行灰字（图标+文字）；
+// 工单等结构化段 shrink-0 保完整，说明段弹性截断，title 兜底全文。审批进度不在此行（挪状态列悬浮）。
+function requestMetaRow(
+  item: AttendanceRequest,
+  onPreviewOrder?: (order: ServiceOrderSummary) => void,
+  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void,
+) {
   const segs: ReactNode[] = [];
   const titleParts: string[] = [];
 
-  if (item.reason) {
+  // reason 为系统生成（含工单号）且工单段已展示单号时跳过，避免同一单号重复出现
+  const linkedOrderNo = item.requestType === "overtime" && item.sourceType === "service_order" ? item.serviceOrder?.orderNo : undefined;
+  const reasonRedundant = Boolean(item.reason && linkedOrderNo && (item.reason as string).includes(linkedOrderNo));
+  if (item.reason && !reasonRedundant) {
     segs.push(<span key="reason" className="min-w-0 truncate">{item.reason}</span>);
     titleParts.push(item.reason);
   }
@@ -261,54 +259,103 @@ function RequestMetaRow({
     titleParts.push(`证明附件 ${item.proofFileCount} 份`);
   }
 
+  if (!segs.length) return null;
+  return (
+    <div className="mt-0.5 flex items-center text-xs text-muted-foreground">
+      <div className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap" title={titleParts.join(" · ")}>
+        {segs.flatMap((seg, index) =>
+          index === 0 ? [seg] : [<span key={`sep-${index}`} className="shrink-0 text-muted-foreground/40">·</span>, seg],
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 审批链摘要与步骤明细（供状态列悬浮层使用）
+function chainSummary(steps: ApprovalStep[]) {
   const current = steps.find((step) => step.status === "pending");
   const rejectedStep = steps.find((step) => step.status === "rejected");
-  const summary = current
+  return current
     ? `${steps.length} 级审批 · 当前：${approvalStepLabel(current)}`
     : rejectedStep
       ? `${steps.length} 级审批 · ${approvalStepLabel(rejectedStep)}已驳回`
       : `${steps.length} 级审批 · 已全部通过`;
-
-  if (!segs.length && !steps.length) return null;
+}
+function ChainSteps({ steps }: { steps: ApprovalStep[] }) {
   return (
-    <div className="mt-0.5">
-      <div className="flex items-center gap-x-3 text-xs text-muted-foreground">
-        {segs.length ? (
-          <div className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap" title={titleParts.join(" · ")}>
-            {segs.flatMap((seg, index) =>
-              index === 0 ? [seg] : [<span key={`sep-${index}`} className="shrink-0 text-muted-foreground/40">·</span>, seg],
-            )}
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1" />
-        )}
-        {steps.length ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="inline-flex shrink-0 items-center gap-1 font-medium transition hover:text-foreground"
-          >
-            <ChevronDown className={`h-3.5 w-3.5 transition ${expanded ? "" : "-rotate-90"}`} />
-            {summary}
-          </button>
-        ) : null}
-      </div>
-      {expanded && steps.length ? (
-        <div className="mt-1 border-l pl-3 leading-5">
-          {steps.map((step) => (
-            <div key={step.id}>
-              {approvalStepLabel(step)}：{approvalStepStatus(step)}
-              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
-              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
-              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
-              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
-              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
-              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
-            </div>
-          ))}
+    <div className="space-y-0.5 border-l pl-3 leading-5 text-muted-foreground">
+      {steps.map((step) => (
+        <div key={step.id}>
+          {approvalStepLabel(step)}：{approvalStepStatus(step)}
+          {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+          {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+          {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
+          {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
+          {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
+          {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
         </div>
-      ) : null}
+      ))}
     </div>
+  );
+}
+
+// 状态列：状态指示 + 审批链 hover 悬浮层（portal + fixed 定位，避开表格 overflow 裁切；无审批链时纯指示）
+function StatusWithChain({ status, steps }: { status?: string; steps?: ApprovalStep[] }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean }>({ left: 0, top: 0, above: true });
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hide = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setOpen(false);
+  }, []);
+  const show = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const above = rect.top > 240;
+      setPos({ left: rect.left + rect.width / 2, top: above ? rect.top - 8 : rect.bottom + 8, above });
+      setOpen(true);
+    }, 120);
+  };
+  // 悬浮层打开期间：滚动 / 点击任意处即关闭
+  useEffect(() => {
+    if (!open) return undefined;
+    window.addEventListener("scroll", hide, true);
+    document.addEventListener("mousedown", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      document.removeEventListener("mousedown", hide);
+    };
+  }, [open, hide]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  if (!steps?.length) return statusIndicator(status);
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        className="cursor-help underline decoration-muted-foreground/40 decoration-dotted underline-offset-4"
+      >
+        {statusIndicator(status)}
+      </span>
+      {open
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-50 w-64 rounded-lg border bg-background p-3 text-xs shadow-xl"
+              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translate(-50%, -100%)" : "translate(-50%, 0)" }}
+            >
+              <div className="mb-1.5 font-medium text-foreground">{chainSummary(steps)}</div>
+              <ChainSteps steps={steps} />
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -369,7 +416,7 @@ export function RequestList({
                     {showEmployee ? <span className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
                   </span>
                 )}
-                status={statusIndicator(item.status)}
+                status={<StatusWithChain status={item.status} steps={item.approvals} />}
                 fields={[
                   ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
                   { label: "时间", value: requestTimeRange(item) },
@@ -402,7 +449,7 @@ export function RequestList({
                     <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetailContent(item)}</div>
-                      <RequestMetaRow item={item} onPreviewOrder={onPreviewOrder} onDownloadProof={onDownloadProof} />
+                      {requestMetaRow(item, onPreviewOrder, onDownloadProof)}
                     </TableCell>
                     <TableCell>{requestTimeRange(item)}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -415,7 +462,7 @@ export function RequestList({
                         <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
-                    <TableCell>{statusIndicator(item.status)}</TableCell>
+                    <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
                     {hasActions ? (
                       <TableCell>
                         <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
