@@ -1,5 +1,5 @@
-import { type ReactNode } from "react";
-import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, ChevronDown, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,10 +13,13 @@ import {
   days,
   hours,
   serviceOrderTypeLabel,
+  approvalStepLabel,
+  approvalStepStatus,
+  formatDateTime,
+  roleLabel,
   type AttendanceRequest,
   type ServiceOrderSummary,
 } from "@/pages/attendance-shared";
-import { ApprovalChain } from "./ApprovalChain";
 
 const OVERTIME_KIND_LABELS: Record<string, string> = {
   travel: "来回路上实际",
@@ -178,17 +181,25 @@ function statusIndicator(status?: string) {
     </span>
   );
 }
-// 明细列次行：说明 / 关联工单 / 代理人 / 工作日 / 证明附件收进单行灰字（图标+文字），超长截断，title 兜底全文
-function requestSubLine(
-  item: AttendanceRequest,
-  onPreviewOrder?: (order: ServiceOrderSummary) => void,
-  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void,
-) {
+// 明细列 meta 行（行级组件）：说明 / 工单 / 代理人 / 工作日 / 附件各段与审批摘要同一行；
+// 工单等结构化段 shrink-0 保完整，说明段弹性截断；审批摘要在行尾，点击展开的详情面板显示在行下方。
+function RequestMetaRow({
+  item,
+  onPreviewOrder,
+  onDownloadProof,
+}: {
+  item: AttendanceRequest;
+  onPreviewOrder?: (order: ServiceOrderSummary) => void;
+  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const steps = item.approvals || [];
+
   const segs: ReactNode[] = [];
   const titleParts: string[] = [];
 
   if (item.reason) {
-    segs.push(<span key="reason">{item.reason}</span>);
+    segs.push(<span key="reason" className="min-w-0 truncate">{item.reason}</span>);
     titleParts.push(item.reason);
   }
 
@@ -196,13 +207,13 @@ function requestSubLine(
     const order = item.serviceOrder || ({ id: item.sourceId || "-", unavailable: true } as ServiceOrderSummary);
     const orderLabel = order.orderNo || `#${order.id}`;
     if (order.unavailable) {
-      segs.push(<span key="order" className="inline-flex items-center gap-1 align-middle"><Wrench className="h-3 w-3" />关联工单 {orderLabel} 暂不可用</span>);
+      segs.push(<span key="order" className="inline-flex shrink-0 items-center gap-1"><Wrench className="h-3 w-3" />关联工单 {orderLabel} 暂不可用</span>);
       titleParts.push(`关联工单 ${orderLabel} 暂不可用`);
     } else {
       const typeLabel = serviceOrderTypeLabel(order);
       const facts = [order.customerName, order.deviceName, typeLabel === "- / -" ? "" : typeLabel].filter((value) => value && value !== "-");
       segs.push(
-        <span key="order" className="inline-flex items-center gap-1 align-middle">
+        <span key="order" className="inline-flex shrink-0 items-center gap-1">
           <Wrench className="h-3 w-3" />
           {onPreviewOrder ? (
             <button
@@ -215,7 +226,7 @@ function requestSubLine(
           ) : (
             <span className="font-medium text-foreground/70">工单 {orderLabel}</span>
           )}
-          {facts.length ? <span className="text-muted-foreground/70">{facts.join(" · ")}</span> : null}
+          {facts.length ? <span className="max-w-52 truncate text-muted-foreground/70">{facts.join(" · ")}</span> : null}
         </span>,
       );
       titleParts.push([`工单 ${orderLabel}`, ...facts, order.issueDescription ? `问题：${order.issueDescription}` : ""].filter(Boolean).join(" · "));
@@ -223,21 +234,21 @@ function requestSubLine(
   }
 
   if (item.delegateEmployeeName) {
-    segs.push(<span key="delegate" className="inline-flex items-center gap-1 align-middle"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
+    segs.push(<span key="delegate" className="inline-flex shrink-0 items-center gap-1"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
     titleParts.push(`代理人 ${item.delegateEmployeeName}`);
   }
   if (typeof item.workingDays === "number") {
-    segs.push(<span key="days" className="inline-flex items-center gap-1 align-middle"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
+    segs.push(<span key="days" className="inline-flex shrink-0 items-center gap-1"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
     titleParts.push(`${days(item.workingDays)} 个工作日`);
   }
   if (item.proofFiles?.length) {
     segs.push(
-      <span key="proof" className="inline-flex items-center gap-1 align-middle">
+      <span key="proof" className="inline-flex shrink-0 items-center gap-1">
         <Paperclip className="h-3 w-3" />
         {item.proofFiles.map((file, index) => (
           <span key={file.id}>
             {index ? "、" : ""}
-            <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
+            <button type="button" className="inline-block max-w-40 truncate align-middle text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
               {file.originalName || `附件 #${file.id}`}
             </button>
           </span>
@@ -246,16 +257,57 @@ function requestSubLine(
     );
     titleParts.push(`附件 ${item.proofFiles.map((file) => file.originalName || `#${file.id}`).join("、")}`);
   } else if (item.proofFileCount) {
-    segs.push(<span key="proof" className="inline-flex items-center gap-1 align-middle"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
+    segs.push(<span key="proof" className="inline-flex shrink-0 items-center gap-1"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
     titleParts.push(`证明附件 ${item.proofFileCount} 份`);
   }
 
-  if (!segs.length) return null;
+  const current = steps.find((step) => step.status === "pending");
+  const rejectedStep = steps.find((step) => step.status === "rejected");
+  const summary = current
+    ? `${steps.length} 级审批 · 当前：${approvalStepLabel(current)}`
+    : rejectedStep
+      ? `${steps.length} 级审批 · ${approvalStepLabel(rejectedStep)}已驳回`
+      : `${steps.length} 级审批 · 已全部通过`;
+
+  if (!segs.length && !steps.length) return null;
   return (
-    <div className="mt-0.5 max-w-xl truncate text-xs text-muted-foreground" title={titleParts.join(" · ")}>
-      {segs.flatMap((seg, index) =>
-        index === 0 ? [seg] : [<span key={`sep-${index}`} className="mx-1.5 text-muted-foreground/40">·</span>, seg],
-      )}
+    <div className="mt-0.5">
+      <div className="flex items-center gap-x-3 text-xs text-muted-foreground">
+        {segs.length ? (
+          <div className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap" title={titleParts.join(" · ")}>
+            {segs.flatMap((seg, index) =>
+              index === 0 ? [seg] : [<span key={`sep-${index}`} className="shrink-0 text-muted-foreground/40">·</span>, seg],
+            )}
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+        {steps.length ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="inline-flex shrink-0 items-center gap-1 font-medium transition hover:text-foreground"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition ${expanded ? "" : "-rotate-90"}`} />
+            {summary}
+          </button>
+        ) : null}
+      </div>
+      {expanded && steps.length ? (
+        <div className="mt-1 border-l pl-3 leading-5">
+          {steps.map((step) => (
+            <div key={step.id}>
+              {approvalStepLabel(step)}：{approvalStepStatus(step)}
+              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
+              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
+              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
+              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -350,8 +402,7 @@ export function RequestList({
                     <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
                     <TableCell>
                       <div>{requestDetailContent(item)}</div>
-                      {requestSubLine(item, onPreviewOrder, onDownloadProof)}
-                      {item.approvals?.length ? <ApprovalChain steps={item.approvals} /> : null}
+                      <RequestMetaRow item={item} onPreviewOrder={onPreviewOrder} onDownloadProof={onDownloadProof} />
                     </TableCell>
                     <TableCell>{requestTimeRange(item)}</TableCell>
                     <TableCell className="text-right tabular-nums">
