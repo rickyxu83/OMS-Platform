@@ -261,9 +261,10 @@ deploy_frontend() {
   local name="$1"
   local local_dist="$2"
   local remote_dir="$3"
-  local archive="/tmp/${PROJECT_SLUG}-${name}-dist.tgz"
-  local remote_archive="/tmp/${PROJECT_SLUG}-${name}-dist.tgz"
-  local remote_new="/tmp/${PROJECT_SLUG}-${name}-new"
+  # tar 名带 PID 后缀：多 worktree 并发部署同一 profile 时共用固定名会互踩（曾实证新包被旧包顶掉，双方日志均显示成功）
+  local archive="/tmp/${PROJECT_SLUG}-${name}-dist-$$.tgz"
+  local remote_archive="/tmp/${PROJECT_SLUG}-${name}-dist-$$.tgz"
+  local remote_new="/tmp/${PROJECT_SLUG}-${name}-new-$$"
 
   tar -C "$local_dist" -czf "$archive" .
   scp "$archive" "$SSH_TARGET:$remote_archive"
@@ -279,6 +280,7 @@ deploy_frontend() {
     mkdir -p '${remote_dir}'
     find '${remote_dir}' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a '${remote_new}'/. '${remote_dir}'/
+    rm -f '${remote_archive}'
     echo \"  ✓ 前端已部署，备份: \$bak\"
   "
 }
