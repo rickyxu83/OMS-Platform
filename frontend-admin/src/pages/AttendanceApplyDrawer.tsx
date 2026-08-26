@@ -169,13 +169,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
 
   const travelPreview = useMemo(() => {
     if (!selectedOvertimeOrder || !travelSegment) return null;
-    const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
-    const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
     const dayType = travelSegment.dayType;
-    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
-    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
-    return { hours: Math.round((outbound + back) * 100) / 100, dayType };
-  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
+    // 路上 = 全程（出发→返回）− 中间实际工作，与后端 travelOvertimeSegment 同口径
+    const workHours = workSegment ? Number(workSegment.hours || 0) : 0;
+    const spanHours = travelDepartureAt && travelReturnAt ? previewOvertimeHours(travelDepartureAt, travelReturnAt, dayType) : 0;
+    return { hours: Math.max(0, Math.round((spanHours - workHours) * 100) / 100), dayType };
+  }, [selectedOvertimeOrder, travelSegment, workSegment, travelDepartureAt, travelReturnAt]);
 
   const travelInvalid = useMemo(() => {
     if (!travelSegment || !selectedOvertimeOrder) return "";

@@ -1961,6 +1961,63 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     // 显式单段提交不打 batch_id
     assert.equal(insert.params.batchId, null)
   }
+
+  // 路上时长口径（2026-08-25）：全程（出发→返回）− 中间实际工作；节假日去程/回程零头不被整点取整吞掉
+  {
+    const executeCalls = []
+    const orderRow = {
+      engineer_count: 1,
+      id: 88,
+      order_no: 'SO-HOLIDAY',
+      status: 'completed',
+      customer_name: '测试客户',
+      contact_name: '王小姐',
+      contact_phone: '13800000000',
+      device_name: 'PowerVault ME5 / SN-88',
+      service_mode: 'onsite',
+      service_type: 'repair',
+      issue_description: '存储控制器告警',
+      service_at: '2026-07-12 11:35:00',
+      departure_at: '2026-07-12 11:10:00',
+      actual_start_at: '2026-07-12 11:35:00',
+      actual_end_at: '2026-07-12 14:50:00',
+      return_at: '2026-07-12 20:35:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 903 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    // 2026-07-12 是周日（rest_day 全天计）：span 11:10→20:35 取整 12:00→20:00=8h，工作 11:35→14:50 取整 12:00→14:00=2h，路上=8−2=6h
+    // （旧口径分段取整：去程 25 分钟整段被吞、回程取 15:00→20:00=5h，得出错误的 5h）
+    assert.equal(insert.params.hours, 6)
+  }
 })().catch((error) => {
   console.error(error)
   process.exit(1)

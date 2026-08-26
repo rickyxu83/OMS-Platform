@@ -1473,20 +1473,23 @@ function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
 function travelOvertimeSegment(row, overrides = {}) {
   const departureAt = overrides.departureAt || row.departure_at
   const returnAt = overrides.returnAt || row.return_at
-  const legs = [
-    overtimeWindow(departureAt, row.actual_start_at), // 去程：出发 -> 到达
-    overtimeWindow(row.actual_end_at, returnAt), // 回程：完工 -> 返回
-  ].filter(Boolean)
-  if (!legs.length) return null
+  // 路上时长口径（佬 2026-08-25）：全程（出发→返回）减去中间实际工作（到达→完工），
+  // 取代原「去程/回程分段取整相加」——节假日场景下两段的零头会被整点取整吞掉（25 分钟去程整段消失），
+  // span−work 后零头自然计入。平日掐 18:00 规则不变（overtimeWindow 内部处理），平日两口径结果一致。
+  const span = overtimeWindow(departureAt, returnAt)
+  if (!span) return null
+  const work = overtimeWindow(row.actual_start_at, row.actual_end_at)
+  const hours = Math.round((Number(span.hours) - Number(work?.hours || 0)) * 100) / 100
+  if (hours <= 0) return null
   return {
     key: 'travel',
     kind: 'travel',
     label: '来回路上实际时间',
-    startAt: toIsoMinute(legs[0].startAt),
-    endAt: toIsoMinute(legs[legs.length - 1].endAt),
-    hours: Math.round(legs.reduce((sum, leg) => sum + Number(leg.hours || 0), 0) * 100) / 100,
-    dayType: legs.some((leg) => leg.dayType === 'legal_holiday') ? 'legal_holiday' : legs[0].dayType,
-    triplePayDates: triplePayDatesInRange(legs[0].startAt, legs[legs.length - 1].endAt),
+    startAt: toIsoMinute(span.startAt),
+    endAt: toIsoMinute(span.endAt),
+    hours,
+    dayType: span.dayType,
+    triplePayDates: triplePayDatesInRange(span.startAt, span.endAt),
     payMultiplier: null,
     allowedResults: ['comp_time'],
   }
