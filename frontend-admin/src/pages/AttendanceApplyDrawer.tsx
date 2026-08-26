@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
+  const [proofDragging, setProofDragging] = useState(false);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
@@ -737,14 +738,46 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     {existingProofCount > 0 ? (
                       <p className="text-xs text-muted-foreground">草稿已含 {existingProofCount} 份证明（{resumed?.proofFiles?.map((file) => file.originalName).join("、") || "已上传"}），可继续补充</p>
                     ) : null}
-                    <Input
-                      className="h-11"
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
-                      onChange={(event) => setProofFiles(Array.from(event.target.files || []))}
-                    />
-                    <p className="text-xs text-muted-foreground">{proofRequired ? "必填，" : ""}可上传图片、PDF 或 Word 文件</p>
+                    <label
+                      htmlFor="attendance-proof-upload"
+                      onDragOver={(event) => { event.preventDefault(); setProofDragging(true) }}
+                      onDragLeave={() => setProofDragging(false)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        setProofDragging(false);
+                        const incoming = Array.from(event.dataTransfer.files || []);
+                        if (incoming.length) setProofFiles((current) => [...current, ...incoming]);
+                      }}
+                      className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border p-4 text-center transition-colors ${proofDragging ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-dashed hover:bg-muted/50"}`}
+                    >
+                      <Upload className="size-5 text-primary" />
+                      <span className="text-sm font-medium">点击选择或拖动文件到此处</span>
+                      <span className="text-xs text-muted-foreground">{proofRequired ? "必填，" : ""}支持图片、PDF、Word，可多选或多次拖入</span>
+                      <input
+                        id="attendance-proof-upload"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
+                        className="sr-only"
+                        onChange={(event) => {
+                          const incoming = Array.from(event.target.files || []);
+                          if (incoming.length) setProofFiles((current) => [...current, ...incoming]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {proofFiles.length ? (
+                      <div className="space-y-1">
+                        {proofFiles.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
+                            <span className="min-w-0 truncate">{file.name}</span>
+                            <button type="button" aria-label={`移除 ${file.name}`} className="shrink-0 p-1 text-muted-foreground hover:text-foreground" onClick={() => setProofFiles((current) => current.filter((_, i) => i !== index))}>
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
