@@ -2147,6 +2147,36 @@ async function pendingApprovalCount(req, res) {
   res.json({ count: await pendingApprovalCountValue(req.user) })
 }
 
+// 待办中心三视图计数（考勤侧）：pending 与导航徽标同口径；
+// initiated=本人提交的全部申请；completed 与 listApprovalTaskItems 的 completed 视图同 WHERE。
+async function approvalTaskCountsValue(user) {
+  await ensureSchema()
+  const pending = await pendingApprovalCountValue(user)
+  const initiatedRows = await query(
+    'SELECT COUNT(*) AS count FROM attendance_requests WHERE submitted_by = :userId',
+    { userId: user.id },
+  )
+  const completedRows = await query(
+    `SELECT COUNT(*) AS count
+     FROM attendance_requests r
+     WHERE EXISTS (
+             SELECT 1 FROM attendance_request_approvals a
+             WHERE a.request_id = r.id
+               AND (a.approved_by = :userId OR a.rejected_by = :userId)
+           )
+        OR r.supervisor_approved_by = :userId
+        OR r.admin_approved_by = :userId
+        OR r.rejected_by = :userId
+        OR r.voided_by = :userId`,
+    { userId: user.id },
+  )
+  return {
+    pending,
+    initiated: Number(initiatedRows[0]?.count || 0),
+    completed: Number(completedRows[0]?.count || 0),
+  }
+}
+
 // ---- 待办中心（/api/v1/approval-tasks）考勤侧数据源 ----
 // 考勤审批不走 MR 的 approval_tasks 表，这里把 attendance_requests/attendance_request_approvals
 // 映射成与 MR ApprovalTask 同构的结构，由 approval-tasks 控制器合并返回。
@@ -2991,6 +3021,7 @@ module.exports = {
   listRequests,
   pendingApprovalCount,
   pendingApprovalCountValue,
+  approvalTaskCountsValue,
   listApprovalTaskItems,
   approveDelegate,
   approveSupervisor,

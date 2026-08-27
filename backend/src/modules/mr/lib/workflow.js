@@ -710,21 +710,9 @@ async function reconcilePendingPurchaseAssignments() {
   return { checked: rows.length, reassigned, paused }
 }
 
-async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []) {
-  await ensureWorkflowTables()
-  // 助理主管可聚合查看管辖助理的待办/已办；本人发起的视图仍只看本人
-  const assigneeIds = view === 'initiated'
-    ? [Number(userId)]
-    : [...new Set([Number(userId), ...extraAssigneeIds.map(Number)])]
-  const assigneePlaceholders = assigneeIds.map((_, index) => `:assignee${index}`).join(', ')
-  const assigneeParams = Object.fromEntries(assigneeIds.map((id, index) => [`assignee${index}`, id]))
-  const where = view === 'initiated'
-    ? 'merged.initiator_user_id = :userId'
-    : view === 'completed'
-      ? `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status <> 'pending'`
-      : `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status = 'pending'`
-  const rows = await query(
-    `SELECT * FROM (
+// 待办中心 MR 侧 merged 视图（approval_tasks ∪ mr_purchase_tasks），
+// listApprovalTasks 列表查询与 approvalTaskCounts 计数查询共用，保证口径一致。
+const MERGED_TASKS_SUBQUERY = `
        SELECT t.*, assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
               o.status AS business_status, approval.step_label AS current_step_label, o.customer_name, o.ctrl_no
        FROM approval_tasks t
@@ -741,8 +729,23 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
        FROM mr_purchase_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
-       LEFT JOIN mr_orders o ON o.id = t.mr_id
-     ) merged
+       LEFT JOIN mr_orders o ON o.id = t.mr_id`
+
+async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []) {
+  await ensureWorkflowTables()
+  // 助理主管可聚合查看管辖助理的待办/已办；本人发起的视图仍只看本人
+  const assigneeIds = view === 'initiated'
+    ? [Number(userId)]
+    : [...new Set([Number(userId), ...extraAssigneeIds.map(Number)])]
+  const assigneePlaceholders = assigneeIds.map((_, index) => `:assignee${index}`).join(', ')
+  const assigneeParams = Object.fromEntries(assigneeIds.map((id, index) => [`assignee${index}`, id]))
+  const where = view === 'initiated'
+    ? 'merged.initiator_user_id = :userId'
+    : view === 'completed'
+      ? `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status <> 'pending'`
+      : `merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status = 'pending'`
+  const rows = await query(
+    `SELECT * FROM (${MERGED_TASKS_SUBQUERY}) merged
      WHERE ${where}
      ORDER BY CASE WHEN merged.status = 'pending' THEN 0 ELSE 1 END, merged.updated_at DESC
      LIMIT 500`,
@@ -773,6 +776,28 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
   })), pendingCount: Number(countRows[0]?.count || 0) }
 }
 
+// 三视图计数（与 listApprovalTasks 同一 merged 视图口径）：
+// pending/completed 聚合本人+管辖助理，initiated 仅本人发起。
+async function approvalTaskCounts(userId, extraAssigneeIds = []) {
+  await ensureWorkflowTables()
+  const assigneeIds = [...new Set([Number(userId), ...extraAssigneeIds.map(Number)])]
+  const assigneePlaceholders = assigneeIds.map((_, index) => `:assignee${index}`).join(', ')
+  const assigneeParams = Object.fromEntries(assigneeIds.map((id, index) => [`assignee${index}`, id]))
+  const rows = await query(
+    `SELECT
+       SUM(CASE WHEN merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN merged.assignee_user_id IN (${assigneePlaceholders}) AND merged.status <> 'pending' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN merged.initiator_user_id = :userId THEN 1 ELSE 0 END) AS initiated
+     FROM (${MERGED_TASKS_SUBQUERY}) merged`,
+    { userId, ...assigneeParams },
+  )
+  return {
+    pending: Number(rows[0]?.pending || 0),
+    completed: Number(rows[0]?.completed || 0),
+    initiated: Number(rows[0]?.initiated || 0),
+  }
+}
+
 async function mrDocument(mrId, type = null) {
   await ensureWorkflowTables()
   const rows = await query(
@@ -799,6 +824,7 @@ module.exports = {
   assistantSetting,
   updateAssistantSetting,
   listApprovalTasks,
+  approvalTaskCounts,
   reconcilePendingMrAssignments,
   reconcilePendingPurchaseAssignments,
   mrDocument,

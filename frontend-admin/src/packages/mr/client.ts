@@ -31,7 +31,7 @@ export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 export const getAssistantSetting = () => api.get('/mr/assistant-setting') as Promise<AssistantSetting>
 export const setAssistantSetting = (assistantUserId: string | number) => api.put('/mr/assistant-setting', { assistantUserId }) as Promise<AssistantSetting>
-export const listApprovalTasks = (view: 'pending' | 'initiated' | 'completed') => api.get(`/approval-tasks?view=${view}`) as Promise<{ items: ApprovalTask[]; pendingCount: number }>
+export const listApprovalTasks = (view: 'pending' | 'initiated' | 'completed') => api.get(`/approval-tasks?view=${view}`) as Promise<{ items: ApprovalTask[]; pendingCount: number; counts?: { pending: number; initiated: number; completed: number } }>
 export const listSalespeople = () => api.get('/users/salespeople') as Promise<{ items: UserOption[] }>
 
 // 识别版式规则（学习闭环 · 阶段B）：管理员维护候选/自学习规则
