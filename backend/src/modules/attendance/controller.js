@@ -1759,7 +1759,7 @@ async function insertServiceOrderOvertimeSegment(connection, {
        AND source_id = :serviceOrderId
        AND (
          source_detail = :segmentKey
-         OR (:segmentKey = 'work' AND source_detail IS NULL)
+         OR (:segmentKey = 'work' AND (source_detail IS NULL OR source_detail NOT IN ('travel', 'travel_out', 'travel_back')))
          OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
        )
        AND submitted_by = :userId

@@ -988,6 +988,39 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.match(thrown?.message || '', /回程返回时间不能早于工单完工时间/)
   }
 
+  // 历史 work 段占用兼容：早期申请的 source_detail 为中文「工单加班」，排除法口径下同样拦截 work 段重复申请
+  {
+    const orderRow = {
+      id: 88, order_no: 'SO-LEGACY', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
+      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        // 模拟历史：work 段占用查询（排除法条件）命中一条旧「工单加班」记录；travel 段未占用
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) {
+          return params.segmentKey === 'work' ? [[{ id: 16 }], []] : [[], []]
+        }
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 1300 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '88' }, body: { overtimeResult: 'comp_time' } }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    // work 段被历史「工单加班」占用拦截，只补去程/回程两段
+    const segmentKeys = res.body.created.map((item) => item.segmentKey).sort()
+    assert.deepEqual(segmentKeys, ['travel_back', 'travel_out'])
+  }
+
   // 休息日短去程：掐整后不足一小时，按 0.5 小时保底生成 travel_out（时段保留原始起止）
   {
     const executeCalls = []
