@@ -258,6 +258,7 @@ const I18N = {
       fieldEngineer: "工程师",
       fieldServiceItems: "服务事项",
       fieldServiceTime: "服务时间",
+      actionsMenu: "工单操作",
     },
     detail: {
       orderNo: "工单编号",
@@ -517,6 +518,7 @@ const I18N = {
       fieldEngineer: "工程師",
       fieldServiceItems: "服務事項",
       fieldServiceTime: "服務時間",
+      actionsMenu: "工單操作",
     },
     detail: {
       orderNo: "工單編號",
@@ -2227,40 +2229,35 @@ export function ServiceOrders() {
                         <TableCell>
                           {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
                           {(canConfirmInspection || canAssign) ? (
-                              <div className="flex items-center gap-1">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                                  title={t.list.actionsMenu || "工单操作"}
+                                  aria-label={t.list.actionsMenu || "工单操作"}
+                                  disabled={saving}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
                                 {canConfirmInspection && (
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-40"
-                                    title={t.actions.confirmInspection}
-                                    aria-label={t.actions.confirmInspection}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      confirmInspection(order);
-                                    }}
-                                    disabled={saving}
-                                  >
-                                    <CheckCircle className="h-3.5 w-3.5" />
-                                  </button>
+                                  <DropdownMenuItem onSelect={() => confirmInspection(order)} disabled={saving}>
+                                    <CheckCircle className="h-4 w-4" />
+                                    {t.actions.confirmInspection}
+                                  </DropdownMenuItem>
                                 )}
                                 {canAssign && (
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-600 disabled:opacity-40"
-                                    title={t.actions.assign}
-                                    aria-label={t.actions.assign}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openAssign(order);
-                                    }}
-                                    disabled={saving}
-                                  >
-                                    <Send className="h-3.5 w-3.5" />
-                                  </button>
+                                  <DropdownMenuItem onSelect={() => openAssign(order)} disabled={saving}>
+                                    <Send className="h-4 w-4" />
+                                    {t.actions.assign}
+                                  </DropdownMenuItem>
                                 )}
-                              </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           ) : null}
                         </TableCell>
                       </TableRow>

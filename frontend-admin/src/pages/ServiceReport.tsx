@@ -62,7 +62,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -2500,60 +2500,57 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </TableCell>
                       <TableCell>{statusIndicator(workflowStatus, statusLabel)}</TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-600 disabled:opacity-40"
-                                title={canExportRecord ? "导出 / 分享服务记录 PDF" : "服务记录提交后可导出或分享 PDF"}
-                                aria-label="服务记录 PDF 操作"
-                                disabled={!canExportRecord || Boolean(exportingOrderId)}
-                              >
-                                {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <FileText className="h-3.5 w-3.5" />}
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  if (!canExportRecord || exportingOrderId) return;
-                                  downloadServiceRecordPdf(order);
-                                }}
-                                disabled={!canExportRecord || Boolean(exportingOrderId)}
-                              >
-                                <Download className="h-4 w-4" />
-                                导出 PDF
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  if (!canExportRecord || exportingOrderId) return;
-                                  shareServiceRecordPdf(order);
-                                }}
-                                disabled={!canExportRecord || Boolean(exportingOrderId)}
-                              >
-                                <Share2 className="h-4 w-4" />
-                                分享 PDF
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
-                            title={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
-                            aria-label={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
-                            disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-                            onClick={() => {
-                              if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                              if (canDeleteRecord) {
-                                deleteServiceOrder(order);
-                                return;
-                              }
-                              cancelServiceOrder(order);
-                            }}
-                          >
-                            {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              title="工单操作"
+                              aria-label="工单操作"
+                              disabled={isExportingRecord || isDeletingRecord}
+                            >
+                              {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (!canExportRecord || exportingOrderId) return;
+                                downloadServiceRecordPdf(order);
+                              }}
+                              disabled={!canExportRecord || Boolean(exportingOrderId)}
+                            >
+                              <Download className="h-4 w-4" />
+                              导出 PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (!canExportRecord || exportingOrderId) return;
+                                shareServiceRecordPdf(order);
+                              }}
+                              disabled={!canExportRecord || Boolean(exportingOrderId)}
+                            >
+                              <Share2 className="h-4 w-4" />
+                              分享 PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => {
+                                if (!canRemoveOrCancelRecord || deletingOrderId) return;
+                                if (canDeleteRecord) {
+                                  deleteServiceOrder(order);
+                                  return;
+                                }
+                                cancelServiceOrder(order);
+                              }}
+                              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+                            >
+                              {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                              {destructiveActionLabel}工单
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
@@ -2737,27 +2734,34 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </TableCell>
                       <TableCell>{indicatorSpan(Pencil, "text-slate-400", "草稿")}</TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-600"
-                            title="继续编辑草稿"
-                            aria-label="继续编辑草稿"
-                            onClick={() => navigate(draftRoute)}
-                          >
-                            <PenLine className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
-                            title="删除草稿"
-                            aria-label="删除草稿"
-                            disabled={deletingDraft}
-                            onClick={() => deleteCreateDraft(draftItem.draftKey)}
-                          >
-                            {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              title="草稿操作"
+                              aria-label="草稿操作"
+                              disabled={deletingDraft}
+                            >
+                              {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
+                              <PenLine className="h-4 w-4" />
+                              继续编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => deleteCreateDraft(draftItem.draftKey)}
+                              disabled={deletingDraft}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              删除草稿
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
