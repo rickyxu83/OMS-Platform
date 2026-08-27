@@ -117,9 +117,11 @@ function groupRequestsByServiceOrder(items: AttendanceRequest[]): RequestGroupEn
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key)!.push(item);
   }
-  // 组内段按开始时间排序：去程（最早出发）→ 工作 → 回程（最晚结束），天然时间序
+  // 组内段排序：去程(travel_out) → 工作(work) → 回程(travel_back)；
+  // 旧合并 travel 记录横跨去回两程，排最前（其 startAt 即去程出发）
+  const SEGMENT_ORDER: Record<string, number> = { travel: 0, travel_out: 0, work: 1, travel_back: 2 };
   for (const group of byKey.values()) {
-    group.sort((a, b) => String(a.startAt || "").localeCompare(String(b.startAt || "")));
+    group.sort((a, b) => (SEGMENT_ORDER[a.sourceDetail || "work"] ?? 1) - (SEGMENT_ORDER[b.sourceDetail || "work"] ?? 1));
   }
   const seen = new Set<string>();
   const result: RequestGroupEntry[] = [];
