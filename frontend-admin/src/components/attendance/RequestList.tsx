@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, Circle, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -325,18 +325,27 @@ function ChainSteps({ steps }: { steps: ApprovalStep[] }) {
     <div>
       {steps.map((step, index) => {
         const state = step.status === "approved" ? "done" : step.status === "rejected" ? "rejected" : step.status === "pending" ? "current" : step.status === "skipped" ? "skipped" : "waiting";
-        const Icon = state === "done" ? CircleCheck : state === "rejected" ? CircleX : state === "current" ? Loader2 : state === "skipped" ? CircleSlash : Circle;
-        const iconCls =
-          state === "done" ? "text-emerald-500" :
-          state === "rejected" ? "text-rose-500" :
-          state === "current" ? "animate-spin text-sky-500" :
-          "text-slate-300";
+        const Icon = state === "done" ? CircleCheck : state === "rejected" ? CircleX : CircleSlash;
+        const iconCls = state === "done" ? "text-emerald-500" : state === "rejected" ? "text-rose-500" : "text-slate-300";
         return (
           <div key={step.id} className="relative flex gap-2.5 pb-3 last:pb-0">
             {index < steps.length - 1 ? (
               <span className={`absolute left-[7px] top-4 h-full w-px ${state === "done" ? "bg-emerald-300" : "border-l border-dashed border-slate-200"}`} />
             ) : null}
-            <Icon className={`relative z-10 h-4 w-4 shrink-0 bg-background ${iconCls}`} />
+            {state === "current" ? (
+              // 当前待签核：脉冲扩散蓝点（进行中指示，避免转圈带来的“一直在载入”观感）
+              <span className="relative z-10 flex h-4 w-4 shrink-0 items-center justify-center bg-background">
+                <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-sky-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-600" />
+              </span>
+            ) : state === "waiting" ? (
+              // 等待：空心环慢呼吸（弱动效，有生命感但不抢当前步骤的戏）
+              <span className="relative z-10 flex h-4 w-4 shrink-0 items-center justify-center bg-background">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full border-2 border-slate-300" />
+              </span>
+            ) : (
+              <Icon className={`relative z-10 h-4 w-4 shrink-0 bg-background ${iconCls}`} />
+            )}
             <div className={`text-xs leading-5 ${state === "current" ? "font-medium text-foreground" : "text-muted-foreground"}`}>
               {approvalStepLabel(step)}：{approvalStepStatus(step)}
               {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
@@ -489,14 +498,6 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
   );
 }
 
-// 组行时间列段前缀简称：去程/回程/工作；旧合并 travel 显示「路上」
-function segmentShortLabel(item: AttendanceRequest) {
-  if (item.sourceDetail === "travel_out") return "去程";
-  if (item.sourceDetail === "travel_back") return "回程";
-  if (item.overtimeKind === "work") return "工作";
-  return "路上";
-}
-
 export function RequestList({
   title,
   description,
@@ -594,15 +595,10 @@ export function RequestList({
           <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
         <TableCell>
-          <div className="text-sm font-medium tabular-nums">{dateText}</div>
-          <div className="mt-0.5 space-y-0.5 text-xs tabular-nums text-muted-foreground">
-            {group.map((item) => (
-              <div key={item.id}>
-                <span className="inline-block w-8">{segmentShortLabel(item)}</span>
-                {String(item.startAt || "").slice(11, 16)} – {String(item.endAt || item.startAt || "").slice(11, 16)}
-              </div>
-            ))}
-          </div>
+          <span className="text-sm font-medium tabular-nums">{dateText}</span>
+          <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
+            {String(first.startAt || "").slice(11, 16)} – {String(group[group.length - 1].endAt || group[group.length - 1].startAt || "").slice(11, 16)}
+          </span>
         </TableCell>
         <TableCell className="text-right tabular-nums">
           <span className="text-sm font-semibold">{hours(totalHours)}</span>
