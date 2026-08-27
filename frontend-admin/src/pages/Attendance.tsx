@@ -600,6 +600,31 @@ export function Attendance() {
     });
   }
 
+  // 我的申请·同工单批量撤回：一次确认后撤回组内全部待审批段（已撤回/已驳回/已通过段不动）
+  function withdrawGroup(items: AttendanceRequest[]) {
+    const targets = items.filter((item) => String(item.status || "").startsWith("pending_"));
+    if (!targets.length) return;
+    const key = items.map((item) => item.id).join("-");
+    setPendingAction({
+      title: "撤回整组申请",
+      description: <>工单 {items[0]?.serviceOrder?.orderNo || "-"} 共 {targets.length} 段待审批申请将全部撤回，可重新新建申请。</>,
+      confirmLabel: "确认撤回",
+      run: async () => {
+        setGroupActionKey(key);
+        try {
+          const results = await Promise.allSettled(targets.map((item) => api.post(`/attendance/requests/${item.id}/withdraw`)));
+          const okCount = results.filter((result) => result.status === "fulfilled").length;
+          if (okCount === targets.length) toast.success(`已撤回该工单全部 ${okCount} 段申请`);
+          else toast.warning(`已撤回 ${okCount}/${targets.length} 段`);
+          await load();
+          return okCount > 0;
+        } finally {
+          setGroupActionKey("");
+        }
+      },
+    });
+  }
+
   function rejectDutyBatch(month: string) {
     setPendingAction({
       title: "退回值班津贴批次",
@@ -1166,6 +1191,18 @@ export function Attendance() {
             onPreviewOrder={openOrderPreview}
             showEmployee={false}
             emptyText={mineStatus === "all" ? "暂无申请记录" : "没有该状态的申请"}
+            groupByServiceOrder
+            groupActions={(group) => {
+              const pendingCount = group.filter((item) => String(item.status || "").startsWith("pending_")).length;
+              if (!pendingCount) return null;
+              const key = group.map((item) => item.id).join("-");
+              const busy = groupActionKey === key;
+              return (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => withdrawGroup(group)}>
+                  {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-1 h-4 w-4" />} 撤回
+                </Button>
+              );
+            }}
             toolbar={(
               <>
                 {[
