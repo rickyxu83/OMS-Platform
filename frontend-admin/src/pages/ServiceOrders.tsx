@@ -2010,20 +2010,16 @@ export function ServiceOrders() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {initialLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <span key={stat.label} className="inline-flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">{stat.label}</span>
+            {initialLoading ? (
+              <Skeleton className="h-5 w-8" />
+            ) : (
+              <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+            )}
+          </span>
         ))}
       </div>
 
@@ -2062,16 +2058,7 @@ export function ServiceOrders() {
               {t.actions.reset}
             </Button>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={allFilteredOrdersSelected}
-                onCheckedChange={toggleAllFilteredOrders}
-                disabled={saving || filteredOrders.length === 0}
-                aria-label={t.bulk.selectAllAria}
-              />
-              {t.bulk.selectAll}
-            </label>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
             <span>
               {selectedIds.length
                 ? fill(t.bulk.selectedHint, { count: selectedIds.length })
@@ -2121,7 +2108,14 @@ export function ServiceOrders() {
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
-                  <TableHead className="w-11 text-center" />
+                  <TableHead className="w-11 text-center">
+                    <Checkbox
+                      checked={allFilteredOrdersSelected}
+                      onCheckedChange={toggleAllFilteredOrders}
+                      disabled={saving || filteredOrders.length === 0}
+                      aria-label={t.bulk.selectAllAria}
+                    />
+                  </TableHead>
                   <TableHead>{t.list.colCaseCustomer}</TableHead>
                   <TableHead>{t.list.colMainContent} / {t.list.colServiceItems}</TableHead>
                   <TableHead>{t.list.colEngineer} / {t.list.colServiceTime}</TableHead>

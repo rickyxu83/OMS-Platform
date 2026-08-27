@@ -160,3 +160,23 @@
     animation: none;
   }
 }
+
+/* DateRangePicker D 款：react-day-picker 选中/范围色 → 公司主题紫 #582b8b */
+.rdp-custom .rdp-day_selected,
+.rdp-custom .rdp-day_selected:focus-visible,
+.rdp-custom .rdp-day_selected:hover {
+  background-color: #582b8b !important;
+  color: #fff !important;
+}
+.rdp-custom .rdp-day_range_middle {
+  background-color: rgba(88, 43, 139, 0.12) !important;
+  color: #1e293b !important;
+}
+.rdp-custom .rdp-day_range_start,
+.rdp-custom .rdp-day_range_end {
+  background-color: #582b8b !important;
+  color: #fff !important;
+}
+.rdp-custom .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: rgba(88, 43, 139, 0.08);
+}
