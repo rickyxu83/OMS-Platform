@@ -277,6 +277,11 @@ export function MrListPage() {
     }
   }
 
+  const pendingMineCount = useMemo(
+    () => (pendingMine ? items.length : items.filter((order) => Number(order.approvalParticipant) === 1).length),
+    [items, pendingMine],
+  )
+
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
       <ErrorToast message={error} />
@@ -303,6 +308,22 @@ export function MrListPage() {
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+        {pendingMineCount > 0 || pendingMine ? (
+          <button
+            type="button"
+            onClick={() => setPendingMine((value) => !value)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
+              pendingMine
+                ? 'bg-primary font-medium text-white'
+                : 'bg-primary/10 text-primary hover:bg-primary/20'
+            }`}
+            title={pendingMine ? '取消“只看待我签核”' : '只看当前等我签核的 MR'}
+            aria-pressed={pendingMine}
+          >
+            <Hourglass className="size-3.5" />
+            待我签核 <span className="font-bold">{pendingMineCount}</span>
+          </button>
+        ) : null}
         <span className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">全部</span><span className="text-base font-bold">{items.length}</span></span>
         {(['draft', 'in_review', 'approved', 'rejected', 'voided'] as MrStatus[]).map((st) => {
           const count = items.filter((o) => (o.status || 'draft') === st).length

@@ -132,6 +132,8 @@ export interface MrOrder {
   assignmentError?: string | null
   currentAssigneeUserId?: string | number | null
   currentAssigneeName?: string | null
+  // 当前待处理签核步骤的签核人是否是我（列表接口计算，待我签核 chip 计数用）
+  approvalParticipant?: boolean | number
   currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null
   currentStepKey?: string | null
   currentStepLabel?: string | null
