@@ -48,7 +48,7 @@ const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = 
 }
 
 /** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
-function StatusHoverButton({ orderStatus, order, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null }; onFilter: () => void }) {
+function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
   const [hover, setHover] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -67,7 +67,6 @@ function StatusHoverButton({ orderStatus, order, onFilter }: { orderStatus: MrSt
         ref={btnRef}
         type="button"
         className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
-        title={`按状态筛选：${STATUS_LABELS[orderStatus]}`}
         onClick={(event) => { event.stopPropagation(); onFilter() }}
         onMouseEnter={() => {
           if (btnRef.current) {
@@ -92,6 +91,11 @@ function StatusHoverButton({ orderStatus, order, onFilter }: { orderStatus: MrSt
               {i < segs.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
             </div>
           ))}
+          {stepLabel || assigneeName ? (
+            <div className="mt-2 border-t border-slate-100 pt-2 text-muted-foreground">
+              当前节点：<span className="font-medium text-foreground">{[stepLabel, assigneeName].filter(Boolean).join(' · ')}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </span>
@@ -367,12 +371,12 @@ export function MrListPage() {
                   </TableCell>
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
-                    <StatusHoverButton orderStatus={orderStatus} order={order} onFilter={() => setStatus(orderStatus)} />
+                    <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
                     {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                       {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                       {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
                     </button> : null}
-                    {stepLabel || order.currentAssigneeName ? <div className="mt-1 truncate text-xs text-muted-foreground">{[stepLabel, order.currentAssigneeName].filter(Boolean).join(' · ')}</div> : null}
+
                     {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive">流程暂停：{order.assignmentError}</div> : null}
                   </TableCell>
                   <TableCell className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
