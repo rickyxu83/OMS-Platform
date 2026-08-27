@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, Play, Square, CircleDot, type LucideIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -2068,16 +2068,13 @@ export function ServiceOrders() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
-            <HelpTooltip label={t.list.help} />
-            {refreshing && <span className="btn-loader" aria-hidden="true" />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5 text-sm font-medium text-foreground">
+          {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
+          <HelpTooltip label={t.list.help} />
+          {refreshing && <span className="btn-loader" aria-hidden="true" />}
+        </div>
+        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
             {initialLoading ? (
               <div className="p-2">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -2280,8 +2277,7 @@ export function ServiceOrders() {
               </ResponsiveList>
             )}
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       <ServiceOrderDetailDialog
         order={detailOrder}

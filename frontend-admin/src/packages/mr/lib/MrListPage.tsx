@@ -4,7 +4,7 @@ import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Penc
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -336,10 +336,9 @@ export function MrListPage() {
         </CardContent>
       </Card>
 
-      <Card>
-                <CardContent>
-          <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            <table className="w-full table-fixed caption-bottom text-sm">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+          <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
                 <col className="w-[110px]" />
@@ -394,19 +393,18 @@ export function MrListPage() {
               )
             })}
           </TableBody>
-            </table>
-          </div>
-          {!loading && items.length > 0 ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-              <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
-                <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
-              </div>
+          </table>
+        </div>
+        {!loading && items.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-sm text-muted-foreground">
+            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
+              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          </div>
+        ) : null}
+      </div>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>

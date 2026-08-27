@@ -2356,7 +2356,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
     const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
     return (
-      <div className="min-h-[220px] overflow-auto rounded-md border sm:max-h-[44vh]">
+      <div className="min-h-[220px] overflow-auto sm:max-h-[44vh]">
         {loading ? (
           <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <span className="btn-loader" aria-hidden="true" />
@@ -2607,7 +2607,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   /** 草稿列表：同款 C 款表格 */
   function renderDraftsList() {
     return (
-      <div className="overflow-auto rounded-md border sm:max-h-[44vh]">
+      <div className="overflow-auto sm:max-h-[44vh]">
         {filteredCreateDrafts.length ? (
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
@@ -2847,7 +2847,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </CardTitle>
               </CardHeader>
               {draftsOpen ? (
-                <CardContent className="p-2.5 sm:p-4">
+                <CardContent className="p-0">
                   {renderDraftsList()}
                 </CardContent>
               ) : null}
@@ -2861,7 +2861,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </CardTitle>
               </CardHeader>
               {loading || dispatchOrders.length || filtersActive ? (
-                <CardContent className="p-2.5 sm:p-4">
+                <CardContent className="p-0">
                   {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
                 </CardContent>
               ) : null}
@@ -2887,7 +2887,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   </Button>
                 </CardTitle>
               </CardHeader>
-              <CardContent className={`${filledOrdersOpen ? "block" : "hidden sm:block"} p-2.5 sm:p-4`}>
+              <CardContent className={`${filledOrdersOpen ? "block" : "hidden sm:block"} p-0`}>
                 {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
