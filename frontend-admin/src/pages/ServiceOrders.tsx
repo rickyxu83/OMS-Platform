@@ -2028,8 +2028,8 @@ export function ServiceOrders() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.15fr)_minmax(170px,0.7fr)_minmax(260px,1fr)]">
-            <div className="relative min-w-0">
+          <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 basis-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -2043,9 +2043,7 @@ export function ServiceOrders() {
                 }}
               />
             </div>
-          </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
-            <div className="min-w-0 overflow-hidden space-y-1.5">
+            <div className="min-w-0 overflow-hidden space-y-1.5 w-[184px]">
               <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
                 {t.filters.startDate}
               </Label>
@@ -2056,7 +2054,7 @@ export function ServiceOrders() {
                 onChange={setStartDate}
               />
             </div>
-            <div className="min-w-0 overflow-hidden space-y-1.5">
+            <div className="min-w-0 overflow-hidden space-y-1.5 w-[184px]">
               <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
                 {t.filters.endDate}
               </Label>
