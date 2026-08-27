@@ -46,6 +46,13 @@
 
 **同步 main**：main 一有更新（如热修合入），立刻同步集成分支——先打备份 tag `backup/<分支名>-<yyyymmdd>`，再 `git rebase origin/main`，解完冲突跑后端 `npm run check` + 前端 build 验证，然后 `git push -f`（仅允许强推自己的集成分支）。
 
+**分支卫生（2026-08-27 起，防分支尸体堆积）**：
+- 合并 PR 一律 `gh pr merge --merge --delete-branch`，远程分支随合并即删
+- 短分支（feat/fix/hotfix/release）寿命不超过一次发布，合并完即删远程+本地
+- 远程长期存在的分支只允许：`main`、`integration/*`、进行中的 `feature/*`
+- 主检出目录（`~/projects/oms`）平时保持在 main：在该目录做的功能分支合并后，立刻 `git checkout main && git pull --ff-only` 并 `git branch -d` 删掉已合并的本地分支
+- 删任何分支前先验证已合并（`git merge-base --is-ancestor` 或 patch 级比对），未合并的一律列出向佬确认
+
 **生产热修**：从 main 切 `hotfix/<描述>` → 修复 → PR 合 main → 部署生产 → 立刻按上条 rebase 回集成分支。
 
 **发布（合 main）的唯一闸门**：① 佬在测试服验收通过 ② 全量验证（`npm run test:mr`、admin 端 `npx tsc --noEmit`、双端 build）绿——二者缺一不可，AI 不得自行合 main。满足后走下方标准 PR 流程，合并后部署生产。
