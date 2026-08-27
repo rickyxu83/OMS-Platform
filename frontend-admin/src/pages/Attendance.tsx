@@ -22,6 +22,7 @@ import { api } from "@/services/api";
 import { formatCount, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { RequestList, requestTypeLabel } from "@/components/attendance/RequestList";
@@ -1106,10 +1107,14 @@ export function Attendance() {
                     <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
                     <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Input className="h-8 w-36" type="date" aria-label="开始日期" value={recordStartDate} onChange={(event) => setRecordStartDate(event.target.value)} />
-                    <span className="text-xs text-muted-foreground">至</span>
-                    <Input className="h-8 w-36" type="date" aria-label="结束日期" min={recordStartDate || undefined} value={recordEndDate} onChange={(event) => setRecordEndDate(event.target.value)} />
+                  <div className="w-[220px]">
+                    <DateRangePicker
+                      start={recordStartDate}
+                      end={recordEndDate}
+                      onChange={(s2, e2) => { setRecordStartDate(s2); setRecordEndDate(e2); }}
+                      placeholder="开始日期 ~ 结束日期"
+                      ariaLabel="考勤记录日期范围"
+                    />
                   </div>
                   {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
                 </div>

@@ -1404,36 +1404,59 @@ function toDate(value) {
 
 // 有效加班分钟数（佬 2026-08-25 定稿）：法定节假日/休息日全天计；
 // 工作日只计 09:00 上班前 + 18:00 下班后（工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
-function overtimeEligibleMinutes(startAt, endAt, dayType) {
-  const start = toDate(startAt)
-  const end = toDate(endAt)
-  if (!start || !end || end <= start) return 0
-  if (dayType === 'legal_holiday' || dayType === 'rest_day') return (end.getTime() - start.getTime()) / 60000
-  const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0)
-  const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  let minutes = 0
-  if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000
-  if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000
-  return minutes
+
+function ceilToHour(date) {
+  const rounded = new Date(date)
+  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0)
+  } else {
+    rounded.setMinutes(0, 0, 0)
+  }
+  return rounded
 }
 
-// 0.5h 粒度四舍五入：×2 取整，满 15 分钟进 0.5h（最小单位 0.5h）
-function roundToHalfHour(minutes) {
-  return Math.round(minutes / 30) / 2
+function floorToHour(date) {
+  const rounded = new Date(date)
+  rounded.setMinutes(0, 0, 0)
+  return rounded
 }
 
 // 加班时长核算：有效部分（工作日 9 点前 + 18 点后，节假日全天）按 0.5h 粒度四舍五入。
 // 前端 attendance-shared.ts 的 previewOvertimeHours 镜像这套口径做即时预览，改动规则时需同步那里。
+// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
+// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
+// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
   const dayType = overtimeDayType(start)
-  const hours = roundToHalfHour(overtimeEligibleMinutes(start, end, dayType))
+  const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
+  const endHour = end.getHours() + end.getMinutes() / 60
+  if (!fullDayOvertime && endHour <= 18) return null
+  const overtimeStart = fullDayOvertime
+    ? start
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
+  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
+  const effectiveEnd = floorToHour(end)
+  if (effectiveEnd <= effectiveStart) {
+    // 掐整后归零但实际存在加班时段（如法定节假日去程 11:10–11:35 仅 25 分钟）：按 0.5 小时
+    // 保底计，时段显示原始起止。平日 18:00 前无加班事实的窗口已在上方拦截，不受保底影响。
+    // 产品裁决 2026-08-27；前端 previewOvertimeHours 同步镜像。参见 docs/adr/0002。
+    const rawStart = start > overtimeStart ? start : overtimeStart
+    if (end <= rawStart) return null
+    return {
+      startAt: formatMysqlDateTime(rawStart),
+      endAt: formatMysqlDateTime(end),
+      hours: 0.5,
+      dayType,
+    }
+  }
+  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
   if (hours <= 0) return null
   return {
-    startAt: formatMysqlDateTime(start),
-    endAt: formatMysqlDateTime(end),
+    startAt: formatMysqlDateTime(effectiveStart),
+    endAt: formatMysqlDateTime(effectiveEnd),
     hours,
     dayType,
   }
@@ -1476,10 +1499,9 @@ function normalizeTravelOverrides(order, body) {
 // 把工程师自报的原始去程出发、回程返回时间留痕进快照，供审批人对照“自报 vs 工单”。
 // 仅在路上时间且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
 function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
-  if (segmentKey !== 'travel') return snapshot
   const next = { ...snapshot }
-  if (overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
-  if (overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
+  if (segmentKey === 'travel_out' && overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
+  if (segmentKey === 'travel_back' && overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
   return next
 }
 
@@ -1489,36 +1511,26 @@ function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
 // 路上时段 = 去程（出发→到达）＋ 回程（完工→返回）两段组成，每段有效时长按 0.5h 粒度四舍五入后相加
 // （佬 2026-08-25 定稿，取代分段截断与 span−work 两种旧口径）。legs 明细随段返回供前端两段展示。
 // overrides 仅允许去程出发/回程返回（多工程师工单），到达/完工两个锚点始终取工单值。参见 docs/adr/0002。
-function travelOvertimeSegment(row, overrides = {}) {
+function travelOvertimeSegments(row, overrides = {}) {
   const departureAt = overrides.departureAt || row.departure_at
   const returnAt = overrides.returnAt || row.return_at
   const legs = [
-    { key: 'outbound', label: '去程', window: overtimeWindow(departureAt, row.actual_start_at) },
-    { key: 'return', label: '回程', window: overtimeWindow(row.actual_end_at, returnAt) },
-  ].filter((leg) => leg.window)
-  if (!legs.length) return null
-  const hours = Math.round(legs.reduce((sum, leg) => sum + Number(leg.window.hours || 0), 0) * 100) / 100
-  const first = legs[0].window
-  const last = legs[legs.length - 1].window
-  return {
-    key: 'travel',
-    kind: 'travel',
-    label: '来回路上实际时间',
-    startAt: toIsoMinute(first.startAt),
-    endAt: toIsoMinute(last.endAt),
-    hours,
-    legs: legs.map((leg) => ({
+    { key: 'travel_out', label: '去程路上时间', window: overtimeWindow(departureAt, row.actual_start_at) },
+    { key: 'travel_back', label: '回程路上时间', window: overtimeWindow(row.actual_end_at, returnAt) },
+  ]
+  return legs
+    .filter((leg) => leg.window)
+    .map((leg) => ({
       key: leg.key,
+      kind: 'travel',
       label: leg.label,
       startAt: toIsoMinute(leg.window.startAt),
       endAt: toIsoMinute(leg.window.endAt),
       hours: leg.window.hours,
-    })),
-    dayType: first.dayType,
-    triplePayDates: triplePayDatesInRange(first.startAt, last.endAt),
-    payMultiplier: null,
-    allowedResults: ['comp_time'],
-  }
+      dayType: leg.window.dayType,
+      payMultiplier: null,
+      allowedResults: ['comp_time'],
+    }))
 }
 
 function workOvertimeSegment(row) {
@@ -1540,9 +1552,8 @@ function workOvertimeSegment(row) {
 
 function overtimeSegments(row, usedSegments = new Set()) {
   const segments = []
-  if (!usedSegments.has('travel')) {
-    const travel = travelOvertimeSegment(row)
-    if (travel) segments.push(travel)
+  for (const travel of travelOvertimeSegments(row)) {
+    if (!usedSegments.has(travel.key)) segments.push(travel)
   }
   if (!usedSegments.has('work')) {
     const work = workOvertimeSegment(row)
@@ -1728,7 +1739,7 @@ async function listOvertimeServiceOrders(req, res) {
 
 // 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
 function resolveSegmentResult(segmentKey, body) {
-  if (segmentKey === 'travel') return 'comp_time'
+  if (segmentKey === 'travel_out' || segmentKey === 'travel_back') return 'comp_time'
   const overtimeResult = text(body?.overtimeResult)
   if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
   return overtimeResult
@@ -1740,9 +1751,9 @@ function resolveSegmentResult(segmentKey, body) {
 async function insertServiceOrderOvertimeSegment(connection, {
   employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId, batchId = null,
 }) {
-  const segment = segmentKey === 'travel'
-    ? travelOvertimeSegment(order, travelOverrides)
-    : workOvertimeSegment(order)
+  const segment = segmentKey === 'work'
+    ? workOvertimeSegment(order)
+    : travelOvertimeSegments(order, travelOverrides).find((item) => item.key === segmentKey)
   if (!segment) return null
   if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
   if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
@@ -1757,7 +1768,7 @@ async function insertServiceOrderOvertimeSegment(connection, {
        AND (
          source_detail = :segmentKey
          OR (:segmentKey = 'work' AND source_detail IS NULL)
-         OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
+         OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
        )
        AND submitted_by = :userId
        AND status NOT IN ('rejected', 'withdrawn', 'voided')
@@ -1815,10 +1826,13 @@ async function createServiceOrderOvertimeRequest(req, res) {
   const serviceOrderId = Number(req.params.id)
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
 
-  // 请求的时段集合：显式传单个 segmentKey 时只处理该段（向后兼容），否则默认两段都报。
+  // 请求的时段集合：显式传单个 segmentKey 时只处理该段；旧客户端按 'travel' 申请时
+  // 展开为去程+回程两段（向后兼容）；默认三段都报。
   const requestedKey = text(req.body?.segmentKey)
-  if (requestedKey && !['travel', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
-  const segmentKeys = requestedKey ? [requestedKey] : ['travel', 'work']
+  if (requestedKey && !['travel', 'travel_out', 'travel_back', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
+  const segmentKeys = requestedKey
+    ? (requestedKey === 'travel' ? ['travel_out', 'travel_back'] : [requestedKey])
+    : ['travel_out', 'travel_back', 'work']
 
   const result = await transaction(async (connection) => {
     const employee = await currentEmployeeForConnection(connection, req.user.id)
@@ -1832,7 +1846,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
     // 路上时间仅多工程师工单开放自报（各地往返天然不同，ADR-0002）；单人工单锁死按工单时间核算，忽略任何覆盖
-    const travelOverrides = segmentKeys.includes('travel') && Number(order.engineer_count || 0) > 1
+    const travelOverrides = segmentKeys.some((key) => key === 'travel_out' || key === 'travel_back') && Number(order.engineer_count || 0) > 1
       ? normalizeTravelOverrides(order, req.body)
       : {}
 
@@ -2133,6 +2147,36 @@ async function pendingApprovalCount(req, res) {
   res.json({ count: await pendingApprovalCountValue(req.user) })
 }
 
+// 待办中心三视图计数（考勤侧）：pending 与导航徽标同口径；
+// initiated=本人提交的全部申请；completed 与 listApprovalTaskItems 的 completed 视图同 WHERE。
+async function approvalTaskCountsValue(user) {
+  await ensureSchema()
+  const pending = await pendingApprovalCountValue(user)
+  const initiatedRows = await query(
+    'SELECT COUNT(*) AS count FROM attendance_requests WHERE submitted_by = :userId',
+    { userId: user.id },
+  )
+  const completedRows = await query(
+    `SELECT COUNT(*) AS count
+     FROM attendance_requests r
+     WHERE EXISTS (
+             SELECT 1 FROM attendance_request_approvals a
+             WHERE a.request_id = r.id
+               AND (a.approved_by = :userId OR a.rejected_by = :userId)
+           )
+        OR r.supervisor_approved_by = :userId
+        OR r.admin_approved_by = :userId
+        OR r.rejected_by = :userId
+        OR r.voided_by = :userId`,
+    { userId: user.id },
+  )
+  return {
+    pending,
+    initiated: Number(initiatedRows[0]?.count || 0),
+    completed: Number(completedRows[0]?.count || 0),
+  }
+}
+
 // ---- 待办中心（/api/v1/approval-tasks）考勤侧数据源 ----
 // 考勤审批不走 MR 的 approval_tasks 表，这里把 attendance_requests/attendance_request_approvals
 // 映射成与 MR ApprovalTask 同构的结构，由 approval-tasks 控制器合并返回。
@@ -2168,6 +2212,48 @@ function approvalTaskStepLabel(row) {
   if (stepType === 'vp') return '副总审批'
   if (stepType === 'role') return `${ROLE_LABELS[row.pending_step_role] || row.pending_step_role || '角色'}审批`
   return '审批'
+}
+
+// 步骤链（待办中心状态悬浮卡用）：attendance_request_approvals → 与 MR 签核链同构的 approvalSteps
+function attendanceStepChainLabel(stepType, role) {
+  if (stepType === 'delegate') return '代理确认'
+  if (stepType === 'supervisor') return '主管审批'
+  if (stepType === 'hr') return '人事审批'
+  if (stepType === 'vp') return '副总审批'
+  if (stepType === 'role') return `${ROLE_LABELS[role] || role || '角色'}审批`
+  return '审批'
+}
+
+async function attachTaskApprovalSteps(items) {
+  const ids = [...new Set(items.map((item) => Number(item.businessId)).filter(Boolean))]
+  if (!ids.length) return items
+  const params = {}
+  const placeholders = ids.map((id, index) => {
+    params[`req${index}`] = id
+    return `:req${index}`
+  })
+  const rows = await query(
+    `SELECT a.request_id, a.step_type, a.step_order, a.assignee_role, a.status,
+            a.approved_at, a.rejected_at, p.employee_name AS assignee_name
+     FROM attendance_request_approvals a
+     LEFT JOIN attendance_employee_profiles p ON p.id = a.assignee_employee_id
+     WHERE a.request_id IN (${placeholders.join(', ')})
+     ORDER BY a.request_id, a.step_order, a.id`,
+    params,
+  )
+  const byRequest = {}
+  for (const row of rows) {
+    if (!byRequest[row.request_id]) byRequest[row.request_id] = []
+    byRequest[row.request_id].push({
+      seq: row.step_order,
+      stepKey: row.step_type,
+      stepLabel: attendanceStepChainLabel(row.step_type, row.assignee_role),
+      approverName: row.assignee_name || null,
+      action: row.approved_at ? 'approve' : row.rejected_at ? 'reject' : null,
+      decidedAt: row.approved_at || row.rejected_at || null,
+    })
+  }
+  return items.map((item) => ({ ...item, approvalSteps: byRequest[Number(item.businessId)] || [] }))
 }
 
 function approvalTaskStatus(row, view) {
@@ -2212,7 +2298,7 @@ async function listApprovalTaskItems(user, view = 'pending') {
        LIMIT 200`,
       { userId: user.id },
     )
-    return rows.map((row) => approvalTaskPayload(row, view))
+    return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
   }
   if (view === 'completed') {
     // 我已处理：我签核/驳回过的审批步骤 + 旧流程的主管/行政/作废动作
@@ -2237,10 +2323,10 @@ async function listApprovalTaskItems(user, view = 'pending') {
        LIMIT 200`,
       { userId: user.id },
     )
-    return rows.map((row) => approvalTaskPayload(row, view))
+    return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
   }
   const rows = await pendingApprovalRequestRows(user)
-  return rows.map((row) => approvalTaskPayload(row, view))
+  return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
 }
 
 async function requestForUpdate(connection, id) {
@@ -2977,6 +3063,7 @@ module.exports = {
   listRequests,
   pendingApprovalCount,
   pendingApprovalCountValue,
+  approvalTaskCountsValue,
   listApprovalTaskItems,
   approveDelegate,
   approveSupervisor,

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
@@ -305,28 +306,16 @@ export function AuditLogs() {
             </div>
             <div className="flex flex-col md:flex-row md:items-end gap-3">
               <div className="space-y-2">
-                <Label htmlFor="audit-from">开始日期</Label>
-                <Input
-                  id="audit-from"
-                  type="date"
-                  value={from}
-                  onChange={(e) => {
-                    setFrom(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="audit-to">结束日期</Label>
-                <Input
-                  id="audit-to"
-                  type="date"
-                  value={to}
-                  onChange={(e) => {
-                    setTo(e.target.value);
-                    setPage(1);
-                  }}
-                />
+                <Label>日期范围</Label>
+                <div className="w-[240px]">
+                  <DateRangePicker
+                    start={from}
+                    end={to}
+                    onChange={(s2, e2) => { setFrom(s2); setTo(e2); setPage(1); }}
+                    placeholder="开始日期 ~ 结束日期"
+                    ariaLabel="审计日志日期范围"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2 px-3 h-9 border border-border rounded-md">
                 <Switch

@@ -577,9 +577,34 @@ async function list(req, res) {
      LIMIT 500`,
     params,
   )
+  // 批量查所有 MR 的签核步骤链（悬浮卡显示完整流转进度）
+  const mrIds = rows.map((row) => row.id).filter(Boolean)
+  let approvalsByMr = {}
+  if (mrIds.length) {
+    // 只取每个 MR 最新一轮 cycle 的步骤（驳回重提交会开新一轮，旧轮不显示避免重复）
+    const approvalRows = await query(
+      `SELECT a.mr_id, a.cycle, a.seq, a.step_key, a.step_label, a.approver_id, a.approver_name_snapshot, a.action, a.decided_at
+       FROM mr_approvals a
+       INNER JOIN (SELECT mr_id, MAX(cycle) AS max_cycle FROM mr_approvals WHERE mr_id IN (${mrIds.map(() => '?').join(',')}) GROUP BY mr_id) latest
+         ON latest.mr_id = a.mr_id AND latest.max_cycle = a.cycle
+       ORDER BY a.mr_id, a.seq`,
+      mrIds,
+    )
+    for (const a of approvalRows) {
+      if (!approvalsByMr[a.mr_id]) approvalsByMr[a.mr_id] = []
+      approvalsByMr[a.mr_id].push({
+        seq: a.seq,
+        stepKey: a.step_key,
+        stepLabel: a.step_label,
+        approverName: a.approver_name_snapshot || null,
+        action: a.action || null,
+        decidedAt: a.decided_at || null,
+      })
+    }
+  }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 

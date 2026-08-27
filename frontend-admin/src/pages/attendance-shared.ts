@@ -222,17 +222,25 @@ export function previewOvertimeHours(startAt: string, endAt: string, dayType?: s
   const end = parseLocalDateTime(endAt);
   if (!start || !end || end <= start) return 0;
   const fullDay = dayType === "legal_holiday" || dayType === "rest_day";
-  let minutes: number;
-  if (fullDay) {
-    minutes = (end.getTime() - start.getTime()) / 60000;
+  const endHour = end.getHours() + end.getMinutes() / 60;
+  if (!fullDay && endHour <= 18) return 0;
+  const overtimeStart = fullDay
+    ? start
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
+  const rawStart = start > overtimeStart ? start : overtimeStart;
+  const effStart = new Date(rawStart);
+  if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
+    effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
   } else {
-    const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0);
-    const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
-    minutes = 0;
-    if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000;
-    if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000;
+    effStart.setMinutes(0, 0, 0);
   }
-  const hours = Math.round(minutes / 30) / 2;
+  const effEnd = new Date(end);
+  effEnd.setMinutes(0, 0, 0);
+  if (effEnd <= effStart) {
+    // 保底镜像后端 overtimeWindow：掐整归零但确有加班时段（如 11:10–11:35 仅 25 分钟）→ 0.5 小时
+    return end > rawStart ? 0.5 : 0;
+  }
+  const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
   return hours > 0 ? hours : 0;
 }
 

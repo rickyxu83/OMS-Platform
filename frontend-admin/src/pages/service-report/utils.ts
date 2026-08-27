@@ -594,6 +594,9 @@ export function orderMatchesKeyword(order: ServiceOrder, keyword: string) {
     order.orderNo,
     order.customerName,
     order.issueDescription,
+    order.report?.workContent,
+    order.contactName,
+    reportOrderEngineerText(order, ""),
     serviceItemsLabel(order),
     orderStatusLabel(order.workflowStatus || order.status, order.displayStatus),
   ].some((value) => matchesSearchText(value, keyword));

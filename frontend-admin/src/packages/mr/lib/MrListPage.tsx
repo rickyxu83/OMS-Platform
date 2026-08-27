@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -29,6 +30,86 @@ const STATUS_CLASSES: Record<MrStatus, string> = {
   approved: 'bg-emerald-100 text-emerald-800',
   rejected: 'bg-red-100 text-red-800',
   voided: 'bg-zinc-200 text-zinc-600',
+}
+
+// —— 工单处理风格扩散：状态/采购 徽章 → 图标+文字 ——
+const STATUS_INDICATOR: Record<MrStatus, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: 'text-slate-400' },
+  in_review: { icon: Hourglass, color: 'text-amber-600' },
+  approved: { icon: CircleCheck, color: 'text-emerald-600' },
+  rejected: { icon: CircleX, color: 'text-rose-500' },
+  voided: { icon: CircleSlash, color: 'text-zinc-400' },
+}
+const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  pending: { icon: Package, color: 'text-amber-600' },
+  done: { icon: PackageCheck, color: 'text-emerald-600' },
+  skipped: { icon: Minus, color: 'text-slate-400' },
+  waiting_contract: { icon: FileText, color: 'text-sky-600' },
+}
+
+/** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
+function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const conf = STATUS_INDICATOR[orderStatus]
+  const Icon = conf ? conf.icon : null
+  const segs = ([
+    { label: '创建', at: order.createdAt },
+    { label: '提交签核', at: order.submittedAt },
+  ]).filter((seg) => seg.at)
+  const steps = (order.approvalSteps || [])
+  return (
+    <span className="inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
+        onClick={(event) => { event.stopPropagation(); onFilter() }}
+        onMouseEnter={() => {
+          if (btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect()
+            setPos({ top: rect.bottom + 4, left: rect.left })
+          }
+          setHover(true)
+        }}
+        onMouseLeave={() => setHover(false)}
+      >
+        {Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null}
+        {STATUS_LABELS[orderStatus]}
+      </button>
+      {hover && pos && segs.length ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {segs.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
+            </div>
+          ))}
+          {steps.length ? (
+            <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+              {(() => {
+                const currentIdx = steps.findIndex((step) => !step.action)
+                return steps.map((step, idx) => {
+                  const isCurrent = idx === currentIdx
+                  const isWaiting = idx > currentIdx && currentIdx >= 0
+                  return (
+                    <div key={`${step.seq}-${step.stepKey}`} className={`flex items-center gap-1.5 py-0.5 ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : isCurrent ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（签核中）' : isWaiting ? '' : ''}</span>
+                      {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  )
 }
 
 const PURCHASE_LABELS: Record<string, string> = {
@@ -206,6 +287,22 @@ export function MrListPage() {
       </header>
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+        <span className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">全部</span><span className="text-base font-bold">{items.length}</span></span>
+        {(['draft', 'in_review', 'approved', 'rejected', 'voided'] as MrStatus[]).map((st) => {
+          const count = items.filter((o) => (o.status || 'draft') === st).length
+          const conf = STATUS_INDICATOR[st]
+          const Icon = conf.icon
+          return (
+            <span key={st} className="inline-flex items-baseline gap-1.5">
+              <Icon className={`h-3.5 w-3.5 ${conf.color} translate-y-0.5`} />
+              <span className="text-muted-foreground">{STATUS_LABELS[st]}</span>
+              <span className="text-base font-bold">{count}</span>
+            </span>
+          )
+        })}
+      </div>
+
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="flex flex-wrap items-center gap-3">
@@ -213,10 +310,14 @@ export function MrListPage() {
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="全文搜索：客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
             </div>
-            <div className="flex items-center gap-1.5">
-              <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="填表日期起" className="w-[150px]" />
-              <span className="text-sm text-muted-foreground">至</span>
-              <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="填表日期止" className="w-[150px]" />
+            <div className="w-[240px]">
+              <DateRangePicker
+                start={dateFrom}
+                end={dateTo}
+                onChange={(s2, e2) => { setDateFrom(s2); setDateTo(e2) }}
+                placeholder="填表日期起 ~ 止"
+                ariaLabel="填表日期范围"
+              />
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={resetFilters}><RotateCcw className="mr-1.5 size-4" />重置</Button>
@@ -235,16 +336,9 @@ export function MrListPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            MR 申请单（{items.length}）
-            <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。快速筛选：点击列表中的客户名、销售名或状态徽章即可按该对象过滤，筛选标签可取消。" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            <table className="w-full table-fixed caption-bottom text-sm">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+          <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
                 <col className="w-[110px]" />
@@ -270,7 +364,7 @@ export function MrListPage() {
               const orderStatus = (order.status || 'draft') as MrStatus
               const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
               return (
-                <TableRow key={order.id} className="cursor-pointer" onClick={() => navigate(`/mr/${order.id}`)}>
+                <TableRow key={order.id} className="cursor-pointer hover:relative hover:z-10" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
                     <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
                       <span className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
@@ -286,8 +380,12 @@ export function MrListPage() {
                   </TableCell>
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
-                    <button type="button" title={`按状态筛选：${STATUS_LABELS[orderStatus]}`} onClick={(event) => { event.stopPropagation(); setStatus(orderStatus) }}><Badge className={`${STATUS_CLASSES[orderStatus]} cursor-pointer transition-opacity hover:opacity-80`}>{STATUS_LABELS[orderStatus]}</Badge></button>{orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-1" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}><Badge className={`${PURCHASE_CLASSES[order.purchaseStatus] || ''} cursor-pointer transition-opacity hover:opacity-80`}>{PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}</Badge></button> : null}
-                    {stepLabel || order.currentAssigneeName ? <div className="mt-1 truncate text-xs text-muted-foreground">{[stepLabel, order.currentAssigneeName].filter(Boolean).join(' · ')}</div> : null}
+                    <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
+                    {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                      {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
+                      {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
+                    </button> : null}
+
                     {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive">流程暂停：{order.assignmentError}</div> : null}
                   </TableCell>
                   <TableCell className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
@@ -295,19 +393,18 @@ export function MrListPage() {
               )
             })}
           </TableBody>
-            </table>
-          </div>
-          {!loading && items.length > 0 ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-              <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
-                <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
-              </div>
+          </table>
+        </div>
+        {!loading && items.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-sm text-muted-foreground">
+            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
+              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          </div>
+        ) : null}
+      </div>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>

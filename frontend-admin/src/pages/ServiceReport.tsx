@@ -2,15 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Archive,
   Bold,
+  BookOpen,
   Braces,
+  Building2,
   Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
+  CircleCheck,
+  CircleCheckBig,
+  CircleDot,
+  CircleSlash,
+  CircleX,
   ClipboardCheck,
   Clock,
+  Clock3,
   Code2,
   Copy,
   ClipboardPenLine,
@@ -19,6 +28,7 @@ import {
   HardDrive,
   Heading2,
   History,
+  Hourglass,
   Link,
   List,
   ListOrdered,
@@ -27,12 +37,15 @@ import {
   MoreHorizontal,
   Package,
   PenLine,
+  Pencil,
   Plus,
   QrCode,
+  Radio,
   RotateCcw,
   Save,
   Search,
   Send,
+  Settings,
   Share2,
   Trash2,
   Upload,
@@ -40,6 +53,7 @@ import {
   Users,
   Wrench,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { toast } from "sonner";
@@ -48,12 +62,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { PdfPreview } from "@/components/PdfPreview";
 import { OfficePreviewContent } from "@/components/OfficePreviewContent";
 import { useAuth } from "@/contexts/AuthContext";
@@ -75,10 +92,9 @@ import {
   ATTACHMENT_PURPOSES, COMPRESSIBLE_IMAGE_EXTENSIONS, COMPRESSIBLE_IMAGE_MIME_TYPES,
   FORM_SKIN, IMAGE_COMPRESSION_MAX_EDGE, IMAGE_COMPRESSION_QUALITY,
   INSPECTION_DOCUMENT_ACCEPT, INSPECTION_DOCUMENT_EXTENSIONS, MARKDOWN_TOOLS, MAX_FILE_SIZE,
-  MODE_BADGE_VARIANT, MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
-  PART_ACTION_OPTIONS, PRIORITY_OPTIONS, REMOTE_SERVICE_MODULE_OPTIONS, REPORT_ORDER_HEADER_CLASS,
-  REPORT_ORDER_LIST_GRID, REPORT_ORDER_LIST_WIDTH, REPORT_ORDER_STICKY_HEADER_CLASS,
-  RESULT_OPTIONS, SERVICE_TYPE_OPTIONS, STATUS_BADGE_VARIANT, TYPE_BADGE_VARIANT,
+  MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
+  PART_ACTION_OPTIONS, PRIORITY_OPTIONS, REMOTE_SERVICE_MODULE_OPTIONS,
+  RESULT_OPTIONS, SERVICE_TYPE_OPTIONS,
 } from "./service-report/constants";
 import {
   allowedServiceModules, attachmentFileExtension, attachmentPreviewKind, buildDeleteConfirmationMessage,
@@ -97,7 +113,7 @@ import {
   orderStatusLabel, partActionFor, payloadFromOrder, previewBlob, reportIssuePreviewLabel,
   reportOrderDisplayId, reportOrderEngineerText, reportOrderMainContent, reportOrderPreviewSummary,
   reportOrderServiceTime, reportWorkContentPreviewLabel, safeFilenamePart, samePreviewText,
-  serviceCategoryText, serviceItemBadgeVariant, serviceModuleLabel, servicePartHasContent,
+  serviceCategoryText, serviceModuleLabel, servicePartHasContent,
   serviceRecordFileName, splitInputDateTime, submitDateTime, targetDeviceDraftId, targetDeviceHasContent,
   targetDeviceTitle, toInputDateTime, uniqueServiceModules, validateFiles,
 } from "./service-report/utils";
@@ -111,6 +127,114 @@ import {
   customerMatches, customerMeta, customerInitial, customerName, customerSortKey,
   groupCustomersByInitial, mergeCustomers,
 } from "@/lib/customer-index";
+
+// —— 工单处理风格扩散：状态/模式 徽章 → 图标+文字（去 Badge 大色块）——
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+  rejected: { icon: CircleX, color: "text-rose-500" },
+};
+const MODE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  onsite: { icon: Wrench, color: "text-sky-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  office: { icon: Building2, color: "text-indigo-600" },
+};
+const INDICATOR_FALLBACK = { icon: Send, color: "text-slate-400" };
+
+// 服务事项/类型图标（与工单处理 TYPE_INDICATOR 同语义色）
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: HardDrive, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Settings, color: "text-teal-600" },
+  inspect: { icon: ClipboardCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
+};
+
+/** 预览头部服务事项标签 → 图标：关键词优先（模块标签如“备件更换”），兜底 serviceType */
+function serviceItemIndicator(label: string, serviceType?: string): { icon: LucideIcon; color: string } {
+  if (label.includes("安装")) return TYPE_INDICATOR.install;
+  if (label.includes("巡检")) return TYPE_INDICATOR.inspect;
+  if (label.includes("备件")) return { icon: Package, color: "text-amber-600" };
+  if (label.includes("故障") || label.includes("排查")) return TYPE_INDICATOR.repair;
+  if (label.includes("远程")) return TYPE_INDICATOR.remote;
+  if (label.includes("内勤") || label.includes("方案") || label.includes("资料")) return { icon: FileText, color: "text-indigo-600" };
+  return TYPE_INDICATOR[serviceType || ""] || TYPE_INDICATOR.other;
+}
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+function statusIndicator(status: string, label: string) {
+  const conf = STATUS_INDICATOR[status] || INDICATOR_FALLBACK;
+  return indicatorSpan(conf.icon, conf.color, label);
+}
+function modeIndicator(mode: string, label: string) {
+  const conf = MODE_INDICATOR[mode];
+  if (!conf) return <span className="text-xs text-muted-foreground">{label}</span>;
+  return indicatorSpan(conf.icon, conf.color, label);
+}
+
+/** 列表日期筛选：取工单代表日期（服务开始 ｜ 出发 ｜ 创建），返回 YYYY-MM-DD */
+function orderFilterDate(order: ServiceOrder) {
+  const raw = order.report?.actualStartAt || order.report?.departureAt || order.createdAt || "";
+  return String(raw).replace("T", " ").slice(0, 10);
+}
+/** 草稿代表日期（服务开始 ｜ 出发 ｜ 草稿更新时间） */
+function draftFilterDate(payload: ReportForm, fallback?: string) {
+  const raw = payload.actualStartAt || payload.departureAt || fallback || "";
+  return String(raw).replace("T", " ").slice(0, 10);
+}
+function dateInRange(date: string, start: string, end: string) {
+  if (!start && !end) return true;
+  if (!date) return false;
+  if (start && date < start) return false;
+  if (end && date > end) return false;
+  return true;
+}
+
+/** 服务时间四段悬浮卡（复刻工单处理：出发/到达/完成/返回 时间线） */
+function ServiceTimeHoverCard({ departureAt, arriveAt, leaveAt, returnAt }: {
+  departureAt?: string | null;
+  arriveAt?: string | null;
+  leaveAt?: string | null;
+  returnAt?: string | null;
+}) {
+  const segments = ([
+    { key: "departure", label: "出发", at: departureAt, dot: "bg-sky-100 text-sky-700" },
+    { key: "arrive", label: "到达", at: arriveAt, dot: "bg-emerald-100 text-emerald-700" },
+    { key: "leave", label: "完成", at: leaveAt, dot: "bg-amber-100 text-amber-700" },
+    { key: "return", label: "返回", at: returnAt, dot: "bg-slate-200 text-slate-600" },
+  ] as const).filter((seg) => seg.at);
+  if (!segments.length) return null;
+  return (
+    <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
+      {segments.map((seg, i, arr) => (
+        <div key={seg.key}>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${seg.dot}`}><CircleDot className="h-2.5 w-2.5" /></span>
+            {seg.label} <span className="font-medium text-foreground">{formatDateTime(seg.at)}</span>
+          </div>
+          {i < arr.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 
 
@@ -185,7 +309,45 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
-  const [filledOrdersOpen, setFilledOrdersOpen] = useState(false);
+  // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
+  const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
+  const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
+
+  // 列表筛选：URL → 本地状态（浏览器前进/后退或外部带参跳转时同步）
+  useEffect(() => {
+    setSearchQuery(searchParams.get("keyword") || "");
+    setStartDate(searchParams.get("startDate") || "");
+    setEndDate(searchParams.get("endDate") || "");
+  }, [searchParams]);
+
+  // 列表筛选：搜索词防抖 300ms 写回 URL（routeKeyword 驱动实际过滤）
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const keyword = searchQuery.trim();
+      setSearchParams((prev) => {
+        if ((prev.get("keyword") || "") === keyword) return prev;
+        const next = new URLSearchParams(prev);
+        if (keyword) next.set("keyword", keyword); else next.delete("keyword");
+        return next;
+      }, { replace: true });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, setSearchParams]);
+
+  // 列表筛选：日期范围写回 URL
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const prevStart = prev.get("startDate") || "";
+      const prevEnd = prev.get("endDate") || "";
+      if (prevStart === startDate && prevEnd === endDate) return prev;
+      const next = new URLSearchParams(prev);
+      if (startDate) next.set("startDate", startDate); else next.delete("startDate");
+      if (endDate) next.set("endDate", endDate); else next.delete("endDate");
+      return next;
+    }, { replace: true });
+  }, [startDate, endDate, setSearchParams]);
   const [formHeaderVisible, setFormHeaderVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -306,11 +468,42 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const selectedCustomerDevices = useMemo(() => (
     form.customerId ? customerDevices : []
   ), [customerDevices, form.customerId]);
+  const dateRange = useMemo(() => {
+    if (startDate && endDate && startDate > endDate) return { start: endDate, end: startDate };
+    return { start: startDate, end: endDate };
+  }, [startDate, endDate]);
+  const filtersActive = Boolean(routeKeyword || dateRange.start || dateRange.end);
   const matchingReportOrders = useMemo(() => (
     orders
       .filter((order) => (order.workflowStatus || order.status || "") !== "cancelled")
       .filter((order) => orderMatchesKeyword(order, routeKeyword))
-  ), [orders, routeKeyword]);
+      .filter((order) => dateInRange(orderFilterDate(order), dateRange.start, dateRange.end))
+  ), [orders, routeKeyword, dateRange]);
+  // 草稿同样参与全文搜索与日期范围过滤（工程师名需经 engineers 表解析）
+  const filteredCreateDrafts = useMemo(() => (
+    createDrafts.filter((draftItem) => {
+      const payload = draftItem.payload;
+      if (!dateInRange(draftFilterDate(payload, draftItem.updatedAt || draftItem.createdAt), dateRange.start, dateRange.end)) return false;
+      if (!routeKeyword) return true;
+      const mode = normalizeMode(payload.serviceMode);
+      const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
+      const engineerNames = payload.engineerIds?.length
+        ? engineers
+            .filter((engineer) => payload.engineerIds.includes(String(engineer.id)))
+            .map(optionLabel)
+            .filter(Boolean)
+            .join("、")
+        : "";
+      return [
+        payload.customerName,
+        compactDraftLabel(payload),
+        serviceItemLabels(payload).join(" "),
+        modeLabel,
+        engineerNames,
+        "草稿",
+      ].some((value) => matchesSearchText(value, routeKeyword));
+    })
+  ), [createDrafts, routeKeyword, dateRange, engineers]);
   const dispatchOrders = useMemo(() => (
     matchingReportOrders.filter(isDispatchOrder)
   ), [matchingReportOrders]);
@@ -2095,82 +2288,231 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     }
   }
 
-  function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
+  /** 移动端工单卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderReportOrderCard(order: ServiceOrder) {
+    const mode = normalizeMode(order.serviceMode);
+    const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
+    const workflowStatus = order.workflowStatus || order.status || "";
+    const statusLabel = orderStatusLabel(order.workflowStatus || order.status, order.displayStatus);
+    const canExportRecord = canExportServiceRecord(order);
+    const isExportingRecord = exportingOrderId === order.id;
+    const canDeleteRecord = canDeleteServiceOrder(order);
+    const canCancelRecord = canCancelServiceOrder(order);
+    const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
+    const isDeletingRecord = deletingOrderId === order.id;
+    const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
+    const serviceTime = reportOrderServiceTime(order);
     return (
-      <div className="min-h-[220px] overflow-auto pr-0 sm:max-h-[44vh] sm:pr-1">
+      <ResponsiveCard
+        onClick={() => openPreviewOrder(order)}
+        title={reportOrderDisplayId(order)}
+        status={statusIndicator(workflowStatus, statusLabel)}
+        subtitle={reportOrderMainContent(order)}
+        fields={[
+          { label: "客户", value: order.customerName || "未填写客户" },
+          { label: "工程师", value: reportOrderEngineerText(order) },
+          { label: "模式", value: modeIndicator(mode, modeLabel) },
+          {
+            label: "服务时间",
+            value: (
+              <span className="block space-y-0.5 text-xs">
+                <span className="block"><span className="text-muted-foreground">开始：</span>{serviceTime.start}</span>
+                <span className="block"><span className="text-muted-foreground">结束：</span>{serviceTime.end}</span>
+              </span>
+            ),
+          },
+        ]}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
+              disabled={!canExportRecord || Boolean(exportingOrderId)}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!canExportRecord || exportingOrderId) return;
+                downloadServiceRecordPdf(order);
+              }}
+            >
+              {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
+              导出 PDF
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
+              disabled={!canExportRecord || Boolean(exportingOrderId)}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!canExportRecord || exportingOrderId) return;
+                shareServiceRecordPdf(order);
+              }}
+            >
+              <Share2 className="mr-1 h-4 w-4" />
+              分享
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
+              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!canRemoveOrCancelRecord || deletingOrderId) return;
+                if (canDeleteRecord) {
+                  deleteServiceOrder(order);
+                  return;
+                }
+                cancelServiceOrder(order);
+              }}
+            >
+              {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="mr-1 h-4 w-4" /> : <X className="mr-1 h-4 w-4" />}
+              {destructiveActionLabel}
+            </Button>
+          </>
+        }
+      />
+    );
+  }
+
+  /** C 款精简表格（复刻工单处理）：客户/编号 · 内容/模式 · 工程师/时间(hover 四段悬浮卡) · 状态 · 操作 */
+  function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
+    const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
+    return (
+      <div className="min-h-[220px] overflow-auto sm:max-h-[44vh]">
         {loading ? (
           <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <span className="btn-loader" aria-hidden="true" />
             正在加载工单…
           </div>
         ) : orderList.length ? (
-          <div className={`${REPORT_ORDER_LIST_WIDTH} space-y-3`}>
-            <div className={`${REPORT_ORDER_STICKY_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
-              <div>工单编号 / 客户</div>
-              <div>服务事项</div>
-              <div>服务内容</div>
-              <div>工程师</div>
-              <div>服务时间</div>
-              <div>状态</div>
-              <div className="text-right">操作</div>
-            </div>
-            {orderList.map((order) => {
-              const mode = normalizeMode(order.serviceMode);
-              const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
-              const itemLabels = serviceItemLabels(order);
-              const workflowStatus = order.workflowStatus || order.status || "";
-              const canExportRecord = canExportServiceRecord(order);
-              const isExportingRecord = exportingOrderId === order.id;
-              const canDeleteRecord = canDeleteServiceOrder(order);
-              const canCancelRecord = canCancelServiceOrder(order);
-              const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
-              const isDeletingRecord = deletingOrderId === order.id;
-              const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
-              const serviceTime = reportOrderServiceTime(order);
-              return (
-                <div
-                  key={order.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`预览 ${reportOrderDisplayId(order)}`}
-                  className="cursor-pointer rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:py-3 sm:px-4"
-                  onClick={() => openPreviewOrder(order)}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget) return;
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openPreviewOrder(order);
-                    }
-                  }}
-                >
-                  <div className={`grid w-full min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
-                    <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-foreground">{reportOrderDisplayId(order)}</div>
-                        <div className="mt-0.5 block truncate text-sm text-muted-foreground">{order.customerName || "未填写客户"}</div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
-                        <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                          {orderStatusLabel(order.workflowStatus || order.status, order.displayStatus)}
-                        </Badge>
+          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard}>
+            <table className="w-full table-fixed caption-bottom text-sm">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[30%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableRow>
+                  <TableHead>客户 / 工单编号</TableHead>
+                  <TableHead>服务内容 / 模式</TableHead>
+                  <TableHead>工程师 / 服务时间</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orderList.map((order, rowIndex) => {
+                  const mode = normalizeMode(order.serviceMode);
+                  const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
+                  const workflowStatus = order.workflowStatus || order.status || "";
+                  const statusLabel = orderStatusLabel(order.workflowStatus || order.status, order.displayStatus);
+                  const canExportRecord = canExportServiceRecord(order);
+                  const isExportingRecord = exportingOrderId === order.id;
+                  const canDeleteRecord = canDeleteServiceOrder(order);
+                  const canCancelRecord = canCancelServiceOrder(order);
+                  const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
+                  const isDeletingRecord = deletingOrderId === order.id;
+                  const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
+                  const serviceTime = reportOrderServiceTime(order);
+                  const engineerName = reportOrderEngineerText(order);
+                  const engineerFilterText = reportOrderEngineerText(order, "");
+                  return (
+                    <TableRow
+                      key={order.id}
+                      role="button"
+                      tabIndex={0}
+                      className="list-row-enter cursor-pointer hover:relative hover:z-10"
+                      style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
+                      onClick={() => openPreviewOrder(order)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openPreviewOrder(order);
+                        }
+                      }}
+                    >
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
+                            title={`按客户筛选：${order.customerName || "未填写客户"}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (order.customerName) setSearchQuery(order.customerName);
+                            }}
+                          >
+                            {order.customerName || "未填写客户"}
+                          </button>
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
+                            title={reportOrderDisplayId(order)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openPreviewOrder(order);
+                            }}
+                          >
+                            {reportOrderDisplayId(order)}
+                          </button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium" title={reportOrderMainContent(order)}>{reportOrderMainContent(order)}</div>
+                          <div className="mt-0.5">{modeIndicator(mode, modeLabel)}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0 text-xs">
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                            title={`按工程师筛选：${engineerFilterText}`}
+                            disabled={!engineerFilterText}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (engineerFilterText) setSearchQuery(engineerFilterText);
+                            }}
+                          >
+                            {engineerName}
+                          </button>
+                          <div className="group relative inline-block max-w-full">
+                            <div className="cursor-default truncate text-muted-foreground">{(() => {
+                              const sd = (serviceTime.start || "").split(" ")[0] || "-";
+                              const ed = (serviceTime.end || "").split(" ")[0];
+                              return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
+                            })()}</div>
+                            <ServiceTimeHoverCard
+                              departureAt={order.report?.departureAt}
+                              arriveAt={order.report?.actualStartAt}
+                              leaveAt={order.report?.actualEndAt}
+                              returnAt={order.report?.returnAt}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{statusIndicator(workflowStatus, statusLabel)}</TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
+                            <button
                               type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              title="工单操作"
                               aria-label="工单操作"
-                              onClick={(event) => event.stopPropagation()}
+                              disabled={isExportingRecord || isDeletingRecord}
                             >
                               {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
-                            </Button>
+                            </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                            <DropdownMenuItem onSelect={() => openPreviewOrder(order)}>
-                              <FileText className="h-4 w-4" />
-                              预览工单
-                            </DropdownMenuItem>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onSelect={() => {
                                 if (!canExportRecord || exportingOrderId) return;
@@ -2191,7 +2533,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               <Share2 className="h-4 w-4" />
                               分享 PDF
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
+                              variant="destructive"
                               onSelect={() => {
                                 if (!canRemoveOrCancelRecord || deletingOrderId) return;
                                 if (canDeleteRecord) {
@@ -2202,120 +2546,233 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               }}
                               disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
                             >
-                              {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                              {destructiveActionLabel}
+                              {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                              {destructiveActionLabel}工单
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
-                        {(itemLabels.length ? itemLabels : [serviceItemsLabel(order)]).map((label) => (
-                          <Badge key={label} variant={serviceItemBadgeVariant(label, order.serviceType)}>
-                            {label}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{reportOrderMainContent(order)}</span>
-                    </div>
-
-                    <div className="hidden min-w-0 text-sm lg:block">
-                      <span className="block truncate">{reportOrderEngineerText(order)}</span>
-                    </div>
-
-                    <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs lg:block">
-                      <div>
-                        <span className="text-muted-foreground">开始：</span>
-                        <span>{serviceTime.start}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">结束：</span>
-                        <span>{serviceTime.end}</span>
-                      </div>
-                    </div>
-
-                    <div className="hidden lg:block">
-                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>
-                        {orderStatusLabel(order.workflowStatus || order.status, order.displayStatus)}
-                      </Badge>
-                    </div>
-
-                    <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex lg:flex-nowrap lg:justify-end">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 min-w-[68px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[78px]"
-                            disabled={!canExportRecord || Boolean(exportingOrderId)}
-                            aria-label={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
-                            title={canExportRecord ? "服务记录 PDF 操作" : "服务记录提交后可导出或分享 PDF"}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <FileText className="h-4 w-4" />}
-                            <span>PDF</span>
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              if (!canExportRecord || exportingOrderId) return;
-                              downloadServiceRecordPdf(order);
-                            }}
-                            disabled={!canExportRecord || Boolean(exportingOrderId)}
-                          >
-                            <Download className="h-4 w-4" />
-                            导出 PDF
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              if (!canExportRecord || exportingOrderId) return;
-                              shareServiceRecordPdf(order);
-                            }}
-                            disabled={!canExportRecord || Boolean(exportingOrderId)}
-                          >
-                            <Share2 className="h-4 w-4" />
-                            分享 PDF
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[72px]"
-                        disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-                        aria-label={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
-                        title={canRemoveOrCancelRecord ? `${destructiveActionLabel}工单` : "当前状态不可删除或作废"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                          if (canDeleteRecord) {
-                            deleteServiceOrder(order);
-                            return;
-                          }
-                          cancelServiceOrder(order);
-                        }}
-                      >
-                        {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                        <span>{destructiveActionLabel}</span>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </table>
+          </ResponsiveList>
         ) : (
-          <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">{emptyText}</div>
+          <div className="flex min-h-[220px] items-center justify-center text-center text-sm text-muted-foreground">{displayEmptyText}</div>
+        )}
+      </div>
+    );
+  }
+
+  /** 移动端草稿卡片 */
+  function renderDraftCard(draftItem: CreateDraftItem) {
+    const createDraft = draftItem.payload;
+    const draftMode = normalizeMode(createDraft.serviceMode);
+    const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
+    const draftRoute = `/service-report/new?mode=${draftMode}&draft=1&draftKey=${encodeURIComponent(draftItem.draftKey)}`;
+    const draftEngineerNames = createDraft.engineerIds?.length
+      ? engineers
+          .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
+          .map(optionLabel)
+          .filter(Boolean)
+      : [];
+    const draftEngineerText = draftEngineerNames.length
+      ? draftEngineerNames.join("、")
+      : user?.realName || user?.username || user?.name || "本人草稿";
+    return (
+      <ResponsiveCard
+        onClick={() => navigate(draftRoute)}
+        title={createDraft.customerName || "未填写客户"}
+        status={indicatorSpan(Pencil, "text-slate-400", "草稿")}
+        subtitle={compactDraftLabel(createDraft)}
+        fields={[
+          { label: "模式", value: modeIndicator(draftMode, draftModeLabel) },
+          { label: "工程师", value: draftEngineerText },
+          { label: "开始", value: formatDateTime(createDraft.actualStartAt || createDraft.departureAt) },
+          { label: "更新于", value: formatDateTime(draftItem.updatedAt || draftItem.createdAt) },
+        ]}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
+              onClick={(event) => {
+                event.stopPropagation();
+                navigate(draftRoute);
+              }}
+            >
+              <PenLine className="mr-1 h-4 w-4" />
+              继续编辑
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
+              disabled={deletingDraft}
+              onClick={(event) => {
+                event.stopPropagation();
+                deleteCreateDraft(draftItem.draftKey);
+              }}
+            >
+              {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="mr-1 h-4 w-4" />}
+              删除草稿
+            </Button>
+          </>
+        }
+      />
+    );
+  }
+
+  /** 草稿列表：同款 C 款表格 */
+  function renderDraftsList() {
+    return (
+      <div className="overflow-auto sm:max-h-[44vh]">
+        {filteredCreateDrafts.length ? (
+          <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
+            <table className="w-full table-fixed caption-bottom text-sm">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[30%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableRow>
+                  <TableHead>客户 / 更新时间</TableHead>
+                  <TableHead>服务内容 / 模式</TableHead>
+                  <TableHead>工程师 / 服务时间</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredCreateDrafts.map((draftItem, rowIndex) => {
+                  const createDraft = draftItem.payload;
+                  const draftMode = normalizeMode(createDraft.serviceMode);
+                  const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
+                  const explicitDraftModules = Array.isArray(createDraft.serviceModules)
+                    ? createDraft.serviceModules.filter(isServiceModuleId)
+                    : null;
+                  const draftHasSelectedModules = draftMode === "office"
+                    || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
+                  const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
+                  const draftRoute = `/service-report/new?mode=${draftMode}&draft=1&draftKey=${encodeURIComponent(draftItem.draftKey)}`;
+                  const draftEngineerNames = createDraft.engineerIds?.length
+                    ? engineers
+                        .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
+                        .map(optionLabel)
+                        .filter(Boolean)
+                    : [];
+                  const draftEngineerText = draftEngineerNames.length
+                    ? draftEngineerNames.join("、")
+                    : user?.realName || user?.username || user?.name || "本人草稿";
+                  const draftStart = formatDateTime(createDraft.actualStartAt || createDraft.departureAt);
+                  const draftEnd = formatDateTime(createDraft.actualEndAt || createDraft.returnAt);
+                  return (
+                    <TableRow
+                      key={draftItem.draftKey}
+                      role="button"
+                      tabIndex={0}
+                      className="list-row-enter cursor-pointer hover:relative hover:z-10"
+                      style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
+                      onClick={() => navigate(draftRoute)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(draftRoute);
+                        }
+                      }}
+                    >
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
+                            title={`按客户筛选：${createDraft.customerName || "未填写客户"}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (createDraft.customerName) setSearchQuery(createDraft.customerName);
+                            }}
+                          >
+                            {createDraft.customerName || "未填写客户"}
+                          </button>
+                          <div className="truncate text-xs text-muted-foreground">
+                            更新于 {formatDateTime(draftItem.updatedAt || draftItem.createdAt)}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium" title={compactDraftLabel(createDraft)}>{compactDraftLabel(createDraft)}</div>
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                            {modeIndicator(draftMode, draftModeLabel)}
+                            <span className="truncate text-xs text-muted-foreground">{draftItemLabels.join("、")}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="min-w-0 text-xs">
+                          <div className="truncate">{draftEngineerText}</div>
+                          <div className="group relative inline-block max-w-full">
+                            <div className="cursor-default truncate text-muted-foreground">{(() => {
+                              const sd = (draftStart || "").split(" ")[0] || "-";
+                              const ed = (draftEnd || "").split(" ")[0];
+                              return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
+                            })()}</div>
+                            <ServiceTimeHoverCard
+                              departureAt={createDraft.departureAt}
+                              arriveAt={createDraft.actualStartAt}
+                              leaveAt={createDraft.actualEndAt}
+                              returnAt={createDraft.returnAt}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{indicatorSpan(Pencil, "text-slate-400", "草稿")}</TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              title="草稿操作"
+                              aria-label="草稿操作"
+                              disabled={deletingDraft}
+                            >
+                              {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
+                              <PenLine className="h-4 w-4" />
+                              继续编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => deleteCreateDraft(draftItem.draftKey)}
+                              disabled={deletingDraft}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              删除草稿
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </table>
+          </ResponsiveList>
+        ) : (
+          <div className="flex min-h-[120px] items-center justify-center text-center text-sm text-muted-foreground">
+            {filtersActive ? "无匹配当前筛选的结果" : "暂无草稿"}
+          </div>
         )}
       </div>
     );
@@ -2362,212 +2819,84 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             })}
           </div>
 
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+                <div className="relative min-w-0 flex-1 basis-[260px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="搜索客户 / 工单编号 / 服务内容 / 工程师"
+                    aria-label="全文搜索工单与草稿"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </div>
+                <div className="min-w-0 w-full sm:w-[240px]">
+                  <DateRangePicker
+                    start={startDate}
+                    end={endDate}
+                    onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); }}
+                    placeholder="服务日期范围"
+                    ariaLabel="服务日期范围"
+                  />
+                </div>
+                <Button
+                  className="h-9 shrink-0 whitespace-nowrap px-2.5 sm:px-3"
+                  variant="outline"
+                  onClick={() => { setSearchQuery(""); setStartDate(""); setEndDate(""); }}
+                >
+                  <RotateCcw className="mr-1.5 h-4 w-4" />
+                  重置
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid gap-3 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardHeader className={`${createDrafts.length ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                  <Save className="h-4 w-4" />
-                  草稿 ({createDrafts.length})
+              <CardHeader className={`${draftsOpen ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Save className="h-4 w-4 shrink-0" />
+                    <span className="truncate">草稿 ({filtersActive ? `${filteredCreateDrafts.length}/${createDrafts.length}` : createDrafts.length})</span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => setDraftsOpen((open) => !open)}
+                    aria-expanded={draftsOpen}
+                  >
+                    {draftsOpen ? "收起" : "展开"}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${draftsOpen ? "rotate-180" : ""}`} />
+                  </Button>
                 </CardTitle>
               </CardHeader>
-              {createDrafts.length ? (
-                <CardContent className="p-2.5 sm:p-4">
-                  <div className="overflow-auto">
-                    <div className={`${REPORT_ORDER_LIST_WIDTH} space-y-3`}>
-                    <div className={`${REPORT_ORDER_HEADER_CLASS} ${REPORT_ORDER_LIST_GRID}`}>
-                      <div>草稿 / 客户</div>
-                      <div>服务事项</div>
-                      <div>服务内容</div>
-                      <div>工程师</div>
-                      <div>服务时间</div>
-                      <div>状态</div>
-                      <div className="text-right">操作</div>
-                    </div>
-                    {createDrafts.map((draftItem) => {
-                      const createDraft = draftItem.payload;
-                      const draftMode = normalizeMode(createDraft.serviceMode);
-                      const draftModeLabel = MODE_OPTIONS.find((item) => item.value === draftMode)?.label || draftMode;
-                      const explicitDraftModules = Array.isArray(createDraft.serviceModules)
-                        ? createDraft.serviceModules.filter(isServiceModuleId)
-                        : null;
-                      const draftHasSelectedModules = draftMode === "office"
-                        || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
-                      const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
-                      const draftRoute = `/service-report/new?mode=${draftMode}&draft=1&draftKey=${encodeURIComponent(draftItem.draftKey)}`;
-                      const draftEngineerNames = createDraft.engineerIds?.length
-                        ? engineers
-                            .filter((engineer) => createDraft.engineerIds.includes(String(engineer.id)))
-                            .map(optionLabel)
-                            .filter(Boolean)
-                        : [];
-                      const draftEngineerText = draftEngineerNames.length
-                        ? draftEngineerNames.join("、")
-                        : user?.realName || user?.username || user?.name || "本人草稿";
-                      return (
-                        <div
-                          key={draftItem.draftKey}
-                          role="button"
-                          tabIndex={0}
-                          aria-label="继续编辑草稿"
-                          className="cursor-pointer rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary hover:bg-accent/30 sm:py-3 sm:px-4"
-                          onClick={() => navigate(draftRoute)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return;
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              navigate(draftRoute);
-                            }
-                          }}
-                        >
-                          <div className={`grid w-full min-w-0 gap-2.5 lg:grid lg:gap-3 ${REPORT_ORDER_LIST_GRID} lg:items-center`}>
-                            <div className="flex min-w-0 items-start justify-between gap-3 lg:block">
-                              <div className="min-w-0">
-                                <div className="truncate font-semibold text-foreground">最近草稿</div>
-                                <div className="mt-0.5 block truncate text-sm text-muted-foreground">{createDraft.customerName || "未填写客户"}</div>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
-                                <Badge variant="draft">草稿</Badge>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                      aria-label="草稿操作"
-                                      onClick={(event) => event.stopPropagation()}
-                                    >
-                                      {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                                    <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
-                                      <PenLine className="h-4 w-4" />
-                                      继续编辑
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onSelect={() => deleteCreateDraft(draftItem.draftKey)}
-                                      disabled={deletingDraft}
-                                    >
-                                      {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
-                                      删除草稿
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap gap-1.5">
-                                <Badge variant={MODE_BADGE_VARIANT[draftMode] || "secondary"}>{draftModeLabel}</Badge>
-                                {draftItemLabels.map((label) => (
-                                  <Badge
-                                    key={label}
-                                    variant={draftHasSelectedModules ? serviceItemBadgeVariant(label, createDraft.serviceType) : "outline"}
-                                  >
-                                    {label}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="min-w-0">
-                              <span className="block truncate text-sm font-medium">{compactDraftLabel(createDraft)}</span>
-                            </div>
-
-                            <div className="hidden min-w-0 text-sm lg:block">
-                              <span className="block truncate">{draftEngineerText}</span>
-                            </div>
-
-                            <div className="hidden min-w-0 space-y-0.5 whitespace-nowrap text-xs lg:block">
-                              <div>
-                                <span className="text-muted-foreground">开始：</span>
-                                <span>{formatDateTime(createDraft.actualStartAt || createDraft.departureAt)}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">结束：</span>
-                                <span>{formatDateTime(createDraft.actualEndAt || createDraft.returnAt)}</span>
-                              </div>
-                            </div>
-
-                            <div className="hidden lg:block">
-                              <Badge variant="draft">草稿</Badge>
-                            </div>
-
-                            <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex lg:flex-nowrap lg:justify-end">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 min-w-[64px] bg-slate-50 px-2 text-slate-900 hover:bg-slate-100 hover:text-slate-900 sm:min-w-[72px]"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  navigate(draftRoute);
-                                }}
-                              >
-                                <PenLine className="h-4 w-4" />
-                                <span>继续</span>
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 min-w-[64px] bg-destructive/10 px-2 text-destructive hover:bg-destructive/15 hover:text-destructive sm:min-w-[72px]"
-                                disabled={deletingDraft}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  deleteCreateDraft(draftItem.draftKey);
-                                }}
-                              >
-                                {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="h-4 w-4" />}
-                                <span>删除</span>
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    </div>
-                  </div>
+              {draftsOpen ? (
+                <CardContent className="p-0">
+                  {renderDraftsList()}
                 </CardContent>
               ) : null}
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className={`${loading || dispatchOrders.length ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+              <CardHeader className={`${loading || dispatchOrders.length || filtersActive ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <ClipboardPenLine className="h-4 w-4" />
                   派单待处理 ({dispatchOrders.length})
                 </CardTitle>
               </CardHeader>
-              {loading || dispatchOrders.length ? (
-                <CardContent className="p-2.5 sm:p-4">
+              {loading || dispatchOrders.length || filtersActive ? (
+                <CardContent className="p-0">
                   {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
                 </CardContent>
               ) : null}
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className="border-b bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3">
-                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    <span className="truncate">已填写服务记录 ({filledOrders.length})</span>
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs sm:hidden"
-                    onClick={() => setFilledOrdersOpen((open) => !open)}
-                    aria-expanded={filledOrdersOpen}
-                  >
-                    {filledOrdersOpen ? "收起" : "展开"}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${filledOrdersOpen ? "rotate-180" : ""}`} />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className={`${filledOrdersOpen ? "block" : "hidden sm:block"} p-2.5 sm:p-4`}>
+              <CardContent className="p-0">
                 {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
@@ -2685,12 +3014,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                     ) : null}
                     {previewError ? <InlineError message={previewError} /> : null}
 
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus)}</Badge>
-                      <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
-                      {serviceLabels.length ? serviceLabels.map((label) => (
-                        <Badge key={label} variant={TYPE_BADGE_VARIANT[previewOrder.serviceType || ""] || "outline"}>{label}</Badge>
-                      )) : null}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      {statusIndicator(workflowStatus, orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus))}
+                      {modeIndicator(mode, modeLabel)}
+                      {serviceLabels.length ? serviceLabels.map((label) => {
+                        const conf = serviceItemIndicator(label, previewOrder.serviceType);
+                        return <span key={label}>{indicatorSpan(conf.icon, conf.color, label)}</span>;
+                      }) : null}
                     </div>
 
                     {customerFields.length ? (

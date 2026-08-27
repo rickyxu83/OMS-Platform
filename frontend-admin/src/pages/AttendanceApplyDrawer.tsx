@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -598,30 +599,15 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>开始日期</Label>
-                    <Input
-                      className="h-11"
-                      data-compact-date="true"
-                      type="date"
-                     
-                      value={form.annualStartDate}
-                      onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>结束日期</Label>
-                    <Input
-                      className="h-11"
-                      data-compact-date="true"
-                      type="date"
-                     
-                      min={form.annualStartDate}
-                      value={form.annualEndDate}
-                      onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label>开始日期 ~ 结束日期</Label>
+                  <DateRangePicker
+                    start={form.annualStartDate}
+                    end={form.annualEndDate}
+                    onChange={(s3, e3) => setAnnualDraft({ annualStartDate: s3, annualEndDate: e3 })}
+                    placeholder="开始日期 ~ 结束日期"
+                    ariaLabel="特休起止日期"
+                  />
                 </div>
 
                 {annualSingleDay ? (

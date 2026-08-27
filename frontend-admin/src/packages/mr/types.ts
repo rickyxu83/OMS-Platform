@@ -135,6 +135,7 @@ export interface MrOrder {
   currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null
   currentStepKey?: string | null
   currentStepLabel?: string | null
+  approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }>
   createdByName?: string | null
   createdAt?: string | null
   updatedAt?: string | null
@@ -322,6 +323,8 @@ export interface ApprovalTask {
   detailPath: string
   createdAt?: string | null
   completedAt?: string | null
+  // 状态悬浮卡的签核步骤链：MR 签核任务取最新一轮 cycle，考勤任务取 attendance_request_approvals
+  approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }>
 }
 
 export interface AssistantSetting {

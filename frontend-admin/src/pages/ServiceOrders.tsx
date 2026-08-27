@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, Play, Square, CircleDot, type LucideIcon } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDate, formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 interface ServiceOrder {
   id: string | number;
@@ -241,7 +242,7 @@ const I18N = {
       help: "工单状态流转：草稿 → 已派发 → 进行中 → 待确认 → 待客户签署 → 已结案；审批通过后为已审核，归档后为已归档。工程师提交或修改工单后，系统按设置的延迟分钟数邮件通知客户关联销售（系统设置中可开关）。",
       loading: "正在加载…",
       empty: "暂无工单",
-      colCaseCustomer: "Case ID / 客户",
+      colCaseCustomer: "客户 / Case ID",
       colServiceItems: "服务事项",
       colMainContent: "主要内容",
       colEngineer: "工程师",
@@ -257,6 +258,7 @@ const I18N = {
       fieldEngineer: "工程师",
       fieldServiceItems: "服务事项",
       fieldServiceTime: "服务时间",
+      actionsMenu: "工单操作",
     },
     detail: {
       orderNo: "工单编号",
@@ -500,7 +502,7 @@ const I18N = {
       help: "工單狀態流轉：草稿 → 已派發 → 進行中 → 待確認 → 待客戶簽署 → 已結案；審批通過後為已審核，歸檔後為已歸檔。工程師提交或修改工單後，系統按設定的延遲分鐘數郵件通知客戶關聯銷售（系統設定中可開關）。",
       loading: "正在載入…",
       empty: "暫無工單",
-      colCaseCustomer: "Case ID / 客戶",
+      colCaseCustomer: "客戶 / Case ID",
       colServiceItems: "服務事項",
       colMainContent: "主要內容",
       colEngineer: "工程師",
@@ -516,6 +518,7 @@ const I18N = {
       fieldEngineer: "工程師",
       fieldServiceItems: "服務事項",
       fieldServiceTime: "服務時間",
+      actionsMenu: "工單操作",
     },
     detail: {
       orderNo: "工單編號",
@@ -767,6 +770,44 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   remote: "info",
   office: "purple",
 };
+
+// —— 考勤风格扩散：状态/模式/类型 徽章 → 图标+文字（去 Badge 大色块的刺眼感）——
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+};
+const MODE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  onsite: { icon: Wrench, color: "text-sky-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  office: { icon: Building2, color: "text-indigo-600" },
+};
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: PackagePlus, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Settings, color: "text-teal-600" },
+  inspect: { icon: SearchCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
+};
+const STATIC_FALLBACK = { icon: Send, color: "text-slate-400" };
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
 
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
   install: "安装 install",
@@ -1046,8 +1087,8 @@ export function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
-  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
+  const statusFilter = "all";
+  const customerFilter = "all";
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
@@ -1109,7 +1150,6 @@ export function ServiceOrders() {
   useEffect(() => {
     const keyword = searchParams.get("keyword") || searchParams.get("q") || "";
     setSearchQuery(keyword);
-    setCustomerFilter(searchParams.get("customerId") || "all");
     setStartDate(searchParams.get("startDate") || "");
     setEndDate(searchParams.get("endDate") || "");
   }, [searchParams]);
@@ -1244,7 +1284,6 @@ export function ServiceOrders() {
     && filteredOrders.every((order) => selectedIds.some((id) => String(id) === String(order.id)));
 
   const initialLoading = loading && orders.length === 0;
-  const refreshing = loading && orders.length > 0;
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
@@ -1299,8 +1338,6 @@ export function ServiceOrders() {
 
   function resetFilters() {
     setSearchQuery("");
-    setStatusFilter("all");
-    setCustomerFilter("all");
     setStartDate("");
     setEndDate("");
     setSearchParams({});
@@ -1755,7 +1792,7 @@ export function ServiceOrders() {
             <span className="truncate" title={displayId(order)}>{displayId(order)}</span>
           </span>
         }
-        status={<Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{statusLabel}</Badge>}
+        status={(() => { const conf = STATUS_INDICATOR[workflowStatus] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
         subtitle={orderMainContent(order)}
         fields={[
           {
@@ -1793,12 +1830,7 @@ export function ServiceOrders() {
           },
           {
             label: t.list.fieldServiceItems,
-            value: (
-              <span className="flex flex-wrap gap-1.5">
-                <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
-              </span>
-            ),
+            value: (() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })(),
           },
           {
             label: t.list.fieldServiceTime,
@@ -1816,7 +1848,7 @@ export function ServiceOrders() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
                 onClick={(event) => {
                   event.stopPropagation();
                   confirmInspection(order);
@@ -1831,7 +1863,7 @@ export function ServiceOrders() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                className="text-muted-foreground hover:text-sky-600 hover:bg-transparent"
                 onClick={(event) => {
                   event.stopPropagation();
                   openAssign(order);
@@ -1841,33 +1873,6 @@ export function ServiceOrders() {
                 <Send className="mr-1 h-4 w-4" />
                 {t.actions.assign}
               </Button>
-            )}
-            {canExport && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                    onClick={(event) => event.stopPropagation()}
-                    disabled={exporting}
-                  >
-                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-                    {t.actions.export}
-                    <ChevronDown className="ml-1 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                  <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    {t.actions.exportExcel}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    {t.actions.exportPdf}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             )}
           </>
         }
@@ -2006,27 +2011,23 @@ export function ServiceOrders() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {initialLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <span key={stat.label} className="inline-flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">{stat.label}</span>
+            {initialLoading ? (
+              <Skeleton className="h-5 w-8" />
+            ) : (
+              <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+            )}
+          </span>
         ))}
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.15fr)_minmax(170px,0.7fr)_minmax(260px,1fr)]">
-            <div className="relative min-w-0">
+          <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 basis-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -2040,57 +2041,13 @@ export function ServiceOrders() {
                 }}
               />
             </div>
-            <div className="min-w-0">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t.filters.statusPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0">
-              <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t.filters.customerPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={String(customer.id)}>
-                      {customer.name || fill(t.dialogs.customerFallback, { id: customer.id })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
-            <div className="min-w-0 overflow-hidden space-y-1.5">
-              <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
-                {t.filters.startDate}
-              </Label>
-              <CompactDateFilterInput
-                id="service-orders-start-date"
-                label={t.filters.startDate}
-                value={startDate}
-                onChange={setStartDate}
-              />
-            </div>
-            <div className="min-w-0 overflow-hidden space-y-1.5">
-              <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
-                {t.filters.endDate}
-              </Label>
-              <CompactDateFilterInput
-                id="service-orders-end-date"
-                label={t.filters.endDate}
-                value={endDate}
-                onChange={setEndDate}
+            <div className="min-w-0 w-[240px]">
+              <DateRangePicker
+                start={startDate}
+                end={endDate}
+                onChange={(s2, e2) => { setStartDate(s2); setEndDate(e2); }}
+                placeholder={`${t.filters.startDate} ~ ${t.filters.endDate}`}
+                ariaLabel={`${t.filters.startDate} / ${t.filters.endDate}`}
               />
             </div>
             <Button
@@ -2102,16 +2059,7 @@ export function ServiceOrders() {
               {t.actions.reset}
             </Button>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={allFilteredOrdersSelected}
-                onCheckedChange={toggleAllFilteredOrders}
-                disabled={saving || filteredOrders.length === 0}
-                aria-label={t.bulk.selectAllAria}
-              />
-              {t.bulk.selectAll}
-            </label>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
             <span>
               {selectedIds.length
                 ? fill(t.bulk.selectedHint, { count: selectedIds.length })
@@ -2121,16 +2069,8 @@ export function ServiceOrders() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
-            <HelpTooltip label={t.list.help} />
-            {refreshing && <span className="btn-loader" aria-hidden="true" />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
             {initialLoading ? (
               <div className="p-2">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -2150,27 +2090,30 @@ export function ServiceOrders() {
               />
             ) : (
               <ResponsiveList items={filteredOrders} keyExtractor={(order) => order.id} renderCard={renderOrderCard}>
-            <table className="w-full min-w-[1250px] table-fixed caption-bottom text-sm">
+            <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-11" />
-                <col className="w-[230px]" />
-                <col className="w-[110px]" />
-                <col className="w-[260px]" />
-                <col className="w-[130px]" />
-                <col className="w-[160px]" />
-                <col className="w-[96px]" />
-                <col className="w-[220px]" />
+                <col className="w-10" />
+                <col className="w-[24%]" />
+                <col className="w-[32%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
-                  <TableHead className="w-11 text-center" />
+                  <TableHead className="w-11 text-center">
+                    <Checkbox
+                      checked={allFilteredOrdersSelected}
+                      onCheckedChange={toggleAllFilteredOrders}
+                      disabled={saving || filteredOrders.length === 0}
+                      aria-label={t.bulk.selectAllAria}
+                    />
+                  </TableHead>
                   <TableHead>{t.list.colCaseCustomer}</TableHead>
-                  <TableHead>{t.list.colServiceItems}</TableHead>
-                  <TableHead>{t.list.colMainContent}</TableHead>
-                  <TableHead>{t.list.colEngineer}</TableHead>
-                  <TableHead>{t.list.colServiceTime}</TableHead>
+                  <TableHead>{t.list.colMainContent} / {t.list.colServiceItems}</TableHead>
+                  <TableHead>{t.list.colEngineer} / {t.list.colServiceTime}</TableHead>
                   <TableHead>{t.list.colStatus}</TableHead>
-                  <TableHead className="pr-5 text-right">{t.list.colActions}</TableHead>
+                  <TableHead>{t.list.colActions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2180,6 +2123,7 @@ export function ServiceOrders() {
                     const itemsLabel = serviceItemsLabel(order);
                     const workflowStatus = getWorkflowStatus(order);
                     const serviceTime = serviceTimeRange(order);
+                    const engineerName = engineerText(order, t.detail.unnamedEngineer);
                     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
                     const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
                     const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
@@ -2188,7 +2132,7 @@ export function ServiceOrders() {
                         key={order.id}
                         role="button"
                         tabIndex={0}
-                        className="list-row-enter cursor-pointer"
+                        className="list-row-enter cursor-pointer hover:relative hover:z-10"
                         style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                         onClick={() => openDetailOrder(order)}
                         onKeyDown={(event) => {
@@ -2208,10 +2152,9 @@ export function ServiceOrders() {
                         </TableCell>
                         <TableCell className="min-w-0">
                           <div className="min-w-0">
-                            <div className="truncate font-semibold" title={displayId(order)}>{displayId(order)}</div>
                             <button
                               type="button"
-                              className="block max-w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
+                              className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
                               title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -2220,108 +2163,102 @@ export function ServiceOrders() {
                             >
                               {textValue(order.customerName)}
                             </button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
+                              title={displayId(order)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openDetailOrder(order);
+                              }}
+                            >
+                              {displayId(order)}
+                            </button>
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
-                          <span className="block truncate font-medium" title={orderMainContent(order)}>{orderMainContent(order)}</span>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium" title={orderMainContent(order)}>{orderMainContent(order) || "-"}</div>
+                            <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3 w-3 ${mc.color}`} /> : null; })()}
+                              {modeLabel}
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="min-w-0">
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
-                            title={`${t.list.filterByEngineer}：${engineerText(order, t.detail.unnamedEngineer)}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              applyNameFilter(engineerText(order, ""));
-                            }}
-                            disabled={!engineerText(order, "")}
-                          >
-                            {engineerText(order, t.detail.unnamedEngineer)}
-                          </button>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">{t.list.startShort}：</span>
-                              <span>{serviceTime.start}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">{t.list.endShort}：</span>
-                              <span>{serviceTime.end}</span>
+                          <div className="min-w-0 text-xs">
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                              title={`${t.list.filterByEngineer}：${engineerText(order, "")}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                applyNameFilter(engineerText(order, ""));
+                              }}
+                              disabled={!engineerText(order, "")}
+                            >
+                              {engineerName}
+                            </button>
+                            <div className="group relative inline-block max-w-full">
+                              <div className="truncate text-muted-foreground cursor-default">{(() => {
+                                const sd = (serviceTime.start || "").split(" ")[0] || "-";
+                                const ed = (serviceTime.end || "").split(" ")[0];
+                                return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
+                              })()}</div>
+                              {(serviceTime.start || serviceTime.end) ? (
+                                <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
+                                  {([
+                                    { key: "departure", label: "出发", at: order.report?.departureAt, dot: "bg-sky-100 text-sky-700" },
+                                    { key: "arrive", label: "到达", at: order.report?.actualStartAt, dot: "bg-emerald-100 text-emerald-700" },
+                                    { key: "leave", label: "完成", at: order.report?.actualEndAt, dot: "bg-amber-100 text-amber-700" },
+                                    { key: "return", label: "返回", at: order.report?.returnAt, dot: "bg-slate-200 text-slate-600" },
+                                  ] as const).filter((seg) => seg.at).map((seg, i, arr) => (
+                                    <div key={seg.key}>
+                                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                                        <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${seg.dot}`}><CircleDot className="h-2.5 w-2.5" /></span>
+                                        {seg.label} <span className="font-medium text-foreground">{formatDateTime(seg.at)}</span>
+                                      </div>
+                                      {i < arr.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                            {statusLabel}
-                          </Badge>
+                          {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {canConfirmInspection && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  confirmInspection(order);
-                                }}
-                                disabled={saving}
-                              >
-                                <CheckCircle className="mr-1 h-4 w-4" />
-                                {t.actions.confirmInspection}
-                              </Button>
-                            )}
-                            {canAssign && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openAssign(order);
-                                }}
-                                disabled={saving}
-                              >
-                                <Send className="mr-1 h-4 w-4" />
-                                {t.actions.assign}
-                              </Button>
-                            )}
-                            {canExport && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                                    onClick={(event) => event.stopPropagation()}
-                                    disabled={exporting}
-                                  >
-                                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-                                    {t.actions.export}
-                                    <ChevronDown className="ml-1 h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                                  <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
-                                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                    {t.actions.exportExcel}
+                        <TableCell onClick={(event) => event.stopPropagation()}>
+                          {(canConfirmInspection || canAssign) ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                                  title={t.list.actionsMenu || "工单操作"}
+                                  aria-label={t.list.actionsMenu || "工单操作"}
+                                  disabled={saving}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canConfirmInspection && (
+                                  <DropdownMenuItem onSelect={() => confirmInspection(order)} disabled={saving}>
+                                    <CheckCircle className="h-4 w-4" />
+                                    {t.actions.confirmInspection}
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
-                                    <FileDown className="mr-2 h-4 w-4" />
-                                    {t.actions.exportPdf}
+                                )}
+                                {canAssign && (
+                                  <DropdownMenuItem onSelect={() => openAssign(order)} disabled={saving}>
+                                    <Send className="h-4 w-4" />
+                                    {t.actions.assign}
                                   </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     );
@@ -2331,8 +2268,7 @@ export function ServiceOrders() {
               </ResponsiveList>
             )}
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       <ServiceOrderDetailDialog
         order={detailOrder}

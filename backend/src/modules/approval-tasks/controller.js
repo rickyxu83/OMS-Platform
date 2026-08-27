@@ -1,4 +1,4 @@
-const { listApprovalTasks } = require('../mr/workflow')
+const { listApprovalTasks, approvalTaskCounts } = require('../mr/workflow')
 const attendanceController = require('../attendance/controller')
 
 // 待办中心聚合入口：MR 签核/采购任务 + 考勤审批。
@@ -12,10 +12,12 @@ async function list(req, res) {
   const extraAssigneeIds = req.user.role === 'assistant_supervisor'
     ? await require('../mr/controller').assistantIdsFor(req.user)
     : []
-  const [mr, attendanceItems, attendancePendingCount] = await Promise.all([
+  const [mr, attendanceItems, attendancePendingCount, mrCounts, attendanceCounts] = await Promise.all([
     listApprovalTasks(req.user.id, view, extraAssigneeIds),
     attendanceController.listApprovalTaskItems(req.user, view),
     attendanceController.pendingApprovalCountValue(req.user),
+    approvalTaskCounts(req.user.id, extraAssigneeIds),
+    attendanceController.approvalTaskCountsValue(req.user),
   ])
   const items = [...(mr.items || []), ...attendanceItems].sort((a, b) => {
     const aPending = a.status === 'pending' ? 0 : 1
@@ -26,6 +28,12 @@ async function list(req, res) {
   res.json({
     items,
     pendingCount: Number(mr.pendingCount || 0) + attendancePendingCount,
+    // 三视图计数（MR + 考勤合并），供页签徽标使用
+    counts: {
+      pending: mrCounts.pending + attendanceCounts.pending,
+      initiated: mrCounts.initiated + attendanceCounts.initiated,
+      completed: mrCounts.completed + attendanceCounts.completed,
+    },
   })
 }
 

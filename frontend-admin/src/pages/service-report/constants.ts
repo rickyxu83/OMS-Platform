@@ -85,10 +85,6 @@ export const ATTACHMENT_PURPOSES: Record<AttachmentPurpose, { label: string; ico
   inspection_document: { label: "巡检文档", icon: ClipboardCheck },
   office_document: { label: "方案与资料附件", icon: FileText },
 };
-export const REPORT_ORDER_LIST_WIDTH = "lg:min-w-[1180px]";
-export const REPORT_ORDER_LIST_GRID = "lg:grid-cols-[minmax(180px,1fr)_minmax(150px,0.8fr)_minmax(220px,1.2fr)_minmax(120px,0.7fr)_160px_90px_176px]";
-export const REPORT_ORDER_HEADER_CLASS = "hidden w-full rounded-md border border-border/70 bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur lg:grid lg:items-center lg:gap-3";
-export const REPORT_ORDER_STICKY_HEADER_CLASS = `${REPORT_ORDER_HEADER_CLASS} sticky top-0 z-10`;
 export const FORM_SKIN = [
   "[&_[data-slot=input]]:h-[42px]",
   "[&_[data-slot=input]]:rounded-lg",
