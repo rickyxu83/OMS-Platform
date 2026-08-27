@@ -1831,14 +1831,7 @@ export function ServiceOrders() {
           },
           {
             label: t.list.fieldServiceItems,
-            value: (
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${mc.color}`} /> : null; })()}
-                <span className="font-medium text-foreground/80">{modeLabel}</span>
-                <span className="text-muted-foreground/50">·</span>
-                {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span>{itemsLabel}</span>; })()}
-              </span>
-            ),
+            value: (() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })(),
           },
           {
             label: t.list.fieldServiceTime,
@@ -2264,12 +2257,7 @@ export function ServiceOrders() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
-                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                              {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${mc.color}`} /> : null; })()}
-                              <span className="font-medium text-foreground/80">{modeLabel}</span>
-                              <span className="text-muted-foreground/50">·</span>
-                              {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span>{itemsLabel}</span>; })()}
-                            </span>
+                            {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })()}
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
