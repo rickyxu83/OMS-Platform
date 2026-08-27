@@ -1635,11 +1635,9 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
                       COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
                       COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at,
-                      (SELECT COUNT(DISTINCT x.engineer_id) FROM (
-                        SELECT so.assigned_engineer_id AS engineer_id
-                        UNION
-                        SELECT soe.engineer_id FROM service_order_engineers soe WHERE soe.service_order_id = so.id
-                      ) x) AS engineer_count
+                      (SELECT 1 + COUNT(DISTINCT CASE WHEN soe.engineer_id <> so.assigned_engineer_id THEN soe.engineer_id END)
+                       FROM service_order_engineers soe
+                       WHERE soe.service_order_id = so.id) AS engineer_count
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
                LEFT JOIN devices d ON d.id = so.device_id
