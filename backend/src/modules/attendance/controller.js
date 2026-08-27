@@ -1634,7 +1634,10 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
                       so.service_mode, so.service_type, so.issue_description,
                       COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
-                      COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
+                      COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at,
+                      (SELECT 1 + COUNT(DISTINCT CASE WHEN soe.engineer_id <> so.assigned_engineer_id THEN soe.engineer_id END)
+                       FROM service_order_engineers soe
+                       WHERE soe.service_order_id = so.id) AS engineer_count
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
                LEFT JOIN devices d ON d.id = so.device_id
@@ -1723,6 +1726,7 @@ async function listOvertimeServiceOrders(req, res) {
     .map((row) => ({
       ...serviceOrderSnapshot(row),
       status: row.status,
+      engineerCount: Number(row.engineer_count || 1),
       segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
     }))
     .filter((item) => item.segments.length)
@@ -1834,9 +1838,10 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const orderSnapshot = serviceOrderSnapshot(order)
     if (!orderSnapshot) throw notFound('没有可申请的工单')
 
-    // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
-    // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
-    const travelOverrides = segmentKeys.some((key) => key === 'travel_out' || key === 'travel_back')
+    // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），仅多工程师工单开放；
+    // 单工程师工单的往返时间本就是本人填报，以工单为准、覆盖忽略（产品裁决 2026-08-27）。
+    // 工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
+    const travelOverrides = Number(order.engineer_count || 1) > 1 && segmentKeys.some((key) => key === 'travel_out' || key === 'travel_back')
       ? normalizeTravelOverrides(order, req.body)
       : {}
 

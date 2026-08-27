@@ -53,6 +53,8 @@ export interface OvertimeSegment {
 
 export interface OvertimeServiceOrder extends ServiceOrderSummary {
   status?: string;
+  /** 参与工程师数（主责+协作）；1 时往返时间以工单为准不可改 */
+  engineerCount?: number;
   segments: OvertimeSegment[];
 }
 

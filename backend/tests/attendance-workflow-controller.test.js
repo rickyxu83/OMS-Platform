@@ -742,6 +742,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       id: 88,
       order_no: 'SO-20260713-088',
       status: 'completed',
+      engineer_count: 2,
       customer_name: '测试客户',
       contact_name: '王小姐',
       contact_phone: '13800000000',
@@ -819,6 +820,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       id: 88,
       order_no: 'SO-20260713-088',
       status: 'completed',
+      engineer_count: 2,
       customer_name: '测试客户',
       contact_name: '王小姐',
       contact_phone: '13800000000',
@@ -884,7 +886,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   {
     const executeCalls = []
     const orderRow = {
-      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
       service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
       actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 23:00:00',
     }
@@ -927,7 +929,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   // 路上时间防倒挂：去程出发晚于工单到达 -> 400
   {
     const orderRow = {
-      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
       service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
       actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
     }
@@ -959,7 +961,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   // 路上时间防倒挂：回程返回早于工单完工 -> 400
   {
     const orderRow = {
-      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C',
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
       service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
       actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
     }
@@ -1089,6 +1091,46 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     }
     assert.equal(thrown?.status, 400)
     assert.match(thrown?.message || '', /没有可申请的加班时段/)
+  }
+
+  // 单工程师工单：往返时间以工单为准，自报覆盖静默忽略（不留痕、不影响核算）
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88, order_no: 'SO-SOLO', status: 'completed', customer_name: 'C', engineer_count: 1,
+      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
+      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 1400 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    // 传了与工单不同的自报往返时间：单人工单应被忽略，去程按工单 05:00–06:00 = 1h、快照无留痕
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { segmentKey: 'travel_out', overtimeResult: 'comp_time', departureAt: '2026-07-18 03:00', returnAt: '2026-07-18 23:00' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.equal(insert.params.sourceDetail, 'travel_out')
+    assert.equal(insert.params.hours, 1)
+    const snapshot = JSON.parse(insert.params.sourceSnapshot)
+    assert.equal(Object.hasOwn(snapshot, 'reportedDepartureAt'), false)
+    assert.equal(Object.hasOwn(snapshot, 'reportedReturnAt'), false)
   }
 
   // travel_out / travel_back 单段申请：均为合法 segmentKey，只生成对应程一条申请（休息日各 1h）

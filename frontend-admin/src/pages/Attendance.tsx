@@ -228,8 +228,6 @@ export function Attendance() {
   // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
   const [settingsView, setSettingsView] = useState<"rules" | "holidays">(() => searchParams.get("view") === "holidays" ? "holidays" : "rules");
   const [applyOpen, setApplyOpen] = useState(false);
-  // 我的申请-草稿行「继续提交」：预填抽屉并锁定表单（草稿内容不可改，仅补材料提交）
-  const [resumeDraft, setResumeDraft] = useState<AttendanceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
@@ -421,8 +419,9 @@ export function Attendance() {
 
 
 
+  // 草稿功能已下线：进行中只计 pending_*（历史草稿不算申请，仅在「全部」中只读展示）
   const pendingMine = useMemo(
-    () => mine.filter((item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
+    () => mine.filter((item) => String(item.status || "").startsWith("pending_")).length,
     [mine],
   );
   // 「我的申请」状态筛选：pending 聚合所有 pending_* 步骤，closed 聚合已撤回/已作废
@@ -992,7 +991,7 @@ export function Attendance() {
         </div>
         <div className="flex items-center gap-2">
           {canApply ? (
-            <Button onClick={() => { setResumeDraft(null); setApplyOpen(true); }}>
+            <Button onClick={() => setApplyOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               新建申请
             </Button>
@@ -1210,7 +1209,6 @@ export function Attendance() {
                   { key: "pending", label: "审批中", count: mine.filter((item) => String(item.status || "").startsWith("pending_")).length },
                   { key: "approved", label: "已通过", count: mine.filter((item) => item.status === "approved").length },
                   { key: "rejected", label: "已驳回", count: mine.filter((item) => item.status === "rejected").length },
-                  { key: "draft", label: "草稿", count: mine.filter((item) => item.status === "draft").length },
                   { key: "closed", label: "已撤回/作废", count: mine.filter((item) => ["withdrawn", "voided"].includes(item.status || "")).length },
                 ].map((chip) => {
                   const active = mineStatus === chip.key;
@@ -1231,16 +1229,9 @@ export function Attendance() {
               </>
             )}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
-              <>
-                {item.status === "draft" ? (
-                  <Button size="sm" onClick={() => { setResumeDraft(item); setApplyOpen(true); }}>
-                    <Send className="mr-1 h-4 w-4" /> 继续提交
-                  </Button>
-                ) : null}
-                <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
-                  <RotateCcw className="mr-1 h-4 w-4" /> 撤回
-                </Button>
-              </>
+              <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
+                <RotateCcw className="mr-1 h-4 w-4" /> 撤回
+              </Button>
             ) : null}
           /> : null}
 
@@ -1612,11 +1603,10 @@ export function Attendance() {
 
       <AttendanceApplyDrawer
         open={applyOpen}
-        onOpenChange={(open) => { setApplyOpen(open); if (!open) setResumeDraft(null); }}
+        onOpenChange={setApplyOpen}
         onSubmitted={load}
         myProfile={myProfile}
         holidayDates={applicationHolidayDates}
-        resumeDraft={resumeDraft}
       />
 
       <ReasonConfirmDialog
