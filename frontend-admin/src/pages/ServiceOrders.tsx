@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, Play, Square, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2258,11 +2258,26 @@ export function ServiceOrders() {
                             >
                               {engineerName}
                             </button>
-                            <div className="truncate text-muted-foreground">{(() => {
-                              const sd = (serviceTime.start || "").split(" ")[0] || "-";
-                              const ed = (serviceTime.end || "").split(" ")[0];
-                              return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
-                            })()}</div>
+                            <div className="group relative inline-block max-w-full">
+                              <div className="truncate text-muted-foreground cursor-default">{(() => {
+                                const sd = (serviceTime.start || "").split(" ")[0] || "-";
+                                const ed = (serviceTime.end || "").split(" ")[0];
+                                return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
+                              })()}</div>
+                              {(serviceTime.start || serviceTime.end) ? (
+                                <div className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden min-w-[180px] rounded-lg border bg-popover p-2.5 text-xs shadow-lg group-hover:block">
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Play className="h-2.5 w-2.5" /></span>
+                                    开始 <span className="font-medium text-foreground">{serviceTime.start || "-"}</span>
+                                  </div>
+                                  <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" />
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600"><Square className="h-2.5 w-2.5" /></span>
+                                    结束 <span className="font-medium text-foreground">{serviceTime.end || "-"}</span>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
