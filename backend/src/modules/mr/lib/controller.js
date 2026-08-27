@@ -542,6 +542,10 @@ async function list(req, res) {
     where.push('o.sales_owner_id = :salesOwnerId')
     params.salesOwnerId = salesOwnerId
   }
+  // 只看待我签核：当前待处理步骤的签核人是我（导航角标/待办中心深链）
+  if (String(req.query.pendingMine || '').trim() === '1') {
+    where.push('pending.assignee_user_id = :permissionUserId')
+  }
   const dateFrom = String(req.query.dateFrom || '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
     where.push('o.fill_date >= :dateFrom')
