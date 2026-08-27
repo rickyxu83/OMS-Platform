@@ -2161,8 +2161,9 @@ export function ServiceOrders() {
                 <col className="w-10" />
                 <col className="w-[24%]" />
                 <col className="w-[32%]" />
-                <col className="w-[22%]" />
-                <col className="w-[22%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
@@ -2170,7 +2171,8 @@ export function ServiceOrders() {
                   <TableHead>{t.list.colCaseCustomer}</TableHead>
                   <TableHead>{t.list.colMainContent} / {t.list.colServiceItems}</TableHead>
                   <TableHead>{t.list.colEngineer} / {t.list.colServiceTime}</TableHead>
-                  <TableHead className="pr-5 text-right">{t.list.colStatus} / {t.list.colActions}</TableHead>
+                  <TableHead>{t.list.colStatus}</TableHead>
+                  <TableHead className="pr-5 text-right">{t.list.colActions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2263,10 +2265,11 @@ export function ServiceOrders() {
                             })()}</div>
                           </div>
                         </TableCell>
+                        <TableCell>
+                          {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
+                        </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-col items-end gap-1">
-                            {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
-                            {(canConfirmInspection || canAssign) ? (
+                          {(canConfirmInspection || canAssign) ? (
                               <div className="flex items-center gap-1">
                                 {canConfirmInspection && (
                                   <button
@@ -2299,8 +2302,7 @@ export function ServiceOrders() {
                                   </button>
                                 )}
                               </div>
-                            ) : null}
-                          </div>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     );
