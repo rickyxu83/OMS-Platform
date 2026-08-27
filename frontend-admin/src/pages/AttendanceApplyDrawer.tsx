@@ -30,7 +30,6 @@ import {
   previewOvertimeHours,
   toDateTimeLocal,
   workingLeaveSummary,
-  formFromDraft,
   type AnnualLeavePeriod,
   type EmployeeProfile,
   type LegalHolidayItem,
@@ -49,8 +48,6 @@ interface AttendanceApplyDrawerProps {
   myProfile: EmployeeProfile | null;
   /** 法定节假日日期集合（用于工作日核算） */
   holidayDates: Set<string>;
-  /** 「我的申请」草稿行「继续提交」传入的草稿；仅请假/调休支持 */
-  resumeDraft?: ResumableDraft | null;
 }
 
 const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock }> = [
@@ -65,9 +62,7 @@ function shortDateTime(value?: string) {
 }
 
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
-export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates, resumeDraft }: AttendanceApplyDrawerProps) {
-  // 加班单无草稿态，仅请假/调休可继续提交
-  const resumed = resumeDraft && ["leave", "comp_time"].includes(resumeDraft.requestType) ? resumeDraft : null;
+export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
@@ -84,15 +79,15 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   // 打开时重置为初始草稿与第一步；继续提交场景用草稿预填并直达表单步
   useEffect(() => {
     if (open) {
-      setStep(resumed ? 2 : 1);
-      setForm(resumed ? formFromDraft(resumed) : createBlankForm());
+      setStep(1);
+      setForm(createBlankForm());
       setProofFiles([]);
       setSelectedOvertimeOrderId("");
       setTravelDepartureAt("");
       setTravelReturnAt("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, resumed]);
+  }, [open]);
 
   // 代理人加载：请假/调休时按所选日期过滤冲突人员（逻辑同原页面）
   useEffect(() => {
@@ -212,7 +207,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
   const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
   // 草稿中已上传的证明数量（继续提交时可补充，重复计算校验分母）
-  const existingProofCount = resumed ? (resumed.proofFiles?.length || resumed.proofFileCount || 0) : 0;
   const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
   const annualBalance = annualBalanceDays(myProfile);
   const balanceInsufficient = form.requestType === "comp_time"
@@ -274,7 +268,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     }
     if (!form.delegateEmployeeId) return "请选择代理人";
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
-    if (proofRequired && proofFiles.length + existingProofCount === 0) {
+    if (proofRequired && proofFiles.length === 0) {
       return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
     }
     if (annualPreview && !annualPreview.workingDays) {
@@ -300,18 +294,14 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         });
       } else {
         if (!form.delegateEmployeeId) throw new Error("请选择代理人");
-        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length + existingProofCount === 0) {
+        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
         const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
         const leaveRange = workingLeaveSummary(form, holidayDates, includeNonWorkingDays);
         if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
-        // 继续提交：草稿已存在，跳过建单直接补附件再提交；新建：先建草稿
-        let draftId: number | string;
-        if (resumed) {
-          draftId = resumed.id;
-        } else {
-          const draft = await api.post("/attendance/requests", {
+        // 草稿功能已下线：一律新建申请（create + 传附件 + submit 连续完成）
+        const draft = await api.post("/attendance/requests", {
             requestType,
             leaveType: requestType === "leave" ? form.leaveType : undefined,
             delegateEmployeeId: form.delegateEmployeeId,
@@ -320,9 +310,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             hours: leaveRange.hours,
             reason: requestType === "leave" && form.leaveType === "personal" ? String(form.reason || "").trim() || undefined : undefined,
           });
-          draftId = draft.id;
-        }
-        // 附件阶段独立捕获：失败不吞草稿，提示可稍后继续提交
+        const draftId: number | string = draft.id;
+        // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不留草稿续传）
         try {
           for (const file of proofFiles) {
             const body = new FormData();
@@ -333,10 +322,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             await api.postForm("/files", body);
           }
         } catch (uploadError) {
-          toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}。可直接重试，或稍后在「我的申请」对草稿点「继续提交」。`);
+          try { await api.post(`/attendance/requests/${draftId}/withdraw`); } catch { /* 撤回失败不阻断错误提示 */ }
+          toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}，申请已自动撤回，请重新提交。`);
           return;
         }
-        // 事由随提交落库：继续提交的草稿由后端在 submit 时顺带更新；新建草稿与建单值一致无副作用
+        // 事由随提交落库：新建申请与建单值一致
         await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && form.leaveType === "personal" ? { reason: String(form.reason || "").trim() } : undefined);
       }
       toast.success("申请已提交");
@@ -369,9 +359,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-[720px]">
         <DialogHeader className="border-b pb-4">
-          <DialogTitle>{resumed ? "继续提交申请" : "新建申请"}</DialogTitle>
+          <DialogTitle>新建申请</DialogTitle>
           <DialogDescription>
-            {resumed ? "草稿内容已锁定，补齐材料后提交" : step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
+            {step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
           </DialogDescription>
           <div className="flex items-center gap-2 pt-2 text-xs">
             {[1, 2, 3].map((index) => (
@@ -580,7 +570,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <button
                             key={value}
                             type="button"
-                            disabled={Boolean(resumed)}
+                           
                             onClick={() => setForm((current) => {
                               const date = dateValue(current.startAt);
                               return applyAnnualLeaveRange({
@@ -602,13 +592,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
-                {!resumed ? (
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "morning")}>今天上午</Button>
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "day")}>今天全天</Button>
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
                 </div>
-                ) : null}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -617,7 +605,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="h-11"
                       data-compact-date="true"
                       type="date"
-                      disabled={Boolean(resumed)}
+                     
                       value={form.annualStartDate}
                       onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })}
                     />
@@ -628,7 +616,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="h-11"
                       data-compact-date="true"
                       type="date"
-                      disabled={Boolean(resumed)}
+                     
                       min={form.annualStartDate}
                       value={form.annualEndDate}
                       onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })}
@@ -650,7 +638,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <button
                             key={item.value}
                             type="button"
-                            disabled={Boolean(resumed)}
+                           
                             onClick={() => setAnnualDraft({ annualPeriod: item.value })}
                             className={`${active
                               ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
@@ -670,7 +658,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>开始时段</Label>
-                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })} disabled={Boolean(resumed)}>
+                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="morning">上午 09:00 起</SelectItem>
@@ -680,7 +668,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </div>
                     <div className="space-y-2">
                       <Label>结束时段</Label>
-                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })} disabled={Boolean(resumed)}>
+                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="morning">上午 14:00 止</SelectItem>
@@ -709,7 +697,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <Select
                     value={form.delegateEmployeeId}
                     onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
-                    disabled={delegatesLoading || Boolean(resumed)}
+                    disabled={delegatesLoading}
                   >
                     <SelectTrigger className="h-11">
                       <SelectValue
@@ -732,12 +720,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </p>
                 </div>
 
-                {proofRequired || (resumed && existingProofCount > 0) ? (
+                {proofRequired ? (
                   <div className="space-y-2">
                     <Label>{form.leaveType === "sick" ? "病假证明" : form.leaveType === "marriage" ? "婚假证明" : "证明附件"}</Label>
-                    {existingProofCount > 0 ? (
-                      <p className="text-xs text-muted-foreground">草稿已含 {existingProofCount} 份证明（{resumed?.proofFiles?.map((file) => file.originalName).join("、") || "已上传"}），可继续补充</p>
-                    ) : null}
                     <label
                       htmlFor="attendance-proof-upload"
                       onDragOver={(event) => { event.preventDefault(); setProofDragging(true) }}
@@ -896,7 +881,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         <DialogFooter className="border-t pt-4">
           <div className="flex w-full items-center justify-between gap-3">
             {step > 1 ? (
-              <Button variant="outline" onClick={() => setStep((current) => Math.max(resumed ? 2 : 1, current - 1))} disabled={submitting}>
+              <Button variant="outline" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={submitting}>
                 <ArrowLeft className="mr-1 h-4 w-4" />上一步
               </Button>
             ) : (
