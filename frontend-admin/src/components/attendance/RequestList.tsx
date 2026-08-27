@@ -101,13 +101,18 @@ function chineseMonthDay(value?: string) {
   return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
 }
 
-// 工单分组：同一工单（service_order + sourceId）≥2 条的申请合并成组，供审批人按组一次审批。
-// 单段与非工单申请保持普通行；组的插入位置取组内首条出现的位置，保持列表原有排序。
+// 工单分组：同一工单（service_order + sourceId）≥2 条「有效」申请合并成组，供审批人按组一次审批。
+// 有效 = 草稿/审批中/已通过；已撤回/已驳回/已作废的段不属于当前这组，降级为单条历史行。
+// 组的插入位置取组内首条出现的位置，保持列表原有排序。
 type RequestGroupEntry = { type: "group"; key: string; items: AttendanceRequest[] } | { type: "single"; item: AttendanceRequest };
+function isActiveRequest(status?: string) {
+  const value = status || "";
+  return value === "draft" || value === "approved" || value.startsWith("pending_");
+}
 function groupRequestsByServiceOrder(items: AttendanceRequest[]): RequestGroupEntry[] {
   const byKey = new Map<string, AttendanceRequest[]>();
   for (const item of items) {
-    const key = item.sourceType === "service_order" && item.sourceId ? `so-${item.sourceId}` : null;
+    const key = item.sourceType === "service_order" && item.sourceId && isActiveRequest(item.status) ? `so-${item.sourceId}` : null;
     if (!key) continue;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key)!.push(item);
@@ -119,7 +124,7 @@ function groupRequestsByServiceOrder(items: AttendanceRequest[]): RequestGroupEn
   const seen = new Set<string>();
   const result: RequestGroupEntry[] = [];
   for (const item of items) {
-    const key = item.sourceType === "service_order" && item.sourceId ? `so-${item.sourceId}` : null;
+    const key = item.sourceType === "service_order" && item.sourceId && isActiveRequest(item.status) ? `so-${item.sourceId}` : null;
     if (!key) {
       result.push({ type: "single", item });
       continue;
