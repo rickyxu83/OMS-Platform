@@ -280,10 +280,10 @@ interface Announcement {
   kind: "info" | "warning" | "success";
 }
 
-/** 导航待办角标：三处入口（考勤/MR/待办中心）统一红色胶囊样式 */
-function NavCountBadge({ count }: { count: number }) {
+/** 导航待办角标：待办中心=红（聚总提醒），考勤/MR=紫（业务入口常规计数） */
+function NavCountBadge({ count, tone = "purple" }: { count: number; tone?: "red" | "purple" }) {
   return (
-    <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+    <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold text-white ${tone === "red" ? "bg-red-600" : "bg-primary"}`}>
       {count > 99 ? "99+" : count}
     </span>
   );
@@ -639,7 +639,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       return (
                         <button
                           key={item.path}
-                          onClick={() => navigateTo(item.path === "mr" && mrPendingCount > 0 ? "mr?pendingMine=1" : item.path)}
+                          onClick={() => navigateTo(item.path)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 group ${
                             isActive
                               ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
@@ -655,7 +655,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                           ) : item.path === "mr" && mrPendingCount > 0 ? (
                             <NavCountBadge count={mrPendingCount} />
                           ) : item.path === "approval-tasks" && pendingTaskCount > 0 ? (
-                            <NavCountBadge count={pendingTaskCount} />
+                            <NavCountBadge count={pendingTaskCount} tone="red" />
                           ) : isActive ? (
                             <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                           ) : null}
@@ -784,7 +784,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   <button
                     key={item.path}
                     type="button"
-                    onClick={() => navigateTo(item.path === "mr" && mrPendingCount > 0 ? "mr?pendingMine=1" : item.path)}
+                    onClick={() => navigateTo(item.path)}
                     className={`flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
                       isActive
                         ? "bg-primary/10 text-primary"
