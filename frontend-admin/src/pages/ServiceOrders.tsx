@@ -2256,38 +2256,46 @@ export function ServiceOrders() {
                             >
                               {engineerName}
                             </button>
-                            <div className="truncate text-muted-foreground">{serviceTime.start}{serviceTime.end ? ` ~ ${serviceTime.end}` : ""}</div>
+                            <div className="truncate text-muted-foreground">{(() => {
+                              const sd = (serviceTime.start || "").split(" ")[0] || "-";
+                              const ed = (serviceTime.end || "").split(" ")[0];
+                              return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
+                            })()}</div>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                             {(canConfirmInspection || canAssign) ? (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
                                 {canConfirmInspection && (
                                   <button
                                     type="button"
-                                    className="text-xs text-muted-foreground hover:text-emerald-600"
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-40"
+                                    title={t.actions.confirmInspection}
+                                    aria-label={t.actions.confirmInspection}
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       confirmInspection(order);
                                     }}
                                     disabled={saving}
                                   >
-                                    {t.actions.confirmInspection}
+                                    <CheckCircle className="h-3.5 w-3.5" />
                                   </button>
                                 )}
                                 {canAssign && (
                                   <button
                                     type="button"
-                                    className="text-xs text-muted-foreground hover:text-sky-600"
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-600 disabled:opacity-40"
+                                    title={t.actions.assign}
+                                    aria-label={t.actions.assign}
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       openAssign(order);
                                     }}
                                     disabled={saving}
                                   >
-                                    {t.actions.assign}
+                                    <Send className="h-3.5 w-3.5" />
                                   </button>
                                 )}
                               </div>
