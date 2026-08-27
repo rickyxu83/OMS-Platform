@@ -90,8 +90,8 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
             <div className="mt-1.5 border-t border-slate-100 pt-1.5">
               {steps.map((step) => (
                 <div key={`${step.seq}-${step.stepKey}`} className="flex items-center gap-1.5 py-0.5 text-muted-foreground">
-                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approved' ? 'bg-emerald-100 text-emerald-700' : step.action === 'rejected' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
-                    {step.action === 'approved' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'rejected' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
                   </span>
                   <span className="flex-1 truncate">{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}</span>
                   {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
