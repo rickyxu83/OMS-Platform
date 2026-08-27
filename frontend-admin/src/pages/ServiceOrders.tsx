@@ -1084,8 +1084,8 @@ export function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
-  const [customerFilter, setCustomerFilter] = useState(searchParams.get("customerId") || "all");
+  const statusFilter = "all";
+  const customerFilter = "all";
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || searchParams.get("q") || "");
@@ -1147,7 +1147,6 @@ export function ServiceOrders() {
   useEffect(() => {
     const keyword = searchParams.get("keyword") || searchParams.get("q") || "";
     setSearchQuery(keyword);
-    setCustomerFilter(searchParams.get("customerId") || "all");
     setStartDate(searchParams.get("startDate") || "");
     setEndDate(searchParams.get("endDate") || "");
   }, [searchParams]);
@@ -1337,8 +1336,6 @@ export function ServiceOrders() {
 
   function resetFilters() {
     setSearchQuery("");
-    setStatusFilter("all");
-    setCustomerFilter("all");
     setStartDate("");
     setEndDate("");
     setSearchParams({});
@@ -2045,35 +2042,6 @@ export function ServiceOrders() {
                   if (e.key === "Enter") setDebouncedSearch(searchQuery);
                 }}
               />
-            </div>
-            <div className="min-w-0">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t.filters.statusPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0">
-              <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t.filters.customerPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t.filters.allCustomers}</SelectItem>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={String(customer.id)}>
-                      {customer.name || fill(t.dialogs.customerFallback, { id: customer.id })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 sm:gap-3 2xl:grid-cols-[minmax(184px,220px)_minmax(184px,220px)_auto]">
