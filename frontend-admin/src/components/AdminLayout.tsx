@@ -23,7 +23,6 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
@@ -281,6 +280,15 @@ interface Announcement {
   kind: "info" | "warning" | "success";
 }
 
+/** 导航待办角标：待办中心=红（聚总提醒），考勤/MR=紫（业务入口常规计数） */
+function NavCountBadge({ count, tone = "purple" }: { count: number; tone?: "red" | "purple" }) {
+  return (
+    <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold text-white ${tone === "red" ? "bg-red-600" : "bg-primary"}`}>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 function displayUserName(user: Record<string, any> | null | undefined) {
   return String(user?.realName || user?.name || user?.username || "用户");
 }
@@ -310,6 +318,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
+  const [mrPendingCount, setMrPendingCount] = useState(0);
   const strings = STRINGS[lang];
   const logoSrc = `${import.meta.env.BASE_URL}dunyang-mark.png`;
   const appVersion = APP_VERSION;
@@ -425,7 +434,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   useEffect(() => {
     let active = true;
     const load = () => api.get("/approval-tasks?view=pending")
-      .then((data) => { if (active) setPendingTaskCount(Number(data?.pendingCount || 0)); })
+      .then((data) => {
+        if (!active) return;
+        setPendingTaskCount(Number(data?.pendingCount || 0));
+        // MR 系待办（签核/采购/合同）计数：给左侧「订购申请 MR」入口挂角标
+        const taskItems = Array.isArray(data?.items) ? data.items : [];
+        setMrPendingCount(taskItems.filter((task: { businessType?: string }) => String(task?.businessType || "").startsWith("mr")).length);
+      })
       .catch(() => {});
     void load();
     const timer = window.setInterval(load, 60000);
@@ -636,9 +651,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             <span className="text-sm font-medium">{item.label}</span>
                           </div>
                           {item.path === "attendance" && attendancePendingCount > 0 ? (
-                            <Badge className="h-5 min-w-5 justify-center px-1.5 text-xs">{attendancePendingCount}</Badge>
+                            <NavCountBadge count={attendancePendingCount} />
+                          ) : item.path === "mr" && mrPendingCount > 0 ? (
+                            <NavCountBadge count={mrPendingCount} />
                           ) : item.path === "approval-tasks" && pendingTaskCount > 0 ? (
-                            <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{pendingTaskCount > 99 ? "99+" : pendingTaskCount}</span>
+                            <NavCountBadge count={pendingTaskCount} tone="red" />
                           ) : isActive ? (
                             <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                           ) : null}

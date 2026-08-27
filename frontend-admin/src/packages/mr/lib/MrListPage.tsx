@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
@@ -147,12 +147,15 @@ function FilterChip({ label, onClear }: { label: string; onClear: () => void }) 
 
 export function MrListPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { hasPermission, user } = useAuth()
   const [items, setItems] = useState<MrOrder[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [purchaseStatus, setPurchaseStatus] = useState('all')
+  // 只看待我签核：导航角标/待办中心深链 ?pendingMine=1 进入
+  const [pendingMine, setPendingMine] = useState(searchParams.get('pendingMine') === '1')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [salesFilterId, setSalesFilterId] = useState('all')
@@ -181,6 +184,7 @@ export function MrListPage() {
         salesOwnerId: salesFilterId === 'all' ? '' : salesFilterId,
         dateFrom,
         dateTo,
+        pendingMine,
       })
       setItems(data.items || [])
     } catch (err) {
@@ -188,7 +192,18 @@ export function MrListPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo])
+  }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
+
+  // pendingMine 与 URL 同步（清除筛选 chip 时摘掉参数）
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const has = prev.get('pendingMine') === '1'
+      if (has === pendingMine) return prev
+      const next = new URLSearchParams(prev)
+      if (pendingMine) next.set('pendingMine', '1'); else next.delete('pendingMine')
+      return next
+    }, { replace: true })
+  }, [pendingMine, setSearchParams])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQ(queryInput.trim()), 300)
@@ -199,7 +214,7 @@ export function MrListPage() {
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
   const pagedItems = useMemo(() => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [items, page])
   // 筛选/搜索变化时回到第一页；数据变少时收敛页码
-  useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
   // 翻页后表体滚动区回顶部，避免停留在上一页的滚动位置
   useEffect(() => { tableScrollRef.current?.scrollTo({ top: 0 }) }, [page])
@@ -262,6 +277,11 @@ export function MrListPage() {
     }
   }
 
+  const pendingMineCount = useMemo(
+    () => (pendingMine ? items.length : items.filter((order) => Number(order.approvalParticipant) === 1).length),
+    [items, pendingMine],
+  )
+
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
       <ErrorToast message={error} />
@@ -288,6 +308,22 @@ export function MrListPage() {
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+        {pendingMineCount > 0 || pendingMine ? (
+          <button
+            type="button"
+            onClick={() => setPendingMine((value) => !value)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
+              pendingMine
+                ? 'bg-primary font-medium text-white'
+                : 'bg-primary/10 text-primary hover:bg-primary/20'
+            }`}
+            title={pendingMine ? '取消“只看待我签核”' : '只看当前等我签核的 MR'}
+            aria-pressed={pendingMine}
+          >
+            <Hourglass className="size-3.5" />
+            待我签核 <span className="font-bold">{pendingMineCount}</span>
+          </button>
+        ) : null}
         <span className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">全部</span><span className="text-base font-bold">{items.length}</span></span>
         {(['draft', 'in_review', 'approved', 'rejected', 'voided'] as MrStatus[]).map((st) => {
           const count = items.filter((o) => (o.status || 'draft') === st).length
@@ -324,9 +360,10 @@ export function MrListPage() {
               <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`mr-1.5 size-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
             </div>
           </div>
-          {status !== 'all' || purchaseStatus !== 'all' || salesFilterId !== 'all' || customerFilterId ? (
+          {status !== 'all' || purchaseStatus !== 'all' || salesFilterId !== 'all' || customerFilterId || pendingMine ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">已选筛选（点击取消）：</span>
+              {pendingMine ? <FilterChip label="只看待我签核" onClear={() => setPendingMine(false)} /> : null}
               {status !== 'all' ? <FilterChip label={`状态：${STATUS_LABELS[status as MrStatus] || status}`} onClear={() => setStatus('all')} /> : null}
               {purchaseStatus !== 'all' ? <FilterChip label={`采购状态：${PURCHASE_LABELS[purchaseStatus] || purchaseStatus}`} onClear={() => setPurchaseStatus('all')} /> : null}
               {salesFilterId !== 'all' ? <FilterChip label={`销售：${salesFilterName || salesFilterId}`} onClear={() => { setSalesFilterId('all'); setSalesFilterName('') }} /> : null}
