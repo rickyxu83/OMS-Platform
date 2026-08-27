@@ -41,7 +41,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
         <span className={start ? "truncate text-slate-900" : "truncate text-slate-400"}>{label}</span>
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-50 mt-1 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="absolute right-0 top-full z-50 mt-1 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
           <Calendar
             mode="range"
             selected={{ from: startDate, to: endDate }}
