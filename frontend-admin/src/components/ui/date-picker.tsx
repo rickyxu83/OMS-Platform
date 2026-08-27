@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { format, parse, setMonth, setYear } from "date-fns";
 import { CalendarDays } from "lucide-react";
 import { DayPicker } from "react-day-picker";
@@ -21,6 +21,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
   const ref = useRef<HTMLDivElement>(null);
   const [alignRight, setAlignRight] = useState(false);
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const selected = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
   const [viewMonth, setViewMonth] = useState<Date>(selected || new Date());
 
@@ -42,6 +43,16 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
     }
   }, [open]);
 
+  // 垂直适配：面板渲染后实测高度，底部溢出视口则上移（对话框偏下触发时下方空间不足）
+  useLayoutEffect(() => {
+    if (!open || !panelPos || !panelRef.current) return;
+    const h = panelRef.current.getBoundingClientRect().height;
+    const vh = window.innerHeight;
+    if (panelPos.top + h > vh - 8) {
+      setPanelPos((p) => (p ? { ...p, top: Math.max(8, vh - h - 8) } : p));
+    }
+  }, [open, panelPos]);
+
   const viewYear = viewMonth.getFullYear();
   const viewMonthIdx = viewMonth.getMonth();
 
@@ -56,7 +67,10 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
             const panelWidth = 380;
             const right = rect.left + panelWidth > window.innerWidth - 16;
             setAlignRight(right);
-            setPanelPos({ top: rect.bottom + 4, left: right ? Math.max(8, rect.right - panelWidth) : rect.left });
+            // 垂直适配：下方空间不足（<240px）时向上弹，避免面板落在视口外
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            const vTop = spaceBelow >= 240 ? rect.bottom + 4 : Math.max(8, rect.top - 12);
+            setPanelPos({ top: vTop, left: right ? Math.max(8, rect.right - panelWidth) : rect.left });
           }
           setOpen(true);
         }}
@@ -66,7 +80,8 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
         <span className={value ? "truncate text-slate-900" : "truncate text-slate-400"}>{value || placeholder}</span>
       </button>
       {open ? (
-        <div onMouseDown={(e) => e.stopPropagation()}
+        <div ref={panelRef}
+                onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
                 style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
